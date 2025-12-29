@@ -1,0 +1,944 @@
+@using CotizadorInterno.Web.Models
+@{
+    ViewData["Title"] = "Cotizador Interno";
+    var seg = (UserSegment)(ViewData["Segment"] ?? UserSegment.Unknown);
+    var isCorporate = seg == UserSegment.Corporate;
+}
+
+<style>
+    .pill {
+        padding: 2px 10px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        font-size: 12px;
+    }
+    .seg-badge {
+        padding: 2px 10px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #f3f4f6;
+        font-size: 12px;
+    }
+
+    .scenario-tab {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-width: 240px;
+        box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+    .scenario-tab.active {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 4px rgba(13,110,253,.10);
+    }
+    .scenario-name {
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.1;
+    }
+    .scenario-sub {
+        margin: 0;
+        font-size: 12px;
+        opacity: .75;
+    }
+
+    .type-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        user-select: none;
+    }
+    .type-chip.active {
+        border-color: #0d6efd;
+        background: rgba(13,110,253,.08);
+        font-weight: 700;
+    }
+
+    /* ✅ Buscador full width al escribir (panel de sugerencias) */
+    .suggestions {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        display: none;
+        overflow: auto;
+
+        position: fixed;
+        left: 0;
+        right: 0;
+        width: 100vw;
+
+        top: 0; /* se setea con JS */
+
+        z-index: 3000;
+        box-shadow: 0 12px 24px rgba(0,0,0,.10);
+    }
+
+    .suggestion-item {
+        padding: 10px 14px;
+        cursor: pointer;
+        border-top: 1px solid #f3f4f6;
+    }
+    .suggestion-item:hover {
+        background: #f9fafb;
+    }
+
+    .corp-bg, .corp-bg th {
+        background: #fff7ed !important;
+    }
+
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 5;
+    }
+
+    .table-wrap {
+        overflow: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+    }
+    .totals-row td {
+        font-weight: 800;
+        background: #f9fafb;
+        border-top: 2px solid #e5e7eb;
+    }
+
+    .soft-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(0,0,0,.03);
+        padding: 14px;
+    }
+    .muted { opacity: .75; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    /* ✅ Botón Calcular azul oscuro */
+    .btn-calc-dark {
+        background: #0b2a6f !important;
+        border-color: #0b2a6f !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+    .btn-calc-dark:hover {
+        background: #081f52 !important;
+        border-color: #081f52 !important;
+        color: #fff !important;
+    }
+    .btn-calc-dark:disabled {
+        opacity: .75;
+        cursor: not-allowed;
+    }
+</style>
+
+<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+    <div>
+        <h1 class="mb-1">Cotizador Interno</h1>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="pill">Solo uso interno</span>
+            <span class="seg-badge">Segmento: <strong>@seg</strong></span>
+            @if (isCorporate)
+            {
+                <span class="seg-badge">Corporate UI</span>
+            }
+            else
+            {
+                <span class="seg-badge">SMB UI</span>
+            }
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button id="btnNewScenario" class="btn btn-primary" type="button">Nuevo escenario</button>
+        <button id="btnDuplicateScenario" class="btn btn-outline-secondary" type="button">Duplicar</button>
+        <button id="btnDeleteScenario" class="btn btn-outline-danger" type="button">Eliminar</button>
+    </div>
+</div>
+
+<!-- Escenarios -->
+<div class="d-flex gap-2 flex-wrap mb-3" id="scenarioBar"></div>
+
+<!-- Panel principal -->
+<div class="soft-card">
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-2">
+        <div style="min-width: 260px;">
+            <label class="form-label fw-bold mb-1">Nombre del escenario</label>
+            <input id="scenarioName" class="form-control" />
+        </div>
+
+        <div style="min-width: 520px;">
+            <label class="form-label fw-bold mb-1">Tipo de negocio (agrega una línea marcando el tipo)</label>
+            <div class="d-flex gap-2 flex-wrap" id="typeChips"></div>
+            <div class="small muted mt-1">Selecciona un tipo para crear una nueva línea. Luego busca el producto.</div>
+        </div>
+    </div>
+
+    <hr />
+
+    <div class="table-wrap">
+        <table class="table table-sm align-middle mb-0" style="min-width:@(isCorporate ? "1800px" : "1500px");">
+            <thead>
+                <tr>
+                    <th style="width:110px;">Tipo</th>
+                    <th style="width:680px;">Producto</th>
+                    <th style="width:130px;">Costo UND</th>
+                    <th style="width:110px;">Margen %</th>
+                    <th style="width:150px;">Duración (meses)</th>
+                    <th style="width:140px;">Venta UND</th>
+                    <th style="width:110px;">Cantidad</th>
+                    <th style="width:150px;">Venta Mensual</th>
+                    <th style="width:140px;">Venta Total</th>
+
+                    @if (isCorporate)
+                    {
+                        <th class="corp-bg" style="width:170px;">Desc. Corp UND</th>
+                        <th class="corp-bg" style="width:170px;">Desc. Corp Mes</th>
+                        <th class="corp-bg" style="width:170px;">Desc. Corp Año</th>
+                        <th class="corp-bg" style="width:170px;">Ahorro Anual</th>
+                    }
+
+                    <th style="width:150px;">Precio Sugerido</th>
+                    <th style="width:70px;"></th>
+                </tr>
+            </thead>
+            <tbody id="linesBody"></tbody>
+        </table>
+    </div>
+
+    <div class="small muted mt-2">
+        Regla: si el nombre contiene <span class="mono">Prepaid</span> o <span class="mono">1 Year</span>, la duración queda fija en 12 meses (puedes usar prorrateo si aplica).
+    </div>
+</div>
+
+<!-- Configuración inferior -->
+<div class="soft-card mt-3">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Tipo de negocio (negocio global)</label>
+            <select id="dealType" class="form-select">
+                <option value="0">ClienteNuevo</option>
+                <option value="1">CrossSale</option>
+                <option value="2">Renovación 1 vez</option>
+                <option value="3">Renovación 2 veces</option>
+                <option value="4">Renovación 3 veces o más</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label fw-bold">¿Requiere prorrateo?</label>
+            <select id="requiresProration" class="form-select">
+                <option value="false">No</option>
+                <option value="true">Sí</option>
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label fw-bold">Inicio</label>
+            <input id="startDate" type="date" class="form-control" disabled />
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label fw-bold">Final</label>
+            <input id="endDate" type="date" class="form-control" disabled />
+        </div>
+
+        <div class="col-md-1 d-grid">
+            <button id="btnCalculate" class="btn btn-calc-dark" type="button">Calcular</button>
+        </div>
+    </div>
+
+    <div class="small muted mt-2" id="prorationHint" style="display:none;"></div>
+</div>
+
+<!-- Resultado abajo -->
+<div class="soft-card mt-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        <h5 class="mb-0">Resultado</h5>
+        <span class="pill">Solo visible</span>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="muted">Puntaje total</div>
+            <div id="resultPoints" style="font-size:36px; font-weight:900;">—</div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="muted">Comisión final (COP)</div>
+            <div id="resultCommission" style="font-size:30px; font-weight:900;">—</div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="small muted">
+                <div class="d-flex justify-content-between"><span>Segmento</span><span id="resultSegment">—</span></div>
+                <div class="d-flex justify-content-between"><span>Prorrateo</span><span id="resultProration">—</span></div>
+                <div class="d-flex justify-content-between"><span>Venta mensual</span><span id="resultMonthly">—</span></div>
+                <div class="d-flex justify-content-between"><span>Venta total</span><span id="resultTotal">—</span></div>
+            </div>
+
+            <div class="d-grid mt-3">
+                <button id="btnExport" class="btn btn-outline-secondary" type="button" disabled>Exportar Excel (próximo)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const isCorporate = @((isCorporate ? "true" : "false"));
+    const businessTypes = [
+        { key: 0, name: "ModernWork" },
+        { key: 1, name: "Azure" },
+        { key: 2, name: "Acronis" },
+        { key: 3, name: "Perpetuo" },
+        { key: 4, name: "Copiers" },
+        { key: 5, name: "Otro" }
+    ];
+
+    let scenarios = [];
+    let activeScenarioId = null;
+
+    const scenarioBar = document.getElementById("scenarioBar");
+    const scenarioName = document.getElementById("scenarioName");
+    const typeChips = document.getElementById("typeChips");
+    const linesBody = document.getElementById("linesBody");
+
+    const btnNewScenario = document.getElementById("btnNewScenario");
+    const btnDuplicateScenario = document.getElementById("btnDuplicateScenario");
+    const btnDeleteScenario = document.getElementById("btnDeleteScenario");
+
+    const dealType = document.getElementById("dealType");
+    const requiresProration = document.getElementById("requiresProration");
+    const startDate = document.getElementById("startDate");
+    const endDate = document.getElementById("endDate");
+    const prorationHint = document.getElementById("prorationHint");
+
+    const btnCalculate = document.getElementById("btnCalculate");
+
+    const resultPoints = document.getElementById("resultPoints");
+    const resultCommission = document.getElementById("resultCommission");
+    const resultSegment = document.getElementById("resultSegment");
+    const resultProration = document.getElementById("resultProration");
+    const resultMonthly = document.getElementById("resultMonthly");
+    const resultTotal = document.getElementById("resultTotal");
+
+    function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
+
+    function money(n) {
+        const v = Number(n || 0);
+        return v.toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 2 });
+    }
+
+    function num(n, digits = 2) {
+        const v = Number(n || 0);
+        return v.toLocaleString("es-CO", { maximumFractionDigits: digits, minimumFractionDigits: digits });
+    }
+
+    function clampInt(v, min, max, fallback) {
+        const n = parseInt(v, 10);
+        if (isNaN(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+    }
+
+    function clampDec(v, fallback) {
+        const n = parseFloat(String(v).replace(",", "."));
+        if (isNaN(n)) return fallback;
+        return n;
+    }
+
+    function escapeHtml(s) {
+        return (s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    }
+
+    function containsPrepaidOrYear(desc) {
+        const t = (desc || "").toLowerCase();
+        return t.includes("prepaid") || t.includes("1 year");
+    }
+
+    function getActiveScenario() { return scenarios.find(s => s.id === activeScenarioId); }
+
+    function calcLineComputed(line) {
+        const cost = Number(line.costUnit || 0);
+        const margin = Number(line.marginPercent || 0);
+        const months = Number(line.contractMonths || 0);
+        const qty = Number(line.quantity || 0);
+
+        const saleUnit = cost * (1 + (margin / 100));
+        const monthly = saleUnit * qty;
+        const total = monthly * months;
+
+        // ✅ REGLA CORRECTA:
+        // Corporate discount SOLO aplica para líneas ModernWork (businessType === 0).
+        // Para otras líneas, estas columnas no aplican (0).
+        let discUnit = 0, discMonth = 0, discYear = 0, ahorro = 0;
+
+        if (isCorporate && Number(line.businessType) === 0) {
+            discUnit = saleUnit * 0.9;     // -10% sobre Venta UND
+            discMonth = discUnit * qty;
+            discYear = discMonth * months;
+            ahorro = (saleUnit * qty * months) - discYear;
+        }
+
+        return { saleUnit, monthly, total, discUnit, discMonth, discYear, ahorro };
+    }
+
+    function calcTotals(lines) {
+        let tCost = 0, tSaleUnit = 0, tMonthly = 0, tTotal = 0, tSuggested = 0;
+        let tDiscUnit = 0, tDiscMonth = 0, tDiscYear = 0, tAhorro = 0;
+
+        for (const line of lines) {
+            const c = calcLineComputed(line);
+
+            tCost += Number(line.costUnit || 0) * Number(line.quantity || 0);
+            tSaleUnit += c.saleUnit * Number(line.quantity || 0);
+
+            tMonthly += c.monthly;
+            tTotal += c.total;
+
+            tSuggested += Number(line.suggestedRetailPrice || 0) * Number(line.quantity || 0);
+
+            tDiscUnit += c.discUnit * Number(line.quantity || 0);
+            tDiscMonth += c.discMonth;
+            tDiscYear += c.discYear;
+            tAhorro += c.ahorro;
+        }
+
+        return { tCost, tSaleUnit, tMonthly, tTotal, tSuggested, tDiscUnit, tDiscMonth, tDiscYear, tAhorro };
+    }
+
+    function renderTypeChips() {
+        typeChips.innerHTML = businessTypes.map(t => `<div class="type-chip" data-type="${t.key}">${t.name}</div>`).join("");
+        typeChips.querySelectorAll(".type-chip").forEach(chip => {
+            chip.addEventListener("click", () => {
+                const typeKey = Number(chip.getAttribute("data-type"));
+                addLine(typeKey);
+                typeChips.querySelectorAll(".type-chip").forEach(x => x.classList.remove("active"));
+                chip.classList.add("active");
+                setTimeout(() => chip.classList.remove("active"), 600);
+            });
+        });
+    }
+
+    function renderScenarioBar() {
+        scenarioBar.innerHTML = scenarios.map(s => {
+            const active = s.id === activeScenarioId ? "active" : "";
+            const lineCount = s.lines.length;
+            return `
+                <div class="scenario-tab ${active}" data-sid="${s.id}">
+                    <div>
+                        <p class="scenario-name">${escapeHtml(s.name)}</p>
+                        <p class="scenario-sub">${lineCount} líneas</p>
+                    </div>
+                    <div class="pill">Abrir</div>
+                </div>
+            `;
+        }).join("");
+
+        scenarioBar.querySelectorAll(".scenario-tab").forEach(tab => {
+            tab.addEventListener("click", () => {
+                activeScenarioId = tab.getAttribute("data-sid");
+                syncScenarioPanel();
+            });
+        });
+    }
+
+    function renderLines() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        if (!s.lines.length) {
+            linesBody.innerHTML = `
+                <tr>
+                    <td colspan="${isCorporate ? 15 : 11}" class="muted">
+                        No hay líneas. Agrega una línea seleccionando un <strong>Tipo de negocio</strong>.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        const rows = s.lines.map((line, idx) => {
+            const computed = calcLineComputed(line);
+            const lockCost = Number(line.businessType) === 0;
+            const lockMonths = containsPrepaidOrYear(line.productDescription);
+
+            const costDisabled = lockCost ? "disabled" : "";
+            const monthsDisabled = lockMonths ? "disabled" : "";
+
+            const corpCols = isCorporate ? `
+                <td class="corp-bg">${num(computed.discUnit, 2)}</td>
+                <td class="corp-bg">${num(computed.discMonth, 2)}</td>
+                <td class="corp-bg">${num(computed.discYear, 2)}</td>
+                <td class="corp-bg">${num(computed.ahorro, 2)}</td>
+            ` : "";
+
+            return `
+                <tr data-idx="${idx}">
+                    <td><span class="pill">${escapeHtml(businessTypes.find(x => x.key === Number(line.businessType))?.name || "—")}</span></td>
+
+                    <td>
+                        <div style="position:relative;">
+                            <input class="form-control form-control-sm product-input" value="${escapeHtml(line.productDescription)}" placeholder="Buscar producto..." autocomplete="off" />
+                            <div class="suggestions"></div>
+                        </div>
+                        <div class="small muted mt-1">${lockMonths ? 'Duración fija 12 meses (Prepaid/1 Year)' : ''}</div>
+                    </td>
+
+                    <td>
+                        <input class="form-control form-control-sm cost-input" value="${num(line.costUnit,2)}" ${costDisabled} />
+                        <div class="small muted mt-1">${lockCost ? 'ModernWork: no editable' : ''}</div>
+                    </td>
+
+                    <td><input class="form-control form-control-sm margin-input" value="${num(line.marginPercent,2)}" /></td>
+                    <td><input class="form-control form-control-sm months-input" value="${line.contractMonths}" ${monthsDisabled} /></td>
+                    <td>${num(computed.saleUnit,2)}</td>
+                    <td><input class="form-control form-control-sm qty-input" value="${line.quantity}" /></td>
+                    <td>${num(computed.monthly,2)}</td>
+                    <td>${num(computed.total,2)}</td>
+
+                    ${corpCols}
+
+                    <td>${num(line.suggestedRetailPrice,2)}</td>
+
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger btn-del-line" type="button">×</button>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
+        const totals = calcTotals(s.lines);
+        const corpTotals = isCorporate ? `
+            <td class="corp-bg">${num(totals.tDiscUnit,2)}</td>
+            <td class="corp-bg">${num(totals.tDiscMonth,2)}</td>
+            <td class="corp-bg">${num(totals.tDiscYear,2)}</td>
+            <td class="corp-bg">${num(totals.tAhorro,2)}</td>
+        ` : "";
+
+        const totalsRow = `
+            <tr class="totals-row">
+                <td colspan="2">Totales</td>
+                <td>${num(totals.tCost,2)}</td>
+                <td>—</td>
+                <td>—</td>
+                <td>${num(totals.tSaleUnit,2)}</td>
+                <td>—</td>
+                <td>${num(totals.tMonthly,2)}</td>
+                <td>${num(totals.tTotal,2)}</td>
+                ${corpTotals}
+                <td>${num(totals.tSuggested,2)}</td>
+                <td></td>
+            </tr>
+        `;
+
+        linesBody.innerHTML = rows + totalsRow;
+        wireLineEvents();
+    }
+
+    function createScenario(name) {
+        const id = uid();
+        return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", lines: [] };
+    }
+
+    function syncScenarioPanel() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        scenarioName.value = s.name;
+        dealType.value = String(s.dealType);
+        requiresProration.value = String(s.requiresProration);
+        startDate.value = s.startDate || "";
+        endDate.value = s.endDate || "";
+
+        startDate.disabled = !s.requiresProration;
+        endDate.disabled = !s.requiresProration;
+
+        renderScenarioBar();
+        renderLines();
+        resetResults();
+        updateProrationHint();
+    }
+
+    function addScenario() {
+        const s = createScenario(`Escenario ${scenarios.length + 1}`);
+        scenarios.push(s);
+        activeScenarioId = s.id;
+        syncScenarioPanel();
+    }
+
+    function duplicateScenario() {
+        const current = getActiveScenario();
+        if (!current) return;
+
+        const copy = JSON.parse(JSON.stringify(current));
+        copy.id = uid();
+        copy.name = `${current.name} (copia)`;
+        scenarios.push(copy);
+        activeScenarioId = copy.id;
+        syncScenarioPanel();
+    }
+
+    function deleteScenario() {
+        if (scenarios.length <= 1) { alert("Debes mantener al menos 1 escenario."); return; }
+        scenarios = scenarios.filter(s => s.id !== activeScenarioId);
+        activeScenarioId = scenarios[0].id;
+        syncScenarioPanel();
+    }
+
+    function addLine(businessTypeKey) {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        s.lines.push({
+            businessType: businessTypeKey,
+            productId: "",
+            productDescription: "",
+            costUnit: 0,
+            marginPercent: 0,
+            contractMonths: 12,
+            quantity: 1,
+            suggestedRetailPrice: 0,
+            acelerador: 0
+        });
+
+        renderLines();
+        setTimeout(() => {
+            const last = linesBody.querySelector(`tr[data-idx="${s.lines.length - 1}"] .product-input`);
+            if (last) last.focus();
+        }, 0);
+    }
+
+    function removeLine(index) {
+        const s = getActiveScenario();
+        if (!s) return;
+        s.lines.splice(index, 1);
+        renderLines();
+    }
+
+    async function productSearch(q) {
+        const res = await fetch(`/Calculator/ProductSearch?q=${encodeURIComponent(q)}`, { headers: { "Accept": "application/json" } });
+        if (!res.ok) return [];
+        return await res.json();
+    }
+
+    function positionFullWidthSuggestions(suggBox, inputEl) {
+        const rect = inputEl.getBoundingClientRect();
+        const top = Math.round(rect.bottom + 6);
+        const maxH = Math.max(180, window.innerHeight - top - 16);
+
+        suggBox.style.top = `${top}px`;
+        suggBox.style.maxHeight = `${maxH}px`;
+    }
+
+    function wireLineEvents() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        linesBody.querySelectorAll("tr[data-idx]").forEach(row => {
+            const idx = Number(row.getAttribute("data-idx"));
+            const line = s.lines[idx];
+
+            const productInput = row.querySelector(".product-input");
+            const suggBox = row.querySelector(".suggestions");
+
+            const costInput = row.querySelector(".cost-input");
+            const marginInput = row.querySelector(".margin-input");
+            const monthsInput = row.querySelector(".months-input");
+            const qtyInput = row.querySelector(".qty-input");
+
+            const btnDel = row.querySelector(".btn-del-line");
+            btnDel.addEventListener("click", () => removeLine(idx));
+
+            function refreshLineFromInputs() {
+                line.costUnit = clampDec(costInput.value, 0);
+                line.marginPercent = clampDec(marginInput.value, 0);
+                line.contractMonths = clampInt(monthsInput.value, 1, 120, 12);
+                line.quantity = clampInt(qtyInput.value, 1, 999999, 1);
+
+                if (containsPrepaidOrYear(line.productDescription)) {
+                    line.contractMonths = 12;
+                }
+                renderLines();
+            }
+
+            costInput.addEventListener("change", refreshLineFromInputs);
+            marginInput.addEventListener("change", refreshLineFromInputs);
+            monthsInput.addEventListener("change", refreshLineFromInputs);
+            qtyInput.addEventListener("change", refreshLineFromInputs);
+
+            let timer = null;
+            let lastItems = [];
+
+            function hideSuggestions() {
+                suggBox.style.display = "none";
+                suggBox.innerHTML = "";
+            }
+
+            productInput.addEventListener("focus", () => {
+                if (suggBox.style.display === "block") {
+                    positionFullWidthSuggestions(suggBox, productInput);
+                }
+            });
+
+            productInput.addEventListener("input", () => {
+                const q = productInput.value.trim();
+                line.productDescription = q;
+
+                clearTimeout(timer);
+                if (q.length < 2) {
+                    hideSuggestions();
+                    return;
+                }
+
+                timer = setTimeout(async () => {
+                    lastItems = await productSearch(q);
+                    if (!lastItems.length) {
+                        hideSuggestions();
+                        return;
+                    }
+
+                    positionFullWidthSuggestions(suggBox, productInput);
+
+                    suggBox.innerHTML = lastItems.map((x, j) => `
+                        <div class="suggestion-item" data-j="${j}">
+                            <div style="font-weight:800;">${escapeHtml(x.description)}</div>
+                            <div class="small muted">Purchase: ${x.purchasePrice ?? "—"} | Suggested: ${x.suggestedRetailPrice ?? "—"}</div>
+                        </div>
+                    `).join("");
+
+                    suggBox.style.display = "block";
+                }, 220);
+            });
+
+            const onScrollResize = () => {
+                if (suggBox.style.display === "block") {
+                    positionFullWidthSuggestions(suggBox, productInput);
+                }
+            };
+            window.addEventListener("scroll", onScrollResize, true);
+            window.addEventListener("resize", onScrollResize);
+
+            suggBox.addEventListener("click", (e) => {
+                const itemDiv = e.target.closest(".suggestion-item");
+                if (!itemDiv) return;
+
+                const j = Number(itemDiv.getAttribute("data-j"));
+                const item = lastItems[j];
+                if (!item) return;
+
+                line.productId = item.id || "";
+                line.productDescription = item.description || "";
+                line.suggestedRetailPrice = Number(item.suggestedRetailPrice || 0);
+                line.acelerador = Number(item.acelerador || 0);
+
+                if (Number(line.businessType) === 0) {
+                    line.costUnit = Number(item.purchasePrice || 0);
+                } else {
+                    line.costUnit = line.costUnit || 0;
+                }
+
+                if (containsPrepaidOrYear(line.productDescription)) {
+                    line.contractMonths = 12;
+                }
+
+                hideSuggestions();
+                renderLines();
+            });
+
+            document.addEventListener("click", (e) => {
+                if (e.target === productInput || suggBox.contains(e.target)) return;
+                hideSuggestions();
+            });
+        });
+    }
+
+    function updateProrationHint() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        if (!s.requiresProration) {
+            prorationHint.style.display = "none";
+            prorationHint.innerText = "";
+            return;
+        }
+
+        if (!s.startDate || !s.endDate) {
+            prorationHint.style.display = "block";
+            prorationHint.innerText = "Selecciona fecha inicio y fecha final para calcular días de prorrateo.";
+            return;
+        }
+
+        const sd = new Date(s.startDate);
+        const ed = new Date(s.endDate);
+        if (isNaN(sd.getTime()) || isNaN(ed.getTime()) || ed < sd) {
+            prorationHint.style.display = "block";
+            prorationHint.innerText = "Fechas inválidas. La fecha final debe ser >= fecha inicio.";
+            return;
+        }
+
+        const ms = ed.getTime() - sd.getTime();
+        const days = Math.floor(ms / (1000 * 60 * 60 * 24)) + 1;
+        const factor = days / 365.0;
+
+        prorationHint.style.display = "block";
+        prorationHint.innerText = `Prorrateo: ${days} días. Factor aproximado: ${factor.toFixed(4)} (sobre 365).`;
+    }
+
+    function buildPayload() {
+        const s = getActiveScenario();
+        if (!s) return null;
+
+        if (!s.lines.length) { alert("Agrega al menos 1 línea."); return null; }
+
+        for (const [i, line] of s.lines.entries()) {
+            if (!line.productDescription || line.productDescription.trim().length < 2) {
+                alert(`La línea ${i + 1} no tiene producto.`);
+                return null;
+            }
+            if (Number(line.quantity || 0) <= 0) { alert(`La línea ${i + 1} tiene cantidad inválida.`); return null; }
+            if (Number(line.contractMonths || 0) <= 0) { alert(`La línea ${i + 1} tiene duración inválida.`); return null; }
+        }
+
+        return {
+            scenarioName: s.name,
+            dealType: Number(s.dealType),
+            requiresProration: Boolean(s.requiresProration),
+            startDate: s.startDate ? new Date(s.startDate).toISOString() : null,
+            endDate: s.endDate ? new Date(s.endDate).toISOString() : null,
+            lines: s.lines.map(l => ({
+                businessType: Number(l.businessType),
+                productId: l.productId || "",
+                productDescription: l.productDescription || "",
+                costUnit: Number(l.costUnit || 0),
+                marginPercent: Number(l.marginPercent || 0),
+                contractMonths: Number(l.contractMonths || 12),
+                quantity: Number(l.quantity || 1),
+                suggestedRetailPrice: Number(l.suggestedRetailPrice || 0),
+                acelerador: Number(l.acelerador || 0)
+            }))
+        };
+    }
+
+    async function calculate() {
+        const payload = buildPayload();
+        if (!payload) return;
+
+        btnCalculate.disabled = true;
+        btnCalculate.innerText = "Calculando...";
+
+        try {
+            const res = await fetch("/Calculator/Calculate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || "Error calculando.");
+            }
+
+            const data = await res.json();
+
+            resultPoints.innerText = num(data.points, 2);
+            resultCommission.innerText = money(data.commission);
+
+            resultSegment.innerText = data.segment || "—";
+            if (data.prorationFactor && data.prorationFactor !== 1) {
+                resultProration.innerText = `${data.prorationDays} días (${Number(data.prorationFactor).toFixed(4)})`;
+            } else {
+                resultProration.innerText = "No";
+            }
+
+            resultMonthly.innerText = money(data.totalMonthlySale);
+            resultTotal.innerText = money(data.totalSale);
+        } catch (err) {
+            alert("Error: " + (err?.message || err));
+        } finally {
+            btnCalculate.disabled = false;
+            btnCalculate.innerText = "Calcular";
+        }
+    }
+
+    function resetResults() {
+        resultPoints.innerText = "—";
+        resultCommission.innerText = "—";
+        resultSegment.innerText = "—";
+        resultProration.innerText = "—";
+        resultMonthly.innerText = "—";
+        resultTotal.innerText = "—";
+    }
+
+    scenarioName.addEventListener("change", () => {
+        const s = getActiveScenario();
+        if (!s) return;
+        s.name = scenarioName.value.trim() || s.name;
+        renderScenarioBar();
+    });
+
+    btnNewScenario.addEventListener("click", addScenario);
+    btnDuplicateScenario.addEventListener("click", duplicateScenario);
+    btnDeleteScenario.addEventListener("click", deleteScenario);
+
+    dealType.addEventListener("change", () => {
+        const s = getActiveScenario();
+        if (!s) return;
+        s.dealType = Number(dealType.value);
+        resetResults();
+    });
+
+    requiresProration.addEventListener("change", () => {
+        const s = getActiveScenario();
+        if (!s) return;
+        s.requiresProration = (requiresProration.value === "true");
+        startDate.disabled = !s.requiresProration;
+        endDate.disabled = !s.requiresProration;
+        if (!s.requiresProration) {
+            s.startDate = "";
+            s.endDate = "";
+            startDate.value = "";
+            endDate.value = "";
+        }
+        updateProrationHint();
+        resetResults();
+    });
+
+    startDate.addEventListener("change", () => {
+        const s = getActiveScenario();
+        if (!s) return;
+        s.startDate = startDate.value;
+        updateProrationHint();
+        resetResults();
+    });
+
+    endDate.addEventListener("change", () => {
+        const s = getActiveScenario();
+        if (!s) return;
+        s.endDate = endDate.value;
+        updateProrationHint();
+        resetResults();
+    });
+
+    btnCalculate.addEventListener("click", calculate);
+
+    // Init
+    renderTypeChips();
+    scenarios = [createScenario("Escenario 1")];
+    activeScenarioId = scenarios[0].id;
+    syncScenarioPanel();
+})();
+</script>
