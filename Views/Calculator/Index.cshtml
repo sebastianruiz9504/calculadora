@@ -291,8 +291,7 @@
             </div>
 
             <div class="d-grid mt-3">
-                <button id="btnExport" class="btn btn-outline-secondary" type="button" disabled>Exportar Excel (próximo)</button>
-            </div>
+ <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>            </div>
         </div>
     </div>
 </div>
@@ -328,6 +327,7 @@
     const prorationHint = document.getElementById("prorationHint");
 
     const btnCalculate = document.getElementById("btnCalculate");
+    const btnExport = document.getElementById("btnExport");
 
     const resultPoints = document.getElementById("resultPoints");
     const resultCommission = document.getElementById("resultCommission");
@@ -873,6 +873,42 @@
             btnCalculate.innerText = "Calcular";
         }
     }
+async function exportExcel() {
+        const payload = buildPayload();
+        if (!payload) return;
+
+        btnExport.disabled = true;
+        btnExport.innerText = "Exportando...";
+
+        try {
+            const res = await fetch("/Calculator/Export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || "Error exportando.");
+            }
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            const safeName = (payload.scenarioName || "cotizacion").trim().replace(/[^a-zA-Z0-9-_ ]/g, "") || "cotizacion";
+            a.href = url;
+            a.download = `${safeName.replace(/\s+/g, "_")}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            alert("Error: " + (err?.message || err));
+        } finally {
+            btnExport.disabled = false;
+            btnExport.innerText = "Exportar Excel";
+        }
+    }
 
     function resetResults() {
         resultPoints.innerText = "—";
@@ -934,7 +970,7 @@
     });
 
     btnCalculate.addEventListener("click", calculate);
-
+    btnExport.addEventListener("click", exportExcel);
     // Init
     renderTypeChips();
     scenarios = [createScenario("Escenario 1")];

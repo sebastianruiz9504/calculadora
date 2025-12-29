@@ -1,9 +1,11 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
+using System.IO;
 
 namespace CotizadorInterno.Web.Controllers;
 
@@ -56,4 +58,187 @@ public sealed class CalculatorController : Controller
             segment = segment.ToString()
         });
     }
+    
+    [HttpPost]
+    public async Task<IActionResult> Export([FromBody] QuoteScenarioInput input, CancellationToken ct)
+    {
+        if (input?.Lines is null || input.Lines.Count == 0)
+            return BadRequest("No hay líneas para exportar.");
+
+        var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
+        var fileName = BuildFileName(input.ScenarioName);
+        using var workbook = BuildWorkbook(input, segment);
+        await using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        stream.Position = 0;
+        return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    private static XLWorkbook BuildWorkbook(QuoteScenarioInput input, UserSegment segment)
+    {
+        var workbook = new XLWorkbook();
+        var sheet = workbook.AddWorksheet("Cotización");
+
+        var row = 1;
+        sheet.Cell(row, 1).Value = "Escenario";
+        sheet.Cell(row, 2).Value = input.ScenarioName;
+        row++;
+
+        sheet.Cell(row, 1).Value = "Segmento";
+        sheet.Cell(row, 2).Value = segment.ToString();
+        row++;
+
+        sheet.Cell(row, 1).Value = "Tipo de negocio";
+        sheet.Cell(row, 2).Value = input.DealType.ToString();
+        row++;
+
+        if (input.RequiresProration)
+        {
+            sheet.Cell(row, 1).Value = "Prorrateo";
+            sheet.Cell(row, 2).Value = input.StartDate.HasValue && input.EndDate.HasValue
+                ? $"{input.StartDate:yyyy-MM-dd} al {input.EndDate:yyyy-MM-dd}"
+                : "Pendiente fechas de prorrateo";
+            row++;
+        }
+
+        row++;
+
+        var headers = new List<string>
+        {
+            "Tipo",
+            "Producto",
+            "Margen %",
+            "Duración (meses)",
+            "Venta UND",
+            "Cantidad",
+            "Venta Mensual",
+            "Venta Total"
+        };
+
+        if (segment == UserSegment.Corporate)
+        {
+            headers.AddRange(new[]
+            {
+                "Desc. Corp UND",
+                "Desc. Corp Mes",
+                "Desc. Corp Año",
+                "Ahorro Anual"
+            });
+        }
+
+        headers.Add("Precio Sugerido");
+
+        var headerRow = row;
+        for (var i = 0; i < headers.Count; i++)
+        {
+            sheet.Cell(headerRow, i + 1).Value = headers[i];
+        }
+
+        sheet.Range(headerRow, 1, headerRow, headers.Count).Style.Font.Bold = true;
+        row++;
+
+        var idxSaleUnit = headers.IndexOf("Venta UND") + 1;
+        var idxMonthly = headers.IndexOf("Venta Mensual") + 1;
+        var idxTotal = headers.IndexOf("Venta Total") + 1;
+        var idxSuggested = headers.IndexOf("Precio Sugerido") + 1;
+        var idxDiscUnit = headers.IndexOf("Desc. Corp UND") + 1;
+        var idxDiscMonth = headers.IndexOf("Desc. Corp Mes") + 1;
+        var idxDiscYear = headers.IndexOf("Desc. Corp Año") + 1;
+        var idxAhorro = headers.IndexOf("Ahorro Anual") + 1;
+
+        decimal tSaleUnit = 0m, tMonthly = 0m, tTotal = 0m, tSuggested = 0m;
+        decimal tDiscUnit = 0m, tDiscMonth = 0m, tDiscYear = 0m, tAhorro = 0m;
+
+        foreach (var line in input.Lines)
+        {
+            var computed = ComputeLine(line, segment);
+
+            sheet.Cell(row, 1).Value = line.BusinessType.ToString();
+            sheet.Cell(row, 2).Value = line.ProductDescription;
+            sheet.Cell(row, 3).Value = Round2(line.MarginPercent);
+            sheet.Cell(row, 4).Value = line.ContractMonths;
+            sheet.Cell(row, idxSaleUnit).Value = computed.SaleUnit;
+            sheet.Cell(row, 6).Value = line.Quantity;
+            sheet.Cell(row, idxMonthly).Value = computed.Monthly;
+            sheet.Cell(row, idxTotal).Value = computed.Total;
+
+            if (segment == UserSegment.Corporate)
+            {
+                sheet.Cell(row, idxDiscUnit).Value = computed.DiscUnit;
+                sheet.Cell(row, idxDiscMonth).Value = computed.DiscMonth;
+                sheet.Cell(row, idxDiscYear).Value = computed.DiscYear;
+                sheet.Cell(row, idxAhorro).Value = computed.Ahorro;
+            }
+
+            sheet.Cell(row, idxSuggested).Value = Round2(line.SuggestedRetailPrice);
+
+            tSaleUnit += computed.SaleUnit * line.Quantity;
+            tMonthly += computed.Monthly;
+            tTotal += computed.Total;
+            tSuggested += line.SuggestedRetailPrice * line.Quantity;
+
+            tDiscUnit += computed.DiscUnit * line.Quantity;
+            tDiscMonth += computed.DiscMonth;
+            tDiscYear += computed.DiscYear;
+            tAhorro += computed.Ahorro;
+
+            row++;
+        }
+
+        sheet.Cell(row, 1).Value = "Totales";
+        sheet.Cell(row, 3).Value = "—";
+        sheet.Cell(row, 4).Value = "—";
+        sheet.Cell(row, idxSaleUnit).Value = Round2(tSaleUnit);
+        sheet.Cell(row, 6).Value = "—";
+        sheet.Cell(row, idxMonthly).Value = Round2(tMonthly);
+        sheet.Cell(row, idxTotal).Value = Round2(tTotal);
+
+        if (segment == UserSegment.Corporate)
+        {
+            sheet.Cell(row, idxDiscUnit).Value = Round2(tDiscUnit);
+            sheet.Cell(row, idxDiscMonth).Value = Round2(tDiscMonth);
+            sheet.Cell(row, idxDiscYear).Value = Round2(tDiscYear);
+            sheet.Cell(row, idxAhorro).Value = Round2(tAhorro);
+        }
+
+        sheet.Cell(row, idxSuggested).Value = Round2(tSuggested);
+        sheet.Range(headerRow + 1, 1, row, headers.Count).Style.NumberFormat.Format = "#,##0.00";
+        sheet.Column(6).Style.NumberFormat.Format = "0";
+        sheet.Column(4).Style.NumberFormat.Format = "0";
+        sheet.Column(3).Style.NumberFormat.Format = "#,##0.00";
+        sheet.Columns().AdjustToContents();
+
+        return workbook;
+    }
+
+    private static ExportLine ComputeLine(QuoteLineInput line, UserSegment segment)
+    {
+        var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
+        var monthly = Round2(saleUnit * line.Quantity);
+        var total = Round2(monthly * line.ContractMonths);
+
+        decimal discUnit = 0m, discMonth = 0m, discYear = 0m, ahorro = 0m;
+        if (segment == UserSegment.Corporate && line.BusinessType == BusinessType.ModernWork)
+        {
+            discUnit = Round2(saleUnit * 0.9m);
+            discMonth = Round2(discUnit * line.Quantity);
+            discYear = Round2(discMonth * line.ContractMonths);
+            ahorro = Round2((saleUnit * line.Quantity * line.ContractMonths) - discYear);
+        }
+
+        return new ExportLine(saleUnit, monthly, total, discUnit, discMonth, discYear, ahorro);
+    }
+
+    private static decimal Round2(decimal v) =>
+        Math.Round(v, 2, MidpointRounding.AwayFromZero);
+
+    private static string BuildFileName(string? scenarioName)
+    {
+        var safe = string.Join("_", (scenarioName ?? "Cotizacion").Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+        if (string.IsNullOrWhiteSpace(safe))
+            safe = "Cotizacion";
+        return $"{safe}.xlsx";
+    }
+
+    private sealed record ExportLine(decimal SaleUnit, decimal Monthly, decimal Total, decimal DiscUnit, decimal DiscMonth, decimal DiscYear, decimal Ahorro);
 }
