@@ -25,59 +25,8 @@ public sealed class DataverseService : IDataverseService
 
     public async Task<UserSegment> GetCurrentUserSegmentAsync(CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        // OID Entra del usuario
-        var objectId = httpContext.User.GetObjectId();
-        if (string.IsNullOrWhiteSpace(objectId))
-            return UserSegment.Unknown;
-
-        var filter = $"azureactivedirectoryobjectid eq {Guid.Parse(objectId):D}";
-        var relativeUrl = $"/api/data/v9.2/systemusers?$select=cr07a_segmentocomercial&$filter={Uri.EscapeDataString(filter)}&$top=1";
-
-        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
-
-        using var doc = JsonDocument.Parse(json);
-        var value = doc.RootElement.GetProperty("value");
-
-        if (value.GetArrayLength() == 0)
-            return UserSegment.Unknown;
-
-        var item = value[0];
-
-        if (!item.TryGetProperty("cr07a_segmentocomercial", out var segProp))
-            return UserSegment.Unknown;
-
-        var segRaw = segProp.ValueKind switch
-        {
-            JsonValueKind.Number => segProp.GetInt32().ToString(),
-            JsonValueKind.String => segProp.GetString(),
-            _ => null
-        };
-
-        if (string.IsNullOrWhiteSpace(segRaw))
-            return UserSegment.Unknown;
-
-        // Si tu campo guarda texto
-        if (segRaw.Equals("Corporate", StringComparison.OrdinalIgnoreCase))
-            return UserSegment.Corporate;
-
-        if (segRaw.Equals("SMB", StringComparison.OrdinalIgnoreCase))
-            return UserSegment.SMB;
-
-        // Si es OptionSet numérico (ajustaremos mapping real cuando veamos el valor)
-        if (int.TryParse(segRaw, out var opt))
-        {
-            return opt switch
-            {
-                1 => UserSegment.SMB,
-                2 => UserSegment.Corporate,
-                _ => UserSegment.Unknown
-            };
-        }
-
-        return UserSegment.Unknown;
+        var info = await GetCurrentUserAsync(ct);
+        return info?.Segment ?? UserSegment.Unknown;
     }
 
     public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string query, int top = 12, CancellationToken ct = default)
@@ -113,6 +62,112 @@ public sealed class DataverseService : IDataverseService
         }
 
         return list;
+    }
+
+    public async Task<IReadOnlyList<ClientLookupItem>> SearchClientsAsync(string query, int top = 12, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        query = (query ?? "").Trim();
+        if (query.Length < 2)
+            return Array.Empty<ClientLookupItem>();
+
+        var safeQuery = query.Replace("'", "''");
+        var select = "cr07a_clienteid,cr07a_nombre";
+        var filter = $"contains(cr07a_nombre,'{safeQuery}')";
+        var relativeUrl = $"/api/data/v9.2/cr07a_clientes?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top={top}";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement.GetProperty("value");
+
+        var list = new List<ClientLookupItem>(Math.Min(arr.GetArrayLength(), top));
+        foreach (var item in arr.EnumerateArray())
+        {
+            list.Add(new ClientLookupItem
+            {
+                Id = item.TryGetProperty("cr07a_clienteid", out var idProp) ? (idProp.GetString() ?? "") : "",
+                Name = item.TryGetProperty("cr07a_nombre", out var nameProp) ? (nameProp.GetString() ?? "") : ""
+            });
+        }
+
+        return list;
+    }
+
+    public async Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+       
+ var userRecord = await GetCurrentUserRecordAsync(httpContext.User, ct);
+        if (userRecord is null)
+            return null;
+
+        return new CurrentUserInfo
+        {
+            SystemUserId = userRecord.Value.TryGetProperty("systemuserid", out var idProp) ? (idProp.GetString() ?? "") : "",
+            DisplayName = userRecord.Value.TryGetProperty("fullname", out var nameProp) ? (nameProp.GetString() ?? "") : "",
+            Email = userRecord.Value.TryGetProperty("internalemailaddress", out var emailProp) ? (emailProp.GetString() ?? "") : "",
+            Segment = ParseSegment(userRecord.Value)
+        };
+    }
+
+    private async Task<JsonElement?> GetCurrentUserRecordAsync(System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    {
+        var objectId = user.GetObjectId();
+        if (string.IsNullOrWhiteSpace(objectId))
+            return null;
+
+        var select = "systemuserid,fullname,internalemailaddress,cr07a_segmentocomercial";
+        var filter = $"azureactivedirectoryobjectid eq {Guid.Parse(objectId):D}";
+        var relativeUrl = $"/api/data/v9.2/systemusers?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+
+        if (value.GetArrayLength() == 0)
+            return null;
+
+        return value[0].Clone();
+    }
+
+    private static UserSegment ParseSegment(JsonElement item)
+    {
+        if (!item.TryGetProperty("cr07a_segmentocomercial", out var segProp))
+            return UserSegment.Unknown;
+
+        var segRaw = segProp.ValueKind switch
+        {
+            JsonValueKind.Number => segProp.GetInt32().ToString(),
+            JsonValueKind.String => segProp.GetString(),
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(segRaw))
+            return UserSegment.Unknown;
+
+        if (segRaw.Equals("Corporate", StringComparison.OrdinalIgnoreCase))
+            return UserSegment.Corporate;
+
+        if (segRaw.Equals("SMB", StringComparison.OrdinalIgnoreCase))
+            return UserSegment.SMB;
+
+        if (int.TryParse(segRaw, out var opt))
+        {
+            return opt switch
+            {
+                1 => UserSegment.SMB,
+                2 => UserSegment.Corporate,
+                _ => UserSegment.Unknown
+            };
+        }
+
+        return UserSegment.Unknown;
     }
 
     private async Task<string> CallDataverseGetJsonAsync(string relativeUrl, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)

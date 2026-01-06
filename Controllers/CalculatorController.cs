@@ -25,8 +25,11 @@ public sealed class CalculatorController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
+        var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+        var segment = currentUser?.Segment ?? UserSegment.Unknown;
+
         ViewData["Segment"] = segment;
+        ViewData["CurrentUser"] = currentUser;
         return View();
     }
 
@@ -35,6 +38,14 @@ public sealed class CalculatorController : Controller
     public async Task<IActionResult> ProductSearch([FromQuery] string q, CancellationToken ct)
     {
         var items = await _dataverse.SearchProductsAsync(q, top: 12, ct: ct);
+        return Json(items);
+    }
+
+[HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ClientSearch([FromQuery] string q, CancellationToken ct)
+    {
+        var items = await _dataverse.SearchClientsAsync(q, top: 12, ct: ct);
         return Json(items);
     }
 

@@ -1,8 +1,10 @@
 @using CotizadorInterno.Web.Models
+@using System.Text.Json
 @{
     ViewData["Title"] = "Cotizador Interno";
     var seg = (UserSegment)(ViewData["Segment"] ?? UserSegment.Unknown);
     var isCorporate = seg == UserSegment.Corporate;
+        var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
 }
 
 <style>
@@ -142,6 +144,48 @@
     .btn-calc-dark:disabled {
         opacity: .75;
         cursor: not-allowed;
+    }
+     /* Modal aprovisionamiento */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 4000;
+        padding: 20px;
+    }
+    .modal-card {
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 8px 30px rgba(0,0,0,.18);
+        max-width: 640px;
+        width: 100%;
+        padding: 20px;
+    }
+    .badge-soft {
+        background: #eef2ff;
+        color: #312e81;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .status-msg {
+        padding: 10px 12px;
+        border-radius: 10px;
+    }
+    .status-success {
+        background: #ecfdf3;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+    }
+    .status-error {
+        background: #fef2f2;
+        border: 1px solid #fecdd3;
+        color: #991b1b;
     }
 </style>
 
@@ -290,8 +334,59 @@
                 <div class="d-flex justify-content-between"><span>Venta total</span><span id="resultTotal">—</span></div>
             </div>
 
-            <div class="d-grid mt-3">
- <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>            </div>
+           <div class="d-flex gap-2 flex-wrap mt-3">
+                <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>
+                <button id="btnProvisioning" class="btn btn-primary" type="button">Solicitar Aprovisionamiento</button>
+            </div>
+            <div id="provisioningLog" class="small mt-2 text-muted"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal aprovisionamiento -->
+<div id="provisioningModal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <h5 class="mb-0">Solicitar Aprovisionamiento</h5>
+                    <span class="badge-soft">Dataverse</span>
+                </div>
+                <div class="small text-muted">Envía la solicitud a Power Automate para crear las líneas en cr07a_solicitudaprovisionamiento.</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCloseProvisioning">×</button>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Fecha de aprovisionamiento</label>
+                <input type="date" id="provisioningDate" class="form-control" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Tipo de contrato</label>
+                <select id="provisioningContractType" class="form-select">
+                    <option value="">Seleccione</option>
+                    <option value="645250000">Nuevo</option>
+                    <option value="645250001">Contrato existente</option>
+                </select>
+            </div>
+
+            <div class="col-md-12">
+                <label class="form-label fw-bold">Cliente</label>
+                <div style="position:relative;">
+                    <input type="text" id="provisioningClientInput" class="form-control" placeholder="Buscar cliente..." autocomplete="off" />
+                    <div id="clientSuggestions" class="suggestions"></div>
+                </div>
+                <div class="small text-muted mt-1">Escribe para buscar en cr07a_cliente por cr07a_nombre y selecciona una opción.</div>
+            </div>
+        </div>
+
+        <div id="provisioningStatus" class="status-msg mt-3" style="display:none;"></div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary" id="btnCancelProvisioning">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnConfirmProvisioning">Confirmar solicitud</button>
         </div>
     </div>
 </div>
@@ -299,6 +394,16 @@
 <script>
 (function () {
     const isCorporate = @((isCorporate ? "true" : "false"));
+    const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUser, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const FLOW_CREATE_REQUEST_URL = "https://defaultcab7ea424a214548952ffcde81f2bd.d6.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8529a99cb04c43af984f792d0d9974d4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=WhOJuw2RosHFv74emV7f9ve_Kwj0DqwlEVlQNtg3Qbw"; // TODO: Pegar URL del Flow 1 (Crear Solicitud + Aprobación Angie)
+    // TODO: Pegar URL del Flow 2 (Marcar Aprovisionadas) [si aplica]
+
+    const contractTypeLabels = {
+        "645250000": "Nuevo",
+        "645250001": "Contrato existente"
+    };
+
+    const sourceSystem = "pricing-calculator";
     const businessTypes = [
         { key: 0, name: "ModernWork" },
         { key: 1, name: "Azure" },
@@ -310,6 +415,9 @@
 
     let scenarios = [];
     let activeScenarioId = null;
+    const provisioningState = { date: "", contractType: "", client: null, loading: false };
+    let provisioningSearchTimer = null;
+    let provisioningClientResults = [];
 
     const scenarioBar = document.getElementById("scenarioBar");
     const scenarioName = document.getElementById("scenarioName");
@@ -328,6 +436,17 @@
 
     const btnCalculate = document.getElementById("btnCalculate");
     const btnExport = document.getElementById("btnExport");
+    const btnProvisioning = document.getElementById("btnProvisioning");
+    const btnCloseProvisioning = document.getElementById("btnCloseProvisioning");
+    const btnCancelProvisioning = document.getElementById("btnCancelProvisioning");
+    const btnConfirmProvisioning = document.getElementById("btnConfirmProvisioning");
+    const provisioningModal = document.getElementById("provisioningModal");
+    const provisioningDate = document.getElementById("provisioningDate");
+    const provisioningContractType = document.getElementById("provisioningContractType");
+    const provisioningClientInput = document.getElementById("provisioningClientInput");
+    const clientSuggestions = document.getElementById("clientSuggestions");
+    const provisioningStatus = document.getElementById("provisioningStatus");
+    const provisioningLog = document.getElementById("provisioningLog");
 
     const resultPoints = document.getElementById("resultPoints");
     const resultCommission = document.getElementById("resultCommission");
@@ -371,6 +490,37 @@
 
     function getActiveScenario() { return scenarios.find(s => s.id === activeScenarioId); }
 
+    function resetResults(clearStored = false) {
+        if (clearStored) {
+            const s = getActiveScenario();
+            if (s) s.lastResult = null;
+        }
+        resultPoints.innerText = "—";
+        resultCommission.innerText = "—";
+        resultSegment.innerText = "—";
+        resultProration.innerText = "—";
+        resultMonthly.innerText = "—";
+        resultTotal.innerText = "—";
+    }
+
+    function renderResultsFromScenario() {
+        const s = getActiveScenario();
+        if (s?.lastResult) {
+            resultPoints.innerText = num(s.lastResult.points, 2);
+            resultCommission.innerText = money(s.lastResult.commission);
+            resultSegment.innerText = s.lastResult.segment || "—";
+            resultProration.innerText = s.lastResult.prorationText || "—";
+            resultMonthly.innerText = money(s.lastResult.totalMonthlySale || 0);
+            resultTotal.innerText = money(s.lastResult.totalSale || 0);
+            return;
+        }
+        resetResults(false);
+    }
+
+    function markScenarioDirty() {
+        resetResults(true);
+    }
+
     function calcLineComputed(line) {
         const cost = Number(line.costUnit || 0);
         const margin = Number(line.marginPercent || 0);
@@ -394,6 +544,7 @@
         }
 
         return { saleUnit, monthly, total, discUnit, discMonth, discYear, ahorro };
+    
     }
 
     function calcTotals(lines) {
@@ -551,8 +702,7 @@
 
     function createScenario(name) {
         const id = uid();
-        return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", lines: [] };
-    }
+ return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", lines: [], lastResult: null };    }
 
     function syncScenarioPanel() {
         const s = getActiveScenario();
@@ -569,8 +719,8 @@
 
         renderScenarioBar();
         renderLines();
-        resetResults();
-        updateProrationHint();
+        renderResultsFromScenario();
+                updateProrationHint();
     }
 
     function addScenario() {
@@ -615,6 +765,7 @@
             acelerador: 0
         });
 
+        markScenarioDirty();
         renderLines();
         setTimeout(() => {
             const last = linesBody.querySelector(`tr[data-idx="${s.lines.length - 1}"] .product-input`);
@@ -626,6 +777,7 @@
         const s = getActiveScenario();
         if (!s) return;
         s.lines.splice(index, 1);
+                markScenarioDirty();
         renderLines();
     }
 
@@ -634,6 +786,13 @@
         if (!res.ok) return [];
         return await res.json();
     }
+
+     async function clientSearch(q) {
+        const res = await fetch(`/Calculator/ClientSearch?q=${encodeURIComponent(q)}`, { headers: { "Accept": "application/json" } });
+        if (!res.ok) return [];
+        return await res.json();
+    }
+
 
     function positionFullWidthSuggestions(suggBox, inputEl) {
         const rect = inputEl.getBoundingClientRect();
@@ -672,6 +831,7 @@
                 if (containsPrepaidOrYear(line.productDescription)) {
                     line.contractMonths = 12;
                 }
+                                markScenarioDirty();
                 renderLines();
             }
 
@@ -697,6 +857,7 @@
             productInput.addEventListener("input", () => {
                 const q = productInput.value.trim();
                 line.productDescription = q;
+                markScenarioDirty();
 
                 clearTimeout(timer);
                 if (q.length < 2) {
@@ -754,8 +915,9 @@
                 if (containsPrepaidOrYear(line.productDescription)) {
                     line.contractMonths = 12;
                 }
-
+                markScenarioDirty();
                 hideSuggestions();
+            
                 renderLines();
             });
 
@@ -798,20 +960,48 @@
         prorationHint.innerText = `Prorrateo: ${days} días. Factor aproximado: ${factor.toFixed(4)} (sobre 365).`;
     }
 
-    function buildPayload() {
+    function validateScenarioLines() {
         const s = getActiveScenario();
-        if (!s) return null;
+        if (!s) {
+            alert("Selecciona un escenario activo.");
+            return null;
+        }
 
         if (!s.lines.length) { alert("Agrega al menos 1 línea."); return null; }
 
+        const normalizedLines = [];
         for (const [i, line] of s.lines.entries()) {
-            if (!line.productDescription || line.productDescription.trim().length < 2) {
+            const productDescription = (line.productDescription || "").trim();
+            if (!productDescription || productDescription.length < 2) {
                 alert(`La línea ${i + 1} no tiene producto.`);
                 return null;
             }
-            if (Number(line.quantity || 0) <= 0) { alert(`La línea ${i + 1} tiene cantidad inválida.`); return null; }
-            if (Number(line.contractMonths || 0) <= 0) { alert(`La línea ${i + 1} tiene duración inválida.`); return null; }
+            const qty = Number(line.quantity || 0);
+            if (qty <= 0) { alert(`La línea ${i + 1} tiene cantidad inválida.`); return null; }
+            const months = Number(line.contractMonths || 0);
+            if (months <= 0) { alert(`La línea ${i + 1} tiene duración inválida.`); return null; }
+
+            normalizedLines.push({
+                businessType: Number(line.businessType),
+                productId: line.productId || "",
+                productDescription,
+                costUnit: Number(line.costUnit || 0),
+                marginPercent: Number(line.marginPercent || 0),
+                contractMonths: Number(months || 12),
+                quantity: Number(qty || 1),
+                suggestedRetailPrice: Number(line.suggestedRetailPrice || 0),
+                acelerador: Number(line.acelerador || 0)
+            });
         }
+
+        return { scenario: s, lines: normalizedLines };
+    }
+
+    function buildPayload() {
+        const validated = validateScenarioLines();
+        if (!validated) return null;
+
+        const { scenario: s, lines } = validated;
 
         return {
             scenarioName: s.name,
@@ -819,17 +1009,7 @@
             requiresProration: Boolean(s.requiresProration),
             startDate: s.startDate ? new Date(s.startDate).toISOString() : null,
             endDate: s.endDate ? new Date(s.endDate).toISOString() : null,
-            lines: s.lines.map(l => ({
-                businessType: Number(l.businessType),
-                productId: l.productId || "",
-                productDescription: l.productDescription || "",
-                costUnit: Number(l.costUnit || 0),
-                marginPercent: Number(l.marginPercent || 0),
-                contractMonths: Number(l.contractMonths || 12),
-                quantity: Number(l.quantity || 1),
-                suggestedRetailPrice: Number(l.suggestedRetailPrice || 0),
-                acelerador: Number(l.acelerador || 0)
-            }))
+            lines
         };
     }
 
@@ -854,18 +1034,21 @@
 
             const data = await res.json();
 
-            resultPoints.innerText = num(data.points, 2);
-            resultCommission.innerText = money(data.commission);
-
-            resultSegment.innerText = data.segment || "—";
-            if (data.prorationFactor && data.prorationFactor !== 1) {
-                resultProration.innerText = `${data.prorationDays} días (${Number(data.prorationFactor).toFixed(4)})`;
-            } else {
-                resultProration.innerText = "No";
+            const s = getActiveScenario();
+            if (s) {
+                s.lastResult = {
+                    points: Number(data.points || 0),
+                    commission: Number(data.commission || 0),
+                    segment: data.segment || "—",
+                    prorationText: (data.prorationFactor && data.prorationFactor !== 1)
+                        ? `${data.prorationDays} días (${Number(data.prorationFactor).toFixed(4)})`
+                        : "No",
+                    totalMonthlySale: Number(data.totalMonthlySale || 0),
+                    totalSale: Number(data.totalSale || 0)
+                };
             }
 
-            resultMonthly.innerText = money(data.totalMonthlySale);
-            resultTotal.innerText = money(data.totalSale);
+            renderResultsFromScenario();
         } catch (err) {
             alert("Error: " + (err?.message || err));
         } finally {
@@ -873,7 +1056,8 @@
             btnCalculate.innerText = "Calcular";
         }
     }
-async function exportExcel() {
+
+    async function exportExcel() {
         const payload = buildPayload();
         if (!payload) return;
 
@@ -910,13 +1094,161 @@ async function exportExcel() {
         }
     }
 
-    function resetResults() {
-        resultPoints.innerText = "—";
-        resultCommission.innerText = "—";
-        resultSegment.innerText = "—";
-        resultProration.innerText = "—";
-        resultMonthly.innerText = "—";
-        resultTotal.innerText = "—";
+    function setProvisioningStatus(message, type = "error") {
+        provisioningStatus.classList.remove("status-success", "status-error");
+        if (!message) {
+            provisioningStatus.style.display = "none";
+            provisioningStatus.innerText = "";
+            return;
+        }
+        provisioningStatus.classList.add(type === "success" ? "status-success" : "status-error");
+        provisioningStatus.innerText = message;
+        provisioningStatus.style.display = "block";
+    }
+
+    function appendProvisioningLog(message, isError = false) {
+        if (!message) return;
+        const ts = new Date().toLocaleString();
+        const line = `<div class="${isError ? "text-danger" : "text-success"}">${escapeHtml(ts)} - ${escapeHtml(message)}</div>`;
+        provisioningLog.innerHTML = line + (provisioningLog.innerHTML || "");
+    }
+
+    function resetProvisioningForm() {
+        provisioningState.date = "";
+        provisioningState.contractType = "";
+        provisioningState.client = null;
+        provisioningState.loading = false;
+        provisioningDate.value = "";
+        provisioningContractType.value = "";
+        provisioningClientInput.value = "";
+        btnConfirmProvisioning.disabled = false;
+        btnConfirmProvisioning.innerText = "Confirmar solicitud";
+        setProvisioningStatus("");
+        hideClientSuggestions();
+    }
+
+    function openProvisioningModal() {
+        resetProvisioningForm();
+        provisioningModal.style.display = "flex";
+        provisioningModal.setAttribute("aria-hidden", "false");
+        provisioningDate.focus();
+    }
+
+    function closeProvisioningModal() {
+        provisioningModal.style.display = "none";
+        provisioningModal.setAttribute("aria-hidden", "true");
+        provisioningState.loading = false;
+        btnConfirmProvisioning.disabled = false;
+        btnConfirmProvisioning.innerText = "Confirmar solicitud";
+        hideClientSuggestions();
+    }
+
+    function hideClientSuggestions() {
+        clientSuggestions.style.display = "none";
+        clientSuggestions.innerHTML = "";
+    }
+
+    function buildProvisioningPayload() {
+        const validated = validateScenarioLines();
+        if (!validated) return null;
+
+        const { scenario: s, lines } = validated;
+
+        if (!provisioningState.date) {
+            setProvisioningStatus("Selecciona una fecha de aprovisionamiento.");
+            return null;
+        }
+        if (!provisioningState.contractType) {
+            setProvisioningStatus("Selecciona un tipo de contrato.");
+            return null;
+        }
+        if (!provisioningState.client?.id) {
+            setProvisioningStatus("Debes seleccionar un cliente de la lista.");
+            return null;
+        }
+        if (!s.lastResult) {
+            setProvisioningStatus("Calcula el escenario para tomar puntaje y comisión antes de solicitar.");
+            return null;
+        }
+
+        const selectedContract = provisioningContractType.selectedOptions?.[0];
+        const contractLabel = (selectedContract?.textContent || contractTypeLabels[provisioningState.contractType] || "Nuevo").trim();
+        const lineItems = lines.map((line, idx) => ({
+            lineId: line.productId || `line-${idx + 1}`,
+            productoId: line.productId || "",
+            productoNombre: line.productDescription,
+            cantidad: Number(line.quantity || 0)
+        })).filter(li => li.cantidad > 0);
+
+        if (!lineItems.length) {
+            setProvisioningStatus("Necesitas al menos una línea con cantidad válida.");
+            return null;
+        }
+
+        return {
+            source: sourceSystem,
+            businessId: s.id || s.name || uid(),
+            requester: {
+                systemUserId: currentUser?.systemUserId || "",
+                displayName: currentUser?.displayName || "",
+                email: currentUser?.email || ""
+            },
+            cliente: {
+                clienteId: provisioningState.client.id,
+                nombre: provisioningState.client.name
+            },
+            aprovisionamiento: {
+                fecha: provisioningState.date,
+                tipoContratoCode: Number(provisioningState.contractType),
+                tipoContratoLabel: contractLabel
+            },
+            resultado: {
+                puntaje: Number(s.lastResult?.points || 0),
+                comision: Number(s.lastResult?.commission || 0)
+            },
+            lineItems
+        };
+    }
+
+    async function submitProvisioningRequest() {
+        if (provisioningState.loading) return;
+        setProvisioningStatus("");
+        const payload = buildProvisioningPayload();
+        if (!payload) return;
+
+        if (!FLOW_CREATE_REQUEST_URL || FLOW_CREATE_REQUEST_URL.includes("TODO")) {
+            setProvisioningStatus("Configura la URL del Flow 1 antes de enviar (ver comentario TODO).");
+            return;
+        }
+
+        provisioningState.loading = true;
+        btnConfirmProvisioning.disabled = true;
+        btnConfirmProvisioning.innerText = "Enviando...";
+
+        try {
+            const res = await fetch(FLOW_CREATE_REQUEST_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || `Error HTTP ${res.status}`);
+            }
+
+            appendProvisioningLog(`Solicitud enviada (${payload.lineItems.length} líneas). Cliente: ${payload.cliente.nombre}.`);
+            setProvisioningStatus("Solicitud enviada y enviada a aprobación.", "success");
+            setTimeout(closeProvisioningModal, 600);
+        } catch (err) {
+            const message = err?.message || "Error enviando la solicitud.";
+            setProvisioningStatus(message);
+            appendProvisioningLog(message, true);
+        } finally {
+            provisioningState.loading = false;
+            btnConfirmProvisioning.disabled = false;
+            btnConfirmProvisioning.innerText = "Confirmar solicitud";
+        }
     }
 
     scenarioName.addEventListener("change", () => {
@@ -934,7 +1266,7 @@ async function exportExcel() {
         const s = getActiveScenario();
         if (!s) return;
         s.dealType = Number(dealType.value);
-        resetResults();
+        markScenarioDirty();
     });
 
     requiresProration.addEventListener("change", () => {
@@ -950,7 +1282,7 @@ async function exportExcel() {
             endDate.value = "";
         }
         updateProrationHint();
-        resetResults();
+        markScenarioDirty();
     });
 
     startDate.addEventListener("change", () => {
@@ -958,7 +1290,7 @@ async function exportExcel() {
         if (!s) return;
         s.startDate = startDate.value;
         updateProrationHint();
-        resetResults();
+        markScenarioDirty();
     });
 
     endDate.addEventListener("change", () => {
@@ -966,8 +1298,79 @@ async function exportExcel() {
         if (!s) return;
         s.endDate = endDate.value;
         updateProrationHint();
-        resetResults();
+        markScenarioDirty();
     });
+
+    provisioningDate.addEventListener("change", () => {
+        provisioningState.date = provisioningDate.value;
+    });
+
+    provisioningContractType.addEventListener("change", () => {
+        provisioningState.contractType = provisioningContractType.value;
+    });
+
+    provisioningClientInput.addEventListener("focus", () => {
+        if (clientSuggestions.style.display === "block") {
+            positionFullWidthSuggestions(clientSuggestions, provisioningClientInput);
+        }
+    });
+
+    provisioningClientInput.addEventListener("input", () => {
+        provisioningState.client = null;
+        const q = provisioningClientInput.value.trim();
+
+        clearTimeout(provisioningSearchTimer);
+        if (q.length < 2) {
+            hideClientSuggestions();
+            return;
+        }
+
+        provisioningSearchTimer = setTimeout(async () => {
+            provisioningClientResults = await clientSearch(q);
+            if (!provisioningClientResults.length) {
+                hideClientSuggestions();
+                return;
+            }
+
+            positionFullWidthSuggestions(clientSuggestions, provisioningClientInput);
+            clientSuggestions.innerHTML = provisioningClientResults.map((c, idx) => `
+                <div class="suggestion-item" data-client-idx="${idx}">
+                    <div style="font-weight:800;">${escapeHtml(c.name)}</div>
+                    <div class="small muted">${escapeHtml(c.id)}</div>
+                </div>
+            `).join("");
+            clientSuggestions.style.display = "block";
+        }, 220);
+    });
+
+    clientSuggestions.addEventListener("click", (e) => {
+        const itemDiv = e.target.closest(".suggestion-item");
+        if (!itemDiv) return;
+        const idx = Number(itemDiv.getAttribute("data-client-idx"));
+        const item = provisioningClientResults[idx];
+        if (!item) return;
+
+        provisioningState.client = { id: item.id, name: item.name };
+        provisioningClientInput.value = item.name;
+        hideClientSuggestions();
+    });
+
+    const onClientScrollResize = () => {
+        if (clientSuggestions.style.display === "block") {
+            positionFullWidthSuggestions(clientSuggestions, provisioningClientInput);
+        }
+    };
+    window.addEventListener("scroll", onClientScrollResize, true);
+    window.addEventListener("resize", onClientScrollResize);
+    document.addEventListener("click", (e) => {
+        if (e.target === provisioningClientInput || clientSuggestions.contains(e.target)) return;
+        hideClientSuggestions();
+    });
+
+    btnProvisioning.addEventListener("click", openProvisioningModal);
+    btnCloseProvisioning.addEventListener("click", closeProvisioningModal);
+    btnCancelProvisioning.addEventListener("click", closeProvisioningModal);
+    btnConfirmProvisioning.addEventListener("click", submitProvisioningRequest);
 
     btnCalculate.addEventListener("click", calculate);
     btnExport.addEventListener("click", exportExcel);

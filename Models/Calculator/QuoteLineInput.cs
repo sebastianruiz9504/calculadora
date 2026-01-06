@@ -1,7 +1,9 @@
+using System.Text.Json.Serialization;
 namespace CotizadorInterno.Web.Models.Calculator;
 
 public sealed class QuoteLineInput
 {
+        [JsonConverter(typeof(JsonStringEnumConverter))]
     public BusinessType BusinessType { get; set; }
     public string ProductId { get; set; } = "";
     public string ProductDescription { get; set; } = "";

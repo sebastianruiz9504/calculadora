@@ -1,9 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace CotizadorInterno.Web.Models.Calculator;
 
 public sealed class QuoteScenarioInput
 {
     public string ScenarioName { get; set; } = "Escenario 1";
-
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public DealType DealType { get; set; } = DealType.ClienteNuevo;
 
     public bool RequiresProration { get; set; } = false;
