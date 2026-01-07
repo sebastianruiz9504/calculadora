@@ -85,6 +85,18 @@ public sealed class CalculatorController : Controller
         return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
+[HttpPost]
+    public IActionResult ValidateProvisioning([FromBody] ProvisioningRequestInput input)
+    {
+        var validationError = ValidateProvisioningPayload(input);
+        if (!string.IsNullOrWhiteSpace(validationError))
+        {
+            return BadRequest(validationError);
+        }
+
+        return Ok(new { ok = true });
+    }
+
     private static XLWorkbook BuildWorkbook(QuoteScenarioInput input, UserSegment segment)
     {
         var workbook = new XLWorkbook();
@@ -220,6 +232,60 @@ public sealed class CalculatorController : Controller
         sheet.Columns().AdjustToContents();
 
         return workbook;
+    }
+
+ private static string? ValidateProvisioningPayload(ProvisioningRequestInput input)
+    {
+        if (input.LineItems is null || input.LineItems.Count == 0)
+        {
+            return "No hay líneas para enviar.";
+        }
+
+        var attachment = input.Attachment;
+        if (attachment is null)
+        {
+            return "Debes adjuntar la oferta autorizada o correo de aprobación.";
+        }
+
+        if (string.IsNullOrWhiteSpace(attachment.FileName) || string.IsNullOrWhiteSpace(attachment.Base64))
+        {
+            return "Debes adjuntar la oferta autorizada o correo de aprobación.";
+        }
+
+        var extension = Path.GetExtension(attachment.FileName).ToLowerInvariant().TrimStart('.');
+        var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "pdf", "jpg", "jpeg", "doc", "docx"
+        };
+        if (!allowedExtensions.Contains(extension))
+        {
+            return "El adjunto debe ser PDF, JPG/JPEG o DOC/DOCX.";
+        }
+
+        var allowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "application/pdf",
+            "image/jpeg",
+            "image/jpg",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        };
+
+        if (string.IsNullOrWhiteSpace(attachment.ContentType) || !allowedContentTypes.Contains(attachment.ContentType))
+        {
+            return "El adjunto debe ser PDF, JPG/JPEG o DOC/DOCX.";
+        }
+
+        try
+        {
+            _ = Convert.FromBase64String(attachment.Base64);
+        }
+        catch (FormatException)
+        {
+            return "El adjunto no es válido.";
+        }
+
+        return null;
     }
 
     private static ExportLine ComputeLine(QuoteLineInput line, UserSegment segment)

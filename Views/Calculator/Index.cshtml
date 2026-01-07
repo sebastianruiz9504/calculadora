@@ -4,7 +4,7 @@
     ViewData["Title"] = "Cotizador Interno";
     var seg = (UserSegment)(ViewData["Segment"] ?? UserSegment.Unknown);
     var isCorporate = seg == UserSegment.Corporate;
-        var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
+    var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
 }
 
 <style>
@@ -187,6 +187,10 @@
         border: 1px solid #fecdd3;
         color: #991b1b;
     }
+    .file-name {
+        font-size: 12px;
+        color: #6b7280;
+    }
 </style>
 
 <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
@@ -343,6 +347,28 @@
     </div>
 </div>
 
+<!-- Modal adjunto -->
+<div id="attachmentModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" style="max-width: 520px;">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <div>
+                <h6 class="mb-1">Adjuntar documento</h6>
+                <div id="attachmentLabel" class="small text-muted">Adjuntar oferta autorizada o correo de aprobación</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCloseAttachment">×</button>
+        </div>
+        <div class="mb-2">
+            <input type="file" id="attachmentInput" class="form-control" accept=".pdf,.jpg,.jpeg,.doc,.docx" />
+            <div id="attachmentFileName" class="file-name mt-1"></div>
+            <div class="small text-muted mt-1">Formatos permitidos: PDF, JPG/JPEG, DOC/DOCX.</div>
+        </div>
+        <div id="attachmentStatus" class="status-msg mt-2" style="display:none;"></div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary" id="btnCancelAttachment">Cerrar</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal aprovisionamiento -->
 <div id="provisioningModal" class="modal-overlay">
     <div class="modal-card">
@@ -441,12 +467,19 @@
     const btnCancelProvisioning = document.getElementById("btnCancelProvisioning");
     const btnConfirmProvisioning = document.getElementById("btnConfirmProvisioning");
     const provisioningModal = document.getElementById("provisioningModal");
+   const attachmentModal = document.getElementById("attachmentModal");
     const provisioningDate = document.getElementById("provisioningDate");
     const provisioningContractType = document.getElementById("provisioningContractType");
     const provisioningClientInput = document.getElementById("provisioningClientInput");
     const clientSuggestions = document.getElementById("clientSuggestions");
     const provisioningStatus = document.getElementById("provisioningStatus");
     const provisioningLog = document.getElementById("provisioningLog");
+    const attachmentInput = document.getElementById("attachmentInput");
+    const attachmentStatus = document.getElementById("attachmentStatus");
+    const attachmentLabel = document.getElementById("attachmentLabel");
+    const attachmentFileName = document.getElementById("attachmentFileName");
+    const btnCloseAttachment = document.getElementById("btnCloseAttachment");
+    const btnCancelAttachment = document.getElementById("btnCancelAttachment");
 
     const resultPoints = document.getElementById("resultPoints");
     const resultCommission = document.getElementById("resultCommission");
@@ -454,6 +487,9 @@
     const resultProration = document.getElementById("resultProration");
     const resultMonthly = document.getElementById("resultMonthly");
     const resultTotal = document.getElementById("resultTotal");
+
+    const attachmentState = { fileName: "", contentType: "", base64: "" };
+
 
     function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 
@@ -1112,6 +1148,18 @@
         const line = `<div class="${isError ? "text-danger" : "text-success"}">${escapeHtml(ts)} - ${escapeHtml(message)}</div>`;
         provisioningLog.innerHTML = line + (provisioningLog.innerHTML || "");
     }
+function setAttachmentStatus(message, type = "error") {
+        if (!attachmentStatus) return;
+        attachmentStatus.classList.remove("status-success", "status-error");
+        if (!message) {
+            attachmentStatus.style.display = "none";
+            attachmentStatus.innerText = "";
+            return;
+        }
+        attachmentStatus.classList.add(type === "success" ? "status-success" : "status-error");
+        attachmentStatus.innerText = message;
+        attachmentStatus.style.display = "block";
+    }
 
     function resetProvisioningForm() {
         provisioningState.date = "";
@@ -1121,9 +1169,20 @@
         provisioningDate.value = "";
         provisioningContractType.value = "";
         provisioningClientInput.value = "";
+        attachmentState.fileName = "";
+        attachmentState.contentType = "";
+        attachmentState.base64 = "";
+        if (attachmentInput) {
+            attachmentInput.value = "";
+        }
+        if (attachmentFileName) {
+            attachmentFileName.innerText = "";
+        }
+        updateAttachmentLabel();
         btnConfirmProvisioning.disabled = false;
         btnConfirmProvisioning.innerText = "Confirmar solicitud";
         setProvisioningStatus("");
+        setAttachmentStatus("");
         hideClientSuggestions();
     }
 
@@ -1140,19 +1199,68 @@
         provisioningState.loading = false;
         btnConfirmProvisioning.disabled = false;
         btnConfirmProvisioning.innerText = "Confirmar solicitud";
+          closeAttachmentModal();
         hideClientSuggestions();
+    }
+
+    function openAttachmentModal() {
+        if (!attachmentModal) return;
+        attachmentModal.style.display = "flex";
+        attachmentModal.setAttribute("aria-hidden", "false");
+        if (attachmentInput) {
+            attachmentInput.focus();
+        }
+    }
+
+    function closeAttachmentModal() {
+        if (!attachmentModal) return;
+        attachmentModal.style.display = "none";
+        attachmentModal.setAttribute("aria-hidden", "true");
     }
 
     function hideClientSuggestions() {
         clientSuggestions.style.display = "none";
         clientSuggestions.innerHTML = "";
     }
-function normalizeProvisioningDate(dateStr) {
+    function normalizeProvisioningDate(dateStr) {
         if (!dateStr) return "";
         const parsed = new Date(`${dateStr}T00:00:00Z`);
         if (isNaN(parsed.getTime())) return "";
         return parsed.toISOString();
     }
+
+    function updateAttachmentLabel() {
+        if (!attachmentLabel) return;
+        const baseLabel = "Adjuntar oferta autorizada o correo de aprobación";
+        if (!provisioningState.contractType) {
+            attachmentLabel.innerText = baseLabel;
+            return;
+        }
+        const contractLabel = contractTypeLabels[provisioningState.contractType] || "Tipo desconocido";
+        attachmentLabel.innerText = `${baseLabel} (${contractLabel})`;
+    }
+
+    function validateAttachmentState() {
+        if (!attachmentState.base64 || !attachmentState.fileName) {
+            return "Debes adjuntar la oferta autorizada o correo de aprobación.";
+        }
+        const ext = attachmentState.fileName.split(".").pop()?.toLowerCase() || "";
+        const allowedExt = ["pdf", "jpg", "jpeg", "doc", "docx"];
+        if (!allowedExt.includes(ext)) {
+            return "El adjunto debe ser PDF, JPG/JPEG o DOC/DOCX.";
+        }
+        return "";
+    }
+
+    function setAttachmentState(file, base64) {
+        attachmentState.fileName = file.name || "";
+        attachmentState.contentType = file.type || "";
+        attachmentState.base64 = base64 || "";
+        if (attachmentFileName) {
+            attachmentFileName.innerText = attachmentState.fileName ? `Archivo cargado: ${attachmentState.fileName}` : "";
+        }
+    }
+
 
     function buildProvisioningPayload() {
         const validated = validateScenarioLines();
@@ -1176,6 +1284,12 @@ function normalizeProvisioningDate(dateStr) {
             setProvisioningStatus("Calcula el escenario para tomar puntaje y comisión antes de solicitar.");
             return null;
         }
+const attachmentError = validateAttachmentState();
+        if (attachmentError) {
+            setProvisioningStatus(attachmentError);
+            openAttachmentModal();
+            return null;
+        }
 
         const selectedContract = provisioningContractType.selectedOptions?.[0];
          const normalizedDate = normalizeProvisioningDate(provisioningState.date);
@@ -1189,7 +1303,8 @@ function normalizeProvisioningDate(dateStr) {
             lineId: line.productId || `line-${idx + 1}`,
             productoId: line.productId || "",
             productoNombre: line.productDescription,
-            cantidad: Number(line.quantity || 0)
+            cantidad: Number(line.quantity || 0),
+            number: Number(line.costUnit || 0)
         })).filter(li => li.cantidad > 0);
 
         if (!lineItems.length) {
@@ -1218,7 +1333,12 @@ function normalizeProvisioningDate(dateStr) {
                 puntaje: Number(s.lastResult?.points || 0),
                 comision: Number(s.lastResult?.commission || 0)
             },
-            lineItems
+            lineItems,
+            attachment: {
+                fileName: attachmentState.fileName,
+                contentType: attachmentState.contentType,
+                base64: attachmentState.base64
+            }
         };
     }
 
@@ -1227,6 +1347,18 @@ function normalizeProvisioningDate(dateStr) {
         setProvisioningStatus("");
         const payload = buildProvisioningPayload();
         if (!payload) return;
+
+        const validationRes = await fetch("/Calculator/ValidateProvisioning", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        if (!validationRes.ok) {
+            const txt = await validationRes.text();
+            setProvisioningStatus(txt || "Error validando adjunto.");
+            return;
+        }
+
 
         if (!FLOW_CREATE_REQUEST_URL || FLOW_CREATE_REQUEST_URL.includes("TODO")) {
             setProvisioningStatus("Configura la URL del Flow 1 antes de enviar (ver comentario TODO).");
@@ -1319,6 +1451,11 @@ function normalizeProvisioningDate(dateStr) {
 
     provisioningContractType.addEventListener("change", () => {
         provisioningState.contractType = provisioningContractType.value;
+        // Si cambia el tipo de contrato, mantenemos el adjunto y solo actualizamos el label.
+        updateAttachmentLabel();
+        if (provisioningState.contractType) {
+            openAttachmentModal();
+        }
     });
 
     provisioningClientInput.addEventListener("focus", () => {
@@ -1378,6 +1515,49 @@ function normalizeProvisioningDate(dateStr) {
         if (e.target === provisioningClientInput || clientSuggestions.contains(e.target)) return;
         hideClientSuggestions();
     });
+if (attachmentInput) {
+        attachmentInput.addEventListener("change", async () => {
+            setAttachmentStatus("");
+            const file = attachmentInput.files?.[0];
+            if (!file) {
+                setAttachmentState({ name: "", type: "" }, "");
+                return;
+            }
+            const ext = file.name.split(".").pop()?.toLowerCase() || "";
+            const allowedExt = ["pdf", "jpg", "jpeg", "doc", "docx"];
+            if (!allowedExt.includes(ext)) {
+                setAttachmentStatus("El archivo debe ser PDF, JPG/JPEG o DOC/DOCX.");
+                attachmentInput.value = "";
+                setAttachmentState({ name: "", type: "" }, "");
+                return;
+            }
+            const base64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = String(reader.result || "");
+                    resolve(result.split(",")[1] || "");
+                };
+                reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+                reader.readAsDataURL(file);
+            }).catch(err => {
+                setAttachmentStatus(err?.message || "No se pudo leer el archivo.");
+                return "";
+            });
+            if (!base64) {
+                setAttachmentState({ name: "", type: "" }, "");
+                return;
+            }
+            setAttachmentState(file, base64);
+            setAttachmentStatus("Adjunto cargado correctamente.", "success");
+        });
+    }
+
+    if (btnCloseAttachment) {
+        btnCloseAttachment.addEventListener("click", closeAttachmentModal);
+    }
+    if (btnCancelAttachment) {
+        btnCancelAttachment.addEventListener("click", closeAttachmentModal);
+    }
 
     btnProvisioning.addEventListener("click", openProvisioningModal);
     btnCloseProvisioning.addEventListener("click", closeProvisioningModal);
