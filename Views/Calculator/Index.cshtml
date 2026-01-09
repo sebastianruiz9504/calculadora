@@ -165,6 +165,43 @@
         width: 100%;
         padding: 20px;
     }
+     .debug-summary {
+        font-size: 12px;
+        color: #4b5563;
+    }
+    .debug-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 8px 16px;
+    }
+    .debug-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    .debug-table th,
+    .debug-table td {
+        border-bottom: 1px dashed #e5e7eb;
+        padding: 4px 6px;
+        text-align: left;
+        vertical-align: top;
+    }
+    .debug-table th {
+        color: #6b7280;
+        font-weight: 600;
+    }
+    .debug-chip {
+        display: inline-block;
+        background: #f3f4f6;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #374151;
+    }
+    #attachmentModal {
+        z-index: 4100;
+    }
     .badge-soft {
         background: #eef2ff;
         color: #312e81;
@@ -368,7 +405,22 @@
         </div>
     </div>
 </div>
-
+<!-- Modal detalle cálculo (debug/test) -->
+<div id="debugCalcModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" style="max-width: 820px;">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <div>
+                <h6 class="mb-1">Detalle de cálculo (debug)</h6>
+                <div class="debug-summary">Solo para pruebas. Puedes comentar este bloque cuando todo esté validado.</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCloseDebugCalc">×</button>
+        </div>
+        <div id="debugCalcContent" class="small"></div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary" id="btnCloseDebugCalcBottom">Cerrar</button>
+        </div>
+    </div>
+</div>
 <!-- Modal aprovisionamiento -->
 <div id="provisioningModal" class="modal-overlay">
     <div class="modal-card">
@@ -468,6 +520,10 @@
     const btnConfirmProvisioning = document.getElementById("btnConfirmProvisioning");
     const provisioningModal = document.getElementById("provisioningModal");
    const attachmentModal = document.getElementById("attachmentModal");
+     const debugCalcModal = document.getElementById("debugCalcModal");
+    const debugCalcContent = document.getElementById("debugCalcContent");
+    const btnCloseDebugCalc = document.getElementById("btnCloseDebugCalc");
+    const btnCloseDebugCalcBottom = document.getElementById("btnCloseDebugCalcBottom");
     const provisioningDate = document.getElementById("provisioningDate");
     const provisioningContractType = document.getElementById("provisioningContractType");
     const provisioningClientInput = document.getElementById("provisioningClientInput");
@@ -517,6 +573,134 @@
 
     function escapeHtml(s) {
         return (s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    }
+function getDealTypeLabel(dealType) {
+        switch (Number(dealType)) {
+            case 0: return "ClienteNuevo";
+            case 1: return "CrossSale";
+            case 2: return "Renovación 1 vez";
+            case 3: return "Renovación 2 veces";
+            case 4: return "Renovación 3 veces o más";
+            default: return "Sin definir";
+        }
+    }
+
+    function getDealTypeMultiplier(dealType) {
+        switch (Number(dealType)) {
+            case 0: return 1.10;
+            case 1: return 1.00;
+            case 2: return 0.40;
+            case 3: return 0.25;
+            case 4: return 0.20;
+            default: return 1.00;
+        }
+    }
+
+    function getSegmentMultiplier(segment) {
+        return segment === "Corporate" ? 1.15 : 1.00;
+    }
+
+    function openDebugCalcModal(html) {
+        if (!debugCalcModal || !debugCalcContent) return;
+        debugCalcContent.innerHTML = html;
+        debugCalcModal.style.display = "flex";
+        debugCalcModal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeDebugCalcModal() {
+        if (!debugCalcModal) return;
+        debugCalcModal.style.display = "none";
+        debugCalcModal.setAttribute("aria-hidden", "true");
+    }
+
+    function buildDebugCalcHtml(payload, data) {
+        const lines = payload.lines || [];
+        let totalCost = 0;
+        let totalSaleUnit = 0;
+        let totalMonthly = 0;
+        let totalSale = 0;
+        let totalUtility = 0;
+        let totalAcelerador = 0;
+
+        const lineRows = lines.map((line, idx) => {
+            const cost = Number(line.costUnit || 0);
+            const margin = Number(line.marginPercent || 0);
+            const qty = Number(line.quantity || 0);
+            const months = Number(line.contractMonths || 0);
+            const acelerador = Number(line.acelerador || 0);
+            const saleUnit = cost * (1 + (margin / 100));
+            const monthly = saleUnit * qty;
+            const total = monthly * months;
+            const utilidadLinea = ((saleUnit - cost) + (cost * acelerador)) * qty * months;
+
+            totalCost += cost * qty;
+            totalSaleUnit += saleUnit * qty;
+            totalMonthly += monthly;
+            totalSale += total;
+            totalUtility += utilidadLinea;
+            totalAcelerador += (cost * acelerador) * qty * months;
+
+            return `
+                <tr>
+                    <td>#${idx + 1} ${escapeHtml(line.productDescription || "Producto")}</td>
+                    <td>${num(cost)} × ${qty} × ${months}m</td>
+                    <td>${num(margin)}%</td>
+                    <td>${num(acelerador)}</td>
+                    <td>${money(saleUnit)}</td>
+                    <td>${money(total)}</td>
+                    <td>${money(utilidadLinea)}</td>
+                </tr>
+            `;
+        }).join("");
+
+        const segment = data.segment || "—";
+        const segmentMultiplier = getSegmentMultiplier(segment);
+        const dealMultiplier = getDealTypeMultiplier(payload.dealType);
+        const prorationFactor = Number(data.prorationFactor || 1);
+        const prorationDays = Number(data.prorationDays || 0);
+
+        const utilidadSegmento = totalUtility * segmentMultiplier;
+        const utilidadNegocio = utilidadSegmento * dealMultiplier;
+        const utilidadProrrateada = utilidadNegocio * prorationFactor;
+
+        const puntosCalculados = (utilidadProrrateada / 750) * 100;
+        const comisionUsd = puntosCalculados * 7.5;
+        const comisionCop = comisionUsd * 4000;
+
+        return `
+            <div class="debug-grid mb-2">
+                <div><span class="debug-chip">Segmento</span> ${escapeHtml(segment)}</div>
+                <div><span class="debug-chip">Tipo negocio</span> ${escapeHtml(getDealTypeLabel(payload.dealType))}</div>
+                <div><span class="debug-chip">Prorrateo</span> ${prorationDays ? `${prorationDays} días (${num(prorationFactor, 4)})` : "No"}</div>
+                <div><span class="debug-chip">Líneas</span> ${lines.length}</div>
+            </div>
+            <table class="debug-table mb-2">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Costo × Qty × Meses</th>
+                        <th>Margen</th>
+                        <th>Acelerador</th>
+                        <th>Venta UND</th>
+                        <th>Venta Total</th>
+                        <th>Utilidad línea</th>
+                    </tr>
+                </thead>
+                <tbody>${lineRows || "<tr><td colspan=\"7\">Sin líneas.</td></tr>"}</tbody>
+            </table>
+            <table class="debug-table">
+                <tbody>
+                    <tr><th>Totales visibles</th><td>Venta mensual: ${money(totalMonthly)} | Venta total: ${money(totalSale)}</td></tr>
+                    <tr><th>Costo total</th><td>${money(totalCost)} (suma de costo × qty)</td></tr>
+                    <tr><th>Utilidad base</th><td>${money(totalUtility)} (incluye acelerador: ${money(totalAcelerador)})</td></tr>
+                    <tr><th>+ Segmento</th><td>${num(segmentMultiplier, 2)} → ${money(utilidadSegmento)}</td></tr>
+                    <tr><th>+ Tipo negocio</th><td>${num(dealMultiplier, 2)} → ${money(utilidadNegocio)}</td></tr>
+                    <tr><th>+ Prorrateo</th><td>${num(prorationFactor, 4)} → ${money(utilidadProrrateada)}</td></tr>
+                    <tr><th>Puntaje (calc / API)</th><td>${num(puntosCalculados, 2)} / ${num(data.points || 0, 2)}</td></tr>
+                    <tr><th>Comisión COP (calc / API)</th><td>${money(comisionCop)} / ${money(data.commission || 0)}</td></tr>
+                </tbody>
+            </table>
+        `;
     }
 
     function containsPrepaidOrYear(desc) {
@@ -1085,6 +1269,8 @@
             }
 
             renderResultsFromScenario();
+            const debugHtml = buildDebugCalcHtml(payload, data);
+            openDebugCalcModal(debugHtml);
         } catch (err) {
             alert("Error: " + (err?.message || err));
         } finally {
@@ -1558,7 +1744,19 @@ if (attachmentInput) {
     if (btnCancelAttachment) {
         btnCancelAttachment.addEventListener("click", closeAttachmentModal);
     }
-
+ if (btnCloseDebugCalc) {
+        btnCloseDebugCalc.addEventListener("click", closeDebugCalcModal);
+    }
+    if (btnCloseDebugCalcBottom) {
+        btnCloseDebugCalcBottom.addEventListener("click", closeDebugCalcModal);
+    }
+    if (debugCalcModal) {
+        debugCalcModal.addEventListener("click", (e) => {
+            if (e.target === debugCalcModal) {
+                closeDebugCalcModal();
+            }
+        });
+    }
     btnProvisioning.addEventListener("click", openProvisioningModal);
     btnCloseProvisioning.addEventListener("click", closeProvisioningModal);
     btnCancelProvisioning.addEventListener("click", closeProvisioningModal);

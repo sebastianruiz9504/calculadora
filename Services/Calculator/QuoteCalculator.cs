@@ -59,7 +59,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
 
         // 5) Conversión utilidad → puntos
         // 750 USD utilidad anual = 100 puntos
-        var points = (adjusted / 750m) * 100m;
+        var points = (adjusted / 2500m) * 100m;
         result.Points = Round2(points);
 
         // 6) Comisión

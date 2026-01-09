@@ -95,7 +95,6 @@ public sealed class DataverseService : IDataverseService
 
         return list;
     }
-
     public async Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
