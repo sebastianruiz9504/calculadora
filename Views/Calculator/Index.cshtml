@@ -472,6 +472,7 @@
 <script>
 (function () {
     const isCorporate = @((isCorporate ? "true" : "false"));
+        const currentSegment = "@seg";
     const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUser, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const FLOW_CREATE_REQUEST_URL = "https://defaultcab7ea424a214548952ffcde81f2bd.d6.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8529a99cb04c43af984f792d0d9974d4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=WhOJuw2RosHFv74emV7f9ve_Kwj0DqwlEVlQNtg3Qbw"; // TODO: Pegar URL del Flow 1 (Crear Solicitud + Aprobación Angie)
     // TODO: Pegar URL del Flow 2 (Marcar Aprovisionadas) [si aplica]
@@ -546,6 +547,8 @@
 
     const attachmentState = { fileName: "", contentType: "", base64: "" };
 
+
+    const SMB_LICENSE_CAP = 300;
 
     function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 
@@ -1213,9 +1216,35 @@ function getDealTypeLabel(dealType) {
                 acelerador: Number(line.acelerador || 0)
             });
         }
+ const smbValidation = validateSmbLicenseCap(s, normalizedLines);
+        if (smbValidation) {
+            alert(smbValidation);
+            return null;
+        }
 
         return { scenario: s, lines: normalizedLines };
     }
+
+    function validateSmbLicenseCap(scenario, lines) {
+        if (currentSegment !== "SMB" || Number(scenario?.dealType) === 1) {
+            return "";
+        }
+
+        const restrictedTotal = lines.reduce((total, line) => {
+            const desc = (line.productDescription || "").toLowerCase();
+            if (desc.includes("business") || desc.includes("microsoft 365")) {
+                return total + Number(line.quantity || 0);
+            }
+            return total;
+        }, 0);
+
+        if (restrictedTotal >= SMB_LICENSE_CAP) {
+            return `Para usuarios SMB, la suma de licencias con productos que contengan "business" o "Microsoft 365" no puede ser igual o mayor a ${SMB_LICENSE_CAP}. Total actual: ${restrictedTotal}.`;
+        }
+
+        return "";
+    }
+
 
     function buildPayload() {
         const validated = validateScenarioLines();

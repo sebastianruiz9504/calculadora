@@ -14,7 +14,7 @@ public sealed class CalculatorController : Controller
     private readonly IDataverseService _dataverse;
     private readonly IQuoteCalculator _calculator;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
-
+    private const int SmbLicenseCap = 300;
     public CalculatorController(IDataverseService dataverse, IQuoteCalculator calculator)
     {
         _dataverse = dataverse;
@@ -54,6 +54,11 @@ public sealed class CalculatorController : Controller
     {
         // Segmento desde Dataverse (puedes cachearlo luego)
         var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
+var smbValidation = ValidateSmbLicenseCap(input, segment);
+        if (!string.IsNullOrWhiteSpace(smbValidation))
+        {
+            return BadRequest(smbValidation);
+        }
 
         // Calcula (utility oculto, devuelve puntos+comisión)
         var result = _calculator.Calculate(input, segment);
@@ -77,6 +82,11 @@ public sealed class CalculatorController : Controller
             return BadRequest("No hay líneas para exportar.");
 
         var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
+          var smbValidation = ValidateSmbLicenseCap(input, segment);
+        if (!string.IsNullOrWhiteSpace(smbValidation))
+        {
+            return BadRequest(smbValidation);
+        }
         var fileName = BuildFileName(input.ScenarioName);
         using var workbook = BuildWorkbook(input, segment);
         await using var stream = new MemoryStream();
@@ -234,8 +244,7 @@ public sealed class CalculatorController : Controller
         return workbook;
     }
 
- private static string? ValidateProvisioningPayload(ProvisioningRequestInput input)
-    {
+private static string? ValidateProvisioningPayload(ProvisioningRequestInput input)    {
         if (input.LineItems is null || input.LineItems.Count == 0)
         {
             return "No hay líneas para enviar.";
@@ -288,6 +297,34 @@ public sealed class CalculatorController : Controller
         return null;
     }
 
+ private static string? ValidateSmbLicenseCap(QuoteScenarioInput input, UserSegment segment)
+    {
+        if (segment != UserSegment.SMB || input.DealType == DealType.CrossSale)
+            return null;
+
+        if (input.Lines is null || input.Lines.Count == 0)
+            return null;
+
+        var restrictedTotal = input.Lines
+            .Where(line => IsRestrictedProduct(line.ProductDescription))
+            .Sum(line => line.Quantity);
+
+        if (restrictedTotal >= SmbLicenseCap)
+        {
+            return $"Para usuarios SMB, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" no puede ser igual o mayor a {SmbLicenseCap}. Total actual: {restrictedTotal}.";
+        }
+
+        return null;
+    }
+
+    private static bool IsRestrictedProduct(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return false;
+
+        return description.Contains("business", StringComparison.OrdinalIgnoreCase)
+            || description.Contains("microsoft 365", StringComparison.OrdinalIgnoreCase);
+    }
     private static ExportLine ComputeLine(QuoteLineInput line, UserSegment segment)
     {
         var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
