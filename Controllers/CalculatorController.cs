@@ -15,6 +15,7 @@ public sealed class CalculatorController : Controller
     private readonly IQuoteCalculator _calculator;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private const int SmbLicenseCap = 300;
+    private const int CorporateMinimumLicenses = 300;
     public CalculatorController(IDataverseService dataverse, IQuoteCalculator calculator)
     {
         _dataverse = dataverse;
@@ -54,10 +55,10 @@ public sealed class CalculatorController : Controller
     {
         // Segmento desde Dataverse (puedes cachearlo luego)
         var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
-var smbValidation = ValidateSmbLicenseCap(input, segment);
-        if (!string.IsNullOrWhiteSpace(smbValidation))
+  var licenseValidation = ValidateLicenseCaps(input, segment);
+        if (!string.IsNullOrWhiteSpace(licenseValidation))
         {
-            return BadRequest(smbValidation);
+            return BadRequest(licenseValidation);
         }
 
         // Calcula (utility oculto, devuelve puntos+comisión)
@@ -82,10 +83,10 @@ var smbValidation = ValidateSmbLicenseCap(input, segment);
             return BadRequest("No hay líneas para exportar.");
 
         var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
-          var smbValidation = ValidateSmbLicenseCap(input, segment);
-        if (!string.IsNullOrWhiteSpace(smbValidation))
+           var licenseValidation = ValidateLicenseCaps(input, segment);
+        if (!string.IsNullOrWhiteSpace(licenseValidation))
         {
-            return BadRequest(smbValidation);
+            return BadRequest(licenseValidation);
         }
         var fileName = BuildFileName(input.ScenarioName);
         using var workbook = BuildWorkbook(input, segment);
@@ -297,9 +298,9 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
         return null;
     }
 
- private static string? ValidateSmbLicenseCap(QuoteScenarioInput input, UserSegment segment)
+  private static string? ValidateLicenseCaps(QuoteScenarioInput input, UserSegment segment)
     {
-        if (segment != UserSegment.SMB || input.DealType == DealType.CrossSale)
+        if (input.DealType == DealType.CrossSale)
             return null;
 
         if (input.Lines is null || input.Lines.Count == 0)
@@ -309,9 +310,12 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
             .Where(line => IsRestrictedProduct(line.ProductDescription))
             .Sum(line => line.Quantity);
 
-        if (restrictedTotal >= SmbLicenseCap)
-        {
+if (segment == UserSegment.SMB && restrictedTotal >= SmbLicenseCap)        {
             return $"Para usuarios SMB, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" no puede ser igual o mayor a {SmbLicenseCap}. Total actual: {restrictedTotal}.";
+        }
+if (segment == UserSegment.Corporate && restrictedTotal <= CorporateMinimumLicenses)
+        {
+            return $"Para usuarios Corporate, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" debe ser mayor a {CorporateMinimumLicenses}. Total actual: {restrictedTotal}.";
         }
 
         return null;
