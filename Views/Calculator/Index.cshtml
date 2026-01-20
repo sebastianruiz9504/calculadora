@@ -1232,6 +1232,9 @@ const showDebugCalcModal = false;
         if (Number(scenario?.dealType) === 1) {
             return "";
         }
+  if (currentSegment === "Super") {
+            return "";
+        }
 
         const restrictedTotal = lines.reduce((total, line) => {
             const desc = (line.productDescription || "").toLowerCase();

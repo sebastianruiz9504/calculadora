@@ -156,12 +156,16 @@ public sealed class DataverseService : IDataverseService
         if (segRaw.Equals("SMB", StringComparison.OrdinalIgnoreCase))
             return UserSegment.SMB;
 
+  if (segRaw.Equals("Super", StringComparison.OrdinalIgnoreCase))
+            return UserSegment.Super;
+
         if (int.TryParse(segRaw, out var opt))
         {
             return opt switch
             {
                 1 => UserSegment.SMB,
                 2 => UserSegment.Corporate,
+                                3 => UserSegment.Super,
                 _ => UserSegment.Unknown
             };
         }

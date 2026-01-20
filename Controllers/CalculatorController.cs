@@ -305,6 +305,8 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
 
         if (input.Lines is null || input.Lines.Count == 0)
             return null;
+ if (segment == UserSegment.Super)
+            return null;
 
         var restrictedTotal = input.Lines
             .Where(line => IsRestrictedProduct(line.ProductDescription))
