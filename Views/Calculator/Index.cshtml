@@ -603,8 +603,11 @@ function getDealTypeLabel(dealType) {
         return segment === "Corporate" ? 1.15 : 1.00;
     }
 
+const showDebugCalcModal = false;
+
     function openDebugCalcModal(html) {
-        if (!debugCalcModal || !debugCalcContent) return;
+        if (!showDebugCalcModal) return;
+                if (!debugCalcModal || !debugCalcContent) return;
         debugCalcContent.innerHTML = html;
         debugCalcModal.style.display = "flex";
         debugCalcModal.setAttribute("aria-hidden", "false");
