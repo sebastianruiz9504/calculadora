@@ -33,6 +33,17 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.Unspecified;
+    options.Secure = CookieSecurePolicy.Always;
+});
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
 
 var app = builder.Build();
 
