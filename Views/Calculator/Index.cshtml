@@ -5,6 +5,7 @@
     var seg = (UserSegment)(ViewData["Segment"] ?? UserSegment.Unknown);
     var isCorporate = seg == UserSegment.Corporate;
     var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
+     var isAuthorizedSegment = seg == UserSegment.Super || seg == UserSegment.Corporate || seg == UserSegment.SMB;
 }
 
 <style>
@@ -229,6 +230,16 @@
         color: #6b7280;
     }
 </style>
+
+@if (!isAuthorizedSegment)
+{
+    <div class="alert alert-warning mt-3" role="alert">
+        Tu usuario no tiene un segmento autorizado para usar esta aplicación. Por favor solicita autorización a
+        <a href="mailto:sruiz@digitaltechcolombia.com">sruiz@digitaltechcolombia.com</a>.
+    </div>
+}
+else
+{
 
 <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
     <div>
@@ -1810,3 +1821,4 @@ if (attachmentInput) {
     syncScenarioPanel();
 })();
 </script>
+}
