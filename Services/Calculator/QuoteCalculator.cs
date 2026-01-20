@@ -6,7 +6,7 @@ namespace CotizadorInterno.Web.Services.Calculator;
 public sealed class QuoteCalculator : IQuoteCalculator
 {
     private const decimal USD_PER_100_POINTS = 750m;
-    private const decimal COP_EXCHANGE_RATE = 3800m;
+    private const decimal COP_EXCHANGE_RATE = 4000m;
 
     public QuoteScenarioResult Calculate(QuoteScenarioInput input, UserSegment segment)
     {
