@@ -48,7 +48,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
         var adjusted = utility;
 
         if (segment == UserSegment.Corporate)
-            adjusted *= 1.08m; // +8%
+            adjusted *= 1.05m; // +5%
 
         adjusted *= DealTypeMultiplier(input.DealType);
 
@@ -97,8 +97,8 @@ public sealed class QuoteCalculator : IQuoteCalculator
     {
         return dealType switch
         {
-            DealType.ClienteNuevo => 1.05m,   // +5%
-            DealType.CrossSale => 0.9m,      // neutral
+            DealType.ClienteNuevo => 1.08m,   // +5%
+            DealType.CrossSale => 1.0m,      // neutral
             DealType.Renovacion1 => 0.50m,    // queda en 40%
             DealType.Renovacion2 => 0.25m,
             DealType.Renovacion3Plus => 0.20m,

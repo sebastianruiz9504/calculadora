@@ -313,9 +313,9 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
 if (segment == UserSegment.SMB && restrictedTotal >= SmbLicenseCap)        {
             return $"Para usuarios SMB, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" no puede ser igual o mayor a {SmbLicenseCap}. Total actual: {restrictedTotal}.";
         }
-if (segment == UserSegment.Corporate && restrictedTotal <= CorporateMinimumLicenses)
+  if (segment == UserSegment.Corporate && restrictedTotal > 0 && restrictedTotal < CorporateMinimumLicenses)
         {
-            return $"Para usuarios Corporate, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" debe ser mayor a {CorporateMinimumLicenses}. Total actual: {restrictedTotal}.";
+            return $"Para usuarios Corporate, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" debe ser igual o mayor a {CorporateMinimumLicenses}. Total actual: {restrictedTotal}.";
         }
 
         return null;
