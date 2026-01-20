@@ -6,7 +6,7 @@ namespace CotizadorInterno.Web.Services.Calculator;
 public sealed class QuoteCalculator : IQuoteCalculator
 {
     private const decimal USD_PER_100_POINTS = 750m;
-    private const decimal COP_EXCHANGE_RATE = 4000m;
+    private const decimal COP_EXCHANGE_RATE = 3800m;
 
     public QuoteScenarioResult Calculate(QuoteScenarioInput input, UserSegment segment)
     {
@@ -48,7 +48,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
         var adjusted = utility;
 
         if (segment == UserSegment.Corporate)
-            adjusted *= 1.15m; // +15%
+            adjusted *= 1.08m; // +8%
 
         adjusted *= DealTypeMultiplier(input.DealType);
 
@@ -59,7 +59,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
 
         // 5) Conversión utilidad → puntos
         // 750 USD utilidad anual = 100 puntos
-        var points = (adjusted / 2500m) * 100m;
+        var points = (adjusted / 3000m) * 100m;
         result.Points = Round2(points);
 
         // 6) Comisión
@@ -97,9 +97,9 @@ public sealed class QuoteCalculator : IQuoteCalculator
     {
         return dealType switch
         {
-            DealType.ClienteNuevo => 1.10m,   // +10%
-            DealType.CrossSale => 1.00m,      // neutral
-            DealType.Renovacion1 => 0.40m,    // queda en 40%
+            DealType.ClienteNuevo => 1.05m,   // +5%
+            DealType.CrossSale => 0.9m,      // neutral
+            DealType.Renovacion1 => 0.50m,    // queda en 40%
             DealType.Renovacion2 => 0.25m,
             DealType.Renovacion3Plus => 0.20m,
             _ => 1.00m
