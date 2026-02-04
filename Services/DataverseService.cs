@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Identity.Abstractions;
@@ -294,17 +295,20 @@ public sealed class DataverseService : IDataverseService
 
         return body;
     }
- private async Task<string> CallDataverseSendAsync(string relativeUrl, string method, object payload, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    private async Task<string> CallDataverseSendAsync(string relativeUrl, string method, object payload, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
     {
+        var jsonPayload = JsonSerializer.Serialize(payload, JsonOptions);
+        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
         var result = await _downstreamApi.CallApiForUserAsync(
             serviceName: "Dataverse",
             options =>
             {
                 options.RelativePath = relativeUrl;
                 options.HttpMethod = method;
-                options.Content = payload;
             },
             user: user,
+            content: content,
             cancellationToken: ct);
 
         if (result is not System.Net.Http.HttpResponseMessage resp)
