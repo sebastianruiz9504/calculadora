@@ -5,6 +5,7 @@
     var seg = (UserSegment)(ViewData["Segment"] ?? UserSegment.Unknown);
     var isCorporate = seg == UserSegment.Corporate;
     var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
+     var storedScenarios = (IReadOnlyList<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>?)ViewData["StoredScenarios"] ?? new List<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>();
      var isAuthorizedSegment = seg == UserSegment.Super || seg == UserSegment.Corporate || seg == UserSegment.SMB;
 }
 
@@ -485,6 +486,7 @@ else
     const isCorporate = @((isCorporate ? "true" : "false"));
         const currentSegment = "@seg";
     const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUser, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const storedScenarios = @Html.Raw(JsonSerializer.Serialize(storedScenarios, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const FLOW_CREATE_REQUEST_URL = "https://defaultcab7ea424a214548952ffcde81f2bd.d6.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8529a99cb04c43af984f792d0d9974d4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=WhOJuw2RosHFv74emV7f9ve_Kwj0DqwlEVlQNtg3Qbw"; // TODO: Pegar URL del Flow 1 (Crear Solicitud + Aprobación Angie)
     // TODO: Pegar URL del Flow 2 (Marcar Aprovisionadas) [si aplica]
 
@@ -940,6 +942,35 @@ const showDebugCalcModal = false;
     function createScenario(name) {
         const id = uid();
  return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", lines: [], lastResult: null };    }
+ function toDateInputValue(value) {
+        if (!value) return "";
+        const str = String(value);
+        if (str.length >= 10) return str.substring(0, 10);
+        return str;
+    }
+
+    function mapStoredScenario(stored) {
+        return {
+            id: stored.scenarioId || uid(),
+            name: stored.scenarioName || "Escenario",
+            dealType: Number(stored.dealType || 0),
+            requiresProration: Boolean(stored.requiresProration),
+            startDate: toDateInputValue(stored.startDate),
+            endDate: toDateInputValue(stored.endDate),
+            lines: Array.isArray(stored.lines) ? stored.lines.map(line => ({
+                businessType: Number(line.businessType || 0),
+                productId: line.productId || "",
+                productDescription: line.productDescription || "",
+                costUnit: Number(line.costUnit || 0),
+                marginPercent: Number(line.marginPercent || 0),
+                contractMonths: Number(line.contractMonths || 12),
+                quantity: Number(line.quantity || 1),
+                suggestedRetailPrice: Number(line.suggestedRetailPrice || 0),
+                acelerador: Number(line.acelerador || 0)
+            })) : [],
+            lastResult: stored.lastResult || null
+        };
+    }
 
     function syncScenarioPanel() {
         const s = getActiveScenario();
@@ -1282,6 +1313,32 @@ const showDebugCalcModal = false;
             lines
         };
     }
+async function saveScenarioToDataverse(scenario, lines) {
+        if (!scenario) return;
+        if (!Array.isArray(lines) || lines.length === 0) return;
+
+        const payload = {
+            scenarioId: scenario.id,
+            scenarioName: scenario.name,
+            dealType: Number(scenario.dealType || 0),
+            requiresProration: Boolean(scenario.requiresProration),
+            startDate: scenario.startDate ? new Date(scenario.startDate).toISOString() : null,
+            endDate: scenario.endDate ? new Date(scenario.endDate).toISOString() : null,
+            lines,
+            lastResult: scenario.lastResult || null
+        };
+
+        const res = await fetch("/Calculator/SaveScenario", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(txt || "Error guardando escenario.");
+        }
+    }
 
     async function calculate() {
         const payload = buildPayload();
@@ -1319,6 +1376,9 @@ const showDebugCalcModal = false;
             }
 
             renderResultsFromScenario();
+             if (s) {
+                await saveScenarioToDataverse(s, payload.lines);
+            }
             const debugHtml = buildDebugCalcHtml(payload, data);
             openDebugCalcModal(debugHtml);
         } catch (err) {
@@ -1816,8 +1876,13 @@ if (attachmentInput) {
     btnExport.addEventListener("click", exportExcel);
     // Init
     renderTypeChips();
-    scenarios = [createScenario("Escenario 1")];
-    activeScenarioId = scenarios[0].id;
+    if (Array.isArray(storedScenarios) && storedScenarios.length > 0) {
+        scenarios = storedScenarios.map(mapStoredScenario);
+        activeScenarioId = scenarios[0]?.id || null;
+    } else {
+        scenarios = [createScenario("Escenario 1")];
+        activeScenarioId = scenarios[0].id;
+    }
     syncScenarioPanel();
 })();
 </script>

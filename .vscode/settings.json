@@ -1,3 +1,6 @@
 {
-    "sarif-viewer.connectToGithubCodeScanning": "off"
+    "sarif-viewer.connectToGithubCodeScanning": "off",
+    "appService.preDeployTask": "publish-release",
+    "appService.deploySubpath": "bin\\Release\\net10.0\\publish",
+    "appService.defaultWebAppToDeploy": "/subscriptions/9dd97b1d-516b-4064-86bf-ad33d7fc027d/resourceGroups/DigitalTechAppAI/providers/Microsoft.Web/sites/calculadoradt"
 }

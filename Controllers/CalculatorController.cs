@@ -28,9 +28,11 @@ public sealed class CalculatorController : Controller
     {
         var currentUser = await _dataverse.GetCurrentUserAsync(ct);
         var segment = currentUser?.Segment ?? UserSegment.Unknown;
+        var storedScenarios = await _dataverse.GetScenariosForUserAsync(ct);
 
         ViewData["Segment"] = segment;
         ViewData["CurrentUser"] = currentUser;
+        ViewData["StoredScenarios"] = storedScenarios;
         return View();
     }
 
@@ -76,6 +78,22 @@ public sealed class CalculatorController : Controller
         });
     }
     
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SaveScenario([FromBody] ScenarioSaveRequest input, CancellationToken ct)
+    {
+        if (input is null)
+            return BadRequest("Payload inválido.");
+
+        if (string.IsNullOrWhiteSpace(input.ScenarioId))
+            return BadRequest("ScenarioId requerido.");
+
+        if (input.Lines is null || input.Lines.Count == 0)
+            return BadRequest("Debe incluir líneas.");
+
+        await _dataverse.UpsertScenarioAsync(input, ct);
+        return Ok(new { ok = true });
+    }
     [HttpPost]
     public async Task<IActionResult> Export([FromBody] QuoteScenarioInput input, CancellationToken ct)
     {

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Calculator;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -16,6 +17,7 @@ public sealed class DataverseService : IDataverseService
         PropertyNameCaseInsensitive = true,
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
+    private const string ScenariosTableSetName = "cr07a_negocioscomerciales";
 
     public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor)
     {
@@ -27,6 +29,102 @@ public sealed class DataverseService : IDataverseService
     {
         var info = await GetCurrentUserAsync(ct);
         return info?.Segment ?? UserSegment.Unknown;
+    }
+
+    public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+            return Array.Empty<ScenarioStoredDto>();
+
+        var select = string.Join(",", new[]
+        {
+            "cr07a_scenarioid",
+            "cr07a_scenarioname",
+            "cr07a_dealtype",
+            "cr07a_requiresproration",
+            "cr07a_startdate",
+            "cr07a_enddate",
+            "cr07a_linesjson",
+            "cr07a_lastresultjson"
+        });
+
+        var filter = $"cr07a_systemuserid eq '{EscapeOdataLiteral(currentUser.SystemUserId)}'";
+        var relativeUrl = $"/api/data/v9.2/{ScenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement.GetProperty("value");
+
+        var list = new List<ScenarioStoredDto>(arr.GetArrayLength());
+        foreach (var item in arr.EnumerateArray())
+        {
+            var linesJson = item.TryGetProperty("cr07a_linesjson", out var linesProp)
+                ? linesProp.GetString()
+                : null;
+            var resultJson = item.TryGetProperty("cr07a_lastresultjson", out var resultProp)
+                ? resultProp.GetString()
+                : null;
+
+            list.Add(new ScenarioStoredDto
+            {
+                ScenarioId = item.TryGetProperty("cr07a_scenarioid", out var idProp) ? (idProp.GetString() ?? "") : "",
+                ScenarioName = item.TryGetProperty("cr07a_scenarioname", out var nameProp) ? (nameProp.GetString() ?? "") : "",
+                DealType = ReadInt(item, "cr07a_dealtype"),
+                RequiresProration = ReadBool(item, "cr07a_requiresproration"),
+                StartDate = item.TryGetProperty("cr07a_startdate", out var startProp) ? startProp.GetString() : null,
+                EndDate = item.TryGetProperty("cr07a_enddate", out var endProp) ? endProp.GetString() : null,
+                Lines = DeserializeJsonOrDefault<List<ScenarioLineInput>>(linesJson) ?? new List<ScenarioLineInput>(),
+                LastResult = DeserializeJsonOrDefault<ScenarioResultSnapshot>(resultJson)
+            });
+        }
+
+        return list;
+    }
+
+    public async Task UpsertScenarioAsync(ScenarioSaveRequest request, CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+            throw new InvalidOperationException("Usuario actual no disponible.");
+
+        var recordId = await FindScenarioRecordIdAsync(request.ScenarioId, currentUser.SystemUserId, httpContext.User, ct);
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["cr07a_name"] = string.IsNullOrWhiteSpace(request.ScenarioName) ? "Escenario" : request.ScenarioName,
+            ["cr07a_scenarioid"] = request.ScenarioId,
+            ["cr07a_scenarioname"] = request.ScenarioName,
+            ["cr07a_dealtype"] = request.DealType,
+            ["cr07a_requiresproration"] = request.RequiresProration,
+            ["cr07a_startdate"] = request.StartDate?.ToString("yyyy-MM-dd"),
+            ["cr07a_enddate"] = request.EndDate?.ToString("yyyy-MM-dd"),
+            ["cr07a_linesjson"] = JsonSerializer.Serialize(request.Lines ?? new List<ScenarioLineInput>()),
+            ["cr07a_lastresultjson"] = request.LastResult is null ? null : JsonSerializer.Serialize(request.LastResult),
+            ["cr07a_systemuserid"] = currentUser.SystemUserId,
+            ["cr07a_displayname"] = currentUser.DisplayName,
+            ["cr07a_email"] = currentUser.Email
+        };
+
+        if (string.IsNullOrWhiteSpace(recordId))
+        {
+            var relativeUrl = $"/api/data/v9.2/{ScenariosTableSetName}";
+            await CallDataverseSendAsync(relativeUrl, "POST", payload, httpContext.User, ct);
+            return;
+        }
+
+        var updateUrl = $"/api/data/v9.2/{ScenariosTableSetName}({recordId})";
+        await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
     }
 
     public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string query, int top = 12, CancellationToken ct = default)
@@ -196,6 +294,49 @@ public sealed class DataverseService : IDataverseService
 
         return body;
     }
+ private async Task<string> CallDataverseSendAsync(string relativeUrl, string method, object payload, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    {
+        var result = await _downstreamApi.CallApiForUserAsync(
+            serviceName: "Dataverse",
+            options =>
+            {
+                options.RelativePath = relativeUrl;
+                options.HttpMethod = method;
+                options.Content = payload;
+            },
+            user: user,
+            cancellationToken: ct);
+
+        if (result is not System.Net.Http.HttpResponseMessage resp)
+            throw new InvalidOperationException($"Unexpected downstream response type: {result?.GetType().FullName ?? "null"}");
+
+        var body = await resp.Content.ReadAsStringAsync(ct);
+
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse error {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
+
+        return body;
+    }
+
+    private async Task<string?> FindScenarioRecordIdAsync(string scenarioId, string systemUserId, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId) || string.IsNullOrWhiteSpace(systemUserId))
+            return null;
+
+        var select = $"{ScenariosTableSetName}id";
+        var filter = $"cr07a_scenarioid eq '{EscapeOdataLiteral(scenarioId)}' and cr07a_systemuserid eq '{EscapeOdataLiteral(systemUserId)}'";
+        var relativeUrl = $"/api/data/v9.2/{ScenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+        if (value.GetArrayLength() == 0)
+            return null;
+
+        var record = value[0];
+        var idPropName = $"{ScenariosTableSetName}id";
+        return record.TryGetProperty(idPropName, out var idProp) ? idProp.GetString() : null;
+    }
 
     private static decimal? ReadDecimal(JsonElement el, string name)
     {
@@ -208,5 +349,52 @@ public sealed class DataverseService : IDataverseService
             JsonValueKind.String => decimal.TryParse(p.GetString(), out var d) ? d : null,
             _ => null
         };
+    }
+    private static int ReadInt(JsonElement el, string name)
+    {
+        if (!el.TryGetProperty(name, out var p))
+            return 0;
+
+        return p.ValueKind switch
+        {
+            JsonValueKind.Number => p.TryGetInt32(out var v) ? v : 0,
+            JsonValueKind.String => int.TryParse(p.GetString(), out var v) ? v : 0,
+            _ => 0
+        };
+    }
+
+    private static bool ReadBool(JsonElement el, string name)
+    {
+        if (!el.TryGetProperty(name, out var p))
+            return false;
+
+        return p.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => bool.TryParse(p.GetString(), out var v) && v,
+            JsonValueKind.Number => p.TryGetInt32(out var v) && v != 0,
+            _ => false
+        };
+    }
+
+    private static T? DeserializeJsonOrDefault<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return default;
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+    }
+
+    private static string EscapeOdataLiteral(string value)
+    {
+        return (value ?? string.Empty).Replace("'", "''");
     }
 }
