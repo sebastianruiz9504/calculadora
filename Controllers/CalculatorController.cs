@@ -308,18 +308,20 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
  if (segment == UserSegment.Super)
             return null;
 
-        var restrictedTotal = input.Lines
-            .Where(line => IsRestrictedProduct(line.ProductDescription))
-            .Sum(line => line.Quantity);
-
-if (segment == UserSegment.SMB && restrictedTotal >= SmbLicenseCap)        {
-            return $"Para usuarios SMB, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" no puede ser igual o mayor a {SmbLicenseCap}. Total actual: {restrictedTotal}.";
-        }
-  if (segment == UserSegment.Corporate && restrictedTotal > 0 && restrictedTotal < CorporateMinimumLicenses)
-        {
-            return $"Para usuarios Corporate, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" debe ser igual o mayor a {CorporateMinimumLicenses}. Total actual: {restrictedTotal}.";
-        }
-
+         // Restricciones de cantidad de licencias SMB/Corporate deshabilitadas por solicitud.
+        // var restrictedTotal = input.Lines
+        //     .Where(line => IsRestrictedProduct(line.ProductDescription))
+        //     .Sum(line => line.Quantity);
+        //
+        // if (segment == UserSegment.SMB && restrictedTotal >= SmbLicenseCap)
+        // {
+        //     return $"Para usuarios SMB, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" no puede ser igual o mayor a {SmbLicenseCap}. Total actual: {restrictedTotal}.";
+        // }
+        //
+        // if (segment == UserSegment.Corporate && restrictedTotal > 0 && restrictedTotal < CorporateMinimumLicenses)
+        // {
+        //     return $"Para usuarios Corporate, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" debe ser igual o mayor a {CorporateMinimumLicenses}. Total actual: {restrictedTotal}.";
+        // }
         return null;
     }
 
