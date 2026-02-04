@@ -18,12 +18,15 @@ public sealed class DataverseService : IDataverseService
         PropertyNameCaseInsensitive = true,
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
-    private const string ScenariosTableSetName = "cr07a_negocioscomerciales";
+    private const string DefaultScenariosTableSetName = "cr07a_negocioscomerciales";
+    private readonly string _scenariosTableSetName;
 
-    public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor)
+    public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
     {
         _downstreamApi = downstreamApi;
         _httpContextAccessor = httpContextAccessor;
+        _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
+            ?? DefaultScenariosTableSetName;
     }
 
     public async Task<UserSegment> GetCurrentUserSegmentAsync(CancellationToken ct = default)
@@ -54,7 +57,7 @@ public sealed class DataverseService : IDataverseService
         });
 
         var filter = $"cr07a_systemuserid eq '{EscapeOdataLiteral(currentUser.SystemUserId)}'";
-        var relativeUrl = $"/api/data/v9.2/{ScenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+        var relativeUrl = $"/api/data/v9.2/{_scenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
 
         var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
 
@@ -119,12 +122,12 @@ public sealed class DataverseService : IDataverseService
 
         if (string.IsNullOrWhiteSpace(recordId))
         {
-            var relativeUrl = $"/api/data/v9.2/{ScenariosTableSetName}";
+            var relativeUrl = $"/api/data/v9.2/{_scenariosTableSetName}";
             await CallDataverseSendAsync(relativeUrl, "POST", payload, httpContext.User, ct);
             return;
         }
 
-        var updateUrl = $"/api/data/v9.2/{ScenariosTableSetName}({recordId})";
+        var updateUrl = $"/api/data/v9.2/{_scenariosTableSetName}({recordId})";
         await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
     }
 
@@ -327,9 +330,9 @@ public sealed class DataverseService : IDataverseService
         if (string.IsNullOrWhiteSpace(scenarioId) || string.IsNullOrWhiteSpace(systemUserId))
             return null;
 
-        var select = $"{ScenariosTableSetName}id";
+        var select = $"{_scenariosTableSetName}id";
         var filter = $"cr07a_scenarioid eq '{EscapeOdataLiteral(scenarioId)}' and cr07a_systemuserid eq '{EscapeOdataLiteral(systemUserId)}'";
-        var relativeUrl = $"/api/data/v9.2/{ScenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var relativeUrl = $"/api/data/v9.2/{_scenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
 
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
         using var doc = JsonDocument.Parse(json);
@@ -338,7 +341,7 @@ public sealed class DataverseService : IDataverseService
             return null;
 
         var record = value[0];
-        var idPropName = $"{ScenariosTableSetName}id";
+        var idPropName = $"{_scenariosTableSetName}id";
         return record.TryGetProperty(idPropName, out var idProp) ? idProp.GetString() : null;
     }
 
