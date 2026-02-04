@@ -18,7 +18,7 @@ public sealed class DataverseService : IDataverseService
         PropertyNameCaseInsensitive = true,
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
-    private const string DefaultScenariosTableSetName = "cr07a_negocioscomerciales";
+    private const string DefaultScenariosTableSetName = "cr07a_negocioscomercialeses";
     private readonly string _scenariosTableSetName;
 
     public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
