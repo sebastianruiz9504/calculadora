@@ -1010,9 +1010,20 @@ const showDebugCalcModal = false;
         syncScenarioPanel();
     }
 
-    function deleteScenario() {
+     async function deleteScenario() {
         if (scenarios.length <= 1) { alert("Debes mantener al menos 1 escenario."); return; }
-        scenarios = scenarios.filter(s => s.id !== activeScenarioId);
+
+        const scenarioIdToDelete = activeScenarioId;
+        if (!scenarioIdToDelete) return;
+
+        try {
+            await deleteScenarioFromDataverse(scenarioIdToDelete);
+        } catch (error) {
+            alert(error?.message || "No se pudo eliminar el escenario en Dataverse.");
+            return;
+        }
+
+        scenarios = scenarios.filter(s => s.id !== scenarioIdToDelete);
         activeScenarioId = scenarios[0].id;
         syncScenarioPanel();
     }

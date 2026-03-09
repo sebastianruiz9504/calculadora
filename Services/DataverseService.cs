@@ -134,6 +134,25 @@ public sealed class DataverseService : IDataverseService
         var updateUrl = $"/api/data/v9.2/{_scenariosTableSetName}({recordId})";
         await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
     }
+ public async Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            throw new ArgumentException("ScenarioId requerido.", nameof(scenarioId));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+            throw new InvalidOperationException("Usuario actual no disponible.");
+
+        var recordId = await FindScenarioRecordIdAsync(scenarioId, currentUser.SystemUserId, httpContext.User, ct);
+        if (string.IsNullOrWhiteSpace(recordId))
+            return;
+
+        var deleteUrl = $"/api/data/v9.2/{_scenariosTableSetName}({recordId})";
+        await CallDataverseDeleteAsync(deleteUrl, httpContext.User, ct);
+    }
 
     public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string query, int top = 12, CancellationToken ct = default)
     {
@@ -327,6 +346,27 @@ public sealed class DataverseService : IDataverseService
             throw new InvalidOperationException($"Dataverse error {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
 
         return body;
+    }
+ private async Task CallDataverseDeleteAsync(string relativeUrl, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    {
+        var result = await _downstreamApi.CallApiForUserAsync(
+            serviceName: "Dataverse",
+            options =>
+            {
+                options.RelativePath = relativeUrl;
+                options.HttpMethod = "DELETE";
+            },
+            user: user,
+            cancellationToken: ct);
+
+        if (result is not System.Net.Http.HttpResponseMessage resp)
+            throw new InvalidOperationException($"Unexpected downstream response type: {result?.GetType().FullName ?? "null"}");
+
+        if (resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return;
+
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        throw new InvalidOperationException($"Dataverse error {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
     }
 
     private async Task<string?> FindScenarioRecordIdAsync(string scenarioId, string systemUserId, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)

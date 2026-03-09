@@ -11,4 +11,6 @@ public interface IDataverseService
     Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);
     Task UpsertScenarioAsync(ScenarioSaveRequest request, CancellationToken ct = default);
+      Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default);
+
 }

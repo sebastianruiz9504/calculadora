@@ -94,6 +94,17 @@ public sealed class CalculatorController : Controller
         await _dataverse.UpsertScenarioAsync(input, ct);
         return Ok(new { ok = true });
     }
+    
+    [HttpDelete]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> DeleteScenario([FromQuery] string scenarioId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            return BadRequest("ScenarioId requerido.");
+
+        await _dataverse.DeleteScenarioAsync(scenarioId, ct);
+        return Ok(new { ok = true });
+    }
     [HttpPost]
     public async Task<IActionResult> Export([FromBody] QuoteScenarioInput input, CancellationToken ct)
     {
