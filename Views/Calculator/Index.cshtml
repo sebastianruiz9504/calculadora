@@ -1351,6 +1351,20 @@ async function saveScenarioToDataverse(scenario, lines) {
         }
     }
 
+    async function deleteScenarioFromDataverse(scenarioId) {
+        if (!scenarioId) return;
+
+        const res = await fetch(`/Calculator/DeleteScenario?scenarioId=${encodeURIComponent(scenarioId)}`, {
+            method: "DELETE",
+            headers: { "Accept": "application/json" }
+        });
+
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(txt || "Error eliminando escenario.");
+        }
+    }
+
     async function calculate() {
         const payload = buildPayload();
         if (!payload) return;
