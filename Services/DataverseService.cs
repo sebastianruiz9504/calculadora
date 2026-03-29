@@ -275,6 +275,10 @@ public sealed class DataverseService : IDataverseService
             }
         }
 
+        var scanResults = await ScanRenewalDatesByClientGuidAsync(clientGuid, httpContext.User, top, ct);
+        if (scanResults.Count > 0)
+            return scanResults;
+
         if (emptySuccessfulResult is not null)
             return emptySuccessfulResult;
 
@@ -544,6 +548,59 @@ public sealed class DataverseService : IDataverseService
         }
 
         return list;
+    }
+
+    private async Task<List<RenewalDateLookupItem>> ScanRenewalDatesByClientGuidAsync(
+        Guid clientGuid,
+        System.Security.Claims.ClaimsPrincipal user,
+        int top,
+        CancellationToken ct)
+    {
+        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$filter={Uri.EscapeDataString($"{_salesPerformanceRenewalDateField} ne null")}&$orderby={_salesPerformanceRenewalDateField} asc&$top={top}";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement.GetProperty("value");
+
+        var list = new List<RenewalDateLookupItem>();
+        foreach (var item in arr.EnumerateArray())
+        {
+            if (!RecordContainsClientGuid(item, clientGuid))
+                continue;
+
+            var renewalDate = ReadDateOnly(item, _salesPerformanceRenewalDateField);
+            if (!renewalDate.HasValue)
+                continue;
+
+            list.Add(new RenewalDateLookupItem
+            {
+                RecordId = item.TryGetProperty(_salesPerformanceIdField, out var idProp) ? (idProp.GetString() ?? "") : "",
+                DateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DisplayDate = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+            });
+        }
+
+        return list;
+    }
+
+    private static bool RecordContainsClientGuid(JsonElement item, Guid clientGuid)
+    {
+        var clientGuidText = clientGuid.ToString("D");
+
+        foreach (var property in item.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.String)
+                continue;
+
+            if (!property.Name.Contains("cliente", StringComparison.OrdinalIgnoreCase)
+                && !property.Name.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (string.Equals(property.Value.GetString(), clientGuidText, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static T? DeserializeJsonOrDefault<T>(string? json)

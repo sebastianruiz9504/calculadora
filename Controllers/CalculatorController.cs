@@ -56,8 +56,15 @@ public sealed class CalculatorController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> ClientRenewalDates([FromQuery] string clientId, CancellationToken ct)
     {
-        var items = await _dataverse.SearchRenewalDatesByClientAsync(clientId, top: 250, ct: ct);
-        return Json(items);
+        try
+        {
+            var items = await _dataverse.SearchRenewalDatesByClientAsync(clientId, top: 250, ct: ct);
+            return Json(items);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(GetInnermostMessage(ex));
+        }
     }
 
     [HttpPost]
@@ -397,6 +404,17 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
         if (string.IsNullOrWhiteSpace(safe))
             safe = "Cotizacion";
         return $"{safe}.xlsx";
+    }
+
+    private static string GetInnermostMessage(Exception ex)
+    {
+        var current = ex;
+        while (current.InnerException is not null)
+        {
+            current = current.InnerException;
+        }
+
+        return current.Message;
     }
 
     private sealed record ExportLine(decimal SaleUnit, decimal Monthly, decimal Total, decimal DiscUnit, decimal DiscMonth, decimal DiscYear, decimal Ahorro);
