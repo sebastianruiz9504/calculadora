@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
@@ -20,8 +21,16 @@ public sealed class DataverseService : IDataverseService
     };
     private const string DefaultScenariosTableSetName = "cr07a_negocioscomercialeses";
     private const string DefaultScenariosTableName = "cr07a_negocioscomerciales";
+    private const string DefaultSalesPerformanceTableSetName = "cr07a_salesperformancerecords";
+    private const string DefaultSalesPerformanceIdField = "cr07a_salesperformancerecordid";
+    private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_cliente_value";
+    private const string DefaultSalesPerformanceRenewalDateField = "cr07a_fecharenovacion";
     private readonly string _scenariosTableSetName;
     private readonly string _scenariosTableName;
+    private readonly string _salesPerformanceTableSetName;
+    private readonly string _salesPerformanceIdField;
+    private readonly string _salesPerformanceClientLookupFilterField;
+    private readonly string _salesPerformanceRenewalDateField;
 
     public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
     {
@@ -31,6 +40,14 @@ public sealed class DataverseService : IDataverseService
             ?? DefaultScenariosTableSetName;
         _scenariosTableName = configuration["Dataverse:ScenariosTableName"]
             ?? DefaultScenariosTableName;
+        _salesPerformanceTableSetName = configuration["Dataverse:SalesPerformanceTableSetName"]
+            ?? DefaultSalesPerformanceTableSetName;
+        _salesPerformanceIdField = configuration["Dataverse:SalesPerformanceIdField"]
+            ?? DefaultSalesPerformanceIdField;
+        _salesPerformanceClientLookupFilterField = configuration["Dataverse:SalesPerformanceClientLookupFilterField"]
+            ?? DefaultSalesPerformanceClientLookupFilterField;
+        _salesPerformanceRenewalDateField = configuration["Dataverse:SalesPerformanceRenewalDateField"]
+            ?? DefaultSalesPerformanceRenewalDateField;
     }
 
     public async Task<UserSegment> GetCurrentUserSegmentAsync(CancellationToken ct = default)
@@ -215,6 +232,42 @@ public sealed class DataverseService : IDataverseService
             {
                 Id = item.TryGetProperty("cr07a_clienteid", out var idProp) ? (idProp.GetString() ?? "") : "",
                 Name = item.TryGetProperty("cr07a_nombre", out var nameProp) ? (nameProp.GetString() ?? "") : ""
+            });
+        }
+
+        return list;
+    }
+    public async Task<IReadOnlyList<RenewalDateLookupItem>> SearchRenewalDatesByClientAsync(string clientId, int top = 250, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        if (!Guid.TryParse(clientId, out var clientGuid))
+            return Array.Empty<RenewalDateLookupItem>();
+
+        top = Math.Clamp(top, 1, 5000);
+
+        var select = $"{_salesPerformanceIdField},{_salesPerformanceRenewalDateField}";
+        var filter = $"{_salesPerformanceClientLookupFilterField} eq {clientGuid:D} and {_salesPerformanceRenewalDateField} ne null";
+        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={_salesPerformanceRenewalDateField} asc&$top={top}";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement.GetProperty("value");
+
+        var list = new List<RenewalDateLookupItem>(arr.GetArrayLength());
+        foreach (var item in arr.EnumerateArray())
+        {
+            var renewalDate = ReadDateOnly(item, _salesPerformanceRenewalDateField);
+            if (!renewalDate.HasValue)
+                continue;
+
+            list.Add(new RenewalDateLookupItem
+            {
+                RecordId = item.TryGetProperty(_salesPerformanceIdField, out var idProp) ? (idProp.GetString() ?? "") : "",
+                DateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DisplayDate = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
             });
         }
 
@@ -427,6 +480,27 @@ public sealed class DataverseService : IDataverseService
             JsonValueKind.Number => p.TryGetInt32(out var v) && v != 0,
             _ => false
         };
+    }
+
+    private static DateOnly? ReadDateOnly(JsonElement el, string name)
+    {
+        if (!el.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.String)
+            return null;
+
+        var raw = p.GetString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        if (DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var dateOnly))
+            return dateOnly;
+
+        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dto))
+            return DateOnly.FromDateTime(dto.UtcDateTime);
+
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
+            return DateOnly.FromDateTime(dt);
+
+        return null;
     }
 
     private static T? DeserializeJsonOrDefault<T>(string? json)

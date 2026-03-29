@@ -350,11 +350,24 @@ else
 
         <div class="col-md-2">
             <label class="form-label fw-bold">Final</label>
-            <input id="endDate" type="date" class="form-control" disabled />
+            <select id="endDate" class="form-select" disabled>
+                <option value="">Busca y selecciona un cliente</option>
+            </select>
         </div>
 
         <div class="col-md-1 d-grid">
             <button id="btnCalculate" class="btn btn-calc-dark" type="button">Calcular</button>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-0" id="prorationClientRow" style="display:none;">
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Cliente para prorrateo</label>
+            <div style="position:relative;">
+                <input type="text" id="prorationClientInput" class="form-control" placeholder="Buscar cliente..." autocomplete="off" />
+                <div id="prorationClientSuggestions" class="suggestions"></div>
+            </div>
+            <div class="small text-muted mt-1">Usa el mismo buscador de cliente y carga las fechas desde <span class="mono">cr07a_fecharenovacion</span>.</div>
         </div>
     </div>
 
@@ -508,6 +521,8 @@ else
     let scenarios = [];
     let activeScenarioId = null;
     const provisioningState = { date: "", contractType: "", client: null, loading: false };
+    let prorationSearchTimer = null;
+    let prorationClientResults = [];
     let provisioningSearchTimer = null;
     let provisioningClientResults = [];
 
@@ -524,6 +539,9 @@ else
     const requiresProration = document.getElementById("requiresProration");
     const startDate = document.getElementById("startDate");
     const endDate = document.getElementById("endDate");
+    const prorationClientRow = document.getElementById("prorationClientRow");
+    const prorationClientInput = document.getElementById("prorationClientInput");
+    const prorationClientSuggestions = document.getElementById("prorationClientSuggestions");
     const prorationHint = document.getElementById("prorationHint");
 
     const btnCalculate = document.getElementById("btnCalculate");
@@ -941,12 +959,77 @@ const showDebugCalcModal = false;
 
     function createScenario(name) {
         const id = uid();
- return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", lines: [], lastResult: null };    }
+ return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", prorationClient: null, prorationRenewalOptions: [], lines: [], lastResult: null };    }
  function toDateInputValue(value) {
         if (!value) return "";
         const str = String(value);
         if (str.length >= 10) return str.substring(0, 10);
         return str;
+    }
+
+    function formatDateOptionLabel(value) {
+        const normalized = toDateInputValue(value);
+        if (!normalized) return "";
+        const parts = normalized.split("-");
+        if (parts.length !== 3) return normalized;
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    function buildLegacyRenewalOption(value) {
+        const normalized = toDateInputValue(value);
+        if (!normalized) return null;
+
+        return {
+            recordId: "",
+            dateValue: normalized,
+            displayDate: formatDateOptionLabel(normalized)
+        };
+    }
+
+    function getProrationRenewalOptions(s) {
+        if (!s) return [];
+        if (Array.isArray(s.prorationRenewalOptions) && s.prorationRenewalOptions.length) {
+            return s.prorationRenewalOptions;
+        }
+
+        const legacy = buildLegacyRenewalOption(s.endDate);
+        return legacy ? [legacy] : [];
+    }
+
+    function renderProrationEndDateOptions() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        const options = getProrationRenewalOptions(s);
+        const hasClient = Boolean(s.prorationClient?.id);
+        let placeholder = "Busca y selecciona un cliente";
+
+        if (!s.requiresProration) {
+            placeholder = "Prorrateo desactivado";
+        } else if (hasClient && options.length) {
+            placeholder = "Selecciona una fecha";
+        } else if (hasClient) {
+            placeholder = "No se encontraron fechas";
+        }
+
+        endDate.innerHTML = [
+            `<option value="">${placeholder}</option>`,
+            ...options.map(option => `<option value="${option.dateValue}">${option.displayDate || formatDateOptionLabel(option.dateValue)}</option>`)
+        ].join("");
+
+        endDate.disabled = !s.requiresProration || !options.length;
+        endDate.value = s.endDate && options.some(option => option.dateValue === s.endDate)
+            ? s.endDate
+            : "";
+    }
+
+    function syncProrationInputs() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        prorationClientRow.style.display = s.requiresProration ? "" : "none";
+        prorationClientInput.value = s.prorationClient?.name || "";
+        renderProrationEndDateOptions();
     }
 
     function mapStoredScenario(stored) {
@@ -957,6 +1040,24 @@ const showDebugCalcModal = false;
             requiresProration: Boolean(stored.requiresProration),
             startDate: toDateInputValue(stored.startDate),
             endDate: toDateInputValue(stored.endDate),
+            prorationClient: stored.prorationClient?.id
+                ? {
+                    id: stored.prorationClient.id || "",
+                    name: stored.prorationClient.name || ""
+                }
+                : null,
+            prorationRenewalOptions: Array.isArray(stored.prorationRenewalOptions)
+                ? stored.prorationRenewalOptions
+                    .map(option => {
+                        const dateValue = toDateInputValue(option.dateValue);
+                        return {
+                            recordId: option.recordId || "",
+                            dateValue,
+                            displayDate: option.displayDate || formatDateOptionLabel(dateValue)
+                        };
+                    })
+                    .filter(option => option.dateValue)
+                : [],
             lines: Array.isArray(stored.lines) ? stored.lines.map(line => ({
                 businessType: Number(line.businessType || 0),
                 productId: line.productId || "",
@@ -980,10 +1081,10 @@ const showDebugCalcModal = false;
         dealType.value = String(s.dealType);
         requiresProration.value = String(s.requiresProration);
         startDate.value = s.startDate || "";
-        endDate.value = s.endDate || "";
 
         startDate.disabled = !s.requiresProration;
-        endDate.disabled = !s.requiresProration;
+        syncProrationInputs();
+        hideProrationClientSuggestions();
 
         renderScenarioBar();
         renderLines();
@@ -1070,6 +1171,25 @@ const showDebugCalcModal = false;
         const res = await fetch(`/Calculator/ClientSearch?q=${encodeURIComponent(q)}`, { headers: { "Accept": "application/json" } });
         if (!res.ok) return [];
         return await res.json();
+    }
+
+    async function clientRenewalDateSearch(clientId) {
+        const res = await fetch(`/Calculator/ClientRenewalDates?clientId=${encodeURIComponent(clientId)}`, { headers: { "Accept": "application/json" } });
+        if (!res.ok) return [];
+
+        const items = await res.json();
+        if (!Array.isArray(items)) return [];
+
+        return items
+            .map(item => {
+                const dateValue = toDateInputValue(item.dateValue);
+                return {
+                    recordId: item.recordId || "",
+                    dateValue,
+                    displayDate: item.displayDate || formatDateOptionLabel(dateValue)
+                };
+            })
+            .filter(item => item.dateValue);
     }
 
 
@@ -1210,6 +1330,7 @@ const showDebugCalcModal = false;
     function updateProrationHint() {
         const s = getActiveScenario();
         if (!s) return;
+        const renewalOptions = getProrationRenewalOptions(s);
 
         if (!s.requiresProration) {
             prorationHint.style.display = "none";
@@ -1217,9 +1338,27 @@ const showDebugCalcModal = false;
             return;
         }
 
-        if (!s.startDate || !s.endDate) {
+        if (!s.startDate) {
             prorationHint.style.display = "block";
             prorationHint.innerText = "Selecciona fecha inicio y fecha final para calcular días de prorrateo.";
+            return;
+        }
+
+        if (!s.prorationClient?.id && renewalOptions.length === 0) {
+            prorationHint.style.display = "block";
+            prorationHint.innerText = "Busca un cliente para cargar las fechas finales disponibles.";
+            return;
+        }
+
+        if (s.prorationClient?.id && renewalOptions.length === 0) {
+            prorationHint.style.display = "block";
+            prorationHint.innerText = "El cliente seleccionado no tiene fechas de renovacion disponibles en Dataverse.";
+            return;
+        }
+
+        if (!s.endDate) {
+            prorationHint.style.display = "block";
+            prorationHint.innerText = "Selecciona una fecha final del dropdown para calcular dias de prorrateo.";
             return;
         }
 
@@ -1543,6 +1682,16 @@ function setAttachmentStatus(message, type = "error") {
         clientSuggestions.style.display = "none";
         clientSuggestions.innerHTML = "";
     }
+    function hideProrationClientSuggestions() {
+        prorationClientSuggestions.style.display = "none";
+        prorationClientSuggestions.innerHTML = "";
+    }
+
+    function setProrationEndDateLoading() {
+        endDate.innerHTML = "<option value=\"\">Cargando fechas...</option>";
+        endDate.value = "";
+        endDate.disabled = true;
+    }
     function normalizeProvisioningDate(dateStr) {
         if (!dateStr) return "";
         const parsed = new Date(`${dateStr}T00:00:00Z`);
@@ -1739,13 +1888,16 @@ const attachmentError = validateAttachmentState();
         if (!s) return;
         s.requiresProration = (requiresProration.value === "true");
         startDate.disabled = !s.requiresProration;
-        endDate.disabled = !s.requiresProration;
         if (!s.requiresProration) {
             s.startDate = "";
             s.endDate = "";
+            s.prorationClient = null;
+            s.prorationRenewalOptions = [];
             startDate.value = "";
-            endDate.value = "";
+            prorationClientInput.value = "";
+            hideProrationClientSuggestions();
         }
+        syncProrationInputs();
         updateProrationHint();
         markScenarioDirty();
     });
@@ -1764,6 +1916,102 @@ const attachmentError = validateAttachmentState();
         s.endDate = endDate.value;
         updateProrationHint();
         markScenarioDirty();
+    });
+
+    prorationClientInput.addEventListener("focus", () => {
+        if (prorationClientSuggestions.style.display === "block") {
+            positionFullWidthSuggestions(prorationClientSuggestions, prorationClientInput);
+        }
+    });
+
+    prorationClientInput.addEventListener("input", () => {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        const hadSelection = Boolean(s.prorationClient?.id) || Boolean(s.endDate) || getProrationRenewalOptions(s).length > 0;
+        s.prorationClient = null;
+        s.prorationRenewalOptions = [];
+        s.endDate = "";
+        renderProrationEndDateOptions();
+        updateProrationHint();
+        if (hadSelection) {
+            markScenarioDirty();
+        }
+
+        const q = prorationClientInput.value.trim();
+        clearTimeout(prorationSearchTimer);
+        if (q.length < 2) {
+            hideProrationClientSuggestions();
+            return;
+        }
+
+        prorationSearchTimer = setTimeout(async () => {
+            prorationClientResults = await clientSearch(q);
+            if (!prorationClientResults.length) {
+                hideProrationClientSuggestions();
+                return;
+            }
+
+            positionFullWidthSuggestions(prorationClientSuggestions, prorationClientInput);
+            prorationClientSuggestions.innerHTML = prorationClientResults.map((c, idx) => `
+                <div class="suggestion-item" data-proration-client-idx="${idx}">
+                    <div style="font-weight:800;">${escapeHtml(c.name)}</div>
+                    <div class="small muted">${escapeHtml(c.id)}</div>
+                </div>
+            `).join("");
+            prorationClientSuggestions.style.display = "block";
+        }, 220);
+    });
+
+    prorationClientSuggestions.addEventListener("click", async (e) => {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        const itemDiv = e.target.closest(".suggestion-item");
+        if (!itemDiv) return;
+
+        const idx = Number(itemDiv.getAttribute("data-proration-client-idx"));
+        const item = prorationClientResults[idx];
+        if (!item) return;
+
+        s.prorationClient = { id: item.id, name: item.name };
+        s.prorationRenewalOptions = [];
+        s.endDate = "";
+        prorationClientInput.value = item.name;
+        hideProrationClientSuggestions();
+        setProrationEndDateLoading();
+        updateProrationHint();
+        markScenarioDirty();
+
+        const scenarioId = s.id;
+        const selectedClientId = item.id;
+        const renewalOptions = await clientRenewalDateSearch(selectedClientId);
+        const targetScenario = scenarios.find(x => x.id === scenarioId);
+        if (!targetScenario || targetScenario.prorationClient?.id !== selectedClientId) {
+            return;
+        }
+
+        targetScenario.prorationRenewalOptions = renewalOptions;
+        if (!renewalOptions.some(option => option.dateValue === targetScenario.endDate)) {
+            targetScenario.endDate = "";
+        }
+
+        if (targetScenario.id === activeScenarioId) {
+            renderProrationEndDateOptions();
+            updateProrationHint();
+        }
+    });
+
+    const onProrationClientScrollResize = () => {
+        if (prorationClientSuggestions.style.display === "block") {
+            positionFullWidthSuggestions(prorationClientSuggestions, prorationClientInput);
+        }
+    };
+    window.addEventListener("scroll", onProrationClientScrollResize, true);
+    window.addEventListener("resize", onProrationClientScrollResize);
+    document.addEventListener("click", (e) => {
+        if (e.target === prorationClientInput || prorationClientSuggestions.contains(e.target)) return;
+        hideProrationClientSuggestions();
     });
 
     provisioningDate.addEventListener("change", () => {

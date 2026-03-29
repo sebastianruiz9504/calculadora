@@ -52,6 +52,14 @@ public sealed class CalculatorController : Controller
         return Json(items);
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ClientRenewalDates([FromQuery] string clientId, CancellationToken ct)
+    {
+        var items = await _dataverse.SearchRenewalDatesByClientAsync(clientId, top: 250, ct: ct);
+        return Json(items);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Calculate([FromBody] QuoteScenarioInput input, CancellationToken ct)
     {
