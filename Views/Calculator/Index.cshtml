@@ -1000,7 +1000,8 @@ const showDebugCalcModal = false;
         const s = getActiveScenario();
         if (!s) return;
 
-        const options = getProrationRenewalOptions(s);
+        const options = getProrationRenewalOptions(s)
+            .filter((option, index, all) => option.dateValue && index === all.findIndex(other => other.dateValue === option.dateValue));
         const hasClient = Boolean(s.prorationClient?.id);
         let placeholder = "Busca y selecciona un cliente";
 

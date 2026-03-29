@@ -547,7 +547,7 @@ public sealed class DataverseService : IDataverseService
             });
         }
 
-        return list;
+        return DistinctRenewalDates(list);
     }
 
     private async Task<List<RenewalDateLookupItem>> ScanRenewalDatesByClientGuidAsync(
@@ -580,7 +580,7 @@ public sealed class DataverseService : IDataverseService
             });
         }
 
-        return list;
+        return DistinctRenewalDates(list);
     }
 
     private static bool RecordContainsClientGuid(JsonElement item, Guid clientGuid)
@@ -601,6 +601,16 @@ public sealed class DataverseService : IDataverseService
         }
 
         return false;
+    }
+
+    private static List<RenewalDateLookupItem> DistinctRenewalDates(IEnumerable<RenewalDateLookupItem> items)
+    {
+        return items
+            .Where(item => !string.IsNullOrWhiteSpace(item.DateValue))
+            .GroupBy(item => item.DateValue, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(item => item.DateValue, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static T? DeserializeJsonOrDefault<T>(string? json)
