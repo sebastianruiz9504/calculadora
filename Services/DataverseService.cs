@@ -23,7 +23,7 @@ public sealed class DataverseService : IDataverseService
     private const string DefaultScenariosTableName = "cr07a_negocioscomerciales";
     private const string DefaultSalesPerformanceTableSetName = "cr07a_salesperformancerecords";
     private const string DefaultSalesPerformanceIdField = "cr07a_salesperformancerecordid";
-    private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_cliente_value";
+    private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_clienteid_value";
     private const string DefaultSalesPerformanceRenewalDateField = "cr07a_fecharenovacion";
     private readonly string _scenariosTableSetName;
     private readonly string _scenariosTableName;
@@ -246,32 +246,41 @@ public sealed class DataverseService : IDataverseService
             return Array.Empty<RenewalDateLookupItem>();
 
         top = Math.Clamp(top, 1, 5000);
-
-        var select = $"{_salesPerformanceIdField},{_salesPerformanceRenewalDateField}";
-        var filter = $"{_salesPerformanceClientLookupFilterField} eq {clientGuid:D} and {_salesPerformanceRenewalDateField} ne null";
-        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={_salesPerformanceRenewalDateField} asc&$top={top}";
-
-        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
-
-        using var doc = JsonDocument.Parse(json);
-        var arr = doc.RootElement.GetProperty("value");
-
-        var list = new List<RenewalDateLookupItem>(arr.GetArrayLength());
-        foreach (var item in arr.EnumerateArray())
+        var fallbackLookupFields = new[]
         {
-            var renewalDate = ReadDateOnly(item, _salesPerformanceRenewalDateField);
-            if (!renewalDate.HasValue)
-                continue;
+            _salesPerformanceClientLookupFilterField,
+            "_cr07a_clienteid_value",
+            "_cr07a_cliente_value"
+        }
+        .Where(field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
-            list.Add(new RenewalDateLookupItem
+        List<RenewalDateLookupItem>? emptySuccessfulResult = null;
+        Exception? lastError = null;
+
+        foreach (var lookupField in fallbackLookupFields)
+        {
+            try
             {
-                RecordId = item.TryGetProperty(_salesPerformanceIdField, out var idProp) ? (idProp.GetString() ?? "") : "",
-                DateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                DisplayDate = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
-            });
+                var results = await QueryRenewalDatesByClientAsync(clientGuid, lookupField, httpContext.User, top, ct);
+                if (results.Count > 0)
+                    return results;
+
+                emptySuccessfulResult ??= results;
+            }
+            catch (InvalidOperationException ex)
+            {
+                lastError = ex;
+            }
         }
 
-        return list;
+        if (emptySuccessfulResult is not null)
+            return emptySuccessfulResult;
+
+        throw new InvalidOperationException(
+            "No se pudo consultar cr07a_salesperformancerecord para obtener fechas de renovacion del cliente seleccionado.",
+            lastError);
     }
     public async Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default)
     {
@@ -501,6 +510,40 @@ public sealed class DataverseService : IDataverseService
             return DateOnly.FromDateTime(dt);
 
         return null;
+    }
+
+    private async Task<List<RenewalDateLookupItem>> QueryRenewalDatesByClientAsync(
+        Guid clientGuid,
+        string lookupField,
+        System.Security.Claims.ClaimsPrincipal user,
+        int top,
+        CancellationToken ct)
+    {
+        var select = $"{_salesPerformanceIdField},{_salesPerformanceRenewalDateField}";
+        var filter = $"{lookupField} eq {clientGuid:D} and {_salesPerformanceRenewalDateField} ne null";
+        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={_salesPerformanceRenewalDateField} asc&$top={top}";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement.GetProperty("value");
+
+        var list = new List<RenewalDateLookupItem>(arr.GetArrayLength());
+        foreach (var item in arr.EnumerateArray())
+        {
+            var renewalDate = ReadDateOnly(item, _salesPerformanceRenewalDateField);
+            if (!renewalDate.HasValue)
+                continue;
+
+            list.Add(new RenewalDateLookupItem
+            {
+                RecordId = item.TryGetProperty(_salesPerformanceIdField, out var idProp) ? (idProp.GetString() ?? "") : "",
+                DateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DisplayDate = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+            });
+        }
+
+        return list;
     }
 
     private static T? DeserializeJsonOrDefault<T>(string? json)

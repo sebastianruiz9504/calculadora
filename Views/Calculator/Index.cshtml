@@ -959,7 +959,7 @@ const showDebugCalcModal = false;
 
     function createScenario(name) {
         const id = uid();
- return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", prorationClient: null, prorationRenewalOptions: [], lines: [], lastResult: null };    }
+ return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", prorationClient: null, prorationRenewalOptions: [], prorationRenewalError: "", lines: [], lastResult: null };    }
  function toDateInputValue(value) {
         if (!value) return "";
         const str = String(value);
@@ -1006,6 +1006,8 @@ const showDebugCalcModal = false;
 
         if (!s.requiresProration) {
             placeholder = "Prorrateo desactivado";
+        } else if (s.prorationRenewalError) {
+            placeholder = "Error consultando fechas";
         } else if (hasClient && options.length) {
             placeholder = "Selecciona una fecha";
         } else if (hasClient) {
@@ -1058,6 +1060,7 @@ const showDebugCalcModal = false;
                     })
                     .filter(option => option.dateValue)
                 : [],
+            prorationRenewalError: "",
             lines: Array.isArray(stored.lines) ? stored.lines.map(line => ({
                 businessType: Number(line.businessType || 0),
                 productId: line.productId || "",
@@ -1175,7 +1178,10 @@ const showDebugCalcModal = false;
 
     async function clientRenewalDateSearch(clientId) {
         const res = await fetch(`/Calculator/ClientRenewalDates?clientId=${encodeURIComponent(clientId)}`, { headers: { "Accept": "application/json" } });
-        if (!res.ok) return [];
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(txt || "No se pudieron consultar las fechas de renovacion.");
+        }
 
         const items = await res.json();
         if (!Array.isArray(items)) return [];
@@ -1341,6 +1347,12 @@ const showDebugCalcModal = false;
         if (!s.startDate) {
             prorationHint.style.display = "block";
             prorationHint.innerText = "Selecciona fecha inicio y fecha final para calcular días de prorrateo.";
+            return;
+        }
+
+        if (s.prorationRenewalError) {
+            prorationHint.style.display = "block";
+            prorationHint.innerText = s.prorationRenewalError;
             return;
         }
 
@@ -1893,6 +1905,7 @@ const attachmentError = validateAttachmentState();
             s.endDate = "";
             s.prorationClient = null;
             s.prorationRenewalOptions = [];
+            s.prorationRenewalError = "";
             startDate.value = "";
             prorationClientInput.value = "";
             hideProrationClientSuggestions();
@@ -1931,6 +1944,7 @@ const attachmentError = validateAttachmentState();
         const hadSelection = Boolean(s.prorationClient?.id) || Boolean(s.endDate) || getProrationRenewalOptions(s).length > 0;
         s.prorationClient = null;
         s.prorationRenewalOptions = [];
+        s.prorationRenewalError = "";
         s.endDate = "";
         renderProrationEndDateOptions();
         updateProrationHint();
@@ -1976,6 +1990,7 @@ const attachmentError = validateAttachmentState();
 
         s.prorationClient = { id: item.id, name: item.name };
         s.prorationRenewalOptions = [];
+        s.prorationRenewalError = "";
         s.endDate = "";
         prorationClientInput.value = item.name;
         hideProrationClientSuggestions();
@@ -1985,18 +2000,29 @@ const attachmentError = validateAttachmentState();
 
         const scenarioId = s.id;
         const selectedClientId = item.id;
-        const renewalOptions = await clientRenewalDateSearch(selectedClientId);
         const targetScenario = scenarios.find(x => x.id === scenarioId);
-        if (!targetScenario || targetScenario.prorationClient?.id !== selectedClientId) {
-            return;
-        }
+        try {
+            const renewalOptions = await clientRenewalDateSearch(selectedClientId);
+            if (!targetScenario || targetScenario.prorationClient?.id !== selectedClientId) {
+                return;
+            }
 
-        targetScenario.prorationRenewalOptions = renewalOptions;
-        if (!renewalOptions.some(option => option.dateValue === targetScenario.endDate)) {
+            targetScenario.prorationRenewalOptions = renewalOptions;
+            targetScenario.prorationRenewalError = "";
+            if (!renewalOptions.some(option => option.dateValue === targetScenario.endDate)) {
+                targetScenario.endDate = "";
+            }
+        } catch (err) {
+            if (!targetScenario || targetScenario.prorationClient?.id !== selectedClientId) {
+                return;
+            }
+
+            targetScenario.prorationRenewalOptions = [];
             targetScenario.endDate = "";
+            targetScenario.prorationRenewalError = err?.message || "No se pudieron consultar las fechas de renovacion.";
         }
 
-        if (targetScenario.id === activeScenarioId) {
+        if (targetScenario?.id === activeScenarioId) {
             renderProrationEndDateOptions();
             updateProrationHint();
         }
