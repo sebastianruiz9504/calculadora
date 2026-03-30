@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body style="background:#f7f7f9;">
+@{
+    var canAccessRenovaciones = RenovacionesAccessPolicy.HasAccess(User);
+}
 <header>
     <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom mb-3">
         <div class="container-fluid">
@@ -23,6 +26,12 @@
                     <li class="nav-item">
                         <a class="nav-link text-dark" asp-controller="Calculator" asp-action="Index">Calculadora</a>
                     </li>
+                    @if (canAccessRenovaciones)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-controller="Renovaciones" asp-action="Index">Renovaciones</a>
+                        </li>
+                    }
                 </ul>
 
                 <ul class="navbar-nav ms-auto">

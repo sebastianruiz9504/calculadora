@@ -1,0 +1,1128 @@
+@model RenovacionesPageViewModel
+@{
+    ViewData["Title"] = "Renovaciones";
+}
+
+<style>
+    .renew-shell {
+        display: grid;
+        gap: 18px;
+    }
+
+    .renew-hero,
+    .renew-card,
+    .renew-editor {
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
+    }
+
+    .renew-hero {
+        padding: 22px;
+        background:
+            radial-gradient(circle at top right, rgba(14, 165, 233, .14), transparent 32%),
+            linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .renew-title {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #0f172a;
+    }
+
+    .renew-subtitle {
+        margin: 6px 0 0;
+        color: #475569;
+        max-width: 760px;
+    }
+
+    .renew-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .renew-summary {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .renew-summary__item {
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+    }
+
+    .renew-summary__label {
+        display: block;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #64748b;
+        margin-bottom: 6px;
+    }
+
+    .renew-summary__value {
+        font-size: 22px;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .renew-card {
+        padding: 18px;
+    }
+
+    .renew-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .renew-helper {
+        color: #64748b;
+        font-size: 14px;
+    }
+
+    .renew-status {
+        display: none;
+        padding: 12px 14px;
+        border-radius: 12px;
+        font-weight: 600;
+    }
+
+    .renew-status.show {
+        display: block;
+    }
+
+    .renew-status.info {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border: 1px solid #bfdbfe;
+    }
+
+    .renew-status.success {
+        background: #ecfdf3;
+        color: #166534;
+        border: 1px solid #86efac;
+    }
+
+    .renew-status.error {
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+    }
+
+    .renew-empty {
+        padding: 44px 20px;
+        text-align: center;
+        color: #64748b;
+    }
+
+    .renew-groups {
+        display: grid;
+        gap: 18px;
+    }
+
+    .renew-group {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #ffffff;
+    }
+
+    .renew-group__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border-bottom: 1px solid #e2e8f0;
+        flex-wrap: wrap;
+    }
+
+    .renew-group__title {
+        margin: 0;
+        font-size: 19px;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .renew-group__meta {
+        margin: 4px 0 0;
+        color: #64748b;
+        font-size: 14px;
+    }
+
+    .renew-contract-pill {
+        padding: 10px 14px;
+        border-radius: 14px;
+        background: #eef2ff;
+        color: #312e81;
+        border: 1px solid #c7d2fe;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .renew-table-wrap {
+        overflow: auto;
+    }
+
+    .renew-table {
+        margin: 0;
+        min-width: 980px;
+    }
+
+    .renew-table thead th {
+        background: #f8fafc;
+        color: #475569;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        white-space: nowrap;
+    }
+
+    .renew-table td {
+        vertical-align: middle;
+    }
+
+    .renew-table tr.row-selected {
+        background: #eff6ff;
+    }
+
+    .renew-record-name {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .renew-record-sub {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 2px;
+    }
+
+    .renew-editor {
+        display: none;
+        padding: 18px;
+    }
+
+    .renew-editor.show {
+        display: block;
+    }
+
+    .renew-editor__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+    }
+
+    .renew-editor__title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .renew-editor__subtitle {
+        margin: 5px 0 0;
+        color: #64748b;
+    }
+
+    .renew-editor__table {
+        min-width: 1100px;
+    }
+
+    .renew-editor__footer {
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-top: 14px;
+        margin-top: 14px;
+        border-top: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, rgba(255,255,255,.94), #fff);
+    }
+
+    .lookup-host {
+        position: relative;
+    }
+
+    .lookup-results {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 30;
+        display: none;
+        max-height: 220px;
+        overflow: auto;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        box-shadow: 0 14px 28px rgba(15, 23, 42, .14);
+    }
+
+    .lookup-results.show {
+        display: block;
+    }
+
+    .lookup-result {
+        padding: 9px 12px;
+        cursor: pointer;
+        border-top: 1px solid #f1f5f9;
+    }
+
+    .lookup-result:first-child {
+        border-top: 0;
+    }
+
+    .lookup-result:hover {
+        background: #eff6ff;
+    }
+
+    .lookup-result__label {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .lookup-result__sub {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 2px;
+    }
+
+    .renew-mini {
+        font-size: 12px;
+        color: #64748b;
+    }
+
+    .renew-loading {
+        padding: 36px 20px;
+        text-align: center;
+        color: #475569;
+        font-weight: 600;
+    }
+
+    @@media (max-width: 768px) {
+        .renew-title {
+            font-size: 24px;
+        }
+
+        .renew-group__header,
+        .renew-editor__header,
+        .renew-editor__footer,
+        .renew-toolbar {
+            align-items: stretch;
+        }
+
+        .renew-contract-pill {
+            width: 100%;
+            text-align: center;
+        }
+    }
+</style>
+
+<div class="renew-shell">
+    <section class="renew-hero">
+        <div class="d-flex justify-content-between gap-3 flex-wrap align-items-start">
+            <div>
+                <h1 class="renew-title">Renovaciones</h1>
+                <p class="renew-subtitle">
+                    Administra las lineas de <span class="fw-semibold">cr07a_salesperformancerecord</span>,
+                    filtradas por fecha de renovacion, agrupadas por cliente y con edicion masiva sobre los registros seleccionados.
+                </p>
+            </div>
+            <div class="renew-pill">
+                <span>Usuario</span>
+                <span>@Model.CurrentUser.Email</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="renew-card">
+        <div class="renew-toolbar">
+            <div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Filtrar fecha: <span id="currentFilterLabel">@Model.InitialFilter.ToLabel()</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><button type="button" class="dropdown-item filter-option" data-filter="this-month">Este mes</button></li>
+                            <li><button type="button" class="dropdown-item filter-option" data-filter="previous-month">Mes anterior</button></li>
+                            <li><button type="button" class="dropdown-item filter-option" data-filter="next-month">Mes siguiente</button></li>
+                            <li><button type="button" class="dropdown-item filter-option" data-filter="all">Todo</button></li>
+                        </ul>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="openEditorBtn" disabled>Efectuar renovacion</button>
+                    <button type="button" class="btn btn-outline-secondary" id="refreshBoardBtn">Actualizar</button>
+                </div>
+                <div class="renew-helper mt-2">
+                    Valor contrato por cliente = <strong>cantidad x valor venta unidad USD x 12</strong>, sumado por todas sus lineas.
+                </div>
+            </div>
+            <div class="text-end">
+                <div class="renew-mini">Selecciona una o varias lineas para habilitar la edicion.</div>
+            </div>
+        </div>
+    </section>
+
+    <div id="statusBanner" class="renew-status" role="status" aria-live="polite"></div>
+
+    <section class="renew-summary">
+        <div class="renew-summary__item">
+            <span class="renew-summary__label">Clientes</span>
+            <div class="renew-summary__value" id="summaryClients">0</div>
+        </div>
+        <div class="renew-summary__item">
+            <span class="renew-summary__label">Lineas</span>
+            <div class="renew-summary__value" id="summaryRecords">0</div>
+        </div>
+        <div class="renew-summary__item">
+            <span class="renew-summary__label">Seleccionadas</span>
+            <div class="renew-summary__value" id="summarySelected">0</div>
+        </div>
+        <div class="renew-summary__item">
+            <span class="renew-summary__label">Valor contrato total</span>
+            <div class="renew-summary__value" id="summaryContract">$0.00</div>
+        </div>
+    </section>
+
+    <section class="renew-card">
+        <div id="groupsContainer" class="renew-groups"></div>
+    </section>
+
+    <section class="renew-editor" id="editorPanel">
+        <div class="renew-editor__header">
+            <div>
+                <h2 class="renew-editor__title">Efectuar renovacion</h2>
+                <p class="renew-editor__subtitle">
+                    Edita cliente, producto, cantidad, valor venta unidad USD y fecha de renovacion para todas las lineas seleccionadas.
+                </p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <span class="renew-pill" id="editorSelectionBadge">0 seleccionadas</span>
+                <button type="button" class="btn btn-outline-secondary" id="closeEditorBtn">Cerrar</button>
+            </div>
+        </div>
+
+        <div class="renew-table-wrap">
+            <table class="table table-sm align-middle renew-editor__table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Valor venta UND USD</th>
+                        <th>Fecha renovacion</th>
+                        <th>Valor contrato</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="editorTableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="renew-editor__footer">
+            <div class="renew-mini">Los cambios se enviaran directamente a Dataverse sobre las filas seleccionadas.</div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-outline-secondary" id="clearSelectionBtn">Limpiar seleccion</button>
+                <button type="button" class="btn btn-primary" id="saveChangesBtn">Enviar</button>
+            </div>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const initialFilter = "@Model.InitialFilter.ToKey()";
+    const groupsContainer = document.getElementById("groupsContainer");
+    const statusBanner = document.getElementById("statusBanner");
+    const currentFilterLabel = document.getElementById("currentFilterLabel");
+    const summaryClients = document.getElementById("summaryClients");
+    const summaryRecords = document.getElementById("summaryRecords");
+    const summarySelected = document.getElementById("summarySelected");
+    const summaryContract = document.getElementById("summaryContract");
+    const openEditorBtn = document.getElementById("openEditorBtn");
+    const refreshBoardBtn = document.getElementById("refreshBoardBtn");
+    const editorPanel = document.getElementById("editorPanel");
+    const editorTableBody = document.getElementById("editorTableBody");
+    const editorSelectionBadge = document.getElementById("editorSelectionBadge");
+    const closeEditorBtn = document.getElementById("closeEditorBtn");
+    const clearSelectionBtn = document.getElementById("clearSelectionBtn");
+    const saveChangesBtn = document.getElementById("saveChangesBtn");
+    const filterButtons = Array.from(document.querySelectorAll(".filter-option"));
+
+    const currencyFormatter = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    const state = {
+        filter: initialFilter,
+        board: null,
+        selectedIds: new Set(),
+        drafts: new Map(),
+        recordMap: new Map(),
+        groupMap: new Map(),
+        editorOpen: false,
+        isLoading: false,
+        isSaving: false
+    };
+
+    function escapeHtml(value) {
+        return (value ?? "").toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function formatMoney(value) {
+        return currencyFormatter.format(Number(value || 0));
+    }
+
+    function computeContractValue(quantity, unitSaleUsd) {
+        const safeQuantity = Number.isFinite(Number(quantity)) ? Number(quantity) : 0;
+        const safeUnitValue = Number.isFinite(Number(unitSaleUsd)) ? Number(unitSaleUsd) : 0;
+        return safeQuantity * safeUnitValue * 12;
+    }
+
+    function setStatus(type, message) {
+        if (!message) {
+            statusBanner.className = "renew-status";
+            statusBanner.textContent = "";
+            return;
+        }
+
+        statusBanner.className = `renew-status show ${type}`;
+        statusBanner.textContent = message;
+    }
+
+    function setLoading(loading) {
+        state.isLoading = loading;
+        refreshBoardBtn.disabled = loading || state.isSaving;
+        openEditorBtn.disabled = loading || state.selectedIds.size === 0;
+        saveChangesBtn.disabled = loading || state.isSaving || state.selectedIds.size === 0;
+    }
+
+    async function fetchJson(url, options = {}) {
+        const response = await fetch(url, {
+            headers: {
+                "Accept": "application/json",
+                ...(options.headers || {})
+            },
+            ...options
+        });
+
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || "No fue posible completar la solicitud.");
+        }
+
+        return response.json();
+    }
+
+    function resetSelection() {
+        state.selectedIds.clear();
+        state.drafts.clear();
+        state.editorOpen = false;
+        editorPanel.classList.remove("show");
+    }
+
+    function rebuildIndexes(board) {
+        state.recordMap = new Map();
+        state.groupMap = new Map();
+
+        if (!board || !Array.isArray(board.groups)) {
+            return;
+        }
+
+        board.groups.forEach(group => {
+            const groupKey = getGroupKey(group);
+            state.groupMap.set(groupKey, group);
+            (group.records || []).forEach(record => {
+                state.recordMap.set(record.recordId, record);
+            });
+        });
+    }
+
+    function getGroupKey(group) {
+        return group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
+    }
+
+    function syncDraftsWithSelection() {
+        Array.from(state.selectedIds).forEach(recordId => {
+            if (state.drafts.has(recordId)) {
+                return;
+            }
+
+            const record = state.recordMap.get(recordId);
+            if (!record) {
+                state.selectedIds.delete(recordId);
+                return;
+            }
+
+            state.drafts.set(recordId, {
+                recordId: record.recordId,
+                clientId: record.clientId || "",
+                clientName: record.clientName || "",
+                productId: record.productId || "",
+                productName: record.productName || "",
+                quantity: Number(record.quantity || 0),
+                unitSaleUsd: Number(record.unitSaleUsd || 0),
+                renewalDateValue: record.renewalDateValue || "",
+                clientLookupLogicalName: record.clientLookupLogicalName || "",
+                productLookupLogicalName: record.productLookupLogicalName || ""
+            });
+        });
+
+        Array.from(state.drafts.keys()).forEach(recordId => {
+            if (!state.selectedIds.has(recordId)) {
+                state.drafts.delete(recordId);
+            }
+        });
+    }
+
+    function updateSummary() {
+        const board = state.board || {};
+        summaryClients.textContent = String(board.clientsCount || 0);
+        summaryRecords.textContent = String(board.recordsCount || 0);
+        summarySelected.textContent = String(state.selectedIds.size);
+        summaryContract.textContent = formatMoney(board.totalContractValue || 0);
+        openEditorBtn.disabled = state.isLoading || state.selectedIds.size === 0;
+        saveChangesBtn.disabled = state.isLoading || state.isSaving || state.selectedIds.size === 0;
+        openEditorBtn.textContent = state.selectedIds.size > 0
+            ? `Efectuar renovacion (${state.selectedIds.size})`
+            : "Efectuar renovacion";
+        editorSelectionBadge.textContent = `${state.selectedIds.size} seleccionadas`;
+    }
+
+    function renderEmptyState(message) {
+        groupsContainer.innerHTML = `<div class="renew-empty">${escapeHtml(message)}</div>`;
+    }
+
+    function renderBoard() {
+        currentFilterLabel.textContent = state.board?.filterLabel || "Este mes";
+        filterButtons.forEach(button => {
+            button.classList.toggle("active", button.dataset.filter === state.filter);
+        });
+
+        if (state.isLoading) {
+            groupsContainer.innerHTML = '<div class="renew-loading">Cargando renovaciones...</div>';
+            updateSummary();
+            return;
+        }
+
+        if (!state.board || !Array.isArray(state.board.groups) || state.board.groups.length === 0) {
+            renderEmptyState(`No se encontraron renovaciones para el filtro "${state.board?.filterLabel || currentFilterLabel.textContent}".`);
+            updateSummary();
+            renderEditor();
+            return;
+        }
+
+        groupsContainer.innerHTML = state.board.groups.map(group => {
+            const groupKey = getGroupKey(group);
+            const records = Array.isArray(group.records) ? group.records : [];
+            const selectedCount = records.filter(record => state.selectedIds.has(record.recordId)).length;
+            const allSelected = records.length > 0 && selectedCount === records.length;
+
+            return `
+                <article class="renew-group" data-group-key="${escapeHtml(groupKey)}">
+                    <div class="renew-group__header">
+                        <div class="d-flex align-items-start gap-3 flex-wrap">
+                            <div class="form-check mt-1">
+                                <input class="form-check-input group-checkbox" type="checkbox" data-group-key="${escapeHtml(groupKey)}" ${allSelected ? "checked" : ""}>
+                            </div>
+                            <div>
+                                <h2 class="renew-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
+                                <div class="renew-group__meta">${escapeHtml(String(group.recordCount || records.length))} lineas | ${selectedCount} seleccionadas</div>
+                            </div>
+                        </div>
+                        <div class="renew-contract-pill">Valor contrato: ${formatMoney(group.contractValue || 0)}</div>
+                    </div>
+                    <div class="renew-table-wrap">
+                        <table class="table table-hover renew-table">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Producto</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Valor venta UND USD</th>
+                                    <th>Fecha renovacion</th>
+                                    <th class="text-end">Valor contrato</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${records.map(record => `
+                                    <tr class="${state.selectedIds.has(record.recordId) ? "row-selected" : ""}">
+                                        <td>
+                                            <input class="form-check-input record-checkbox" type="checkbox" data-record-id="${escapeHtml(record.recordId)}" ${state.selectedIds.has(record.recordId) ? "checked" : ""}>
+                                        </td>
+                                        <td>
+                                            <div class="renew-record-name">${escapeHtml(record.productName || "Producto sin asignar")}</div>
+                                            <div class="renew-record-sub">${escapeHtml(record.recordId || "")}</div>
+                                        </td>
+                                        <td class="text-end">${escapeHtml(String(record.quantity ?? 0))}</td>
+                                        <td class="text-end">${formatMoney(record.unitSaleUsd || 0)}</td>
+                                        <td>${escapeHtml(record.renewalDateDisplay || "")}</td>
+                                        <td class="text-end fw-semibold">${formatMoney(record.contractValue || 0)}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            `;
+        }).join("");
+
+        bindBoardEvents();
+        updateSummary();
+        renderEditor();
+    }
+
+    function bindBoardEvents() {
+        groupsContainer.querySelectorAll(".record-checkbox").forEach(input => {
+            input.addEventListener("change", event => {
+                const recordId = event.currentTarget.dataset.recordId;
+                if (!recordId) {
+                    return;
+                }
+
+                if (event.currentTarget.checked) {
+                    state.selectedIds.add(recordId);
+                } else {
+                    state.selectedIds.delete(recordId);
+                }
+
+                syncDraftsWithSelection();
+                renderBoard();
+            });
+        });
+
+        groupsContainer.querySelectorAll(".group-checkbox").forEach(input => {
+            const groupKey = input.dataset.groupKey;
+            if (!groupKey) {
+                return;
+            }
+
+            const group = state.groupMap.get(groupKey);
+            const records = Array.isArray(group?.records) ? group.records : [];
+            const selectedCount = records.filter(record => state.selectedIds.has(record.recordId)).length;
+            input.indeterminate = selectedCount > 0 && selectedCount < records.length;
+
+            input.addEventListener("change", event => {
+                const checked = event.currentTarget.checked;
+                records.forEach(record => {
+                    if (checked) {
+                        state.selectedIds.add(record.recordId);
+                    } else {
+                        state.selectedIds.delete(record.recordId);
+                    }
+                });
+
+                syncDraftsWithSelection();
+                renderBoard();
+            });
+        });
+    }
+
+    function renderEditor() {
+        syncDraftsWithSelection();
+
+        if (!state.editorOpen || state.selectedIds.size === 0) {
+            editorPanel.classList.remove("show");
+            editorTableBody.innerHTML = "";
+            updateSummary();
+            return;
+        }
+
+        const drafts = Array.from(state.selectedIds)
+            .map(recordId => state.drafts.get(recordId))
+            .filter(Boolean)
+            .sort((a, b) => {
+                const clientCompare = (a.clientName || "").localeCompare(b.clientName || "", "es", { sensitivity: "base" });
+                if (clientCompare !== 0) {
+                    return clientCompare;
+                }
+
+                return (a.productName || "").localeCompare(b.productName || "", "es", { sensitivity: "base" });
+            });
+
+        editorPanel.classList.add("show");
+        editorTableBody.innerHTML = drafts.map(draft => `
+            <tr data-record-id="${escapeHtml(draft.recordId)}">
+                <td>
+                    <div class="lookup-host">
+                        <input type="text" class="form-control form-control-sm client-input" value="${escapeHtml(draft.clientName)}" placeholder="Buscar cliente..." autocomplete="off">
+                        <input type="hidden" class="client-id-input" value="${escapeHtml(draft.clientId)}">
+                        <input type="hidden" class="client-lookup-logical-name" value="${escapeHtml(draft.clientLookupLogicalName || "")}">
+                        <div class="lookup-results client-results"></div>
+                    </div>
+                </td>
+                <td>
+                    <div class="lookup-host">
+                        <input type="text" class="form-control form-control-sm product-input" value="${escapeHtml(draft.productName)}" placeholder="Buscar producto..." autocomplete="off">
+                        <input type="hidden" class="product-id-input" value="${escapeHtml(draft.productId)}">
+                        <input type="hidden" class="product-lookup-logical-name" value="${escapeHtml(draft.productLookupLogicalName || "")}">
+                        <div class="lookup-results product-results"></div>
+                    </div>
+                </td>
+                <td style="width: 120px;">
+                    <input type="number" min="1" step="1" class="form-control form-control-sm quantity-input" value="${escapeHtml(String(draft.quantity ?? 0))}">
+                </td>
+                <td style="width: 180px;">
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm unit-value-input" value="${escapeHtml(String(Number(draft.unitSaleUsd ?? 0).toFixed(2)))}">
+                </td>
+                <td style="width: 170px;">
+                    <input type="date" class="form-control form-control-sm renewal-date-input" value="${escapeHtml(draft.renewalDateValue || "")}">
+                </td>
+                <td class="contract-preview fw-semibold">${formatMoney(computeContractValue(draft.quantity, draft.unitSaleUsd))}</td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-secondary remove-selection-btn">Quitar</button>
+                </td>
+            </tr>
+        `).join("");
+
+        bindEditorEvents();
+        updateSummary();
+    }
+
+    function closeAllLookupMenus() {
+        editorTableBody.querySelectorAll(".lookup-results").forEach(menu => {
+            menu.classList.remove("show");
+            menu.innerHTML = "";
+        });
+    }
+
+    function bindEditorEvents() {
+        editorTableBody.querySelectorAll("tr[data-record-id]").forEach(row => {
+            row.querySelector(".quantity-input")?.addEventListener("input", () => updateDraftFromRow(row));
+            row.querySelector(".unit-value-input")?.addEventListener("input", () => updateDraftFromRow(row));
+            row.querySelector(".renewal-date-input")?.addEventListener("change", () => updateDraftFromRow(row));
+            row.querySelector(".remove-selection-btn")?.addEventListener("click", () => {
+                const recordId = row.dataset.recordId;
+                if (!recordId) {
+                    return;
+                }
+
+                state.selectedIds.delete(recordId);
+                state.drafts.delete(recordId);
+                if (state.selectedIds.size === 0) {
+                    state.editorOpen = false;
+                }
+                renderBoard();
+            });
+
+            bindLookupInput(row, "client");
+            bindLookupInput(row, "product");
+            updateDraftFromRow(row);
+        });
+    }
+
+    function bindLookupInput(row, type) {
+        const input = row.querySelector(`.${type}-input`);
+        const idInput = row.querySelector(`.${type}-id-input`);
+        const logicalNameInput = row.querySelector(`.${type}-lookup-logical-name`);
+        const menu = row.querySelector(`.${type}-results`);
+        if (!input || !idInput || !logicalNameInput || !menu) {
+            return;
+        }
+
+        const searchFn = type === "client" ? searchClients : searchProducts;
+        const labelKey = type === "client" ? "name" : "description";
+        let searchToken = 0;
+
+        const renderMenu = items => {
+            if (!Array.isArray(items) || items.length === 0) {
+                menu.innerHTML = '<div class="lookup-result"><div class="lookup-result__label">Sin resultados</div></div>';
+                menu.classList.add("show");
+                return;
+            }
+
+            menu.innerHTML = items.map(item => {
+                const label = item[labelKey] || "";
+                const sub = type === "product" ? formatMoney(item.suggestedRetailPrice || 0) : item.id || "";
+                return `
+                    <div class="lookup-result" data-id="${escapeHtml(item.id || "")}" data-label="${escapeHtml(label)}">
+                        <div class="lookup-result__label">${escapeHtml(label)}</div>
+                        <div class="lookup-result__sub">${escapeHtml(type === "product" ? `Precio sugerido ${sub}` : sub)}</div>
+                    </div>
+                `;
+            }).join("");
+            menu.classList.add("show");
+
+            menu.querySelectorAll(".lookup-result[data-id]").forEach(option => {
+                option.addEventListener("mousedown", event => {
+                    event.preventDefault();
+                    idInput.value = option.dataset.id || "";
+                    input.value = option.dataset.label || "";
+                    if (!logicalNameInput.value) {
+                        logicalNameInput.value = type === "client" ? "cr07a_clienteid" : "cr07a_producto";
+                    }
+                    menu.classList.remove("show");
+                    menu.innerHTML = "";
+                    updateDraftFromRow(row);
+                });
+            });
+        };
+
+        const queueSearch = () => {
+            const query = input.value.trim();
+            if (query.length < 2) {
+                menu.classList.remove("show");
+                menu.innerHTML = "";
+                return;
+            }
+
+            const currentToken = ++searchToken;
+            window.setTimeout(async () => {
+                if (currentToken !== searchToken) {
+                    return;
+                }
+
+                try {
+                    const items = await searchFn(query);
+                    if (currentToken !== searchToken) {
+                        return;
+                    }
+                    renderMenu(items);
+                } catch (error) {
+                    console.error(error);
+                    menu.innerHTML = '<div class="lookup-result"><div class="lookup-result__label">No se pudo buscar</div></div>';
+                    menu.classList.add("show");
+                }
+            }, 220);
+        };
+
+        input.addEventListener("input", () => {
+            idInput.value = "";
+            updateDraftFromRow(row);
+            queueSearch();
+        });
+
+        input.addEventListener("focus", queueSearch);
+        input.addEventListener("blur", () => {
+            window.setTimeout(() => {
+                menu.classList.remove("show");
+                menu.innerHTML = "";
+            }, 150);
+        });
+    }
+
+    function updateDraftFromRow(row) {
+        const recordId = row.dataset.recordId;
+        if (!recordId) {
+            return;
+        }
+
+        const draft = state.drafts.get(recordId);
+        if (!draft) {
+            return;
+        }
+
+        draft.clientName = row.querySelector(".client-input")?.value.trim() || "";
+        draft.clientId = row.querySelector(".client-id-input")?.value.trim() || "";
+        draft.clientLookupLogicalName = row.querySelector(".client-lookup-logical-name")?.value.trim() || draft.clientLookupLogicalName || "cr07a_clienteid";
+        draft.productName = row.querySelector(".product-input")?.value.trim() || "";
+        draft.productId = row.querySelector(".product-id-input")?.value.trim() || "";
+        draft.productLookupLogicalName = row.querySelector(".product-lookup-logical-name")?.value.trim() || draft.productLookupLogicalName || "cr07a_producto";
+        draft.quantity = Number.parseInt(row.querySelector(".quantity-input")?.value || "0", 10);
+        draft.unitSaleUsd = Number.parseFloat(row.querySelector(".unit-value-input")?.value || "0");
+        draft.renewalDateValue = row.querySelector(".renewal-date-input")?.value || "";
+
+        const contractCell = row.querySelector(".contract-preview");
+        if (contractCell) {
+            contractCell.textContent = formatMoney(computeContractValue(draft.quantity, draft.unitSaleUsd));
+        }
+    }
+
+    async function searchClients(query) {
+        return fetchJson(`/Calculator/ClientSearch?q=${encodeURIComponent(query)}`);
+    }
+
+    async function searchProducts(query) {
+        return fetchJson(`/Calculator/ProductSearch?q=${encodeURIComponent(query)}`);
+    }
+
+    function validateDrafts() {
+        const payload = [];
+        const orderedDrafts = Array.from(state.selectedIds).map(recordId => state.drafts.get(recordId)).filter(Boolean);
+
+        for (const draft of orderedDrafts) {
+            const rowLabel = draft.productName || draft.recordId;
+            if (!draft.clientId) {
+                throw new Error(`Selecciona un cliente valido para la linea ${rowLabel}.`);
+            }
+
+            if (!draft.productId) {
+                throw new Error(`Selecciona un producto valido para la linea ${rowLabel}.`);
+            }
+
+            if (!Number.isInteger(draft.quantity) || draft.quantity <= 0) {
+                throw new Error(`La cantidad debe ser mayor a cero para la linea ${rowLabel}.`);
+            }
+
+            if (!Number.isFinite(draft.unitSaleUsd) || draft.unitSaleUsd < 0) {
+                throw new Error(`El valor venta unidad USD no es valido para la linea ${rowLabel}.`);
+            }
+
+            if (!draft.renewalDateValue) {
+                throw new Error(`Debes seleccionar la fecha de renovacion para la linea ${rowLabel}.`);
+            }
+
+            payload.push({
+                recordId: draft.recordId,
+                clientId: draft.clientId,
+                productId: draft.productId,
+                quantity: draft.quantity,
+                unitSaleUsd: Number(draft.unitSaleUsd.toFixed(2)),
+                renewalDateValue: draft.renewalDateValue,
+                clientLookupLogicalName: draft.clientLookupLogicalName || "cr07a_clienteid",
+                productLookupLogicalName: draft.productLookupLogicalName || "cr07a_producto"
+            });
+        }
+
+        return { items: payload };
+    }
+
+    async function loadBoard() {
+        resetSelection();
+        setStatus("info", "Consultando renovaciones...");
+        setLoading(true);
+        state.board = {
+            filterLabel: filterButtons.find(button => button.dataset.filter === state.filter)?.textContent || currentFilterLabel.textContent,
+            clientsCount: 0,
+            recordsCount: 0,
+            totalContractValue: 0,
+            groups: []
+        };
+        renderBoard();
+
+        try {
+            const board = await fetchJson(`/Renovaciones/Records?filter=${encodeURIComponent(state.filter)}`);
+            state.board = board;
+            rebuildIndexes(board);
+            syncDraftsWithSelection();
+            setStatus("", "");
+            renderBoard();
+        } catch (error) {
+            console.error(error);
+            state.board = null;
+            rebuildIndexes(null);
+            renderEmptyState("No fue posible cargar la informacion de renovaciones.");
+            setStatus("error", error?.message || "No fue posible cargar la informacion de renovaciones.");
+            updateSummary();
+        } finally {
+            setLoading(false);
+            renderBoard();
+        }
+    }
+
+    async function saveChanges() {
+        try {
+            const payload = validateDrafts();
+            state.isSaving = true;
+            saveChangesBtn.disabled = true;
+            refreshBoardBtn.disabled = true;
+            setStatus("info", "Actualizando registros en Dataverse...");
+
+            const response = await fetch("/Renovaciones/Update", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || "No fue posible actualizar las renovaciones.");
+            }
+
+            const result = await response.json();
+            await loadBoard();
+            setStatus("success", `Se actualizaron ${result.updated || payload.items.length} lineas correctamente.`);
+        } catch (error) {
+            console.error(error);
+            setStatus("error", error?.message || "No fue posible actualizar las renovaciones.");
+        } finally {
+            state.isSaving = false;
+            updateSummary();
+        }
+    }
+
+    filterButtons.forEach(button => {
+        button.addEventListener("click", async () => {
+            const nextFilter = button.dataset.filter;
+            if (!nextFilter || nextFilter === state.filter) {
+                return;
+            }
+
+            state.filter = nextFilter;
+            await loadBoard();
+        });
+    });
+
+    refreshBoardBtn.addEventListener("click", async () => {
+        await loadBoard();
+    });
+
+    openEditorBtn.addEventListener("click", () => {
+        if (state.selectedIds.size === 0) {
+            return;
+        }
+
+        state.editorOpen = true;
+        renderEditor();
+        editorPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    closeEditorBtn.addEventListener("click", () => {
+        state.editorOpen = false;
+        renderEditor();
+    });
+
+    clearSelectionBtn.addEventListener("click", () => {
+        resetSelection();
+        renderBoard();
+    });
+
+    saveChangesBtn.addEventListener("click", saveChanges);
+
+    document.addEventListener("click", event => {
+        if (!event.target.closest(".lookup-host")) {
+            closeAllLookupMenus();
+        }
+    });
+
+    loadBoard();
+})();
+</script>
+}

@@ -2,10 +2,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Globalization;
+using System.Net.Http;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Renovaciones;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -25,6 +27,23 @@ public sealed class DataverseService : IDataverseService
     private const string DefaultSalesPerformanceIdField = "cr07a_salesperformancerecordid";
     private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_clienteid_value";
     private const string DefaultSalesPerformanceRenewalDateField = "cr07a_fecharenovacion";
+    private const string DefaultSalesPerformanceClientLookupLogicalName = "cr07a_clienteid";
+    private const string DefaultSalesPerformanceProductLookupLogicalName = "cr07a_producto";
+    private const string DefaultSalesPerformanceQuantityField = "cr07a_quantity";
+    private const string DefaultSalesPerformanceUnitSaleUsdField = "cr07a_valorventaunidadusd";
+    private const string ClientsEntitySetName = "cr07a_clientes";
+    private const string ProductsEntitySetName = "cr07a_preciosclouds";
+    private const string FormattedValueAnnotationSuffix = "@OData.Community.Display.V1.FormattedValue";
+    private static readonly string[] SalesPerformanceClientLookupFieldCandidates =
+    {
+        "_cr07a_clientelookup_value",
+        "_cr07a_clienteid_value",
+        "_cr07a_cliente_value"
+    };
+    private static readonly string[] SalesPerformanceProductLookupFieldCandidates =
+    {
+        "_cr07a_producto_value"
+    };
     private readonly string _scenariosTableSetName;
     private readonly string _scenariosTableName;
     private readonly string _salesPerformanceTableSetName;
@@ -286,6 +305,123 @@ public sealed class DataverseService : IDataverseService
             "No se pudo consultar cr07a_salesperformancerecord para obtener fechas de renovacion del cliente seleccionado.",
             lastError);
     }
+
+    public async Task<RenewalBoardDto> GetRenewalBoardAsync(RenewalPeriodFilter filter, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var filterParts = new List<string>
+        {
+            $"{_salesPerformanceRenewalDateField} ne null"
+        };
+
+        var periodFilter = BuildRenewalPeriodFilter(filter);
+        if (!string.IsNullOrWhiteSpace(periodFilter))
+        {
+            filterParts.Add(periodFilter);
+        }
+
+        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$filter={Uri.EscapeDataString(string.Join(" and ", filterParts))}&$orderby={_salesPerformanceRenewalDateField} asc";
+        var rawRecords = await GetDataverseEntitiesAsync(relativeUrl, httpContext.User, ct, AddFormattedValueHeaders);
+
+        var records = rawRecords
+            .Select(ParseRenewalRecord)
+            .Where(item => item is not null)
+            .Cast<RenewalRecordDto>()
+            .OrderBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var groups = records
+            .GroupBy(GetRenewalClientGroupKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var orderedRecords = group
+                    .OrderBy(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var first = orderedRecords[0];
+                return new RenewalClientGroupDto
+                {
+                    ClientId = first.ClientId,
+                    ClientName = first.ClientName,
+                    RecordCount = orderedRecords.Count,
+                    ContractValue = RoundCurrency(orderedRecords.Sum(item => item.ContractValue)),
+                    Records = orderedRecords
+                };
+            })
+            .OrderBy(group => group.ClientName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new RenewalBoardDto
+        {
+            Filter = filter.ToKey(),
+            FilterLabel = filter.ToLabel(),
+            ClientsCount = groups.Count,
+            RecordsCount = records.Count,
+            TotalContractValue = RoundCurrency(groups.Sum(group => group.ContractValue)),
+            Groups = groups
+        };
+    }
+
+    public async Task<int> UpdateRenewalRecordsAsync(IReadOnlyList<RenewalRecordUpdateItem> items, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        if (items is null)
+            throw new ArgumentNullException(nameof(items));
+
+        if (items.Count == 0)
+            return 0;
+
+        foreach (var item in items)
+        {
+            if (item is null)
+                continue;
+
+            var recordId = NormalizeGuid(item.RecordId, nameof(item.RecordId));
+            var clientId = NormalizeGuid(item.ClientId, nameof(item.ClientId));
+            var productId = NormalizeGuid(item.ProductId, nameof(item.ProductId));
+
+            if (item.Quantity <= 0)
+                throw new InvalidOperationException("La cantidad debe ser mayor a cero.");
+
+            if (item.UnitSaleUsd < 0m)
+                throw new InvalidOperationException("El valor venta unidad USD no puede ser negativo.");
+
+            if (!TryParseDateOnly(item.RenewalDateValue, out var renewalDate))
+                throw new InvalidOperationException("La fecha de renovacion no es valida.");
+
+            var clientLookupLogicalName = ResolveLookupLogicalName(
+                item.ClientLookupLogicalName,
+                DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
+                DefaultSalesPerformanceClientLookupLogicalName);
+
+            var productLookupLogicalName = ResolveLookupLogicalName(
+                item.ProductLookupLogicalName,
+                DefaultSalesPerformanceProductLookupLogicalName,
+                DefaultSalesPerformanceProductLookupLogicalName);
+
+            var payload = new Dictionary<string, object?>
+            {
+                [DefaultSalesPerformanceQuantityField] = item.Quantity,
+                [DefaultSalesPerformanceUnitSaleUsdField] = item.UnitSaleUsd,
+                [_salesPerformanceRenewalDateField] = renewalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                [$"{clientLookupLogicalName}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})",
+                [$"{productLookupLogicalName}@odata.bind"] = $"/{ProductsEntitySetName}({productId})"
+            };
+
+            var updateUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}({recordId})";
+            await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+        }
+
+        return items.Count;
+    }
+
     public async Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -364,7 +500,282 @@ public sealed class DataverseService : IDataverseService
         return UserSegment.Unknown;
     }
 
-    private async Task<string> CallDataverseGetJsonAsync(string relativeUrl, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    private string BuildRenewalPeriodFilter(RenewalPeriodFilter filter)
+    {
+        if (filter == RenewalPeriodFilter.All)
+            return "";
+
+        var today = GetBogotaToday();
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+        var targetMonthStart = filter switch
+        {
+            RenewalPeriodFilter.PreviousMonth => monthStart.AddMonths(-1),
+            RenewalPeriodFilter.NextMonth => monthStart.AddMonths(1),
+            _ => monthStart
+        };
+
+        var nextMonthStart = targetMonthStart.AddMonths(1);
+        return $"{_salesPerformanceRenewalDateField} ge {targetMonthStart:yyyy-MM-dd} and {_salesPerformanceRenewalDateField} lt {nextMonthStart:yyyy-MM-dd}";
+    }
+
+    private static DateOnly GetBogotaToday()
+    {
+        var utcNow = DateTimeOffset.UtcNow;
+        foreach (var timeZoneId in new[] { "SA Pacific Standard Time", "America/Bogota" })
+        {
+            try
+            {
+                var timezone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, timezone).DateTime);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return DateOnly.FromDateTime(utcNow.UtcDateTime);
+    }
+
+    private async Task<List<JsonElement>> GetDataverseEntitiesAsync(
+        string relativeUrl,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct,
+        Action<HttpRequestMessage>? customizeRequest = null)
+    {
+        const int maxPages = 50;
+        var pageCount = 0;
+        var items = new List<JsonElement>();
+        string? nextRelativeUrl = relativeUrl;
+
+        while (!string.IsNullOrWhiteSpace(nextRelativeUrl))
+        {
+            pageCount++;
+            if (pageCount > maxPages)
+                throw new InvalidOperationException("Se alcanzo el limite de paginas consultando registros de Dataverse.");
+
+            var json = await CallDataverseGetJsonAsync(nextRelativeUrl, user, ct, customizeRequest);
+            using var doc = JsonDocument.Parse(json);
+            var value = doc.RootElement.GetProperty("value");
+            foreach (var item in value.EnumerateArray())
+            {
+                items.Add(item.Clone());
+            }
+
+            nextRelativeUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var nextLinkProp)
+                ? GetRelativeDataverseUrl(nextLinkProp.GetString())
+                : null;
+        }
+
+        return items;
+    }
+
+    private static string? GetRelativeDataverseUrl(string? nextLink)
+    {
+        if (string.IsNullOrWhiteSpace(nextLink))
+            return null;
+
+        if (Uri.TryCreate(nextLink, UriKind.Absolute, out var absoluteUri))
+            return $"{absoluteUri.AbsolutePath}{absoluteUri.Query}";
+
+        return nextLink;
+    }
+
+    private static void AddFormattedValueHeaders(HttpRequestMessage request)
+    {
+        request.Headers.TryAddWithoutValidation("Prefer", $"odata.include-annotations=\"{FormattedValueAnnotationSuffix.TrimStart('@')}\"");
+    }
+
+    private RenewalRecordDto? ParseRenewalRecord(JsonElement item)
+    {
+        var recordId = ReadString(item, _salesPerformanceIdField);
+        if (string.IsNullOrWhiteSpace(recordId))
+            return null;
+
+        var renewalDate = ReadDateOnly(item, _salesPerformanceRenewalDateField);
+        if (!renewalDate.HasValue)
+            return null;
+
+        var clientLookupProperty = DetectLookupValueProperty(item, SalesPerformanceClientLookupFieldCandidates, "cliente");
+        var productLookupProperty = DetectLookupValueProperty(item, SalesPerformanceProductLookupFieldCandidates, "producto");
+
+        var clientId = ReadString(item, clientLookupProperty);
+        var productId = ReadString(item, productLookupProperty);
+        var clientName = ReadLookupFormattedValue(item, clientLookupProperty);
+        var productName = ReadLookupFormattedValue(item, productLookupProperty);
+        var quantity = ReadIntFlexible(item, DefaultSalesPerformanceQuantityField);
+        var unitSaleUsd = ReadDecimal(item, DefaultSalesPerformanceUnitSaleUsdField) ?? 0m;
+
+        clientName = string.IsNullOrWhiteSpace(clientName) ? "Cliente sin asignar" : clientName.Trim();
+        productName = string.IsNullOrWhiteSpace(productName) ? "Producto sin asignar" : productName.Trim();
+
+        return new RenewalRecordDto
+        {
+            RecordId = recordId,
+            ClientId = clientId,
+            ClientName = clientName,
+            ProductId = productId,
+            ProductName = productName,
+            Quantity = quantity,
+            UnitSaleUsd = RoundCurrency(unitSaleUsd),
+            RenewalDateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            RenewalDateDisplay = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
+            ContractValue = RoundCurrency(quantity * unitSaleUsd * 12m),
+            ClientLookupLogicalName = ResolveLookupLogicalName(
+                DeriveLookupLogicalName(clientLookupProperty),
+                DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
+                DefaultSalesPerformanceClientLookupLogicalName),
+            ProductLookupLogicalName = ResolveLookupLogicalName(
+                DeriveLookupLogicalName(productLookupProperty),
+                DefaultSalesPerformanceProductLookupLogicalName,
+                DefaultSalesPerformanceProductLookupLogicalName)
+        };
+    }
+
+    private static string GetRenewalClientGroupKey(RenewalRecordDto item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.ClientId))
+            return $"id:{item.ClientId}";
+
+        return $"name:{item.ClientName}";
+    }
+
+    private static string? DetectLookupValueProperty(JsonElement item, IEnumerable<string> candidates, string containsToken)
+    {
+        foreach (var candidate in candidates.Where(name => !string.IsNullOrWhiteSpace(name)))
+        {
+            if (item.TryGetProperty(candidate, out _))
+                return candidate;
+        }
+
+        foreach (var property in item.EnumerateObject())
+        {
+            if (!property.Name.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!property.Name.Contains(containsToken, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return property.Name;
+        }
+
+        return null;
+    }
+
+    private static string ResolveLookupLogicalName(string? primary, string? secondary, string fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(primary))
+            return primary.Trim();
+
+        if (!string.IsNullOrWhiteSpace(secondary))
+            return secondary.Trim();
+
+        return fallback;
+    }
+
+    private static string? DeriveLookupLogicalName(string? lookupValuePropertyName)
+    {
+        if (string.IsNullOrWhiteSpace(lookupValuePropertyName))
+            return null;
+
+        var trimmed = lookupValuePropertyName.Trim();
+        if (trimmed.StartsWith('_') && trimmed.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+            return trimmed[1..^6];
+
+        return trimmed;
+    }
+
+    private static string? ReadLookupFormattedValue(JsonElement item, string? lookupValuePropertyName)
+    {
+        if (string.IsNullOrWhiteSpace(lookupValuePropertyName))
+            return null;
+
+        var formattedPropertyName = $"{lookupValuePropertyName}{FormattedValueAnnotationSuffix}";
+        return ReadString(item, formattedPropertyName);
+    }
+
+    private static string ReadString(JsonElement item, string? propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(propertyName))
+            return "";
+
+        if (!item.TryGetProperty(propertyName, out var property))
+            return "";
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString() ?? "",
+            JsonValueKind.Number => property.ToString(),
+            _ => ""
+        };
+    }
+
+    private static int ReadIntFlexible(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var property))
+            return 0;
+
+        if (property.ValueKind == JsonValueKind.Number)
+        {
+            if (property.TryGetInt32(out var intValue))
+                return intValue;
+
+            if (property.TryGetDecimal(out var decimalValue))
+                return (int)Math.Round(decimalValue, MidpointRounding.AwayFromZero);
+        }
+
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            var raw = property.GetString();
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt))
+                return parsedInt;
+
+            if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedDecimal))
+                return (int)Math.Round(parsedDecimal, MidpointRounding.AwayFromZero);
+        }
+
+        return 0;
+    }
+
+    private static bool TryParseDateOnly(string? raw, out DateOnly date)
+    {
+        if (DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out date))
+            return true;
+
+        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dto))
+        {
+            date = DateOnly.FromDateTime(dto.UtcDateTime);
+            return true;
+        }
+
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
+        {
+            date = DateOnly.FromDateTime(dt);
+            return true;
+        }
+
+        date = default;
+        return false;
+    }
+
+    private static string NormalizeGuid(string? raw, string paramName)
+    {
+        if (!Guid.TryParse(raw, out var parsed))
+            throw new InvalidOperationException($"El valor de {paramName} no es valido.");
+
+        return parsed.ToString("D");
+    }
+
+    private static decimal RoundCurrency(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private async Task<string> CallDataverseGetJsonAsync(
+        string relativeUrl,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct,
+        Action<HttpRequestMessage>? customizeRequest = null)
     {
         // En tu combinación de paquetes, esto devuelve HttpResponseMessage.
         var result = await _downstreamApi.CallApiForUserAsync(
@@ -373,6 +784,7 @@ public sealed class DataverseService : IDataverseService
             {
                 options.RelativePath = relativeUrl;
                 options.HttpMethod = "GET";
+                options.CustomizeHttpRequestMessage = customizeRequest;
             },
             user: user,
             cancellationToken: ct);
