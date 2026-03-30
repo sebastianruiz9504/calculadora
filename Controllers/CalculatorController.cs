@@ -14,8 +14,7 @@ public sealed class CalculatorController : Controller
     private readonly IDataverseService _dataverse;
     private readonly IQuoteCalculator _calculator;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
-    private const int SmbLicenseCap = 300;
-    private const int CorporateMinimumLicenses = 300;
+
     public CalculatorController(IDataverseService dataverse, IQuoteCalculator calculator)
     {
         _dataverse = dataverse;
@@ -27,10 +26,8 @@ public sealed class CalculatorController : Controller
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var currentUser = await _dataverse.GetCurrentUserAsync(ct);
-        var segment = currentUser?.Segment ?? UserSegment.Unknown;
         var storedScenarios = await _dataverse.GetScenariosForUserAsync(ct);
 
-        ViewData["Segment"] = segment;
         ViewData["CurrentUser"] = currentUser;
         ViewData["StoredScenarios"] = storedScenarios;
         return View();
@@ -44,7 +41,7 @@ public sealed class CalculatorController : Controller
         return Json(items);
     }
 
-[HttpGet]
+    [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> ClientSearch([FromQuery] string q, CancellationToken ct)
     {
@@ -63,28 +60,23 @@ public sealed class CalculatorController : Controller
         }
         catch (Exception)
         {
-            return BadRequest("No se pudieron consultar las fechas de renovación.");
+            return BadRequest("No se pudieron consultar las fechas de renovaciÃ³n.");
         }
     }
 
     [HttpPost]
-    public async Task<IActionResult> Calculate([FromBody] QuoteScenarioInput input, CancellationToken ct)
+    public IActionResult Calculate([FromBody] QuoteScenarioInput input)
     {
         if (input is null)
-            return BadRequest("Payload inválido.");
+            return BadRequest("Payload invÃ¡lido.");
 
         NormalizeProrationRules(input);
 
-        // Segmento desde Dataverse (puedes cachearlo luego)
-        var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
-  var licenseValidation = ValidateLicenseCaps(input, segment);
+        var licenseValidation = ValidateLicenseCaps(input);
         if (!string.IsNullOrWhiteSpace(licenseValidation))
-        {
             return BadRequest(licenseValidation);
-        }
 
-        // Calcula (utility oculto, devuelve puntos+comisión)
-        var result = _calculator.Calculate(input, segment);
+        var result = _calculator.Calculate(input);
 
         return Json(new
         {
@@ -93,17 +85,16 @@ public sealed class CalculatorController : Controller
             prorationDays = result.ProrationDays,
             prorationFactor = result.ProrationFactor,
             totalMonthlySale = result.TotalMonthlySale,
-            totalSale = result.TotalSale,
-            segment = segment.ToString()
+            totalSale = result.TotalSale
         });
     }
-    
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SaveScenario([FromBody] ScenarioSaveRequest input, CancellationToken ct)
     {
         if (input is null)
-            return BadRequest("Payload inválido.");
+            return BadRequest("Payload invÃ¡lido.");
 
         NormalizeProrationRules(input);
 
@@ -111,12 +102,12 @@ public sealed class CalculatorController : Controller
             return BadRequest("ScenarioId requerido.");
 
         if (input.Lines is null || input.Lines.Count == 0)
-            return BadRequest("Debe incluir líneas.");
+            return BadRequest("Debe incluir lÃ­neas.");
 
         await _dataverse.UpsertScenarioAsync(input, ct);
         return Ok(new { ok = true });
     }
-    
+
     [HttpDelete]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> DeleteScenario([FromQuery] string scenarioId, CancellationToken ct)
@@ -127,55 +118,51 @@ public sealed class CalculatorController : Controller
         await _dataverse.DeleteScenarioAsync(scenarioId, ct);
         return Ok(new { ok = true });
     }
+
     [HttpPost]
-    public async Task<IActionResult> Export([FromBody] QuoteScenarioInput input, CancellationToken ct)
+    public IActionResult Export([FromBody] QuoteScenarioInput input)
     {
         if (input is null)
-            return BadRequest("Payload inválido.");
+            return BadRequest("Payload invÃ¡lido.");
 
         NormalizeProrationRules(input);
 
-        if (input?.Lines is null || input.Lines.Count == 0)
-            return BadRequest("No hay líneas para exportar.");
+        if (input.Lines is null || input.Lines.Count == 0)
+            return BadRequest("No hay lÃ­neas para exportar.");
 
-        var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
-           var licenseValidation = ValidateLicenseCaps(input, segment);
+        var licenseValidation = ValidateLicenseCaps(input);
         if (!string.IsNullOrWhiteSpace(licenseValidation))
-        {
             return BadRequest(licenseValidation);
-        }
+
         var fileName = BuildFileName(input.ScenarioName);
-        using var workbook = BuildWorkbook(input, segment);
-        await using var stream = new MemoryStream();
+        using var workbook = BuildWorkbook(input);
+        using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         stream.Position = 0;
-        return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        return File(
+            stream.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
     }
 
-[HttpPost]
+    [HttpPost]
     public IActionResult ValidateProvisioning([FromBody] ProvisioningRequestInput input)
     {
         var validationError = ValidateProvisioningPayload(input);
         if (!string.IsNullOrWhiteSpace(validationError))
-        {
             return BadRequest(validationError);
-        }
 
         return Ok(new { ok = true });
     }
 
-    private static XLWorkbook BuildWorkbook(QuoteScenarioInput input, UserSegment segment)
+    private static XLWorkbook BuildWorkbook(QuoteScenarioInput input)
     {
         var workbook = new XLWorkbook();
-        var sheet = workbook.AddWorksheet("Cotización");
+        var sheet = workbook.AddWorksheet("CotizaciÃ³n");
 
         var row = 1;
         sheet.Cell(row, 1).Value = "Escenario";
         sheet.Cell(row, 2).Value = input.ScenarioName;
-        row++;
-
-        sheet.Cell(row, 1).Value = "Segmento";
-        sheet.Cell(row, 2).Value = segment.ToString();
         row++;
 
         sheet.Cell(row, 1).Value = "Tipo de negocio";
@@ -198,31 +185,17 @@ public sealed class CalculatorController : Controller
             "Tipo",
             "Producto",
             "Margen %",
-            "Duración (meses)",
+            "DuraciÃ³n (meses)",
             "Venta UND",
             "Cantidad",
             "Venta Mensual",
-            "Venta Total"
+            "Venta Total",
+            "Precio Sugerido"
         };
-
-        if (segment == UserSegment.Corporate)
-        {
-            headers.AddRange(new[]
-            {
-                "Desc. Corp UND",
-                "Desc. Corp Mes",
-                "Desc. Corp Año",
-                "Ahorro Anual"
-            });
-        }
-
-        headers.Add("Precio Sugerido");
 
         var headerRow = row;
         for (var i = 0; i < headers.Count; i++)
-        {
             sheet.Cell(headerRow, i + 1).Value = headers[i];
-        }
 
         sheet.Range(headerRow, 1, headerRow, headers.Count).Style.Font.Bold = true;
         row++;
@@ -231,17 +204,12 @@ public sealed class CalculatorController : Controller
         var idxMonthly = headers.IndexOf("Venta Mensual") + 1;
         var idxTotal = headers.IndexOf("Venta Total") + 1;
         var idxSuggested = headers.IndexOf("Precio Sugerido") + 1;
-        var idxDiscUnit = headers.IndexOf("Desc. Corp UND") + 1;
-        var idxDiscMonth = headers.IndexOf("Desc. Corp Mes") + 1;
-        var idxDiscYear = headers.IndexOf("Desc. Corp Año") + 1;
-        var idxAhorro = headers.IndexOf("Ahorro Anual") + 1;
 
         decimal tSaleUnit = 0m, tMonthly = 0m, tTotal = 0m, tSuggested = 0m;
-        decimal tDiscUnit = 0m, tDiscMonth = 0m, tDiscYear = 0m, tAhorro = 0m;
 
         foreach (var line in input.Lines)
         {
-            var computed = ComputeLine(line, segment);
+            var computed = ComputeLine(line);
 
             sheet.Cell(row, 1).Value = line.BusinessType.ToString();
             sheet.Cell(row, 2).Value = line.ProductDescription;
@@ -251,15 +219,6 @@ public sealed class CalculatorController : Controller
             sheet.Cell(row, 6).Value = line.Quantity;
             sheet.Cell(row, idxMonthly).Value = computed.Monthly;
             sheet.Cell(row, idxTotal).Value = computed.Total;
-
-            if (segment == UserSegment.Corporate)
-            {
-                sheet.Cell(row, idxDiscUnit).Value = computed.DiscUnit;
-                sheet.Cell(row, idxDiscMonth).Value = computed.DiscMonth;
-                sheet.Cell(row, idxDiscYear).Value = computed.DiscYear;
-                sheet.Cell(row, idxAhorro).Value = computed.Ahorro;
-            }
-
             sheet.Cell(row, idxSuggested).Value = Round2(line.SuggestedRetailPrice);
 
             tSaleUnit += computed.SaleUnit * line.Quantity;
@@ -267,31 +226,18 @@ public sealed class CalculatorController : Controller
             tTotal += computed.Total;
             tSuggested += line.SuggestedRetailPrice * line.Quantity;
 
-            tDiscUnit += computed.DiscUnit * line.Quantity;
-            tDiscMonth += computed.DiscMonth;
-            tDiscYear += computed.DiscYear;
-            tAhorro += computed.Ahorro;
-
             row++;
         }
 
         sheet.Cell(row, 1).Value = "Totales";
-        sheet.Cell(row, 3).Value = "—";
-        sheet.Cell(row, 4).Value = "—";
+        sheet.Cell(row, 3).Value = "â€”";
+        sheet.Cell(row, 4).Value = "â€”";
         sheet.Cell(row, idxSaleUnit).Value = Round2(tSaleUnit);
-        sheet.Cell(row, 6).Value = "—";
+        sheet.Cell(row, 6).Value = "â€”";
         sheet.Cell(row, idxMonthly).Value = Round2(tMonthly);
         sheet.Cell(row, idxTotal).Value = Round2(tTotal);
-
-        if (segment == UserSegment.Corporate)
-        {
-            sheet.Cell(row, idxDiscUnit).Value = Round2(tDiscUnit);
-            sheet.Cell(row, idxDiscMonth).Value = Round2(tDiscMonth);
-            sheet.Cell(row, idxDiscYear).Value = Round2(tDiscYear);
-            sheet.Cell(row, idxAhorro).Value = Round2(tAhorro);
-        }
-
         sheet.Cell(row, idxSuggested).Value = Round2(tSuggested);
+
         sheet.Range(headerRow + 1, 1, row, headers.Count).Style.NumberFormat.Format = "#,##0.00";
         sheet.Column(6).Style.NumberFormat.Format = "0";
         sheet.Column(4).Style.NumberFormat.Format = "0";
@@ -301,22 +247,17 @@ public sealed class CalculatorController : Controller
         return workbook;
     }
 
-private static string? ValidateProvisioningPayload(ProvisioningRequestInput input)    {
+    private static string? ValidateProvisioningPayload(ProvisioningRequestInput input)
+    {
         if (input.LineItems is null || input.LineItems.Count == 0)
-        {
-            return "No hay líneas para enviar.";
-        }
+            return "No hay lÃ­neas para enviar.";
 
         var attachment = input.Attachment;
         if (attachment is null)
-        {
-            return "Debes adjuntar la oferta autorizada o correo de aprobación.";
-        }
+            return "Debes adjuntar la oferta autorizada o correo de aprobaciÃ³n.";
 
         if (string.IsNullOrWhiteSpace(attachment.FileName) || string.IsNullOrWhiteSpace(attachment.Base64))
-        {
-            return "Debes adjuntar la oferta autorizada o correo de aprobación.";
-        }
+            return "Debes adjuntar la oferta autorizada o correo de aprobaciÃ³n.";
 
         var extension = Path.GetExtension(attachment.FileName).ToLowerInvariant().TrimStart('.');
         var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -324,9 +265,7 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
             "pdf", "jpg", "jpeg", "doc", "docx"
         };
         if (!allowedExtensions.Contains(extension))
-        {
             return "El adjunto debe ser PDF, JPG/JPEG o DOC/DOCX.";
-        }
 
         var allowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -338,9 +277,7 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
         };
 
         if (string.IsNullOrWhiteSpace(attachment.ContentType) || !allowedContentTypes.Contains(attachment.ContentType))
-        {
             return "El adjunto debe ser PDF, JPG/JPEG o DOC/DOCX.";
-        }
 
         try
         {
@@ -348,80 +285,36 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
         }
         catch (FormatException)
         {
-            return "El adjunto no es válido.";
+            return "El adjunto no es vÃ¡lido.";
         }
 
         return null;
     }
 
-  private static string? ValidateLicenseCaps(QuoteScenarioInput input, UserSegment segment)
+    private static string? ValidateLicenseCaps(QuoteScenarioInput input)
     {
-        if (input.DealType == DealType.CrossSale)
-            return null;
-
-        if (input.Lines is null || input.Lines.Count == 0)
-            return null;
- if (segment == UserSegment.Super)
-            return null;
-
-         // Restricciones de cantidad de licencias SMB/Corporate deshabilitadas por solicitud.
-        // var restrictedTotal = input.Lines
-        //     .Where(line => IsRestrictedProduct(line.ProductDescription))
-        //     .Sum(line => line.Quantity);
-        //
-        // if (segment == UserSegment.SMB && restrictedTotal >= SmbLicenseCap)
-        // {
-        //     return $"Para usuarios SMB, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" no puede ser igual o mayor a {SmbLicenseCap}. Total actual: {restrictedTotal}.";
-        // }
-        //
-        // if (segment == UserSegment.Corporate && restrictedTotal > 0 && restrictedTotal < CorporateMinimumLicenses)
-        // {
-        //     return $"Para usuarios Corporate, la suma de licencias con productos que contengan \"business\" o \"Microsoft 365\" debe ser igual o mayor a {CorporateMinimumLicenses}. Total actual: {restrictedTotal}.";
-        // }
         return null;
-    }
-
-    private static bool IsRestrictedProduct(string? description)
-    {
-        if (string.IsNullOrWhiteSpace(description))
-            return false;
-
-        return description.Contains("business", StringComparison.OrdinalIgnoreCase)
-            || description.Contains("microsoft 365", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void NormalizeProrationRules(QuoteScenarioInput input)
     {
         if (input.RequiresProration)
-        {
             input.DealType = DealType.CrossSale;
-        }
     }
 
     private static void NormalizeProrationRules(ScenarioSaveRequest input)
     {
         if (input.RequiresProration)
-        {
             input.DealType = (int)DealType.CrossSale;
-        }
     }
 
-    private static ExportLine ComputeLine(QuoteLineInput line, UserSegment segment)
+    private static ExportLine ComputeLine(QuoteLineInput line)
     {
         var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
         var monthly = Round2(saleUnit * line.Quantity);
         var total = Round2(monthly * line.ContractMonths);
 
-        decimal discUnit = 0m, discMonth = 0m, discYear = 0m, ahorro = 0m;
-        if (segment == UserSegment.Corporate && line.BusinessType == BusinessType.ModernWork)
-        {
-            discUnit = Round2(saleUnit * 0.9m);
-            discMonth = Round2(discUnit * line.Quantity);
-            discYear = Round2(discMonth * line.ContractMonths);
-            ahorro = Round2((saleUnit * line.Quantity * line.ContractMonths) - discYear);
-        }
-
-        return new ExportLine(saleUnit, monthly, total, discUnit, discMonth, discYear, ahorro);
+        return new ExportLine(saleUnit, monthly, total);
     }
 
     private static decimal Round2(decimal v) =>
@@ -435,16 +328,5 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
         return $"{safe}.xlsx";
     }
 
-    private static string GetInnermostMessage(Exception ex)
-    {
-        var current = ex;
-        while (current.InnerException is not null)
-        {
-            current = current.InnerException;
-        }
-
-        return current.Message;
-    }
-
-    private sealed record ExportLine(decimal SaleUnit, decimal Monthly, decimal Total, decimal DiscUnit, decimal DiscMonth, decimal DiscYear, decimal Ahorro);
+    private sealed record ExportLine(decimal SaleUnit, decimal Monthly, decimal Total);
 }

@@ -17,7 +17,6 @@ public sealed class ScenarioResultSnapshot
 {
     public decimal Points { get; set; }
     public decimal Commission { get; set; }
-    public string? Segment { get; set; }
     public string? ProrationText { get; set; }
     public decimal TotalMonthlySale { get; set; }
     public decimal TotalSale { get; set; }

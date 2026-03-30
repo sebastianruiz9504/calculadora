@@ -90,12 +90,6 @@ public sealed class DataverseService : IDataverseService
             ?? DefaultSupplierExpensesDateFieldKind;
     }
 
-    public async Task<UserSegment> GetCurrentUserSegmentAsync(CancellationToken ct = default)
-    {
-        var info = await GetCurrentUserAsync(ct);
-        return info?.Segment ?? UserSegment.Unknown;
-    }
-
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -633,8 +627,7 @@ public sealed class DataverseService : IDataverseService
         {
             SystemUserId = userRecord.Value.TryGetProperty("systemuserid", out var idProp) ? (idProp.GetString() ?? "") : "",
             DisplayName = userRecord.Value.TryGetProperty("fullname", out var nameProp) ? (nameProp.GetString() ?? "") : "",
-            Email = userRecord.Value.TryGetProperty("internalemailaddress", out var emailProp) ? (emailProp.GetString() ?? "") : "",
-            Segment = ParseSegment(userRecord.Value)
+            Email = userRecord.Value.TryGetProperty("internalemailaddress", out var emailProp) ? (emailProp.GetString() ?? "") : ""
         };
     }
 
@@ -644,7 +637,7 @@ public sealed class DataverseService : IDataverseService
         if (string.IsNullOrWhiteSpace(objectId))
             return null;
 
-        var select = "systemuserid,fullname,internalemailaddress,cr07a_segmentocomercial";
+        var select = "systemuserid,fullname,internalemailaddress";
         var filter = $"azureactivedirectoryobjectid eq {Guid.Parse(objectId):D}";
         var relativeUrl = $"/api/data/v9.2/systemusers?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
 
@@ -657,44 +650,6 @@ public sealed class DataverseService : IDataverseService
             return null;
 
         return value[0].Clone();
-    }
-
-    private static UserSegment ParseSegment(JsonElement item)
-    {
-        if (!item.TryGetProperty("cr07a_segmentocomercial", out var segProp))
-            return UserSegment.Unknown;
-
-        var segRaw = segProp.ValueKind switch
-        {
-            JsonValueKind.Number => segProp.GetInt32().ToString(),
-            JsonValueKind.String => segProp.GetString(),
-            _ => null
-        };
-
-        if (string.IsNullOrWhiteSpace(segRaw))
-            return UserSegment.Unknown;
-
-        if (segRaw.Equals("Corporate", StringComparison.OrdinalIgnoreCase))
-            return UserSegment.Corporate;
-
-        if (segRaw.Equals("SMB", StringComparison.OrdinalIgnoreCase))
-            return UserSegment.SMB;
-
-  if (segRaw.Equals("Super", StringComparison.OrdinalIgnoreCase))
-            return UserSegment.Super;
-
-        if (int.TryParse(segRaw, out var opt))
-        {
-            return opt switch
-            {
-                1 => UserSegment.SMB,
-                2 => UserSegment.Corporate,
-                                3 => UserSegment.Super,
-                _ => UserSegment.Unknown
-            };
-        }
-
-        return UserSegment.Unknown;
     }
 
     private string BuildRenewalPeriodFilter(RenewalPeriodFilter filter)

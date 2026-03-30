@@ -2,11 +2,14 @@
 @using System.Text.Json
 @{
     ViewData["Title"] = "Cotizador Interno";
-    var seg = (UserSegment)(ViewData["Segment"] ?? UserSegment.Unknown);
-    var isCorporate = seg == UserSegment.Corporate;
     var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
-     var storedScenarios = (IReadOnlyList<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>?)ViewData["StoredScenarios"] ?? new List<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>();
-     var isAuthorizedSegment = seg == UserSegment.Super || seg == UserSegment.Corporate || seg == UserSegment.SMB;
+    var currentUserClient = new
+    {
+        currentUser.SystemUserId,
+        currentUser.DisplayName,
+        currentUser.Email
+    };
+    var storedScenarios = (IReadOnlyList<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>?)ViewData["StoredScenarios"] ?? new List<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>();
 }
 
 <style>
@@ -17,14 +20,6 @@
         background: #f9fafb;
         font-size: 12px;
     }
-    .seg-badge {
-        padding: 2px 10px;
-        border-radius: 999px;
-        border: 1px solid #e5e7eb;
-        background: #f3f4f6;
-        font-size: 12px;
-    }
-
     .scenario-tab {
         border: 1px solid #e5e7eb;
         border-radius: 12px;
@@ -96,10 +91,6 @@
     }
     .suggestion-item:hover {
         background: #f9fafb;
-    }
-
-    .corp-bg, .corp-bg th {
-        background: #fff7ed !important;
     }
 
     .table thead th {
@@ -232,30 +223,11 @@
     }
 </style>
 
-@if (!isAuthorizedSegment)
-{
-    <div class="alert alert-warning mt-3" role="alert">
-        Tu usuario no tiene un segmento autorizado para usar esta aplicación. Por favor solicita autorización a
-        <a href="mailto:sruiz@digitaltechcolombia.com">sruiz@digitaltechcolombia.com</a>.
-    </div>
-}
-else
-{
-
 <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
     <div>
         <h1 class="mb-1">Cotizador Interno</h1>
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <span class="pill">Solo uso interno</span>
-            <span class="seg-badge">Segmento: <strong>@seg</strong></span>
-            @if (isCorporate)
-            {
-                <span class="seg-badge">Corporate UI</span>
-            }
-            else
-            {
-                <span class="seg-badge">SMB UI</span>
-            }
         </div>
     </div>
 
@@ -287,7 +259,7 @@ else
     <hr />
 
     <div class="table-wrap">
-        <table class="table table-sm align-middle mb-0" style="min-width:@(isCorporate ? "1800px" : "1500px");">
+        <table class="table table-sm align-middle mb-0" style="min-width:1500px;">
             <thead>
                 <tr>
                     <th style="width:110px;">Tipo</th>
@@ -299,14 +271,6 @@ else
                     <th style="width:110px;">Cantidad</th>
                     <th style="width:150px;">Venta Mensual</th>
                     <th style="width:140px;">Venta Total</th>
-
-                    @if (isCorporate)
-                    {
-                        <th class="corp-bg" style="width:170px;">Desc. Corp UND</th>
-                        <th class="corp-bg" style="width:170px;">Desc. Corp Mes</th>
-                        <th class="corp-bg" style="width:170px;">Desc. Corp Año</th>
-                        <th class="corp-bg" style="width:170px;">Ahorro Anual</th>
-                    }
 
                     <th style="width:150px;">Precio Sugerido</th>
                     <th style="width:70px;"></th>
@@ -393,7 +357,6 @@ else
 
         <div class="col-lg-4">
             <div class="small muted">
-                <div class="d-flex justify-content-between"><span>Segmento</span><span id="resultSegment">—</span></div>
                 <div class="d-flex justify-content-between"><span>Prorrateo</span><span id="resultProration">—</span></div>
                 <div class="d-flex justify-content-between"><span>Venta mensual</span><span id="resultMonthly">—</span></div>
                 <div class="d-flex justify-content-between"><span>Venta total</span><span id="resultTotal">—</span></div>
@@ -492,9 +455,7 @@ else
 
 <script>
 (function () {
-    const isCorporate = @((isCorporate ? "true" : "false"));
-        const currentSegment = "@seg";
-    const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUser, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUserClient, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const storedScenarios = @Html.Raw(JsonSerializer.Serialize(storedScenarios, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const FLOW_CREATE_REQUEST_URL = "https://defaultcab7ea424a214548952ffcde81f2bd.d6.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8529a99cb04c43af984f792d0d9974d4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=WhOJuw2RosHFv74emV7f9ve_Kwj0DqwlEVlQNtg3Qbw"; // TODO: Pegar URL del Flow 1 (Crear Solicitud + Aprobación Angie)
     // TODO: Pegar URL del Flow 2 (Marcar Aprovisionadas) [si aplica]
@@ -568,16 +529,12 @@ else
 
     const resultPoints = document.getElementById("resultPoints");
     const resultCommission = document.getElementById("resultCommission");
-    const resultSegment = document.getElementById("resultSegment");
     const resultProration = document.getElementById("resultProration");
     const resultMonthly = document.getElementById("resultMonthly");
     const resultTotal = document.getElementById("resultTotal");
 
     const attachmentState = { fileName: "", contentType: "", base64: "" };
 
-
-    // const SMB_LICENSE_CAP = 300;
-   //  const CORPORATE_MIN_LICENSES = 300;
     function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 
     function money(n) {
@@ -618,17 +575,13 @@ function getDealTypeLabel(dealType) {
 
     function getDealTypeMultiplier(dealType) {
         switch (Number(dealType)) {
-            case 0: return 1.10;
+            case 0: return 1.08;
             case 1: return 1.00;
-            case 2: return 0.40;
-            case 3: return 0.25;
+            case 2: return 0.50;
+            case 3: return 0.37;
             case 4: return 0.20;
             default: return 1.00;
         }
-    }
-
-    function getSegmentMultiplier(segment) {
-        return segment === "Corporate" ? 1.15 : 1.00;
     }
 
 const showDebugCalcModal = false;
@@ -687,23 +640,21 @@ const showDebugCalcModal = false;
             `;
         }).join("");
 
-        const segment = data.segment || "—";
-        const segmentMultiplier = getSegmentMultiplier(segment);
+        const baseMultiplier = 1.00;
         const dealMultiplier = getDealTypeMultiplier(payload.dealType);
         const prorationFactor = Number(data.prorationFactor || 1);
         const prorationDays = Number(data.prorationDays || 0);
 
-        const utilidadSegmento = totalUtility * segmentMultiplier;
-        const utilidadNegocio = utilidadSegmento * dealMultiplier;
+        const utilidadBase = totalUtility * baseMultiplier;
+        const utilidadNegocio = utilidadBase * dealMultiplier;
         const utilidadProrrateada = utilidadNegocio * prorationFactor;
 
-        const puntosCalculados = (utilidadProrrateada / 750) * 100;
+        const puntosCalculados = (utilidadProrrateada / 3000) * 100;
         const comisionUsd = puntosCalculados * 7.5;
         const comisionCop = comisionUsd * 4000;
 
         return `
             <div class="debug-grid mb-2">
-                <div><span class="debug-chip">Segmento</span> ${escapeHtml(segment)}</div>
                 <div><span class="debug-chip">Tipo negocio</span> ${escapeHtml(getDealTypeLabel(payload.dealType))}</div>
                 <div><span class="debug-chip">Prorrateo</span> ${prorationDays ? `${prorationDays} días (${num(prorationFactor, 4)})` : "No"}</div>
                 <div><span class="debug-chip">Líneas</span> ${lines.length}</div>
@@ -727,7 +678,6 @@ const showDebugCalcModal = false;
                     <tr><th>Totales visibles</th><td>Venta mensual: ${money(totalMonthly)} | Venta total: ${money(totalSale)}</td></tr>
                     <tr><th>Costo total</th><td>${money(totalCost)} (suma de costo × qty)</td></tr>
                     <tr><th>Utilidad base</th><td>${money(totalUtility)} (incluye acelerador: ${money(totalAcelerador)})</td></tr>
-                    <tr><th>+ Segmento</th><td>${num(segmentMultiplier, 2)} → ${money(utilidadSegmento)}</td></tr>
                     <tr><th>+ Tipo negocio</th><td>${num(dealMultiplier, 2)} → ${money(utilidadNegocio)}</td></tr>
                     <tr><th>+ Prorrateo</th><td>${num(prorationFactor, 4)} → ${money(utilidadProrrateada)}</td></tr>
                     <tr><th>Puntaje (calc / API)</th><td>${num(puntosCalculados, 2)} / ${num(data.points || 0, 2)}</td></tr>
@@ -770,7 +720,6 @@ const showDebugCalcModal = false;
         }
         resultPoints.innerText = "—";
         resultCommission.innerText = "—";
-        resultSegment.innerText = "—";
         resultProration.innerText = "—";
         resultMonthly.innerText = "—";
         resultTotal.innerText = "—";
@@ -781,7 +730,6 @@ const showDebugCalcModal = false;
         if (s?.lastResult) {
             resultPoints.innerText = num(s.lastResult.points, 2);
             resultCommission.innerText = money(s.lastResult.commission);
-            resultSegment.innerText = s.lastResult.segment || "—";
             resultProration.innerText = s.lastResult.prorationText || "—";
             resultMonthly.innerText = money(s.lastResult.totalMonthlySale || 0);
             resultTotal.innerText = money(s.lastResult.totalSale || 0);
@@ -804,25 +752,12 @@ const showDebugCalcModal = false;
         const monthly = saleUnit * qty;
         const total = monthly * months;
 
-        // ✅ REGLA CORRECTA:
-        // Corporate discount SOLO aplica para líneas ModernWork (businessType === 0).
-        // Para otras líneas, estas columnas no aplican (0).
-        let discUnit = 0, discMonth = 0, discYear = 0, ahorro = 0;
-
-        if (isCorporate && Number(line.businessType) === 0) {
-            discUnit = saleUnit * 0.9;     // -10% sobre Venta UND
-            discMonth = discUnit * qty;
-            discYear = discMonth * months;
-            ahorro = (saleUnit * qty * months) - discYear;
-        }
-
-        return { saleUnit, monthly, total, discUnit, discMonth, discYear, ahorro };
+        return { saleUnit, monthly, total };
     
     }
 
     function calcTotals(lines) {
         let tCost = 0, tSaleUnit = 0, tMonthly = 0, tTotal = 0, tSuggested = 0;
-        let tDiscUnit = 0, tDiscMonth = 0, tDiscYear = 0, tAhorro = 0;
 
         for (const line of lines) {
             const c = calcLineComputed(line);
@@ -834,14 +769,9 @@ const showDebugCalcModal = false;
             tTotal += c.total;
 
             tSuggested += Number(line.suggestedRetailPrice || 0) * Number(line.quantity || 0);
-
-            tDiscUnit += c.discUnit * Number(line.quantity || 0);
-            tDiscMonth += c.discMonth;
-            tDiscYear += c.discYear;
-            tAhorro += c.ahorro;
         }
 
-        return { tCost, tSaleUnit, tMonthly, tTotal, tSuggested, tDiscUnit, tDiscMonth, tDiscYear, tAhorro };
+        return { tCost, tSaleUnit, tMonthly, tTotal, tSuggested };
     }
 
     function renderTypeChips() {
@@ -887,7 +817,7 @@ const showDebugCalcModal = false;
         if (!s.lines.length) {
             linesBody.innerHTML = `
                 <tr>
-                    <td colspan="${isCorporate ? 15 : 11}" class="muted">
+                    <td colspan="11" class="muted">
                         No hay líneas. Agrega una línea seleccionando un <strong>Tipo de negocio</strong>.
                     </td>
                 </tr>
@@ -902,13 +832,6 @@ const showDebugCalcModal = false;
 
             const costDisabled = lockCost ? "disabled" : "";
             const monthsDisabled = lockMonths ? "disabled" : "";
-
-            const corpCols = isCorporate ? `
-                <td class="corp-bg">${num(computed.discUnit, 2)}</td>
-                <td class="corp-bg">${num(computed.discMonth, 2)}</td>
-                <td class="corp-bg">${num(computed.discYear, 2)}</td>
-                <td class="corp-bg">${num(computed.ahorro, 2)}</td>
-            ` : "";
 
             return `
                 <tr data-idx="${idx}">
@@ -933,9 +856,6 @@ const showDebugCalcModal = false;
                     <td><input class="form-control form-control-sm qty-input" value="${line.quantity}" /></td>
                     <td>${num(computed.monthly,2)}</td>
                     <td>${num(computed.total,2)}</td>
-
-                    ${corpCols}
-
                     <td>${num(line.suggestedRetailPrice,2)}</td>
 
                     <td class="text-end">
@@ -946,12 +866,6 @@ const showDebugCalcModal = false;
         }).join("");
 
         const totals = calcTotals(s.lines);
-        const corpTotals = isCorporate ? `
-            <td class="corp-bg">${num(totals.tDiscUnit,2)}</td>
-            <td class="corp-bg">${num(totals.tDiscMonth,2)}</td>
-            <td class="corp-bg">${num(totals.tDiscYear,2)}</td>
-            <td class="corp-bg">${num(totals.tAhorro,2)}</td>
-        ` : "";
 
         const totalsRow = `
             <tr class="totals-row">
@@ -963,7 +877,6 @@ const showDebugCalcModal = false;
                 <td>—</td>
                 <td>${num(totals.tMonthly,2)}</td>
                 <td>${num(totals.tTotal,2)}</td>
-                ${corpTotals}
                 <td>${num(totals.tSuggested,2)}</td>
                 <td></td>
             </tr>
@@ -1455,29 +1368,6 @@ const showDebugCalcModal = false;
     }
 
       function validateLicenseCaps(scenario, lines) {
-        if (Number(scenario?.dealType) === 1) {
-            return "";
-        }
-  if (currentSegment === "Super") {
-            return "";
-        }
-
-         // Restricciones de cantidad de licencias SMB/Corporate deshabilitadas por solicitud.
-        // const restrictedTotal = lines.reduce((total, line) => {
-        //     const desc = (line.productDescription || "").toLowerCase();
-        //     if (desc.includes("business") || desc.includes("microsoft 365")) {
-        //         return total + Number(line.quantity || 0);
-        //     }
-        //     return total;
-        // }, 0);
-        //
-        // if (currentSegment === "SMB" && restrictedTotal >= SMB_LICENSE_CAP) {
-        //     return `Para usuarios SMB, la suma de licencias con productos que contengan "business" o "Microsoft 365" no puede ser igual o mayor a ${SMB_LICENSE_CAP}. Total actual: ${restrictedTotal}.`;
-        // }
-        //
-        // if (currentSegment === "Corporate" && restrictedTotal > 0 && restrictedTotal < CORPORATE_MIN_LICENSES) {
-        //     return `Para usuarios Corporate, la suma de licencias con productos que contengan "business" o "Microsoft 365" debe ser igual o mayor a ${CORPORATE_MIN_LICENSES}. Total actual: ${restrictedTotal}.`;
-        // }
         return "";
     }
 
@@ -1565,7 +1455,6 @@ async function saveScenarioToDataverse(scenario, lines) {
                 s.lastResult = {
                     points: Number(data.points || 0),
                     commission: Number(data.commission || 0),
-                    segment: data.segment || "—",
                     prorationText: (data.prorationFactor && data.prorationFactor !== 1)
                         ? `${data.prorationDays} días (${Number(data.prorationFactor).toFixed(4)})`
                         : "No",

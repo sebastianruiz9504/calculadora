@@ -1,4 +1,3 @@
-using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
 
 namespace CotizadorInterno.Web.Services.Calculator;
@@ -8,7 +7,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
     private const decimal USD_PER_100_POINTS = 750m;
     private const decimal COP_EXCHANGE_RATE = 4000m;
 
-    public QuoteScenarioResult Calculate(QuoteScenarioInput input, UserSegment segment)
+    public QuoteScenarioResult Calculate(QuoteScenarioInput input)
     {
         var result = new QuoteScenarioResult();
 
@@ -46,9 +45,6 @@ public sealed class QuoteCalculator : IQuoteCalculator
 
         // 3) Ajustes a utilidad
         var adjusted = utility;
-
-        if (segment == UserSegment.Corporate)
-            adjusted *= 1.05m; // +5%
 
         adjusted *= DealTypeMultiplier(input.DealType);
 
@@ -97,10 +93,10 @@ public sealed class QuoteCalculator : IQuoteCalculator
     {
         return dealType switch
         {
-            DealType.ClienteNuevo => 1.08m,   // +5%
+            DealType.ClienteNuevo => 1.08m,   // +8%
             DealType.CrossSale => 1.0m,      // neutral
-            DealType.Renovacion1 => 0.50m,    // queda en 40%
-            DealType.Renovacion2 => 0.25m,
+            DealType.Renovacion1 => 0.50m,
+            DealType.Renovacion2 => 0.37m,
             DealType.Renovacion3Plus => 0.20m,
             _ => 1.00m
         };

@@ -4,7 +4,6 @@ namespace CotizadorInterno.Web.Models.Calculator;
 
 public sealed class CalculatorPageViewModel
 {
-    public UserSegment Segment { get; set; } = UserSegment.Unknown;
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public IReadOnlyList<BusinessTypeOption> BusinessTypes { get; set; } = DefaultBusinessTypes;
 
