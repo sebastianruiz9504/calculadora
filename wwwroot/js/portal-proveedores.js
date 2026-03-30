@@ -218,7 +218,7 @@
 
         state.loadingProviders = true;
         reloadProvidersBtn.disabled = true;
-        supplierHelper.textContent = "Consultando proveedores en Dataverse...";
+        supplierHelper.textContent = "Consultando proveedores disponibles...";
 
         try {
             const url = `/PortalProveedores/Providers?startDate=${encodeURIComponent(startDateInput.value)}&endDate=${encodeURIComponent(endDateInput.value)}`;

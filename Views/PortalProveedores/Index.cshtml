@@ -14,7 +14,7 @@
                 <h1 class="portal-title">Portal proveedores</h1>
                 <p class="portal-subtitle">
                     Administra la solicitud masiva de certificados a clientes y emite certificados de retenciones para proveedores
-                    consultando la información desde <span class="fw-semibold">cr07a_gastodelaempresa</span>.
+                    con la información consolidada del periodo seleccionado.
                 </p>
             </div>
             <div class="portal-pill">
@@ -38,7 +38,7 @@
             <div>
                 <h2 class="portal-card__title">Solicitud de certificados</h2>
                 <p class="portal-card__subtitle">
-                    Envía a Power Automate el asunto y cuerpo del correo para que el flujo recorra la tabla de clientes y dispare el envío masivo.
+                    Envía a Power Automate el asunto y cuerpo del correo para que el flujo recorra los clientes y dispare el envío masivo.
                 </p>
             </div>
             <div class="portal-config-box">
@@ -84,7 +84,7 @@
                 </p>
             </div>
             <div class="portal-soft-note">
-                El dropdown de proveedores elimina duplicados por <span class="fw-semibold">cr07a_nitemisor</span> y conserva una sola razón social por NIT.
+                El dropdown de proveedores elimina duplicados por NIT y conserva una sola razón social por proveedor.
             </div>
         </div>
 
@@ -159,17 +159,17 @@
             <article class="portal-summary-card">
                 <span class="portal-summary-card__label">Total base</span>
                 <div class="portal-summary-card__value" id="summaryBase">$0</div>
-                <div class="portal-summary-card__meta">Suma de <code>cr07a_totalantesdeiva</code></div>
+                <div class="portal-summary-card__meta">Base acumulada del periodo</div>
             </article>
             <article class="portal-summary-card" id="reteFuenteCard">
                 <span class="portal-summary-card__label">Total rete fuente</span>
                 <div class="portal-summary-card__value" id="summaryReteFuente">$0</div>
-                <div class="portal-summary-card__meta">Suma de <code>cr07a_retefuente</code></div>
+                <div class="portal-summary-card__meta">Retención acumulada del periodo</div>
             </article>
             <article class="portal-summary-card" id="reteIcaCard">
                 <span class="portal-summary-card__label">Total rete ICA</span>
                 <div class="portal-summary-card__value" id="summaryReteIca">$0</div>
-                <div class="portal-summary-card__meta">Suma de <code>cr07a_reteica</code></div>
+                <div class="portal-summary-card__meta">Retención acumulada del periodo</div>
             </article>
         </section>
     </section>

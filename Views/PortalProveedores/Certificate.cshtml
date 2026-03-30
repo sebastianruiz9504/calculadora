@@ -62,7 +62,7 @@
                 <p class="certificate-subtitle">
                     @Model.CompanyName, identificado con NIT @Model.CompanyNit, certifica que durante el periodo
                     comprendido entre @Model.Certificate.PeriodLabel practicó
-                    retenciones al proveedor aquí identificado, de acuerdo con la información registrada en Dataverse.
+                    retenciones al proveedor aquí identificado, de acuerdo con la información consolidada para el periodo seleccionado.
                 </p>
             </header>
 
@@ -120,8 +120,8 @@
 
                 <div class="certificate-note">
                     La presente certificación se expide a solicitud de la parte interesada y deja constancia de los valores
-                    acumulados en el periodo indicado, con base en los movimientos asociados al proveedor y consolidados desde
-                    la tabla <strong>cr07a_gastodelaempresa</strong>.
+                    acumulados en el periodo indicado, con base en los movimientos asociados al proveedor y consolidados para
+                    el rango seleccionado.
                 </div>
 
                 <div class="certificate-table-wrap">
@@ -193,7 +193,7 @@
                     </div>
                     <div class="certificate-small">
                         Documento generado por <strong>@Model.CurrentUser.DisplayName</strong> (@Model.CurrentUser.Email).<br />
-                        Certificado emitido electrónicamente desde Portal proveedores con información disponible en Dataverse.
+                        Certificado emitido electrónicamente desde Portal proveedores con información consolidada para el rango y proveedor seleccionados.
                     </div>
                 </div>
             </section>
