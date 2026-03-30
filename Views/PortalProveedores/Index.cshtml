@@ -1,0 +1,206 @@
+@model SupplierPortalPageViewModel
+@{
+    ViewData["Title"] = "Portal proveedores";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/portal-proveedores.css" asp-append-version="true" />
+}
+
+<div id="portalProveedoresApp" class="portal-shell" data-flow-configured="@(Model.IsRequestFlowConfigured ? "true" : "false")">
+    <section class="portal-hero">
+        <div class="d-flex justify-content-between gap-3 flex-wrap align-items-start">
+            <div>
+                <h1 class="portal-title">Portal proveedores</h1>
+                <p class="portal-subtitle">
+                    Administra la solicitud masiva de certificados a clientes y emite certificados de retenciones para proveedores
+                    consultando la información desde <span class="fw-semibold">cr07a_gastodelaempresa</span>.
+                </p>
+            </div>
+            <div class="portal-pill">
+                <span>Usuario</span>
+                <span>@Model.CurrentUser.Email</span>
+            </div>
+        </div>
+
+        <div class="portal-badge-row">
+            <span class="portal-pill">Empresa: @Model.CompanyName</span>
+            <span class="portal-pill">NIT: @Model.CompanyNit</span>
+            @if (!string.IsNullOrWhiteSpace(Model.CompanyCity))
+            {
+                <span class="portal-pill">Ciudad: @Model.CompanyCity</span>
+            }
+        </div>
+    </section>
+
+    <section class="portal-card">
+        <div class="portal-card__header">
+            <div>
+                <h2 class="portal-card__title">Solicitud de certificados</h2>
+                <p class="portal-card__subtitle">
+                    Envía a Power Automate el asunto y cuerpo del correo para que el flujo recorra la tabla de clientes y dispare el envío masivo.
+                </p>
+            </div>
+            <div class="portal-config-box">
+                <div class="fw-semibold mb-1">URL del flujo</div>
+                <div>Pega tu URL en <code>@Model.RequestFlowConfigPath</code> dentro de <code>appsettings.json</code>.</div>
+            </div>
+        </div>
+
+        @if (!Model.IsRequestFlowConfigured)
+        {
+            <div class="portal-status show warning" role="status">
+                La URL del flujo todavía no está configurada. El botón quedará bloqueado hasta diligenciar
+                <code>@Model.RequestFlowConfigPath</code>.
+            </div>
+        }
+
+        <div class="portal-grid portal-grid--wide mt-3">
+            <div class="portal-field">
+                <label for="requestSubject">Asunto</label>
+                <input id="requestSubject" class="form-control" maxlength="250" placeholder="Ej. Solicitud de certificado tributario" />
+                <small>Se enviará al flujo como <code>subject</code>.</small>
+            </div>
+            <div class="portal-field" style="grid-column: 1 / -1;">
+                <label for="requestBody">Cuerpo</label>
+                <textarea id="requestBody" class="form-control" placeholder="Escribe aquí el mensaje que el flujo enviará a cada cliente."></textarea>
+                <small>Se enviará al flujo como <code>body</code>, respetando saltos de línea.</small>
+            </div>
+        </div>
+
+        <div id="requestStatus" class="portal-status mt-3" role="status" aria-live="polite"></div>
+
+        <div class="portal-actions">
+            <button type="button" class="btn btn-primary" id="sendRequestBtn" @(Model.IsRequestFlowConfigured ? "" : "disabled")>Enviar solicitud al flujo</button>
+        </div>
+    </section>
+
+    <section class="portal-card">
+        <div class="portal-card__header">
+            <div>
+                <h2 class="portal-card__title">Emisión de certificados</h2>
+                <p class="portal-card__subtitle">
+                    Filtra por rango de fechas, selecciona el proveedor y el tipo de certificado para consolidar retenciones y preparar el documento.
+                </p>
+            </div>
+            <div class="portal-soft-note">
+                El dropdown de proveedores elimina duplicados por <span class="fw-semibold">cr07a_nitemisor</span> y conserva una sola razón social por NIT.
+            </div>
+        </div>
+
+        <div class="portal-grid portal-grid--wide">
+            <div class="portal-field">
+                <label for="startDate">Fecha inicial</label>
+                <input id="startDate" type="date" class="form-control" />
+            </div>
+            <div class="portal-field">
+                <label for="endDate">Fecha final</label>
+                <input id="endDate" type="date" class="form-control" />
+            </div>
+            <div class="portal-field">
+                <label for="supplierSearchInput">Proveedor</label>
+                <div class="portal-toolbar">
+                    <div class="portal-lookup flex-grow-1">
+                        <input id="supplierSearchInput" class="form-control" placeholder="Busca por nombre o NIT" autocomplete="off" />
+                        <input id="supplierNit" type="hidden" />
+                        <div id="supplierResults" class="portal-lookup-menu"></div>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary" id="reloadProvidersBtn">Actualizar lista</button>
+                </div>
+                <small id="supplierHelper">Primero selecciona el rango de fechas para cargar proveedores.</small>
+                <div class="mt-2" id="selectedSupplierChipWrap" hidden>
+                    <span class="portal-selected-chip" id="selectedSupplierChip"></span>
+                </div>
+            </div>
+            <div class="portal-field">
+                <label>Tipo de certificado</label>
+                <div class="dropdown w-100">
+                    <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" id="certificateTypeButton" data-bs-toggle="dropdown" aria-expanded="false">
+                        Selecciona al menos uno
+                    </button>
+                    <div class="dropdown-menu portal-type-menu" aria-labelledby="certificateTypeButton">
+                        <label class="portal-type-option">
+                            <input type="checkbox" class="form-check-input mt-0 certificate-type-input" value="retefuente" />
+                            <span>Rete fuente</span>
+                        </label>
+                        <label class="portal-type-option">
+                            <input type="checkbox" class="form-check-input mt-0 certificate-type-input" value="reteica" />
+                            <span>Rete ICA</span>
+                        </label>
+                    </div>
+                </div>
+                <small>Puedes seleccionar uno o ambos tipos. Debe quedar al menos uno activo.</small>
+            </div>
+        </div>
+
+        <div id="searchStatus" class="portal-status mt-3" role="status" aria-live="polite"></div>
+
+        <div class="portal-actions">
+            <button type="button" class="btn btn-outline-secondary" id="clearFiltersBtn">Limpiar</button>
+            <button type="button" class="btn btn-primary" id="searchSummaryBtn">Consultar retenciones</button>
+        </div>
+
+        <section id="summarySection" class="portal-summary" hidden>
+            <article class="portal-summary-card">
+                <span class="portal-summary-card__label">Proveedor</span>
+                <div class="portal-summary-card__value" id="summarySupplier">-</div>
+                <div class="portal-summary-card__meta" id="summarySupplierNit">-</div>
+            </article>
+            <article class="portal-summary-card">
+                <span class="portal-summary-card__label">Periodo</span>
+                <div class="portal-summary-card__value" id="summaryPeriod">-</div>
+                <div class="portal-summary-card__meta" id="summaryTypes">-</div>
+            </article>
+            <article class="portal-summary-card">
+                <span class="portal-summary-card__label">Total facturas</span>
+                <div class="portal-summary-card__value" id="summaryInvoices">$0</div>
+                <div class="portal-summary-card__meta" id="summaryRecords">0 filas</div>
+            </article>
+            <article class="portal-summary-card">
+                <span class="portal-summary-card__label">Total base</span>
+                <div class="portal-summary-card__value" id="summaryBase">$0</div>
+                <div class="portal-summary-card__meta">Suma de <code>cr07a_totalantesdeiva</code></div>
+            </article>
+            <article class="portal-summary-card" id="reteFuenteCard">
+                <span class="portal-summary-card__label">Total rete fuente</span>
+                <div class="portal-summary-card__value" id="summaryReteFuente">$0</div>
+                <div class="portal-summary-card__meta">Suma de <code>cr07a_retefuente</code></div>
+            </article>
+            <article class="portal-summary-card" id="reteIcaCard">
+                <span class="portal-summary-card__label">Total rete ICA</span>
+                <div class="portal-summary-card__value" id="summaryReteIca">$0</div>
+                <div class="portal-summary-card__meta">Suma de <code>cr07a_reteica</code></div>
+            </article>
+        </section>
+    </section>
+
+    <section class="portal-table-card" id="tableSection" hidden>
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+            <div>
+                <h3 class="portal-card__title mb-0" style="font-size:22px;">Detalle de movimientos</h3>
+                <p class="portal-card__subtitle mb-0">
+                    Se muestran todas las filas encontradas en el rango consultado para el proveedor seleccionado.
+                </p>
+            </div>
+            <div class="portal-caption">El botón final abre una vista A4 lista para guardar como PDF.</div>
+        </div>
+
+        <div class="portal-table-wrap">
+            <table class="table table-sm align-middle portal-table">
+                <thead>
+                    <tr id="resultsTableHead"></tr>
+                </thead>
+                <tbody id="resultsTableBody"></tbody>
+                <tfoot id="resultsTableFoot"></tfoot>
+            </table>
+        </div>
+
+        <div class="portal-actions">
+            <button type="button" class="btn btn-primary" id="emitCertificateBtn" disabled>Emitir certificado</button>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/portal-proveedores.js" asp-append-version="true"></script>
+}

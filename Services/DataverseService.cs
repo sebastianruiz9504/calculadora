@@ -7,6 +7,7 @@ using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Renovaciones;
 
 namespace CotizadorInterno.Web.Services;
@@ -31,6 +32,11 @@ public sealed class DataverseService : IDataverseService
     private const string DefaultSalesPerformanceProductLookupLogicalName = "cr07a_producto";
     private const string DefaultSalesPerformanceQuantityField = "cr07a_quantity";
     private const string DefaultSalesPerformanceUnitSaleUsdField = "cr07a_valorventaunidadusd";
+    private const string DefaultSupplierExpensesTableSetName = "cr07a_gastodelaempresas";
+    private const string DefaultSupplierExpensesTableName = "cr07a_gastodelaempresa";
+    private const string DefaultSupplierExpensesIdField = "cr07a_gastodelaempresaid";
+    private const string DefaultSupplierExpensesDateField = "createdon";
+    private const string DefaultSupplierExpensesDateFieldKind = "date-time";
     private const string ClientsEntitySetName = "cr07a_clientes";
     private const string ProductsEntitySetName = "cr07a_preciosclouds";
     private const string FormattedValueAnnotationSuffix = "@OData.Community.Display.V1.FormattedValue";
@@ -50,6 +56,11 @@ public sealed class DataverseService : IDataverseService
     private readonly string _salesPerformanceIdField;
     private readonly string _salesPerformanceClientLookupFilterField;
     private readonly string _salesPerformanceRenewalDateField;
+    private readonly string _supplierExpensesTableSetName;
+    private readonly string _supplierExpensesTableName;
+    private readonly string _supplierExpensesIdField;
+    private readonly string _supplierExpensesDateField;
+    private readonly string _supplierExpensesDateFieldKind;
 
     public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
     {
@@ -67,6 +78,16 @@ public sealed class DataverseService : IDataverseService
             ?? DefaultSalesPerformanceClientLookupFilterField;
         _salesPerformanceRenewalDateField = configuration["Dataverse:SalesPerformanceRenewalDateField"]
             ?? DefaultSalesPerformanceRenewalDateField;
+        _supplierExpensesTableSetName = configuration["SupplierPortal:ExpensesTableSetName"]
+            ?? DefaultSupplierExpensesTableSetName;
+        _supplierExpensesTableName = configuration["SupplierPortal:ExpensesTableName"]
+            ?? DefaultSupplierExpensesTableName;
+        _supplierExpensesIdField = configuration["SupplierPortal:ExpensesIdField"]
+            ?? DefaultSupplierExpensesIdField;
+        _supplierExpensesDateField = configuration["SupplierPortal:ExpensesDateField"]
+            ?? DefaultSupplierExpensesDateField;
+        _supplierExpensesDateFieldKind = configuration["SupplierPortal:ExpensesDateFieldKind"]
+            ?? DefaultSupplierExpensesDateFieldKind;
     }
 
     public async Task<UserSegment> GetCurrentUserSegmentAsync(CancellationToken ct = default)
@@ -495,6 +516,109 @@ public sealed class DataverseService : IDataverseService
         return items.Count;
     }
 
+    public async Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        string? searchTerm = null,
+        CancellationToken ct = default)
+    {
+        var rows = await GetSupplierExpenseRowsAsync(startDate, endDate, ct);
+        IEnumerable<SupplierProviderLookupItem> providers = rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.SupplierName) || !string.IsNullOrWhiteSpace(row.SupplierNit))
+            .GroupBy(GetSupplierProviderGroupKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var representative = group
+                    .OrderByDescending(item => !string.IsNullOrWhiteSpace(item.SupplierName))
+                    .ThenByDescending(item => !string.IsNullOrWhiteSpace(item.SupplierNit))
+                    .ThenBy(item => item.SupplierName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.SupplierNit, StringComparer.OrdinalIgnoreCase)
+                    .First();
+
+                return new SupplierProviderLookupItem
+                {
+                    Nit = representative.SupplierNit,
+                    Name = representative.SupplierName
+                };
+            });
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.Trim();
+            providers = providers.Where(item =>
+                item.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || item.Nit.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return providers
+            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Nit, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(
+        SupplierCertificateQuery query,
+        CancellationToken ct = default)
+    {
+        if (query is null)
+            throw new ArgumentNullException(nameof(query));
+
+        if (query.EndDate < query.StartDate)
+            throw new InvalidOperationException("La fecha final no puede ser menor que la inicial.");
+
+        if (query.CertificateTypes is null || query.CertificateTypes.Count == 0)
+            throw new InvalidOperationException("Debes seleccionar al menos un tipo de certificado.");
+
+        var rows = await GetSupplierExpenseRowsAsync(query.StartDate, query.EndDate, ct);
+        var supplierNitKey = NormalizeSupplierTaxId(query.SupplierNit);
+        var filteredRows = rows
+            .Where(row => string.Equals(NormalizeSupplierTaxId(row.SupplierNit), supplierNitKey, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(row => row.ExpenseDateValue, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.TotalInvoices)
+            .ToList();
+
+        if (filteredRows.Count == 0 && !string.IsNullOrWhiteSpace(query.SupplierName))
+        {
+            filteredRows = rows
+                .Where(row => string.Equals(row.SupplierName, query.SupplierName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(row => row.ExpenseDateValue, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.TotalInvoices)
+                .ToList();
+        }
+
+        var certificateTypes = query.CertificateTypes
+            .Distinct()
+            .ToList();
+
+        var supplierName = ResolveMostCommonValue(
+            filteredRows.Select(row => row.SupplierName),
+            query.SupplierName);
+        var supplierNit = ResolveMostCommonValue(
+            filteredRows.Select(row => row.SupplierNit),
+            query.SupplierNit);
+
+        return new SupplierCertificateSummaryDto
+        {
+            SupplierName = supplierName,
+            SupplierNit = supplierNit,
+            PeriodStartValue = query.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            PeriodEndValue = query.EndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            PeriodLabel = $"{query.StartDate:dd/MM/yyyy} al {query.EndDate:dd/MM/yyyy}",
+            CertificateTypes = certificateTypes,
+            CertificateTypesLabel = certificateTypes.ToSummaryLabel(),
+            RecordsCount = filteredRows.Count,
+            TotalInvoices = RoundCurrency(filteredRows.Sum(row => row.TotalInvoices)),
+            TotalBase = RoundCurrency(filteredRows.Sum(row => row.TotalBase)),
+            TotalReteFuente = certificateTypes.Contains(SupplierCertificateType.ReteFuente)
+                ? RoundCurrency(filteredRows.Sum(row => row.TotalReteFuente))
+                : 0m,
+            TotalReteIca = certificateTypes.Contains(SupplierCertificateType.ReteIca)
+                ? RoundCurrency(filteredRows.Sum(row => row.TotalReteIca))
+                : 0m,
+            Records = filteredRows
+        };
+    }
+
     public async Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -616,6 +740,112 @@ public sealed class DataverseService : IDataverseService
         }
 
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
+    }
+
+    private async Task<List<SupplierCertificateRecordDto>> GetSupplierExpenseRowsAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var select = string.Join(",", new[]
+        {
+            _supplierExpensesIdField,
+            _supplierExpensesDateField,
+            "cr07a_nombreemisor",
+            "cr07a_nitemisor",
+            "cr07a_total",
+            "cr07a_totalantesdeiva",
+            "cr07a_retefuente",
+            "cr07a_reteica"
+        });
+        var filter = BuildSupplierExpenseDateFilter(startDate, endDate);
+        var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={_supplierExpensesDateField} asc";
+        var rawRecords = await GetDataverseEntitiesAsync(relativeUrl, httpContext.User, ct);
+
+        return rawRecords
+            .Select(ParseSupplierExpenseRecord)
+            .Where(item => item is not null)
+            .Cast<SupplierCertificateRecordDto>()
+            .ToList();
+    }
+
+    private string BuildSupplierExpenseDateFilter(DateOnly startDate, DateOnly endDate)
+    {
+        var endExclusive = endDate.AddDays(1);
+        if (string.Equals(_supplierExpensesDateFieldKind, "date-only", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{_supplierExpensesDateField} ge {startDate:yyyy-MM-dd} and {_supplierExpensesDateField} lt {endExclusive:yyyy-MM-dd}";
+        }
+
+        var startDateTime = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var endDateTime = new DateTimeOffset(endExclusive.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        return $"{_supplierExpensesDateField} ge {startDateTime:yyyy-MM-ddTHH:mm:ssZ} and {_supplierExpensesDateField} lt {endDateTime:yyyy-MM-ddTHH:mm:ssZ}";
+    }
+
+    private SupplierCertificateRecordDto? ParseSupplierExpenseRecord(JsonElement item)
+    {
+        var expenseDate = ReadDateOnly(item, _supplierExpensesDateField);
+        var expenseDateValue = expenseDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            ?? ReadString(item, _supplierExpensesDateField);
+        var supplierName = ReadString(item, "cr07a_nombreemisor").Trim();
+        var supplierNit = ReadString(item, "cr07a_nitemisor").Trim();
+        var recordId = ReadString(item, _supplierExpensesIdField);
+
+        if (string.IsNullOrWhiteSpace(recordId))
+        {
+            recordId = $"{supplierNit}|{supplierName}|{expenseDateValue}";
+        }
+
+        return new SupplierCertificateRecordDto
+        {
+            RecordId = recordId,
+            SupplierName = supplierName,
+            SupplierNit = supplierNit,
+            ExpenseDateValue = expenseDateValue,
+            ExpenseDateDisplay = expenseDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? expenseDateValue,
+            TotalInvoices = RoundCurrency(ReadDecimal(item, "cr07a_total") ?? 0m),
+            TotalBase = RoundCurrency(ReadDecimal(item, "cr07a_totalantesdeiva") ?? 0m),
+            TotalReteFuente = RoundCurrency(ReadDecimal(item, "cr07a_retefuente") ?? 0m),
+            TotalReteIca = RoundCurrency(ReadDecimal(item, "cr07a_reteica") ?? 0m)
+        };
+    }
+
+    private static string GetSupplierProviderGroupKey(SupplierCertificateRecordDto item)
+    {
+        var nitKey = NormalizeSupplierTaxId(item.SupplierNit);
+        if (!string.IsNullOrWhiteSpace(nitKey))
+            return $"nit:{nitKey}";
+
+        return $"name:{item.SupplierName.Trim().ToLowerInvariant()}";
+    }
+
+    private static string ResolveMostCommonValue(IEnumerable<string> values, string? fallback)
+    {
+        var resolved = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .GroupBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .FirstOrDefault();
+
+        return resolved ?? (fallback?.Trim() ?? "");
+    }
+
+    private static string NormalizeSupplierTaxId(string? nit)
+    {
+        if (string.IsNullOrWhiteSpace(nit))
+            return "";
+
+        return new string(nit
+            .Trim()
+            .Where(char.IsLetterOrDigit)
+            .ToArray())
+            .ToUpperInvariant();
     }
 
     private async Task<List<JsonElement>> GetDataverseEntitiesAsync(

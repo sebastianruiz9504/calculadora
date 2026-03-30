@@ -1,0 +1,285 @@
+@page {
+    size: A4;
+    margin: 18mm;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #111827;
+    background: #e5e7eb;
+}
+
+.print-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: rgba(15, 23, 42, .96);
+    color: #fff;
+}
+
+.print-toolbar__text {
+    font-size: 14px;
+}
+
+.print-toolbar__actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.print-toolbar button {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 16px;
+    background: #f59e0b;
+    color: #111827;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.certificate-wrap {
+    padding: 28px 16px 40px;
+}
+
+.certificate-sheet {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 24px 50px rgba(15, 23, 42, .18);
+    overflow: hidden;
+}
+
+.certificate-header {
+    padding: 34px 38px 28px;
+    background:
+        radial-gradient(circle at top right, rgba(245, 158, 11, .18), transparent 30%),
+        linear-gradient(140deg, #0f172a 0%, #1e293b 100%);
+    color: #fff;
+}
+
+.certificate-kicker {
+    display: inline-block;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid rgba(255, 255, 255, .18);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.certificate-title {
+    margin: 16px 0 10px;
+    font-size: 34px;
+    line-height: 1.05;
+    letter-spacing: -.03em;
+}
+
+.certificate-subtitle {
+    margin: 0;
+    max-width: 720px;
+    color: rgba(255, 255, 255, .86);
+    line-height: 1.55;
+}
+
+.certificate-body {
+    padding: 30px 38px 38px;
+}
+
+.certificate-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.certificate-panel,
+.certificate-stat {
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    background: #fff;
+}
+
+.certificate-panel {
+    padding: 18px;
+}
+
+.certificate-panel__label {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #6b7280;
+    margin-bottom: 9px;
+    font-weight: 700;
+}
+
+.certificate-panel__title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: 8px;
+}
+
+.certificate-panel__meta {
+    color: #374151;
+    line-height: 1.55;
+    font-size: 14px;
+}
+
+.certificate-stats {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 18px;
+}
+
+.certificate-stat {
+    padding: 18px;
+    background: linear-gradient(160deg, #ffffff 0%, #fafaf9 100%);
+}
+
+.certificate-stat__label {
+    display: block;
+    color: #6b7280;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.certificate-stat__value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #111827;
+}
+
+.certificate-stat__meta {
+    margin-top: 7px;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.certificate-note {
+    margin-top: 18px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.certificate-table-wrap {
+    margin-top: 22px;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-size: 12px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 12px 14px;
+    text-align: left;
+}
+
+tbody td,
+tfoot th,
+tfoot td {
+    padding: 12px 14px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 14px;
+}
+
+.text-end {
+    text-align: right;
+}
+
+tfoot th,
+tfoot td {
+    background: #fafaf9;
+    font-weight: 800;
+}
+
+.certificate-footer {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.certificate-signature {
+    padding-top: 28px;
+}
+
+.certificate-signature__line {
+    width: 240px;
+    border-top: 1px solid #111827;
+    margin-bottom: 10px;
+}
+
+.certificate-signature__meta {
+    font-size: 14px;
+    color: #374151;
+    line-height: 1.55;
+}
+
+.certificate-small {
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+    .certificate-grid,
+    .certificate-footer {
+        grid-template-columns: 1fr;
+    }
+
+    .certificate-header,
+    .certificate-body {
+        padding-left: 24px;
+        padding-right: 24px;
+    }
+}
+
+@media print {
+    body {
+        background: #fff;
+    }
+
+    .print-toolbar {
+        display: none !important;
+    }
+
+    .certificate-wrap {
+        padding: 0;
+    }
+
+    .certificate-sheet {
+        max-width: none;
+        box-shadow: none;
+        border-radius: 0;
+    }
+}

@@ -25,6 +25,7 @@ builder.Services.AddDownstreamApi("Dataverse", options =>
     options.Scopes = new[] { $"{baseUrl}/user_impersonation" };
 });
 builder.Services.AddScoped<CotizadorInterno.Web.Services.Calculator.IQuoteCalculator, CotizadorInterno.Web.Services.Calculator.QuoteCalculator>();
+builder.Services.AddHttpClient();
 
 // ✅ Login obligatorio para toda la app
 builder.Services.AddControllersWithViews(options =>
@@ -36,6 +37,8 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<RenovacionesAccessFilter>();
+builder.Services.AddScoped<PortalProveedoresAccessFilter>();
+builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.Unspecified;

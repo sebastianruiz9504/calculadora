@@ -7,10 +7,12 @@
     <title>@ViewData["Title"] - Cotizador Interno</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @await RenderSectionAsync("Styles", required: false)
 </head>
 <body style="background:#f7f7f9;">
 @{
     var canAccessRenovaciones = RenovacionesAccessPolicy.HasAccess(User);
+    var canAccessPortalProveedores = PortalProveedoresAccessPolicy.HasAccess(User);
 }
 <header>
     <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom mb-3">
@@ -30,6 +32,12 @@
                     {
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-controller="Renovaciones" asp-action="Index">Renovaciones</a>
+                        </li>
+                    }
+                    @if (canAccessPortalProveedores)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-controller="PortalProveedores" asp-action="Index">Portal proveedores</a>
                         </li>
                     }
                 </ul>
