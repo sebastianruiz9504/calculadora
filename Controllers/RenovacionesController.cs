@@ -1,3 +1,4 @@
+using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Renovaciones;
 using CotizadorInterno.Web.Services;
@@ -6,6 +7,7 @@ using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
 
+[ServiceFilter(typeof(RenovacionesAccessFilter))]
 public sealed class RenovacionesController : Controller
 {
     private readonly IDataverseService _dataverse;
@@ -20,9 +22,7 @@ public sealed class RenovacionesController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var currentUser = await GetAuthorizedUserAsync(ct);
-        if (currentUser is null)
-            return Forbid();
+        var currentUser = await GetCurrentUserAsync(ct);
 
         var model = new RenovacionesPageViewModel
         {
@@ -37,10 +37,6 @@ public sealed class RenovacionesController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Records([FromQuery] string? filter, CancellationToken ct)
     {
-        var currentUser = await GetAuthorizedUserAsync(ct);
-        if (currentUser is null)
-            return Forbid();
-
         var parsedFilter = RenewalPeriodFilterExtensions.ParseOrDefault(filter);
         var board = await _dataverse.GetRenewalBoardAsync(parsedFilter, ct);
         return Json(board);
@@ -50,10 +46,6 @@ public sealed class RenovacionesController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Update([FromBody] RenewalBatchUpdateRequest? request, CancellationToken ct)
     {
-        var currentUser = await GetAuthorizedUserAsync(ct);
-        if (currentUser is null)
-            return Forbid();
-
         if (request is null || request.Items.Count == 0)
             return BadRequest("Debes seleccionar al menos una linea para actualizar.");
 
@@ -61,15 +53,14 @@ public sealed class RenovacionesController : Controller
         return Ok(new { ok = true, updated = updatedCount });
     }
 
-    private async Task<CurrentUserInfo?> GetAuthorizedUserAsync(CancellationToken ct)
+    private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct)
     {
-        if (RenovacionesAccessPolicy.HasAccess(User))
-            return await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
-
-        var currentUser = await _dataverse.GetCurrentUserAsync(ct);
-        if (RenovacionesAccessPolicy.HasAccess(currentUser?.Email))
+        if (HttpContext.Items.TryGetValue(RenovacionesAccessFilter.CurrentUserItemKey, out var cachedUser)
+            && cachedUser is CurrentUserInfo currentUser)
+        {
             return currentUser;
+        }
 
-        return null;
+        return await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
     }
 }
