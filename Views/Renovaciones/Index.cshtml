@@ -372,6 +372,7 @@
                             <li><button type="button" class="dropdown-item filter-option" data-filter="this-month">Este mes</button></li>
                             <li><button type="button" class="dropdown-item filter-option" data-filter="previous-month">Mes anterior</button></li>
                             <li><button type="button" class="dropdown-item filter-option" data-filter="next-month">Mes siguiente</button></li>
+                            <li><button type="button" class="dropdown-item filter-option" data-filter="all-past">Todas las pasadas</button></li>
                             <li><button type="button" class="dropdown-item filter-option" data-filter="all">Todo</button></li>
                         </ul>
                     </div>
@@ -454,6 +455,23 @@
     </section>
 </div>
 
+<div class="modal fade" id="saveResultModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="saveResultModalTitle">Resultado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="saveResultModalMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Aceptar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
 (() => {
@@ -474,6 +492,10 @@
     const clearSelectionBtn = document.getElementById("clearSelectionBtn");
     const saveChangesBtn = document.getElementById("saveChangesBtn");
     const filterButtons = Array.from(document.querySelectorAll(".filter-option"));
+    const saveResultModalElement = document.getElementById("saveResultModal");
+    const saveResultModalTitle = document.getElementById("saveResultModalTitle");
+    const saveResultModalMessage = document.getElementById("saveResultModalMessage");
+    const saveResultModal = saveResultModalElement ? new bootstrap.Modal(saveResultModalElement) : null;
 
     const currencyFormatter = new Intl.NumberFormat("en-US", {
         style: "currency",
@@ -489,6 +511,7 @@
         drafts: new Map(),
         recordMap: new Map(),
         groupMap: new Map(),
+        expandedGroups: new Set(),
         editorOpen: false,
         isLoading: false,
         isSaving: false
@@ -511,6 +534,33 @@
         const safeQuantity = Number.isFinite(Number(quantity)) ? Number(quantity) : 0;
         const safeUnitValue = Number.isFinite(Number(unitSaleUsd)) ? Number(unitSaleUsd) : 0;
         return safeQuantity * safeUnitValue * 12;
+    }
+
+    function showResultModal(title, message) {
+        if (!saveResultModal || !saveResultModalTitle || !saveResultModalMessage) {
+            return;
+        }
+
+        saveResultModalTitle.textContent = title;
+        saveResultModalMessage.textContent = message;
+        saveResultModal.show();
+    }
+
+    function addOneYearToDateValue(dateValue) {
+        if (!dateValue) {
+            return "";
+        }
+
+        const parts = dateValue.split("-").map(Number);
+        if (parts.length !== 3 || parts.some(Number.isNaN)) {
+            return dateValue;
+        }
+
+        const [year, month, day] = parts;
+        const targetYear = year + 1;
+        const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+        const targetDay = Math.min(day, lastDayOfTargetMonth);
+        return `${String(targetYear).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
     }
 
     function setStatus(type, message) {
@@ -594,9 +644,11 @@
                 clientName: record.clientName || "",
                 productId: record.productId || "",
                 productName: record.productName || "",
+                originalClientId: record.clientId || "",
+                originalProductId: record.productId || "",
                 quantity: Number(record.quantity || 0),
                 unitSaleUsd: Number(record.unitSaleUsd || 0),
-                renewalDateValue: record.renewalDateValue || "",
+                renewalDateValue: addOneYearToDateValue(record.renewalDateValue || ""),
                 clientLookupLogicalName: record.clientLookupLogicalName || "",
                 productLookupLogicalName: record.productLookupLogicalName || ""
             });
@@ -651,6 +703,12 @@
             const records = Array.isArray(group.records) ? group.records : [];
             const selectedCount = records.filter(record => state.selectedIds.has(record.recordId)).length;
             const allSelected = records.length > 0 && selectedCount === records.length;
+            const isExpanded = state.expandedGroups.has(groupKey);
+            const firstRenewal = records[0]?.renewalDateDisplay || "Sin fecha";
+            const lastRenewal = records[records.length - 1]?.renewalDateDisplay || firstRenewal;
+            const renewalRange = records.length > 1 && firstRenewal !== lastRenewal
+                ? `${firstRenewal} a ${lastRenewal}`
+                : firstRenewal;
 
             return `
                 <article class="renew-group" data-group-key="${escapeHtml(groupKey)}">
@@ -661,42 +719,49 @@
                             </div>
                             <div>
                                 <h2 class="renew-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
-                                <div class="renew-group__meta">${escapeHtml(String(group.recordCount || records.length))} lineas | ${selectedCount} seleccionadas</div>
+                                <div class="renew-group__meta">${escapeHtml(String(group.recordCount || records.length))} lineas | ${selectedCount} seleccionadas | Fechas: ${escapeHtml(renewalRange)}</div>
                             </div>
                         </div>
-                        <div class="renew-contract-pill">Valor contrato: ${formatMoney(group.contractValue || 0)}</div>
+                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                            <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
+                                ${isExpanded ? "Ocultar productos" : "Ver productos"}
+                            </button>
+                            <div class="renew-contract-pill">Valor contrato: ${formatMoney(group.contractValue || 0)}</div>
+                        </div>
                     </div>
-                    <div class="renew-table-wrap">
-                        <table class="table table-hover renew-table">
-                            <thead>
-                                <tr>
-                                    <th></th>
-                                    <th>Producto</th>
-                                    <th class="text-end">Cantidad</th>
-                                    <th class="text-end">Valor venta UND USD</th>
-                                    <th>Fecha renovacion</th>
-                                    <th class="text-end">Valor contrato</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${records.map(record => `
-                                    <tr class="${state.selectedIds.has(record.recordId) ? "row-selected" : ""}">
-                                        <td>
-                                            <input class="form-check-input record-checkbox" type="checkbox" data-record-id="${escapeHtml(record.recordId)}" ${state.selectedIds.has(record.recordId) ? "checked" : ""}>
-                                        </td>
-                                        <td>
-                                            <div class="renew-record-name">${escapeHtml(record.productName || "Producto sin asignar")}</div>
-                                            <div class="renew-record-sub">${escapeHtml(record.recordId || "")}</div>
-                                        </td>
-                                        <td class="text-end">${escapeHtml(String(record.quantity ?? 0))}</td>
-                                        <td class="text-end">${formatMoney(record.unitSaleUsd || 0)}</td>
-                                        <td>${escapeHtml(record.renewalDateDisplay || "")}</td>
-                                        <td class="text-end fw-semibold">${formatMoney(record.contractValue || 0)}</td>
+                    ${isExpanded ? `
+                        <div class="renew-table-wrap">
+                            <table class="table table-hover renew-table">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>Producto</th>
+                                        <th class="text-end">Cantidad</th>
+                                        <th class="text-end">Valor venta UND USD</th>
+                                        <th>Fecha renovacion</th>
+                                        <th class="text-end">Valor contrato</th>
                                     </tr>
-                                `).join("")}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    ${records.map(record => `
+                                        <tr class="${state.selectedIds.has(record.recordId) ? "row-selected" : ""}">
+                                            <td>
+                                                <input class="form-check-input record-checkbox" type="checkbox" data-record-id="${escapeHtml(record.recordId)}" ${state.selectedIds.has(record.recordId) ? "checked" : ""}>
+                                            </td>
+                                            <td>
+                                                <div class="renew-record-name">${escapeHtml(record.productName || "Producto sin asignar")}</div>
+                                                <div class="renew-record-sub">${escapeHtml(record.recordId || "")}</div>
+                                            </td>
+                                            <td class="text-end">${escapeHtml(String(record.quantity ?? 0))}</td>
+                                            <td class="text-end">${formatMoney(record.unitSaleUsd || 0)}</td>
+                                            <td>${escapeHtml(record.renewalDateDisplay || "")}</td>
+                                            <td class="text-end fw-semibold">${formatMoney(record.contractValue || 0)}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : ""}
                 </article>
             `;
         }).join("");
@@ -707,6 +772,23 @@
     }
 
     function bindBoardEvents() {
+        groupsContainer.querySelectorAll(".toggle-group-btn").forEach(button => {
+            button.addEventListener("click", event => {
+                const groupKey = event.currentTarget.dataset.groupKey;
+                if (!groupKey) {
+                    return;
+                }
+
+                if (state.expandedGroups.has(groupKey)) {
+                    state.expandedGroups.delete(groupKey);
+                } else {
+                    state.expandedGroups.add(groupKey);
+                }
+
+                renderBoard();
+            });
+        });
+
         groupsContainer.querySelectorAll(".record-checkbox").forEach(input => {
             input.addEventListener("change", event => {
                 const recordId = event.currentTarget.dataset.recordId;
@@ -766,6 +848,11 @@
             .map(recordId => state.drafts.get(recordId))
             .filter(Boolean)
             .sort((a, b) => {
+                const dateCompare = (a.renewalDateValue || "").localeCompare(b.renewalDateValue || "", "es", { sensitivity: "base" });
+                if (dateCompare !== 0) {
+                    return dateCompare;
+                }
+
                 const clientCompare = (a.clientName || "").localeCompare(b.clientName || "", "es", { sensitivity: "base" });
                 if (clientCompare !== 0) {
                     return clientCompare;
@@ -1000,6 +1087,8 @@
                 recordId: draft.recordId,
                 clientId: draft.clientId,
                 productId: draft.productId,
+                originalClientId: draft.originalClientId || "",
+                originalProductId: draft.originalProductId || "",
                 quantity: draft.quantity,
                 unitSaleUsd: Number(draft.unitSaleUsd.toFixed(2)),
                 renewalDateValue: draft.renewalDateValue,
@@ -1013,6 +1102,7 @@
 
     async function loadBoard() {
         resetSelection();
+        state.expandedGroups.clear();
         setStatus("info", "Consultando renovaciones...");
         setLoading(true);
         state.board = {
@@ -1068,10 +1158,14 @@
 
             const result = await response.json();
             await loadBoard();
-            setStatus("success", `Se actualizaron ${result.updated || payload.items.length} lineas correctamente.`);
+            const successMessage = `Renovacion enviada con exito. Se actualizaron ${result.updated || payload.items.length} lineas.`;
+            setStatus("success", successMessage);
+            showResultModal("Renovacion enviada con exito", successMessage);
         } catch (error) {
             console.error(error);
-            setStatus("error", error?.message || "No fue posible actualizar las renovaciones.");
+            const failureMessage = error?.message || "No fue posible actualizar las renovaciones.";
+            setStatus("error", failureMessage);
+            showResultModal("Renovacion fallida", failureMessage);
         } finally {
             state.isSaving = false;
             updateSummary();

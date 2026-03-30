@@ -325,23 +325,37 @@ public sealed class DataverseService : IDataverseService
         var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$filter={Uri.EscapeDataString(string.Join(" and ", filterParts))}&$orderby={_salesPerformanceRenewalDateField} asc";
         var rawRecords = await GetDataverseEntitiesAsync(relativeUrl, httpContext.User, ct, AddFormattedValueHeaders);
 
-        var records = rawRecords
+        var parsedRecords = rawRecords
             .Select(ParseRenewalRecord)
             .Where(item => item is not null)
             .Cast<RenewalRecordDto>()
-            .OrderBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        var records = filter == RenewalPeriodFilter.AllPast
+            ? parsedRecords
+                .OrderByDescending(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : parsedRecords
+                .OrderBy(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
         var groups = records
             .GroupBy(GetRenewalClientGroupKey, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                var orderedRecords = group
-                    .OrderBy(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                var orderedRecords = filter == RenewalPeriodFilter.AllPast
+                    ? group
+                        .OrderByDescending(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                    : group
+                        .OrderBy(item => item.RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
 
                 var first = orderedRecords[0];
                 return new RenewalClientGroupDto
@@ -353,8 +367,17 @@ public sealed class DataverseService : IDataverseService
                     Records = orderedRecords
                 };
             })
-            .OrderBy(group => group.ClientName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        groups = filter == RenewalPeriodFilter.AllPast
+            ? groups
+                .OrderByDescending(group => group.Records[0].RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(group => group.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : groups
+                .OrderBy(group => group.Records[0].RenewalDateValue, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(group => group.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
         return new RenewalBoardDto
         {
@@ -386,6 +409,8 @@ public sealed class DataverseService : IDataverseService
             var recordId = NormalizeGuid(item.RecordId, nameof(item.RecordId));
             var clientId = NormalizeGuid(item.ClientId, nameof(item.ClientId));
             var productId = NormalizeGuid(item.ProductId, nameof(item.ProductId));
+            var originalClientId = NormalizeOptionalGuid(item.OriginalClientId);
+            var originalProductId = NormalizeOptionalGuid(item.OriginalProductId);
 
             if (item.Quantity <= 0)
                 throw new InvalidOperationException("La cantidad debe ser mayor a cero.");
@@ -396,27 +421,75 @@ public sealed class DataverseService : IDataverseService
             if (!TryParseDateOnly(item.RenewalDateValue, out var renewalDate))
                 throw new InvalidOperationException("La fecha de renovacion no es valida.");
 
-            var clientLookupLogicalName = ResolveLookupLogicalName(
-                item.ClientLookupLogicalName,
-                DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
-                DefaultSalesPerformanceClientLookupLogicalName);
+            var shouldUpdateClientLookup = !string.Equals(clientId, originalClientId, StringComparison.OrdinalIgnoreCase);
+            var shouldUpdateProductLookup = !string.Equals(productId, originalProductId, StringComparison.OrdinalIgnoreCase);
 
-            var productLookupLogicalName = ResolveLookupLogicalName(
-                item.ProductLookupLogicalName,
-                DefaultSalesPerformanceProductLookupLogicalName,
-                DefaultSalesPerformanceProductLookupLogicalName);
-
-            var payload = new Dictionary<string, object?>
+            var basePayload = new Dictionary<string, object?>
             {
                 [DefaultSalesPerformanceQuantityField] = item.Quantity,
                 [DefaultSalesPerformanceUnitSaleUsdField] = item.UnitSaleUsd,
-                [_salesPerformanceRenewalDateField] = renewalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                [$"{clientLookupLogicalName}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})",
-                [$"{productLookupLogicalName}@odata.bind"] = $"/{ProductsEntitySetName}({productId})"
+                [_salesPerformanceRenewalDateField] = renewalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             };
 
             var updateUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}({recordId})";
-            await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+            if (!shouldUpdateClientLookup && !shouldUpdateProductLookup)
+            {
+                await CallDataverseSendAsync(updateUrl, "PATCH", basePayload, httpContext.User, ct);
+                continue;
+            }
+
+            var clientLookupCandidates = shouldUpdateClientLookup
+                ? BuildLookupLogicalNameCandidates(
+                    item.ClientLookupLogicalName,
+                    DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
+                    DefaultSalesPerformanceClientLookupLogicalName,
+                    "cr07a_clientelookup",
+                    "cr07a_cliente",
+                    "cr07a_clienteid")
+                : new List<string?> { null };
+
+            var productLookupCandidates = shouldUpdateProductLookup
+                ? BuildLookupLogicalNameCandidates(
+                    item.ProductLookupLogicalName,
+                    DefaultSalesPerformanceProductLookupLogicalName,
+                    "cr07a_producto")
+                : new List<string?> { null };
+
+            Exception? lastError = null;
+            var updated = false;
+            foreach (var clientLookupLogicalName in clientLookupCandidates)
+            {
+                foreach (var productLookupLogicalName in productLookupCandidates)
+                {
+                    var payload = new Dictionary<string, object?>(basePayload);
+                    if (!string.IsNullOrWhiteSpace(clientLookupLogicalName))
+                    {
+                        payload[$"{clientLookupLogicalName}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})";
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(productLookupLogicalName))
+                    {
+                        payload[$"{productLookupLogicalName}@odata.bind"] = $"/{ProductsEntitySetName}({productId})";
+                    }
+
+                    try
+                    {
+                        await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+                        updated = true;
+                        break;
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        lastError = ex;
+                    }
+                }
+
+                if (updated)
+                    break;
+            }
+
+            if (!updated)
+                throw new InvalidOperationException("No se pudo actualizar la renovacion seleccionada en Dataverse.", lastError);
         }
 
         return items.Count;
@@ -504,6 +577,12 @@ public sealed class DataverseService : IDataverseService
     {
         if (filter == RenewalPeriodFilter.All)
             return "";
+
+        if (filter == RenewalPeriodFilter.AllPast)
+        {
+            var currentDate = GetBogotaToday();
+            return $"{_salesPerformanceRenewalDateField} lt {currentDate:yyyy-MM-dd}";
+        }
 
         var today = GetBogotaToday();
         var monthStart = new DateOnly(today.Year, today.Month, 1);
@@ -766,6 +845,24 @@ public sealed class DataverseService : IDataverseService
             throw new InvalidOperationException($"El valor de {paramName} no es valido.");
 
         return parsed.ToString("D");
+    }
+
+    private static string NormalizeOptionalGuid(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+
+        return Guid.TryParse(raw, out var parsed) ? parsed.ToString("D") : "";
+    }
+
+    private static List<string?> BuildLookupLogicalNameCandidates(params string?[] candidates)
+    {
+        return candidates
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Select(candidate => candidate!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Cast<string?>()
+            .ToList();
     }
 
     private static decimal RoundCurrency(decimal value) =>

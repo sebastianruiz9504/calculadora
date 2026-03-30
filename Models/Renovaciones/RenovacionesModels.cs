@@ -8,7 +8,8 @@ public enum RenewalPeriodFilter
     ThisMonth = 0,
     PreviousMonth = 1,
     NextMonth = 2,
-    All = 3
+    All = 3,
+    AllPast = 4
 }
 
 public static class RenewalPeriodFilterExtensions
@@ -24,6 +25,7 @@ public static class RenewalPeriodFilterExtensions
             "previousmonth" or "previous-month" or "mes-anterior" => RenewalPeriodFilter.PreviousMonth,
             "nextmonth" or "next-month" or "mes-siguiente" => RenewalPeriodFilter.NextMonth,
             "all" or "todo" => RenewalPeriodFilter.All,
+            "allpast" or "all-past" or "todas-las-pasadas" => RenewalPeriodFilter.AllPast,
             _ => RenewalPeriodFilter.ThisMonth
         };
     }
@@ -34,6 +36,7 @@ public static class RenewalPeriodFilterExtensions
         RenewalPeriodFilter.PreviousMonth => "previous-month",
         RenewalPeriodFilter.NextMonth => "next-month",
         RenewalPeriodFilter.All => "all",
+        RenewalPeriodFilter.AllPast => "all-past",
         _ => "this-month"
     };
 
@@ -43,6 +46,7 @@ public static class RenewalPeriodFilterExtensions
         RenewalPeriodFilter.PreviousMonth => "Mes anterior",
         RenewalPeriodFilter.NextMonth => "Mes siguiente",
         RenewalPeriodFilter.All => "Todo",
+        RenewalPeriodFilter.AllPast => "Todas las pasadas",
         _ => "Este mes"
     };
 }
@@ -92,6 +96,8 @@ public sealed class RenewalRecordUpdateItem
     public string RecordId { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ProductId { get; set; } = "";
+    public string OriginalClientId { get; set; } = "";
+    public string OriginalProductId { get; set; } = "";
     public int Quantity { get; set; }
     public decimal UnitSaleUsd { get; set; }
     public string RenewalDateValue { get; set; } = "";
