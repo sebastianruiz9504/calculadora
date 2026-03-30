@@ -4,6 +4,7 @@
     var culture = new System.Globalization.CultureInfo("es-CO");
     var includeReteFuente = Model.Certificate.CertificateTypes.Contains(SupplierCertificateType.ReteFuente);
     var includeReteIca = Model.Certificate.CertificateTypes.Contains(SupplierCertificateType.ReteIca);
+    var titleSuffix = Model.Certificate.CertificateTypesLabel.ToUpperInvariant();
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -15,7 +16,7 @@
 </head>
 <body>
     <div class="print-toolbar">
-        <div class="print-toolbar__text">Vista A4 lista para imprimir o guardar como PDF.</div>
+        <div class="print-toolbar__text">Documento listo para imprimir o guardar como PDF.</div>
         <div class="print-toolbar__actions">
             <button type="button" onclick="window.print()">Guardar en PDF / Imprimir</button>
         </div>
@@ -23,88 +24,112 @@
 
     <div class="certificate-wrap">
         <article class="certificate-sheet">
+            <header class="certificate-letterhead">
+                <div class="certificate-brand">
+                    <div class="certificate-brand__mark">DT</div>
+                    <div>
+                        <div class="certificate-brand__name">@Model.CompanyName</div>
+                        <div class="certificate-brand__meta">NIT @Model.CompanyNit</div>
+                        @if (!string.IsNullOrWhiteSpace(Model.CompanyAddress) || !string.IsNullOrWhiteSpace(Model.CompanyCity))
+                        {
+                            <div class="certificate-brand__meta">
+                                @if (!string.IsNullOrWhiteSpace(Model.CompanyAddress))
+                                {
+                                    <span>@Model.CompanyAddress</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(Model.CompanyAddress) && !string.IsNullOrWhiteSpace(Model.CompanyCity))
+                                {
+                                    <span> · </span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(Model.CompanyCity))
+                                {
+                                    <span>@Model.CompanyCity</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="certificate-letterhead__meta">
+                    <div><strong>Fecha de emisión:</strong> @Model.IssueDateDisplay</div>
+                    <div><strong>Periodo certificado:</strong> @Model.Certificate.PeriodLabel</div>
+                </div>
+            </header>
+
             <header class="certificate-header">
-                <span class="certificate-kicker">Portal proveedores</span>
-                <h1 class="certificate-title">Certificado de retenciones a proveedores</h1>
+                <div class="certificate-kicker">Certificado tributario</div>
+                <h1 class="certificate-title">Certificado de retenciones practicadas</h1>
+                <div class="certificate-title__suffix">@titleSuffix</div>
                 <p class="certificate-subtitle">
-                    Documento emitido por @Model.CompanyName para certificar las retenciones practicadas al proveedor
-                    @Model.Certificate.SupplierName durante el periodo @Model.Certificate.PeriodLabel.
+                    @Model.CompanyName, identificado con NIT @Model.CompanyNit, certifica que durante el periodo
+                    comprendido entre @Model.Certificate.PeriodLabel practicó
+                    retenciones al proveedor aquí identificado, de acuerdo con la información registrada en Dataverse.
                 </p>
             </header>
 
             <section class="certificate-body">
-                <div class="certificate-grid">
-                    <section class="certificate-panel">
-                        <span class="certificate-panel__label">Agente retenedor</span>
-                        <div class="certificate-panel__title">@Model.CompanyName</div>
-                        <div class="certificate-panel__meta">
-                            <div><strong>NIT:</strong> @Model.CompanyNit</div>
-                            @if (!string.IsNullOrWhiteSpace(Model.CompanyAddress))
-                            {
-                                <div><strong>Dirección:</strong> @Model.CompanyAddress</div>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(Model.CompanyCity))
-                            {
-                                <div><strong>Ciudad:</strong> @Model.CompanyCity</div>
-                            }
-                            <div><strong>Fecha de emisión:</strong> @Model.IssueDateDisplay</div>
-                        </div>
-                    </section>
+                <section class="certificate-parties">
+                    <div class="certificate-parties__block">
+                        <div class="certificate-parties__label">Agente retenedor</div>
+                        <div class="certificate-parties__value">@Model.CompanyName</div>
+                        <div class="certificate-parties__detail">NIT @Model.CompanyNit</div>
+                    </div>
+                    <div class="certificate-parties__block">
+                        <div class="certificate-parties__label">Proveedor</div>
+                        <div class="certificate-parties__value">@Model.Certificate.SupplierName</div>
+                        <div class="certificate-parties__detail">NIT @Model.Certificate.SupplierNit</div>
+                    </div>
+                    <div class="certificate-parties__block">
+                        <div class="certificate-parties__label">Tipos certificados</div>
+                        <div class="certificate-parties__value">@Model.Certificate.CertificateTypesLabel</div>
+                        <div class="certificate-parties__detail">@Model.Certificate.RecordsCount registros incluidos</div>
+                    </div>
+                </section>
 
-                    <section class="certificate-panel">
-                        <span class="certificate-panel__label">Proveedor certificado</span>
-                        <div class="certificate-panel__title">@Model.Certificate.SupplierName</div>
-                        <div class="certificate-panel__meta">
-                            <div><strong>NIT:</strong> @Model.Certificate.SupplierNit</div>
-                            <div><strong>Periodo consultado:</strong> @Model.Certificate.PeriodLabel</div>
-                            <div><strong>Tipo de certificado:</strong> @Model.Certificate.CertificateTypesLabel</div>
-                            <div><strong>Registros incluidos:</strong> @Model.Certificate.RecordsCount</div>
-                        </div>
-                    </section>
-                </div>
-
-                <section class="certificate-stats">
-                    <article class="certificate-stat">
-                        <span class="certificate-stat__label">Total facturas</span>
-                        <div class="certificate-stat__value">@Model.Certificate.TotalInvoices.ToString("C2", culture)</div>
-                        <div class="certificate-stat__meta">Suma de todas las filas en <code>cr07a_total</code>.</div>
-                    </article>
-                    <article class="certificate-stat">
-                        <span class="certificate-stat__label">Total base</span>
-                        <div class="certificate-stat__value">@Model.Certificate.TotalBase.ToString("C2", culture)</div>
-                        <div class="certificate-stat__meta">Suma de todas las filas en <code>cr07a_totalantesdeiva</code>.</div>
-                    </article>
-                    @if (includeReteFuente)
-                    {
-                        <article class="certificate-stat">
-                            <span class="certificate-stat__label">Total rete fuente</span>
-                            <div class="certificate-stat__value">@Model.Certificate.TotalReteFuente.ToString("C2", culture)</div>
-                            <div class="certificate-stat__meta">Valor total retenido por concepto de rete fuente.</div>
-                        </article>
-                    }
-                    @if (includeReteIca)
-                    {
-                        <article class="certificate-stat">
-                            <span class="certificate-stat__label">Total rete ICA</span>
-                            <div class="certificate-stat__value">@Model.Certificate.TotalReteIca.ToString("C2", culture)</div>
-                            <div class="certificate-stat__meta">Valor total retenido por concepto de rete ICA.</div>
-                        </article>
-                    }
+                <section class="certificate-summary-table">
+                    <table>
+                        <tbody>
+                            <tr>
+                                <th>Concepto</th>
+                                <th class="text-end">Valor</th>
+                            </tr>
+                            <tr>
+                                <td>Total facturas</td>
+                                <td class="text-end">@Model.Certificate.TotalInvoices.ToString("C2", culture)</td>
+                            </tr>
+                            <tr>
+                                <td>Total base gravable</td>
+                                <td class="text-end">@Model.Certificate.TotalBase.ToString("C2", culture)</td>
+                            </tr>
+                            @if (includeReteFuente)
+                            {
+                                <tr>
+                                    <td>Total retención en la fuente</td>
+                                    <td class="text-end">@Model.Certificate.TotalReteFuente.ToString("C2", culture)</td>
+                                </tr>
+                            }
+                            @if (includeReteIca)
+                            {
+                                <tr>
+                                    <td>Total retención ICA</td>
+                                    <td class="text-end">@Model.Certificate.TotalReteIca.ToString("C2", culture)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
                 </section>
 
                 <div class="certificate-note">
-                    Este certificado consolida los pagos y retenciones identificados en Dataverse dentro del rango solicitado.
-                    Su estructura fue diseñada siguiendo el enfoque formal que suelen usar los portales de proveedores en Colombia
-                    y los datos mínimos exigidos para certificados de retención a terceros.
+                    La presente certificación se expide a solicitud de la parte interesada y deja constancia de los valores
+                    acumulados en el periodo indicado, con base en los movimientos asociados al proveedor y consolidados desde
+                    la tabla <strong>cr07a_gastodelaempresa</strong>.
                 </div>
 
                 <div class="certificate-table-wrap">
-                    <table>
+                    <div class="certificate-table-title">Relación de movimientos incluidos</div>
+                    <table class="certificate-detail-table">
                         <thead>
                             <tr>
                                 <th>Fecha</th>
-                                <th>Proveedor</th>
-                                <th>NIT</th>
                                 <th class="text-end">Total facturas</th>
                                 <th class="text-end">Total base</th>
                                 @if (includeReteFuente)
@@ -122,8 +147,6 @@
                             {
                                 <tr>
                                     <td>@row.ExpenseDateDisplay</td>
-                                    <td>@row.SupplierName</td>
-                                    <td>@row.SupplierNit</td>
                                     <td class="text-end">@row.TotalInvoices.ToString("C2", culture)</td>
                                     <td class="text-end">@row.TotalBase.ToString("C2", culture)</td>
                                     @if (includeReteFuente)
@@ -139,7 +162,7 @@
                         </tbody>
                         <tfoot>
                             <tr>
-                                <th colspan="3" class="text-end">Totales</th>
+                                <th class="text-end">Totales</th>
                                 <td class="text-end">@Model.Certificate.TotalInvoices.ToString("C2", culture)</td>
                                 <td class="text-end">@Model.Certificate.TotalBase.ToString("C2", culture)</td>
                                 @if (includeReteFuente)
@@ -155,18 +178,22 @@
                     </table>
                 </div>
 
+                <div class="certificate-closing">
+                    Se firma electrónicamente para constancia, en la fecha indicada de emisión.
+                </div>
+
                 <div class="certificate-footer">
                     <div class="certificate-signature">
                         <div class="certificate-signature__line"></div>
                         <div class="certificate-signature__meta">
                             <div><strong>@Model.CompanyName</strong></div>
                             <div>NIT @Model.CompanyNit</div>
-                            <div>Documento generado desde Portal proveedores</div>
+                            <div>Área administrativa y contable</div>
                         </div>
                     </div>
                     <div class="certificate-small">
-                        Emitido por <strong>@Model.CurrentUser.DisplayName</strong> (@Model.CurrentUser.Email).<br />
-                        Certificado generado electrónicamente con la información disponible en Dataverse para el rango y proveedor seleccionados.
+                        Documento generado por <strong>@Model.CurrentUser.DisplayName</strong> (@Model.CurrentUser.Email).<br />
+                        Certificado emitido electrónicamente desde Portal proveedores con información disponible en Dataverse.
                     </div>
                 </div>
             </section>

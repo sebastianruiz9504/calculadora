@@ -195,10 +195,12 @@
 }
 
 .portal-summary-card__value {
-    font-size: 26px;
+    font-size: clamp(1.05rem, 1.6vw, 1.35rem);
     font-weight: 800;
     color: #1c1917;
-    line-height: 1.2;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .portal-summary-card__meta {
