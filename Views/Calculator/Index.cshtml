@@ -367,7 +367,6 @@ else
                 <input type="text" id="prorationClientInput" class="form-control" placeholder="Buscar cliente..." autocomplete="off" />
                 <div id="prorationClientSuggestions" class="suggestions"></div>
             </div>
-            <div class="small text-muted mt-1">Usa el mismo buscador de cliente y carga las fechas desde <span class="mono">cr07a_fecharenovacion</span>.</div>
         </div>
     </div>
 
@@ -453,9 +452,7 @@ else
             <div>
                 <div class="d-flex align-items-center gap-2 mb-1">
                     <h5 class="mb-0">Solicitar Aprovisionamiento</h5>
-                    <span class="badge-soft">Dataverse</span>
                 </div>
-                <div class="small text-muted">Envía la solicitud a Power Automate para crear las líneas en cr07a_solicitudaprovisionamiento.</div>
             </div>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCloseProvisioning">×</button>
         </div>
@@ -481,7 +478,6 @@ else
                     <input type="text" id="provisioningClientInput" class="form-control" placeholder="Buscar cliente..." autocomplete="off" />
                     <div id="clientSuggestions" class="suggestions"></div>
                 </div>
-                <div class="small text-muted mt-1">Escribe para buscar en cr07a_cliente por cr07a_nombre y selecciona una opción.</div>
             </div>
         </div>
 
@@ -509,6 +505,7 @@ else
     };
 
     const sourceSystem = "pricing-calculator";
+    const CROSS_SALE_DEAL_TYPE = 1;
     const businessTypes = [
         { key: 0, name: "ModernWork" },
         { key: 1, name: "Azure" },
@@ -746,6 +743,25 @@ const showDebugCalcModal = false;
     }
 
     function getActiveScenario() { return scenarios.find(s => s.id === activeScenarioId); }
+
+    function normalizeScenarioDealType(scenario) {
+        if (!scenario) return false;
+        if (!scenario.requiresProration || Number(scenario.dealType) === CROSS_SALE_DEAL_TYPE) {
+            return false;
+        }
+
+        scenario.dealType = CROSS_SALE_DEAL_TYPE;
+        return true;
+    }
+
+    function syncDealTypeInput() {
+        const s = getActiveScenario();
+        if (!s) return;
+
+        normalizeScenarioDealType(s);
+        dealType.value = String(s.dealType);
+        dealType.disabled = Boolean(s.requiresProration);
+    }
 
     function resetResults(clearStored = false) {
         if (clearStored) {
@@ -1036,11 +1052,13 @@ const showDebugCalcModal = false;
     }
 
     function mapStoredScenario(stored) {
+        const requiresProration = Boolean(stored.requiresProration);
+
         return {
             id: stored.scenarioId || uid(),
             name: stored.scenarioName || "Escenario",
-            dealType: Number(stored.dealType || 0),
-            requiresProration: Boolean(stored.requiresProration),
+            dealType: requiresProration ? CROSS_SALE_DEAL_TYPE : Number(stored.dealType || 0),
+            requiresProration,
             startDate: toDateInputValue(stored.startDate),
             endDate: toDateInputValue(stored.endDate),
             prorationClient: stored.prorationClient?.id
@@ -1082,7 +1100,8 @@ const showDebugCalcModal = false;
         if (!s) return;
 
         scenarioName.value = s.name;
-        dealType.value = String(s.dealType);
+        normalizeScenarioDealType(s);
+        syncDealTypeInput();
         requiresProration.value = String(s.requiresProration);
         startDate.value = s.startDate || "";
 
@@ -1124,7 +1143,7 @@ const showDebugCalcModal = false;
         try {
             await deleteScenarioFromDataverse(scenarioIdToDelete);
         } catch (error) {
-            alert(error?.message || "No se pudo eliminar el escenario en Dataverse.");
+            alert(error?.message || "No se pudo eliminar el escenario.");
             return;
         }
 
@@ -1365,7 +1384,7 @@ const showDebugCalcModal = false;
 
         if (s.prorationClient?.id && renewalOptions.length === 0) {
             prorationHint.style.display = "block";
-            prorationHint.innerText = "El cliente seleccionado no tiene fechas de renovacion disponibles en Dataverse.";
+            prorationHint.innerText = "El cliente seleccionado no tiene fechas de renovación disponibles.";
             return;
         }
 
@@ -1397,6 +1416,8 @@ const showDebugCalcModal = false;
             alert("Selecciona un escenario activo.");
             return null;
         }
+
+        normalizeScenarioDealType(s);
 
         if (!s.lines.length) { alert("Agrega al menos 1 línea."); return null; }
 
@@ -1466,6 +1487,7 @@ const showDebugCalcModal = false;
         if (!validated) return null;
 
         const { scenario: s, lines } = validated;
+        normalizeScenarioDealType(s);
 
         return {
             scenarioName: s.name,
@@ -1900,6 +1922,8 @@ const attachmentError = validateAttachmentState();
         const s = getActiveScenario();
         if (!s) return;
         s.requiresProration = (requiresProration.value === "true");
+        normalizeScenarioDealType(s);
+        syncDealTypeInput();
         startDate.disabled = !s.requiresProration;
         if (!s.requiresProration) {
             s.startDate = "";

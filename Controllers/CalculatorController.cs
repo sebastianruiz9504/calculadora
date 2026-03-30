@@ -61,15 +61,20 @@ public sealed class CalculatorController : Controller
             var items = await _dataverse.SearchRenewalDatesByClientAsync(clientId, top: 250, ct: ct);
             return Json(items);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return BadRequest(GetInnermostMessage(ex));
+            return BadRequest("No se pudieron consultar las fechas de renovación.");
         }
     }
 
     [HttpPost]
     public async Task<IActionResult> Calculate([FromBody] QuoteScenarioInput input, CancellationToken ct)
     {
+        if (input is null)
+            return BadRequest("Payload inválido.");
+
+        NormalizeProrationRules(input);
+
         // Segmento desde Dataverse (puedes cachearlo luego)
         var segment = await _dataverse.GetCurrentUserSegmentAsync(ct);
   var licenseValidation = ValidateLicenseCaps(input, segment);
@@ -100,6 +105,8 @@ public sealed class CalculatorController : Controller
         if (input is null)
             return BadRequest("Payload inválido.");
 
+        NormalizeProrationRules(input);
+
         if (string.IsNullOrWhiteSpace(input.ScenarioId))
             return BadRequest("ScenarioId requerido.");
 
@@ -123,6 +130,11 @@ public sealed class CalculatorController : Controller
     [HttpPost]
     public async Task<IActionResult> Export([FromBody] QuoteScenarioInput input, CancellationToken ct)
     {
+        if (input is null)
+            return BadRequest("Payload inválido.");
+
+        NormalizeProrationRules(input);
+
         if (input?.Lines is null || input.Lines.Count == 0)
             return BadRequest("No hay líneas para exportar.");
 
@@ -377,6 +389,23 @@ private static string? ValidateProvisioningPayload(ProvisioningRequestInput inpu
         return description.Contains("business", StringComparison.OrdinalIgnoreCase)
             || description.Contains("microsoft 365", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static void NormalizeProrationRules(QuoteScenarioInput input)
+    {
+        if (input.RequiresProration)
+        {
+            input.DealType = DealType.CrossSale;
+        }
+    }
+
+    private static void NormalizeProrationRules(ScenarioSaveRequest input)
+    {
+        if (input.RequiresProration)
+        {
+            input.DealType = (int)DealType.CrossSale;
+        }
+    }
+
     private static ExportLine ComputeLine(QuoteLineInput line, UserSegment segment)
     {
         var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
