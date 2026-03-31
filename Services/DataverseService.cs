@@ -349,8 +349,8 @@ public sealed partial class DataverseService : IDataverseService
         var fallbackLookupFields = new[]
         {
             _salesPerformanceClientLookupFilterField,
-            "_cr07a_clienteid_value",
-            "_cr07a_cliente_value"
+            DefaultSalesPerformanceClientLookupFilterField,
+            "_cr07a_clientelookup_value"
         }
         .Where(field => !string.IsNullOrWhiteSpace(field))
         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -380,7 +380,7 @@ public sealed partial class DataverseService : IDataverseService
             }
         }
 
-        var scanResults = await ScanRenewalDatesByClientGuidAsync(clientGuid, httpContext.User, top, ct);
+        var scanResults = await ScanRenewalDatesByClientGuidAsync(clientGuid, httpContext.User, Math.Max(top, 1000), ct);
         if (scanResults.Count > 0)
             return scanResults;
 
