@@ -66,6 +66,7 @@ public sealed class ScoreBoardDto
     public decimal TotalCommission { get; set; }
     public decimal TotalScore { get; set; }
     public decimal TotalMonthlyValue { get; set; }
+    public decimal TotalValue { get; set; }
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<ScoreClientGroupDto> Groups { get; set; } = Array.Empty<ScoreClientGroupDto>();
 }
@@ -81,6 +82,7 @@ public sealed class ScoreClientGroupDto
     public decimal TotalCommission { get; set; }
     public decimal TotalScore { get; set; }
     public decimal TotalMonthlyValue { get; set; }
+    public decimal TotalValue { get; set; }
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<ScoreRecordDto> Records { get; set; } = Array.Empty<ScoreRecordDto>();
 }
@@ -107,9 +109,13 @@ public sealed class ScoreRecordDto
     public string ProvisioningDateDisplay { get; set; } = "";
     public string ContractType { get; set; } = "";
     public string BusinessId { get; set; } = "";
+    public string ProrationText { get; set; } = "";
+    public int ProrationDays { get; set; }
+    public decimal ProrationFactor { get; set; }
     public string RawDescription { get; set; } = "";
     public int ProductLinesCount { get; set; }
     public decimal MonthlyValue { get; set; }
+    public decimal TotalValue { get; set; }
     public decimal AnnualValue { get; set; }
     public IReadOnlyList<ScoreProductLineDto> ProductLines { get; set; } = Array.Empty<ScoreProductLineDto>();
 }
@@ -120,8 +126,12 @@ public sealed class ScoreProductLineDto
     public string ProductId { get; set; } = "";
     public string ProductName { get; set; } = "";
     public int Quantity { get; set; }
+    public decimal CostUnit { get; set; }
+    public decimal MarginPercent { get; set; }
+    public int ContractMonths { get; set; }
     public decimal MonthlyUnitValue { get; set; }
     public decimal MonthlyValue { get; set; }
+    public decimal TotalValue { get; set; }
     public decimal AnnualValue { get; set; }
 }
 

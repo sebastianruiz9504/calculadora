@@ -17,6 +17,8 @@ public sealed class ScenarioResultSnapshot
 {
     public decimal Points { get; set; }
     public decimal Commission { get; set; }
+    public int ProrationDays { get; set; }
+    public decimal ProrationFactor { get; set; }
     public string? ProrationText { get; set; }
     public decimal TotalMonthlySale { get; set; }
     public decimal TotalSale { get; set; }

@@ -730,7 +730,7 @@ const showDebugCalcModal = false;
         if (s?.lastResult) {
             resultPoints.innerText = num(s.lastResult.points, 2);
             resultCommission.innerText = money(s.lastResult.commission);
-            resultProration.innerText = s.lastResult.prorationText || "—";
+            resultProration.innerText = s.lastResult.prorationText || buildProrationText(s.lastResult);
             resultMonthly.innerText = money(s.lastResult.totalMonthlySale || 0);
             resultTotal.innerText = money(s.lastResult.totalSale || 0);
             return;
@@ -740,6 +740,22 @@ const showDebugCalcModal = false;
 
     function markScenarioDirty() {
         resetResults(true);
+    }
+
+    function roundMoneyValue(value) {
+        return Number(Number(value || 0).toFixed(2));
+    }
+
+    function roundFactorValue(value) {
+        return Number(Number(value || 0).toFixed(4));
+    }
+
+    function buildProrationText(result) {
+        const prorationDays = Number(result?.prorationDays || 0);
+        const prorationFactor = Number(result?.prorationFactor || 1);
+        return (prorationDays > 0 && prorationFactor !== 1)
+            ? `${prorationDays} días (${prorationFactor.toFixed(4)})`
+            : "No";
     }
 
     function calcLineComputed(line) {
@@ -1455,9 +1471,9 @@ async function saveScenarioToDataverse(scenario, lines) {
                 s.lastResult = {
                     points: Number(data.points || 0),
                     commission: Number(data.commission || 0),
-                    prorationText: (data.prorationFactor && data.prorationFactor !== 1)
-                        ? `${data.prorationDays} días (${Number(data.prorationFactor).toFixed(4)})`
-                        : "No",
+                    prorationDays: Number(data.prorationDays || 0),
+                    prorationFactor: Number(data.prorationFactor || 1),
+                    prorationText: buildProrationText(data),
                     totalMonthlySale: Number(data.totalMonthlySale || 0),
                     totalSale: Number(data.totalSale || 0)
                 };
@@ -1678,7 +1694,7 @@ function setAttachmentStatus(message, type = "error") {
             setProvisioningStatus("Calcula el escenario para tomar puntaje y comisión antes de solicitar.");
             return null;
         }
-const attachmentError = validateAttachmentState();
+        const attachmentError = validateAttachmentState();
         if (attachmentError) {
             setProvisioningStatus(attachmentError);
             openAttachmentModal();
@@ -1686,20 +1702,32 @@ const attachmentError = validateAttachmentState();
         }
 
         const selectedContract = provisioningContractType.selectedOptions?.[0];
-         const normalizedDate = normalizeProvisioningDate(provisioningState.date);
+        const normalizedDate = normalizeProvisioningDate(provisioningState.date);
 
         if (!normalizedDate) {
             setProvisioningStatus("Fecha de aprovisionamiento inválida.");
             return null;
         }
+        const prorationDays = Number(s.lastResult?.prorationDays || 0);
+        const prorationFactor = roundFactorValue(s.lastResult?.prorationFactor || 1);
+        const prorationText = s.lastResult?.prorationText || buildProrationText(s.lastResult);
         const contractLabel = (selectedContract?.textContent || contractTypeLabels[provisioningState.contractType] || "Nuevo").trim();
-        const lineItems = lines.map((line, idx) => ({
-            lineId: line.productId || `line-${idx + 1}`,
-            productoId: line.productId || "",
-            productoNombre: line.productDescription,
-            cantidad: Number(line.quantity || 0),
-            number: Number(line.costUnit || 0)
-        })).filter(li => li.cantidad > 0);
+        const lineItems = lines.map((line, idx) => {
+            const computed = calcLineComputed(line);
+            return {
+                lineId: line.productId || `line-${idx + 1}`,
+                productoId: line.productId || "",
+                productoNombre: line.productDescription,
+                cantidad: Number(line.quantity || 0),
+                number: roundMoneyValue(line.costUnit || 0),
+                costoUnd: roundMoneyValue(line.costUnit || 0),
+                ventaUnd: roundMoneyValue(computed.saleUnit),
+                margenPorcentaje: roundMoneyValue(line.marginPercent || 0),
+                duracionMeses: Number(line.contractMonths || 0),
+                ventaMensual: roundMoneyValue(computed.monthly),
+                ventaTotal: roundMoneyValue(computed.total)
+            };
+        }).filter(li => li.cantidad > 0);
 
         if (!lineItems.length) {
             setProvisioningStatus("Necesitas al menos una línea con cantidad válida.");
@@ -1719,13 +1747,19 @@ const attachmentError = validateAttachmentState();
                 nombre: provisioningState.client.name
             },
             aprovisionamiento: {
-                 fecha: normalizedDate,
+                fecha: normalizedDate,
                 tipoContratoCode: String(provisioningState.contractType || ""),
                 tipoContratoLabel: contractLabel
             },
             resultado: {
                 puntaje: Number(s.lastResult?.points || 0),
-                comision: Number(s.lastResult?.commission || 0)
+                comision: Number(s.lastResult?.commission || 0),
+                prorrateoDias: prorationDays,
+                prorrateoFactor: prorationFactor,
+                prorrateoTexto: prorationText,
+                ventaMensualTotal: roundMoneyValue(s.lastResult?.totalMonthlySale || 0),
+                ventaTotal: roundMoneyValue(s.lastResult?.totalSale || 0),
+                ventaTotalAnual: roundMoneyValue(s.lastResult?.totalSale || 0)
             },
             lineItems,
             attachment: {

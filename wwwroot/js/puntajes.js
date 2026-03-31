@@ -65,6 +65,10 @@
         return scoreFormatter.format(Number(value || 0));
     }
 
+    function formatPercent(value) {
+        return `${formatNumber(value)}%`;
+    }
+
     function setStatus(type, message) {
         if (!statusBanner) {
             return;
@@ -159,7 +163,7 @@
         summaryProducts && (summaryProducts.textContent = formatNumber(safeBoard.productLinesCount));
         summaryScore && (summaryScore.textContent = formatScoreValue(safeBoard.totalScore));
         summaryCommission && (summaryCommission.textContent = formatNumber(safeBoard.totalCommission));
-        summaryAnnualValue && (summaryAnnualValue.textContent = formatNumber(safeBoard.totalAnnualValue));
+        summaryAnnualValue && (summaryAnnualValue.textContent = formatNumber(safeBoard.totalValue ?? safeBoard.totalAnnualValue));
     }
 
     function renderMetaChip(label, value) {
@@ -209,9 +213,12 @@
                     <tr>
                         <th>Producto</th>
                         <th class="text-end">Cantidad</th>
-                        <th class="text-end">Valor unitario mes</th>
-                        <th class="text-end">Valor mes</th>
-                        <th class="text-end">Valor 12m</th>
+                        <th class="text-end">Costo UND</th>
+                        <th class="text-end">Margen %</th>
+                        <th class="text-end">Duracion</th>
+                        <th class="text-end">Venta UND</th>
+                        <th class="text-end">Venta mensual</th>
+                        <th class="text-end">Venta total</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -222,9 +229,12 @@
                                 <div class="scores-product-table__id">${escapeHtml(line.productId || line.lineId || "")}</div>
                             </td>
                             <td class="text-end">${formatNumber(line.quantity)}</td>
+                            <td class="text-end">${formatNumber(line.costUnit)}</td>
+                            <td class="text-end">${formatPercent(line.marginPercent)}</td>
+                            <td class="text-end">${formatNumber(line.contractMonths)}m</td>
                             <td class="text-end">${formatNumber(line.monthlyUnitValue)}</td>
                             <td class="text-end">${formatNumber(line.monthlyValue)}</td>
-                            <td class="text-end">${formatNumber(line.annualValue)}</td>
+                            <td class="text-end">${formatNumber(line.totalValue ?? line.annualValue)}</td>
                         </tr>
                     `).join("")}
                 </tbody>
@@ -239,6 +249,7 @@
             renderMetaChip("Fecha aprovisionamiento", record.provisioningDateDisplay),
             renderMetaChip("Tipo contrato", record.contractType),
             renderMetaChip("BusinessId", record.businessId),
+            renderMetaChip("Prorrateo", record.prorationText || "No"),
             record.descriptionClientName && record.descriptionClientName !== record.clientName
                 ? renderMetaChip("Cliente detectado", record.descriptionClientName)
                 : ""
@@ -248,13 +259,17 @@
             <tr class="scores-record-row" data-record-id="${escapeHtml(record.recordId)}">
                 <td>
                     <div class="scores-cell-main">${escapeHtml(record.contractStartDateDisplay || "")}</div>
+                    <div class="scores-cell-sub">${escapeHtml(record.contractType || "Sin tipo")}</div>
                 </td>
                 <td class="text-center">
                     ${renderOfferCell(record)}
                 </td>
                 <td>
                     <div class="scores-cell-main">${escapeHtml(record.salesPerson || "Sin vendedor")}</div>
-                    <div class="scores-cell-sub">${escapeHtml(record.offer || "Sin oferta")}</div>
+                    <div class="scores-cell-sub">${escapeHtml(record.businessId || "Sin BusinessId")}</div>
+                </td>
+                <td>
+                    <div class="scores-cell-main scores-cell-main--proration">${escapeHtml(record.prorationText || "No")}</div>
                 </td>
                 <td class="text-end">
                     <div class="scores-cell-main">${formatScoreValue(record.score)}</div>
@@ -263,8 +278,10 @@
                     <div class="scores-cell-main">${formatNumber(record.commission)}</div>
                 </td>
                 <td class="text-end">
-                    <div class="scores-cell-main">${formatNumber(record.annualValue)}</div>
-                    <div class="scores-cell-sub">Mensual ${formatNumber(record.monthlyValue)}</div>
+                    <div class="scores-cell-main">${formatNumber(record.monthlyValue)}</div>
+                </td>
+                <td class="text-end">
+                    <div class="scores-cell-main">${formatNumber(record.totalValue ?? record.annualValue)}</div>
                 </td>
                 <td class="text-end">
                     <div class="d-flex justify-content-end gap-2 flex-wrap">
@@ -281,7 +298,7 @@
                 </td>
             </tr>
             <tr class="scores-detail-row ${isExpanded ? "show" : ""}" data-detail-row-for="${escapeHtml(record.recordId)}">
-                <td colspan="8">
+                <td colspan="10">
                     <div class="scores-detail">
                         <div class="scores-detail__meta">${detailMeta}</div>
                         ${renderProductLines(record)}
@@ -312,12 +329,12 @@
                         <span class="scores-group__metric-value">${formatNumber(group.totalCommission)}</span>
                     </div>
                     <div class="scores-group__metric">
-                        <span class="scores-group__metric-label">Valor mensual</span>
+                        <span class="scores-group__metric-label">Venta mensual</span>
                         <span class="scores-group__metric-value">${formatNumber(group.totalMonthlyValue)}</span>
                     </div>
                     <div class="scores-group__metric">
-                        <span class="scores-group__metric-label">Valor 12m</span>
-                        <span class="scores-group__metric-value">${formatNumber(group.totalAnnualValue)}</span>
+                        <span class="scores-group__metric-label">Venta total</span>
+                        <span class="scores-group__metric-value">${formatNumber(group.totalValue ?? group.totalAnnualValue)}</span>
                     </div>
                 </div>
 
@@ -328,9 +345,11 @@
                                 <th>Inicio contrato</th>
                                 <th class="text-center">Oferta</th>
                                 <th>Vendedor</th>
+                                <th>Prorrateo</th>
                                 <th class="text-end">Puntaje</th>
                                 <th class="text-end">Comision</th>
-                                <th class="text-end">Valor contrato</th>
+                                <th class="text-end">Venta mensual</th>
+                                <th class="text-end">Venta total</th>
                                 <th class="text-end">Acciones</th>
                                 <th class="text-center">Verificado</th>
                             </tr>

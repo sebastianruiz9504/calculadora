@@ -36,6 +36,12 @@ public sealed class ProvisioningResultado
 {
     public decimal Puntaje { get; set; }
     public decimal Comision { get; set; }
+    public int ProrrateoDias { get; set; }
+    public decimal ProrrateoFactor { get; set; }
+    public string? ProrrateoTexto { get; set; }
+    public decimal VentaMensualTotal { get; set; }
+    public decimal VentaTotal { get; set; }
+    public decimal VentaTotalAnual { get; set; }
 }
 
 public sealed class ProvisioningLineItem
@@ -45,6 +51,12 @@ public sealed class ProvisioningLineItem
     public string? ProductoNombre { get; set; }
     public decimal Cantidad { get; set; }
     public decimal Number { get; set; }
+    public decimal CostoUnd { get; set; }
+    public decimal VentaUnd { get; set; }
+    public decimal MargenPorcentaje { get; set; }
+    public int DuracionMeses { get; set; }
+    public decimal VentaMensual { get; set; }
+    public decimal VentaTotal { get; set; }
 }
 
 public sealed class ProvisioningAttachment

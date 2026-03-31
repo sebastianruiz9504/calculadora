@@ -14,6 +14,12 @@ public sealed partial class DataverseService
         "(?<key>Cliente|Fecha aprovisionamiento|Tipo contrato|Puntaje|Comisión|Comision|BusinessId)\\s*:\\s*(?<value>.*?)(?=(Cliente|Fecha aprovisionamiento|Tipo contrato|Puntaje|Comisión|Comision|BusinessId|Líneas|Lineas)\\s*:|$)",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
+    private static readonly Regex ExtendedScoreDescriptionFieldRegex = new(
+        "(?<key>Cliente|Fecha aprovisionamiento|Tipo contrato|Puntaje|Comisi(?:\\u00F3|o)n|BusinessId|Prorrateo|Prorateo|Venta mensual total|Venta total anual|Venta total)\\s*:\\s*(?<value>.*?)(?=(Cliente|Fecha aprovisionamiento|Tipo contrato|Puntaje|Comisi(?:\\u00F3|o)n|BusinessId|Prorrateo|Prorateo|Venta mensual total|Venta total anual|Venta total|L(?:\\u00ED|i)neas)\\s*:|$)",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+    private static readonly Regex ProrationTextRegex = new(
+        "(?<days>\\d+)\\s*d(?:\\u00ED|i)as?.*?\\((?<factor>[\\d\\.,]+)\\)",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
     private static readonly HashSet<int> AllowedFirstContractOptionValues = new() { 1, 2 };
     private static readonly HashSet<int> AllowedLineOptionValues = new() { 645250000, 645250001, 645250002, 645250003, 645250004, 645250005, 645250006, 645250007 };
     private static readonly HashSet<int> AllowedVerticalOptionValues = new() { 645250000, 645250001 };
@@ -71,7 +77,8 @@ public sealed partial class DataverseService
                     TotalCommission = RoundCurrency(orderedRecords.Sum(item => item.Commission)),
                     TotalScore = RoundCurrency(orderedRecords.Sum(item => item.Score)),
                     TotalMonthlyValue = RoundCurrency(orderedRecords.Sum(item => item.MonthlyValue)),
-                    TotalAnnualValue = RoundCurrency(orderedRecords.Sum(item => item.AnnualValue)),
+                    TotalValue = RoundCurrency(orderedRecords.Sum(item => item.TotalValue)),
+                    TotalAnnualValue = RoundCurrency(orderedRecords.Sum(item => item.TotalValue)),
                     Records = orderedRecords
                 };
             })
@@ -89,7 +96,8 @@ public sealed partial class DataverseService
             TotalCommission = RoundCurrency(records.Sum(item => item.Commission)),
             TotalScore = RoundCurrency(records.Sum(item => item.Score)),
             TotalMonthlyValue = RoundCurrency(records.Sum(item => item.MonthlyValue)),
-            TotalAnnualValue = RoundCurrency(records.Sum(item => item.AnnualValue)),
+            TotalValue = RoundCurrency(records.Sum(item => item.TotalValue)),
+            TotalAnnualValue = RoundCurrency(records.Sum(item => item.TotalValue)),
             Groups = groups
         };
     }
@@ -250,6 +258,8 @@ public sealed partial class DataverseService
         var salesPerson = ReadDataverseDisplayValue(item, _scoresSalesPersonField, "vendedor");
         var offer = ReadDataverseDisplayValue(item, _scoresOfferField, "oferta");
         var isVerified = ReadYesNoOption(item, _scoresVerifiedField);
+        var monthlyValue = RoundCurrency(parsedDescription.TotalMonthlyValue ?? productLines.Sum(line => line.MonthlyValue));
+        var totalValue = RoundCurrency(parsedDescription.TotalValue ?? productLines.Sum(line => line.TotalValue));
 
         return new ScoreRecordDto
         {
@@ -273,10 +283,14 @@ public sealed partial class DataverseService
             ProvisioningDateDisplay = parsedDescription.ProvisioningDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "",
             ContractType = parsedDescription.ContractType,
             BusinessId = parsedDescription.BusinessId,
+            ProrationText = parsedDescription.ProrationText,
+            ProrationDays = parsedDescription.ProrationDays,
+            ProrationFactor = parsedDescription.ProrationFactor,
             RawDescription = rawDescription,
             ProductLinesCount = productLines.Count,
-            MonthlyValue = RoundCurrency(productLines.Sum(line => line.MonthlyValue)),
-            AnnualValue = RoundCurrency(productLines.Sum(line => line.AnnualValue)),
+            MonthlyValue = monthlyValue,
+            TotalValue = totalValue,
+            AnnualValue = totalValue,
             ProductLines = productLines
         };
     }
@@ -308,8 +322,8 @@ public sealed partial class DataverseService
             }
 
             metadata.Append(raw, cursor, linesIndex - cursor);
-            var labelLength = raw.AsSpan(linesIndex).StartsWith("Líneas:", StringComparison.OrdinalIgnoreCase)
-                ? "Líneas:".Length
+            var labelLength = raw.AsSpan(linesIndex).StartsWith("L\u00EDneas:", StringComparison.OrdinalIgnoreCase)
+                ? "L\u00EDneas:".Length
                 : "Lineas:".Length;
 
             var arrayStart = SkipWhitespace(raw, linesIndex + labelLength);
@@ -333,7 +347,7 @@ public sealed partial class DataverseService
             cursor = linesIndex + labelLength;
         }
 
-        foreach (Match match in ScoreDescriptionFieldRegex.Matches(metadata.ToString()))
+        foreach (Match match in ExtendedScoreDescriptionFieldRegex.Matches(metadata.ToString()))
         {
             if (!match.Success)
                 continue;
@@ -367,21 +381,44 @@ public sealed partial class DataverseService
                     if (string.IsNullOrWhiteSpace(result.BusinessId))
                         result.BusinessId = value;
                     break;
+                case "prorrateo":
+                case "prorateo":
+                    ApplyProrationMetadata(result, value);
+                    break;
+                case "ventamensualtotal":
+                    result.TotalMonthlyValue ??= ParseLooseDecimal(value);
+                    break;
+                case "ventatotal":
+                case "ventatotalanual":
+                    result.TotalValue ??= ParseLooseDecimal(value);
+                    break;
             }
         }
 
         result.ClientName = result.ClientName.Trim();
         result.ContractType = result.ContractType.Trim();
         result.BusinessId = result.BusinessId.Trim();
+        result.ProrationText = result.ProrationText.Trim();
         return result;
     }
 
     private static ScoreProductLineDto ToScoreProductLine(RawScoreProductLine rawLine, int index)
     {
         var quantity = Math.Max(rawLine.Quantity, 0);
-        var unitMonthlyValue = RoundCurrency(rawLine.Number);
-        var monthlyValue = RoundCurrency(quantity * unitMonthlyValue);
-        var annualValue = RoundCurrency(monthlyValue * 12m);
+        var costUnit = RoundCurrency(rawLine.CostUnit ?? 0m);
+        var marginPercent = RoundCurrency(rawLine.MarginPercent ?? 0m);
+        var contractMonths = rawLine.ContractMonths.HasValue && rawLine.ContractMonths.Value > 0
+            ? rawLine.ContractMonths.Value
+            : 12;
+        var unitMonthlyValueRaw = rawLine.SaleUnit
+            ?? rawLine.Number
+            ?? (quantity > 0 ? rawLine.MonthlyValue / quantity : null)
+            ?? 0m;
+        var monthlyValueRaw = rawLine.MonthlyValue ?? (quantity * unitMonthlyValueRaw);
+        var totalValueRaw = rawLine.TotalValue ?? (monthlyValueRaw * contractMonths);
+        var unitMonthlyValue = RoundCurrency(unitMonthlyValueRaw);
+        var monthlyValue = RoundCurrency(monthlyValueRaw);
+        var totalValue = RoundCurrency(totalValueRaw);
         var productName = string.IsNullOrWhiteSpace(rawLine.ProductName)
             ? $"Producto {index}"
             : rawLine.ProductName.Trim();
@@ -392,10 +429,37 @@ public sealed partial class DataverseService
             ProductId = rawLine.ProductId?.Trim() ?? "",
             ProductName = productName,
             Quantity = quantity,
+            CostUnit = costUnit,
+            MarginPercent = marginPercent,
+            ContractMonths = contractMonths,
             MonthlyUnitValue = unitMonthlyValue,
             MonthlyValue = monthlyValue,
-            AnnualValue = annualValue
+            TotalValue = totalValue,
+            AnnualValue = totalValue
         };
+    }
+
+    private static void ApplyProrationMetadata(ScoreDescriptionParseResult result, string value)
+    {
+        var normalizedValue = value.Trim();
+        if (string.IsNullOrWhiteSpace(result.ProrationText))
+            result.ProrationText = normalizedValue;
+
+        if (string.Equals(normalizedValue, "no", StringComparison.OrdinalIgnoreCase))
+        {
+            result.ProrationDays = 0;
+            result.ProrationFactor = 1m;
+            return;
+        }
+
+        var match = ProrationTextRegex.Match(normalizedValue);
+        if (!match.Success)
+            return;
+
+        if (int.TryParse(match.Groups["days"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var prorationDays))
+            result.ProrationDays = prorationDays;
+
+        result.ProrationFactor = ParseLooseDecimal(match.Groups["factor"].Value) ?? result.ProrationFactor;
     }
 
     private static string NormalizeDescriptionKey(string key)
@@ -412,7 +476,7 @@ public sealed partial class DataverseService
 
     private static int FindNextLinesLabel(string raw, int startIndex)
     {
-        var accented = raw.IndexOf("Líneas:", startIndex, StringComparison.OrdinalIgnoreCase);
+        var accented = raw.IndexOf("L\u00EDneas:", startIndex, StringComparison.OrdinalIgnoreCase);
         var plain = raw.IndexOf("Lineas:", startIndex, StringComparison.OrdinalIgnoreCase);
 
         if (accented < 0)
@@ -702,6 +766,11 @@ public sealed partial class DataverseService
         public decimal? Score { get; set; }
         public decimal? Commission { get; set; }
         public string BusinessId { get; set; } = "";
+        public string ProrationText { get; set; } = "";
+        public int ProrationDays { get; set; }
+        public decimal ProrationFactor { get; set; }
+        public decimal? TotalMonthlyValue { get; set; }
+        public decimal? TotalValue { get; set; }
         public List<ScoreProductLineDto> ProductLines { get; } = new();
     }
 
@@ -720,6 +789,24 @@ public sealed partial class DataverseService
         public int Quantity { get; set; }
 
         [JsonPropertyName("number")]
-        public decimal Number { get; set; }
+        public decimal? Number { get; set; }
+
+        [JsonPropertyName("costoUnd")]
+        public decimal? CostUnit { get; set; }
+
+        [JsonPropertyName("ventaUnd")]
+        public decimal? SaleUnit { get; set; }
+
+        [JsonPropertyName("margenPorcentaje")]
+        public decimal? MarginPercent { get; set; }
+
+        [JsonPropertyName("duracionMeses")]
+        public int? ContractMonths { get; set; }
+
+        [JsonPropertyName("ventaMensual")]
+        public decimal? MonthlyValue { get; set; }
+
+        [JsonPropertyName("ventaTotal")]
+        public decimal? TotalValue { get; set; }
     }
 }
