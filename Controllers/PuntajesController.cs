@@ -30,7 +30,11 @@ public sealed class PuntajesController : Controller
             InitialFilter = ScorePeriodFilter.ThisMonth,
             FirstContractOptions = PuntajesOptionCatalog.FirstContractOptions,
             LineOptions = PuntajesOptionCatalog.LineOptions,
-            VerticalOptions = PuntajesOptionCatalog.VerticalOptions
+            VerticalOptions = PuntajesOptionCatalog.VerticalOptions,
+            HasVatOptions = PuntajesOptionCatalog.HasVatOptions,
+            AutoBillOptions = PuntajesOptionCatalog.AutoBillOptions,
+            ProductLineOptions = PuntajesOptionCatalog.ProductLineOptions,
+            ContractTypeOptions = PuntajesOptionCatalog.ContractTypeOptions
         };
 
         return View(model);
@@ -54,8 +58,8 @@ public sealed class PuntajesController : Controller
 
         try
         {
-            await _dataverse.VerifyScoreRecordAsync(request, ct);
-            return Ok(new { ok = true, message = "El registro se verifico correctamente." });
+            var result = await _dataverse.VerifyScoreRecordAsync(request, ct);
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {
@@ -64,6 +68,75 @@ public sealed class PuntajesController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar la verificacion.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Detail([FromQuery] string recordId, [FromQuery] string? filter, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(recordId))
+            return BadRequest("Debes indicar el registro a consultar.");
+
+        var parsedFilter = ScorePeriodFilterExtensions.ParseOrDefault(filter);
+
+        try
+        {
+            var detail = await _dataverse.GetScoreVerificationDetailAsync(recordId, parsedFilter, ct);
+            return Json(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el detalle de verificacion.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Recalculate([FromBody] ScoreVerificationRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest("Debes enviar los datos del negocio a recalcular.");
+
+        try
+        {
+            var result = await _dataverse.RecalculateScoreRecordAsync(request, ct);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible recalcular el puntaje.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CloseMonth([FromBody] ScoreMonthCloseRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest("Debes indicar el periodo a cerrar.");
+
+        try
+        {
+            var parsedFilter = ScorePeriodFilterExtensions.ParseOrDefault(request.Filter);
+            var result = await _dataverse.CloseScoreMonthAsync(parsedFilter, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cerrar el mes.");
         }
     }
 

@@ -6,7 +6,11 @@
     {
         firstContractOptions = Model.FirstContractOptions,
         lineOptions = Model.LineOptions,
-        verticalOptions = Model.VerticalOptions
+        verticalOptions = Model.VerticalOptions,
+        hasVatOptions = Model.HasVatOptions,
+        autoBillOptions = Model.AutoBillOptions,
+        productLineOptions = Model.ProductLineOptions,
+        contractTypeOptions = Model.ContractTypeOptions
     });
 }
 
@@ -17,8 +21,12 @@
 <div class="scores-shell"
      id="puntajesApp"
      data-records-url="@Url.Action("Records", "Puntajes")"
+     data-detail-url="@Url.Action("Detail", "Puntajes")"
      data-verify-url="@Url.Action("Verify", "Puntajes")"
+     data-recalculate-url="@Url.Action("Recalculate", "Puntajes")"
+     data-close-month-url="@Url.Action("CloseMonth", "Puntajes")"
      data-offer-url="@Url.Action("Offer", "Puntajes")"
+     data-product-search-url="@Url.Action("ProductSearch", "Calculator")"
      data-initial-filter="@Model.InitialFilter.ToKey()">
     <section class="scores-hero">
         <div class="scores-hero__content">
@@ -26,8 +34,9 @@
                 <div class="scores-kicker">Modulo Dataverse</div>
                 <h1 class="scores-title">Puntajes</h1>
                 <p class="scores-subtitle">
-                    Consulta los registros de <span class="scores-highlight">cr07a_contractrecord1</span>, agrupados por cliente,
-                    con desglose por aprovisionamiento y subdesglose por productos, usando los valores reales enviados desde la calculadora.
+                    Consulta los registros de <span class="scores-highlight">cr07a_contractrecord1</span>, agrupa por cliente
+                    y ahora permite validar el negocio completo, recalcular puntaje/comision y consolidar el cierre mensual
+                    directamente sobre <span class="scores-highlight">cr07a_salesperformancerecord</span>.
                 </p>
             </div>
             <div class="scores-user-pill">
@@ -49,7 +58,7 @@
                 </div>
             </div>
             <div class="scores-toolbar__actions">
-                <div class="scores-toolbar__caption">Los totales reflejan duración, venta mensual, venta total y prorrateo reales.</div>
+                <div class="scores-toolbar__caption">La verificación usa el mismo motor de cálculo de la calculadora y guarda el detalle editable en Dataverse.</div>
                 <button type="button" class="btn btn-primary" id="refreshScoresBtn">Actualizar</button>
             </div>
         </div>
@@ -87,14 +96,27 @@
     <section class="scores-card">
         <div id="scoresGroupsContainer" class="scores-groups"></div>
     </section>
+
+    <section class="scores-card scores-close-card">
+        <div class="scores-close-card__header">
+            <div>
+                <div class="scores-toolbar__label">Cierre mensual</div>
+                <h2 class="scores-close-card__title">Consolidación interna a sales performance</h2>
+                <p class="scores-close-card__subtitle" id="closeMonthSummaryText"></p>
+            </div>
+            <button type="button" class="btn btn-success" id="closeMonthBtn">Cerrar mes</button>
+        </div>
+        <div id="closeMonthLogEmpty" class="scores-close-log__empty">Todavía no se ha ejecutado ningún cierre en esta sesión.</div>
+        <div id="closeMonthLogList" class="scores-close-log"></div>
+    </section>
 </div>
 
 <div class="modal fade" id="verifyScoreModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable scores-modal-dialog">
         <div class="modal-content scores-modal">
             <div class="modal-header border-0">
                 <div>
-                    <div class="scores-modal__eyebrow">Verificacion de aprovisionamiento</div>
+                    <div class="scores-modal__eyebrow">Verificacion completa del negocio</div>
                     <h5 class="modal-title" id="verifyScoreModalTitle">Verificar</h5>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -102,24 +124,115 @@
             <div class="modal-body pt-0">
                 <p class="scores-modal__subtitle" id="verifyScoreModalSubtitle"></p>
                 <div id="verifyScoreModalStatus" class="scores-modal__status"></div>
-                <form id="verifyScoreForm" class="scores-modal__form">
-                    <div>
-                        <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
-                        <select class="form-select" id="firstContractSelect" required></select>
-                    </div>
-                    <div>
-                        <label class="form-label" for="lineOptionSelect">Linea</label>
-                        <select class="form-select" id="lineOptionSelect" required></select>
-                    </div>
-                    <div>
-                        <label class="form-label" for="verticalOptionSelect">Vertical</label>
-                        <select class="form-select" id="verticalOptionSelect" required></select>
-                    </div>
+                <div id="verifyScoreModalLoading" class="scores-modal__loading">Cargando detalle del negocio...</div>
+                <form id="verifyScoreForm" class="scores-modal__form" hidden>
+                    <section class="scores-verify-section">
+                        <div class="scores-verify-meta" id="verifyMetaCards"></div>
+                    </section>
+
+                    <section class="scores-verify-section">
+                        <div class="scores-verify-grid">
+                            <div>
+                                <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
+                                <select class="form-select" id="firstContractSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="lineOptionSelect">Linea</label>
+                                <select class="form-select" id="lineOptionSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="verticalOptionSelect">Vertical</label>
+                                <select class="form-select" id="verticalOptionSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="billingDayInput">Dia de facturacion</label>
+                                <input class="form-control" id="billingDayInput" type="number" min="0" max="31" />
+                            </div>
+                            <div>
+                                <label class="form-label" for="renewalDateInput">Fecha de renovacion</label>
+                                <input class="form-control" id="renewalDateInput" type="date" />
+                            </div>
+                            <div>
+                                <label class="form-label" for="alignmentDateInput">Fecha de alineacion</label>
+                                <input class="form-control" id="alignmentDateInput" type="date" />
+                            </div>
+                            <div>
+                                <label class="form-label" for="hasVatSelect">Tiene IVA</label>
+                                <select class="form-select" id="hasVatSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="autoBillSelect">Facturable automatico</label>
+                                <select class="form-select" id="autoBillSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="productLineSelect">Linea resumen mensual</label>
+                                <select class="form-select" id="productLineSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="contractTypeSelect">Contrato</label>
+                                <select class="form-select" id="contractTypeSelect" required></select>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="scores-verify-section">
+                        <div class="scores-verify-lines__header">
+                            <div>
+                                <div class="scores-toolbar__label">Lineas del negocio</div>
+                                <p class="scores-close-card__subtitle mb-0">Puedes editar producto, costo, margen, duracion, venta, cantidad y los totales se sincronizan para mantener la formula consistente.</p>
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="addVerifyLineBtn">Agregar linea</button>
+                        </div>
+                        <div class="scores-verify-lines__wrap">
+                            <table class="scores-verify-table">
+                                <thead>
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th class="text-end">Costo UND</th>
+                                        <th class="text-end">Margen %</th>
+                                        <th class="text-end">Duracion</th>
+                                        <th class="text-end">Venta UND</th>
+                                        <th class="text-end">Cantidad</th>
+                                        <th class="text-end">Venta mensual</th>
+                                        <th class="text-end">Venta total</th>
+                                        <th class="text-center">Accion</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="verifyLinesBody"></tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="scores-verify-section">
+                        <div class="scores-result-grid">
+                            <article class="scores-result-card">
+                                <span class="scores-summary__label">Puntaje</span>
+                                <strong id="verifyResultPoints">—</strong>
+                            </article>
+                            <article class="scores-result-card">
+                                <span class="scores-summary__label">Comision</span>
+                                <strong id="verifyResultCommission">—</strong>
+                            </article>
+                            <article class="scores-result-card">
+                                <span class="scores-summary__label">Prorrateo</span>
+                                <strong id="verifyResultProration">—</strong>
+                            </article>
+                            <article class="scores-result-card">
+                                <span class="scores-summary__label">Venta mensual</span>
+                                <strong id="verifyResultMonthly">—</strong>
+                            </article>
+                            <article class="scores-result-card">
+                                <span class="scores-summary__label">Venta total</span>
+                                <strong id="verifyResultTotal">—</strong>
+                            </article>
+                        </div>
+                    </section>
                 </form>
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="submitVerifyScoreBtn">Enviar</button>
+                <button type="button" class="btn btn-outline-primary" id="recalculateVerifyScoreBtn">Recalcular puntaje</button>
+                <button type="button" class="btn btn-primary" id="submitVerifyScoreBtn">Guardar verificacion</button>
             </div>
         </div>
     </div>

@@ -10,6 +10,7 @@ using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Renovaciones;
+using CotizadorInterno.Web.Services.Calculator;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -18,6 +19,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IDownstreamApi _downstreamApi;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<DataverseService> _logger;
+    private readonly IQuoteCalculator _calculator;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -53,6 +55,14 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresFirstContractField = "cr07a_esprimercontratoconelcliente";
     private const string DefaultScoresLineField = "cr07a_linea";
     private const string DefaultScoresVerticalField = "cr07a_vertical";
+    private const string DefaultScoresAdditionalField = "cr07a_adicionales";
+    private const string DefaultSalesPerformancePrimaryNameField = "cr07a_name";
+    private const string DefaultSalesPerformanceBillingDayField = "cr07a_billingday";
+    private const string DefaultSalesPerformanceHasVatField = "cr07a_sietieneiva";
+    private const string DefaultSalesPerformanceAutoBillField = "cr07a_facturableautomatico";
+    private const string DefaultSalesPerformanceProductLineField = "cr07a_productline";
+    private const string DefaultSalesPerformanceContractTypeField = "cr07a_contracttype";
+    private const string DefaultSalesPerformanceClientCreateLookupLogicalName = "cr07a_clientelookup";
     private const string ClientsEntitySetName = "cr07a_clientes";
     private const string ProductsEntitySetName = "cr07a_preciosclouds";
     private const string FormattedValueAnnotationSuffix = "@OData.Community.Display.V1.FormattedValue";
@@ -72,6 +82,14 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _salesPerformanceIdField;
     private readonly string _salesPerformanceClientLookupFilterField;
     private readonly string _salesPerformanceRenewalDateField;
+    private readonly string _salesPerformanceClientLookupLogicalName;
+    private readonly string _salesPerformanceProductLookupLogicalName;
+    private readonly string _salesPerformancePrimaryNameField;
+    private readonly string _salesPerformanceBillingDayField;
+    private readonly string _salesPerformanceHasVatField;
+    private readonly string _salesPerformanceAutoBillField;
+    private readonly string _salesPerformanceProductLineField;
+    private readonly string _salesPerformanceContractTypeField;
     private readonly string _supplierExpensesTableSetName;
     private readonly string _supplierExpensesTableName;
     private readonly string _supplierExpensesIdField;
@@ -91,16 +109,19 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresFirstContractField;
     private readonly string _scoresLineField;
     private readonly string _scoresVerticalField;
+    private readonly string _scoresAdditionalField;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
         IHttpContextAccessor httpContextAccessor,
+        IQuoteCalculator calculator,
         IConfiguration configuration,
         ILogger<DataverseService> logger)
     {
         _downstreamApi = downstreamApi;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
+        _calculator = calculator;
         _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
             ?? DefaultScenariosTableSetName;
         _scenariosTableName = configuration["Dataverse:ScenariosTableName"]
@@ -113,6 +134,22 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultSalesPerformanceClientLookupFilterField;
         _salesPerformanceRenewalDateField = configuration["Dataverse:SalesPerformanceRenewalDateField"]
             ?? DefaultSalesPerformanceRenewalDateField;
+        _salesPerformanceClientLookupLogicalName = configuration["Dataverse:SalesPerformanceClientLookupLogicalName"]
+            ?? DefaultSalesPerformanceClientCreateLookupLogicalName;
+        _salesPerformanceProductLookupLogicalName = configuration["Dataverse:SalesPerformanceProductLookupLogicalName"]
+            ?? DefaultSalesPerformanceProductLookupLogicalName;
+        _salesPerformancePrimaryNameField = configuration["Dataverse:SalesPerformancePrimaryNameField"]
+            ?? DefaultSalesPerformancePrimaryNameField;
+        _salesPerformanceBillingDayField = configuration["Dataverse:SalesPerformanceBillingDayField"]
+            ?? DefaultSalesPerformanceBillingDayField;
+        _salesPerformanceHasVatField = configuration["Dataverse:SalesPerformanceHasVatField"]
+            ?? DefaultSalesPerformanceHasVatField;
+        _salesPerformanceAutoBillField = configuration["Dataverse:SalesPerformanceAutoBillField"]
+            ?? DefaultSalesPerformanceAutoBillField;
+        _salesPerformanceProductLineField = configuration["Dataverse:SalesPerformanceProductLineField"]
+            ?? DefaultSalesPerformanceProductLineField;
+        _salesPerformanceContractTypeField = configuration["Dataverse:SalesPerformanceContractTypeField"]
+            ?? DefaultSalesPerformanceContractTypeField;
         _supplierExpensesTableSetName = configuration["SupplierPortal:ExpensesTableSetName"]
             ?? DefaultSupplierExpensesTableSetName;
         _supplierExpensesTableName = configuration["SupplierPortal:ExpensesTableName"]
@@ -151,6 +188,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresLineField;
         _scoresVerticalField = configuration["Scores:VerticalField"]
             ?? DefaultScoresVerticalField;
+        _scoresAdditionalField = configuration["Scores:AdditionalField"]
+            ?? DefaultScoresAdditionalField;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

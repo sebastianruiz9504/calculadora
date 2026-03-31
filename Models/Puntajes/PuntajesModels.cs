@@ -54,6 +54,10 @@ public sealed class PuntajesPageViewModel
     public IReadOnlyList<ScoreOptionItem> FirstContractOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> LineOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> VerticalOptions { get; set; } = Array.Empty<ScoreOptionItem>();
+    public IReadOnlyList<ScoreOptionItem> HasVatOptions { get; set; } = Array.Empty<ScoreOptionItem>();
+    public IReadOnlyList<ScoreOptionItem> AutoBillOptions { get; set; } = Array.Empty<ScoreOptionItem>();
+    public IReadOnlyList<ScoreOptionItem> ProductLineOptions { get; set; } = Array.Empty<ScoreOptionItem>();
+    public IReadOnlyList<ScoreOptionItem> ContractTypeOptions { get; set; } = Array.Empty<ScoreOptionItem>();
 }
 
 public sealed class ScoreBoardDto
@@ -68,6 +72,11 @@ public sealed class ScoreBoardDto
     public decimal TotalMonthlyValue { get; set; }
     public decimal TotalValue { get; set; }
     public decimal TotalAnnualValue { get; set; }
+    public int VerifiedRecordsCount { get; set; }
+    public int ClosedRecordsCount { get; set; }
+    public bool SupportsMonthClose { get; set; }
+    public string MonthClosePeriodKey { get; set; } = "";
+    public string MonthClosePeriodLabel { get; set; } = "";
     public IReadOnlyList<ScoreClientGroupDto> Groups { get; set; } = Array.Empty<ScoreClientGroupDto>();
 }
 
@@ -117,6 +126,25 @@ public sealed class ScoreRecordDto
     public decimal MonthlyValue { get; set; }
     public decimal TotalValue { get; set; }
     public decimal AnnualValue { get; set; }
+    public int BillingDay { get; set; }
+    public string RenewalDateValue { get; set; } = "";
+    public string RenewalDateDisplay { get; set; } = "";
+    public string AlignmentDateValue { get; set; } = "";
+    public string AlignmentDateDisplay { get; set; } = "";
+    public int HasVatOptionValue { get; set; }
+    public int AutoBillOptionValue { get; set; }
+    public int ProductLineOptionValue { get; set; }
+    public int ContractTypeOptionValue { get; set; }
+    public int DealTypeValue { get; set; }
+    public bool RequiresProration { get; set; }
+    public string ScenarioStartDateValue { get; set; } = "";
+    public string ScenarioEndDateValue { get; set; } = "";
+    public bool IsClosedForActivePeriod { get; set; }
+    public string ActivePeriodKey { get; set; } = "";
+    public string LastVerifiedAtDisplay { get; set; } = "";
+    public string LastVerifiedBy { get; set; } = "";
+    public string LastClosedAtDisplay { get; set; } = "";
+    public string LastClosedBy { get; set; } = "";
     public IReadOnlyList<ScoreProductLineDto> ProductLines { get; set; } = Array.Empty<ScoreProductLineDto>();
 }
 
@@ -135,12 +163,111 @@ public sealed class ScoreProductLineDto
     public decimal AnnualValue { get; set; }
 }
 
-public sealed class ScoreVerificationRequest
+public class ScoreVerificationRequest
 {
     public string RecordId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
+    public int DealTypeValue { get; set; }
+    public bool RequiresProration { get; set; }
+    public string ScenarioStartDateValue { get; set; } = "";
+    public string ScenarioEndDateValue { get; set; } = "";
     public int FirstContractOptionValue { get; set; }
     public int LineOptionValue { get; set; }
     public int VerticalOptionValue { get; set; }
+    public int BillingDay { get; set; }
+    public string RenewalDateValue { get; set; } = "";
+    public string AlignmentDateValue { get; set; } = "";
+    public int HasVatOptionValue { get; set; }
+    public int AutoBillOptionValue { get; set; }
+    public int ProductLineOptionValue { get; set; }
+    public int ContractTypeOptionValue { get; set; }
+    public List<ScoreVerificationLineInput> Lines { get; set; } = new();
+}
+
+public sealed class ScoreVerificationLineInput
+{
+    public string LineId { get; set; } = "";
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public decimal CostUnit { get; set; }
+    public decimal MarginPercent { get; set; }
+    public int ContractMonths { get; set; } = 12;
+    public int Quantity { get; set; } = 1;
+    public decimal SuggestedRetailPrice { get; set; }
+    public decimal Acelerador { get; set; }
+    public decimal SaleUnit { get; set; }
+    public decimal MonthlyValue { get; set; }
+    public decimal TotalValue { get; set; }
+}
+
+public sealed class ScoreVerificationComputedResultDto
+{
+    public decimal Points { get; set; }
+    public decimal Commission { get; set; }
+    public int ProrationDays { get; set; }
+    public decimal ProrationFactor { get; set; }
+    public string ProrationText { get; set; } = "";
+    public decimal TotalMonthlySale { get; set; }
+    public decimal TotalSale { get; set; }
+}
+
+public sealed class ScoreVerificationDetailDto : ScoreVerificationRequest
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string SalesPerson { get; set; } = "";
+    public string Offer { get; set; } = "";
+    public string OfferFileName { get; set; } = "";
+    public bool HasOffer { get; set; }
+    public bool IsVerified { get; set; }
+    public string ContractStartDateValue { get; set; } = "";
+    public string ContractStartDateDisplay { get; set; } = "";
+    public string ProvisioningDateValue { get; set; } = "";
+    public string ProvisioningDateDisplay { get; set; } = "";
+    public string ContractTypeLabel { get; set; } = "";
+    public string ProrationSummary { get; set; } = "";
+    public bool IsClosedForActivePeriod { get; set; }
+    public string ActivePeriodKey { get; set; } = "";
+    public string LastVerifiedAtDisplay { get; set; } = "";
+    public string LastVerifiedBy { get; set; } = "";
+    public string LastClosedAtDisplay { get; set; } = "";
+    public string LastClosedBy { get; set; } = "";
+    public ScoreVerificationComputedResultDto Result { get; set; } = new();
+}
+
+public sealed class ScoreVerificationSaveResultDto
+{
+    public bool Ok { get; set; }
+    public string Message { get; set; } = "";
+    public ScoreVerificationComputedResultDto Result { get; set; } = new();
+}
+
+public sealed class ScoreMonthCloseRequest
+{
+    public string Filter { get; set; } = "";
+}
+
+public sealed class ScoreMonthCloseLogEntryDto
+{
+    public string Level { get; set; } = "info";
+    public string RecordId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class ScoreMonthCloseResultDto
+{
+    public bool HasErrors { get; set; }
+    public string Message { get; set; } = "";
+    public string PeriodKey { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public int ProcessedRecordsCount { get; set; }
+    public int CreatedCount { get; set; }
+    public int UpdatedCount { get; set; }
+    public int SkippedCount { get; set; }
+    public int ErrorCount { get; set; }
+    public IReadOnlyList<ScoreMonthCloseLogEntryDto> Logs { get; set; } = Array.Empty<ScoreMonthCloseLogEntryDto>();
 }
 
 public sealed class ScoreOptionItem
@@ -181,6 +308,32 @@ public static class PuntajesOptionCatalog
     {
         new ScoreOptionItem { Value = 645250000, Label = "Cloud" },
         new ScoreOptionItem { Value = 645250001, Label = "Copiers" }
+    };
+
+    public static IReadOnlyList<ScoreOptionItem> HasVatOptions { get; } = new[]
+    {
+        new ScoreOptionItem { Value = 0, Label = "No" },
+        new ScoreOptionItem { Value = 1, Label = "Si" }
+    };
+
+    public static IReadOnlyList<ScoreOptionItem> AutoBillOptions { get; } = new[]
+    {
+        new ScoreOptionItem { Value = 0, Label = "No" },
+        new ScoreOptionItem { Value = 1, Label = "Si" }
+    };
+
+    public static IReadOnlyList<ScoreOptionItem> ProductLineOptions { get; } = new[]
+    {
+        new ScoreOptionItem { Value = 0, Label = "ModernWork" },
+        new ScoreOptionItem { Value = 1, Label = "OutSourcing" },
+        new ScoreOptionItem { Value = 2, Label = "Azure" },
+        new ScoreOptionItem { Value = 3, Label = "Acronis" }
+    };
+
+    public static IReadOnlyList<ScoreOptionItem> ContractTypeOptions { get; } = new[]
+    {
+        new ScoreOptionItem { Value = 0, Label = "Monthly" },
+        new ScoreOptionItem { Value = 1, Label = "Annual" }
     };
 }
 
