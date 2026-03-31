@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Net.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
@@ -16,6 +17,7 @@ public sealed partial class DataverseService : IDataverseService
 {
     private readonly IDownstreamApi _downstreamApi;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<DataverseService> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -90,10 +92,15 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresLineField;
     private readonly string _scoresVerticalField;
 
-    public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
+    public DataverseService(
+        IDownstreamApi downstreamApi,
+        IHttpContextAccessor httpContextAccessor,
+        IConfiguration configuration,
+        ILogger<DataverseService> logger)
     {
         _downstreamApi = downstreamApi;
         _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
         _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
             ?? DefaultScenariosTableSetName;
         _scenariosTableName = configuration["Dataverse:ScenariosTableName"]
@@ -333,7 +340,10 @@ public sealed partial class DataverseService : IDataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         if (!Guid.TryParse(clientId, out var clientGuid))
+        {
+            _logger.LogWarning("SearchRenewalDatesByClientAsync recibio un clientId invalido: {ClientId}", clientId);
             return Array.Empty<RenewalDateLookupItem>();
+        }
 
         top = Math.Clamp(top, 1, 5000);
         var fallbackLookupFields = new[]
@@ -361,6 +371,11 @@ public sealed partial class DataverseService : IDataverseService
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(
+                    ex,
+                    "Fallo la consulta de fechas de renovacion para cliente {ClientId} usando lookup {LookupField}.",
+                    clientId,
+                    lookupField);
                 lastError = ex;
             }
         }
@@ -370,7 +385,12 @@ public sealed partial class DataverseService : IDataverseService
             return scanResults;
 
         if (emptySuccessfulResult is not null)
+        {
+            _logger.LogInformation(
+                "No se encontraron fechas de renovacion disponibles para cliente {ClientId}.",
+                clientId);
             return emptySuccessfulResult;
+        }
 
         throw new InvalidOperationException(
             "No se pudo consultar cr07a_salesperformancerecord para obtener fechas de renovacion del cliente seleccionado.",
@@ -1297,6 +1317,24 @@ public sealed partial class DataverseService : IDataverseService
             });
         }
 
+        if (arr.GetArrayLength() > 0 && list.Count == 0)
+        {
+            _logger.LogWarning(
+                "Se encontraron {RecordCount} registros para cliente {ClientId} con lookup {LookupField}, pero ninguno tenia una fecha valida en {RenewalDateField}.",
+                arr.GetArrayLength(),
+                clientGuid,
+                lookupField,
+                _salesPerformanceRenewalDateField);
+        }
+        else if (arr.GetArrayLength() > list.Count)
+        {
+            _logger.LogWarning(
+                "Se omitieron {SkippedCount} registros sin fecha valida para cliente {ClientId} con lookup {LookupField}.",
+                arr.GetArrayLength() - list.Count,
+                clientGuid,
+                lookupField);
+        }
+
         return DistinctRenewalDates(list);
     }
 
@@ -1328,6 +1366,14 @@ public sealed partial class DataverseService : IDataverseService
                 DateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 DisplayDate = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
             });
+        }
+
+        if (list.Count == 0 && arr.GetArrayLength() > 0)
+        {
+            _logger.LogDebug(
+                "La consulta de escaneo no encontro fechas parseables para cliente {ClientId} dentro de {RecordCount} registros revisados.",
+                clientGuid,
+                arr.GetArrayLength());
         }
 
         return DistinctRenewalDates(list);

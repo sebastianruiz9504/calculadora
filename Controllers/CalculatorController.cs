@@ -7,6 +7,7 @@ using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
 using System.IO;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Controllers;
@@ -17,18 +18,21 @@ public sealed class CalculatorController : Controller
     private readonly IQuoteCalculator _calculator;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly CalculatorOptions _calculatorOptions;
+    private readonly ILogger<CalculatorController> _logger;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
 
     public CalculatorController(
         IDataverseService dataverse,
         IQuoteCalculator calculator,
         IHttpClientFactory httpClientFactory,
-        IOptions<CalculatorOptions> calculatorOptions)
+        IOptions<CalculatorOptions> calculatorOptions,
+        ILogger<CalculatorController> logger)
     {
         _dataverse = dataverse;
         _calculator = calculator;
         _httpClientFactory = httpClientFactory;
         _calculatorOptions = calculatorOptions.Value;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -63,14 +67,57 @@ public sealed class CalculatorController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> ClientRenewalDates([FromQuery] string clientId, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            return BadRequest(new
+            {
+                message = "Debes seleccionar un cliente valido.",
+                detail = "El parametro clientId llego vacio.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
         try
         {
             var items = await _dataverse.SearchRenewalDatesByClientAsync(clientId, top: 250, ct: ct);
             return Json(items);
         }
-        catch (Exception)
+        catch (InvalidOperationException ex)
         {
-            return BadRequest("No se pudieron consultar las fechas de renovaciÃ³n.");
+            var traceId = HttpContext.TraceIdentifier;
+
+            _logger.LogError(
+                ex,
+                "Error consultando fechas de renovacion para cliente {ClientId}. TraceId: {TraceId}.",
+                clientId,
+                traceId);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "No se pudieron consultar las fechas de renovacion.",
+                detail = BuildDiagnosticMessage(ex),
+                traceId
+            });
+        }
+        catch (Exception ex)
+        {
+            var traceId = HttpContext.TraceIdentifier;
+            var detail = CompactDiagnosticMessage(ex.Message);
+
+            _logger.LogError(
+                ex,
+                "Error inesperado consultando fechas de renovacion para cliente {ClientId}. TraceId: {TraceId}.",
+                clientId,
+                traceId);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "Ocurrio un error inesperado consultando las fechas de renovacion.",
+                detail = string.IsNullOrWhiteSpace(detail)
+                    ? "No se recibio detalle adicional del servidor."
+                    : detail,
+                traceId
+            });
         }
     }
 
@@ -434,6 +481,41 @@ public sealed class CalculatorController : Controller
         if (string.IsNullOrWhiteSpace(safe))
             safe = "Cotizacion";
         return $"{safe}.xlsx";
+    }
+
+    private static string BuildDiagnosticMessage(Exception ex)
+    {
+        var messages = new List<string>();
+
+        for (var current = ex; current is not null && messages.Count < 3; current = current.InnerException)
+        {
+            var message = CompactDiagnosticMessage(current.Message);
+            if (string.IsNullOrWhiteSpace(message))
+                continue;
+
+            if (messages.Contains(message, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            messages.Add(message);
+        }
+
+        return messages.Count == 0
+            ? "No se recibio detalle adicional del backend."
+            : string.Join(" | ", messages);
+    }
+
+    private static string CompactDiagnosticMessage(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var compact = string.Join(
+            " ",
+            value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        return compact.Length > 500
+            ? $"{compact[..497]}..."
+            : compact;
     }
 
     private sealed record ExportLine(decimal SaleUnit, decimal Monthly, decimal Total);

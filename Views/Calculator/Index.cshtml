@@ -904,11 +904,52 @@ const showDebugCalcModal = false;
     function createScenario(name) {
         const id = uid();
  return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", prorationClient: null, prorationRenewalOptions: [], prorationRenewalError: "", lines: [], lastResult: null };    }
- function toDateInputValue(value) {
+function toDateInputValue(value) {
         if (!value) return "";
         const str = String(value);
         if (str.length >= 10) return str.substring(0, 10);
         return str;
+    }
+
+    function normalizeInlineMessage(value) {
+        if (value === null || value === undefined) return "";
+        return String(value).replace(/\s+/g, " ").trim();
+    }
+
+    function shortenInlineMessage(value, maxLength = 90) {
+        const normalized = normalizeInlineMessage(value);
+        if (!normalized) return "";
+        if (normalized.length <= maxLength) return normalized;
+        return `${normalized.slice(0, maxLength - 3)}...`;
+    }
+
+    function buildApiErrorMessage(payload, fallbackMessage) {
+        if (!payload || typeof payload !== "object") return fallbackMessage;
+
+        const parts = [];
+        if (payload.message) parts.push(normalizeInlineMessage(payload.message));
+        if (payload.detail) parts.push(`Detalle: ${normalizeInlineMessage(payload.detail)}`);
+        if (payload.traceId) parts.push(`TraceId: ${normalizeInlineMessage(payload.traceId)}`);
+
+        return parts.filter(Boolean).join(" ") || fallbackMessage;
+    }
+
+    async function readErrorResponseMessage(res, fallbackMessage) {
+        let rawBody = "";
+        try {
+            rawBody = await res.text();
+        } catch {
+            return fallbackMessage;
+        }
+
+        const trimmedBody = rawBody.trim();
+        if (!trimmedBody) return fallbackMessage;
+
+        try {
+            return buildApiErrorMessage(JSON.parse(trimmedBody), fallbackMessage);
+        } catch {
+            return normalizeInlineMessage(trimmedBody) || fallbackMessage;
+        }
     }
 
     function formatDateOptionLabel(value) {
@@ -952,7 +993,7 @@ const showDebugCalcModal = false;
         if (!s.requiresProration) {
             placeholder = "Prorrateo desactivado";
         } else if (s.prorationRenewalError) {
-            placeholder = "Error consultando fechas";
+            placeholder = shortenInlineMessage(s.prorationRenewalError, 72) || "Error consultando fechas";
         } else if (hasClient && options.length) {
             placeholder = "Selecciona una fecha";
         } else if (hasClient) {
@@ -965,6 +1006,7 @@ const showDebugCalcModal = false;
         ].join("");
 
         endDate.disabled = !s.requiresProration || !options.length;
+        endDate.title = s.prorationRenewalError || "";
         endDate.value = s.endDate && options.some(option => option.dateValue === s.endDate)
             ? s.endDate
             : "";
@@ -1125,14 +1167,27 @@ const showDebugCalcModal = false;
     }
 
     async function clientRenewalDateSearch(clientId) {
-        const res = await fetch(`/Calculator/ClientRenewalDates?clientId=${encodeURIComponent(clientId)}`, { headers: { "Accept": "application/json" } });
-        if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(txt || "No se pudieron consultar las fechas de renovacion.");
+        let res;
+        try {
+            res = await fetch(`/Calculator/ClientRenewalDates?clientId=${encodeURIComponent(clientId)}`, { headers: { "Accept": "application/json" } });
+        } catch {
+            throw new Error("No se pudo conectar con el servidor al consultar las fechas de renovacion.");
         }
 
-        const items = await res.json();
-        if (!Array.isArray(items)) return [];
+        if (!res.ok) {
+            throw new Error(await readErrorResponseMessage(res, "No se pudieron consultar las fechas de renovacion."));
+        }
+
+        let items;
+        try {
+            items = await res.json();
+        } catch {
+            throw new Error("El servidor devolvio un formato invalido al consultar las fechas de renovacion.");
+        }
+
+        if (!Array.isArray(items)) {
+            throw new Error("El servidor no devolvio una lista valida de fechas de renovacion.");
+        }
 
         return items
             .map(item => {
@@ -1959,6 +2014,10 @@ function setAttachmentStatus(message, type = "error") {
                 return;
             }
 
+            console.error("Error consultando fechas de prorrateo", {
+                clientId: selectedClientId,
+                error: err
+            });
             targetScenario.prorationRenewalOptions = [];
             targetScenario.endDate = "";
             targetScenario.prorationRenewalError = err?.message || "No se pudieron consultar las fechas de renovacion.";
