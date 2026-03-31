@@ -94,6 +94,8 @@ public sealed class ScoreRecordDto
     public decimal Commission { get; set; }
     public string SalesPerson { get; set; } = "";
     public string Offer { get; set; } = "";
+    public string OfferFileName { get; set; } = "";
+    public bool HasOffer { get; set; }
     public bool IsVerified { get; set; }
     public int FirstContractOptionValue { get; set; }
     public int LineOptionValue { get; set; }
@@ -133,6 +135,14 @@ public sealed class ScoreOptionItem
 {
     public int Value { get; set; }
     public string Label { get; set; } = "";
+}
+
+public sealed class ScoreOfferDownloadResult
+{
+    public byte[] Content { get; set; } = Array.Empty<byte>();
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "application/octet-stream";
+    public string RedirectUrl { get; set; } = "";
 }
 
 public static class PuntajesOptionCatalog

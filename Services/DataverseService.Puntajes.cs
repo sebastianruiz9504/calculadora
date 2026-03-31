@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -106,16 +107,88 @@ public sealed partial class DataverseService
         if (!AllowedVerticalOptionValues.Contains(request.VerticalOptionValue))
             throw new InvalidOperationException("La vertical seleccionada no es valida.");
 
-        var payload = new Dictionary<string, object?>
-        {
-            [_scoresFirstContractField] = request.FirstContractOptionValue,
-            [_scoresLineField] = request.LineOptionValue,
-            [_scoresVerticalField] = request.VerticalOptionValue,
-            [_scoresVerifiedField] = 1
-        };
-
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({recordId})";
-        await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+        Exception? lastError = null;
+        foreach (var payload in BuildVerificationPayloadCandidates(request))
+        {
+            try
+            {
+                await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+                return;
+            }
+            catch (InvalidOperationException ex)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw new InvalidOperationException("No se pudo guardar la verificacion en Dataverse.", lastError);
+    }
+
+    public async Task<ScoreOfferDownloadResult?> DownloadScoreOfferAsync(string recordId, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var metadataUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})?$select={_scoresOfferField}";
+        var metadataJson = await CallDataverseGetJsonAsync(metadataUrl, httpContext.User, ct, AddFormattedValueHeaders);
+
+        using var metadataDocument = JsonDocument.Parse(metadataJson);
+        var metadata = metadataDocument.RootElement;
+        var offerValue = ReadString(metadata, _scoresOfferField).Trim();
+        var offerDisplay = ReadString(metadata, $"{_scoresOfferField}{FormattedValueAnnotationSuffix}").Trim();
+        var fileName = string.IsNullOrWhiteSpace(offerDisplay) ? offerValue : offerDisplay;
+
+        if (string.IsNullOrWhiteSpace(fileName) && string.IsNullOrWhiteSpace(offerValue))
+            return null;
+
+        if (Uri.TryCreate(offerValue, UriKind.Absolute, out var absoluteOfferUrl)
+            && (string.Equals(absoluteOfferUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(absoluteOfferUrl.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
+        {
+            return new ScoreOfferDownloadResult
+            {
+                RedirectUrl = absoluteOfferUrl.ToString(),
+                FileName = string.IsNullOrWhiteSpace(fileName)
+                    ? Path.GetFileName(absoluteOfferUrl.LocalPath)
+                    : fileName
+            };
+        }
+
+        var relativeFileUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})/{_scoresOfferField}/$value";
+        var result = await _downstreamApi.CallApiForUserAsync(
+            serviceName: "Dataverse",
+            options =>
+            {
+                options.RelativePath = relativeFileUrl;
+                options.HttpMethod = "GET";
+            },
+            user: httpContext.User,
+            cancellationToken: ct);
+
+        if (result is not HttpResponseMessage response)
+            throw new InvalidOperationException($"Unexpected downstream response type: {result?.GetType().FullName ?? "null"}");
+
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var memoryStream = new MemoryStream();
+        await responseStream.CopyToAsync(memoryStream, ct);
+        var bodyBytes = memoryStream.ToArray();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var bodyText = bodyBytes.Length > 0
+                ? Encoding.UTF8.GetString(bodyBytes)
+                : "";
+            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {bodyText}");
+        }
+
+        return new ScoreOfferDownloadResult
+        {
+            Content = bodyBytes,
+            ContentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream",
+            FileName = ResolveOfferDownloadFileName(response, fileName, normalizedRecordId)
+        };
     }
 
     private string BuildScorePeriodFilter(ScorePeriodFilter filter)
@@ -184,6 +257,8 @@ public sealed partial class DataverseService
             Commission = commission,
             SalesPerson = string.IsNullOrWhiteSpace(salesPerson) ? "Sin vendedor" : salesPerson.Trim(),
             Offer = string.IsNullOrWhiteSpace(offer) ? "Sin oferta" : offer.Trim(),
+            OfferFileName = offer.Trim(),
+            HasOffer = !string.IsNullOrWhiteSpace(offer),
             IsVerified = isVerified,
             FirstContractOptionValue = ReadOptionValue(item, _scoresFirstContractField),
             LineOptionValue = ReadOptionValue(item, _scoresLineField),
@@ -485,6 +560,65 @@ public sealed partial class DataverseService
         }
 
         return 0;
+    }
+
+    private IEnumerable<Dictionary<string, object?>> BuildVerificationPayloadCandidates(ScoreVerificationRequest request)
+    {
+        var firstContractAsBool = request.FirstContractOptionValue == 1;
+
+        yield return new Dictionary<string, object?>
+        {
+            [_scoresFirstContractField] = request.FirstContractOptionValue,
+            [_scoresLineField] = request.LineOptionValue,
+            [_scoresVerticalField] = request.VerticalOptionValue,
+            [_scoresVerifiedField] = 1
+        };
+
+        yield return new Dictionary<string, object?>
+        {
+            [_scoresFirstContractField] = request.FirstContractOptionValue,
+            [_scoresLineField] = request.LineOptionValue,
+            [_scoresVerticalField] = request.VerticalOptionValue,
+            [_scoresVerifiedField] = true
+        };
+
+        yield return new Dictionary<string, object?>
+        {
+            [_scoresFirstContractField] = firstContractAsBool,
+            [_scoresLineField] = request.LineOptionValue,
+            [_scoresVerticalField] = request.VerticalOptionValue,
+            [_scoresVerifiedField] = 1
+        };
+
+        yield return new Dictionary<string, object?>
+        {
+            [_scoresFirstContractField] = firstContractAsBool,
+            [_scoresLineField] = request.LineOptionValue,
+            [_scoresVerticalField] = request.VerticalOptionValue,
+            [_scoresVerifiedField] = true
+        };
+    }
+
+    private string ResolveOfferDownloadFileName(HttpResponseMessage response, string fallbackFileName, string recordId)
+    {
+        var disposition = response.Content.Headers.ContentDisposition;
+        if (!string.IsNullOrWhiteSpace(disposition?.FileNameStar))
+            return disposition.FileNameStar.Trim('"');
+
+        if (!string.IsNullOrWhiteSpace(disposition?.FileName))
+            return disposition.FileName.Trim('"');
+
+        if (response.Headers.TryGetValues("x-ms-file-name", out var fileNameValues))
+        {
+            var headerValue = fileNameValues.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(headerValue))
+                return headerValue.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(fallbackFileName))
+            return fallbackFileName;
+
+        return $"oferta-{recordId}.bin";
     }
 
     private static string ReadDataverseDisplayValue(JsonElement item, string logicalName, params string[] fallbackTokens)

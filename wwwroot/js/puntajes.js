@@ -40,6 +40,8 @@
         filter: app.dataset.initialFilter || "this-month",
         board: null,
         recordMap: new Map(),
+        groupMap: new Map(),
+        expandedGroups: new Set(),
         expandedRecords: new Set(),
         activeRecordId: "",
         isLoading: false,
@@ -95,10 +97,7 @@
 
     function setLoading(loading) {
         state.isLoading = loading;
-        if (refreshButton) {
-            refreshButton.disabled = loading || state.isSaving;
-        }
-
+        refreshButton && (refreshButton.disabled = loading || state.isSaving);
         filterButtons.forEach(button => {
             button.disabled = loading || state.isSaving;
         });
@@ -106,13 +105,8 @@
 
     function setSaving(saving) {
         state.isSaving = saving;
-        if (submitVerifyScoreBtn) {
-            submitVerifyScoreBtn.disabled = saving;
-        }
-
-        if (refreshButton) {
-            refreshButton.disabled = saving || state.isLoading;
-        }
+        submitVerifyScoreBtn && (submitVerifyScoreBtn.disabled = saving);
+        refreshButton && (refreshButton.disabled = saving || state.isLoading);
     }
 
     function populateSelect(selectElement, items, placeholder) {
@@ -129,14 +123,22 @@
         selectElement.innerHTML = optionsMarkup;
     }
 
-    function rebuildRecordMap(board) {
+    function getGroupKey(group) {
+        return group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
+    }
+
+    function rebuildIndexes(board) {
         state.recordMap = new Map();
+        state.groupMap = new Map();
 
         if (!board || !Array.isArray(board.groups)) {
             return;
         }
 
         board.groups.forEach(group => {
+            const groupKey = getGroupKey(group);
+            state.groupMap.set(groupKey, group);
+
             (group.records || []).forEach(record => {
                 state.recordMap.set(record.recordId, record);
             });
@@ -152,29 +154,12 @@
     function updateSummary(board) {
         const safeBoard = board || {};
 
-        if (summaryClients) {
-            summaryClients.textContent = formatNumber(safeBoard.clientsCount);
-        }
-
-        if (summaryRecords) {
-            summaryRecords.textContent = formatNumber(safeBoard.recordsCount);
-        }
-
-        if (summaryProducts) {
-            summaryProducts.textContent = formatNumber(safeBoard.productLinesCount);
-        }
-
-        if (summaryScore) {
-            summaryScore.textContent = formatScoreValue(safeBoard.totalScore);
-        }
-
-        if (summaryCommission) {
-            summaryCommission.textContent = formatNumber(safeBoard.totalCommission);
-        }
-
-        if (summaryAnnualValue) {
-            summaryAnnualValue.textContent = formatNumber(safeBoard.totalAnnualValue);
-        }
+        summaryClients && (summaryClients.textContent = formatNumber(safeBoard.clientsCount));
+        summaryRecords && (summaryRecords.textContent = formatNumber(safeBoard.recordsCount));
+        summaryProducts && (summaryProducts.textContent = formatNumber(safeBoard.productLinesCount));
+        summaryScore && (summaryScore.textContent = formatScoreValue(safeBoard.totalScore));
+        summaryCommission && (summaryCommission.textContent = formatNumber(safeBoard.totalCommission));
+        summaryAnnualValue && (summaryAnnualValue.textContent = formatNumber(safeBoard.totalAnnualValue));
     }
 
     function renderMetaChip(label, value) {
@@ -190,10 +175,32 @@
         `;
     }
 
+    function buildOfferUrl(recordId) {
+        return `${app.dataset.offerUrl}?recordId=${encodeURIComponent(recordId)}`;
+    }
+
+    function renderOfferCell(record) {
+        if (!record.hasOffer) {
+            return '<span class="scores-empty-cell">-</span>';
+        }
+
+        const label = record.offerFileName || record.offer || "Descargar oferta";
+        return `
+            <a class="scores-offer-link"
+               href="${escapeHtml(buildOfferUrl(record.recordId))}"
+               title="${escapeHtml(label)}"
+               aria-label="Descargar oferta">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.29a1 1 0 1 1 1.4 1.41l-4 3.99a1 1 0 0 1-1.4 0l-4-3.99a1 1 0 0 1 1.4-1.41L11 12.59V4a1 1 0 0 1 1-1Zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/>
+                </svg>
+            </a>
+        `;
+    }
+
     function renderProductLines(record) {
         const lines = Array.isArray(record.productLines) ? record.productLines : [];
         if (lines.length === 0) {
-            return `<div class="scores-product-empty">No se detectaron lineas de productos en la descripcion.</div>`;
+            return '<div class="scores-product-empty">No se detectaron lineas de productos en la descripcion.</div>';
         }
 
         return `
@@ -217,7 +224,7 @@
                             <td class="text-end">${formatNumber(line.quantity)}</td>
                             <td class="text-end">${formatNumber(line.monthlyUnitValue)}</td>
                             <td class="text-end">${formatNumber(line.monthlyValue)}</td>
-                            <td class="text-end fw-semibold">${formatNumber(line.annualValue)}</td>
+                            <td class="text-end">${formatNumber(line.annualValue)}</td>
                         </tr>
                     `).join("")}
                 </tbody>
@@ -227,12 +234,8 @@
 
     function renderRecordRows(record) {
         const isExpanded = state.expandedRecords.has(record.recordId);
-        const detailLabel = isExpanded
-            ? "Ocultar detalle"
-            : `Ver detalle${record.productLinesCount ? ` (${formatNumber(record.productLinesCount)} productos)` : ""}`;
-        const verifyButtonClass = record.isVerified ? "btn-outline-success" : "btn-primary";
-
         const detailMeta = [
+            renderMetaChip("Registro", record.recordId),
             renderMetaChip("Fecha aprovisionamiento", record.provisioningDateDisplay),
             renderMetaChip("Tipo contrato", record.contractType),
             renderMetaChip("BusinessId", record.businessId),
@@ -245,15 +248,13 @@
             <tr class="scores-record-row" data-record-id="${escapeHtml(record.recordId)}">
                 <td>
                     <div class="scores-cell-main">${escapeHtml(record.contractStartDateDisplay || "")}</div>
-                    <div class="scores-cell-sub">${escapeHtml(record.recordId || "")}</div>
                 </td>
-                <td>
-                    <div class="scores-cell-main">${escapeHtml(record.offer || "Sin oferta")}</div>
-                    <div class="scores-cell-sub">${escapeHtml(record.contractType || "Sin tipo")}</div>
+                <td class="text-center">
+                    ${renderOfferCell(record)}
                 </td>
                 <td>
                     <div class="scores-cell-main">${escapeHtml(record.salesPerson || "Sin vendedor")}</div>
-                    <div class="scores-cell-sub">${escapeHtml(record.provisioningDateDisplay || "Sin fecha aprovisionamiento")}</div>
+                    <div class="scores-cell-sub">${escapeHtml(record.offer || "Sin oferta")}</div>
                 </td>
                 <td class="text-end">
                     <div class="scores-cell-main">${formatScoreValue(record.score)}</div>
@@ -261,31 +262,85 @@
                 <td class="text-end">
                     <div class="scores-cell-main">${formatNumber(record.commission)}</div>
                 </td>
-                <td>
-                    <span class="scores-record-pill">${formatNumber(record.productLinesCount)} productos</span>
-                </td>
-                <td class="text-center">
-                    <span class="scores-verified ${record.isVerified ? "scores-verified--yes" : ""}">${record.isVerified ? "✓" : ""}</span>
-                </td>
                 <td class="text-end">
                     <div class="scores-cell-main">${formatNumber(record.annualValue)}</div>
                     <div class="scores-cell-sub">Mensual ${formatNumber(record.monthlyValue)}</div>
                 </td>
                 <td class="text-end">
                     <div class="d-flex justify-content-end gap-2 flex-wrap">
-                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-detail-btn" data-record-id="${escapeHtml(record.recordId)}">${escapeHtml(detailLabel)}</button>
-                        <button type="button" class="btn btn-sm ${verifyButtonClass} verify-record-btn" data-record-id="${escapeHtml(record.recordId)}">Verificar</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-detail-btn" data-record-id="${escapeHtml(record.recordId)}">
+                            ${isExpanded ? "Ocultar" : `Explorar (${formatNumber(record.productLinesCount)})`}
+                        </button>
+                        <button type="button" class="btn btn-sm ${record.isVerified ? "btn-outline-success" : "btn-primary"} verify-record-btn" data-record-id="${escapeHtml(record.recordId)}">
+                            Verificar
+                        </button>
                     </div>
+                </td>
+                <td class="text-center">
+                    <span class="scores-verified ${record.isVerified ? "scores-verified--yes" : ""}">${record.isVerified ? "OK" : ""}</span>
                 </td>
             </tr>
             <tr class="scores-detail-row ${isExpanded ? "show" : ""}" data-detail-row-for="${escapeHtml(record.recordId)}">
-                <td colspan="9">
+                <td colspan="8">
                     <div class="scores-detail">
                         <div class="scores-detail__meta">${detailMeta}</div>
                         ${renderProductLines(record)}
                     </div>
                 </td>
             </tr>
+        `;
+    }
+
+    function renderGroupMetrics(group) {
+        return `
+            <div class="scores-group__body">
+                <div class="scores-group__summary">
+                    <div class="scores-group__metric">
+                        <span class="scores-group__metric-label">Aprovisionamientos</span>
+                        <span class="scores-group__metric-value">${formatNumber(group.recordCount)}</span>
+                    </div>
+                    <div class="scores-group__metric">
+                        <span class="scores-group__metric-label">Productos</span>
+                        <span class="scores-group__metric-value">${formatNumber(group.productLinesCount)}</span>
+                    </div>
+                    <div class="scores-group__metric">
+                        <span class="scores-group__metric-label">Puntaje</span>
+                        <span class="scores-group__metric-value">${formatScoreValue(group.totalScore)}</span>
+                    </div>
+                    <div class="scores-group__metric">
+                        <span class="scores-group__metric-label">Comision</span>
+                        <span class="scores-group__metric-value">${formatNumber(group.totalCommission)}</span>
+                    </div>
+                    <div class="scores-group__metric">
+                        <span class="scores-group__metric-label">Valor mensual</span>
+                        <span class="scores-group__metric-value">${formatNumber(group.totalMonthlyValue)}</span>
+                    </div>
+                    <div class="scores-group__metric">
+                        <span class="scores-group__metric-label">Valor 12m</span>
+                        <span class="scores-group__metric-value">${formatNumber(group.totalAnnualValue)}</span>
+                    </div>
+                </div>
+
+                <div class="scores-table-wrap">
+                    <table class="table scores-table">
+                        <thead>
+                            <tr>
+                                <th>Inicio contrato</th>
+                                <th class="text-center">Oferta</th>
+                                <th>Vendedor</th>
+                                <th class="text-end">Puntaje</th>
+                                <th class="text-end">Comision</th>
+                                <th class="text-end">Valor contrato</th>
+                                <th class="text-end">Acciones</th>
+                                <th class="text-center">Verificado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(group.records || []).map(renderRecordRows).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         `;
     }
 
@@ -305,62 +360,47 @@
             return;
         }
 
-        groupsContainer.innerHTML = groups.map(group => `
-            <article class="scores-group">
-                <div class="scores-group__header">
-                    <div>
-                        <h2 class="scores-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
-                        <p class="scores-group__subtitle">
-                            ${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos detectados.
-                        </p>
-                    </div>
-                    <div class="scores-group__metrics">
-                        <div class="scores-group__metric">
-                            <span class="scores-group__metric-label">Puntaje</span>
-                            <strong class="scores-group__metric-value">${formatScoreValue(group.totalScore)}</strong>
-                        </div>
-                        <div class="scores-group__metric">
-                            <span class="scores-group__metric-label">Comision</span>
-                            <strong class="scores-group__metric-value">${formatNumber(group.totalCommission)}</strong>
-                        </div>
-                        <div class="scores-group__metric">
-                            <span class="scores-group__metric-label">Valor mensual</span>
-                            <strong class="scores-group__metric-value">${formatNumber(group.totalMonthlyValue)}</strong>
-                        </div>
-                        <div class="scores-group__metric">
-                            <span class="scores-group__metric-label">Valor 12 meses</span>
-                            <strong class="scores-group__metric-value">${formatNumber(group.totalAnnualValue)}</strong>
-                        </div>
-                    </div>
-                </div>
+        groupsContainer.innerHTML = groups.map(group => {
+            const groupKey = getGroupKey(group);
+            const isExpanded = state.expandedGroups.has(groupKey);
 
-                <div class="scores-table-wrap">
-                    <table class="table scores-table">
-                        <thead>
-                            <tr>
-                                <th>Inicio contrato</th>
-                                <th>Oferta</th>
-                                <th>Vendedor</th>
-                                <th class="text-end">Puntaje</th>
-                                <th class="text-end">Comision</th>
-                                <th>Detalle</th>
-                                <th class="text-center">Verificado</th>
-                                <th class="text-end">Valor contrato</th>
-                                <th class="text-end">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${(group.records || []).map(renderRecordRows).join("")}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-        `).join("");
+            return `
+                <article class="scores-group ${isExpanded ? "scores-group--expanded" : "scores-group--collapsed"}" data-group-key="${escapeHtml(groupKey)}">
+                    <div class="scores-group__header">
+                        <div class="scores-group__header-main">
+                            <h2 class="scores-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
+                            ${isExpanded ? `<p class="scores-group__subtitle">${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos.</p>` : ""}
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
+                            ${isExpanded ? "Resumir" : "Desplegar"}
+                        </button>
+                    </div>
+                    ${isExpanded ? renderGroupMetrics(group) : ""}
+                </article>
+            `;
+        }).join("");
 
         bindGroupEvents();
     }
 
     function bindGroupEvents() {
+        groupsContainer.querySelectorAll(".toggle-group-btn").forEach(button => {
+            button.addEventListener("click", event => {
+                const groupKey = event.currentTarget.dataset.groupKey;
+                if (!groupKey) {
+                    return;
+                }
+
+                if (state.expandedGroups.has(groupKey)) {
+                    state.expandedGroups.delete(groupKey);
+                } else {
+                    state.expandedGroups.add(groupKey);
+                }
+
+                renderGroups(state.board);
+            });
+        });
+
         groupsContainer.querySelectorAll(".toggle-detail-btn").forEach(button => {
             button.addEventListener("click", event => {
                 const recordId = event.currentTarget.dataset.recordId;
@@ -399,9 +439,17 @@
             ...options
         });
 
+        const contentType = response.headers.get("content-type") || "";
         if (!response.ok) {
-            const message = await response.text();
+            const message = contentType.includes("application/json")
+                ? (await response.json())?.message || "No fue posible completar la solicitud."
+                : await response.text();
             throw new Error(message || "No fue posible completar la solicitud.");
+        }
+
+        if (!contentType.includes("application/json")) {
+            const message = await response.text();
+            throw new Error(message || "La respuesta del servidor no fue valida.");
         }
 
         return response.json();
@@ -416,14 +464,14 @@
             const recordsUrl = `${app.dataset.recordsUrl}?filter=${encodeURIComponent(state.filter)}`;
             const board = await fetchJson(recordsUrl);
             state.board = board;
-            rebuildRecordMap(board);
+            rebuildIndexes(board);
             updateSummary(board);
             renderGroups(board);
             setStatus("", "");
         } catch (error) {
             console.error(error);
             state.board = null;
-            rebuildRecordMap(null);
+            rebuildIndexes(null);
             updateSummary(null);
             renderGroups(null);
             setStatus("error", error?.message || "No fue posible cargar los puntajes.");
@@ -440,26 +488,11 @@
         }
 
         state.activeRecordId = recordId;
-        if (verifyModalTitle) {
-            verifyModalTitle.textContent = `Verificar ${record.clientName || "registro"}`;
-        }
-
-        if (verifyModalSubtitle) {
-            verifyModalSubtitle.textContent = `${record.offer || "Sin oferta"} · Inicio ${record.contractStartDateDisplay || "sin fecha"} · ${formatNumber(record.productLinesCount)} productos`;
-        }
-
-        if (firstContractSelect) {
-            firstContractSelect.value = record.firstContractOptionValue ? String(record.firstContractOptionValue) : "";
-        }
-
-        if (lineOptionSelect) {
-            lineOptionSelect.value = record.lineOptionValue ? String(record.lineOptionValue) : "";
-        }
-
-        if (verticalOptionSelect) {
-            verticalOptionSelect.value = record.verticalOptionValue ? String(record.verticalOptionValue) : "";
-        }
-
+        verifyModalTitle && (verifyModalTitle.textContent = `Verificar ${record.clientName || "registro"}`);
+        verifyModalSubtitle && (verifyModalSubtitle.textContent = `${record.offer || "Sin oferta"} | Inicio ${record.contractStartDateDisplay || "sin fecha"} | ${formatNumber(record.productLinesCount)} productos`);
+        firstContractSelect && (firstContractSelect.value = record.firstContractOptionValue ? String(record.firstContractOptionValue) : "");
+        lineOptionSelect && (lineOptionSelect.value = record.lineOptionValue ? String(record.lineOptionValue) : "");
+        verticalOptionSelect && (verticalOptionSelect.value = record.verticalOptionValue ? String(record.verticalOptionValue) : "");
         setModalStatus("", "");
         verifyModal.show();
     }
@@ -495,10 +528,7 @@
                 })
             });
 
-            if (verifyModal) {
-                verifyModal.hide();
-            }
-
+            verifyModal && verifyModal.hide();
             state.activeRecordId = "";
             const successMessage = result?.message || "El registro se verifico correctamente.";
             await loadBoard();

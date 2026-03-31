@@ -18,6 +18,7 @@
      id="puntajesApp"
      data-records-url="@Url.Action("Records", "Puntajes")"
      data-verify-url="@Url.Action("Verify", "Puntajes")"
+     data-offer-url="@Url.Action("Offer", "Puntajes")"
      data-initial-filter="@Model.InitialFilter.ToKey()">
     <section class="scores-hero">
         <div class="scores-hero__content">
@@ -25,13 +26,13 @@
                 <div class="scores-kicker">Modulo Dataverse</div>
                 <h1 class="scores-title">Puntajes</h1>
                 <p class="scores-subtitle">
-                    Consulta los registros de <strong>cr07a_contractrecord1</strong>, agrupados por cliente,
+                    Consulta los registros de <span class="scores-highlight">cr07a_contractrecord1</span>, agrupados por cliente,
                     con desglose por aprovisionamiento y subdesglose por productos.
                 </p>
             </div>
             <div class="scores-user-pill">
                 <span class="scores-user-pill__label">Acceso</span>
-                <strong>@Model.CurrentUser.Email</strong>
+                <span>@Model.CurrentUser.Email</span>
             </div>
         </div>
     </section>

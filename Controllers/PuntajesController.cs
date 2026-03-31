@@ -52,8 +52,47 @@ public sealed class PuntajesController : Controller
         if (request is null)
             return BadRequest("Debes enviar los datos de verificacion.");
 
-        await _dataverse.VerifyScoreRecordAsync(request, ct);
-        return Ok(new { ok = true, message = "El registro se verifico correctamente." });
+        try
+        {
+            await _dataverse.VerifyScoreRecordAsync(request, ct);
+            return Ok(new { ok = true, message = "El registro se verifico correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar la verificacion.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Offer([FromQuery] string recordId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(recordId))
+            return BadRequest("Debes indicar el registro de la oferta.");
+
+        try
+        {
+            var file = await _dataverse.DownloadScoreOfferAsync(recordId, ct);
+            if (file is null)
+                return NotFound("El registro no tiene una oferta disponible para descargar.");
+
+            if (!string.IsNullOrWhiteSpace(file.RedirectUrl))
+                return Redirect(file.RedirectUrl);
+
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar la oferta.");
+        }
     }
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct)
