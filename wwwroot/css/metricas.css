@@ -111,6 +111,23 @@
     padding: 20px;
 }
 
+.metrics-view-tabs {
+    display: inline-flex;
+    gap: 10px;
+    padding: 6px;
+    border-radius: 18px;
+    background: #f3f7fb;
+    border: 1px solid #dde6ef;
+    margin-bottom: 18px;
+}
+
+.metrics-view-tab.active {
+    background: var(--metrics-brand);
+    color: #fff;
+    border-color: var(--metrics-brand);
+    box-shadow: 0 10px 22px rgba(15, 108, 189, .18);
+}
+
 .metrics-toolbar__controls {
     display: flex;
     flex-wrap: wrap;
@@ -125,6 +142,10 @@
 .metrics-toolbar__group--seller {
     flex: 1 1 260px;
     max-width: 360px;
+}
+
+.metrics-toolbar__group.is-hidden {
+    display: none;
 }
 
 .metrics-toolbar__label {
@@ -471,6 +492,7 @@
 .metrics-chart__empty {
     display: grid;
     place-items: center;
+    gap: 8px;
     min-height: 320px;
     color: var(--metrics-muted);
     border: 1px dashed #d4deea;
@@ -478,6 +500,17 @@
     background: rgba(255, 255, 255, .7);
     text-align: center;
     padding: 24px;
+}
+
+.metrics-chart__empty strong {
+    color: var(--metrics-ink);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.metrics-chart__empty span {
+    max-width: 520px;
+    line-height: 1.6;
 }
 
 .metrics-chart__legend {

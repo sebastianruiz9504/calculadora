@@ -10,7 +10,8 @@
 <div class="metrics-shell"
      id="metricasApp"
      data-charts-url="@Url.Action("Charts", "Metricas")"
-     data-initial-filter="@Model.InitialFilter.ToKey()">
+     data-initial-filter="@Model.InitialFilter.ToKey()"
+     data-initial-view="@Model.InitialView.ToKey()">
     <section class="metrics-hero">
         <div class="metrics-hero__content">
             <div>
@@ -29,6 +30,10 @@
     </section>
 
     <section class="metrics-card">
+        <div class="metrics-view-tabs" role="tablist" aria-label="Vistas de metricas">
+            <button type="button" class="btn btn-outline-secondary metrics-view-tab" data-view="global">Globales</button>
+            <button type="button" class="btn btn-outline-secondary metrics-view-tab" data-view="individual">Individuales</button>
+        </div>
         <div class="metrics-toolbar">
             <div class="metrics-toolbar__controls">
                 <div class="metrics-toolbar__group">
@@ -39,7 +44,7 @@
                         <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="previous-year">A&ntilde;o pasado</button>
                     </div>
                 </div>
-                <div class="metrics-toolbar__group metrics-toolbar__group--seller">
+                <div class="metrics-toolbar__group metrics-toolbar__group--seller" id="metricsSellerFilterGroup">
                     <label class="metrics-toolbar__label" for="metricsSellerFilter">Vendedor</label>
                     <select id="metricsSellerFilter" class="form-select metrics-select">
                         <option value="">Todos los vendedores</option>
@@ -54,6 +59,10 @@
             </div>
         </div>
         <div class="metrics-insights">
+            <article class="metrics-insight">
+                <span class="metrics-insight__label">Vista</span>
+                <strong class="metrics-insight__value" id="metricsInsightView">Globales</strong>
+            </article>
             <article class="metrics-insight">
                 <span class="metrics-insight__label">Rango activo</span>
                 <strong class="metrics-insight__value" id="metricsInsightRange">Este a&ntilde;o</strong>

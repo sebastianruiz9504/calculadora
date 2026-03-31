@@ -8,12 +8,15 @@
     const statusBanner = document.getElementById("metricsStatusBanner");
     const refreshButton = document.getElementById("refreshMetricsBtn");
     const sellerFilter = document.getElementById("metricsSellerFilter");
+    const sellerFilterGroup = document.getElementById("metricsSellerFilterGroup");
+    const viewButtons = Array.from(document.querySelectorAll(".metrics-view-tab"));
     const filterButtons = Array.from(document.querySelectorAll(".metrics-filter-btn"));
     const summaryRecords = document.getElementById("metricsSummaryRecords");
     const summarySellers = document.getElementById("metricsSummarySellers");
     const summaryVerticals = document.getElementById("metricsSummaryVerticals");
     const summaryScore = document.getElementById("metricsSummaryScore");
     const summaryAnnualValue = document.getElementById("metricsSummaryAnnualValue");
+    const insightView = document.getElementById("metricsInsightView");
     const insightRange = document.getElementById("metricsInsightRange");
     const insightSeller = document.getElementById("metricsInsightSeller");
     const insightGranularity = document.getElementById("metricsInsightGranularity");
@@ -36,6 +39,7 @@
 
     const state = {
         filter: app.dataset.initialFilter || "this-year",
+        view: app.dataset.initialView || "global",
         seller: "",
         dashboard: null,
         isLoading: false,
@@ -81,20 +85,26 @@
     function setLoading(loading) {
         state.isLoading = loading;
         refreshButton && (refreshButton.disabled = loading);
-        sellerFilter && (sellerFilter.disabled = loading || sellerFilter.options.length <= 1);
+        sellerFilter && (sellerFilter.disabled = loading || state.view !== "individual" || sellerFilter.options.length <= 1);
 
         filterButtons.forEach(button => {
             button.disabled = loading;
             button.classList.toggle("active", button.dataset.filter === state.filter);
         });
+
+        viewButtons.forEach(button => {
+            button.disabled = loading;
+            button.classList.toggle("active", button.dataset.view === state.view);
+        });
     }
 
     function buildDashboardUrl() {
         const query = new URLSearchParams({
-            filter: state.filter
+            filter: state.filter,
+            view: state.view
         });
 
-        if (state.seller) {
+        if (state.view === "individual" && state.seller) {
             query.set("seller", state.seller);
         }
 
@@ -135,10 +145,17 @@
 
     function updateInsights(dashboard) {
         const safeDashboard = dashboard || {};
+        insightView && (insightView.textContent = safeDashboard.viewLabel || "Pendiente");
         insightRange && (insightRange.textContent = safeDashboard.filterLabel || "Pendiente");
         insightSeller && (insightSeller.textContent = safeDashboard.appliedSellerName || "Todos los vendedores");
         insightGranularity && (insightGranularity.textContent = safeDashboard.granularityLabel || "Pendiente");
         insightUpdatedAt && (insightUpdatedAt.textContent = formatDateTimeValue(state.updatedAt));
+    }
+
+    function syncViewLayout(dashboard) {
+        const requiresSelection = Boolean(dashboard?.requiresSellerSelection);
+        sellerFilterGroup?.classList.toggle("is-hidden", state.view !== "individual");
+        app.classList.toggle("metrics-shell--individual-empty", requiresSelection);
     }
 
     function renderSellerOptions(dashboard) {
@@ -154,7 +171,7 @@
 
         sellerFilter.innerHTML = options.join("");
         sellerFilter.value = dashboard?.appliedSellerKey || "";
-        sellerFilter.disabled = state.isLoading || sellerFilter.options.length <= 1;
+        sellerFilter.disabled = state.isLoading || state.view !== "individual" || sellerFilter.options.length <= 1;
     }
 
     function buildSampleLabelIndexes(length) {
@@ -431,7 +448,8 @@
         if (!charts.length) {
             chartsContainer.innerHTML = `
                 <div class="metrics-chart__empty">
-                    No hay metricas para mostrar en este rango.
+                    <strong>${escapeHtml(dashboard?.emptyStateTitle || "No hay metricas para mostrar.")}</strong>
+                    <span>${escapeHtml(dashboard?.emptyStateMessage || "No hay metricas para mostrar en este rango.")}</span>
                 </div>
             `;
             return;
@@ -588,15 +606,17 @@
             const dashboard = await fetchJson(buildDashboardUrl());
             state.dashboard = dashboard;
             state.filter = dashboard.filter || state.filter;
+            state.view = dashboard.view || state.view;
             state.seller = dashboard.appliedSellerKey || "";
             state.updatedAt = new Date();
 
             renderSellerOptions(dashboard);
             updateSummary(dashboard);
             updateInsights(dashboard);
+            syncViewLayout(dashboard);
             renderCharts(dashboard);
 
-            if (requestedSeller && requestedSeller !== state.seller) {
+            if (state.view === "individual" && requestedSeller && requestedSeller !== state.seller) {
                 setStatus("info", "El vendedor seleccionado no tiene datos en este rango. Se muestran todos los vendedores.");
             } else {
                 setStatus("", "");
@@ -607,11 +627,13 @@
             if (previousDashboard) {
                 state.dashboard = previousDashboard;
                 state.filter = previousDashboard.filter || state.filter;
+                state.view = previousDashboard.view || state.view;
                 state.seller = previousDashboard.appliedSellerKey || "";
 
                 renderSellerOptions(previousDashboard);
                 updateSummary(previousDashboard);
                 updateInsights(previousDashboard);
+                syncViewLayout(previousDashboard);
                 renderCharts(previousDashboard);
             } else {
                 state.dashboard = null;
@@ -619,6 +641,7 @@
                 renderSellerOptions(null);
                 updateSummary(null);
                 updateInsights(null);
+                syncViewLayout(null);
                 renderCharts(null);
             }
 
@@ -640,8 +663,20 @@
         });
     });
 
+    viewButtons.forEach(button => {
+        button.addEventListener("click", async () => {
+            const nextView = button.dataset.view;
+            if (!nextView || nextView === state.view || state.isLoading) {
+                return;
+            }
+
+            state.view = nextView;
+            await loadDashboard();
+        });
+    });
+
     sellerFilter?.addEventListener("change", async () => {
-        if (state.isLoading) {
+        if (state.isLoading || state.view !== "individual") {
             return;
         }
 
@@ -653,6 +688,7 @@
     renderSellerOptions(null);
     updateSummary(null);
     updateInsights(null);
+    syncViewLayout(null);
     setLoading(false);
     loadDashboard();
 })();

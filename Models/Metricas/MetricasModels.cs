@@ -10,6 +10,12 @@ public enum MetricsRangeFilter
     PreviousYear = 2
 }
 
+public enum MetricsViewMode
+{
+    Global = 0,
+    Individual = 1
+}
+
 public static class MetricsRangeFilterExtensions
 {
     public static MetricsRangeFilter ParseOrDefault(string? value)
@@ -43,19 +49,52 @@ public static class MetricsRangeFilterExtensions
     };
 }
 
+public static class MetricsViewModeExtensions
+{
+    public static MetricsViewMode ParseOrDefault(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return MetricsViewMode.Global;
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "individual" or "individuales" => MetricsViewMode.Individual,
+            _ => MetricsViewMode.Global
+        };
+    }
+
+    public static string ToKey(this MetricsViewMode value) => value switch
+    {
+        MetricsViewMode.Individual => "individual",
+        _ => "global"
+    };
+
+    public static string ToLabel(this MetricsViewMode value) => value switch
+    {
+        MetricsViewMode.Individual => "Individuales",
+        _ => "Globales"
+    };
+}
+
 public sealed class MetricasPageViewModel
 {
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public MetricsRangeFilter InitialFilter { get; set; } = MetricsRangeFilter.ThisYear;
+    public MetricsViewMode InitialView { get; set; } = MetricsViewMode.Global;
 }
 
 public sealed class MetricsDashboardDto
 {
     public string Filter { get; set; } = MetricsRangeFilter.ThisYear.ToKey();
     public string FilterLabel { get; set; } = MetricsRangeFilter.ThisYear.ToLabel();
+    public string View { get; set; } = MetricsViewMode.Global.ToKey();
+    public string ViewLabel { get; set; } = MetricsViewMode.Global.ToLabel();
     public string GranularityLabel { get; set; } = "Mensual";
     public string AppliedSellerKey { get; set; } = "";
     public string AppliedSellerName { get; set; } = "Todos los vendedores";
+    public bool RequiresSellerSelection { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
     public int RecordsCount { get; set; }
     public int SellersCount { get; set; }
     public int VerticalsCount { get; set; }
