@@ -363,12 +363,19 @@
         groupsContainer.innerHTML = groups.map(group => {
             const groupKey = getGroupKey(group);
             const isExpanded = state.expandedGroups.has(groupKey);
+            const compactMeta = `
+                <div class="scores-group__compact-line">
+                    <span class="scores-group__salesperson">${escapeHtml(group.salesPerson || "Sin vendedor")}</span>
+                    ${group.allVerified ? '<span class="scores-group__complete">Verificado completo</span>' : ""}
+                </div>
+            `;
 
             return `
                 <article class="scores-group ${isExpanded ? "scores-group--expanded" : "scores-group--collapsed"}" data-group-key="${escapeHtml(groupKey)}">
                     <div class="scores-group__header">
                         <div class="scores-group__header-main">
                             <h2 class="scores-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
+                            ${compactMeta}
                             ${isExpanded ? `<p class="scores-group__subtitle">${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos.</p>` : ""}
                         </div>
                         <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">

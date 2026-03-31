@@ -61,6 +61,11 @@ public sealed partial class DataverseService
                 {
                     ClientId = first.ClientId,
                     ClientName = first.ClientName,
+                    SalesPerson = orderedRecords
+                        .Select(item => item.SalesPerson)
+                        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                        ?? "Sin vendedor",
+                    AllVerified = orderedRecords.Count > 0 && orderedRecords.All(item => item.IsVerified),
                     RecordCount = orderedRecords.Count,
                     ProductLinesCount = orderedRecords.Sum(item => item.ProductLinesCount),
                     TotalCommission = RoundCurrency(orderedRecords.Sum(item => item.Commission)),

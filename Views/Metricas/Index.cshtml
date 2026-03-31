@@ -1,0 +1,78 @@
+@model MetricasPageViewModel
+@{
+    ViewData["Title"] = "Metricas";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/metricas.css" asp-append-version="true" />
+}
+
+<div class="metrics-shell"
+     id="metricasApp"
+     data-charts-url="@Url.Action("Charts", "Metricas")"
+     data-initial-filter="@Model.InitialFilter.ToKey()">
+    <section class="metrics-hero">
+        <div class="metrics-hero__content">
+            <div>
+                <div class="metrics-kicker">Analitica comercial</div>
+                <h1 class="metrics-title">Metricas</h1>
+                <p class="metrics-subtitle">
+                    Graficas de puntaje y valor de contratos sobre <span class="metrics-highlight">cr07a_contractrecord1</span>,
+                    con foco en vendedores, acumulados y verticales.
+                </p>
+            </div>
+            <div class="metrics-user-pill">
+                <span class="metrics-user-pill__label">Acceso</span>
+                <span>@Model.CurrentUser.Email</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="metrics-card">
+        <div class="metrics-toolbar">
+            <div>
+                <div class="metrics-toolbar__label">Rango</div>
+                <div class="metrics-filter-list">
+                    <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-month">Este mes</button>
+                    <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-year">Este año</button>
+                    <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="previous-year">Año pasado</button>
+                </div>
+            </div>
+            <div class="metrics-toolbar__actions">
+                <div class="metrics-toolbar__caption">Todas las graficas incluyen leyenda de valor total de contratos.</div>
+                <button type="button" class="btn btn-primary" id="refreshMetricsBtn">Actualizar</button>
+            </div>
+        </div>
+    </section>
+
+    <div id="metricsStatusBanner" class="metrics-status" role="status" aria-live="polite"></div>
+
+    <section class="metrics-summary">
+        <article class="metrics-summary__card">
+            <span class="metrics-summary__label">Registros</span>
+            <strong class="metrics-summary__value" id="metricsSummaryRecords">0</strong>
+        </article>
+        <article class="metrics-summary__card">
+            <span class="metrics-summary__label">Vendedores</span>
+            <strong class="metrics-summary__value" id="metricsSummarySellers">0</strong>
+        </article>
+        <article class="metrics-summary__card">
+            <span class="metrics-summary__label">Verticales</span>
+            <strong class="metrics-summary__value" id="metricsSummaryVerticals">0</strong>
+        </article>
+        <article class="metrics-summary__card">
+            <span class="metrics-summary__label">Puntaje total</span>
+            <strong class="metrics-summary__value" id="metricsSummaryScore">0.00</strong>
+        </article>
+        <article class="metrics-summary__card">
+            <span class="metrics-summary__label">Valor contratos</span>
+            <strong class="metrics-summary__value" id="metricsSummaryAnnualValue">0</strong>
+        </article>
+    </section>
+
+    <section class="metrics-grid" id="metricsChartsContainer"></section>
+</div>
+
+@section Scripts {
+    <script src="~/js/metricas.js" asp-append-version="true"></script>
+}

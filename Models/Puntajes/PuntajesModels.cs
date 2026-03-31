@@ -74,6 +74,8 @@ public sealed class ScoreClientGroupDto
 {
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string SalesPerson { get; set; } = "";
+    public bool AllVerified { get; set; }
     public int RecordCount { get; set; }
     public int ProductLinesCount { get; set; }
     public decimal TotalCommission { get; set; }

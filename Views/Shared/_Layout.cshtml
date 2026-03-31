@@ -14,6 +14,7 @@
     var canAccessRenovaciones = RenovacionesAccessPolicy.HasAccess(User);
     var canAccessPortalProveedores = PortalProveedoresAccessPolicy.HasAccess(User);
     var canAccessPuntajes = PuntajesAccessPolicy.HasAccess(User);
+    var canAccessMetricas = MetricasAccessPolicy.HasAccess(User);
 }
 <header>
     <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom mb-3">
@@ -39,6 +40,12 @@
                     {
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-controller="Puntajes" asp-action="Index">Puntajes</a>
+                        </li>
+                    }
+                    @if (canAccessMetricas)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-controller="Metricas" asp-action="Index">Metricas</a>
                         </li>
                     }
                     @if (canAccessPortalProveedores)

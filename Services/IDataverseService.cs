@@ -1,5 +1,6 @@
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Models.Renovaciones;
@@ -17,6 +18,7 @@ public interface IDataverseService
     Task<ScoreBoardDto> GetScoreBoardAsync(ScorePeriodFilter filter, CancellationToken ct = default);
     Task VerifyScoreRecordAsync(ScoreVerificationRequest request, CancellationToken ct = default);
     Task<ScoreOfferDownloadResult?> DownloadScoreOfferAsync(string recordId, CancellationToken ct = default);
+    Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);

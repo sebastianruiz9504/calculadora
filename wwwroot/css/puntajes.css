@@ -259,6 +259,31 @@
     font-size: 13px;
 }
 
+.scores-group__compact-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.scores-group__salesperson {
+    color: #42526b;
+    font-size: 13px;
+}
+
+.scores-group__complete {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(31, 157, 99, .12);
+    border: 1px solid #9bd6b6;
+    color: #14653f;
+    font-size: 12px;
+    font-weight: 500;
+}
+
 .scores-group__body {
     border-top: 1px solid var(--scores-line);
 }
