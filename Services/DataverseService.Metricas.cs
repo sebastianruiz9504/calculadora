@@ -18,6 +18,12 @@ public sealed partial class DataverseService
         "#DC2626"
     };
 
+    private static readonly MetricsVerticalGoalDefinition[] MetricsVerticalGoals =
+    {
+        new("cloud", "Cloud", 180m, "#145AF2"),
+        new("copiers", "Copiers", 70m, "#F97316")
+    };
+
     public async Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, string? sellerKey = null, CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -57,6 +63,7 @@ public sealed partial class DataverseService
                 .ToList();
         }
 
+        var goalRange = BuildMetricsGoalRange(filter);
         var charts = new List<MetricsChartDto>
         {
             BuildMetricsChart(
@@ -85,17 +92,13 @@ public sealed partial class DataverseService
                 range: range,
                 seriesKeySelector: _ => "total",
                 seriesNameSelector: _ => "Total",
-                accumulate: false),
-            BuildMetricsChart(
-                key: "score-by-vertical",
-                title: "Puntaje total por vertical",
-                subtitle: $"Verticales en {filter.ToLabel().ToLowerInvariant()}",
-                records: records,
-                range: range,
-                seriesKeySelector: record => NormalizeMetricsKey(ResolveVerticalLabel(record.VerticalOptionValue)),
-                seriesNameSelector: record => ResolveVerticalLabel(record.VerticalOptionValue),
                 accumulate: false)
         };
+
+        charts.AddRange(MetricsVerticalGoals.Select(goal =>
+            BuildVerticalGoalChart(goal, records, goalRange, accumulate: false, filter)));
+        charts.AddRange(MetricsVerticalGoals.Select(goal =>
+            BuildVerticalGoalChart(goal, records, goalRange, accumulate: true, filter)));
 
         return new MetricsDashboardDto
         {
@@ -200,12 +203,167 @@ public sealed partial class DataverseService
         };
     }
 
+    private MetricsChartDto BuildVerticalGoalChart(
+        MetricsVerticalGoalDefinition goal,
+        IReadOnlyList<ScoreRecordDto> records,
+        MetricsRangeDefinition range,
+        bool accumulate,
+        MetricsRangeFilter filter)
+    {
+        var verticalRecords = records
+            .Where(record => string.Equals(
+                NormalizeMetricsKey(ResolveVerticalLabel(record.VerticalOptionValue)),
+                goal.Key,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var categories = range.Categories
+            .Select(category => category.DisplayLabel)
+            .ToList();
+
+        var actualValues = range.Categories
+            .Select(category => RoundCurrency(verticalRecords
+                .Where(record => string.Equals(GetMetricsBucketKey(record.ContractStartDateValue, range.Granularity), category.Key, StringComparison.OrdinalIgnoreCase))
+                .Sum(record => record.Score)))
+            .ToList();
+
+        var actualAnnualValues = range.Categories
+            .Select(category => RoundCurrency(verticalRecords
+                .Where(record => string.Equals(GetMetricsBucketKey(record.ContractStartDateValue, range.Granularity), category.Key, StringComparison.OrdinalIgnoreCase))
+                .Sum(record => record.AnnualValue)))
+            .ToList();
+
+        var goalValues = range.Categories
+            .Select(_ => RoundCurrency(goal.MonthlyGoal))
+            .ToList();
+
+        if (accumulate)
+        {
+            for (var index = 1; index < actualValues.Count; index++)
+            {
+                actualValues[index] = RoundCurrency(actualValues[index - 1] + actualValues[index]);
+                actualAnnualValues[index] = RoundCurrency(actualAnnualValues[index - 1] + actualAnnualValues[index]);
+                goalValues[index] = RoundCurrency(goalValues[index - 1] + goalValues[index]);
+            }
+        }
+
+        var currentMonth = new DateOnly(GetBogotaToday().Year, GetBogotaToday().Month, 1);
+        var goalStatuses = new List<MetricsGoalStatusDto>(categories.Count);
+        for (var index = 0; index < categories.Count; index++)
+        {
+            var status = ResolveGoalStatus(range.Categories[index].Key, actualValues[index], goalValues[index], currentMonth);
+            goalStatuses.Add(new MetricsGoalStatusDto
+            {
+                Category = categories[index],
+                ActualValue = actualValues[index],
+                TargetValue = goalValues[index],
+                IsMet = status.IsMet,
+                StatusTone = status.Tone,
+                StatusLabel = status.Label
+            });
+        }
+
+        var goalFinalValue = goalValues.LastOrDefault();
+        var verticalTotalScore = RoundCurrency(verticalRecords.Sum(record => record.Score));
+        var verticalTotalAnnualValue = RoundCurrency(verticalRecords.Sum(record => record.AnnualValue));
+        var comparisonLabel = accumulate ? "Meta acumulada" : "Meta mensual";
+
+        return new MetricsChartDto
+        {
+            Key = $"{goal.Key}-{(accumulate ? "accumulated" : "monthly")}-goal",
+            Title = accumulate
+                ? $"{goal.Label}: puntaje acumulado vs meta"
+                : $"{goal.Label}: puntaje mensual vs meta",
+            Subtitle = accumulate
+                ? $"Avance acumulado en {filter.ToLabel().ToLowerInvariant()} frente a la meta del a\u00f1o"
+                : $"Seguimiento por mes en {filter.ToLabel().ToLowerInvariant()} frente a la meta mensual",
+            GoalLabel = accumulate
+                ? $"Meta acumulada ({goal.MonthlyGoal:0.##} por mes)"
+                : $"Meta mensual {goal.MonthlyGoal:0.##}",
+            TotalScore = verticalTotalScore,
+            TotalAnnualValue = verticalTotalAnnualValue,
+            Categories = categories,
+            GoalStatuses = goalStatuses,
+            Series = new[]
+            {
+                new MetricsSeriesDto
+                {
+                    Key = $"{goal.Key}-actual",
+                    Name = accumulate ? $"{goal.Label} acumulado" : $"{goal.Label} real",
+                    Color = goal.Color,
+                    TotalScore = verticalTotalScore,
+                    TotalAnnualValue = verticalTotalAnnualValue,
+                    Values = actualValues,
+                    AnnualValues = actualAnnualValues
+                },
+                new MetricsSeriesDto
+                {
+                    Key = $"{goal.Key}-goal",
+                    Name = comparisonLabel,
+                    Color = "#94A3B8",
+                    IsReference = true,
+                    StrokeDasharray = "8 6",
+                    LegendNote = $"{comparisonLabel} {goalFinalValue:0.##}",
+                    TotalScore = goalFinalValue,
+                    TotalAnnualValue = 0m,
+                    Values = goalValues,
+                    AnnualValues = Array.Empty<decimal>()
+                }
+            }
+        };
+    }
+
+    private static (bool IsMet, string Tone, string Label) ResolveGoalStatus(
+        string categoryKey,
+        decimal actualValue,
+        decimal targetValue,
+        DateOnly currentMonth)
+    {
+        if (!DateOnly.TryParseExact(categoryKey, "yyyy-MM-01", CultureInfo.InvariantCulture, DateTimeStyles.None, out var categoryMonth))
+        {
+            return actualValue >= targetValue
+                ? (true, "met", "Cumplido")
+                : (false, "missed", "No cumplido");
+        }
+
+        if (categoryMonth > currentMonth)
+        {
+            return (false, "upcoming", "Pendiente");
+        }
+
+        if (categoryMonth == currentMonth)
+        {
+            return (actualValue >= targetValue, "in-progress", "En curso");
+        }
+
+        return actualValue >= targetValue
+            ? (true, "met", "Cumplido")
+            : (false, "missed", "No cumplido");
+    }
+
     private MetricsRangeDefinition BuildMetricsRange(MetricsRangeFilter filter)
     {
         var today = GetBogotaToday();
         return filter switch
         {
             MetricsRangeFilter.ThisMonth => BuildDailyMetricsRange(
+                new DateOnly(today.Year, today.Month, 1),
+                new DateOnly(today.Year, today.Month, 1).AddMonths(1)),
+            MetricsRangeFilter.PreviousYear => BuildMonthlyMetricsRange(
+                new DateOnly(today.Year - 1, 1, 1),
+                new DateOnly(today.Year, 1, 1)),
+            _ => BuildMonthlyMetricsRange(
+                new DateOnly(today.Year, 1, 1),
+                new DateOnly(today.Year + 1, 1, 1))
+        };
+    }
+
+    private MetricsRangeDefinition BuildMetricsGoalRange(MetricsRangeFilter filter)
+    {
+        var today = GetBogotaToday();
+        return filter switch
+        {
+            MetricsRangeFilter.ThisMonth => BuildMonthlyMetricsRange(
                 new DateOnly(today.Year, today.Month, 1),
                 new DateOnly(today.Year, today.Month, 1).AddMonths(1)),
             MetricsRangeFilter.PreviousYear => BuildMonthlyMetricsRange(
@@ -295,4 +453,10 @@ public sealed partial class DataverseService
         DateOnly EndExclusive,
         MetricsGranularity Granularity,
         IReadOnlyList<MetricsCategory> Categories);
+
+    private sealed record MetricsVerticalGoalDefinition(
+        string Key,
+        string Label,
+        decimal MonthlyGoal,
+        string Color);
 }

@@ -379,6 +379,11 @@
     stroke-linejoin: round;
 }
 
+.metrics-chart__line--reference {
+    opacity: .95;
+    stroke-width: 2.5;
+}
+
 .metrics-chart__area {
     opacity: .12;
 }
@@ -387,6 +392,10 @@
     stroke: #fff;
     stroke-width: 2.5;
     transition: stroke-width .16s ease, filter .16s ease;
+}
+
+.metrics-chart__dot--reference {
+    stroke-width: 2;
 }
 
 .metrics-chart__target {
@@ -489,6 +498,10 @@
     background: #fff;
 }
 
+.metrics-chart__legend-item--reference {
+    background: var(--metrics-panel-soft);
+}
+
 .metrics-chart__legend-main {
     display: flex;
     align-items: center;
@@ -521,6 +534,93 @@
 .metrics-chart__legend-highlight {
     color: var(--metrics-good);
     font-weight: 600;
+}
+
+.metrics-chart__goal-block {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 20px;
+    border: 1px solid #dce7f3;
+    background:
+        linear-gradient(180deg, rgba(15, 108, 189, .03), rgba(15, 108, 189, 0)),
+        #fbfdff;
+}
+
+.metrics-chart__goal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.metrics-chart__goal-label,
+.metrics-chart__goal-summary {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.metrics-chart__goal-label {
+    color: var(--metrics-brand-deep);
+}
+
+.metrics-chart__goal-summary {
+    color: var(--metrics-muted);
+}
+
+.metrics-chart__goal-statuses {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.metrics-chart__goal-chip {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid transparent;
+}
+
+.metrics-chart__goal-chip.is-met {
+    background: #edf9f2;
+    border-color: #b8e6cc;
+}
+
+.metrics-chart__goal-chip.is-missed {
+    background: #fff3f2;
+    border-color: #fed7d2;
+}
+
+.metrics-chart__goal-chip.is-in-progress {
+    background: #eef6fd;
+    border-color: #c8dafd;
+}
+
+.metrics-chart__goal-chip.is-upcoming {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+.metrics-chart__goal-chip-period {
+    color: var(--metrics-ink);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+}
+
+.metrics-chart__goal-chip-state {
+    color: var(--metrics-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.metrics-chart__goal-chip-values {
+    color: #42526b;
+    font-size: 13px;
+    font-weight: 500;
 }
 
 @media (max-width: 992px) {
@@ -579,5 +679,13 @@
 
     .metrics-chart__legend {
         grid-template-columns: 1fr;
+    }
+
+    .metrics-chart__goal-head {
+        align-items: flex-start;
+    }
+
+    .metrics-chart__goal-statuses {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     }
 }

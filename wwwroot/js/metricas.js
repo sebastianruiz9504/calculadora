@@ -291,10 +291,19 @@
             const linePath = buildLinePath(points);
             const areaPath = buildAreaPath(points, padding.top + plotHeight);
             const circles = points.map(point => {
+                const visibleCircle = `<circle class="metrics-chart__dot${item.isReference ? " metrics-chart__dot--reference" : ""}" cx="${point.x}" cy="${point.y}" r="${item.isReference ? "3.6" : "4.4"}" fill="${item.isReference ? "#ffffff" : escapeHtml(item.color)}" stroke="${escapeHtml(item.color)}"></circle>`;
+                if (item.isReference) {
+                    return `
+                        <g class="metrics-chart__point metrics-chart__point--reference" data-series-key="${escapeHtml(item.key)}">
+                            ${visibleCircle}
+                        </g>
+                    `;
+                }
+
                 const ariaLabel = `${point.seriesName}, ${point.category}, puntaje ${formatScoreValue(point.score)}, valor contratos ${formatNumber(point.annualValue)}`;
                 return `
                     <g class="metrics-chart__point" data-series-key="${escapeHtml(item.key)}">
-                        <circle class="metrics-chart__dot" cx="${point.x}" cy="${point.y}" r="4.4" fill="${escapeHtml(item.color)}"></circle>
+                        ${visibleCircle}
                         <circle class="metrics-chart__target"
                                 cx="${point.x}"
                                 cy="${point.y}"
@@ -314,7 +323,7 @@
 
             return `
                 ${series.length === 1 ? `<path class="metrics-chart__area" d="${areaPath}" fill="url(#${gradientId})"></path>` : ""}
-                <path class="metrics-chart__line" d="${linePath}" stroke="${escapeHtml(item.color)}"></path>
+                <path class="metrics-chart__line${item.isReference ? " metrics-chart__line--reference" : ""}" d="${linePath}" stroke="${escapeHtml(item.color)}"${item.strokeDasharray ? ` stroke-dasharray="${escapeHtml(item.strokeDasharray)}"` : ""}></path>
                 ${circles}
             `;
         }).join("");
@@ -351,17 +360,52 @@
         return `
             <div class="metrics-chart__legend">
                 ${series.map(item => `
-                    <div class="metrics-chart__legend-item">
+                    <div class="metrics-chart__legend-item${item.isReference ? " metrics-chart__legend-item--reference" : ""}">
                         <div class="metrics-chart__legend-main">
                             <span class="metrics-chart__legend-color" style="background:${escapeHtml(item.color)}"></span>
                             <span class="metrics-chart__legend-name">${escapeHtml(item.name)}</span>
                         </div>
                         <div class="metrics-chart__legend-meta">
-                            <span>Puntaje ${escapeHtml(formatScoreValue(item.totalScore))}</span>
-                            <span class="metrics-chart__legend-highlight">Valor contratos ${escapeHtml(formatNumber(item.totalAnnualValue))}</span>
+                            ${item.legendNote
+                                ? `<span class="metrics-chart__legend-highlight">${escapeHtml(item.legendNote)}</span>`
+                                : `
+                                    <span>Puntaje ${escapeHtml(formatScoreValue(item.totalScore))}</span>
+                                    <span class="metrics-chart__legend-highlight">Valor contratos ${escapeHtml(formatNumber(item.totalAnnualValue))}</span>
+                                `}
                         </div>
                     </div>
                 `).join("")}
+            </div>
+        `;
+    }
+
+    function renderGoalStatus(chart) {
+        const goalStatuses = Array.isArray(chart.goalStatuses) ? chart.goalStatuses : [];
+        if (!goalStatuses.length) {
+            return "";
+        }
+
+        const evaluatedStatuses = goalStatuses.filter(status => status.statusTone === "met" || status.statusTone === "missed");
+        const metCount = evaluatedStatuses.filter(status => status.isMet).length;
+        const summaryText = evaluatedStatuses.length
+            ? `${formatNumber(metCount)} / ${formatNumber(evaluatedStatuses.length)} periodos cerrados en meta`
+            : "Sin periodos cerrados";
+
+        return `
+            <div class="metrics-chart__goal-block">
+                <div class="metrics-chart__goal-head">
+                    <span class="metrics-chart__goal-label">${escapeHtml(chart.goalLabel || "Meta")}</span>
+                    <span class="metrics-chart__goal-summary">${escapeHtml(summaryText)}</span>
+                </div>
+                <div class="metrics-chart__goal-statuses">
+                    ${goalStatuses.map(status => `
+                        <div class="metrics-chart__goal-chip is-${escapeHtml(status.statusTone || "upcoming")}">
+                            <span class="metrics-chart__goal-chip-period">${escapeHtml(status.category)}</span>
+                            <span class="metrics-chart__goal-chip-state">${escapeHtml(status.statusLabel || "")}</span>
+                            <span class="metrics-chart__goal-chip-values">${escapeHtml(formatScoreValue(status.actualValue))} / ${escapeHtml(formatScoreValue(status.targetValue))}</span>
+                        </div>
+                    `).join("")}
+                </div>
             </div>
         `;
     }
@@ -411,6 +455,7 @@
                 </div>
                 ${renderChartSvg(chart)}
                 ${renderLegend(chart)}
+                ${renderGoalStatus(chart)}
             </article>
         `).join("");
 

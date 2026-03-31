@@ -77,10 +77,22 @@ public sealed class MetricsChartDto
     public string Title { get; set; } = "";
     public string Subtitle { get; set; } = "";
     public string EmptyMessage { get; set; } = "No hay datos para este grafico.";
+    public string GoalLabel { get; set; } = "";
     public decimal TotalScore { get; set; }
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<string> Categories { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<MetricsGoalStatusDto> GoalStatuses { get; set; } = Array.Empty<MetricsGoalStatusDto>();
     public IReadOnlyList<MetricsSeriesDto> Series { get; set; } = Array.Empty<MetricsSeriesDto>();
+}
+
+public sealed class MetricsGoalStatusDto
+{
+    public string Category { get; set; } = "";
+    public decimal ActualValue { get; set; }
+    public decimal TargetValue { get; set; }
+    public bool IsMet { get; set; }
+    public string StatusTone { get; set; } = "";
+    public string StatusLabel { get; set; } = "";
 }
 
 public sealed class MetricsSeriesDto
@@ -88,6 +100,9 @@ public sealed class MetricsSeriesDto
     public string Key { get; set; } = "";
     public string Name { get; set; } = "";
     public string Color { get; set; } = "";
+    public bool IsReference { get; set; }
+    public string StrokeDasharray { get; set; } = "";
+    public string LegendNote { get; set; } = "";
     public decimal TotalScore { get; set; }
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<decimal> Values { get; set; } = Array.Empty<decimal>();
