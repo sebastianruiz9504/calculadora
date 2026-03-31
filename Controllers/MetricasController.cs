@@ -33,12 +33,12 @@ public sealed class MetricasController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Charts([FromQuery] string? filter, CancellationToken ct)
+    public async Task<IActionResult> Charts([FromQuery] string? filter, [FromQuery] string? seller, CancellationToken ct)
     {
         try
         {
             var parsedFilter = MetricsRangeFilterExtensions.ParseOrDefault(filter);
-            var dashboard = await _dataverse.GetMetricsDashboardAsync(parsedFilter, ct);
+            var dashboard = await _dataverse.GetMetricsDashboardAsync(parsedFilter, seller, ct);
             return Json(dashboard);
         }
         catch (InvalidOperationException ex)

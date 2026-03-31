@@ -18,7 +18,7 @@ public sealed partial class DataverseService
         "#DC2626"
     };
 
-    public async Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, CancellationToken ct = default)
+    public async Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, string? sellerKey = null, CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -35,6 +35,27 @@ public sealed partial class DataverseService
             .OrderBy(item => item.ContractStartDateValue, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        var sellers = records
+            .GroupBy(record => NormalizeMetricsKey(record.SalesPerson), StringComparer.OrdinalIgnoreCase)
+            .Select(group => new MetricsSellerOptionDto
+            {
+                Key = group.Key,
+                Name = NormalizeMetricsName(group.First().SalesPerson, "Sin vendedor")
+            })
+            .OrderBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var requestedSellerKey = NormalizeMetricsFilterKey(sellerKey);
+        var appliedSeller = sellers.FirstOrDefault(option =>
+            string.Equals(option.Key, requestedSellerKey, StringComparison.OrdinalIgnoreCase));
+
+        if (appliedSeller is not null)
+        {
+            records = records
+                .Where(record => string.Equals(NormalizeMetricsKey(record.SalesPerson), appliedSeller.Key, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
 
         var charts = new List<MetricsChartDto>
         {
@@ -80,6 +101,9 @@ public sealed partial class DataverseService
         {
             Filter = filter.ToKey(),
             FilterLabel = filter.ToLabel(),
+            GranularityLabel = range.Granularity == MetricsGranularity.Day ? "Diaria" : "Mensual",
+            AppliedSellerKey = appliedSeller?.Key ?? "",
+            AppliedSellerName = appliedSeller?.Name ?? "Todos los vendedores",
             RecordsCount = records.Count,
             SellersCount = records
                 .Select(record => NormalizeMetricsName(record.SalesPerson, "Sin vendedor"))
@@ -91,6 +115,7 @@ public sealed partial class DataverseService
                 .Count(),
             TotalScore = RoundCurrency(records.Sum(record => record.Score)),
             TotalAnnualValue = RoundCurrency(records.Sum(record => record.AnnualValue)),
+            Sellers = sellers,
             Charts = charts
         };
     }
@@ -136,12 +161,18 @@ public sealed partial class DataverseService
                     .Where(record => string.Equals(GetMetricsBucketKey(record.ContractStartDateValue, range.Granularity), category.Key, StringComparison.OrdinalIgnoreCase))
                     .Sum(record => record.Score)))
                 .ToList();
+            var annualValues = range.Categories
+                .Select(category => RoundCurrency(group.Records
+                    .Where(record => string.Equals(GetMetricsBucketKey(record.ContractStartDateValue, range.Granularity), category.Key, StringComparison.OrdinalIgnoreCase))
+                    .Sum(record => record.AnnualValue)))
+                .ToList();
 
             if (accumulate)
             {
                 for (var valueIndex = 1; valueIndex < values.Count; valueIndex++)
                 {
                     values[valueIndex] = RoundCurrency(values[valueIndex - 1] + values[valueIndex]);
+                    annualValues[valueIndex] = RoundCurrency(annualValues[valueIndex - 1] + annualValues[valueIndex]);
                 }
             }
 
@@ -152,7 +183,8 @@ public sealed partial class DataverseService
                 Color = MetricsColorPalette[seriesIndex % MetricsColorPalette.Length],
                 TotalScore = group.TotalScore,
                 TotalAnnualValue = group.TotalAnnualValue,
-                Values = values
+                Values = values,
+                AnnualValues = annualValues
             });
         }
 
@@ -227,6 +259,15 @@ public sealed partial class DataverseService
             return "empty";
 
         return raw.Trim().ToLowerInvariant();
+    }
+
+    private static string? NormalizeMetricsFilterKey(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var normalized = raw.Trim().ToLowerInvariant();
+        return normalized is "all" or "*" ? null : normalized;
     }
 
     private static string NormalizeMetricsName(string? raw, string fallback)

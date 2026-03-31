@@ -17,8 +17,8 @@
                 <div class="metrics-kicker">Analitica comercial</div>
                 <h1 class="metrics-title">Metricas</h1>
                 <p class="metrics-subtitle">
-                    Graficas de puntaje y valor de contratos sobre <span class="metrics-highlight">cr07a_contractrecord1</span>,
-                    con foco en vendedores, acumulados y verticales.
+                    Series temporales de puntaje y valor de contratos sobre <span class="metrics-highlight">cr07a_contractrecord1</span>,
+                    con foco en tendencia, acumulado y composicion por vendedor y vertical.
                 </p>
             </div>
             <div class="metrics-user-pill">
@@ -30,18 +30,46 @@
 
     <section class="metrics-card">
         <div class="metrics-toolbar">
-            <div>
-                <div class="metrics-toolbar__label">Rango</div>
-                <div class="metrics-filter-list">
-                    <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-month">Este mes</button>
-                    <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-year">Este año</button>
-                    <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="previous-year">Año pasado</button>
+            <div class="metrics-toolbar__controls">
+                <div class="metrics-toolbar__group">
+                    <label class="metrics-toolbar__label" for="metricsRangeGroup">Rango</label>
+                    <div class="metrics-filter-list" id="metricsRangeGroup">
+                        <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-month">Este mes</button>
+                        <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-year">Este a&ntilde;o</button>
+                        <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="previous-year">A&ntilde;o pasado</button>
+                    </div>
+                </div>
+                <div class="metrics-toolbar__group metrics-toolbar__group--seller">
+                    <label class="metrics-toolbar__label" for="metricsSellerFilter">Vendedor</label>
+                    <select id="metricsSellerFilter" class="form-select metrics-select">
+                        <option value="">Todos los vendedores</option>
+                    </select>
                 </div>
             </div>
             <div class="metrics-toolbar__actions">
-                <div class="metrics-toolbar__caption">Todas las graficas incluyen leyenda de valor total de contratos.</div>
+                <div class="metrics-toolbar__caption">
+                    Pasa el cursor sobre un punto para ver puntaje y valor de contratos por periodo.
+                </div>
                 <button type="button" class="btn btn-primary" id="refreshMetricsBtn">Actualizar</button>
             </div>
+        </div>
+        <div class="metrics-insights">
+            <article class="metrics-insight">
+                <span class="metrics-insight__label">Rango activo</span>
+                <strong class="metrics-insight__value" id="metricsInsightRange">Este a&ntilde;o</strong>
+            </article>
+            <article class="metrics-insight">
+                <span class="metrics-insight__label">Vendedor</span>
+                <strong class="metrics-insight__value" id="metricsInsightSeller">Todos los vendedores</strong>
+            </article>
+            <article class="metrics-insight">
+                <span class="metrics-insight__label">Resolucion</span>
+                <strong class="metrics-insight__value" id="metricsInsightGranularity">Mensual</strong>
+            </article>
+            <article class="metrics-insight">
+                <span class="metrics-insight__label">Ultima actualizacion</span>
+                <strong class="metrics-insight__value" id="metricsInsightUpdatedAt">Pendiente</strong>
+            </article>
         </div>
     </section>
 

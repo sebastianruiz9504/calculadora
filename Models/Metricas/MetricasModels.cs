@@ -20,8 +20,8 @@ public static class MetricsRangeFilterExtensions
         return value.Trim().ToLowerInvariant() switch
         {
             "thismonth" or "this-month" or "este-mes" => MetricsRangeFilter.ThisMonth,
-            "thisyear" or "this-year" or "este-ano" or "este-año" => MetricsRangeFilter.ThisYear,
-            "previousyear" or "previous-year" or "ano-pasado" or "año-pasado" => MetricsRangeFilter.PreviousYear,
+            "thisyear" or "this-year" or "este-ano" or "este-a\u00f1o" => MetricsRangeFilter.ThisYear,
+            "previousyear" or "previous-year" or "ano-pasado" or "a\u00f1o-pasado" => MetricsRangeFilter.PreviousYear,
             _ => MetricsRangeFilter.ThisYear
         };
     }
@@ -37,9 +37,9 @@ public static class MetricsRangeFilterExtensions
     public static string ToLabel(this MetricsRangeFilter value) => value switch
     {
         MetricsRangeFilter.ThisMonth => "Este mes",
-        MetricsRangeFilter.ThisYear => "Este año",
-        MetricsRangeFilter.PreviousYear => "Año pasado",
-        _ => "Este año"
+        MetricsRangeFilter.ThisYear => "Este a\u00f1o",
+        MetricsRangeFilter.PreviousYear => "A\u00f1o pasado",
+        _ => "Este a\u00f1o"
     };
 }
 
@@ -53,12 +53,22 @@ public sealed class MetricsDashboardDto
 {
     public string Filter { get; set; } = MetricsRangeFilter.ThisYear.ToKey();
     public string FilterLabel { get; set; } = MetricsRangeFilter.ThisYear.ToLabel();
+    public string GranularityLabel { get; set; } = "Mensual";
+    public string AppliedSellerKey { get; set; } = "";
+    public string AppliedSellerName { get; set; } = "Todos los vendedores";
     public int RecordsCount { get; set; }
     public int SellersCount { get; set; }
     public int VerticalsCount { get; set; }
     public decimal TotalScore { get; set; }
     public decimal TotalAnnualValue { get; set; }
+    public IReadOnlyList<MetricsSellerOptionDto> Sellers { get; set; } = Array.Empty<MetricsSellerOptionDto>();
     public IReadOnlyList<MetricsChartDto> Charts { get; set; } = Array.Empty<MetricsChartDto>();
+}
+
+public sealed class MetricsSellerOptionDto
+{
+    public string Key { get; set; } = "";
+    public string Name { get; set; } = "";
 }
 
 public sealed class MetricsChartDto
@@ -81,6 +91,7 @@ public sealed class MetricsSeriesDto
     public decimal TotalScore { get; set; }
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<decimal> Values { get; set; } = Array.Empty<decimal>();
+    public IReadOnlyList<decimal> AnnualValues { get; set; } = Array.Empty<decimal>();
 }
 
 public static class MetricasAccessPolicy
