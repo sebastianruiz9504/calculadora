@@ -1,0 +1,131 @@
+@model PuntajesPageViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Puntajes";
+    var uiOptionsJson = JsonSerializer.Serialize(new
+    {
+        firstContractOptions = Model.FirstContractOptions,
+        lineOptions = Model.LineOptions,
+        verticalOptions = Model.VerticalOptions
+    });
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/puntajes.css" asp-append-version="true" />
+}
+
+<div class="scores-shell"
+     id="puntajesApp"
+     data-records-url="@Url.Action("Records", "Puntajes")"
+     data-verify-url="@Url.Action("Verify", "Puntajes")"
+     data-initial-filter="@Model.InitialFilter.ToKey()">
+    <section class="scores-hero">
+        <div class="scores-hero__content">
+            <div>
+                <div class="scores-kicker">Modulo Dataverse</div>
+                <h1 class="scores-title">Puntajes</h1>
+                <p class="scores-subtitle">
+                    Consulta los registros de <strong>cr07a_contractrecord1</strong>, agrupados por cliente,
+                    con desglose por aprovisionamiento y subdesglose por productos.
+                </p>
+            </div>
+            <div class="scores-user-pill">
+                <span class="scores-user-pill__label">Acceso</span>
+                <strong>@Model.CurrentUser.Email</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="scores-card">
+        <div class="scores-toolbar">
+            <div>
+                <div class="scores-toolbar__label">Periodo</div>
+                <div class="scores-filter-list">
+                    <button type="button" class="btn btn-outline-secondary scores-filter-btn" data-filter="this-month">Este mes</button>
+                    <button type="button" class="btn btn-outline-secondary scores-filter-btn" data-filter="previous-month">Mes pasado</button>
+                    <button type="button" class="btn btn-outline-secondary scores-filter-btn" data-filter="next-month">Mes siguiente</button>
+                    <button type="button" class="btn btn-outline-secondary scores-filter-btn" data-filter="this-year">Este año</button>
+                </div>
+            </div>
+            <div class="scores-toolbar__actions">
+                <div class="scores-toolbar__caption">Los totales del contrato se calculan con base en 12 meses.</div>
+                <button type="button" class="btn btn-primary" id="refreshScoresBtn">Actualizar</button>
+            </div>
+        </div>
+    </section>
+
+    <div id="scoresStatusBanner" class="scores-status" role="status" aria-live="polite"></div>
+
+    <section class="scores-summary">
+        <article class="scores-summary__card">
+            <span class="scores-summary__label">Clientes</span>
+            <strong class="scores-summary__value" id="summaryClients">0</strong>
+        </article>
+        <article class="scores-summary__card">
+            <span class="scores-summary__label">Aprovisionamientos</span>
+            <strong class="scores-summary__value" id="summaryRecords">0</strong>
+        </article>
+        <article class="scores-summary__card">
+            <span class="scores-summary__label">Productos</span>
+            <strong class="scores-summary__value" id="summaryProducts">0</strong>
+        </article>
+        <article class="scores-summary__card">
+            <span class="scores-summary__label">Puntaje acumulado</span>
+            <strong class="scores-summary__value" id="summaryScore">0.00</strong>
+        </article>
+        <article class="scores-summary__card">
+            <span class="scores-summary__label">Comision total</span>
+            <strong class="scores-summary__value" id="summaryCommission">0</strong>
+        </article>
+        <article class="scores-summary__card">
+            <span class="scores-summary__label">Valor contrato 12m</span>
+            <strong class="scores-summary__value" id="summaryAnnualValue">0</strong>
+        </article>
+    </section>
+
+    <section class="scores-card">
+        <div id="scoresGroupsContainer" class="scores-groups"></div>
+    </section>
+</div>
+
+<div class="modal fade" id="verifyScoreModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content scores-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <div class="scores-modal__eyebrow">Verificacion de aprovisionamiento</div>
+                    <h5 class="modal-title" id="verifyScoreModalTitle">Verificar</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p class="scores-modal__subtitle" id="verifyScoreModalSubtitle"></p>
+                <div id="verifyScoreModalStatus" class="scores-modal__status"></div>
+                <form id="verifyScoreForm" class="scores-modal__form">
+                    <div>
+                        <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
+                        <select class="form-select" id="firstContractSelect" required></select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="lineOptionSelect">Linea</label>
+                        <select class="form-select" id="lineOptionSelect" required></select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="verticalOptionSelect">Vertical</label>
+                        <select class="form-select" id="verticalOptionSelect" required></select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="submitVerifyScoreBtn">Enviar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="puntajes-options-data">@Html.Raw(uiOptionsJson)</script>
+
+@section Scripts {
+    <script src="~/js/puntajes.js" asp-append-version="true"></script>
+}

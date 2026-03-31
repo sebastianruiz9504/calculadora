@@ -12,7 +12,7 @@ using CotizadorInterno.Web.Models.Renovaciones;
 
 namespace CotizadorInterno.Web.Services;
 
-public sealed class DataverseService : IDataverseService
+public sealed partial class DataverseService : IDataverseService
 {
     private readonly IDownstreamApi _downstreamApi;
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -37,6 +37,20 @@ public sealed class DataverseService : IDataverseService
     private const string DefaultSupplierExpensesIdField = "cr07a_gastodelaempresaid";
     private const string DefaultSupplierExpensesDateField = "createdon";
     private const string DefaultSupplierExpensesDateFieldKind = "date-time";
+    private const string DefaultScoresTableSetName = "cr07a_contractrecord1s";
+    private const string DefaultScoresTableName = "cr07a_contractrecord1";
+    private const string DefaultScoresIdField = "cr07a_contractrecord1id";
+    private const string DefaultScoresContractStartDateField = "cr07a_contractstartdate";
+    private const string DefaultScoresScoreField = "cr07a_score";
+    private const string DefaultScoresDescriptionField = "cr07a_description";
+    private const string DefaultScoresCommissionField = "cr07a_commission";
+    private const string DefaultScoresClientField = "cr07a_cliente";
+    private const string DefaultScoresSalesPersonField = "cr07a_vendedor";
+    private const string DefaultScoresOfferField = "cr07a_oferta";
+    private const string DefaultScoresVerifiedField = "cr07a_verificado";
+    private const string DefaultScoresFirstContractField = "cr07a_esprimercontratoconelcliente";
+    private const string DefaultScoresLineField = "cr07a_linea";
+    private const string DefaultScoresVerticalField = "cr07a_vertical";
     private const string ClientsEntitySetName = "cr07a_clientes";
     private const string ProductsEntitySetName = "cr07a_preciosclouds";
     private const string FormattedValueAnnotationSuffix = "@OData.Community.Display.V1.FormattedValue";
@@ -61,6 +75,20 @@ public sealed class DataverseService : IDataverseService
     private readonly string _supplierExpensesIdField;
     private readonly string _supplierExpensesDateField;
     private readonly string _supplierExpensesDateFieldKind;
+    private readonly string _scoresTableSetName;
+    private readonly string _scoresTableName;
+    private readonly string _scoresIdField;
+    private readonly string _scoresContractStartDateField;
+    private readonly string _scoresScoreField;
+    private readonly string _scoresDescriptionField;
+    private readonly string _scoresCommissionField;
+    private readonly string _scoresClientField;
+    private readonly string _scoresSalesPersonField;
+    private readonly string _scoresOfferField;
+    private readonly string _scoresVerifiedField;
+    private readonly string _scoresFirstContractField;
+    private readonly string _scoresLineField;
+    private readonly string _scoresVerticalField;
 
     public DataverseService(IDownstreamApi downstreamApi, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
     {
@@ -88,6 +116,34 @@ public sealed class DataverseService : IDataverseService
             ?? DefaultSupplierExpensesDateField;
         _supplierExpensesDateFieldKind = configuration["SupplierPortal:ExpensesDateFieldKind"]
             ?? DefaultSupplierExpensesDateFieldKind;
+        _scoresTableSetName = configuration["Scores:TableSetName"]
+            ?? DefaultScoresTableSetName;
+        _scoresTableName = configuration["Scores:TableName"]
+            ?? DefaultScoresTableName;
+        _scoresIdField = configuration["Scores:IdField"]
+            ?? DefaultScoresIdField;
+        _scoresContractStartDateField = configuration["Scores:ContractStartDateField"]
+            ?? DefaultScoresContractStartDateField;
+        _scoresScoreField = configuration["Scores:ScoreField"]
+            ?? DefaultScoresScoreField;
+        _scoresDescriptionField = configuration["Scores:DescriptionField"]
+            ?? DefaultScoresDescriptionField;
+        _scoresCommissionField = configuration["Scores:CommissionField"]
+            ?? DefaultScoresCommissionField;
+        _scoresClientField = configuration["Scores:ClientField"]
+            ?? DefaultScoresClientField;
+        _scoresSalesPersonField = configuration["Scores:SalesPersonField"]
+            ?? DefaultScoresSalesPersonField;
+        _scoresOfferField = configuration["Scores:OfferField"]
+            ?? DefaultScoresOfferField;
+        _scoresVerifiedField = configuration["Scores:VerifiedField"]
+            ?? DefaultScoresVerifiedField;
+        _scoresFirstContractField = configuration["Scores:FirstContractField"]
+            ?? DefaultScoresFirstContractField;
+        _scoresLineField = configuration["Scores:LineField"]
+            ?? DefaultScoresLineField;
+        _scoresVerticalField = configuration["Scores:VerticalField"]
+            ?? DefaultScoresVerticalField;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

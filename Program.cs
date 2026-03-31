@@ -37,6 +37,7 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<RenovacionesAccessFilter>();
+builder.Services.AddScoped<PuntajesAccessFilter>();
 builder.Services.AddScoped<PortalProveedoresAccessFilter>();
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<CookiePolicyOptions>(options =>
