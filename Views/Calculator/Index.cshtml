@@ -457,8 +457,7 @@
 (function () {
     const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUserClient, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const storedScenarios = @Html.Raw(JsonSerializer.Serialize(storedScenarios, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
-    const FLOW_CREATE_REQUEST_URL = "https://defaultcab7ea424a214548952ffcde81f2bd.d6.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8529a99cb04c43af984f792d0d9974d4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=WhOJuw2RosHFv74emV7f9ve_Kwj0DqwlEVlQNtg3Qbw"; // TODO: Pegar URL del Flow 1 (Crear Solicitud + Aprobación Angie)
-    // TODO: Pegar URL del Flow 2 (Marcar Aprovisionadas) [si aplica]
+    const PROVISIONING_SUBMIT_URL = "/Calculator/SubmitProvisioning";
 
     const contractTypeLabels = {
         "645250000": "Nuevo",
@@ -1788,17 +1787,12 @@ function setAttachmentStatus(message, type = "error") {
         }
 
 
-        if (!FLOW_CREATE_REQUEST_URL || FLOW_CREATE_REQUEST_URL.includes("TODO")) {
-            setProvisioningStatus("Configura la URL del Flow 1 antes de enviar (ver comentario TODO).");
-            return;
-        }
-
         provisioningState.loading = true;
         btnConfirmProvisioning.disabled = true;
         btnConfirmProvisioning.innerText = "Enviando...";
 
         try {
-            const res = await fetch(FLOW_CREATE_REQUEST_URL, {
+            const res = await fetch(PROVISIONING_SUBMIT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)

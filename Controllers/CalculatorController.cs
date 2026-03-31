@@ -6,6 +6,8 @@ using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
 using System.IO;
+using System.Net.Http.Json;
+using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Controllers;
 
@@ -13,12 +15,20 @@ public sealed class CalculatorController : Controller
 {
     private readonly IDataverseService _dataverse;
     private readonly IQuoteCalculator _calculator;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly CalculatorOptions _calculatorOptions;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
 
-    public CalculatorController(IDataverseService dataverse, IQuoteCalculator calculator)
+    public CalculatorController(
+        IDataverseService dataverse,
+        IQuoteCalculator calculator,
+        IHttpClientFactory httpClientFactory,
+        IOptions<CalculatorOptions> calculatorOptions)
     {
         _dataverse = dataverse;
         _calculator = calculator;
+        _httpClientFactory = httpClientFactory;
+        _calculatorOptions = calculatorOptions.Value;
     }
 
     [HttpGet]
@@ -146,11 +156,43 @@ public sealed class CalculatorController : Controller
     }
 
     [HttpPost]
-    public IActionResult ValidateProvisioning([FromBody] ProvisioningRequestInput input)
+    public IActionResult ValidateProvisioning([FromBody] ProvisioningRequestInput? input)
     {
+        if (input is null)
+            return BadRequest("Payload invÃƒÂ¡lido.");
+
         var validationError = ValidateProvisioningPayload(input);
         if (!string.IsNullOrWhiteSpace(validationError))
             return BadRequest(validationError);
+
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> SubmitProvisioning([FromBody] ProvisioningRequestInput? input, CancellationToken ct)
+    {
+        if (input is null)
+            return BadRequest("Payload invÃƒÂ¡lido.");
+
+        var validationError = ValidateProvisioningPayload(input);
+        if (!string.IsNullOrWhiteSpace(validationError))
+            return BadRequest(validationError);
+
+        if (string.IsNullOrWhiteSpace(_calculatorOptions.ProvisioningRequestFlowUrl))
+        {
+            return BadRequest("Configura la URL del flujo en Calculator:ProvisioningRequestFlowUrl antes de enviar la solicitud.");
+        }
+
+        var payload = BuildProvisioningFlowPayload(input);
+        var client = _httpClientFactory.CreateClient();
+        using var response = await client.PostAsJsonAsync(_calculatorOptions.ProvisioningRequestFlowUrl, payload, cancellationToken: ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            return BadRequest(string.IsNullOrWhiteSpace(body)
+                ? $"El flujo respondiÃ³ con error HTTP {(int)response.StatusCode}."
+                : body);
+        }
 
         return Ok(new { ok = true });
     }
@@ -291,6 +333,69 @@ public sealed class CalculatorController : Controller
         return null;
     }
 
+    private static object BuildProvisioningFlowPayload(ProvisioningRequestInput input)
+    {
+        var requester = input.Requester;
+        var cliente = input.Cliente;
+        var aprovisionamiento = input.Aprovisionamiento;
+        var resultado = input.Resultado;
+        var attachment = input.Attachment;
+
+        return new
+        {
+            source = input.Source?.Trim() ?? "",
+            businessId = input.BusinessId?.Trim() ?? "",
+            requester = requester is null ? null : new
+            {
+                systemUserId = requester.SystemUserId?.Trim() ?? "",
+                displayName = requester.DisplayName?.Trim() ?? "",
+                email = requester.Email?.Trim() ?? ""
+            },
+            cliente = cliente is null ? null : new
+            {
+                clienteId = cliente.ClienteId?.Trim() ?? "",
+                nombre = cliente.Nombre?.Trim() ?? ""
+            },
+            aprovisionamiento = aprovisionamiento is null ? null : new
+            {
+                fecha = aprovisionamiento.Fecha?.Trim() ?? "",
+                tipoContratoCode = aprovisionamiento.TipoContratoCode?.Trim() ?? "",
+                tipoContratoLabel = aprovisionamiento.TipoContratoLabel?.Trim() ?? ""
+            },
+            resultado = resultado is null ? null : new
+            {
+                puntaje = resultado.Puntaje,
+                comision = resultado.Comision,
+                prorrateoDias = resultado.ProrrateoDias,
+                prorrateoFactor = resultado.ProrrateoFactor,
+                prorrateoTexto = resultado.ProrrateoTexto?.Trim() ?? "",
+                ventaMensualTotal = resultado.VentaMensualTotal,
+                ventaTotal = resultado.VentaTotal,
+                ventaTotalAnual = resultado.VentaTotalAnual
+            },
+            lineItems = input.LineItems.Select(item => new
+            {
+                lineId = item.LineId?.Trim() ?? "",
+                productoId = item.ProductoId?.Trim() ?? "",
+                productoNombre = item.ProductoNombre?.Trim() ?? "",
+                cantidad = RoundWholeNumber(item.Cantidad),
+                number = RoundWholeNumber(item.Number),
+                costoUnd = RoundWholeNumber(item.CostoUnd),
+                ventaUnd = RoundWholeNumber(item.VentaUnd),
+                margenPorcentaje = item.MargenPorcentaje,
+                duracionMeses = item.DuracionMeses,
+                ventaMensual = RoundWholeNumber(item.VentaMensual),
+                ventaTotal = RoundWholeNumber(item.VentaTotal)
+            }),
+            attachment = attachment is null ? null : new
+            {
+                fileName = attachment.FileName?.Trim() ?? "",
+                contentType = attachment.ContentType?.Trim() ?? "",
+                base64 = attachment.Base64 ?? ""
+            }
+        };
+    }
+
     private static string? ValidateLicenseCaps(QuoteScenarioInput input)
     {
         return null;
@@ -319,6 +424,9 @@ public sealed class CalculatorController : Controller
 
     private static decimal Round2(decimal v) =>
         Math.Round(v, 2, MidpointRounding.AwayFromZero);
+
+    private static int RoundWholeNumber(decimal value) =>
+        (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
     private static string BuildFileName(string? scenarioName)
     {
