@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Net.Http;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
@@ -18,6 +19,7 @@ public sealed partial class DataverseService : IDataverseService
 {
     private readonly IDownstreamApi _downstreamApi;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DataverseService> _logger;
     private readonly IQuoteCalculator _calculator;
 
@@ -110,16 +112,20 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresLineField;
     private readonly string _scoresVerticalField;
     private readonly string _scoresAdditionalField;
+    private readonly string _scoresBillingNotificationFlowUrl;
+    private readonly string _scoresBillingNotificationRecipientEmail;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
         IHttpContextAccessor httpContextAccessor,
+        IHttpClientFactory httpClientFactory,
         IQuoteCalculator calculator,
         IConfiguration configuration,
         ILogger<DataverseService> logger)
     {
         _downstreamApi = downstreamApi;
         _httpContextAccessor = httpContextAccessor;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
         _calculator = calculator;
         _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
@@ -190,6 +196,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresVerticalField;
         _scoresAdditionalField = configuration["Scores:AdditionalField"]
             ?? DefaultScoresAdditionalField;
+        _scoresBillingNotificationFlowUrl = configuration["Scores:BillingNotificationFlowUrl"] ?? "";
+        _scoresBillingNotificationRecipientEmail = configuration["Scores:BillingNotificationRecipientEmail"] ?? "";
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

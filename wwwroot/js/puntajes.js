@@ -33,6 +33,7 @@
     const lineOptionSelect = document.getElementById("lineOptionSelect");
     const verticalOptionSelect = document.getElementById("verticalOptionSelect");
     const billingDayInput = document.getElementById("billingDayInput");
+    const billingDayHelp = document.getElementById("billingDayHelp");
     const renewalDateInput = document.getElementById("renewalDateInput");
     const alignmentDateInput = document.getElementById("alignmentDateInput");
     const hasVatSelect = document.getElementById("hasVatSelect");
@@ -68,6 +69,8 @@
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
+
+    const AUTO_BILL_YES_VALUE = 1;
 
     const state = {
         filter: app.dataset.initialFilter || "this-month",
@@ -115,6 +118,89 @@
 
     function formatPercent(value) {
         return `${formatNumber(value)}%`;
+    }
+
+    function parseDateValue(value) {
+        if (!value || typeof value !== "string") {
+            return null;
+        }
+
+        const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) {
+            return null;
+        }
+
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+
+        return date;
+    }
+
+    function buildDefaultRenewalDateValue(contractStartDateValue) {
+        const contractStartDate = parseDateValue(contractStartDateValue);
+        if (!contractStartDate) {
+            return "";
+        }
+
+        const targetYear = contractStartDate.getUTCFullYear() + 1;
+        const month = contractStartDate.getUTCMonth() + 1;
+        const day = contractStartDate.getUTCDate();
+        const maxDayOfTargetMonth = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+        return `${targetYear}-${String(month).padStart(2, "0")}-${String(Math.min(day, maxDayOfTargetMonth)).padStart(2, "0")}`;
+    }
+
+    function deriveBillingDayValue(...candidates) {
+        for (const candidate of candidates) {
+            const parsedDate = parseDateValue(candidate);
+            if (parsedDate) {
+                return parsedDate.getUTCDate();
+            }
+        }
+
+        return 0;
+    }
+
+    function applyDraftDerivedDefaults(draft) {
+        if (!draft) {
+            return draft;
+        }
+
+        const defaultRenewalDateValue = buildDefaultRenewalDateValue(draft.contractStartDateValue);
+        draft.renewalDateValue = draft.renewalDateValue || defaultRenewalDateValue || "";
+        draft.autoBillOptionValue = Number(draft.autoBillOptionValue || 0);
+        draft.billingDay = draft.autoBillOptionValue === AUTO_BILL_YES_VALUE
+            ? (Number(draft.billingDay || 0) || deriveBillingDayValue(draft.renewalDateValue, draft.alignmentDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue))
+            : 0;
+        return draft;
+    }
+
+    function syncBillingDayAvailability() {
+        const draft = state.activeDraft;
+        const isAutoBillEnabled = Number(autoBillSelect?.value || draft?.autoBillOptionValue || 0) === AUTO_BILL_YES_VALUE;
+        const derivedBillingDay = draft
+            ? deriveBillingDayValue(renewalDateInput?.value || draft.renewalDateValue, alignmentDateInput?.value || draft.alignmentDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue)
+            : 0;
+
+        if (billingDayInput) {
+            billingDayInput.disabled = !isAutoBillEnabled;
+            billingDayInput.required = false;
+            if (!isAutoBillEnabled) {
+                billingDayInput.value = "";
+            } else if (!billingDayInput.value && derivedBillingDay > 0) {
+                billingDayInput.value = String(derivedBillingDay);
+            }
+        }
+
+        if (billingDayHelp) {
+            billingDayHelp.textContent = isAutoBillEnabled
+                ? "Si lo dejas vacio, se tomara automaticamente el dia de la fecha de renovacion."
+                : "Al guardar se enviara un correo automatico a facturacion para gestionar este negocio.";
+        }
     }
 
     function optionLabel(map, value) {
@@ -708,13 +794,13 @@
     }
 
     function normalizeDraft(detail) {
-        return {
+        return applyDraftDerivedDefaults({
             ...detail,
             billingDay: Number(detail.billingDay || 0),
             dealTypeValue: Number(detail.dealTypeValue || 0),
             requiresProration: Boolean(detail.requiresProration),
             lines: (Array.isArray(detail.lines) ? detail.lines : []).map((line, index) => normalizeLine(line, index))
-        };
+        });
     }
 
     function normalizeLine(line, index) {
@@ -771,6 +857,10 @@
         state.activeDraft.autoBillOptionValue = Number(autoBillSelect?.value || 0);
         state.activeDraft.productLineOptionValue = Number(productLineSelect?.value || 0);
         state.activeDraft.contractTypeOptionValue = Number(contractTypeSelect?.value || 0);
+        applyDraftDerivedDefaults(state.activeDraft);
+        renewalDateInput && (renewalDateInput.value = state.activeDraft.renewalDateValue || "");
+        billingDayInput && (billingDayInput.value = state.activeDraft.billingDay ? String(state.activeDraft.billingDay) : "");
+        syncBillingDayAvailability();
         return state.activeDraft;
     }
 
@@ -858,6 +948,7 @@
         }
 
         const draft = state.activeDraft;
+        applyDraftDerivedDefaults(draft);
         verifyModalTitle && (verifyModalTitle.textContent = `Verificar ${draft.clientName || "registro"}`);
         verifyModalSubtitle && (verifyModalSubtitle.textContent = `${draft.offer || "Sin oferta"} | Inicio ${draft.contractStartDateDisplay || "sin fecha"} | ${formatNumber(draft.lines.length)} lineas`);
         firstContractSelect && (firstContractSelect.value = draft.firstContractOptionValue ? String(draft.firstContractOptionValue) : "");
@@ -873,6 +964,7 @@
         renderVerifyMetaCards();
         renderVerifyLines();
         renderVerificationResult(draft.result);
+        syncBillingDayAvailability();
         setModalStatus(draft.warningMessage ? "info" : "", draft.warningMessage || "");
         toggleModalLoading(false);
     }
@@ -1212,11 +1304,34 @@
         });
     });
 
-    [firstContractSelect, lineOptionSelect, verticalOptionSelect, billingDayInput, renewalDateInput, alignmentDateInput, hasVatSelect, autoBillSelect, productLineSelect, contractTypeSelect]
+    [firstContractSelect, lineOptionSelect, verticalOptionSelect, hasVatSelect, productLineSelect, contractTypeSelect]
         .filter(Boolean)
         .forEach(element => {
-            element.addEventListener("change", markDraftDirty);
+            element.addEventListener("change", () => {
+                syncDraftHeaderInputs();
+                markDraftDirty();
+            });
         });
+
+    renewalDateInput?.addEventListener("change", () => {
+        syncDraftHeaderInputs();
+        markDraftDirty();
+    });
+
+    alignmentDateInput?.addEventListener("change", () => {
+        syncDraftHeaderInputs();
+        markDraftDirty();
+    });
+
+    autoBillSelect?.addEventListener("change", () => {
+        syncDraftHeaderInputs();
+        markDraftDirty();
+    });
+
+    billingDayInput?.addEventListener("change", () => {
+        syncDraftHeaderInputs();
+        markDraftDirty();
+    });
 
     refreshButton?.addEventListener("click", loadBoard);
     addVerifyLineBtn?.addEventListener("click", () => {

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -144,22 +145,33 @@ public sealed partial class DataverseService
         var existingContext = ParseScoreRecordContext(existingItem, activePeriodKey: null)
             ?? throw new InvalidOperationException("No se encontro el registro seleccionado.");
         var currentUser = await GetCurrentUserAsync(ct) ?? new Models.CurrentUserInfo();
+        var normalizedRequest = NormalizeVerificationRequest(request, existingContext.Record.ContractStartDateValue);
 
-        var computation = BuildScoreComputationContext(request, requireProductLookup: true);
-        var additional = BuildAdditionalSnapshot(request, computation, existingContext.Additional, currentUser);
+        var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
+        var additional = BuildAdditionalSnapshot(normalizedRequest, computation, existingContext.Additional, currentUser);
         var additionalJson = JsonSerializer.Serialize(additional);
 
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         Exception? lastError = null;
-        foreach (var payload in BuildVerificationPayloadCandidates(request, computation.Result, additionalJson))
+        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson))
         {
             try
             {
                 await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+                var message = "El registro se verifico correctamente y el puntaje fue recalculado.";
+                if (normalizedRequest.AutoBillOptionValue == 0)
+                {
+                    var billingNotificationStatus = await TryNotifyBillingAsync(existingContext.Record, normalizedRequest, computation.Result, currentUser, ct);
+                    if (!string.IsNullOrWhiteSpace(billingNotificationStatus))
+                        message = $"{message} Advertencia: {billingNotificationStatus}";
+                    else
+                        message = $"{message} Se notifico a facturacion para gestionar la facturacion manual.";
+                }
+
                 return new ScoreVerificationSaveResultDto
                 {
                     Ok = true,
-                    Message = "El registro se verifico correctamente y el puntaje fue recalculado.",
+                    Message = message,
                     Result = computation.Result
                 };
             }
@@ -598,8 +610,8 @@ public sealed partial class DataverseService
             FirstContractOptionValue = record.FirstContractOptionValue,
             LineOptionValue = record.LineOptionValue,
             VerticalOptionValue = record.VerticalOptionValue,
-            BillingDay = record.BillingDay > 0 ? record.BillingDay : DeriveBillingDay(record.RenewalDateValue, record.AlignmentDateValue),
-            RenewalDateValue = !string.IsNullOrWhiteSpace(record.RenewalDateValue) ? record.RenewalDateValue : FirstNonEmpty(additional.RenewalDateValue, scenario?.EndDate),
+            BillingDay = record.BillingDay,
+            RenewalDateValue = ResolveRenewalDateValue(record, additional, scenario),
             AlignmentDateValue = !string.IsNullOrWhiteSpace(record.AlignmentDateValue) ? record.AlignmentDateValue : FirstNonEmpty(additional.AlignmentDateValue, scenario?.EndDate),
             HasVatOptionValue = record.HasVatOptionValue,
             AutoBillOptionValue = record.AutoBillOptionValue,
@@ -626,6 +638,8 @@ public sealed partial class DataverseService
             LastClosedAtDisplay = record.LastClosedAtDisplay,
             LastClosedBy = record.LastClosedBy
         };
+
+        detail.BillingDay = ResolveBillingDayForRequest(detail.BillingDay, detail.AutoBillOptionValue, detail.RenewalDateValue, detail.AlignmentDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
 
         try
         {
@@ -872,11 +886,9 @@ public sealed partial class DataverseService
         ScoreVerificationComputedResultDto result,
         string additionalJson)
     {
-        var firstContractAsBool = request.FirstContractOptionValue == 1;
-
-        Dictionary<string, object?> BuildBasePayload(object verifiedValue, object firstContractValue) => new()
+        Dictionary<string, object?> BuildBasePayload(object verifiedValue) => new()
         {
-            [_scoresFirstContractField] = firstContractValue,
+            [_scoresFirstContractField] = request.FirstContractOptionValue,
             [_scoresLineField] = request.LineOptionValue,
             [_scoresVerticalField] = request.VerticalOptionValue,
             [_scoresScoreField] = result.Points,
@@ -885,10 +897,97 @@ public sealed partial class DataverseService
             [_scoresVerifiedField] = verifiedValue
         };
 
-        yield return BuildBasePayload(1, request.FirstContractOptionValue);
-        yield return BuildBasePayload(true, request.FirstContractOptionValue);
-        yield return BuildBasePayload(1, firstContractAsBool);
-        yield return BuildBasePayload(true, firstContractAsBool);
+        yield return BuildBasePayload(1);
+    }
+
+    private async Task<string> TryNotifyBillingAsync(
+        ScoreRecordDto record,
+        ScoreVerificationRequest request,
+        ScoreVerificationComputedResultDto result,
+        Models.CurrentUserInfo currentUser,
+        CancellationToken ct)
+    {
+        if (request.AutoBillOptionValue == 1)
+            return "";
+
+        if (string.IsNullOrWhiteSpace(_scoresBillingNotificationFlowUrl))
+            return "No se envio el correo a facturacion porque falta configurar Scores:BillingNotificationFlowUrl.";
+
+        if (string.IsNullOrWhiteSpace(_scoresBillingNotificationRecipientEmail))
+            return "No se envio el correo a facturacion porque falta configurar Scores:BillingNotificationRecipientEmail.";
+
+        var payload = new
+        {
+            source = "puntajes",
+            recipientEmail = _scoresBillingNotificationRecipientEmail.Trim(),
+            requester = new
+            {
+                displayName = ResolveUserDisplayName(currentUser),
+                email = currentUser.Email?.Trim() ?? ""
+            },
+            business = new
+            {
+                recordId = record.RecordId,
+                businessId = request.BusinessId?.Trim() ?? "",
+                clientId = record.ClientId,
+                clientName = record.ClientName,
+                salesPerson = record.SalesPerson,
+                offer = record.Offer,
+                contractStartDate = record.ContractStartDateValue,
+                renewalDate = request.RenewalDateValue?.Trim() ?? "",
+                alignmentDate = request.AlignmentDateValue?.Trim() ?? "",
+                billingDay = request.BillingDay,
+                firstContractOptionValue = request.FirstContractOptionValue,
+                lineOptionValue = request.LineOptionValue,
+                verticalOptionValue = request.VerticalOptionValue,
+                hasVatOptionValue = request.HasVatOptionValue,
+                autoBillOptionValue = request.AutoBillOptionValue,
+                productLineOptionValue = request.ProductLineOptionValue,
+                contractTypeOptionValue = request.ContractTypeOptionValue,
+                dealTypeValue = request.DealTypeValue,
+                requiresProration = request.RequiresProration
+            },
+            result = new
+            {
+                points = result.Points,
+                commission = result.Commission,
+                prorationDays = result.ProrationDays,
+                prorationFactor = result.ProrationFactor,
+                prorationText = result.ProrationText,
+                totalMonthlySale = result.TotalMonthlySale,
+                totalSale = result.TotalSale
+            },
+            lineItems = (request.Lines ?? new List<ScoreVerificationLineInput>()).Select(line => new
+            {
+                lineId = line.LineId?.Trim() ?? "",
+                productId = line.ProductId?.Trim() ?? "",
+                productName = line.ProductName?.Trim() ?? "",
+                quantity = line.Quantity,
+                costUnit = line.CostUnit,
+                marginPercent = line.MarginPercent,
+                contractMonths = line.ContractMonths,
+                saleUnit = line.SaleUnit,
+                monthlyValue = line.MonthlyValue,
+                totalValue = line.TotalValue
+            })
+        };
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            using var response = await client.PostAsJsonAsync(_scoresBillingNotificationFlowUrl, payload, cancellationToken: ct);
+            if (response.IsSuccessStatusCode)
+                return "";
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            return string.IsNullOrWhiteSpace(body)
+                ? $"No se pudo enviar el correo a facturacion. El flujo respondio HTTP {(int)response.StatusCode}."
+                : $"No se pudo enviar el correo a facturacion. {body.Trim()}";
+        }
+        catch (Exception ex)
+        {
+            return $"No se pudo enviar el correo a facturacion. {SummarizeExceptionMessages(ex)}";
+        }
     }
 
     private async Task<List<SalesPerformanceCompactRecord>> GetSalesPerformanceRecordsByClientAsync(
@@ -1006,7 +1105,7 @@ public sealed partial class DataverseService
             [_salesPerformanceContractTypeField] = detail.ContractTypeOptionValue
         };
 
-        if (billingDay > 0)
+        if (detail.AutoBillOptionValue == 1 && billingDay > 0)
             basePayload[_salesPerformanceBillingDayField] = billingDay;
 
         if (!string.IsNullOrWhiteSpace(renewalDateValue))
@@ -1184,6 +1283,77 @@ public sealed partial class DataverseService
             ? $"{days} dias ({factor:0.0000})"
             : "No";
 
+    private static ScoreVerificationRequest NormalizeVerificationRequest(ScoreVerificationRequest request, string? contractStartDateValue)
+    {
+        var renewalDateValue = string.IsNullOrWhiteSpace(request.RenewalDateValue)
+            ? BuildRenewalDateOneYearAfter(contractStartDateValue)
+            : request.RenewalDateValue.Trim();
+        var alignmentDateValue = request.AlignmentDateValue?.Trim() ?? "";
+        var scenarioEndDateValue = request.ScenarioEndDateValue?.Trim() ?? "";
+
+        return new ScoreVerificationRequest
+        {
+            RecordId = request.RecordId?.Trim() ?? "",
+            BusinessId = request.BusinessId?.Trim() ?? "",
+            DealTypeValue = request.DealTypeValue,
+            RequiresProration = request.RequiresProration,
+            ScenarioStartDateValue = request.ScenarioStartDateValue?.Trim() ?? "",
+            ScenarioEndDateValue = scenarioEndDateValue,
+            FirstContractOptionValue = request.FirstContractOptionValue,
+            LineOptionValue = request.LineOptionValue,
+            VerticalOptionValue = request.VerticalOptionValue,
+            BillingDay = ResolveBillingDayForRequest(request.BillingDay, request.AutoBillOptionValue, renewalDateValue, alignmentDateValue, scenarioEndDateValue, contractStartDateValue),
+            RenewalDateValue = renewalDateValue,
+            AlignmentDateValue = alignmentDateValue,
+            HasVatOptionValue = request.HasVatOptionValue,
+            AutoBillOptionValue = request.AutoBillOptionValue,
+            ProductLineOptionValue = request.ProductLineOptionValue,
+            ContractTypeOptionValue = request.ContractTypeOptionValue,
+            Lines = (request.Lines ?? new List<ScoreVerificationLineInput>())
+                .Select(line => new ScoreVerificationLineInput
+                {
+                    LineId = line.LineId,
+                    ProductId = line.ProductId,
+                    ProductName = line.ProductName,
+                    CostUnit = line.CostUnit,
+                    MarginPercent = line.MarginPercent,
+                    ContractMonths = line.ContractMonths,
+                    Quantity = line.Quantity,
+                    SuggestedRetailPrice = line.SuggestedRetailPrice,
+                    Acelerador = line.Acelerador,
+                    SaleUnit = line.SaleUnit,
+                    MonthlyValue = line.MonthlyValue,
+                    TotalValue = line.TotalValue
+                })
+                .ToList()
+        };
+    }
+
+    private static string ResolveRenewalDateValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario) =>
+        FirstNonEmpty(
+            record.RenewalDateValue,
+            additional.RenewalDateValue,
+            BuildRenewalDateOneYearAfter(record.ContractStartDateValue),
+            scenario?.EndDate);
+
+    private static string BuildRenewalDateOneYearAfter(string? baseDateValue)
+    {
+        if (!TryParseDateOnly(baseDateValue, out var parsedDate))
+            return "";
+
+        return parsedDate.AddYears(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static int ResolveBillingDayForRequest(int billingDay, int autoBillOptionValue, params string?[] candidates)
+    {
+        if (autoBillOptionValue != 1)
+            return 0;
+
+        return billingDay is >= 1 and <= 31
+            ? billingDay
+            : DeriveBillingDay(candidates);
+    }
+
     private static DateOnly? ParseRequiredScenarioDate(string? raw, bool required, string errorMessage)
     {
         if (TryParseDateOnly(raw, out var parsed))
@@ -1220,6 +1390,22 @@ public sealed partial class DataverseService
             return currentUser.Email.Trim();
 
         return "Usuario";
+    }
+
+    private static string SummarizeExceptionMessages(Exception ex)
+    {
+        var messages = new List<string>();
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (string.IsNullOrWhiteSpace(current.Message))
+                continue;
+
+            var trimmedMessage = current.Message.Trim();
+            if (!messages.Contains(trimmedMessage, StringComparer.OrdinalIgnoreCase))
+                messages.Add(trimmedMessage);
+        }
+
+        return messages.Count == 0 ? "Error desconocido." : string.Join(" | ", messages);
     }
 
     private static string FormatDateTimeDisplay(DateTimeOffset? value)
