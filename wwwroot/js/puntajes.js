@@ -34,6 +34,11 @@
     const requiresProrationSelect = document.getElementById("requiresProrationSelect");
     const scenarioStartDateInput = document.getElementById("scenarioStartDateInput");
     const scenarioEndDateInput = document.getElementById("scenarioEndDateInput");
+    const scenarioEndDateSelect = document.getElementById("scenarioEndDateSelect");
+    const scenarioEndDateHelp = document.getElementById("scenarioEndDateHelp");
+    const verifyProrationClientWrap = document.getElementById("verifyProrationClientWrap");
+    const verifyProrationClientInput = document.getElementById("verifyProrationClientInput");
+    const verifyProrationClientHelp = document.getElementById("verifyProrationClientHelp");
     const firstContractSelect = document.getElementById("firstContractSelect");
     const verticalOptionSelect = document.getElementById("verticalOptionSelect");
     const billingDayInput = document.getElementById("billingDayInput");
@@ -84,6 +89,7 @@
         expandedRecords: new Set(),
         activeRecordId: "",
         activeDraft: null,
+        prorationLookupToken: 0,
         isLoading: false,
         isSaving: false,
         isRecalculating: false,
@@ -165,6 +171,188 @@
         }
 
         return `${String(parsedDate.getUTCDate()).padStart(2, "0")}/${String(parsedDate.getUTCMonth() + 1).padStart(2, "0")}/${parsedDate.getUTCFullYear()}`;
+    }
+
+    function normalizeRenewalOption(option) {
+        const dateValue = typeof option?.dateValue === "string"
+            ? option.dateValue.trim().slice(0, 10)
+            : "";
+        if (!parseDateValue(dateValue)) {
+            return null;
+        }
+
+        return {
+            recordId: (option?.recordId || "").toString(),
+            dateValue,
+            displayDate: (option?.displayDate || "").toString().trim() || formatDateDisplay(dateValue)
+        };
+    }
+
+    async function fetchClientRenewalDates(clientId) {
+        const items = await fetchJson(`/Calculator/ClientRenewalDates?clientId=${encodeURIComponent(clientId)}`);
+        if (!Array.isArray(items)) {
+            throw new Error("El servidor no devolvio una lista valida de fechas de renovacion.");
+        }
+
+        return items
+            .map(normalizeRenewalOption)
+            .filter(Boolean);
+    }
+
+    function resetProrationLookupState(draft, clearEndDate = true) {
+        if (!draft) {
+            return;
+        }
+
+        draft.prorationRenewalOptions = [];
+        draft.prorationRenewalError = "";
+        draft.prorationRenewalLoading = false;
+        if (clearEndDate) {
+            draft.scenarioEndDateValue = "";
+        }
+    }
+
+    function renderProrationEndDateOptions() {
+        const draft = state.activeDraft;
+        const requiresProration = Boolean(draft?.requiresProration);
+
+        if (verifyProrationClientWrap) {
+            verifyProrationClientWrap.hidden = !requiresProration;
+        }
+
+        if (scenarioEndDateInput) {
+            scenarioEndDateInput.hidden = requiresProration;
+            scenarioEndDateInput.disabled = true;
+        }
+
+        if (scenarioEndDateSelect) {
+            scenarioEndDateSelect.hidden = !requiresProration;
+        }
+
+        if (!requiresProration || !draft) {
+            if (verifyProrationClientInput) {
+                verifyProrationClientInput.value = draft?.clientName || "";
+            }
+            if (verifyProrationClientHelp) {
+                verifyProrationClientHelp.textContent = "";
+            }
+            if (scenarioEndDateHelp) {
+                scenarioEndDateHelp.textContent = "";
+            }
+            return;
+        }
+
+        const clientId = draft.prorationClient?.id || draft.clientId || "";
+        const clientName = draft.prorationClient?.name || draft.clientName || "";
+        const options = Array.isArray(draft.prorationRenewalOptions) ? draft.prorationRenewalOptions : [];
+
+        let placeholder = "Selecciona una fecha";
+        if (draft.prorationRenewalLoading) {
+            placeholder = "Cargando fechas...";
+        } else if (!clientId) {
+            placeholder = "El registro no tiene cliente.";
+        } else if (draft.prorationRenewalError) {
+            placeholder = "No se pudieron consultar las fechas.";
+        } else if (!options.length) {
+            placeholder = "No se encontraron fechas";
+        }
+
+        if (scenarioEndDateSelect) {
+            scenarioEndDateSelect.innerHTML = [
+                `<option value="">${escapeHtml(placeholder)}</option>`,
+                ...options.map(option => `<option value="${escapeHtml(option.dateValue)}">${escapeHtml(option.displayDate || formatDateDisplay(option.dateValue))}</option>`)
+            ].join("");
+            scenarioEndDateSelect.disabled = draft.prorationRenewalLoading || !options.length;
+            scenarioEndDateSelect.value = options.some(option => option.dateValue === draft.scenarioEndDateValue)
+                ? draft.scenarioEndDateValue
+                : "";
+        }
+
+        if (verifyProrationClientInput) {
+            verifyProrationClientInput.value = clientName;
+        }
+
+        if (verifyProrationClientHelp) {
+            verifyProrationClientHelp.textContent = draft.prorationRenewalLoading
+                ? `Consultando fechas disponibles para ${clientName || "el cliente"}...`
+                : (draft.prorationRenewalError
+                    ? draft.prorationRenewalError
+                    : (clientId
+                        ? `Se muestran las fechas disponibles de ${clientName || "este cliente"}.`
+                        : "El registro no tiene cliente asociado."));
+        }
+
+        if (scenarioEndDateHelp) {
+            scenarioEndDateHelp.textContent = draft.prorationRenewalError || "";
+        }
+    }
+
+    function syncProrationControls() {
+        renderProrationEndDateOptions();
+    }
+
+    async function ensureProrationRenewalOptions({ forceReload = false, preserveSelectedDate = true, silent = false } = {}) {
+        const draft = state.activeDraft;
+        if (!draft || !draft.requiresProration) {
+            return;
+        }
+
+        const clientId = draft.prorationClient?.id || draft.clientId || "";
+        const clientName = draft.prorationClient?.name || draft.clientName || "";
+        draft.prorationClient = clientId
+            ? { id: clientId, name: clientName }
+            : null;
+
+        if (!clientId) {
+            resetProrationLookupState(draft, !preserveSelectedDate);
+            draft.prorationRenewalError = "El registro no tiene un cliente valido para consultar fechas de prorrateo.";
+            renderProrationEndDateOptions();
+            return;
+        }
+
+        if (!forceReload && Array.isArray(draft.prorationRenewalOptions) && draft.prorationRenewalOptions.length) {
+            renderProrationEndDateOptions();
+            return;
+        }
+
+        const lookupToken = ++state.prorationLookupToken;
+        draft.prorationRenewalLoading = true;
+        draft.prorationRenewalError = "";
+        if (!preserveSelectedDate) {
+            draft.scenarioEndDateValue = "";
+        }
+        renderProrationEndDateOptions();
+
+        try {
+            const options = await fetchClientRenewalDates(clientId);
+            if (lookupToken !== state.prorationLookupToken || state.activeDraft !== draft) {
+                return;
+            }
+
+            draft.prorationRenewalOptions = options;
+            draft.prorationRenewalError = "";
+            draft.prorationRenewalLoading = false;
+            if (!options.some(option => option.dateValue === draft.scenarioEndDateValue)) {
+                draft.scenarioEndDateValue = "";
+            }
+
+            applyDraftDerivedDefaults(draft);
+            renewalDateInput && (renewalDateInput.value = draft.renewalDateValue || "");
+            syncBillingDayAvailability();
+            syncRenewalDateHint();
+            renderProrationEndDateOptions();
+        } catch (error) {
+            if (lookupToken !== state.prorationLookupToken || state.activeDraft !== draft) {
+                return;
+            }
+
+            resetProrationLookupState(draft, true);
+            draft.prorationRenewalError = formatErrorMessage(error, "No se pudieron consultar las fechas de renovacion.");
+            renderProrationEndDateOptions();
+            if (!silent) {
+                setModalStatus("error", draft.prorationRenewalError);
+            }
+        }
     }
 
     function deriveBillingDayValue(...candidates) {
@@ -269,10 +457,7 @@
         if (scenarioStartDateInput) {
             scenarioStartDateInput.disabled = !requiresProration;
         }
-
-        if (scenarioEndDateInput) {
-            scenarioEndDateInput.disabled = !requiresProration;
-        }
+        syncProrationControls();
 
         if (dealTypeHelp) {
             dealTypeHelp.textContent = requiresProration
@@ -875,13 +1060,21 @@
     }
 
     function normalizeDraft(detail) {
+        const clientId = detail.clientId || "";
+        const clientName = detail.clientName || "";
         return applyDraftDerivedDefaults({
             ...detail,
+            clientId,
+            clientName,
             billingDay: Number(detail.billingDay || 0),
             dealTypeValue: Number(detail.dealTypeValue || 0),
             requiresProration: detail.requiresProration === true || detail.requiresProration === "true",
             autoBillOptionValue: normalizeSelectValue(detail.autoBillOptionValue, -1),
             contractTypeOptionValue: normalizeSelectValue(detail.contractTypeOptionValue, -1),
+            prorationClient: clientId ? { id: clientId, name: clientName } : null,
+            prorationRenewalOptions: [],
+            prorationRenewalError: "",
+            prorationRenewalLoading: false,
             lines: (Array.isArray(detail.lines) ? detail.lines : []).map((line, index) => normalizeLine(line, index))
         });
     }
@@ -941,7 +1134,9 @@
         state.activeDraft.dealTypeValue = Number(dealTypeSelect?.value || 0);
         state.activeDraft.requiresProration = requiresProrationSelect?.value === "true";
         state.activeDraft.scenarioStartDateValue = scenarioStartDateInput?.value || "";
-        state.activeDraft.scenarioEndDateValue = scenarioEndDateInput?.value || "";
+        state.activeDraft.scenarioEndDateValue = state.activeDraft.requiresProration
+            ? (scenarioEndDateSelect?.value || "")
+            : (scenarioEndDateInput?.value || "");
         state.activeDraft.firstContractOptionValue = firstContractSelect?.value === ""
             ? deriveFirstContractValue(state.activeDraft.dealTypeValue)
             : Number(firstContractSelect?.value || 0);
@@ -954,7 +1149,8 @@
         dealTypeSelect && (dealTypeSelect.value = String(state.activeDraft.dealTypeValue ?? ""));
         requiresProrationSelect && (requiresProrationSelect.value = state.activeDraft.requiresProration ? "true" : "false");
         scenarioStartDateInput && (scenarioStartDateInput.value = state.activeDraft.scenarioStartDateValue || "");
-        scenarioEndDateInput && (scenarioEndDateInput.value = state.activeDraft.scenarioEndDateValue || "");
+        scenarioEndDateInput && (scenarioEndDateInput.value = state.activeDraft.requiresProration ? "" : (state.activeDraft.scenarioEndDateValue || ""));
+        scenarioEndDateSelect && (scenarioEndDateSelect.value = state.activeDraft.scenarioEndDateValue || "");
         firstContractSelect && (firstContractSelect.value = state.activeDraft.firstContractOptionValue > 0 ? String(state.activeDraft.firstContractOptionValue) : "");
         verticalOptionSelect && (verticalOptionSelect.value = state.activeDraft.verticalOptionValue ? String(state.activeDraft.verticalOptionValue) : "");
         renewalDateInput && (renewalDateInput.value = state.activeDraft.renewalDateValue || "");
@@ -1076,7 +1272,8 @@
         dealTypeSelect && (dealTypeSelect.value = String(draft.dealTypeValue ?? ""));
         requiresProrationSelect && (requiresProrationSelect.value = draft.requiresProration ? "true" : "false");
         scenarioStartDateInput && (scenarioStartDateInput.value = draft.scenarioStartDateValue || "");
-        scenarioEndDateInput && (scenarioEndDateInput.value = draft.scenarioEndDateValue || "");
+        scenarioEndDateInput && (scenarioEndDateInput.value = draft.requiresProration ? "" : (draft.scenarioEndDateValue || ""));
+        scenarioEndDateSelect && (scenarioEndDateSelect.value = draft.scenarioEndDateValue || "");
         firstContractSelect && (firstContractSelect.value = draft.firstContractOptionValue ? String(draft.firstContractOptionValue) : "");
         verticalOptionSelect && (verticalOptionSelect.value = draft.verticalOptionValue ? String(draft.verticalOptionValue) : "");
         billingDayInput && (billingDayInput.value = draft.billingDay ? String(draft.billingDay) : "");
@@ -1109,6 +1306,8 @@
         applyDraftDerivedDefaults(state.activeDraft);
         renewalDateInput && (renewalDateInput.value = state.activeDraft.renewalDateValue || "");
         billingDayInput && (billingDayInput.value = state.activeDraft.billingDay ? String(state.activeDraft.billingDay) : "");
+        renderVerifyMetaCards();
+        syncProrationControls();
         syncBillingDayAvailability();
         syncRenewalDateHint();
         state.activeDraft.result = null;
@@ -1133,7 +1332,13 @@
             const detailUrl = `${app.dataset.detailUrl}?recordId=${encodeURIComponent(recordId)}&filter=${encodeURIComponent(state.filter)}`;
             const detail = await fetchJson(detailUrl);
             state.activeDraft = normalizeDraft(detail);
+            if (state.activeDraft?.requiresProration) {
+                state.activeDraft.prorationRenewalLoading = true;
+            }
             renderVerifyDraft();
+            if (state.activeDraft?.requiresProration) {
+                await ensureProrationRenewalOptions({ forceReload: true, preserveSelectedDate: true, silent: true });
+            }
         } catch (error) {
             console.error(error);
             toggleModalLoading(false);
@@ -1438,34 +1643,56 @@
         });
     });
 
-    [dealTypeSelect, requiresProrationSelect, firstContractSelect, verticalOptionSelect, autoBillSelect, contractTypeSelect]
+    const handleScoringChange = () => {
+        syncDraftHeaderInputs();
+        renderVerifyMetaCards();
+        markDraftDirty();
+    };
+
+    const handleAdministrativeChange = () => {
+        syncDraftHeaderInputs();
+    };
+
+    dealTypeSelect?.addEventListener("change", handleScoringChange);
+
+    requiresProrationSelect?.addEventListener("change", async () => {
+        if (!state.activeDraft) {
+            return;
+        }
+
+        if (requiresProrationSelect.value !== "true") {
+            state.activeDraft.requiresProration = false;
+            state.activeDraft.scenarioStartDateValue = "";
+            resetProrationLookupState(state.activeDraft, true);
+            syncDraftHeaderInputs();
+            renderVerifyMetaCards();
+            markDraftDirty();
+            return;
+        }
+
+        state.activeDraft.requiresProration = true;
+        state.activeDraft.prorationClient = state.activeDraft.clientId
+            ? { id: state.activeDraft.clientId, name: state.activeDraft.clientName || "" }
+            : null;
+        resetProrationLookupState(state.activeDraft, false);
+        syncDraftHeaderInputs();
+        renderVerifyMetaCards();
+        markDraftDirty();
+        await ensureProrationRenewalOptions({ forceReload: true, preserveSelectedDate: true });
+    });
+
+    scenarioStartDateInput?.addEventListener("change", handleScoringChange);
+    scenarioEndDateInput?.addEventListener("change", handleScoringChange);
+    scenarioEndDateSelect?.addEventListener("change", handleScoringChange);
+
+    [firstContractSelect, verticalOptionSelect, autoBillSelect, contractTypeSelect]
         .filter(Boolean)
         .forEach(element => {
-            element.addEventListener("change", () => {
-                syncDraftHeaderInputs();
-                markDraftDirty();
-            });
+            element.addEventListener("change", handleAdministrativeChange);
         });
 
-    scenarioStartDateInput?.addEventListener("change", () => {
-        syncDraftHeaderInputs();
-        markDraftDirty();
-    });
-
-    scenarioEndDateInput?.addEventListener("change", () => {
-        syncDraftHeaderInputs();
-        markDraftDirty();
-    });
-
-    renewalDateInput?.addEventListener("change", () => {
-        syncDraftHeaderInputs();
-        markDraftDirty();
-    });
-
-    billingDayInput?.addEventListener("change", () => {
-        syncDraftHeaderInputs();
-        markDraftDirty();
-    });
+    renewalDateInput?.addEventListener("change", handleAdministrativeChange);
+    billingDayInput?.addEventListener("change", handleAdministrativeChange);
 
     refreshButton?.addEventListener("click", loadBoard);
     addVerifyLineBtn?.addEventListener("click", () => {
@@ -1482,6 +1709,7 @@
     closeMonthButton?.addEventListener("click", closeMonth);
 
     verifyModalElement?.addEventListener("hidden.bs.modal", () => {
+        state.prorationLookupToken += 1;
         state.activeRecordId = "";
         state.activeDraft = null;
         setModalStatus("", "");

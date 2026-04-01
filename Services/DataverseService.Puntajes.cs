@@ -146,8 +146,6 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No se encontro el registro seleccionado.");
         var currentUser = await GetCurrentUserAsync(ct) ?? new Models.CurrentUserInfo();
         var normalizedRequest = NormalizeVerificationRequest(request, existingContext.Record.ContractStartDateValue);
-        var verifiedFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresVerifiedField);
-        var firstContractFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresFirstContractField);
 
         var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
         var additional = BuildAdditionalSnapshot(normalizedRequest, computation, existingContext.Additional, currentUser);
@@ -155,7 +153,7 @@ public sealed partial class DataverseService
 
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         Exception? lastError = null;
-        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson, verifiedFieldKind, firstContractFieldKind))
+        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson))
         {
             try
             {
@@ -939,43 +937,17 @@ public sealed partial class DataverseService
     private IEnumerable<Dictionary<string, object?>> BuildVerificationPayloadCandidates(
         ScoreVerificationRequest request,
         ScoreVerificationComputedResultDto result,
-        string additionalJson,
-        PrimitiveFieldKind verifiedFieldKind,
-        PrimitiveFieldKind firstContractFieldKind)
+        string additionalJson)
     {
-        var verifiedValues = GetPayloadCandidates(
-            verifiedFieldKind,
-            preferredBooleanValue: true,
-            preferredIntegerValue: 1,
-            preferBooleanWhenUnknown: true);
-        var firstContractValues = GetPayloadCandidates(
-            firstContractFieldKind,
-            preferredBooleanValue: request.FirstContractOptionValue == 1,
-            preferredIntegerValue: request.FirstContractOptionValue,
-            preferBooleanWhenUnknown: false);
-
-        Dictionary<string, object?> BuildBasePayload(object verifiedValue, object firstContractValue) => new()
+        yield return new Dictionary<string, object?>
         {
-            [_scoresFirstContractField] = firstContractValue,
+            [_scoresFirstContractField] = request.FirstContractOptionValue,
             [_scoresVerticalField] = request.VerticalOptionValue,
             [_scoresScoreField] = result.Points,
             [_scoresCommissionField] = result.Commission,
             [_scoresAdditionalField] = additionalJson,
-            [_scoresVerifiedField] = verifiedValue
+            [_scoresVerifiedField] = 1
         };
-
-        var seenCombinations = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var verifiedValue in verifiedValues)
-        {
-            foreach (var firstContractValue in firstContractValues)
-            {
-                var key = $"{verifiedValue?.GetType().Name}:{verifiedValue}|{firstContractValue?.GetType().Name}:{firstContractValue}";
-                if (!seenCombinations.Add(key))
-                    continue;
-
-                yield return BuildBasePayload(verifiedValue!, firstContractValue!);
-            }
-        }
     }
 
     private static IReadOnlyList<object> GetPayloadCandidates(PrimitiveFieldKind kind, bool preferredBooleanValue, int preferredIntegerValue, bool preferBooleanWhenUnknown)
