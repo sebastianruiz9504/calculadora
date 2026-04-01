@@ -4,6 +4,7 @@
     ViewData["Title"] = "Puntajes";
     var uiOptionsJson = JsonSerializer.Serialize(new
     {
+        dealTypeOptions = Model.DealTypeOptions,
         firstContractOptions = Model.FirstContractOptions,
         lineOptions = Model.LineOptions,
         verticalOptions = Model.VerticalOptions,
@@ -132,6 +133,11 @@
 
                     <section class="scores-verify-section">
                         <div class="scores-verify-grid">
+                            <div>
+                                <label class="form-label" for="dealTypeSelect">Tipo negocio</label>
+                                <select class="form-select" id="dealTypeSelect" required></select>
+                                <div class="form-text" id="dealTypeHelp"></div>
+                            </div>
                             <div>
                                 <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
                                 <select class="form-select" id="firstContractSelect" required></select>

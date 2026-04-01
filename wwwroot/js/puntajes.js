@@ -29,6 +29,8 @@
     const verifyScoreForm = document.getElementById("verifyScoreForm");
     const verifyMetaCards = document.getElementById("verifyMetaCards");
     const verifyLinesBody = document.getElementById("verifyLinesBody");
+    const dealTypeSelect = document.getElementById("dealTypeSelect");
+    const dealTypeHelp = document.getElementById("dealTypeHelp");
     const firstContractSelect = document.getElementById("firstContractSelect");
     const lineOptionSelect = document.getElementById("lineOptionSelect");
     const verticalOptionSelect = document.getElementById("verticalOptionSelect");
@@ -51,6 +53,7 @@
     const verifyModal = verifyModalElement && window.bootstrap ? new bootstrap.Modal(verifyModalElement) : null;
 
     const optionMaps = {
+        dealType: buildOptionMap(options.dealTypeOptions),
         firstContract: buildOptionMap(options.firstContractOptions),
         line: buildOptionMap(options.lineOptions),
         vertical: buildOptionMap(options.verticalOptions),
@@ -70,6 +73,7 @@
         maximumFractionDigits: 2
     });
 
+    const CROSS_SALE_DEAL_TYPE = 1;
     const AUTO_BILL_YES_VALUE = 1;
 
     const state = {
@@ -171,12 +175,35 @@
         }
 
         const defaultRenewalDateValue = buildDefaultRenewalDateValue(draft.contractStartDateValue);
+        draft.dealTypeValue = Number(draft.dealTypeValue || 0);
+        draft.requiresProration = Boolean(draft.requiresProration);
+        if (draft.requiresProration) {
+            draft.dealTypeValue = CROSS_SALE_DEAL_TYPE;
+        }
         draft.renewalDateValue = draft.renewalDateValue || defaultRenewalDateValue || "";
         draft.autoBillOptionValue = Number(draft.autoBillOptionValue || 0);
         draft.billingDay = draft.autoBillOptionValue === AUTO_BILL_YES_VALUE
             ? (Number(draft.billingDay || 0) || deriveBillingDayValue(draft.renewalDateValue, draft.alignmentDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue))
             : 0;
         return draft;
+    }
+
+    function syncDealTypeAvailability() {
+        const draft = state.activeDraft;
+        const requiresProration = Boolean(draft?.requiresProration);
+
+        if (dealTypeSelect) {
+            dealTypeSelect.disabled = requiresProration;
+            if (requiresProration) {
+                dealTypeSelect.value = String(CROSS_SALE_DEAL_TYPE);
+            }
+        }
+
+        if (dealTypeHelp) {
+            dealTypeHelp.textContent = requiresProration
+                ? "Cuando el negocio tiene prorrateo, el tipo negocio se fija automaticamente en CrossSale."
+                : "";
+        }
     }
 
     function syncBillingDayAvailability() {
@@ -473,6 +500,7 @@
             renderMetaChip("Registro", record.recordId),
             renderMetaChip("Fecha aprovisionamiento", record.provisioningDateDisplay),
             renderMetaChip("Tipo contrato", record.contractType),
+            renderMetaChip("Tipo negocio", optionLabel(optionMaps.dealType, record.dealTypeValue)),
             renderMetaChip("BusinessId", record.businessId),
             renderMetaChip("Prorrateo", record.prorationText || "No"),
             renderMetaChip("Dia facturacion", record.billingDay ? String(record.billingDay) : ""),
@@ -847,6 +875,7 @@
             return null;
         }
 
+        state.activeDraft.dealTypeValue = Number(dealTypeSelect?.value || 0);
         state.activeDraft.firstContractOptionValue = Number(firstContractSelect?.value || 0);
         state.activeDraft.lineOptionValue = Number(lineOptionSelect?.value || 0);
         state.activeDraft.verticalOptionValue = Number(verticalOptionSelect?.value || 0);
@@ -858,8 +887,10 @@
         state.activeDraft.productLineOptionValue = Number(productLineSelect?.value || 0);
         state.activeDraft.contractTypeOptionValue = Number(contractTypeSelect?.value || 0);
         applyDraftDerivedDefaults(state.activeDraft);
+        dealTypeSelect && (dealTypeSelect.value = String(state.activeDraft.dealTypeValue ?? ""));
         renewalDateInput && (renewalDateInput.value = state.activeDraft.renewalDateValue || "");
         billingDayInput && (billingDayInput.value = state.activeDraft.billingDay ? String(state.activeDraft.billingDay) : "");
+        syncDealTypeAvailability();
         syncBillingDayAvailability();
         return state.activeDraft;
     }
@@ -873,6 +904,7 @@
         const cards = [
             { label: "Cliente", value: draft.clientName || "Sin cliente" },
             { label: "Inicio contrato", value: draft.contractStartDateDisplay || "Sin fecha" },
+            { label: "Tipo negocio", value: optionLabel(optionMaps.dealType, draft.dealTypeValue) || "Sin definir" },
             { label: "Vendedor", value: draft.salesPerson || "Sin vendedor" },
             { label: "Oferta", value: draft.offer || "Sin oferta" },
             { label: "BusinessId", value: draft.businessId || "Sin BusinessId" },
@@ -951,6 +983,7 @@
         applyDraftDerivedDefaults(draft);
         verifyModalTitle && (verifyModalTitle.textContent = `Verificar ${draft.clientName || "registro"}`);
         verifyModalSubtitle && (verifyModalSubtitle.textContent = `${draft.offer || "Sin oferta"} | Inicio ${draft.contractStartDateDisplay || "sin fecha"} | ${formatNumber(draft.lines.length)} lineas`);
+        dealTypeSelect && (dealTypeSelect.value = String(draft.dealTypeValue ?? ""));
         firstContractSelect && (firstContractSelect.value = draft.firstContractOptionValue ? String(draft.firstContractOptionValue) : "");
         lineOptionSelect && (lineOptionSelect.value = draft.lineOptionValue ? String(draft.lineOptionValue) : "");
         verticalOptionSelect && (verticalOptionSelect.value = draft.verticalOptionValue ? String(draft.verticalOptionValue) : "");
@@ -964,6 +997,7 @@
         renderVerifyMetaCards();
         renderVerifyLines();
         renderVerificationResult(draft.result);
+        syncDealTypeAvailability();
         syncBillingDayAvailability();
         setModalStatus(draft.warningMessage ? "info" : "", draft.warningMessage || "");
         toggleModalLoading(false);
@@ -1304,7 +1338,7 @@
         });
     });
 
-    [firstContractSelect, lineOptionSelect, verticalOptionSelect, hasVatSelect, productLineSelect, contractTypeSelect]
+    [dealTypeSelect, firstContractSelect, lineOptionSelect, verticalOptionSelect, hasVatSelect, productLineSelect, contractTypeSelect]
         .filter(Boolean)
         .forEach(element => {
             element.addEventListener("change", () => {
@@ -1354,6 +1388,7 @@
         toggleModalLoading(false);
     });
 
+    populateSelect(dealTypeSelect, options.dealTypeOptions, "Selecciona un tipo");
     populateSelect(firstContractSelect, options.firstContractOptions, "Selecciona una opcion");
     populateSelect(lineOptionSelect, options.lineOptions, "Selecciona una linea");
     populateSelect(verticalOptionSelect, options.verticalOptions, "Selecciona una vertical");

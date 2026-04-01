@@ -28,6 +28,7 @@ public sealed class PuntajesController : Controller
         {
             CurrentUser = currentUser,
             InitialFilter = ScorePeriodFilter.ThisMonth,
+            DealTypeOptions = PuntajesOptionCatalog.DealTypeOptions,
             FirstContractOptions = PuntajesOptionCatalog.FirstContractOptions,
             LineOptions = PuntajesOptionCatalog.LineOptions,
             VerticalOptions = PuntajesOptionCatalog.VerticalOptions,

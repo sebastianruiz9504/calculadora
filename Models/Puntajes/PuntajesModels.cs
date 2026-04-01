@@ -51,6 +51,7 @@ public sealed class PuntajesPageViewModel
 {
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public ScorePeriodFilter InitialFilter { get; set; } = ScorePeriodFilter.ThisMonth;
+    public IReadOnlyList<ScoreOptionItem> DealTypeOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> FirstContractOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> LineOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> VerticalOptions { get; set; } = Array.Empty<ScoreOptionItem>();
@@ -287,6 +288,15 @@ public sealed class ScoreOfferDownloadResult
 
 public static class PuntajesOptionCatalog
 {
+    public static IReadOnlyList<ScoreOptionItem> DealTypeOptions { get; } = new[]
+    {
+        new ScoreOptionItem { Value = 0, Label = "ClienteNuevo" },
+        new ScoreOptionItem { Value = 1, Label = "CrossSale" },
+        new ScoreOptionItem { Value = 2, Label = "Renovacion 1 vez" },
+        new ScoreOptionItem { Value = 3, Label = "Renovacion 2 veces" },
+        new ScoreOptionItem { Value = 4, Label = "Renovacion 3 veces o mas" }
+    };
+
     public static IReadOnlyList<ScoreOptionItem> FirstContractOptions { get; } = new[]
     {
         new ScoreOptionItem { Value = 1, Label = "Si" },

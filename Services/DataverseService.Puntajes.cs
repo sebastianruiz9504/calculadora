@@ -146,6 +146,8 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No se encontro el registro seleccionado.");
         var currentUser = await GetCurrentUserAsync(ct) ?? new Models.CurrentUserInfo();
         var normalizedRequest = NormalizeVerificationRequest(request, existingContext.Record.ContractStartDateValue);
+        var verifiedFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresVerifiedField);
+        var firstContractFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresFirstContractField);
 
         var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
         var additional = BuildAdditionalSnapshot(normalizedRequest, computation, existingContext.Additional, currentUser);
@@ -153,7 +155,7 @@ public sealed partial class DataverseService
 
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         Exception? lastError = null;
-        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson))
+        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson, verifiedFieldKind, firstContractFieldKind))
         {
             try
             {
@@ -527,7 +529,7 @@ public sealed partial class DataverseService
         var commission = RoundCurrency(ReadDecimal(item, _scoresCommissionField) ?? additional.LastResult?.Commission ?? parsedDescription.Commission ?? 0m);
         var salesPerson = ReadDataverseDisplayValue(item, _scoresSalesPersonField, "vendedor");
         var offer = ReadDataverseDisplayValue(item, _scoresOfferField, "oferta");
-        var isVerified = ReadYesNoOption(item, _scoresVerifiedField);
+        var isVerified = ReadYesNoOptionFlexible(item, _scoresVerifiedField);
         var monthlyValue = RoundCurrency(additional.LastResult?.TotalMonthlySale ?? parsedDescription.TotalMonthlyValue ?? productLines.Sum(line => line.MonthlyValue));
         var totalValue = RoundCurrency(additional.LastResult?.TotalSale ?? parsedDescription.TotalValue ?? productLines.Sum(line => line.TotalValue));
         var renewalDate = ParseAdditionalDateOnly(additional.RenewalDateValue);
@@ -550,7 +552,7 @@ public sealed partial class DataverseService
                 OfferFileName = offer.Trim(),
                 HasOffer = !string.IsNullOrWhiteSpace(offer),
                 IsVerified = isVerified,
-                FirstContractOptionValue = ReadOptionValue(item, _scoresFirstContractField),
+                FirstContractOptionValue = ReadBinaryOptionValue(item, _scoresFirstContractField),
                 LineOptionValue = ReadOptionValue(item, _scoresLineField),
                 VerticalOptionValue = ReadOptionValue(item, _scoresVerticalField),
                 DescriptionClientName = parsedDescription.ClientName,
@@ -575,8 +577,8 @@ public sealed partial class DataverseService
                 AutoBillOptionValue = additional.AutoBillOptionValue,
                 ProductLineOptionValue = additional.ProductLineOptionValue,
                 ContractTypeOptionValue = additional.ContractTypeOptionValue,
-                DealTypeValue = additional.DealTypeValue,
-                RequiresProration = additional.RequiresProration,
+                DealTypeValue = ResolveStoredDealTypeValue(additional, parsedDescription),
+                RequiresProration = ResolveStoredRequiresProration(additional, parsedDescription),
                 ScenarioStartDateValue = additional.ScenarioStartDateValue ?? "",
                 ScenarioEndDateValue = additional.ScenarioEndDateValue ?? "",
                 IsClosedForActivePeriod = HasMonthlyClosure(additional, activePeriodKey),
@@ -884,11 +886,24 @@ public sealed partial class DataverseService
     private IEnumerable<Dictionary<string, object?>> BuildVerificationPayloadCandidates(
         ScoreVerificationRequest request,
         ScoreVerificationComputedResultDto result,
-        string additionalJson)
+        string additionalJson,
+        PrimitiveFieldKind verifiedFieldKind,
+        PrimitiveFieldKind firstContractFieldKind)
     {
-        Dictionary<string, object?> BuildBasePayload(object verifiedValue) => new()
+        var verifiedValues = GetPayloadCandidates(
+            verifiedFieldKind,
+            preferredBooleanValue: true,
+            preferredIntegerValue: 1,
+            preferBooleanWhenUnknown: true);
+        var firstContractValues = GetPayloadCandidates(
+            firstContractFieldKind,
+            preferredBooleanValue: request.FirstContractOptionValue == 1,
+            preferredIntegerValue: request.FirstContractOptionValue,
+            preferBooleanWhenUnknown: false);
+
+        Dictionary<string, object?> BuildBasePayload(object verifiedValue, object firstContractValue) => new()
         {
-            [_scoresFirstContractField] = request.FirstContractOptionValue,
+            [_scoresFirstContractField] = firstContractValue,
             [_scoresLineField] = request.LineOptionValue,
             [_scoresVerticalField] = request.VerticalOptionValue,
             [_scoresScoreField] = result.Points,
@@ -897,7 +912,30 @@ public sealed partial class DataverseService
             [_scoresVerifiedField] = verifiedValue
         };
 
-        yield return BuildBasePayload(1);
+        var seenCombinations = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var verifiedValue in verifiedValues)
+        {
+            foreach (var firstContractValue in firstContractValues)
+            {
+                var key = $"{verifiedValue?.GetType().Name}:{verifiedValue}|{firstContractValue?.GetType().Name}:{firstContractValue}";
+                if (!seenCombinations.Add(key))
+                    continue;
+
+                yield return BuildBasePayload(verifiedValue!, firstContractValue!);
+            }
+        }
+    }
+
+    private static IReadOnlyList<object> GetPayloadCandidates(PrimitiveFieldKind kind, bool preferredBooleanValue, int preferredIntegerValue, bool preferBooleanWhenUnknown)
+    {
+        return kind switch
+        {
+            PrimitiveFieldKind.Boolean => new object[] { preferredBooleanValue, preferredIntegerValue },
+            PrimitiveFieldKind.Integer => new object[] { preferredIntegerValue, preferredBooleanValue },
+            _ => preferBooleanWhenUnknown
+                ? new object[] { preferredBooleanValue, preferredIntegerValue }
+                : new object[] { preferredIntegerValue, preferredBooleanValue }
+        };
     }
 
     private async Task<string> TryNotifyBillingAsync(
@@ -1248,6 +1286,22 @@ public sealed partial class DataverseService
         additional.LastClosedBy ??= "";
         additional.Lines ??= new List<ScoreVerificationLineInput>();
         additional.MonthlyClosures ??= new List<ScoreMonthlyClosureSnapshot>();
+    }
+
+    private static int ResolveStoredDealTypeValue(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription)
+    {
+        if (additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
+            return additional.DealTypeValue;
+
+        return parsedDescription.ProrationDays > 0 ? (int)DealType.CrossSale : (int)DealType.ClienteNuevo;
+    }
+
+    private static bool ResolveStoredRequiresProration(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription)
+    {
+        if (additional.RequiresProration)
+            return true;
+
+        return parsedDescription.ProrationDays > 0 && parsedDescription.ProrationFactor is > 0m and < 1m;
     }
 
     private static int ResolveDealTypeValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario)
@@ -1763,6 +1817,21 @@ public sealed partial class DataverseService
             : null;
     }
 
+    private static PrimitiveFieldKind DetectPrimitiveFieldKind(JsonElement item, string logicalName)
+    {
+        if (!item.TryGetProperty(logicalName, out var property))
+            return PrimitiveFieldKind.Unknown;
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.True or JsonValueKind.False => PrimitiveFieldKind.Boolean,
+            JsonValueKind.Number => PrimitiveFieldKind.Integer,
+            JsonValueKind.String when bool.TryParse(property.GetString(), out _) => PrimitiveFieldKind.Boolean,
+            JsonValueKind.String when int.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out _) => PrimitiveFieldKind.Integer,
+            _ => PrimitiveFieldKind.Unknown
+        };
+    }
+
     private static bool ReadYesNoOption(JsonElement item, string logicalName)
     {
         var formatted = ReadString(item, $"{logicalName}{FormattedValueAnnotationSuffix}");
@@ -1799,6 +1868,82 @@ public sealed partial class DataverseService
             && int.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
         {
             return parsedValue;
+        }
+
+        return 0;
+    }
+
+    private static bool ReadYesNoOptionFlexible(JsonElement item, string logicalName)
+    {
+        var formatted = ReadString(item, $"{logicalName}{FormattedValueAnnotationSuffix}");
+        if (string.Equals(formatted, "si", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(formatted, "sÃ­", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(formatted, "yes", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(formatted, "no", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!item.TryGetProperty(logicalName, out var property))
+            return false;
+
+        if (property.ValueKind == JsonValueKind.True)
+            return true;
+
+        if (property.ValueKind == JsonValueKind.False)
+            return false;
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var numericValue))
+            return numericValue == 1;
+
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            var rawValue = property.GetString();
+            if (bool.TryParse(rawValue, out var parsedBool))
+                return parsedBool;
+
+            if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
+                return parsedValue == 1;
+        }
+
+        return false;
+    }
+
+    private static int ReadBinaryOptionValue(JsonElement item, string logicalName, int trueValue = 1, int falseValue = 2)
+    {
+        var formatted = ReadString(item, $"{logicalName}{FormattedValueAnnotationSuffix}");
+        if (string.Equals(formatted, "si", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(formatted, "sÃ­", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(formatted, "yes", StringComparison.OrdinalIgnoreCase))
+        {
+            return trueValue;
+        }
+
+        if (string.Equals(formatted, "no", StringComparison.OrdinalIgnoreCase))
+            return falseValue;
+
+        if (!item.TryGetProperty(logicalName, out var property))
+            return 0;
+
+        if (property.ValueKind == JsonValueKind.True)
+            return trueValue;
+
+        if (property.ValueKind == JsonValueKind.False)
+            return falseValue;
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var numericValue))
+            return numericValue == 0 ? falseValue : numericValue;
+
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            var rawValue = property.GetString();
+            if (bool.TryParse(rawValue, out var parsedBool))
+                return parsedBool ? trueValue : falseValue;
+
+            if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
+                return parsedValue == 0 ? falseValue : parsedValue;
         }
 
         return 0;
@@ -1956,6 +2101,13 @@ public sealed partial class DataverseService
         public string EndDateValue { get; set; } = "";
         public List<ScoreVerificationLineInput> Lines { get; set; } = new();
         public ScoreVerificationComputedResultDto Result { get; set; } = new();
+    }
+
+    private enum PrimitiveFieldKind
+    {
+        Unknown = 0,
+        Boolean = 1,
+        Integer = 2
     }
 
     private sealed class SalesPerformanceCompactRecord
