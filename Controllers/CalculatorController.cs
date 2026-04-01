@@ -5,8 +5,11 @@ using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
+using System.Globalization;
 using System.IO;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -385,8 +388,32 @@ public sealed class CalculatorController : Controller
         var requester = input.Requester;
         var cliente = input.Cliente;
         var aprovisionamiento = input.Aprovisionamiento;
+        var scenario = input.Scenario;
         var resultado = input.Resultado;
         var attachment = input.Attachment;
+        var dealTypeLabel = ResolveDealTypeLabel(scenario);
+        var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
+        var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
+        var lineItems = input.LineItems.Select(item => new ProvisioningFlowLinePayload
+        {
+            LineId = item.LineId?.Trim() ?? "",
+            ProductoId = item.ProductoId?.Trim() ?? "",
+            ProductoNombre = item.ProductoNombre?.Trim() ?? "",
+            Cantidad = Round2(item.Cantidad),
+            Number = Round2(item.Number),
+            CostoUnd = Round2(item.CostoUnd),
+            VentaUnd = Round2(item.VentaUnd),
+            MargenPorcentaje = Round2(item.MargenPorcentaje),
+            DuracionMeses = item.DuracionMeses,
+            VentaMensual = Round2(item.VentaMensual),
+            VentaTotal = Round2(item.VentaTotal),
+            TieneIva = item.TieneIva,
+            Tipo = item.Tipo?.Trim() ?? "",
+            RequiereProrrateo = scenario?.RequiresProration ?? false,
+            Inicio = normalizedScenarioStartDate,
+            Final = normalizedScenarioEndDate
+        }).ToList();
+        var descriptionText = BuildProvisioningDescription(cliente, aprovisionamiento, scenario, resultado, lineItems, dealTypeLabel);
 
         return new
         {
@@ -409,6 +436,14 @@ public sealed class CalculatorController : Controller
                 tipoContratoCode = aprovisionamiento.TipoContratoCode?.Trim() ?? "",
                 tipoContratoLabel = aprovisionamiento.TipoContratoLabel?.Trim() ?? ""
             },
+            scenario = scenario is null ? null : new
+            {
+                dealTypeValue = scenario.DealTypeValue,
+                dealTypeLabel,
+                requiresProration = scenario.RequiresProration,
+                startDate = normalizedScenarioStartDate,
+                endDate = normalizedScenarioEndDate
+            },
             resultado = resultado is null ? null : new
             {
                 puntaje = resultado.Puntaje,
@@ -420,19 +455,25 @@ public sealed class CalculatorController : Controller
                 ventaTotal = resultado.VentaTotal,
                 ventaTotalAnual = resultado.VentaTotalAnual
             },
-            lineItems = input.LineItems.Select(item => new
+            descriptionText,
+            lineItems = lineItems.Select(item => new
             {
-                lineId = item.LineId?.Trim() ?? "",
-                productoId = item.ProductoId?.Trim() ?? "",
-                productoNombre = item.ProductoNombre?.Trim() ?? "",
-                cantidad = RoundWholeNumber(item.Cantidad),
-                number = RoundWholeNumber(item.Number),
-                costoUnd = RoundWholeNumber(item.CostoUnd),
-                ventaUnd = RoundWholeNumber(item.VentaUnd),
+                lineId = item.LineId,
+                productoId = item.ProductoId,
+                productoNombre = item.ProductoNombre,
+                cantidad = item.Cantidad,
+                number = item.Number,
+                costoUnd = item.CostoUnd,
+                ventaUnd = item.VentaUnd,
                 margenPorcentaje = item.MargenPorcentaje,
                 duracionMeses = item.DuracionMeses,
-                ventaMensual = RoundWholeNumber(item.VentaMensual),
-                ventaTotal = RoundWholeNumber(item.VentaTotal)
+                ventaMensual = item.VentaMensual,
+                ventaTotal = item.VentaTotal,
+                tieneIva = item.TieneIva,
+                tipo = item.Tipo,
+                requiereProrrateo = item.RequiereProrrateo,
+                inicio = item.Inicio,
+                final = item.Final
             }),
             attachment = attachment is null ? null : new
             {
@@ -442,6 +483,94 @@ public sealed class CalculatorController : Controller
             }
         };
     }
+
+    private static string BuildProvisioningDescription(
+        ProvisioningClient? cliente,
+        ProvisioningAprovisionamiento? aprovisionamiento,
+        ProvisioningScenarioContext? scenario,
+        ProvisioningResultado? resultado,
+        IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
+        string dealTypeLabel)
+    {
+        var builder = new StringBuilder();
+        var normalizedProvisioningDate = NormalizeDateLikeValue(aprovisionamiento?.Fecha, preferIsoWhenPossible: true);
+        var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
+        var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
+        var requiresProration = scenario?.RequiresProration == true;
+
+        builder.AppendLine($"Cliente: {cliente?.Nombre?.Trim() ?? ""}");
+        builder.AppendLine($"Fecha aprovisionamiento: {normalizedProvisioningDate}");
+        builder.AppendLine($"Tipo negocio: {dealTypeLabel}");
+        builder.AppendLine($"Requiere prorrateo: {(requiresProration ? "Si" : "No")}");
+        if (!string.IsNullOrWhiteSpace(normalizedScenarioStartDate))
+            builder.AppendLine($"Inicio: {normalizedScenarioStartDate}");
+        if (!string.IsNullOrWhiteSpace(normalizedScenarioEndDate))
+            builder.AppendLine($"Final: {normalizedScenarioEndDate}");
+        builder.AppendLine($"Puntaje: {FormatDecimalText(resultado?.Puntaje ?? 0m)}");
+        builder.AppendLine($"Comisión: {FormatDecimalText(resultado?.Comision ?? 0m)}");
+        builder.AppendLine($"Prorrateo: {(resultado?.ProrrateoTexto?.Trim() ?? (requiresProration ? "Si" : "No"))}");
+        builder.AppendLine($"Venta mensual total: {FormatDecimalText(resultado?.VentaMensualTotal ?? 0m)}");
+        builder.AppendLine($"Venta total anual: {FormatDecimalText(resultado?.VentaTotalAnual ?? resultado?.VentaTotal ?? 0m)}");
+        builder.AppendLine();
+        builder.AppendLine("Líneas:");
+        builder.Append(JsonSerializer.Serialize(lineItems.Select(item => new
+        {
+            lineId = item.LineId,
+            productoId = item.ProductoId,
+            productoNombre = item.ProductoNombre,
+            cantidad = item.Cantidad,
+            number = item.Number,
+            costoUnd = item.CostoUnd,
+            ventaUnd = item.VentaUnd,
+            margenPorcentaje = item.MargenPorcentaje,
+            duracionMeses = item.DuracionMeses,
+            ventaMensual = item.VentaMensual,
+            ventaTotal = item.VentaTotal,
+            tieneIva = item.TieneIva,
+            tipo = item.Tipo,
+            requiereProrrateo = item.RequiereProrrateo,
+            inicio = item.Inicio,
+            final = item.Final
+        })));
+
+        return builder.ToString();
+    }
+
+    private static string ResolveDealTypeLabel(ProvisioningScenarioContext? scenario)
+    {
+        if (!string.IsNullOrWhiteSpace(scenario?.DealTypeLabel))
+            return scenario.DealTypeLabel.Trim();
+
+        return scenario?.DealTypeValue switch
+        {
+            0 => "ClienteNuevo",
+            1 => "CrossSale",
+            2 => "Renovacion 1 vez",
+            3 => "Renovacion 2 veces",
+            4 => "Renovacion 3 veces o mas",
+            _ => "ClienteNuevo"
+        };
+    }
+
+    private static string NormalizeDateLikeValue(string? raw, bool preferIsoWhenPossible = false)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+
+        var trimmed = raw.Trim();
+        if (!DateTimeOffset.TryParse(trimmed, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            && !DateTimeOffset.TryParse(trimmed, CultureInfo.GetCultureInfo("es-CO"), DateTimeStyles.AssumeUniversal, out parsed))
+        {
+            return trimmed;
+        }
+
+        return preferIsoWhenPossible
+            ? parsed.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture)
+            : parsed.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatDecimalText(decimal value) =>
+        Round2(value).ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string? ValidateLicenseCaps(QuoteScenarioInput input)
     {
@@ -472,15 +601,32 @@ public sealed class CalculatorController : Controller
     private static decimal Round2(decimal v) =>
         Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
-    private static int RoundWholeNumber(decimal value) =>
-        (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
-
     private static string BuildFileName(string? scenarioName)
     {
         var safe = string.Join("_", (scenarioName ?? "Cotizacion").Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
         if (string.IsNullOrWhiteSpace(safe))
             safe = "Cotizacion";
         return $"{safe}.xlsx";
+    }
+
+    private sealed class ProvisioningFlowLinePayload
+    {
+        public string LineId { get; set; } = "";
+        public string ProductoId { get; set; } = "";
+        public string ProductoNombre { get; set; } = "";
+        public decimal Cantidad { get; set; }
+        public decimal Number { get; set; }
+        public decimal CostoUnd { get; set; }
+        public decimal VentaUnd { get; set; }
+        public decimal MargenPorcentaje { get; set; }
+        public int DuracionMeses { get; set; }
+        public decimal VentaMensual { get; set; }
+        public decimal VentaTotal { get; set; }
+        public bool TieneIva { get; set; }
+        public string Tipo { get; set; } = "";
+        public bool RequiereProrrateo { get; set; }
+        public string Inicio { get; set; } = "";
+        public string Final { get; set; } = "";
     }
 
     private static string BuildDiagnosticMessage(Exception ex)

@@ -31,16 +31,16 @@
     const verifyLinesBody = document.getElementById("verifyLinesBody");
     const dealTypeSelect = document.getElementById("dealTypeSelect");
     const dealTypeHelp = document.getElementById("dealTypeHelp");
+    const requiresProrationSelect = document.getElementById("requiresProrationSelect");
+    const scenarioStartDateInput = document.getElementById("scenarioStartDateInput");
+    const scenarioEndDateInput = document.getElementById("scenarioEndDateInput");
     const firstContractSelect = document.getElementById("firstContractSelect");
-    const lineOptionSelect = document.getElementById("lineOptionSelect");
     const verticalOptionSelect = document.getElementById("verticalOptionSelect");
     const billingDayInput = document.getElementById("billingDayInput");
     const billingDayHelp = document.getElementById("billingDayHelp");
     const renewalDateInput = document.getElementById("renewalDateInput");
-    const alignmentDateInput = document.getElementById("alignmentDateInput");
-    const hasVatSelect = document.getElementById("hasVatSelect");
+    const renewalDateHelp = document.getElementById("renewalDateHelp");
     const autoBillSelect = document.getElementById("autoBillSelect");
-    const productLineSelect = document.getElementById("productLineSelect");
     const contractTypeSelect = document.getElementById("contractTypeSelect");
     const addVerifyLineBtn = document.getElementById("addVerifyLineBtn");
     const recalculateVerifyScoreBtn = document.getElementById("recalculateVerifyScoreBtn");
@@ -158,6 +158,15 @@
         return `${targetYear}-${String(month).padStart(2, "0")}-${String(Math.min(day, maxDayOfTargetMonth)).padStart(2, "0")}`;
     }
 
+    function formatDateDisplay(value) {
+        const parsedDate = parseDateValue(value);
+        if (!parsedDate) {
+            return value || "";
+        }
+
+        return `${String(parsedDate.getUTCDate()).padStart(2, "0")}/${String(parsedDate.getUTCMonth() + 1).padStart(2, "0")}/${parsedDate.getUTCFullYear()}`;
+    }
+
     function deriveBillingDayValue(...candidates) {
         for (const candidate of candidates) {
             const parsedDate = parseDateValue(candidate);
@@ -169,21 +178,79 @@
         return 0;
     }
 
+    function normalizeSelectValue(value, fallback = -1) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function buildRenewalSuggestion(draft) {
+        if (!draft) {
+            return { value: "", mode: "", hint: "" };
+        }
+
+        if (!draft.requiresProration && draft.renewalMode === "ONETIME" && !draft.renewalDateValue) {
+            return {
+                value: "",
+                mode: "ONETIME",
+                hint: "ONETIME"
+            };
+        }
+
+        if (draft.requiresProration) {
+            const endDateValue = draft.scenarioEndDateValue || "";
+            return {
+                value: endDateValue,
+                mode: endDateValue ? "PRORATION" : "",
+                hint: endDateValue
+                    ? "Se propone la fecha final del prorrateo como renovación."
+                    : "Selecciona la fecha final del prorrateo para definir la renovación."
+            };
+        }
+
+        const firstLineMonths = Number(draft.lines?.[0]?.contractMonths || 0);
+        if (firstLineMonths === 12) {
+            const suggestedDate = buildDefaultRenewalDateValue(draft.contractStartDateValue);
+            return {
+                value: suggestedDate,
+                mode: suggestedDate ? "ANNUAL" : "",
+                hint: suggestedDate
+                    ? "Se propone 1 año después del inicio del contrato."
+                    : ""
+            };
+        }
+
+        return {
+            value: "",
+            mode: "ONETIME",
+            hint: "ONETIME"
+        };
+    }
+
+    function deriveFirstContractValue(dealTypeValue) {
+        return Number(dealTypeValue) === 0 ? 1 : 2;
+    }
+
     function applyDraftDerivedDefaults(draft) {
         if (!draft) {
             return draft;
         }
 
-        const defaultRenewalDateValue = buildDefaultRenewalDateValue(draft.contractStartDateValue);
         draft.dealTypeValue = Number(draft.dealTypeValue || 0);
-        draft.requiresProration = Boolean(draft.requiresProration);
+        draft.requiresProration = draft.requiresProration === true || draft.requiresProration === "true";
         if (draft.requiresProration) {
             draft.dealTypeValue = CROSS_SALE_DEAL_TYPE;
         }
-        draft.renewalDateValue = draft.renewalDateValue || defaultRenewalDateValue || "";
-        draft.autoBillOptionValue = Number(draft.autoBillOptionValue || 0);
+        draft.firstContractOptionValue = Number(draft.firstContractOptionValue || 0) || deriveFirstContractValue(draft.dealTypeValue);
+        const renewalSuggestion = buildRenewalSuggestion(draft);
+        if (!draft.renewalDateValue || draft.renewalDateValue === draft.renewalAutoValue) {
+            draft.renewalDateValue = renewalSuggestion.value || "";
+        }
+        draft.renewalAutoValue = renewalSuggestion.value || "";
+        draft.renewalMode = draft.renewalDateValue ? renewalSuggestion.mode || "" : (renewalSuggestion.mode || "");
+        draft.renewalHint = renewalSuggestion.hint || "";
+        draft.autoBillOptionValue = normalizeSelectValue(draft.autoBillOptionValue, -1);
         draft.billingDay = draft.autoBillOptionValue === AUTO_BILL_YES_VALUE
-            ? (Number(draft.billingDay || 0) || deriveBillingDayValue(draft.renewalDateValue, draft.alignmentDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue))
+            ? (Number(draft.billingDay || 0) || deriveBillingDayValue(draft.renewalDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue))
             : 0;
         return draft;
     }
@@ -199,6 +266,14 @@
             }
         }
 
+        if (scenarioStartDateInput) {
+            scenarioStartDateInput.disabled = !requiresProration;
+        }
+
+        if (scenarioEndDateInput) {
+            scenarioEndDateInput.disabled = !requiresProration;
+        }
+
         if (dealTypeHelp) {
             dealTypeHelp.textContent = requiresProration
                 ? "Cuando el negocio tiene prorrateo, el tipo negocio se fija automaticamente en CrossSale."
@@ -208,9 +283,13 @@
 
     function syncBillingDayAvailability() {
         const draft = state.activeDraft;
-        const isAutoBillEnabled = Number(autoBillSelect?.value || draft?.autoBillOptionValue || 0) === AUTO_BILL_YES_VALUE;
+        const rawAutoBillValue = autoBillSelect?.value;
+        const autoBillValue = rawAutoBillValue === ""
+            ? normalizeSelectValue(draft?.autoBillOptionValue, -1)
+            : Number(rawAutoBillValue || -1);
+        const isAutoBillEnabled = autoBillValue === AUTO_BILL_YES_VALUE;
         const derivedBillingDay = draft
-            ? deriveBillingDayValue(renewalDateInput?.value || draft.renewalDateValue, alignmentDateInput?.value || draft.alignmentDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue)
+            ? deriveBillingDayValue(renewalDateInput?.value || draft.renewalDateValue, draft.scenarioEndDateValue, draft.contractStartDateValue)
             : 0;
 
         if (billingDayInput) {
@@ -228,6 +307,26 @@
                 ? "Si lo dejas vacio, se tomara automaticamente el dia de la fecha de renovacion."
                 : "Al guardar se enviara un correo automatico a facturacion para gestionar este negocio.";
         }
+    }
+
+    function syncRenewalDateHint() {
+        if (!renewalDateHelp) {
+            return;
+        }
+
+        const draft = state.activeDraft;
+        if (!draft) {
+            renewalDateHelp.textContent = "";
+            return;
+        }
+
+        const renewalValue = renewalDateInput?.value || draft.renewalDateValue || "";
+        if (renewalValue) {
+            renewalDateHelp.textContent = `Renovacion calculada: ${formatDateDisplay(renewalValue)}`;
+            return;
+        }
+
+        renewalDateHelp.textContent = draft.renewalHint || "";
     }
 
     function optionLabel(map, value) {
@@ -495,24 +594,6 @@
     }
 
     function renderRecordRows(record) {
-        const isExpanded = state.expandedRecords.has(record.recordId);
-        const detailMeta = [
-            renderMetaChip("Registro", record.recordId),
-            renderMetaChip("Fecha aprovisionamiento", record.provisioningDateDisplay),
-            renderMetaChip("Tipo contrato", record.contractType),
-            renderMetaChip("Tipo negocio", optionLabel(optionMaps.dealType, record.dealTypeValue)),
-            renderMetaChip("BusinessId", record.businessId),
-            renderMetaChip("Prorrateo", record.prorationText || "No"),
-            renderMetaChip("Dia facturacion", record.billingDay ? String(record.billingDay) : ""),
-            renderMetaChip("Renovacion", record.renewalDateDisplay),
-            renderMetaChip("Alineacion", record.alignmentDateDisplay),
-            renderMetaChip("IVA", optionLabel(optionMaps.hasVat, record.hasVatOptionValue)),
-            renderMetaChip("Auto facturable", optionLabel(optionMaps.autoBill, record.autoBillOptionValue)),
-            renderMetaChip("Linea resumen", optionLabel(optionMaps.productLine, record.productLineOptionValue)),
-            renderMetaChip("Contrato resumen", optionLabel(optionMaps.contractType, record.contractTypeOptionValue)),
-            record.isClosedForActivePeriod ? renderMetaChip("Cierre", "Consolidado") : ""
-        ].join("");
-
         return `
             <tr class="scores-record-row" data-record-id="${escapeHtml(record.recordId)}">
                 <td>
@@ -522,7 +603,7 @@
                 <td class="text-center">${renderOfferCell(record)}</td>
                 <td>
                     <div class="scores-cell-main">${escapeHtml(record.salesPerson || "Sin vendedor")}</div>
-                    <div class="scores-cell-sub">${escapeHtml(record.businessId || "Sin BusinessId")}</div>
+                    <div class="scores-cell-sub">${escapeHtml(`${formatNumber(record.productLinesCount)} lineas`)}</div>
                 </td>
                 <td>
                     <div class="scores-cell-main scores-cell-main--proration">${escapeHtml(record.prorationText || "No")}</div>
@@ -533,9 +614,6 @@
                 <td class="text-end"><div class="scores-cell-main">${formatNumber(record.totalValue ?? record.annualValue)}</div></td>
                 <td class="text-end">
                     <div class="d-flex justify-content-end gap-2 flex-wrap">
-                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-detail-btn" data-record-id="${escapeHtml(record.recordId)}">
-                            ${isExpanded ? "Ocultar" : `Explorar (${formatNumber(record.productLinesCount)})`}
-                        </button>
                         <button type="button" class="btn btn-sm ${record.isVerified ? "btn-outline-primary" : "btn-primary"} verify-record-btn" data-record-id="${escapeHtml(record.recordId)}">
                             ${record.isVerified ? "Editar" : "Verificar"}
                         </button>
@@ -543,14 +621,6 @@
                 </td>
                 <td class="text-center">
                     <span class="scores-verified ${record.isVerified ? "scores-verified--yes" : ""}">${record.isVerified ? "OK" : ""}</span>
-                </td>
-            </tr>
-            <tr class="scores-detail-row ${isExpanded ? "show" : ""}" data-detail-row-for="${escapeHtml(record.recordId)}">
-                <td colspan="10">
-                    <div class="scores-detail">
-                        <div class="scores-detail__meta">${detailMeta}</div>
-                        ${renderProductLines(record)}
-                    </div>
                 </td>
             </tr>
         `;
@@ -739,23 +809,6 @@
             });
         });
 
-        groupsContainer.querySelectorAll(".toggle-detail-btn").forEach(button => {
-            button.addEventListener("click", event => {
-                const recordId = event.currentTarget.dataset.recordId;
-                if (!recordId) {
-                    return;
-                }
-
-                if (state.expandedRecords.has(recordId)) {
-                    state.expandedRecords.delete(recordId);
-                } else {
-                    state.expandedRecords.add(recordId);
-                }
-
-                renderGroups(state.board);
-            });
-        });
-
         groupsContainer.querySelectorAll(".verify-record-btn").forEach(button => {
             button.addEventListener("click", event => {
                 const recordId = event.currentTarget.dataset.recordId;
@@ -826,7 +879,9 @@
             ...detail,
             billingDay: Number(detail.billingDay || 0),
             dealTypeValue: Number(detail.dealTypeValue || 0),
-            requiresProration: Boolean(detail.requiresProration),
+            requiresProration: detail.requiresProration === true || detail.requiresProration === "true",
+            autoBillOptionValue: normalizeSelectValue(detail.autoBillOptionValue, -1),
+            contractTypeOptionValue: normalizeSelectValue(detail.contractTypeOptionValue, -1),
             lines: (Array.isArray(detail.lines) ? detail.lines : []).map((line, index) => normalizeLine(line, index))
         });
     }
@@ -844,6 +899,10 @@
             lineId: line.lineId || `line-${index + 1}`,
             productId: line.productId || "",
             productName: line.productName || "",
+            lineType: line.lineType || optionLabel(optionMaps.line, line.lineOptionValue) || "Otro",
+            lineOptionValue: Number(line.lineOptionValue || 645250004),
+            hasVat: line.hasVatOptionValue > 0 ? Number(line.hasVatOptionValue) === 1 : Boolean(line.hasVat),
+            hasVatOptionValue: line.hasVatOptionValue > 0 ? Number(line.hasVatOptionValue) : (Boolean(line.hasVat) ? 1 : 0),
             costUnit,
             marginPercent,
             contractMonths,
@@ -861,6 +920,10 @@
             lineId: `line-${Date.now()}`,
             productId: "",
             productName: "",
+            lineType: "Otro",
+            lineOptionValue: 645250004,
+            hasVat: false,
+            hasVatOptionValue: 0,
             costUnit: 0,
             marginPercent: 0,
             contractMonths: 12,
@@ -876,22 +939,31 @@
         }
 
         state.activeDraft.dealTypeValue = Number(dealTypeSelect?.value || 0);
-        state.activeDraft.firstContractOptionValue = Number(firstContractSelect?.value || 0);
-        state.activeDraft.lineOptionValue = Number(lineOptionSelect?.value || 0);
+        state.activeDraft.requiresProration = requiresProrationSelect?.value === "true";
+        state.activeDraft.scenarioStartDateValue = scenarioStartDateInput?.value || "";
+        state.activeDraft.scenarioEndDateValue = scenarioEndDateInput?.value || "";
+        state.activeDraft.firstContractOptionValue = firstContractSelect?.value === ""
+            ? deriveFirstContractValue(state.activeDraft.dealTypeValue)
+            : Number(firstContractSelect?.value || 0);
         state.activeDraft.verticalOptionValue = Number(verticalOptionSelect?.value || 0);
         state.activeDraft.billingDay = Number(billingDayInput?.value || 0);
         state.activeDraft.renewalDateValue = renewalDateInput?.value || "";
-        state.activeDraft.alignmentDateValue = alignmentDateInput?.value || "";
-        state.activeDraft.hasVatOptionValue = Number(hasVatSelect?.value || 0);
-        state.activeDraft.autoBillOptionValue = Number(autoBillSelect?.value || 0);
-        state.activeDraft.productLineOptionValue = Number(productLineSelect?.value || 0);
-        state.activeDraft.contractTypeOptionValue = Number(contractTypeSelect?.value || 0);
+        state.activeDraft.autoBillOptionValue = autoBillSelect?.value === "" ? -1 : Number(autoBillSelect?.value || -1);
+        state.activeDraft.contractTypeOptionValue = contractTypeSelect?.value === "" ? -1 : Number(contractTypeSelect?.value || -1);
         applyDraftDerivedDefaults(state.activeDraft);
         dealTypeSelect && (dealTypeSelect.value = String(state.activeDraft.dealTypeValue ?? ""));
+        requiresProrationSelect && (requiresProrationSelect.value = state.activeDraft.requiresProration ? "true" : "false");
+        scenarioStartDateInput && (scenarioStartDateInput.value = state.activeDraft.scenarioStartDateValue || "");
+        scenarioEndDateInput && (scenarioEndDateInput.value = state.activeDraft.scenarioEndDateValue || "");
+        firstContractSelect && (firstContractSelect.value = state.activeDraft.firstContractOptionValue > 0 ? String(state.activeDraft.firstContractOptionValue) : "");
+        verticalOptionSelect && (verticalOptionSelect.value = state.activeDraft.verticalOptionValue ? String(state.activeDraft.verticalOptionValue) : "");
         renewalDateInput && (renewalDateInput.value = state.activeDraft.renewalDateValue || "");
         billingDayInput && (billingDayInput.value = state.activeDraft.billingDay ? String(state.activeDraft.billingDay) : "");
+        autoBillSelect && (autoBillSelect.value = state.activeDraft.autoBillOptionValue >= 0 ? String(state.activeDraft.autoBillOptionValue) : "");
+        contractTypeSelect && (contractTypeSelect.value = state.activeDraft.contractTypeOptionValue >= 0 ? String(state.activeDraft.contractTypeOptionValue) : "");
         syncDealTypeAvailability();
         syncBillingDayAvailability();
+        syncRenewalDateHint();
         return state.activeDraft;
     }
 
@@ -901,22 +973,40 @@
         }
 
         const draft = state.activeDraft;
-        const cards = [
-            { label: "Cliente", value: draft.clientName || "Sin cliente" },
-            { label: "Inicio contrato", value: draft.contractStartDateDisplay || "Sin fecha" },
-            { label: "Tipo negocio", value: optionLabel(optionMaps.dealType, draft.dealTypeValue) || "Sin definir" },
-            { label: "Vendedor", value: draft.salesPerson || "Sin vendedor" },
-            { label: "Oferta", value: draft.offer || "Sin oferta" },
-            { label: "BusinessId", value: draft.businessId || "Sin BusinessId" },
-            { label: "Prorrateo", value: draft.prorationSummary || "No" }
-        ];
+        const offerMarkup = draft.hasOffer
+            ? `<a class="scores-offer-link scores-offer-link--inline" href="${escapeHtml(buildOfferUrl(draft.recordId))}">Descargar oferta</a>`
+            : '<span class="scores-empty-cell">Sin oferta</span>';
 
-        verifyMetaCards.innerHTML = cards.map(card => `
-            <article class="scores-verify-meta__card">
-                <span class="scores-verify-meta__label">${escapeHtml(card.label)}</span>
-                <div class="scores-verify-meta__value">${escapeHtml(card.value)}</div>
+        verifyMetaCards.innerHTML = `
+            <article class="scores-verify-meta__card scores-verify-meta__card--single">
+                <div class="scores-verify-meta__single-grid">
+                    <div>
+                        <span class="scores-verify-meta__label">Cliente</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(draft.clientName || "Sin cliente")}</div>
+                    </div>
+                    <div>
+                        <span class="scores-verify-meta__label">Inicio contrato</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(draft.contractStartDateDisplay || "Sin fecha")}</div>
+                    </div>
+                    <div>
+                        <span class="scores-verify-meta__label">Tipo negocio</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(optionLabel(optionMaps.dealType, draft.dealTypeValue) || "Sin definir")}</div>
+                    </div>
+                    <div>
+                        <span class="scores-verify-meta__label">Vendedor</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(draft.salesPerson || "Sin vendedor")}</div>
+                    </div>
+                    <div>
+                        <span class="scores-verify-meta__label">Oferta</span>
+                        <div class="scores-verify-meta__value">${offerMarkup}</div>
+                    </div>
+                    <div>
+                        <span class="scores-verify-meta__label">Prorrateo</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(draft.result?.prorationText || draft.prorationSummary || "No")}</div>
+                    </div>
+                </div>
             </article>
-        `).join("");
+        `;
     }
 
     function renderVerifyLines() {
@@ -936,7 +1026,7 @@
                     <div class="scores-verify-product">
                         <input type="text" class="form-control form-control-sm verify-product-input" value="${escapeHtml(line.productName)}" placeholder="Buscar producto..." autocomplete="off" />
                         <div class="scores-verify-product__search"></div>
-                        <div class="scores-verify-product__meta">Lookup: ${escapeHtml(line.productId || "pendiente")} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}</div>
+                        <div class="scores-verify-product__meta">Tipo: ${escapeHtml(line.lineType || "Otro")} | IVA: ${line.hasVat ? "Si" : "No"} | Lookup: ${escapeHtml(line.productId || "pendiente")} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}</div>
                     </div>
                 </td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-cost-input" value="${line.costUnit}" /></td>
@@ -984,21 +1074,21 @@
         verifyModalTitle && (verifyModalTitle.textContent = `Verificar ${draft.clientName || "registro"}`);
         verifyModalSubtitle && (verifyModalSubtitle.textContent = `${draft.offer || "Sin oferta"} | Inicio ${draft.contractStartDateDisplay || "sin fecha"} | ${formatNumber(draft.lines.length)} lineas`);
         dealTypeSelect && (dealTypeSelect.value = String(draft.dealTypeValue ?? ""));
+        requiresProrationSelect && (requiresProrationSelect.value = draft.requiresProration ? "true" : "false");
+        scenarioStartDateInput && (scenarioStartDateInput.value = draft.scenarioStartDateValue || "");
+        scenarioEndDateInput && (scenarioEndDateInput.value = draft.scenarioEndDateValue || "");
         firstContractSelect && (firstContractSelect.value = draft.firstContractOptionValue ? String(draft.firstContractOptionValue) : "");
-        lineOptionSelect && (lineOptionSelect.value = draft.lineOptionValue ? String(draft.lineOptionValue) : "");
         verticalOptionSelect && (verticalOptionSelect.value = draft.verticalOptionValue ? String(draft.verticalOptionValue) : "");
         billingDayInput && (billingDayInput.value = draft.billingDay ? String(draft.billingDay) : "");
         renewalDateInput && (renewalDateInput.value = draft.renewalDateValue || "");
-        alignmentDateInput && (alignmentDateInput.value = draft.alignmentDateValue || "");
-        hasVatSelect && (hasVatSelect.value = String(draft.hasVatOptionValue ?? ""));
-        autoBillSelect && (autoBillSelect.value = String(draft.autoBillOptionValue ?? ""));
-        productLineSelect && (productLineSelect.value = String(draft.productLineOptionValue ?? ""));
-        contractTypeSelect && (contractTypeSelect.value = String(draft.contractTypeOptionValue ?? ""));
+        autoBillSelect && (autoBillSelect.value = draft.autoBillOptionValue >= 0 ? String(draft.autoBillOptionValue) : "");
+        contractTypeSelect && (contractTypeSelect.value = draft.contractTypeOptionValue >= 0 ? String(draft.contractTypeOptionValue) : "");
         renderVerifyMetaCards();
         renderVerifyLines();
         renderVerificationResult(draft.result);
         syncDealTypeAvailability();
         syncBillingDayAvailability();
+        syncRenewalDateHint();
         setModalStatus(draft.warningMessage ? "info" : "", draft.warningMessage || "");
         toggleModalLoading(false);
     }
@@ -1016,6 +1106,11 @@
             return;
         }
 
+        applyDraftDerivedDefaults(state.activeDraft);
+        renewalDateInput && (renewalDateInput.value = state.activeDraft.renewalDateValue || "");
+        billingDayInput && (billingDayInput.value = state.activeDraft.billingDay ? String(state.activeDraft.billingDay) : "");
+        syncBillingDayAvailability();
+        syncRenewalDateHint();
         state.activeDraft.result = null;
         renderVerificationResult(null);
         setModalStatus("info", "Hay cambios pendientes por recalcular antes de guardar.");
@@ -1086,7 +1181,7 @@
                 totalInput && (totalInput.value = String(line.totalValue));
                 const meta = row.querySelector(".scores-verify-product__meta");
                 if (meta) {
-                    meta.textContent = `Lookup: ${line.productId || "pendiente"} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}`;
+                    meta.textContent = `Tipo: ${line.lineType || "Otro"} | IVA: ${line.hasVat ? "Si" : "No"} | Lookup: ${line.productId || "pendiente"} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}`;
                 }
             };
 
@@ -1224,15 +1319,19 @@
             verticalOptionValue: Number(draft.verticalOptionValue || 0),
             billingDay: Number(draft.billingDay || 0),
             renewalDateValue: draft.renewalDateValue || "",
-            alignmentDateValue: draft.alignmentDateValue || "",
+            alignmentDateValue: "",
             hasVatOptionValue: Number(draft.hasVatOptionValue || 0),
-            autoBillOptionValue: Number(draft.autoBillOptionValue || 0),
+            autoBillOptionValue: Number(draft.autoBillOptionValue),
             productLineOptionValue: Number(draft.productLineOptionValue || 0),
-            contractTypeOptionValue: Number(draft.contractTypeOptionValue || 0),
+            contractTypeOptionValue: Number(draft.contractTypeOptionValue),
             lines: (draft.lines || []).map(line => ({
                 lineId: line.lineId || "",
                 productId: line.productId || "",
                 productName: line.productName || "",
+                lineType: line.lineType || "Otro",
+                lineOptionValue: Number(line.lineOptionValue || 645250004),
+                hasVat: Boolean(line.hasVat),
+                hasVatOptionValue: Number(line.hasVatOptionValue || 0),
                 costUnit: Number(line.costUnit || 0),
                 marginPercent: Number(line.marginPercent || 0),
                 contractMonths: Number(line.contractMonths || 0),
@@ -1261,6 +1360,7 @@
             });
 
             state.activeDraft.result = result;
+            renderVerifyMetaCards();
             renderVerificationResult(result);
             setModalStatus("success", "Puntaje recalculado usando la logica de la calculadora.");
         } catch (error) {
@@ -1338,7 +1438,7 @@
         });
     });
 
-    [dealTypeSelect, firstContractSelect, lineOptionSelect, verticalOptionSelect, hasVatSelect, productLineSelect, contractTypeSelect]
+    [dealTypeSelect, requiresProrationSelect, firstContractSelect, verticalOptionSelect, autoBillSelect, contractTypeSelect]
         .filter(Boolean)
         .forEach(element => {
             element.addEventListener("change", () => {
@@ -1347,17 +1447,17 @@
             });
         });
 
+    scenarioStartDateInput?.addEventListener("change", () => {
+        syncDraftHeaderInputs();
+        markDraftDirty();
+    });
+
+    scenarioEndDateInput?.addEventListener("change", () => {
+        syncDraftHeaderInputs();
+        markDraftDirty();
+    });
+
     renewalDateInput?.addEventListener("change", () => {
-        syncDraftHeaderInputs();
-        markDraftDirty();
-    });
-
-    alignmentDateInput?.addEventListener("change", () => {
-        syncDraftHeaderInputs();
-        markDraftDirty();
-    });
-
-    autoBillSelect?.addEventListener("change", () => {
         syncDraftHeaderInputs();
         markDraftDirty();
     });
@@ -1390,11 +1490,8 @@
 
     populateSelect(dealTypeSelect, options.dealTypeOptions, "Selecciona un tipo");
     populateSelect(firstContractSelect, options.firstContractOptions, "Selecciona una opcion");
-    populateSelect(lineOptionSelect, options.lineOptions, "Selecciona una linea");
     populateSelect(verticalOptionSelect, options.verticalOptions, "Selecciona una vertical");
-    populateSelect(hasVatSelect, options.hasVatOptions, "Selecciona una opcion");
     populateSelect(autoBillSelect, options.autoBillOptions, "Selecciona una opcion");
-    populateSelect(productLineSelect, options.productLineOptions, "Selecciona una linea");
     populateSelect(contractTypeSelect, options.contractTypeOptions, "Selecciona un contrato");
     setFilterButtonState();
     updateSummary(null);

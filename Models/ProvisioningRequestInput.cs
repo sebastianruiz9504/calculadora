@@ -7,6 +7,7 @@ public sealed class ProvisioningRequestInput
     public ProvisioningRequester? Requester { get; set; }
     public ProvisioningClient? Cliente { get; set; }
     public ProvisioningAprovisionamiento? Aprovisionamiento { get; set; }
+    public ProvisioningScenarioContext? Scenario { get; set; }
     public ProvisioningResultado? Resultado { get; set; }
     public List<ProvisioningLineItem> LineItems { get; set; } = new();
     public ProvisioningAttachment? Attachment { get; set; }
@@ -30,6 +31,15 @@ public sealed class ProvisioningAprovisionamiento
     public string? Fecha { get; set; }
     public string? TipoContratoCode { get; set; }
     public string? TipoContratoLabel { get; set; }
+}
+
+public sealed class ProvisioningScenarioContext
+{
+    public int DealTypeValue { get; set; }
+    public string? DealTypeLabel { get; set; }
+    public bool RequiresProration { get; set; }
+    public string? StartDate { get; set; }
+    public string? EndDate { get; set; }
 }
 
 public sealed class ProvisioningResultado
@@ -57,6 +67,8 @@ public sealed class ProvisioningLineItem
     public int DuracionMeses { get; set; }
     public decimal VentaMensual { get; set; }
     public decimal VentaTotal { get; set; }
+    public bool TieneIva { get; set; }
+    public string? Tipo { get; set; }
 }
 
 public sealed class ProvisioningAttachment

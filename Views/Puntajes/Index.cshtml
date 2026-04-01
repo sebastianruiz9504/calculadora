@@ -139,54 +139,29 @@
                                 <div class="form-text" id="dealTypeHelp"></div>
                             </div>
                             <div>
-                                <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
-                                <select class="form-select" id="firstContractSelect" required></select>
+                                <label class="form-label" for="requiresProrationSelect">¿Requiere prorrateo?</label>
+                                <select class="form-select" id="requiresProrationSelect" required>
+                                    <option value="false">No</option>
+                                    <option value="true">Si</option>
+                                </select>
                             </div>
                             <div>
-                                <label class="form-label" for="lineOptionSelect">Linea</label>
-                                <select class="form-select" id="lineOptionSelect" required></select>
+                                <label class="form-label" for="scenarioStartDateInput">Inicio</label>
+                                <input class="form-control" id="scenarioStartDateInput" type="date" />
                             </div>
                             <div>
-                                <label class="form-label" for="verticalOptionSelect">Vertical</label>
-                                <select class="form-select" id="verticalOptionSelect" required></select>
+                                <label class="form-label" for="scenarioEndDateInput">Final</label>
+                                <input class="form-control" id="scenarioEndDateInput" type="date" />
                             </div>
                             <div>
-                                <label class="form-label" for="billingDayInput">Dia de facturacion</label>
-                                <input class="form-control" id="billingDayInput" type="number" min="0" max="31" />
-                                <div class="form-text" id="billingDayHelp"></div>
-                            </div>
-                            <div>
-                                <label class="form-label" for="renewalDateInput">Fecha de renovacion</label>
-                                <input class="form-control" id="renewalDateInput" type="date" />
-                            </div>
-                            <div>
-                                <label class="form-label" for="alignmentDateInput">Fecha de alineacion</label>
-                                <input class="form-control" id="alignmentDateInput" type="date" />
-                            </div>
-                            <div>
-                                <label class="form-label" for="hasVatSelect">Tiene IVA</label>
-                                <select class="form-select" id="hasVatSelect" required></select>
-                            </div>
-                            <div>
-                                <label class="form-label" for="autoBillSelect">Facturable automatico</label>
-                                <select class="form-select" id="autoBillSelect" required></select>
-                            </div>
-                            <div>
-                                <label class="form-label" for="productLineSelect">Linea resumen mensual</label>
-                                <select class="form-select" id="productLineSelect" required></select>
-                            </div>
-                            <div>
-                                <label class="form-label" for="contractTypeSelect">Contrato</label>
-                                <select class="form-select" id="contractTypeSelect" required></select>
+                                <label class="form-label d-block">&nbsp;</label>
+                                <button type="button" class="btn btn-outline-primary w-100" id="recalculateVerifyScoreBtn">Recalcular puntaje</button>
                             </div>
                         </div>
-                    </section>
-
-                    <section class="scores-verify-section">
                         <div class="scores-verify-lines__header">
                             <div>
                                 <div class="scores-toolbar__label">Lineas del negocio</div>
-                                <p class="scores-close-card__subtitle mb-0">Puedes editar producto, costo, margen, duracion, venta, cantidad y los totales se sincronizan para mantener la formula consistente.</p>
+                                <p class="scores-close-card__subtitle mb-0">Puedes editar producto, costo, margen, duracion, venta, cantidad y revisar los datos reales del negocio antes de aprobarlo.</p>
                             </div>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="addVerifyLineBtn">Agregar linea</button>
                         </div>
@@ -208,9 +183,6 @@
                                 <tbody id="verifyLinesBody"></tbody>
                             </table>
                         </div>
-                    </section>
-
-                    <section class="scores-verify-section">
                         <div class="scores-result-grid">
                             <article class="scores-result-card">
                                 <span class="scores-summary__label">Puntaje</span>
@@ -234,11 +206,41 @@
                             </article>
                         </div>
                     </section>
+
+                    <section class="scores-verify-section">
+                        <div class="scores-verify-grid">
+                            <div>
+                                <label class="form-label" for="firstContractSelect">Es primer contrato con el cliente</label>
+                                <select class="form-select" id="firstContractSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="verticalOptionSelect">Vertical</label>
+                                <select class="form-select" id="verticalOptionSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="renewalDateInput">Fecha de renovacion</label>
+                                <input class="form-control" id="renewalDateInput" type="date" />
+                                <div class="form-text" id="renewalDateHelp"></div>
+                            </div>
+                            <div>
+                                <label class="form-label" for="autoBillSelect">Facturable automatico</label>
+                                <select class="form-select" id="autoBillSelect" required></select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="billingDayInput">Dia de facturacion</label>
+                                <input class="form-control" id="billingDayInput" type="number" min="0" max="31" />
+                                <div class="form-text" id="billingDayHelp"></div>
+                            </div>
+                            <div>
+                                <label class="form-label" for="contractTypeSelect">Contrato</label>
+                                <select class="form-select" id="contractTypeSelect" required></select>
+                            </div>
+                        </div>
+                    </section>
                 </form>
             </div>
             <div class="modal-footer border-0 pt-0">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-outline-primary" id="recalculateVerifyScoreBtn">Recalcular puntaje</button>
                 <button type="button" class="btn btn-primary" id="submitVerifyScoreBtn">Guardar verificacion</button>
             </div>
         </div>

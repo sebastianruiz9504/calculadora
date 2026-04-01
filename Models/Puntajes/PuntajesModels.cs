@@ -154,6 +154,10 @@ public sealed class ScoreProductLineDto
     public string LineId { get; set; } = "";
     public string ProductId { get; set; } = "";
     public string ProductName { get; set; } = "";
+    public string LineType { get; set; } = "";
+    public int LineOptionValue { get; set; }
+    public bool HasVat { get; set; }
+    public int HasVatOptionValue { get; set; }
     public int Quantity { get; set; }
     public decimal CostUnit { get; set; }
     public decimal MarginPercent { get; set; }
@@ -190,6 +194,10 @@ public sealed class ScoreVerificationLineInput
     public string LineId { get; set; } = "";
     public string ProductId { get; set; } = "";
     public string ProductName { get; set; } = "";
+    public string LineType { get; set; } = "";
+    public int LineOptionValue { get; set; }
+    public bool HasVat { get; set; }
+    public int HasVatOptionValue { get; set; }
     public decimal CostUnit { get; set; }
     public decimal MarginPercent { get; set; }
     public int ContractMonths { get; set; } = 12;
@@ -234,6 +242,8 @@ public sealed class ScoreVerificationDetailDto : ScoreVerificationRequest
     public string LastClosedAtDisplay { get; set; } = "";
     public string LastClosedBy { get; set; } = "";
     public string WarningMessage { get; set; } = "";
+    public string RenewalMode { get; set; } = "";
+    public string RenewalHint { get; set; } = "";
     public ScoreVerificationComputedResultDto? Result { get; set; }
 }
 

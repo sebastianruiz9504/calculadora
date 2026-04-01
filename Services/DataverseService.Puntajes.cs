@@ -13,7 +13,7 @@ namespace CotizadorInterno.Web.Services;
 public sealed partial class DataverseService
 {
     private static readonly Regex ExtendedScoreDescriptionFieldRegex = new(
-        "(?<key>Cliente|Fecha aprovisionamiento|Tipo contrato|Puntaje|Comisi(?:\\u00F3|o)n|BusinessId|Prorrateo|Prorateo|Venta mensual total|Venta total anual|Venta total)\\s*:\\s*(?<value>.*?)(?=(Cliente|Fecha aprovisionamiento|Tipo contrato|Puntaje|Comisi(?:\\u00F3|o)n|BusinessId|Prorrateo|Prorateo|Venta mensual total|Venta total anual|Venta total|L(?:\\u00ED|i)neas)\\s*:|$)",
+        "(?<key>Cliente|Fecha aprovisionamiento|Tipo contrato|Tipo negocio|Requiere prorrateo|Requiere prorateo|Inicio|Final|Puntaje|Comisi(?:\\u00F3|o)n|BusinessId|Prorrateo|Prorateo|Venta mensual total|Venta total anual|Venta total)\\s*:\\s*(?<value>.*?)(?=(Cliente|Fecha aprovisionamiento|Tipo contrato|Tipo negocio|Requiere prorrateo|Requiere prorateo|Inicio|Final|Puntaje|Comisi(?:\\u00F3|o)n|BusinessId|Prorrateo|Prorateo|Venta mensual total|Venta total anual|Venta total|L(?:\\u00ED|i)neas)\\s*:|$)",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
     private static readonly Regex ProrationTextRegex = new(
         "(?<days>\\d+)\\s*d(?:\\u00ED|i)as?.*?\\((?<factor>[\\d\\.,]+)\\)",
@@ -508,7 +508,10 @@ public sealed partial class DataverseService
 
         var rawDescription = ReadString(item, _scoresDescriptionField);
         var parsedDescription = ParseScoreDescription(rawDescription);
-        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(ReadString(item, _scoresAdditionalField)) ?? new ScoreAdditionalDataSnapshot();
+        var rawAdditional = ReadString(item, _scoresAdditionalField);
+        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(rawAdditional) ?? new ScoreAdditionalDataSnapshot();
+        if (!string.IsNullOrWhiteSpace(rawAdditional))
+            additional.Version = Math.Max(additional.Version, 1);
         NormalizeAdditionalSnapshot(additional);
 
         var productLines = ResolveScoreProductLines(additional, parsedDescription)
@@ -573,14 +576,14 @@ public sealed partial class DataverseService
                 RenewalDateDisplay = renewalDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "",
                 AlignmentDateValue = alignmentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                 AlignmentDateDisplay = alignmentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "",
-                HasVatOptionValue = additional.HasVatOptionValue,
+                HasVatOptionValue = additional.HasVatOptionValue > 0 ? additional.HasVatOptionValue : (productLines.FirstOrDefault()?.HasVatOptionValue ?? 0),
                 AutoBillOptionValue = additional.AutoBillOptionValue,
-                ProductLineOptionValue = additional.ProductLineOptionValue,
+                ProductLineOptionValue = additional.ProductLineOptionValue > 0 ? additional.ProductLineOptionValue : (productLines.FirstOrDefault()?.LineOptionValue ?? 0),
                 ContractTypeOptionValue = additional.ContractTypeOptionValue,
                 DealTypeValue = ResolveStoredDealTypeValue(additional, parsedDescription),
                 RequiresProration = ResolveStoredRequiresProration(additional, parsedDescription),
-                ScenarioStartDateValue = additional.ScenarioStartDateValue ?? "",
-                ScenarioEndDateValue = additional.ScenarioEndDateValue ?? "",
+                ScenarioStartDateValue = FirstNonEmpty(additional.ScenarioStartDateValue, parsedDescription.ScenarioStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                ScenarioEndDateValue = FirstNonEmpty(additional.ScenarioEndDateValue, parsedDescription.ScenarioEndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 IsClosedForActivePeriod = HasMonthlyClosure(additional, activePeriodKey),
                 ActivePeriodKey = activePeriodKey ?? "",
                 LastVerifiedAtDisplay = FormatDateTimeDisplay(additional.VerifiedAt),
@@ -601,6 +604,7 @@ public sealed partial class DataverseService
     {
         var record = context.Record;
         var additional = context.Additional;
+        var lines = ResolveVerificationLines(record, additional, scenario);
         var detail = new ScoreVerificationDetailDto
         {
             RecordId = record.RecordId,
@@ -609,17 +613,17 @@ public sealed partial class DataverseService
             RequiresProration = ResolveRequiresProration(record, additional, scenario),
             ScenarioStartDateValue = ResolveScenarioStartDateValue(record, additional, scenario),
             ScenarioEndDateValue = ResolveScenarioEndDateValue(record, additional, scenario),
-            FirstContractOptionValue = record.FirstContractOptionValue,
+            FirstContractOptionValue = record.FirstContractOptionValue > 0 ? record.FirstContractOptionValue : DeriveFirstContractOptionValue(ResolveDealTypeValue(record, additional, scenario)),
             LineOptionValue = record.LineOptionValue,
             VerticalOptionValue = record.VerticalOptionValue,
             BillingDay = record.BillingDay,
             RenewalDateValue = ResolveRenewalDateValue(record, additional, scenario),
-            AlignmentDateValue = !string.IsNullOrWhiteSpace(record.AlignmentDateValue) ? record.AlignmentDateValue : FirstNonEmpty(additional.AlignmentDateValue, scenario?.EndDate),
+            AlignmentDateValue = "",
             HasVatOptionValue = record.HasVatOptionValue,
-            AutoBillOptionValue = record.AutoBillOptionValue,
+            AutoBillOptionValue = record.IsVerified ? record.AutoBillOptionValue : (record.AutoBillOptionValue > 0 ? record.AutoBillOptionValue : -1),
             ProductLineOptionValue = record.ProductLineOptionValue,
-            ContractTypeOptionValue = record.ContractTypeOptionValue,
-            Lines = ResolveVerificationLines(record, additional, scenario),
+            ContractTypeOptionValue = record.IsVerified ? record.ContractTypeOptionValue : (record.ContractTypeOptionValue > 0 ? record.ContractTypeOptionValue : -1),
+            Lines = lines,
             ClientId = record.ClientId,
             ClientName = record.ClientName,
             SalesPerson = record.SalesPerson,
@@ -638,10 +642,19 @@ public sealed partial class DataverseService
             LastVerifiedAtDisplay = record.LastVerifiedAtDisplay,
             LastVerifiedBy = record.LastVerifiedBy,
             LastClosedAtDisplay = record.LastClosedAtDisplay,
-            LastClosedBy = record.LastClosedBy
+            LastClosedBy = record.LastClosedBy,
+            Result = BuildStoredVerificationResult(record)
         };
 
-        detail.BillingDay = ResolveBillingDayForRequest(detail.BillingDay, detail.AutoBillOptionValue, detail.RenewalDateValue, detail.AlignmentDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
+        detail.BillingDay = ResolveBillingDayForRequest(detail.BillingDay, detail.AutoBillOptionValue, detail.RenewalDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
+        detail.RenewalMode = string.Equals(additional.RenewalMode, "ONETIME", StringComparison.OrdinalIgnoreCase)
+            ? "ONETIME"
+            : (string.IsNullOrWhiteSpace(detail.RenewalDateValue) && detail.Lines.FirstOrDefault()?.ContractMonths != 12 && !detail.RequiresProration
+            ? "ONETIME"
+            : "");
+        detail.RenewalHint = detail.RenewalMode == "ONETIME"
+            ? "ONETIME"
+            : (!string.IsNullOrWhiteSpace(detail.RenewalDateValue) ? "" : "Se calculara segun el negocio.");
 
         try
         {
@@ -652,15 +665,34 @@ public sealed partial class DataverseService
             detail.RequiresProration = computation.RequiresProration;
             detail.ScenarioStartDateValue = computation.StartDateValue;
             detail.ScenarioEndDateValue = computation.EndDateValue;
+            detail.RenewalDateValue = string.IsNullOrWhiteSpace(detail.RenewalDateValue)
+                ? ResolveDefaultRenewalDateValue(detail.RequiresProration, detail.ScenarioEndDateValue, detail.ContractStartDateValue, detail.Lines)
+                : detail.RenewalDateValue;
+            detail.RenewalMode = string.IsNullOrWhiteSpace(detail.RenewalDateValue) && detail.Lines.FirstOrDefault()?.ContractMonths != 12 && !detail.RequiresProration
+                ? "ONETIME"
+                : "";
+            detail.RenewalHint = detail.RenewalMode == "ONETIME" ? "ONETIME" : "";
+            detail.BillingDay = ResolveBillingDayForRequest(detail.BillingDay, detail.AutoBillOptionValue, detail.RenewalDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
         }
         catch (InvalidOperationException ex)
         {
             detail.WarningMessage = $"El registro tiene datos pendientes antes de recalcular. {ex.Message}";
-            detail.Result = null;
         }
 
         return detail;
     }
+
+    private static ScoreVerificationComputedResultDto BuildStoredVerificationResult(ScoreRecordDto record) =>
+        new()
+        {
+            Points = record.Score,
+            Commission = record.Commission,
+            ProrationDays = record.ProrationDays,
+            ProrationFactor = record.ProrationFactor == 0m ? 1m : record.ProrationFactor,
+            ProrationText = string.IsNullOrWhiteSpace(record.ProrationText) ? "No" : record.ProrationText,
+            TotalMonthlySale = record.MonthlyValue,
+            TotalSale = record.TotalValue
+        };
 
     private List<ScoreProductLineDto> ResolveScoreProductLines(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription)
     {
@@ -686,18 +718,29 @@ public sealed partial class DataverseService
         if (scenario?.Lines is { Count: > 0 })
         {
             return scenario.Lines
-                .Select((line, index) => NormalizeVerificationLine(new ScoreVerificationLineInput
+                .Select((line, index) =>
                 {
-                    LineId = string.IsNullOrWhiteSpace(line.ProductId) ? $"line-{index + 1}" : line.ProductId,
-                    ProductId = line.ProductId,
-                    ProductName = line.ProductDescription,
-                    CostUnit = line.CostUnit,
-                    MarginPercent = line.MarginPercent,
-                    ContractMonths = line.ContractMonths,
-                    Quantity = line.Quantity,
-                    SuggestedRetailPrice = line.SuggestedRetailPrice,
-                    Acelerador = line.Acelerador
-                }, index + 1))
+                    var businessType = Enum.IsDefined(typeof(BusinessType), line.BusinessType)
+                        ? (BusinessType)line.BusinessType
+                        : BusinessType.Otro;
+
+                    return NormalizeVerificationLine(new ScoreVerificationLineInput
+                    {
+                        LineId = string.IsNullOrWhiteSpace(line.ProductId) ? $"line-{index + 1}" : line.ProductId,
+                        ProductId = line.ProductId,
+                        ProductName = line.ProductDescription,
+                        LineOptionValue = ResolveLineOptionValueFromBusinessType(businessType),
+                        LineType = businessType.ToString(),
+                        HasVat = line.HasVat,
+                        HasVatOptionValue = ResolveHasVatOptionValue(line.HasVat),
+                        CostUnit = line.CostUnit,
+                        MarginPercent = line.MarginPercent,
+                        ContractMonths = line.ContractMonths,
+                        Quantity = line.Quantity,
+                        SuggestedRetailPrice = line.SuggestedRetailPrice,
+                        Acelerador = line.Acelerador
+                    }, index + 1);
+                })
                 .ToList();
         }
 
@@ -707,6 +750,10 @@ public sealed partial class DataverseService
                 LineId = string.IsNullOrWhiteSpace(line.LineId) ? $"line-{index + 1}" : line.LineId,
                 ProductId = line.ProductId,
                 ProductName = line.ProductName,
+                LineType = line.LineType,
+                LineOptionValue = line.LineOptionValue,
+                HasVat = line.HasVat,
+                HasVatOptionValue = line.HasVatOptionValue,
                 CostUnit = line.CostUnit,
                 MarginPercent = line.MarginPercent,
                 ContractMonths = line.ContractMonths,
@@ -730,9 +777,9 @@ public sealed partial class DataverseService
             request.RequiresProration,
             "La fecha inicial del negocio es obligatoria para recalcular el prorrateo.");
         var endDate = ParseRequiredScenarioDate(
-            FirstNonEmpty(request.AlignmentDateValue, request.ScenarioEndDateValue),
+            request.ScenarioEndDateValue,
             request.RequiresProration,
-            "Debes indicar la fecha de alineacion para recalcular un negocio prorrateado.");
+            "Debes indicar la fecha final para recalcular un negocio prorrateado.");
 
         var dealTypeValue = request.RequiresProration ? (int)DealType.CrossSale : request.DealTypeValue;
         if (!Enum.IsDefined(typeof(DealType), dealTypeValue))
@@ -747,7 +794,7 @@ public sealed partial class DataverseService
             EndDate = endDate?.ToDateTime(TimeOnly.MinValue),
             Lines = normalizedLines.Select(line => new QuoteLineInput
             {
-                BusinessType = BusinessType.Otro,
+                BusinessType = ResolveBusinessTypeForLine(line),
                 ProductId = line.ProductId,
                 ProductDescription = line.ProductName,
                 CostUnit = line.CostUnit,
@@ -755,7 +802,8 @@ public sealed partial class DataverseService
                 ContractMonths = line.ContractMonths,
                 Quantity = line.Quantity,
                 SuggestedRetailPrice = line.SuggestedRetailPrice,
-                Acelerador = line.Acelerador
+                Acelerador = line.Acelerador,
+                HasVat = line.HasVat
             }).ToList()
         };
 
@@ -784,32 +832,26 @@ public sealed partial class DataverseService
     {
         _ = NormalizeGuid(request.RecordId, nameof(request.RecordId));
 
-        if (!AllowedFirstContractOptionValues.Contains(request.FirstContractOptionValue))
-            throw new InvalidOperationException("La opcion de primer contrato no es valida.");
-
-        if (!AllowedLineOptionValues.Contains(request.LineOptionValue))
-            throw new InvalidOperationException("La linea seleccionada no es valida.");
-
-        if (!AllowedVerticalOptionValues.Contains(request.VerticalOptionValue))
-            throw new InvalidOperationException("La vertical seleccionada no es valida.");
-
-        if (!AllowedBinaryOptionValues.Contains(request.HasVatOptionValue))
-            throw new InvalidOperationException("La opcion de IVA no es valida.");
-
-        if (!AllowedBinaryOptionValues.Contains(request.AutoBillOptionValue))
-            throw new InvalidOperationException("La opcion de facturable automatico no es valida.");
-
-        if (!AllowedProductLineOptionValues.Contains(request.ProductLineOptionValue))
-            throw new InvalidOperationException("La linea del resumen mensual no es valida.");
-
-        if (!AllowedContractTypeOptionValues.Contains(request.ContractTypeOptionValue))
-            throw new InvalidOperationException("El tipo de contrato del resumen mensual no es valido.");
-
         if (request.BillingDay is < 0 or > 31)
             throw new InvalidOperationException("El dia de facturacion debe estar entre 1 y 31.");
 
         if (request.Lines is null || request.Lines.Count == 0)
             throw new InvalidOperationException("Debes incluir al menos una linea de negocio.");
+
+        if (requireProductLookup)
+        {
+            if (!AllowedFirstContractOptionValues.Contains(request.FirstContractOptionValue))
+                throw new InvalidOperationException("Debes seleccionar si es el primer contrato con el cliente.");
+
+            if (!AllowedVerticalOptionValues.Contains(request.VerticalOptionValue))
+                throw new InvalidOperationException("Debes seleccionar una vertical.");
+
+            if (!AllowedBinaryOptionValues.Contains(request.AutoBillOptionValue))
+                throw new InvalidOperationException("Debes indicar si el negocio es facturable automatico.");
+
+            if (!AllowedContractTypeOptionValues.Contains(request.ContractTypeOptionValue))
+                throw new InvalidOperationException("Debes seleccionar el tipo de contrato.");
+        }
 
         foreach (var (line, index) in request.Lines.Select((value, index) => (value, index)))
         {
@@ -845,6 +887,14 @@ public sealed partial class DataverseService
             LineId = string.IsNullOrWhiteSpace(line.LineId) ? $"line-{index}" : line.LineId.Trim(),
             ProductId = line.ProductId?.Trim() ?? "",
             ProductName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim(),
+            LineType = ResolveLineTypeLabel(
+                AllowedLineOptionValues.Contains(line.LineOptionValue) ? line.LineOptionValue : ResolveLineOptionValue(line.LineType),
+                line.LineType),
+            LineOptionValue = AllowedLineOptionValues.Contains(line.LineOptionValue)
+                ? line.LineOptionValue
+                : ResolveLineOptionValue(line.LineType),
+            HasVat = line.HasVatOptionValue > 0 ? line.HasVatOptionValue == 1 : line.HasVat,
+            HasVatOptionValue = line.HasVatOptionValue > 0 ? line.HasVatOptionValue : ResolveHasVatOptionValue(line.HasVat),
             CostUnit = costUnit,
             MarginPercent = marginPercent,
             ContractMonths = contractMonths,
@@ -871,10 +921,13 @@ public sealed partial class DataverseService
         existing.ScenarioEndDateValue = computation.EndDateValue;
         existing.BillingDay = request.BillingDay;
         existing.RenewalDateValue = request.RenewalDateValue?.Trim() ?? "";
-        existing.AlignmentDateValue = request.AlignmentDateValue?.Trim() ?? "";
-        existing.HasVatOptionValue = request.HasVatOptionValue;
+        existing.RenewalMode = string.IsNullOrWhiteSpace(existing.RenewalDateValue) && !request.RequiresProration && computation.Lines.FirstOrDefault()?.ContractMonths != 12
+            ? "ONETIME"
+            : "";
+        existing.AlignmentDateValue = "";
+        existing.HasVatOptionValue = ResolvePrimaryHasVatOptionValue(computation.Lines, existing.HasVatOptionValue);
         existing.AutoBillOptionValue = request.AutoBillOptionValue;
-        existing.ProductLineOptionValue = request.ProductLineOptionValue;
+        existing.ProductLineOptionValue = ResolvePrimaryLineOptionValue(computation.Lines, existing.ProductLineOptionValue);
         existing.ContractTypeOptionValue = request.ContractTypeOptionValue;
         existing.Lines = computation.Lines;
         existing.LastResult = computation.Result;
@@ -904,7 +957,6 @@ public sealed partial class DataverseService
         Dictionary<string, object?> BuildBasePayload(object verifiedValue, object firstContractValue) => new()
         {
             [_scoresFirstContractField] = firstContractValue,
-            [_scoresLineField] = request.LineOptionValue,
             [_scoresVerticalField] = request.VerticalOptionValue,
             [_scoresScoreField] = result.Points,
             [_scoresCommissionField] = result.Commission,
@@ -973,17 +1025,15 @@ public sealed partial class DataverseService
                 offer = record.Offer,
                 contractStartDate = record.ContractStartDateValue,
                 renewalDate = request.RenewalDateValue?.Trim() ?? "",
-                alignmentDate = request.AlignmentDateValue?.Trim() ?? "",
                 billingDay = request.BillingDay,
                 firstContractOptionValue = request.FirstContractOptionValue,
-                lineOptionValue = request.LineOptionValue,
                 verticalOptionValue = request.VerticalOptionValue,
-                hasVatOptionValue = request.HasVatOptionValue,
                 autoBillOptionValue = request.AutoBillOptionValue,
-                productLineOptionValue = request.ProductLineOptionValue,
                 contractTypeOptionValue = request.ContractTypeOptionValue,
                 dealTypeValue = request.DealTypeValue,
-                requiresProration = request.RequiresProration
+                requiresProration = request.RequiresProration,
+                scenarioStartDateValue = request.ScenarioStartDateValue?.Trim() ?? "",
+                scenarioEndDateValue = request.ScenarioEndDateValue?.Trim() ?? ""
             },
             result = new
             {
@@ -1004,6 +1054,10 @@ public sealed partial class DataverseService
                 costUnit = line.CostUnit,
                 marginPercent = line.MarginPercent,
                 contractMonths = line.ContractMonths,
+                lineType = line.LineType?.Trim() ?? "",
+                lineOptionValue = line.LineOptionValue,
+                hasVat = line.HasVat,
+                hasVatOptionValue = line.HasVatOptionValue,
                 saleUnit = line.SaleUnit,
                 monthlyValue = line.MonthlyValue,
                 totalValue = line.TotalValue
@@ -1130,16 +1184,20 @@ public sealed partial class DataverseService
         var productId = NormalizeGuid(line.ProductId, nameof(line.ProductId));
         var createName = BuildSalesPerformanceName(record, line);
         var renewalDateValue = ResolveSalesPerformanceRenewalDate(detail);
-        var billingDay = detail.BillingDay > 0 ? detail.BillingDay : DeriveBillingDay(detail.RenewalDateValue, detail.AlignmentDateValue);
+        var billingDay = detail.BillingDay > 0 ? detail.BillingDay : DeriveBillingDay(detail.RenewalDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
+        var hasVatOptionValue = line.HasVatOptionValue > 0 ? line.HasVatOptionValue : ResolveHasVatOptionValue(line.HasVat);
+        var productLineOptionValue = AllowedLineOptionValues.Contains(line.LineOptionValue)
+            ? line.LineOptionValue
+            : ResolvePrimaryLineOptionValue(new[] { line }, detail.ProductLineOptionValue);
 
         var basePayload = new Dictionary<string, object?>
         {
             [_salesPerformancePrimaryNameField] = createName,
             [DefaultSalesPerformanceQuantityField] = line.Quantity,
             [DefaultSalesPerformanceUnitSaleUsdField] = line.SaleUnit,
-            [_salesPerformanceHasVatField] = detail.HasVatOptionValue,
+            [_salesPerformanceHasVatField] = hasVatOptionValue,
             [_salesPerformanceAutoBillField] = detail.AutoBillOptionValue,
-            [_salesPerformanceProductLineField] = detail.ProductLineOptionValue,
+            [_salesPerformanceProductLineField] = productLineOptionValue,
             [_salesPerformanceContractTypeField] = detail.ContractTypeOptionValue
         };
 
@@ -1230,10 +1288,13 @@ public sealed partial class DataverseService
 
     private static string ResolveSalesPerformanceRenewalDate(ScoreVerificationDetailDto detail)
     {
-        if (detail.RequiresProration)
-            return FirstNonEmpty(detail.AlignmentDateValue, detail.ScenarioEndDateValue, detail.RenewalDateValue);
+        if (string.Equals(detail.RenewalMode, "ONETIME", StringComparison.OrdinalIgnoreCase))
+            return "";
 
-        return FirstNonEmpty(detail.RenewalDateValue, detail.AlignmentDateValue, detail.ScenarioEndDateValue);
+        if (detail.RequiresProration)
+            return FirstNonEmpty(detail.ScenarioEndDateValue, detail.RenewalDateValue);
+
+        return FirstNonEmpty(detail.RenewalDateValue, detail.ScenarioEndDateValue);
     }
 
     private static void MarkRecordAsClosed(ScoreAdditionalDataSnapshot additional, string periodKey, Models.CurrentUserInfo currentUser)
@@ -1281,6 +1342,7 @@ public sealed partial class DataverseService
         additional.ScenarioStartDateValue ??= "";
         additional.ScenarioEndDateValue ??= "";
         additional.RenewalDateValue ??= "";
+        additional.RenewalMode ??= "";
         additional.AlignmentDateValue ??= "";
         additional.VerifiedBy ??= "";
         additional.LastClosedBy ??= "";
@@ -1288,26 +1350,193 @@ public sealed partial class DataverseService
         additional.MonthlyClosures ??= new List<ScoreMonthlyClosureSnapshot>();
     }
 
+    private static string NormalizeLookupToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var normalized = value
+            .Trim()
+            .Normalize(NormalizationForm.FormD)
+            .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+            .ToArray();
+
+        return new string(normalized)
+            .Replace(" ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("_", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("-", "", StringComparison.OrdinalIgnoreCase)
+            .ToLowerInvariant();
+    }
+
+    private static bool TryResolveDealTypeValue(string? raw, out int value)
+    {
+        switch (NormalizeLookupToken(raw))
+        {
+            case "clientenuevo":
+            case "negocionuevo":
+                value = (int)DealType.ClienteNuevo;
+                return true;
+            case "crosssale":
+            case "crossale":
+                value = (int)DealType.CrossSale;
+                return true;
+            case "renovacion1vez":
+            case "renovacion1":
+                value = (int)DealType.Renovacion1;
+                return true;
+            case "renovacion2veces":
+            case "renovacion2":
+                value = (int)DealType.Renovacion2;
+                return true;
+            case "renovacion3vecesomas":
+            case "renovacion3omas":
+            case "renovacion3":
+                value = (int)DealType.Renovacion3Plus;
+                return true;
+            default:
+                value = 0;
+                return false;
+        }
+    }
+
+    private static bool TryResolveYesNoValue(string? raw, out bool value)
+    {
+        switch (NormalizeLookupToken(raw))
+        {
+            case "si":
+            case "yes":
+            case "true":
+            case "1":
+                value = true;
+                return true;
+            case "no":
+            case "false":
+            case "0":
+                value = false;
+                return true;
+            default:
+                value = false;
+                return false;
+        }
+    }
+
+    private static int ResolveLineOptionValue(string? raw)
+    {
+        switch (NormalizeLookupToken(raw))
+        {
+            case "modernwork":
+                return 645250000;
+            case "acronis":
+                return 645250001;
+            case "azure":
+                return 645250002;
+            case "copiers":
+                return 645250003;
+            case "security":
+                return 645250005;
+            case "serviciosprofesionales":
+            case "servicios":
+                return 645250006;
+            case "perpetuo":
+            case "perpetual":
+                return 645250007;
+            default:
+                return 645250004;
+        }
+    }
+
+    private static string ResolveLineTypeLabel(int lineOptionValue, string? fallback = null)
+    {
+        var label = PuntajesOptionCatalog.LineOptions
+            .FirstOrDefault(option => option.Value == lineOptionValue)
+            ?.Label;
+
+        return !string.IsNullOrWhiteSpace(label)
+            ? label
+            : (string.IsNullOrWhiteSpace(fallback) ? "Otro" : fallback.Trim());
+    }
+
+    private static int ResolveHasVatOptionValue(bool hasVat) => hasVat ? 1 : 0;
+
+    private static int ResolvePrimaryLineOptionValue(IEnumerable<ScoreVerificationLineInput>? lines, int fallback = 0)
+    {
+        var value = lines?
+            .Select(line => line.LineOptionValue)
+            .FirstOrDefault(option => AllowedLineOptionValues.Contains(option))
+            ?? 0;
+
+        return value != 0 ? value : fallback;
+    }
+
+    private static int ResolvePrimaryHasVatOptionValue(IEnumerable<ScoreVerificationLineInput>? lines, int fallback = 0)
+    {
+        var first = lines?.FirstOrDefault();
+        return first is null ? fallback : ResolveHasVatOptionValue(first.HasVat);
+    }
+
+    private static int DeriveFirstContractOptionValue(int dealTypeValue) =>
+        dealTypeValue == (int)DealType.ClienteNuevo ? 1 : 2;
+
+    private static BusinessType ResolveBusinessTypeForLine(ScoreVerificationLineInput line)
+    {
+        var lineOptionValue = AllowedLineOptionValues.Contains(line.LineOptionValue)
+            ? line.LineOptionValue
+            : ResolveLineOptionValue(line.LineType);
+
+        return lineOptionValue switch
+        {
+            645250000 => BusinessType.ModernWork,
+            645250001 => BusinessType.Acronis,
+            645250002 => BusinessType.Azure,
+            645250003 => BusinessType.Copiers,
+            645250007 => BusinessType.Perpetuo,
+            _ => BusinessType.Otro
+        };
+    }
+
+    private static int ResolveLineOptionValueFromBusinessType(BusinessType businessType) =>
+        businessType switch
+        {
+            BusinessType.ModernWork => 645250000,
+            BusinessType.Acronis => 645250001,
+            BusinessType.Azure => 645250002,
+            BusinessType.Copiers => 645250003,
+            BusinessType.Perpetuo => 645250007,
+            _ => 645250004
+        };
+
     private static int ResolveStoredDealTypeValue(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription)
     {
-        if (additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
+        if (additional.Version > 0 && additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
             return additional.DealTypeValue;
+
+        if (TryResolveDealTypeValue(parsedDescription.DealTypeText, out var parsedDealTypeValue))
+            return parsedDealTypeValue;
 
         return parsedDescription.ProrationDays > 0 ? (int)DealType.CrossSale : (int)DealType.ClienteNuevo;
     }
 
     private static bool ResolveStoredRequiresProration(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription)
     {
-        if (additional.RequiresProration)
+        if (additional.Version > 0 && additional.RequiresProration)
             return true;
+
+        if (parsedDescription.RequiresProration.HasValue)
+            return parsedDescription.RequiresProration.Value;
 
         return parsedDescription.ProrationDays > 0 && parsedDescription.ProrationFactor is > 0m and < 1m;
     }
 
     private static int ResolveDealTypeValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario)
     {
-        if (additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
+        if (additional.Version > 0 && additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
             return additional.DealTypeValue;
+
+        if (record.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), record.DealTypeValue))
+            return record.DealTypeValue;
+
+        if (TryResolveDealTypeValue(record.ContractType, out var parsedFromRecord))
+            return parsedFromRecord;
 
         if (scenario is not null && Enum.IsDefined(typeof(DealType), scenario.DealType))
             return scenario.DealType;
@@ -1317,7 +1546,10 @@ public sealed partial class DataverseService
 
     private static bool ResolveRequiresProration(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario)
     {
-        if (additional.RequiresProration)
+        if (additional.Version > 0 && additional.RequiresProration)
+            return true;
+
+        if (record.RequiresProration)
             return true;
 
         if (scenario?.RequiresProration == true)
@@ -1327,10 +1559,10 @@ public sealed partial class DataverseService
     }
 
     private static string ResolveScenarioStartDateValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario) =>
-        FirstNonEmpty(additional.ScenarioStartDateValue, scenario?.StartDate, record.ContractStartDateValue, record.ProvisioningDateValue);
+        FirstNonEmpty(additional.ScenarioStartDateValue, scenario?.StartDate, record.ScenarioStartDateValue, record.ContractStartDateValue, record.ProvisioningDateValue);
 
     private static string ResolveScenarioEndDateValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario) =>
-        FirstNonEmpty(additional.ScenarioEndDateValue, additional.AlignmentDateValue, scenario?.EndDate, record.AlignmentDateValue, record.RenewalDateValue);
+        FirstNonEmpty(additional.ScenarioEndDateValue, scenario?.EndDate, record.ScenarioEndDateValue, record.RenewalDateValue);
 
     private static string BuildProrationText(int days, decimal factor) =>
         (days > 0 && factor is > 0m and < 1m)
@@ -1339,11 +1571,10 @@ public sealed partial class DataverseService
 
     private static ScoreVerificationRequest NormalizeVerificationRequest(ScoreVerificationRequest request, string? contractStartDateValue)
     {
-        var renewalDateValue = string.IsNullOrWhiteSpace(request.RenewalDateValue)
-            ? BuildRenewalDateOneYearAfter(contractStartDateValue)
-            : request.RenewalDateValue.Trim();
-        var alignmentDateValue = request.AlignmentDateValue?.Trim() ?? "";
         var scenarioEndDateValue = request.ScenarioEndDateValue?.Trim() ?? "";
+        var renewalDateValue = string.IsNullOrWhiteSpace(request.RenewalDateValue)
+            ? ResolveDefaultRenewalDateValue(request.RequiresProration, scenarioEndDateValue, contractStartDateValue, request.Lines)
+            : request.RenewalDateValue.Trim();
 
         return new ScoreVerificationRequest
         {
@@ -1353,12 +1584,12 @@ public sealed partial class DataverseService
             RequiresProration = request.RequiresProration,
             ScenarioStartDateValue = request.ScenarioStartDateValue?.Trim() ?? "",
             ScenarioEndDateValue = scenarioEndDateValue,
-            FirstContractOptionValue = request.FirstContractOptionValue,
+            FirstContractOptionValue = request.FirstContractOptionValue > 0 ? request.FirstContractOptionValue : DeriveFirstContractOptionValue(request.DealTypeValue),
             LineOptionValue = request.LineOptionValue,
             VerticalOptionValue = request.VerticalOptionValue,
-            BillingDay = ResolveBillingDayForRequest(request.BillingDay, request.AutoBillOptionValue, renewalDateValue, alignmentDateValue, scenarioEndDateValue, contractStartDateValue),
+            BillingDay = ResolveBillingDayForRequest(request.BillingDay, request.AutoBillOptionValue, renewalDateValue, scenarioEndDateValue, contractStartDateValue),
             RenewalDateValue = renewalDateValue,
-            AlignmentDateValue = alignmentDateValue,
+            AlignmentDateValue = "",
             HasVatOptionValue = request.HasVatOptionValue,
             AutoBillOptionValue = request.AutoBillOptionValue,
             ProductLineOptionValue = request.ProductLineOptionValue,
@@ -1369,6 +1600,10 @@ public sealed partial class DataverseService
                     LineId = line.LineId,
                     ProductId = line.ProductId,
                     ProductName = line.ProductName,
+                    LineType = line.LineType,
+                    LineOptionValue = line.LineOptionValue,
+                    HasVat = line.HasVat,
+                    HasVatOptionValue = line.HasVatOptionValue,
                     CostUnit = line.CostUnit,
                     MarginPercent = line.MarginPercent,
                     ContractMonths = line.ContractMonths,
@@ -1383,12 +1618,20 @@ public sealed partial class DataverseService
         };
     }
 
-    private static string ResolveRenewalDateValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario) =>
-        FirstNonEmpty(
-            record.RenewalDateValue,
-            additional.RenewalDateValue,
-            BuildRenewalDateOneYearAfter(record.ContractStartDateValue),
-            scenario?.EndDate);
+    private static string ResolveRenewalDateValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario)
+    {
+        if (string.Equals(additional.RenewalMode, "ONETIME", StringComparison.OrdinalIgnoreCase))
+            return "";
+
+        var explicitValue = FirstNonEmpty(record.RenewalDateValue, additional.RenewalDateValue);
+        if (!string.IsNullOrWhiteSpace(explicitValue))
+            return explicitValue;
+
+        return ResolveDefaultRenewalDateValue(record.RequiresProration, ResolveScenarioEndDateValue(record, additional, scenario), record.ContractStartDateValue, record.ProductLines.Select(line => new ScoreVerificationLineInput
+        {
+            ContractMonths = line.ContractMonths
+        }));
+    }
 
     private static string BuildRenewalDateOneYearAfter(string? baseDateValue)
     {
@@ -1396,6 +1639,15 @@ public sealed partial class DataverseService
             return "";
 
         return parsedDate.AddYears(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string ResolveDefaultRenewalDateValue(bool requiresProration, string? scenarioEndDateValue, string? contractStartDateValue, IEnumerable<ScoreVerificationLineInput>? lines)
+    {
+        if (requiresProration)
+            return FirstNonEmpty(scenarioEndDateValue);
+
+        var firstLineMonths = lines?.FirstOrDefault()?.ContractMonths ?? 0;
+        return firstLineMonths == 12 ? BuildRenewalDateOneYearAfter(contractStartDateValue) : "";
     }
 
     private static int ResolveBillingDayForRequest(int billingDay, int autoBillOptionValue, params string?[] candidates)
@@ -1531,6 +1783,15 @@ public sealed partial class DataverseService
                         ?? new List<RawScoreProductLine>();
                     foreach (var line in parsedLines)
                     {
+                        if (!result.RequiresProration.HasValue && line.RequiresProration.HasValue)
+                            result.RequiresProration = line.RequiresProration.Value;
+
+                        if (!result.ScenarioStartDate.HasValue && TryParseDateOnly(line.StartDate, out var lineStartDate))
+                            result.ScenarioStartDate = lineStartDate;
+
+                        if (!result.ScenarioEndDate.HasValue && TryParseDateOnly(line.EndDate, out var lineEndDate))
+                            result.ScenarioEndDate = lineEndDate;
+
                         result.ProductLines.Add(ToScoreProductLine(line, result.ProductLines.Count + 1));
                     }
 
@@ -1563,8 +1824,24 @@ public sealed partial class DataverseService
                         result.ProvisioningDate = provisioningDate;
                     break;
                 case "tipocontrato":
+                case "tiponegocio":
                     if (string.IsNullOrWhiteSpace(result.ContractType))
                         result.ContractType = value;
+                    if (string.IsNullOrWhiteSpace(result.DealTypeText))
+                        result.DealTypeText = value;
+                    break;
+                case "requiereprorrateo":
+                case "requiereprorateo":
+                    if (!result.RequiresProration.HasValue && TryResolveYesNoValue(value, out var requiresProration))
+                        result.RequiresProration = requiresProration;
+                    break;
+                case "inicio":
+                    if (!result.ScenarioStartDate.HasValue && TryParseDateOnly(value, out var scenarioStartDate))
+                        result.ScenarioStartDate = scenarioStartDate;
+                    break;
+                case "final":
+                    if (!result.ScenarioEndDate.HasValue && TryParseDateOnly(value, out var scenarioEndDate))
+                        result.ScenarioEndDate = scenarioEndDate;
                     break;
                 case "puntaje":
                     result.Score ??= ParseLooseDecimal(value);
@@ -1592,6 +1869,7 @@ public sealed partial class DataverseService
 
         result.ClientName = result.ClientName.Trim();
         result.ContractType = result.ContractType.Trim();
+        result.DealTypeText = result.DealTypeText.Trim();
         result.BusinessId = result.BusinessId.Trim();
         result.ProrationText = result.ProrationText.Trim();
         return result;
@@ -1616,6 +1894,10 @@ public sealed partial class DataverseService
             LineId = rawLine.LineId?.Trim() ?? "",
             ProductId = rawLine.ProductId?.Trim() ?? "",
             ProductName = productName,
+            LineType = ResolveLineTypeLabel(ResolveLineOptionValue(rawLine.LineType), rawLine.LineType),
+            LineOptionValue = ResolveLineOptionValue(rawLine.LineType),
+            HasVat = rawLine.HasVat == true,
+            HasVatOptionValue = ResolveHasVatOptionValue(rawLine.HasVat == true),
             Quantity = quantity,
             CostUnit = costUnit,
             MarginPercent = marginPercent,
@@ -1635,6 +1917,10 @@ public sealed partial class DataverseService
             LineId = normalized.LineId,
             ProductId = normalized.ProductId,
             ProductName = normalized.ProductName,
+            LineType = normalized.LineType,
+            LineOptionValue = normalized.LineOptionValue,
+            HasVat = normalized.HasVat,
+            HasVatOptionValue = normalized.HasVatOptionValue,
             Quantity = normalized.Quantity,
             CostUnit = normalized.CostUnit,
             MarginPercent = normalized.MarginPercent,
@@ -1661,6 +1947,14 @@ public sealed partial class DataverseService
             LineId = string.IsNullOrWhiteSpace(line.LineId) ? $"line-{index}" : line.LineId.Trim(),
             ProductId = line.ProductId?.Trim() ?? "",
             ProductName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim(),
+            LineType = ResolveLineTypeLabel(
+                AllowedLineOptionValues.Contains(line.LineOptionValue) ? line.LineOptionValue : ResolveLineOptionValue(line.LineType),
+                line.LineType),
+            LineOptionValue = AllowedLineOptionValues.Contains(line.LineOptionValue)
+                ? line.LineOptionValue
+                : ResolveLineOptionValue(line.LineType),
+            HasVat = line.HasVatOptionValue > 0 ? line.HasVatOptionValue == 1 : line.HasVat,
+            HasVatOptionValue = line.HasVatOptionValue > 0 ? line.HasVatOptionValue : ResolveHasVatOptionValue(line.HasVat),
             CostUnit = costUnit,
             MarginPercent = marginPercent,
             ContractMonths = contractMonths,
@@ -2051,6 +2345,10 @@ public sealed partial class DataverseService
         public string ClientName { get; set; } = "";
         public DateOnly? ProvisioningDate { get; set; }
         public string ContractType { get; set; } = "";
+        public string DealTypeText { get; set; } = "";
+        public bool? RequiresProration { get; set; }
+        public DateOnly? ScenarioStartDate { get; set; }
+        public DateOnly? ScenarioEndDate { get; set; }
         public decimal? Score { get; set; }
         public decimal? Commission { get; set; }
         public string BusinessId { get; set; } = "";
@@ -2064,7 +2362,7 @@ public sealed partial class DataverseService
 
     private sealed class ScoreAdditionalDataSnapshot
     {
-        public int Version { get; set; } = 1;
+        public int Version { get; set; }
         public string? BusinessId { get; set; } = "";
         public int DealTypeValue { get; set; }
         public bool RequiresProration { get; set; }
@@ -2072,6 +2370,7 @@ public sealed partial class DataverseService
         public string? ScenarioEndDateValue { get; set; } = "";
         public int BillingDay { get; set; }
         public string? RenewalDateValue { get; set; } = "";
+        public string? RenewalMode { get; set; } = "";
         public string? AlignmentDateValue { get; set; } = "";
         public int HasVatOptionValue { get; set; }
         public int AutoBillOptionValue { get; set; }
@@ -2152,6 +2451,21 @@ public sealed partial class DataverseService
 
         [JsonPropertyName("ventaTotal")]
         public decimal? TotalValue { get; set; }
+
+        [JsonPropertyName("tieneIva")]
+        public bool? HasVat { get; set; }
+
+        [JsonPropertyName("tipo")]
+        public string? LineType { get; set; }
+
+        [JsonPropertyName("requiereProrrateo")]
+        public bool? RequiresProration { get; set; }
+
+        [JsonPropertyName("inicio")]
+        public string? StartDate { get; set; }
+
+        [JsonPropertyName("final")]
+        public string? EndDate { get; set; }
     }
 
     private sealed record ScoreMonthInfo(bool SupportsClose, string PeriodKey, string PeriodLabel);

@@ -259,16 +259,17 @@
     <hr />
 
     <div class="table-wrap">
-        <table class="table table-sm align-middle mb-0" style="min-width:1500px;">
+        <table class="table table-sm align-middle mb-0" style="min-width:1450px;">
             <thead>
                 <tr>
                     <th style="width:110px;">Tipo</th>
-                    <th style="width:680px;">Producto</th>
+                    <th style="width:500px;">Producto</th>
                     <th style="width:130px;">Costo UND</th>
                     <th style="width:110px;">Margen %</th>
-                    <th style="width:150px;">Duración (meses)</th>
+                    <th style="width:110px;">Duración (meses)</th>
                     <th style="width:140px;">Venta UND</th>
                     <th style="width:110px;">Cantidad</th>
+                    <th style="width:105px;">Tiene IVA?</th>
                     <th style="width:150px;">Venta Mensual</th>
                     <th style="width:140px;">Venta Total</th>
 
@@ -832,7 +833,7 @@ const showDebugCalcModal = false;
         if (!s.lines.length) {
             linesBody.innerHTML = `
                 <tr>
-                    <td colspan="11" class="muted">
+                    <td colspan="12" class="muted">
                         No hay líneas. Agrega una línea seleccionando un <strong>Tipo de negocio</strong>.
                     </td>
                 </tr>
@@ -854,7 +855,7 @@ const showDebugCalcModal = false;
 
                     <td>
                         <div style="position:relative;">
-                            <input class="form-control form-control-sm product-input" value="${escapeHtml(line.productDescription)}" placeholder="Buscar producto..." autocomplete="off" />
+                            <textarea class="form-control form-control-sm product-input" rows="3" style="min-height:78px; resize:vertical;" placeholder="Buscar producto..." autocomplete="off">${escapeHtml(line.productDescription)}</textarea>
                             <div class="suggestions"></div>
                         </div>
                         <div class="small muted mt-1">${lockMonths ? 'Duración fija 12 meses (Prepaid/1 Year)' : ''}</div>
@@ -869,6 +870,7 @@ const showDebugCalcModal = false;
                     <td><input class="form-control form-control-sm months-input" value="${line.contractMonths}" ${monthsDisabled} /></td>
                     <td>${num(computed.saleUnit,2)}</td>
                     <td><input class="form-control form-control-sm qty-input" value="${line.quantity}" /></td>
+                    <td class="text-center"><input class="form-check-input vat-input" type="checkbox" ${line.hasVat ? "checked" : ""} /></td>
                     <td>${num(computed.monthly,2)}</td>
                     <td>${num(computed.total,2)}</td>
                     <td>${num(line.suggestedRetailPrice,2)}</td>
@@ -889,6 +891,7 @@ const showDebugCalcModal = false;
                 <td>—</td>
                 <td>—</td>
                 <td>${num(totals.tSaleUnit,2)}</td>
+                <td>—</td>
                 <td>—</td>
                 <td>${num(totals.tMonthly,2)}</td>
                 <td>${num(totals.tTotal,2)}</td>
@@ -1059,7 +1062,8 @@ function toDateInputValue(value) {
                 contractMonths: Number(line.contractMonths || 12),
                 quantity: Number(line.quantity || 1),
                 suggestedRetailPrice: Number(line.suggestedRetailPrice || 0),
-                acelerador: Number(line.acelerador || 0)
+                acelerador: Number(line.acelerador || 0),
+                hasVat: Boolean(line.hasVat)
             })) : [],
             lastResult: stored.lastResult || null
         };
@@ -1135,7 +1139,8 @@ function toDateInputValue(value) {
             contractMonths: 12,
             quantity: 1,
             suggestedRetailPrice: 0,
-            acelerador: 0
+            acelerador: 0,
+            hasVat: false
         });
 
         markScenarioDirty();
@@ -1226,6 +1231,7 @@ function toDateInputValue(value) {
             const marginInput = row.querySelector(".margin-input");
             const monthsInput = row.querySelector(".months-input");
             const qtyInput = row.querySelector(".qty-input");
+            const vatInput = row.querySelector(".vat-input");
 
             const btnDel = row.querySelector(".btn-del-line");
             btnDel.addEventListener("click", () => removeLine(idx));
@@ -1235,6 +1241,7 @@ function toDateInputValue(value) {
                 line.marginPercent = clampDec(marginInput.value, 0);
                 line.contractMonths = clampInt(monthsInput.value, 1, 120, 12);
                 line.quantity = clampInt(qtyInput.value, 1, 999999, 1);
+                line.hasVat = Boolean(vatInput?.checked);
 
                 if (containsPrepaidOrYear(line.productDescription)) {
                     line.contractMonths = 12;
@@ -1247,6 +1254,7 @@ function toDateInputValue(value) {
             marginInput.addEventListener("change", refreshLineFromInputs);
             monthsInput.addEventListener("change", refreshLineFromInputs);
             qtyInput.addEventListener("change", refreshLineFromInputs);
+            vatInput?.addEventListener("change", refreshLineFromInputs);
 
             let timer = null;
             let lastItems = [];
@@ -1425,7 +1433,8 @@ function toDateInputValue(value) {
                 contractMonths: Number(months || 12),
                 quantity: Number(qty || 1),
                 suggestedRetailPrice: Number(line.suggestedRetailPrice || 0),
-                acelerador: Number(line.acelerador || 0)
+                acelerador: Number(line.acelerador || 0),
+                hasVat: Boolean(line.hasVat)
             });
         }
    const licenseValidation = validateLicenseCaps(s, normalizedLines);
@@ -1779,7 +1788,9 @@ function setAttachmentStatus(message, type = "error") {
                 margenPorcentaje: roundMoneyValue(line.marginPercent || 0),
                 duracionMeses: Number(line.contractMonths || 0),
                 ventaMensual: roundMoneyValue(computed.monthly),
-                ventaTotal: roundMoneyValue(computed.total)
+                ventaTotal: roundMoneyValue(computed.total),
+                tieneIva: Boolean(line.hasVat),
+                tipo: businessTypes.find(x => x.key === Number(line.businessType))?.name || "Otro"
             };
         }).filter(li => li.cantidad > 0);
 
@@ -1804,6 +1815,13 @@ function setAttachmentStatus(message, type = "error") {
                 fecha: normalizedDate,
                 tipoContratoCode: String(provisioningState.contractType || ""),
                 tipoContratoLabel: contractLabel
+            },
+            scenario: {
+                dealTypeValue: Number(s.dealType || 0),
+                dealTypeLabel: getDealTypeLabel(s.dealType),
+                requiresProration: Boolean(s.requiresProration),
+                startDate: s.startDate || "",
+                endDate: s.endDate || ""
             },
             resultado: {
                 puntaje: Number(s.lastResult?.points || 0),

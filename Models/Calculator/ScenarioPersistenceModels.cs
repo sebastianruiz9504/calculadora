@@ -11,6 +11,7 @@ public sealed class ScenarioLineInput
     public int Quantity { get; set; } = 1;
     public decimal SuggestedRetailPrice { get; set; }
     public decimal Acelerador { get; set; }
+    public bool HasVat { get; set; }
 }
 
 public sealed class ScenarioResultSnapshot

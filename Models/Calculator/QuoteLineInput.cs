@@ -3,7 +3,7 @@ namespace CotizadorInterno.Web.Models.Calculator;
 
 public sealed class QuoteLineInput
 {
-        [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public BusinessType BusinessType { get; set; }
     public string ProductId { get; set; } = "";
     public string ProductDescription { get; set; } = "";
@@ -15,4 +15,5 @@ public sealed class QuoteLineInput
 
     public decimal SuggestedRetailPrice { get; set; }  // cr07a_suggestedretailprice (visible)
     public decimal Acelerador { get; set; }            // cr07a_acelerador (oculto)
+    public bool HasVat { get; set; }
 }
