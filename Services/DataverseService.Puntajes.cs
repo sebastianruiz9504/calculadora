@@ -146,6 +146,8 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No se encontro el registro seleccionado.");
         var currentUser = await GetCurrentUserAsync(ct) ?? new Models.CurrentUserInfo();
         var normalizedRequest = NormalizeVerificationRequest(request, existingContext.Record.ContractStartDateValue);
+        var verifiedFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresVerifiedField);
+        var firstContractFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresFirstContractField);
 
         var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
         var additional = BuildAdditionalSnapshot(normalizedRequest, computation, existingContext.Additional, currentUser);
@@ -153,7 +155,7 @@ public sealed partial class DataverseService
 
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         Exception? lastError = null;
-        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson))
+        foreach (var payload in BuildVerificationPayloadCandidates(normalizedRequest, computation.Result, additionalJson, verifiedFieldKind, firstContractFieldKind))
         {
             try
             {
@@ -177,7 +179,7 @@ public sealed partial class DataverseService
             }
             catch (InvalidOperationException ex)
             {
-                lastError = ex;
+                lastError = new InvalidOperationException(BuildVerificationPayloadFailureDetail(payload, ex), ex);
             }
         }
 
@@ -937,30 +939,107 @@ public sealed partial class DataverseService
     private IEnumerable<Dictionary<string, object?>> BuildVerificationPayloadCandidates(
         ScoreVerificationRequest request,
         ScoreVerificationComputedResultDto result,
-        string additionalJson)
+        string additionalJson,
+        PrimitiveFieldKind verifiedFieldKind,
+        PrimitiveFieldKind firstContractFieldKind)
     {
+        var verifiedValue = ResolvePrimitivePayloadValue(
+            verifiedFieldKind,
+            preferredBooleanValue: true,
+            preferredIntegerValue: 1,
+            preferBooleanWhenUnknown: true);
+        var firstContractValue = ResolvePrimitivePayloadValue(
+            firstContractFieldKind,
+            preferredBooleanValue: request.FirstContractOptionValue == 1,
+            preferredIntegerValue: request.FirstContractOptionValue,
+            preferBooleanWhenUnknown: false);
+
         yield return new Dictionary<string, object?>
         {
-            [_scoresFirstContractField] = request.FirstContractOptionValue,
+            [_scoresFirstContractField] = firstContractValue,
             [_scoresVerticalField] = request.VerticalOptionValue,
             [_scoresScoreField] = result.Points,
             [_scoresCommissionField] = result.Commission,
             [_scoresAdditionalField] = additionalJson,
-            [_scoresVerifiedField] = 1
+            [_scoresVerifiedField] = verifiedValue
         };
     }
 
-    private static IReadOnlyList<object> GetPayloadCandidates(PrimitiveFieldKind kind, bool preferredBooleanValue, int preferredIntegerValue, bool preferBooleanWhenUnknown)
-    {
-        return kind switch
+    private static object ResolvePrimitivePayloadValue(PrimitiveFieldKind kind, bool preferredBooleanValue, int preferredIntegerValue, bool preferBooleanWhenUnknown) =>
+        kind switch
         {
-            PrimitiveFieldKind.Boolean => new object[] { preferredBooleanValue, preferredIntegerValue },
-            PrimitiveFieldKind.Integer => new object[] { preferredIntegerValue, preferredBooleanValue },
-            _ => preferBooleanWhenUnknown
-                ? new object[] { preferredBooleanValue, preferredIntegerValue }
-                : new object[] { preferredIntegerValue, preferredBooleanValue }
+            PrimitiveFieldKind.Boolean => preferredBooleanValue,
+            PrimitiveFieldKind.Integer => preferredIntegerValue,
+            _ => preferBooleanWhenUnknown ? preferredBooleanValue : preferredIntegerValue
+        };
+
+    private string BuildVerificationPayloadFailureDetail(Dictionary<string, object?> payload, Exception ex)
+    {
+        var payloadSummary = string.Join("; ", payload.Select(entry => DescribePayloadEntry(entry.Key, entry.Value)));
+        var hint = TryBuildPayloadTypeMismatchHint(payload, ex);
+        return string.IsNullOrWhiteSpace(hint)
+            ? $"Payload enviado en verificacion: {payloadSummary}"
+            : $"Payload enviado en verificacion: {payloadSummary}. {hint}";
+    }
+
+    private static string DescribePayloadEntry(string fieldName, object? value)
+    {
+        if (value is null)
+            return $"{fieldName}=null";
+
+        return value switch
+        {
+            string text when text.Length > 160 => $"{fieldName}=\"{text[..160]}...\" (String, {text.Length} chars)",
+            string text => $"{fieldName}=\"{text}\" (String)",
+            bool boolean => $"{fieldName}={boolean} (Boolean)",
+            int integer => $"{fieldName}={integer} (Int32)",
+            decimal number => $"{fieldName}={number.ToString(CultureInfo.InvariantCulture)} (Decimal)",
+            _ => $"{fieldName}={value} ({value.GetType().Name})"
         };
     }
+
+    private static string TryBuildPayloadTypeMismatchHint(Dictionary<string, object?> payload, Exception ex)
+    {
+        var match = Regex.Match(
+            ex.ToString(),
+            "Cannot convert the literal '(?<literal>[^']+)' to the expected type '(?<target>Edm\\.[^']+)'",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        if (!match.Success)
+            return "";
+
+        var literal = match.Groups["literal"].Value.Trim();
+        var target = match.Groups["target"].Value.Trim();
+        var candidates = payload
+            .Where(entry => string.Equals(DescribeLiteralValue(entry.Value), literal, StringComparison.OrdinalIgnoreCase))
+            .Select(entry => $"{entry.Key}={DescribePayloadScalar(entry.Value)}")
+            .ToList();
+
+        if (candidates.Count == 0)
+            return $"Dataverse esperaba {target} pero recibio el literal '{literal}'.";
+
+        return $"Dataverse esperaba {target} pero recibio el literal '{literal}'. Campo(s) candidato(s): {string.Join(", ", candidates)}.";
+    }
+
+    private static string DescribeLiteralValue(object? value) =>
+        value switch
+        {
+            null => "null",
+            bool boolean => boolean ? "True" : "False",
+            decimal number => number.ToString(CultureInfo.InvariantCulture),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? value.ToString() ?? "",
+            _ => value.ToString() ?? ""
+        };
+
+    private static string DescribePayloadScalar(object? value) =>
+        value switch
+        {
+            null => "null",
+            bool boolean => $"{boolean} (Boolean)",
+            int integer => $"{integer} (Int32)",
+            decimal number => $"{number.ToString(CultureInfo.InvariantCulture)} (Decimal)",
+            _ => $"{value} ({value?.GetType().Name ?? "null"})"
+        };
 
     private async Task<string> TryNotifyBillingAsync(
         ScoreRecordDto record,
