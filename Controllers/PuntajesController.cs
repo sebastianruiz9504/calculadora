@@ -63,11 +63,11 @@ public sealed class PuntajesController : Controller
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar la verificacion.");
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible guardar la verificacion.", ex));
         }
     }
 
@@ -87,11 +87,11 @@ public sealed class PuntajesController : Controller
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el detalle de verificacion.");
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el detalle de verificacion.", ex));
         }
     }
 
@@ -109,11 +109,11 @@ public sealed class PuntajesController : Controller
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible recalcular el puntaje.");
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible recalcular el puntaje.", ex));
         }
     }
 
@@ -132,11 +132,11 @@ public sealed class PuntajesController : Controller
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cerrar el mes.");
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cerrar el mes.", ex));
         }
     }
 
@@ -160,11 +160,11 @@ public sealed class PuntajesController : Controller
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar la oferta.");
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar la oferta.", ex));
         }
     }
 
@@ -177,5 +177,35 @@ public sealed class PuntajesController : Controller
         }
 
         return await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
+    }
+
+    private object CreateErrorPayload(string message, Exception? ex = null)
+    {
+        var detail = BuildExceptionDetail(ex);
+        return new
+        {
+            message,
+            detail = string.Equals(detail, message, StringComparison.Ordinal) ? "" : detail,
+            traceId = HttpContext.TraceIdentifier
+        };
+    }
+
+    private static string BuildExceptionDetail(Exception? ex)
+    {
+        if (ex is null)
+            return "";
+
+        var messages = new List<string>();
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (string.IsNullOrWhiteSpace(current.Message))
+                continue;
+
+            var trimmedMessage = current.Message.Trim();
+            if (!messages.Contains(trimmedMessage, StringComparer.OrdinalIgnoreCase))
+                messages.Add(trimmedMessage);
+        }
+
+        return string.Join(" | ", messages);
     }
 }

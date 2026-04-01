@@ -154,6 +154,73 @@
         verifyModalStatus.textContent = message;
     }
 
+    function formatErrorMessage(error, fallbackMessage) {
+        if (!error) {
+            return fallbackMessage;
+        }
+
+        const parts = [];
+        const message = typeof error.message === "string" ? error.message.trim() : "";
+        const detail = typeof error.detail === "string" ? error.detail.trim() : "";
+        const traceId = typeof error.traceId === "string" ? error.traceId.trim() : "";
+
+        if (message) {
+            parts.push(message);
+        }
+
+        if (detail && detail !== message) {
+            parts.push(`Detalle: ${detail}`);
+        }
+
+        if (traceId) {
+            parts.push(`TraceId: ${traceId}`);
+        }
+
+        return parts.length ? parts.join(" | ") : fallbackMessage;
+    }
+
+    async function extractErrorPayload(response, contentType) {
+        if (contentType.includes("application/json")) {
+            try {
+                const payload = await response.json();
+                if (typeof payload === "string") {
+                    return { message: payload.trim() };
+                }
+
+                if (payload && typeof payload === "object") {
+                    const validationDetails = payload.errors && typeof payload.errors === "object"
+                        ? Object.entries(payload.errors)
+                            .flatMap(([field, messages]) => {
+                                const values = Array.isArray(messages) ? messages : [messages];
+                                return values
+                                    .filter(Boolean)
+                                    .map(message => field ? `${field}: ${message}` : `${message}`);
+                            })
+                        : [];
+
+                    const detailParts = [];
+                    if (typeof payload.detail === "string" && payload.detail.trim()) {
+                        detailParts.push(payload.detail.trim());
+                    }
+                    if (validationDetails.length) {
+                        detailParts.push(validationDetails.join(" | "));
+                    }
+
+                    return {
+                        message: (payload.message || payload.title || "").toString().trim(),
+                        detail: detailParts.join(" | "),
+                        traceId: (payload.traceId || "").toString().trim()
+                    };
+                }
+            } catch {
+                // Falls back to plain text parsing below.
+            }
+        }
+
+        const message = (await response.text()).trim();
+        return { message };
+    }
+
     function toggleModalLoading(show) {
         verifyModalLoading?.classList.toggle("show", !!show);
         if (verifyScoreForm) {
@@ -598,10 +665,12 @@
 
         const contentType = response.headers.get("content-type") || "";
         if (!response.ok) {
-            const message = contentType.includes("application/json")
-                ? (await response.json())?.message || "No fue posible completar la solicitud."
-                : await response.text();
-            throw new Error(message || "No fue posible completar la solicitud.");
+            const errorPayload = await extractErrorPayload(response, contentType);
+            const error = new Error(errorPayload.message || "No fue posible completar la solicitud.");
+            error.detail = errorPayload.detail || "";
+            error.traceId = errorPayload.traceId || "";
+            error.status = response.status;
+            throw error;
         }
 
         if (!contentType.includes("application/json")) {
@@ -631,7 +700,7 @@
             rebuildIndexes(null);
             updateSummary(null);
             renderGroups(null);
-            setStatus("error", error?.message || "No fue posible cargar los puntajes.");
+            setStatus("error", formatErrorMessage(error, "No fue posible cargar los puntajes."));
         } finally {
             setLoading(false);
             setFilterButtonState();
@@ -804,6 +873,7 @@
         renderVerifyMetaCards();
         renderVerifyLines();
         renderVerificationResult(draft.result);
+        setModalStatus(draft.warningMessage ? "info" : "", draft.warningMessage || "");
         toggleModalLoading(false);
     }
 
@@ -846,7 +916,7 @@
         } catch (error) {
             console.error(error);
             toggleModalLoading(false);
-            setModalStatus("error", error?.message || "No fue posible cargar el detalle de verificacion.");
+            setModalStatus("error", formatErrorMessage(error, "No fue posible cargar el detalle de verificacion."));
         }
     }
 
@@ -1069,7 +1139,7 @@
             setModalStatus("success", "Puntaje recalculado usando la logica de la calculadora.");
         } catch (error) {
             console.error(error);
-            setModalStatus("error", error?.message || "No fue posible recalcular el puntaje.");
+            setModalStatus("error", formatErrorMessage(error, "No fue posible recalcular el puntaje."));
         } finally {
             setRecalculating(false);
         }
@@ -1097,7 +1167,7 @@
             setStatus("success", result?.message || "El registro se verifico correctamente.");
         } catch (error) {
             console.error(error);
-            setModalStatus("error", error?.message || "No fue posible guardar la verificacion.");
+            setModalStatus("error", formatErrorMessage(error, "No fue posible guardar la verificacion."));
         } finally {
             setSaving(false);
         }
@@ -1123,7 +1193,7 @@
             setStatus(result?.hasErrors ? "error" : "success", result?.message || "Cierre mensual finalizado.");
         } catch (error) {
             console.error(error);
-            setStatus("error", error?.message || "No fue posible cerrar el mes.");
+            setStatus("error", formatErrorMessage(error, "No fue posible cerrar el mes."));
         } finally {
             setClosingMonth(false);
             renderCloseMonthLogs();

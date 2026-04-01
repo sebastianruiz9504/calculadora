@@ -232,7 +232,8 @@ public sealed class ScoreVerificationDetailDto : ScoreVerificationRequest
     public string LastVerifiedBy { get; set; } = "";
     public string LastClosedAtDisplay { get; set; } = "";
     public string LastClosedBy { get; set; } = "";
-    public ScoreVerificationComputedResultDto Result { get; set; } = new();
+    public string WarningMessage { get; set; } = "";
+    public ScoreVerificationComputedResultDto? Result { get; set; }
 }
 
 public sealed class ScoreVerificationSaveResultDto

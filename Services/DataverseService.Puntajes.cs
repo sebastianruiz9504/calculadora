@@ -627,13 +627,22 @@ public sealed partial class DataverseService
             LastClosedBy = record.LastClosedBy
         };
 
-        var computation = BuildScoreComputationContext(detail, requireProductLookup: false);
-        detail.Lines = computation.Lines;
-        detail.Result = computation.Result;
-        detail.DealTypeValue = computation.DealTypeValue;
-        detail.RequiresProration = computation.RequiresProration;
-        detail.ScenarioStartDateValue = computation.StartDateValue;
-        detail.ScenarioEndDateValue = computation.EndDateValue;
+        try
+        {
+            var computation = BuildScoreComputationContext(detail, requireProductLookup: false);
+            detail.Lines = computation.Lines;
+            detail.Result = computation.Result;
+            detail.DealTypeValue = computation.DealTypeValue;
+            detail.RequiresProration = computation.RequiresProration;
+            detail.ScenarioStartDateValue = computation.StartDateValue;
+            detail.ScenarioEndDateValue = computation.EndDateValue;
+        }
+        catch (InvalidOperationException ex)
+        {
+            detail.WarningMessage = $"El registro tiene datos pendientes antes de recalcular. {ex.Message}";
+            detail.Result = null;
+        }
+
         return detail;
     }
 
