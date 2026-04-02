@@ -1820,16 +1820,24 @@ public sealed partial class DataverseService
         if (!string.IsNullOrWhiteSpace(renewalDateValue))
             basePayload[_salesPerformanceRenewalDateField] = renewalDateValue;
 
-        var clientLookupCandidates = BuildLookupLogicalNameCandidates(
+        var clientLookupCandidates = await ResolveSalesPerformanceNavigationPropertyCandidatesAsync(
             _salesPerformanceClientLookupLogicalName,
-            DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
-            DefaultSalesPerformanceClientCreateLookupLogicalName,
-            DefaultSalesPerformanceClientLookupLogicalName,
-            "cr07a_clientelookup");
-        var productLookupCandidates = BuildLookupLogicalNameCandidates(
+            BuildLookupLogicalNameCandidates(
+                _salesPerformanceClientLookupLogicalName,
+                DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
+                DefaultSalesPerformanceClientCreateLookupLogicalName,
+                DefaultSalesPerformanceClientLookupLogicalName,
+                "cr07a_clientelookup"),
+            user,
+            ct);
+        var productLookupCandidates = await ResolveSalesPerformanceNavigationPropertyCandidatesAsync(
             _salesPerformanceProductLookupLogicalName,
-            DefaultSalesPerformanceProductLookupLogicalName,
-            "cr07a_producto");
+            BuildLookupLogicalNameCandidates(
+                _salesPerformanceProductLookupLogicalName,
+                DefaultSalesPerformanceProductLookupLogicalName,
+                "cr07a_producto"),
+            user,
+            ct);
 
         Exception? lastError = null;
         var attemptDiagnostics = new List<string>();

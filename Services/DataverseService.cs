@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -22,6 +23,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DataverseService> _logger;
     private readonly IQuoteCalculator _calculator;
+    private readonly ConcurrentDictionary<string, string[]> _salesPerformanceNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -30,6 +32,7 @@ public sealed partial class DataverseService : IDataverseService
     };
     private const string DefaultScenariosTableSetName = "cr07a_negocioscomercialeses";
     private const string DefaultScenariosTableName = "cr07a_negocioscomerciales";
+    private const string DefaultSalesPerformanceEntityLogicalName = "cr07a_salesperformancerecord";
     private const string DefaultSalesPerformanceTableSetName = "cr07a_salesperformancerecords";
     private const string DefaultSalesPerformanceIdField = "cr07a_salesperformancerecordid";
     private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_clientelookup_value";
@@ -577,19 +580,27 @@ public sealed partial class DataverseService : IDataverseService
             }
 
             var clientLookupCandidates = shouldUpdateClientLookup
-                ? BuildLookupLogicalNameCandidates(
+                ? await ResolveSalesPerformanceNavigationPropertyCandidatesAsync(
                     item.ClientLookupLogicalName,
-                    DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
-                    DefaultSalesPerformanceClientLookupLogicalName,
-                    "cr07a_clientelookup",
-                    "cr07a_cliente")
+                    BuildLookupLogicalNameCandidates(
+                        item.ClientLookupLogicalName,
+                        DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
+                        DefaultSalesPerformanceClientLookupLogicalName,
+                        "cr07a_clientelookup",
+                        "cr07a_cliente"),
+                    httpContext.User,
+                    ct)
                 : new List<string?> { null };
 
             var productLookupCandidates = shouldUpdateProductLookup
-                ? BuildLookupLogicalNameCandidates(
+                ? await ResolveSalesPerformanceNavigationPropertyCandidatesAsync(
                     item.ProductLookupLogicalName,
-                    DefaultSalesPerformanceProductLookupLogicalName,
-                    "cr07a_producto")
+                    BuildLookupLogicalNameCandidates(
+                        item.ProductLookupLogicalName,
+                        DefaultSalesPerformanceProductLookupLogicalName,
+                        "cr07a_producto"),
+                    httpContext.User,
+                    ct)
                 : new List<string?> { null };
 
             Exception? lastError = null;
@@ -1170,6 +1181,81 @@ public sealed partial class DataverseService : IDataverseService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Cast<string?>()
             .ToList();
+    }
+
+    private async Task<List<string?>> ResolveSalesPerformanceNavigationPropertyCandidatesAsync(
+        string? attributeLogicalName,
+        IEnumerable<string?> fallbackCandidates,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var fallbackList = BuildLookupLogicalNameCandidates(
+            (fallbackCandidates ?? Array.Empty<string?>())
+                .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+                .ToArray());
+
+        var normalizedAttribute = attributeLogicalName?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedAttribute))
+            return fallbackList;
+
+        var cacheKey = $"{DefaultSalesPerformanceEntityLogicalName}|{normalizedAttribute}";
+        if (!_salesPerformanceNavigationPropertyCache.TryGetValue(cacheKey, out var metadataCandidates))
+        {
+            metadataCandidates = await LoadSalesPerformanceNavigationPropertyCandidatesAsync(normalizedAttribute, user, ct);
+            _salesPerformanceNavigationPropertyCache[cacheKey] = metadataCandidates;
+        }
+
+        return BuildLookupLogicalNameCandidates(
+            metadataCandidates
+                .Cast<string?>()
+                .Concat(fallbackList)
+                .ToArray());
+    }
+
+    private async Task<string[]> LoadSalesPerformanceNavigationPropertyCandidatesAsync(
+        string attributeLogicalName,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(DefaultSalesPerformanceEntityLogicalName)}')" +
+                "?$select=LogicalName" +
+                "&$expand=ManyToOneRelationships($select=ReferencingAttribute,ReferencingEntityNavigationPropertyName,SchemaName)";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("ManyToOneRelationships", out var relationships)
+                || relationships.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<string>();
+            }
+
+            return relationships
+                .EnumerateArray()
+                .Where(relationship => string.Equals(
+                    ReadString(relationship, "ReferencingAttribute"),
+                    attributeLogicalName,
+                    StringComparison.OrdinalIgnoreCase))
+                .SelectMany(relationship => new[]
+                {
+                    ReadString(relationship, "ReferencingEntityNavigationPropertyName"),
+                    ReadString(relationship, "SchemaName")
+                })
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible consultar la metadata de Dataverse para resolver la navegacion del lookup {LookupAttribute} en sales performance.",
+                attributeLogicalName);
+            return Array.Empty<string>();
+        }
     }
 
     private static decimal RoundCurrency(decimal value) =>
