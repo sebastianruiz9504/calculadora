@@ -1825,7 +1825,6 @@ public sealed partial class DataverseService
             DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
             DefaultSalesPerformanceClientCreateLookupLogicalName,
             DefaultSalesPerformanceClientLookupLogicalName,
-            "cr07a_clienteid",
             "cr07a_clientelookup");
         var productLookupCandidates = BuildLookupLogicalNameCandidates(
             _salesPerformanceProductLookupLogicalName,
@@ -1874,7 +1873,7 @@ public sealed partial class DataverseService
                         lastError = ex;
                         var errorDetail = BuildMonthCloseErrorDetail(ex);
                         attemptDiagnostics.Add(
-                            $"Lookup cliente={clientLookupLogicalName}, producto={productLookupLogicalName}, payload={BuildSalesPerformancePayloadSummary(payload)} -> {CompactMonthCloseError(errorDetail)}");
+                            $"Lookup cliente={clientLookupLogicalName}, producto={productLookupLogicalName}, payload={BuildSalesPerformancePayloadSummary(payload)} -> {ExtractActionableDataverseError(errorDetail)}");
 
                         var removableField = ResolveRetryableCreateField(errorDetail, payload.Keys, optionalFieldWarnings.Keys, removedFields);
                         if (string.IsNullOrWhiteSpace(removableField))
@@ -2733,6 +2732,34 @@ public sealed partial class DataverseService
     {
         var summary = SummarizeExceptionMessages(ex);
         return string.Join(" ", summary.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string ExtractActionableDataverseError(string detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail))
+            return "Error sin detalle.";
+
+        var normalized = string.Join(" ", detail.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var innerMarker = "InnerException :";
+        var innerIndex = normalized.IndexOf(innerMarker, StringComparison.OrdinalIgnoreCase);
+        if (innerIndex >= 0)
+        {
+            normalized = normalized[(innerIndex + innerMarker.Length)..].Trim();
+        }
+
+        var stackIndex = normalized.IndexOf(" at Microsoft.", StringComparison.OrdinalIgnoreCase);
+        if (stackIndex > 0)
+        {
+            normalized = normalized[..stackIndex].Trim();
+        }
+
+        var odataIndex = normalized.LastIndexOf("Microsoft.OData.ODataException:", StringComparison.OrdinalIgnoreCase);
+        if (odataIndex >= 0)
+        {
+            normalized = normalized[(odataIndex + "Microsoft.OData.ODataException:".Length)..].Trim();
+        }
+
+        return normalized.Length > 500 ? $"{normalized[..497]}..." : normalized;
     }
 
     private static string FormatDateTimeDisplay(DateTimeOffset? value)

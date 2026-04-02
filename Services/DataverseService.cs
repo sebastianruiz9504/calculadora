@@ -582,8 +582,7 @@ public sealed partial class DataverseService : IDataverseService
                     DeriveLookupLogicalName(_salesPerformanceClientLookupFilterField),
                     DefaultSalesPerformanceClientLookupLogicalName,
                     "cr07a_clientelookup",
-                    "cr07a_cliente",
-                    "cr07a_clienteid")
+                    "cr07a_cliente")
                 : new List<string?> { null };
 
             var productLookupCandidates = shouldUpdateProductLookup
