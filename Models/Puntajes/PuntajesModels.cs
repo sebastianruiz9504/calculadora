@@ -324,6 +324,7 @@ public sealed class ScoreMonthCloseLogEntryDto
     public string ProductName { get; set; } = "";
     public string Message { get; set; } = "";
     public string FinalState { get; set; } = "";
+    public string Detail { get; set; } = "";
 }
 
 public sealed class ScoreMonthCloseResultDto

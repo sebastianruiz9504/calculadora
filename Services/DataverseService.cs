@@ -34,7 +34,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultSalesPerformanceIdField = "cr07a_salesperformancerecordid";
     private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_clientelookup_value";
     private const string DefaultSalesPerformanceRenewalDateField = "cr07a_fecharenovacion";
-    private const string DefaultSalesPerformanceClientLookupLogicalName = "cr07a_clienteid";
+    private const string DefaultSalesPerformanceClientLookupLogicalName = "cr07a_clientelookup";
     private const string DefaultSalesPerformanceProductLookupLogicalName = "cr07a_producto";
     private const string DefaultSalesPerformanceQuantityField = "cr07a_quantity";
     private const string DefaultSalesPerformanceUnitSaleUsdField = "cr07a_valorventaunidadusd";
@@ -60,7 +60,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresAdditionalField = "cr07a_adicionales";
     private const string DefaultSalesPerformancePrimaryNameField = "cr07a_name";
     private const string DefaultSalesPerformanceBillingDayField = "cr07a_billingday";
-    private const string DefaultSalesPerformanceHasVatField = "cr07a_sietieneiva";
+    private const string DefaultSalesPerformanceHasVatField = "cr07a_sitieneiva";
     private const string DefaultSalesPerformanceAutoBillField = "cr07a_facturableautomatico";
     private const string DefaultSalesPerformanceProductLineField = "cr07a_productline";
     private const string DefaultSalesPerformanceContractTypeField = "cr07a_contracttype";

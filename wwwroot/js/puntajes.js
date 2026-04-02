@@ -1022,6 +1022,7 @@
                 <div class="scores-close-log__title">${escapeHtml(entry.clientName || "Registro")} ${entry.productName ? `| ${escapeHtml(entry.productName)}` : ""}</div>
                 <div class="scores-close-log__text">${escapeHtml(entry.message || "")}</div>
                 ${entry.finalState ? `<div class="scores-close-log__text">${escapeHtml(entry.finalState)}</div>` : ""}
+                ${entry.detail ? `<div class="scores-close-log__text"><strong>Detalle:</strong> ${escapeHtml(entry.detail)}</div>` : ""}
             </article>
         `).join("");
     }

@@ -314,7 +314,14 @@ public sealed partial class DataverseService
                 {
                     recordSucceeded = false;
                     errorCount++;
-                    logs.Add(BuildMonthCloseLog("error", context.Record.RecordId, context.Record.ClientName, line.ProductName, CompactMonthCloseError(ex.Message)));
+                    var errorDetail = BuildMonthCloseErrorDetail(ex);
+                    logs.Add(BuildMonthCloseLog(
+                        "error",
+                        context.Record.RecordId,
+                        context.Record.ClientName,
+                        line.ProductName,
+                        CompactMonthCloseError(errorDetail),
+                        errorDetail));
                 }
             }
 
@@ -531,6 +538,7 @@ public sealed partial class DataverseService
                 catch (InvalidOperationException ex)
                 {
                     errorCount++;
+                    var errorDetail = BuildMonthCloseErrorDetail(ex);
                     logs.Add(BuildMonthCloseLog(
                         "error",
                         "error",
@@ -538,8 +546,9 @@ public sealed partial class DataverseService
                         linePlan.Record.RecordId,
                         linePlan.Record.ClientName,
                         linePlan.Line.ProductName,
-                        CompactMonthCloseError(ex.Message),
-                        ""));
+                        CompactMonthCloseError(errorDetail),
+                        "",
+                        errorDetail));
                 }
             }
 
@@ -669,6 +678,7 @@ public sealed partial class DataverseService
                 catch (InvalidOperationException ex)
                 {
                     errorCount++;
+                    var errorDetail = BuildMonthCloseErrorDetail(ex);
                     logs.Add(BuildMonthCloseLog(
                         "error",
                         "undo-error",
@@ -676,8 +686,9 @@ public sealed partial class DataverseService
                         recordPlan.Record.RecordId,
                         recordPlan.Record.ClientName,
                         lineSnapshot.ProductName,
-                        CompactMonthCloseError(ex.Message),
-                        ""));
+                        CompactMonthCloseError(errorDetail),
+                        "",
+                        errorDetail));
                 }
             }
 
@@ -1786,6 +1797,7 @@ public sealed partial class DataverseService
         var hasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(line);
         var productLineOptionValue = ResolveSalesPerformanceProductLineOptionValue(detail, line);
         var warnings = BuildMonthCloseWarnings(record, detail, line);
+        var optionalFieldWarnings = BuildSalesPerformanceCreateOptionalFieldWarnings();
 
         var basePayload = new Dictionary<string, object?>
         {
@@ -1821,6 +1833,7 @@ public sealed partial class DataverseService
             "cr07a_producto");
 
         Exception? lastError = null;
+        var attemptDiagnostics = new List<string>();
         foreach (var clientLookupLogicalName in clientLookupCandidates)
         {
             foreach (var productLookupLogicalName in productLookupCandidates)
@@ -1830,24 +1843,60 @@ public sealed partial class DataverseService
                     [$"{clientLookupLogicalName}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})",
                     [$"{productLookupLogicalName}@odata.bind"] = $"/{ProductsEntitySetName}({productId})"
                 };
+                var attemptWarnings = new List<string>(warnings);
+                var removedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                try
+                while (true)
                 {
-                    await CallDataverseSendAsync($"/api/data/v9.2/{_salesPerformanceTableSetName}", "POST", payload, user, ct);
-                    return new SalesPerformanceCreateResult
+                    try
                     {
-                        FinalState = BuildCreatedLineState(record, detail, line),
-                        Warnings = warnings
-                    };
-                }
-                catch (InvalidOperationException ex)
-                {
-                    lastError = ex;
+                        await CallDataverseSendAsync($"/api/data/v9.2/{_salesPerformanceTableSetName}", "POST", payload, user, ct);
+                        return new SalesPerformanceCreateResult
+                        {
+                            FinalState = BuildCreatedLineState(
+                                record,
+                                detail,
+                                line,
+                                includeContractType: payload.ContainsKey(_salesPerformanceContractTypeField),
+                                includeAutoBill: payload.ContainsKey(_salesPerformanceAutoBillField),
+                                includeHasVat: payload.ContainsKey(_salesPerformanceHasVatField),
+                                includeProductLine: payload.ContainsKey(_salesPerformanceProductLineField),
+                                includeBillingDay: payload.ContainsKey(_salesPerformanceBillingDayField),
+                                includeRenewalDate: payload.ContainsKey(_salesPerformanceRenewalDateField)),
+                            Warnings = attemptWarnings
+                                .Where(value => !string.IsNullOrWhiteSpace(value))
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .ToList()
+                        };
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        lastError = ex;
+                        var errorDetail = BuildMonthCloseErrorDetail(ex);
+                        attemptDiagnostics.Add(
+                            $"Lookup cliente={clientLookupLogicalName}, producto={productLookupLogicalName}, payload={BuildSalesPerformancePayloadSummary(payload)} -> {CompactMonthCloseError(errorDetail)}");
+
+                        var removableField = ResolveRetryableCreateField(errorDetail, payload.Keys, optionalFieldWarnings.Keys, removedFields);
+                        if (string.IsNullOrWhiteSpace(removableField))
+                            break;
+
+                        payload.Remove(removableField);
+                        removedFields.Add(removableField);
+
+                        if (optionalFieldWarnings.TryGetValue(removableField, out var warning)
+                            && !attemptWarnings.Contains(warning, StringComparer.OrdinalIgnoreCase))
+                        {
+                            attemptWarnings.Add(warning);
+                        }
+                    }
                 }
             }
         }
 
-        throw new InvalidOperationException("No se pudo crear la linea en cr07a_salesperformancerecord.", lastError);
+        var diagnosticDetail = attemptDiagnostics.Count == 0
+            ? ""
+            : $" Intentos: {string.Join(" | ", attemptDiagnostics)}";
+        throw new InvalidOperationException($"No se pudo crear la linea en cr07a_salesperformancerecord.{diagnosticDetail}", lastError);
     }
 
     private async Task UpdateScoreAdditionalDataAsync(
@@ -1873,7 +1922,8 @@ public sealed partial class DataverseService
         string clientName,
         string productName,
         string message,
-        string finalState) =>
+        string finalState,
+        string detail = "") =>
         new()
         {
             Level = level,
@@ -1883,11 +1933,18 @@ public sealed partial class DataverseService
             ClientName = clientName,
             ProductName = productName,
             Message = message,
-            FinalState = finalState
+            FinalState = finalState,
+            Detail = detail
         };
 
-    private static ScoreMonthCloseLogEntryDto BuildMonthCloseLog(string level, string recordId, string clientName, string productName, string message) =>
-        BuildMonthCloseLog(level, "", "", recordId, clientName, productName, message, "");
+    private static ScoreMonthCloseLogEntryDto BuildMonthCloseLog(
+        string level,
+        string recordId,
+        string clientName,
+        string productName,
+        string message,
+        string detail = "") =>
+        BuildMonthCloseLog(level, "", "", recordId, clientName, productName, message, "", detail);
 
     private static string CompactMonthCloseError(string raw)
     {
@@ -2130,7 +2187,16 @@ public sealed partial class DataverseService
         return warnings;
     }
 
-    private static string BuildCreatedLineState(ScoreRecordDto record, ScoreVerificationDetailDto detail, ScoreVerificationLineInput line)
+    private static string BuildCreatedLineState(
+        ScoreRecordDto record,
+        ScoreVerificationDetailDto detail,
+        ScoreVerificationLineInput line,
+        bool includeContractType,
+        bool includeAutoBill,
+        bool includeHasVat,
+        bool includeProductLine,
+        bool includeBillingDay,
+        bool includeRenewalDate)
     {
         var renewalDateValue = ResolveSalesPerformanceRenewalDate(detail);
         var billingDay = ResolveSalesPerformanceBillingDay(detail);
@@ -2138,12 +2204,12 @@ public sealed partial class DataverseService
         var hasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(line);
 
         return $"Cliente: {record.ClientName}. Producto: {line.ProductName}. Cantidad: {Math.Max(line.Quantity, 0)}. " +
-               $"Venta UND USD: {line.SaleUnit:0.##}. Contrato: {ResolveOptionLabel(PuntajesOptionCatalog.ContractTypeOptions, detail.ContractTypeOptionValue)}. " +
-               $"Facturable automatico: {ResolveOptionLabel(PuntajesOptionCatalog.AutoBillOptions, detail.AutoBillOptionValue)}. " +
-               $"IVA: {ResolveOptionLabel(PuntajesOptionCatalog.HasVatOptions, hasVatOptionValue)}. " +
-               $"Linea: {ResolveProductLineLabel(productLineOptionValue)}. " +
-               $"Dia facturacion: {(billingDay > 0 ? billingDay.ToString(CultureInfo.InvariantCulture) : "Pendiente")}. " +
-               $"Renovacion: {(string.IsNullOrWhiteSpace(renewalDateValue) ? "Pendiente" : renewalDateValue)}.";
+               $"Venta UND USD: {line.SaleUnit:0.##}. Contrato: {(includeContractType ? ResolveOptionLabel(PuntajesOptionCatalog.ContractTypeOptions, detail.ContractTypeOptionValue) : "Pendiente manual")}. " +
+               $"Facturable automatico: {(includeAutoBill ? ResolveOptionLabel(PuntajesOptionCatalog.AutoBillOptions, detail.AutoBillOptionValue) : "Pendiente manual")}. " +
+               $"IVA: {(includeHasVat ? ResolveOptionLabel(PuntajesOptionCatalog.HasVatOptions, hasVatOptionValue) : "Pendiente manual")}. " +
+               $"Linea: {(includeProductLine ? ResolveProductLineLabel(productLineOptionValue) : "Pendiente manual")}. " +
+               $"Dia facturacion: {(includeBillingDay && billingDay > 0 ? billingDay.ToString(CultureInfo.InvariantCulture) : "Pendiente manual")}. " +
+               $"Renovacion: {(includeRenewalDate && !string.IsNullOrWhiteSpace(renewalDateValue) ? renewalDateValue : "Pendiente manual")}.";
     }
 
     private static string BuildUpdatedLineState(ScoreMonthCloseLinePlan linePlan, int previousQuantity, int appliedQuantity, int newQuantity) =>
@@ -2600,6 +2666,73 @@ public sealed partial class DataverseService
         }
 
         return messages.Count == 0 ? "Error desconocido." : string.Join(" | ", messages);
+    }
+
+    private Dictionary<string, string> BuildSalesPerformanceCreateOptionalFieldWarnings() =>
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            [_salesPerformanceHasVatField] = "No se pudo guardar el indicador de IVA; debes completarlo manualmente.",
+            [_salesPerformanceAutoBillField] = "No se pudo guardar el indicador de facturacion automatica; debes revisarlo manualmente.",
+            [_salesPerformanceProductLineField] = "No se pudo guardar la linea de producto; debes completarla manualmente.",
+            [_salesPerformanceContractTypeField] = "No se pudo guardar el tipo de contrato; debes completarlo manualmente.",
+            [_salesPerformanceBillingDayField] = "No se pudo guardar el dia de facturacion; debes completarlo manualmente.",
+            [_salesPerformanceRenewalDateField] = "No se pudo guardar la fecha de renovacion; debes revisarla manualmente."
+        };
+
+    private static string? ResolveRetryableCreateField(
+        string errorDetail,
+        IEnumerable<string> payloadFields,
+        IEnumerable<string> optionalFields,
+        ISet<string> removedFields)
+    {
+        var payloadFieldSet = new HashSet<string>(
+            payloadFields.Where(value => !string.IsNullOrWhiteSpace(value)),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var optionalField in optionalFields.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            if (removedFields.Contains(optionalField))
+                continue;
+
+            if (!payloadFieldSet.Contains(optionalField))
+                continue;
+
+            if (errorDetail.Contains(optionalField, StringComparison.OrdinalIgnoreCase))
+                return optionalField;
+        }
+
+        return null;
+    }
+
+    private static string BuildSalesPerformancePayloadSummary(IReadOnlyDictionary<string, object?> payload)
+    {
+        return string.Join(
+            ", ",
+            payload
+                .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(item => $"{item.Key}={FormatPayloadValue(item.Value)}"));
+    }
+
+    private static string FormatPayloadValue(object? value)
+    {
+        if (value is null)
+            return "null";
+
+        return value switch
+        {
+            string text when text.Length > 80 => $"{text[..77]}...",
+            string text => text,
+            DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("O", CultureInfo.InvariantCulture),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString() ?? ""
+        };
+    }
+
+    private static string BuildMonthCloseErrorDetail(Exception ex)
+    {
+        var summary = SummarizeExceptionMessages(ex);
+        return string.Join(" ", summary.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static string FormatDateTimeDisplay(DateTimeOffset? value)
