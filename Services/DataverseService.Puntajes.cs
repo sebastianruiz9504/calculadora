@@ -45,14 +45,18 @@ public sealed partial class DataverseService
         var relativeUrl = $"/api/data/v9.2/{_scoresTableSetName}?$filter={Uri.EscapeDataString(string.Join(" and ", filterParts))}&$orderby={_scoresContractStartDateField} asc";
         var rawRecords = await GetDataverseEntitiesAsync(relativeUrl, httpContext.User, ct, AddFormattedValueHeaders);
 
-        var records = rawRecords
+        var contexts = rawRecords
             .Select(item => ParseScoreRecordContext(item, monthInfo.PeriodKey))
             .Where(item => item is not null)
-            .Select(item => item!.Record)
+            .Select(item => item!)
+            .ToList();
+        var records = contexts
+            .Select(item => item.Record)
             .OrderBy(item => item.ContractStartDateValue, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Offer, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var latestBatch = ResolveLatestMonthCloseBatch(contexts, monthInfo.PeriodKey);
 
         var groups = records
             .GroupBy(GetScoreClientGroupKey, StringComparer.OrdinalIgnoreCase)
@@ -105,6 +109,12 @@ public sealed partial class DataverseService
             SupportsMonthClose = monthInfo.SupportsClose,
             MonthClosePeriodKey = monthInfo.PeriodKey,
             MonthClosePeriodLabel = monthInfo.PeriodLabel,
+            CanUndoMonthClose = latestBatch is not null,
+            UndoMonthCloseLabel = latestBatch is null
+                ? ""
+                : string.IsNullOrWhiteSpace(latestBatch.ClosedBy)
+                    ? $"Ultimo cierre: {FormatDateTimeDisplay(latestBatch.ClosedAt)}"
+                    : $"Ultimo cierre: {FormatDateTimeDisplay(latestBatch.ClosedAt)} por {latestBatch.ClosedBy}",
             Groups = groups
         };
     }
@@ -332,6 +342,533 @@ public sealed partial class DataverseService
             SkippedCount = skippedCount,
             ErrorCount = errorCount,
             Logs = logs
+        };
+    }
+
+    public async Task<ScoreMonthClosePreviewResultDto> PreviewScoreMonthCloseAsync(ScorePeriodFilter filter, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var plan = await BuildScoreMonthClosePlanAsync(filter, httpContext.User, ct);
+        return BuildMonthClosePreviewResult(plan);
+    }
+
+    public async Task<ScoreMonthCloseResultDto> CloseScoreMonthAsync(ScoreMonthCloseRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.Confirmed)
+            throw new InvalidOperationException("Debes confirmar el cierre desde la ventana de revision antes de enviarlo.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var filter = ScorePeriodFilterExtensions.ParseOrDefault(request.Filter);
+        var plan = await BuildScoreMonthClosePlanAsync(filter, httpContext.User, ct);
+        var currentUser = await GetCurrentUserAsync(ct) ?? new Models.CurrentUserInfo();
+        var decisions = (request.Decisions ?? new List<ScoreMonthCloseLineDecisionDto>())
+            .Where(item => !string.IsNullOrWhiteSpace(item.LineKey))
+            .GroupBy(item => item.LineKey.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last().Include, StringComparer.OrdinalIgnoreCase);
+
+        var logs = new List<ScoreMonthCloseLogEntryDto>();
+        var batchId = Guid.NewGuid().ToString("N");
+        var createdCount = 0;
+        var updatedCount = 0;
+        var skippedCount = 0;
+        var selectedCount = 0;
+        var excludedCount = 0;
+        var warningCount = 0;
+        var errorCount = 0;
+
+        foreach (var recordPlan in plan.Records)
+        {
+            if (recordPlan.Lines.Count == 0)
+            {
+                errorCount++;
+                logs.Add(BuildMonthCloseLog(
+                    "error",
+                    "error",
+                    "",
+                    recordPlan.Record.RecordId,
+                    recordPlan.Record.ClientName,
+                    "",
+                    "El registro no tiene lineas para consolidar.",
+                    ""));
+                continue;
+            }
+
+            var appliedSnapshots = new List<ScoreMonthlyClosureLineSnapshot>();
+
+            foreach (var linePlan in recordPlan.Lines)
+            {
+                if (linePlan.IsAlreadyClosed)
+                {
+                    skippedCount++;
+                    logs.Add(BuildMonthCloseLog(
+                        "info",
+                        "already-closed",
+                        linePlan.LineKey,
+                        linePlan.Record.RecordId,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName,
+                        $"La linea ya estaba consolidada en {plan.MonthInfo.PeriodLabel}.",
+                        BuildPreviewLineState(linePlan)));
+                    continue;
+                }
+
+                var include = linePlan.SelectedByDefault;
+                if (linePlan.CanChangeSelection && decisions.TryGetValue(linePlan.LineKey, out var overrideInclude))
+                    include = overrideInclude;
+
+                if (!include)
+                {
+                    excludedCount++;
+                    appliedSnapshots.Add(BuildClosureLineSnapshot(
+                        linePlan,
+                        status: "excluded",
+                        salesPerformanceRecordId: "",
+                        previousQuantity: 0,
+                        appliedQuantity: 0,
+                        finalQuantity: 0,
+                        warnings: Array.Empty<string>()));
+                    logs.Add(BuildMonthCloseLog(
+                        "info",
+                        "excluded",
+                        linePlan.LineKey,
+                        linePlan.Record.RecordId,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName,
+                        string.IsNullOrWhiteSpace(linePlan.Reason)
+                            ? "La linea se excluyo del cierre por decision del usuario."
+                            : linePlan.Reason,
+                        BuildPreviewLineState(linePlan)));
+                    continue;
+                }
+
+                selectedCount++;
+
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(linePlan.Record.ClientId))
+                        throw new InvalidOperationException("El registro no tiene cliente lookup valido.");
+
+                    if (string.IsNullOrWhiteSpace(linePlan.Line.ProductId))
+                        throw new InvalidOperationException("Debes seleccionar un producto valido desde el buscador antes de cerrar el mes.");
+
+                    if (!plan.SalesPerformanceCache.TryGetValue(linePlan.Record.ClientId, out var clientRecords))
+                    {
+                        clientRecords = await GetSalesPerformanceRecordsByClientAsync(linePlan.Record.ClientId, httpContext.User, ct);
+                        plan.SalesPerformanceCache[linePlan.Record.ClientId] = clientRecords;
+                    }
+
+                    var currentMatch = clientRecords
+                        .FirstOrDefault(item => string.Equals(item.ProductId, linePlan.Line.ProductId, StringComparison.OrdinalIgnoreCase));
+
+                    if (currentMatch is not null && !string.IsNullOrWhiteSpace(currentMatch.RecordId))
+                    {
+                        var previousQuantity = Math.Max(currentMatch.Quantity, 0);
+                        var appliedQuantity = Math.Max(linePlan.Line.Quantity, 0);
+                        var newQuantity = previousQuantity + appliedQuantity;
+
+                        await UpdateSalesPerformanceQuantityAsync(currentMatch.RecordId, newQuantity, httpContext.User, ct);
+                        currentMatch.Quantity = newQuantity;
+                        updatedCount++;
+
+                        logs.Add(BuildMonthCloseLog(
+                            "success",
+                            "increment",
+                            linePlan.LineKey,
+                            linePlan.Record.RecordId,
+                            linePlan.Record.ClientName,
+                            linePlan.Line.ProductName,
+                            $"Cantidad incrementada: {previousQuantity} + {appliedQuantity} = {newQuantity}.",
+                            BuildUpdatedLineState(linePlan, previousQuantity, appliedQuantity, newQuantity)));
+                        appliedSnapshots.Add(BuildClosureLineSnapshot(
+                            linePlan,
+                            status: "updated",
+                            salesPerformanceRecordId: currentMatch.RecordId,
+                            previousQuantity: previousQuantity,
+                            appliedQuantity: appliedQuantity,
+                            finalQuantity: newQuantity,
+                            warnings: Array.Empty<string>()));
+                        continue;
+                    }
+
+                    var createResult = await CreateSalesPerformanceRecordAsync(linePlan.Record, linePlan.Detail, linePlan.Line, httpContext.User, ct);
+                    var refreshedClientRecords = await GetSalesPerformanceRecordsByClientAsync(linePlan.Record.ClientId, httpContext.User, ct);
+                    plan.SalesPerformanceCache[linePlan.Record.ClientId] = refreshedClientRecords;
+                    var createdRecordId = refreshedClientRecords
+                        .FirstOrDefault(item => string.Equals(item.ProductId, linePlan.Line.ProductId, StringComparison.OrdinalIgnoreCase))
+                        ?.RecordId
+                        ?? "";
+                    createdCount++;
+
+                    if (createResult.Warnings.Count > 0)
+                        warningCount++;
+
+                    logs.Add(BuildMonthCloseLog(
+                        createResult.Warnings.Count > 0 ? "warning" : "success",
+                        "create",
+                        linePlan.LineKey,
+                        linePlan.Record.RecordId,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName,
+                        createResult.Warnings.Count > 0
+                            ? $"Se creo la linea, pero queda revision manual pendiente: {string.Join(" ", createResult.Warnings)}"
+                            : "Se creo una nueva linea en cr07a_salesperformancerecord.",
+                        createResult.FinalState));
+                    appliedSnapshots.Add(BuildClosureLineSnapshot(
+                        linePlan,
+                        status: "created",
+                        salesPerformanceRecordId: createdRecordId,
+                        previousQuantity: 0,
+                        appliedQuantity: Math.Max(linePlan.Line.Quantity, 0),
+                        finalQuantity: Math.Max(linePlan.Line.Quantity, 0),
+                        warnings: createResult.Warnings));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    errorCount++;
+                    logs.Add(BuildMonthCloseLog(
+                        "error",
+                        "error",
+                        linePlan.LineKey,
+                        linePlan.Record.RecordId,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName,
+                        CompactMonthCloseError(ex.Message),
+                        ""));
+                }
+            }
+
+            if (appliedSnapshots.Count == 0)
+                continue;
+
+            AppendMonthlyClosure(recordPlan.Context.Additional, plan.MonthInfo.PeriodKey, batchId, currentUser, appliedSnapshots);
+            await UpdateScoreAdditionalDataAsync(recordPlan.Record.RecordId, recordPlan.Context.Additional, httpContext.User, ct);
+        }
+
+        var hasErrors = errorCount > 0;
+        var hasWarnings = warningCount > 0;
+        var message = hasErrors
+            ? $"Cierre ejecutado con novedades para {plan.MonthInfo.PeriodLabel}. Nuevas: {createdCount}. Incrementos: {updatedCount}. Excluidas: {excludedCount}. Ya cerradas: {skippedCount}. Errores: {errorCount}."
+            : hasWarnings
+                ? $"Cierre ejecutado para {plan.MonthInfo.PeriodLabel} con revision manual pendiente. Nuevas: {createdCount}. Incrementos: {updatedCount}. Excluidas: {excludedCount}. Ya cerradas: {skippedCount}."
+                : $"Cierre ejecutado correctamente para {plan.MonthInfo.PeriodLabel}. Nuevas: {createdCount}. Incrementos: {updatedCount}. Excluidas: {excludedCount}. Ya cerradas: {skippedCount}.";
+
+        return new ScoreMonthCloseResultDto
+        {
+            HasErrors = hasErrors,
+            HasWarnings = hasWarnings,
+            Message = message,
+            PeriodKey = plan.MonthInfo.PeriodKey,
+            PeriodLabel = plan.MonthInfo.PeriodLabel,
+            BatchId = batchId,
+            CanUndo = createdCount > 0 || updatedCount > 0 || excludedCount > 0,
+            ProcessedRecordsCount = plan.Records.Count,
+            SelectedCount = selectedCount,
+            ExcludedCount = excludedCount,
+            CreatedCount = createdCount,
+            UpdatedCount = updatedCount,
+            SkippedCount = skippedCount,
+            WarningCount = warningCount,
+            ErrorCount = errorCount,
+            Logs = logs
+        };
+    }
+
+    public async Task<ScoreMonthUndoResultDto> UndoScoreMonthCloseAsync(ScorePeriodFilter filter, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var plan = await BuildScoreMonthClosePlanAsync(filter, httpContext.User, ct);
+        var latestBatch = ResolveLatestMonthCloseBatch(plan.Records.Select(item => item.Context), plan.MonthInfo.PeriodKey)
+            ?? throw new InvalidOperationException($"No hay un cierre reciente de {plan.MonthInfo.PeriodLabel} para deshacer.");
+
+        var revertedCreatedCount = 0;
+        var revertedUpdatedCount = 0;
+        var restoredExcludedCount = 0;
+        var errorCount = 0;
+        var logs = new List<ScoreMonthCloseLogEntryDto>();
+
+        foreach (var recordPlan in plan.Records)
+        {
+            var batchSnapshot = recordPlan.Context.Additional.MonthlyClosures
+                .FirstOrDefault(item =>
+                    string.Equals(item.PeriodKey, plan.MonthInfo.PeriodKey, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(item.BatchId, latestBatch.BatchId, StringComparison.OrdinalIgnoreCase));
+            if (batchSnapshot is null || batchSnapshot.Lines.Count == 0)
+                continue;
+
+            var revertedLineKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var lineSnapshot in batchSnapshot.Lines)
+            {
+                try
+                {
+                    switch (lineSnapshot.Status)
+                    {
+                        case "created":
+                            if (!string.IsNullOrWhiteSpace(lineSnapshot.SalesPerformanceRecordId))
+                                await DeleteSalesPerformanceRecordAsync(lineSnapshot.SalesPerformanceRecordId, httpContext.User, ct);
+
+                            revertedCreatedCount++;
+                            revertedLineKeys.Add(lineSnapshot.LineKey);
+                            logs.Add(BuildMonthCloseLog(
+                                "success",
+                                "undo-create",
+                                lineSnapshot.LineKey,
+                                recordPlan.Record.RecordId,
+                                recordPlan.Record.ClientName,
+                                lineSnapshot.ProductName,
+                                "Se elimino la linea creada por el ultimo cierre.",
+                                ""));
+                            break;
+
+                        case "updated":
+                            if (string.IsNullOrWhiteSpace(lineSnapshot.SalesPerformanceRecordId))
+                                throw new InvalidOperationException("No se encontro el identificador del registro incrementado para revertirlo.");
+
+                            await UpdateSalesPerformanceQuantityAsync(
+                                lineSnapshot.SalesPerformanceRecordId,
+                                Math.Max(lineSnapshot.PreviousQuantity, 0),
+                                httpContext.User,
+                                ct);
+
+                            revertedUpdatedCount++;
+                            revertedLineKeys.Add(lineSnapshot.LineKey);
+                            logs.Add(BuildMonthCloseLog(
+                                "success",
+                                "undo-increment",
+                                lineSnapshot.LineKey,
+                                recordPlan.Record.RecordId,
+                                recordPlan.Record.ClientName,
+                                lineSnapshot.ProductName,
+                                $"Se restauro la cantidad anterior a {Math.Max(lineSnapshot.PreviousQuantity, 0)}.",
+                                ""));
+                            break;
+
+                        case "excluded":
+                            restoredExcludedCount++;
+                            revertedLineKeys.Add(lineSnapshot.LineKey);
+                            logs.Add(BuildMonthCloseLog(
+                                "info",
+                                "undo-excluded",
+                                lineSnapshot.LineKey,
+                                recordPlan.Record.RecordId,
+                                recordPlan.Record.ClientName,
+                                lineSnapshot.ProductName,
+                                "La linea vuelve a quedar disponible para un nuevo cierre.",
+                                ""));
+                            break;
+                    }
+                }
+                catch (InvalidOperationException ex)
+                {
+                    errorCount++;
+                    logs.Add(BuildMonthCloseLog(
+                        "error",
+                        "undo-error",
+                        lineSnapshot.LineKey,
+                        recordPlan.Record.RecordId,
+                        recordPlan.Record.ClientName,
+                        lineSnapshot.ProductName,
+                        CompactMonthCloseError(ex.Message),
+                        ""));
+                }
+            }
+
+            if (revertedLineKeys.Count == 0)
+                continue;
+
+            RemoveMonthlyClosureLines(recordPlan.Context.Additional, plan.MonthInfo.PeriodKey, latestBatch.BatchId, revertedLineKeys);
+            await UpdateScoreAdditionalDataAsync(recordPlan.Record.RecordId, recordPlan.Context.Additional, httpContext.User, ct);
+        }
+
+        var hasErrors = errorCount > 0;
+        var message = hasErrors
+            ? $"Se revirtio parcialmente el ultimo cierre de {plan.MonthInfo.PeriodLabel}. Eliminadas: {revertedCreatedCount}. Cantidades restauradas: {revertedUpdatedCount}. Exclusiones liberadas: {restoredExcludedCount}. Errores: {errorCount}."
+            : $"Se deshizo el ultimo cierre de {plan.MonthInfo.PeriodLabel}. Eliminadas: {revertedCreatedCount}. Cantidades restauradas: {revertedUpdatedCount}. Exclusiones liberadas: {restoredExcludedCount}.";
+
+        return new ScoreMonthUndoResultDto
+        {
+            HasErrors = hasErrors,
+            Message = message,
+            PeriodKey = plan.MonthInfo.PeriodKey,
+            PeriodLabel = plan.MonthInfo.PeriodLabel,
+            BatchId = latestBatch.BatchId,
+            RevertedCreatedCount = revertedCreatedCount,
+            RevertedUpdatedCount = revertedUpdatedCount,
+            RestoredExcludedCount = restoredExcludedCount,
+            ErrorCount = errorCount,
+            Logs = logs
+        };
+    }
+
+    private async Task<ScoreMonthClosePlan> BuildScoreMonthClosePlanAsync(
+        ScorePeriodFilter filter,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var monthInfo = GetScoreMonthInfo(filter);
+        if (!monthInfo.SupportsClose || string.IsNullOrWhiteSpace(monthInfo.PeriodKey))
+            throw new InvalidOperationException("El cierre de mes solo esta disponible en vistas mensuales.");
+
+        var filterParts = new List<string>
+        {
+            $"{_scoresContractStartDateField} ne null",
+            BuildScorePeriodFilter(filter)
+        };
+
+        var relativeUrl = $"/api/data/v9.2/{_scoresTableSetName}?$filter={Uri.EscapeDataString(string.Join(" and ", filterParts.Where(part => !string.IsNullOrWhiteSpace(part))))}&$orderby={_scoresContractStartDateField} asc";
+        var rawRecords = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        var contexts = rawRecords
+            .Select(item => ParseScoreRecordContext(item, monthInfo.PeriodKey))
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .OrderBy(item => item.Record.ContractStartDateValue, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Record.ClientName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (contexts.Count == 0)
+            throw new InvalidOperationException("No hay registros para cerrar en el periodo seleccionado.");
+
+        var unverifiedCount = contexts.Count(item => !item.Record.IsVerified);
+        if (unverifiedCount > 0)
+            throw new InvalidOperationException($"No puedes cerrar el mes hasta verificar las {unverifiedCount} lineas pendientes.");
+
+        var scenarioCache = new Dictionary<string, ScenarioStoredDto?>(StringComparer.OrdinalIgnoreCase);
+        var salesPerformanceCache = new Dictionary<string, List<SalesPerformanceCompactRecord>>(StringComparer.OrdinalIgnoreCase);
+        var recordPlans = new List<ScoreMonthCloseRecordPlan>();
+
+        foreach (var context in contexts)
+        {
+            ScenarioStoredDto? scenario = null;
+            if (!string.IsNullOrWhiteSpace(context.Record.BusinessId))
+            {
+                if (!scenarioCache.TryGetValue(context.Record.BusinessId, out scenario))
+                {
+                    scenario = await GetScenarioByBusinessIdAsync(context.Record.BusinessId, user, ct);
+                    scenarioCache[context.Record.BusinessId] = scenario;
+                }
+            }
+
+            var detail = BuildScoreVerificationDetail(context, scenario);
+            var linePlans = new List<ScoreMonthCloseLinePlan>();
+
+            foreach (var (line, index) in detail.Lines.Select((value, index) => (value, index)))
+            {
+                var lineKey = BuildMonthCloseLineKey(context.Record.RecordId, line.LineId, index + 1);
+                var existingSnapshot = ResolveMonthlyClosureLine(context.Additional, monthInfo.PeriodKey, lineKey);
+                var isAlreadyClosed = existingSnapshot is not null;
+                var selectedByDefault = !isAlreadyClosed && detail.AutoBillOptionValue == 1;
+
+                List<SalesPerformanceCompactRecord> clientRecords = new();
+                if (!string.IsNullOrWhiteSpace(context.Record.ClientId))
+                {
+                    if (!salesPerformanceCache.TryGetValue(context.Record.ClientId, out var cachedClientRecords))
+                    {
+                        clientRecords = await GetSalesPerformanceRecordsByClientAsync(context.Record.ClientId, user, ct);
+                        salesPerformanceCache[context.Record.ClientId] = clientRecords;
+                    }
+                    else
+                    {
+                        clientRecords = cachedClientRecords;
+                    }
+                }
+
+                var existingMatch = string.IsNullOrWhiteSpace(line.ProductId)
+                    ? null
+                    : clientRecords.FirstOrDefault(item => string.Equals(item.ProductId, line.ProductId, StringComparison.OrdinalIgnoreCase));
+
+                linePlans.Add(new ScoreMonthCloseLinePlan
+                {
+                    Context = context,
+                    Record = context.Record,
+                    Detail = detail,
+                    Line = line,
+                    LineKey = lineKey,
+                    ExistingMatch = existingMatch,
+                    ExistingClosure = existingSnapshot,
+                    IsAlreadyClosed = isAlreadyClosed,
+                    SelectedByDefault = selectedByDefault,
+                    CanChangeSelection = !isAlreadyClosed,
+                    Reason = ResolveMonthCloseLineReason(detail.AutoBillOptionValue, isAlreadyClosed),
+                    PredictedAction = existingMatch is not null ? "increment" : "create",
+                    Warnings = BuildMonthCloseWarnings(context.Record, detail, line)
+                });
+            }
+
+            recordPlans.Add(new ScoreMonthCloseRecordPlan
+            {
+                Context = context,
+                Record = context.Record,
+                Detail = detail,
+                Lines = linePlans
+            });
+        }
+
+        return new ScoreMonthClosePlan
+        {
+            MonthInfo = monthInfo,
+            Records = recordPlans,
+            SalesPerformanceCache = salesPerformanceCache
+        };
+    }
+
+    private ScoreMonthClosePreviewResultDto BuildMonthClosePreviewResult(ScoreMonthClosePlan plan)
+    {
+        var lines = plan.Records
+            .SelectMany(record => record.Lines)
+            .Select(linePlan => new ScoreMonthClosePreviewLineDto
+            {
+                LineKey = linePlan.LineKey,
+                RecordId = linePlan.Record.RecordId,
+                LineId = linePlan.Line.LineId,
+                ClientName = linePlan.Record.ClientName,
+                ProductName = linePlan.Line.ProductName,
+                ProductId = linePlan.Line.ProductId,
+                Quantity = Math.Max(linePlan.Line.Quantity, 0),
+                UnitSaleUsd = linePlan.Line.SaleUnit,
+                AutoBillOptionValue = linePlan.Detail.AutoBillOptionValue,
+                BillingDay = ResolveSalesPerformanceBillingDay(linePlan.Detail),
+                ProductLineOptionValue = ResolveSalesPerformanceProductLineOptionValue(linePlan.Detail, linePlan.Line),
+                ContractTypeOptionValue = linePlan.Detail.ContractTypeOptionValue,
+                HasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(linePlan.Line),
+                RenewalDateValue = ResolveSalesPerformanceRenewalDate(linePlan.Detail),
+                RenewalDateDisplay = FormatDateDisplay(ResolveSalesPerformanceRenewalDate(linePlan.Detail)),
+                SelectedByDefault = linePlan.SelectedByDefault,
+                CanChangeSelection = linePlan.CanChangeSelection,
+                Reason = linePlan.Reason,
+                PredictedAction = linePlan.PredictedAction,
+                ExistingQuantity = Math.Max(linePlan.ExistingMatch?.Quantity ?? 0, 0),
+                FinalQuantity = linePlan.ExistingMatch is null
+                    ? Math.Max(linePlan.Line.Quantity, 0)
+                    : Math.Max(linePlan.ExistingMatch.Quantity, 0) + Math.Max(linePlan.Line.Quantity, 0),
+                RequiresManualReview = linePlan.Warnings.Count > 0,
+                Warnings = linePlan.Warnings
+            })
+            .ToList();
+        var selectedCount = lines.Count(item => item.SelectedByDefault);
+        var warningCount = lines.Count(item => item.RequiresManualReview);
+        var latestBatch = ResolveLatestMonthCloseBatch(plan.Records.Select(item => item.Context), plan.MonthInfo.PeriodKey);
+
+        return new ScoreMonthClosePreviewResultDto
+        {
+            Message = selectedCount > 0
+                ? $"{plan.MonthInfo.PeriodLabel}: revisa las lineas antes de enviarlas a sales performance."
+                : $"{plan.MonthInfo.PeriodLabel}: no hay lineas seleccionadas por defecto. Puedes ajustar la seleccion antes de confirmar.",
+            PeriodKey = plan.MonthInfo.PeriodKey,
+            PeriodLabel = plan.MonthInfo.PeriodLabel,
+            TotalLines = lines.Count,
+            SelectedCount = selectedCount,
+            ExcludedCount = lines.Count - selectedCount,
+            WarningCount = warningCount,
+            CanUndo = latestBatch is not null,
+            Lines = lines
         };
     }
 
@@ -584,7 +1121,10 @@ public sealed partial class DataverseService
                 RequiresProration = ResolveStoredRequiresProration(additional, parsedDescription),
                 ScenarioStartDateValue = FirstNonEmpty(additional.ScenarioStartDateValue, parsedDescription.ScenarioStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 ScenarioEndDateValue = FirstNonEmpty(additional.ScenarioEndDateValue, parsedDescription.ScenarioEndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                IsClosedForActivePeriod = HasMonthlyClosure(additional, activePeriodKey),
+                IsClosedForActivePeriod = HasMonthlyClosure(
+                    additional,
+                    activePeriodKey,
+                    productLines.Select((line, index) => BuildMonthCloseLineKey(recordId, line.LineId, index + 1))),
                 ActivePeriodKey = activePeriodKey ?? "",
                 LastVerifiedAtDisplay = FormatDateTimeDisplay(additional.VerifiedAt),
                 LastVerifiedBy = additional.VerifiedBy ?? "",
@@ -1159,6 +1699,9 @@ public sealed partial class DataverseService
                 var select = string.Join(",", new[]
                 {
                     _salesPerformanceIdField,
+                    "_cr07a_clientelookup_value",
+                    "_cr07a_clienteid_value",
+                    "_cr07a_producto_value",
                     DefaultSalesPerformanceQuantityField,
                     DefaultSalesPerformanceUnitSaleUsdField
                 });
@@ -1205,7 +1748,8 @@ public sealed partial class DataverseService
             RecordId = recordId,
             ClientId = ReadString(item, clientLookupProperty).Trim(),
             ProductId = ReadString(item, productLookupProperty).Trim(),
-            Quantity = ReadIntFlexible(item, DefaultSalesPerformanceQuantityField)
+            Quantity = ReadIntFlexible(item, DefaultSalesPerformanceQuantityField),
+            UnitSaleUsd = ReadDecimal(item, DefaultSalesPerformanceUnitSaleUsdField) ?? 0m
         };
     }
 
@@ -1224,7 +1768,16 @@ public sealed partial class DataverseService
         await CallDataverseSendAsync(updateUrl, "PATCH", payload, user, ct);
     }
 
-    private async Task CreateSalesPerformanceRecordAsync(
+    private async Task DeleteSalesPerformanceRecordAsync(
+        string recordId,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        await CallDataverseDeleteAsync($"/api/data/v9.2/{_salesPerformanceTableSetName}({normalizedRecordId})", user, ct);
+    }
+
+    private async Task<SalesPerformanceCreateResult> CreateSalesPerformanceRecordAsync(
         ScoreRecordDto record,
         ScoreVerificationDetailDto detail,
         ScoreVerificationLineInput line,
@@ -1235,11 +1788,10 @@ public sealed partial class DataverseService
         var productId = NormalizeGuid(line.ProductId, nameof(line.ProductId));
         var createName = BuildSalesPerformanceName(record, line);
         var renewalDateValue = ResolveSalesPerformanceRenewalDate(detail);
-        var billingDay = detail.BillingDay > 0 ? detail.BillingDay : DeriveBillingDay(detail.RenewalDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
-        var hasVatOptionValue = line.HasVatOptionValue > 0 ? line.HasVatOptionValue : ResolveHasVatOptionValue(line.HasVat);
-        var productLineOptionValue = AllowedLineOptionValues.Contains(line.LineOptionValue)
-            ? line.LineOptionValue
-            : ResolvePrimaryLineOptionValue(new[] { line }, detail.ProductLineOptionValue);
+        var billingDay = ResolveSalesPerformanceBillingDay(detail);
+        var hasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(line);
+        var productLineOptionValue = ResolveSalesPerformanceProductLineOptionValue(detail, line);
+        var warnings = BuildMonthCloseWarnings(record, detail, line);
 
         var basePayload = new Dictionary<string, object?>
         {
@@ -1247,10 +1799,14 @@ public sealed partial class DataverseService
             [DefaultSalesPerformanceQuantityField] = line.Quantity,
             [DefaultSalesPerformanceUnitSaleUsdField] = line.SaleUnit,
             [_salesPerformanceHasVatField] = hasVatOptionValue,
-            [_salesPerformanceAutoBillField] = detail.AutoBillOptionValue,
-            [_salesPerformanceProductLineField] = productLineOptionValue,
-            [_salesPerformanceContractTypeField] = detail.ContractTypeOptionValue
+            [_salesPerformanceAutoBillField] = detail.AutoBillOptionValue
         };
+
+        if (HasSalesPerformanceProductLineValue(detail, line))
+            basePayload[_salesPerformanceProductLineField] = productLineOptionValue;
+
+        if (AllowedContractTypeOptionValues.Contains(detail.ContractTypeOptionValue))
+            basePayload[_salesPerformanceContractTypeField] = detail.ContractTypeOptionValue;
 
         if (detail.AutoBillOptionValue == 1 && billingDay > 0)
             basePayload[_salesPerformanceBillingDayField] = billingDay;
@@ -1284,7 +1840,11 @@ public sealed partial class DataverseService
                 try
                 {
                     await CallDataverseSendAsync($"/api/data/v9.2/{_salesPerformanceTableSetName}", "POST", payload, user, ct);
-                    return;
+                    return new SalesPerformanceCreateResult
+                    {
+                        FinalState = BuildCreatedLineState(record, detail, line),
+                        Warnings = warnings
+                    };
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -1311,15 +1871,29 @@ public sealed partial class DataverseService
         await CallDataverseSendAsync(updateUrl, "PATCH", payload, user, ct);
     }
 
-    private static ScoreMonthCloseLogEntryDto BuildMonthCloseLog(string level, string recordId, string clientName, string productName, string message) =>
+    private static ScoreMonthCloseLogEntryDto BuildMonthCloseLog(
+        string level,
+        string action,
+        string lineKey,
+        string recordId,
+        string clientName,
+        string productName,
+        string message,
+        string finalState) =>
         new()
         {
             Level = level,
+            Action = action,
+            LineKey = lineKey,
             RecordId = recordId,
             ClientName = clientName,
             ProductName = productName,
-            Message = message
+            Message = message,
+            FinalState = finalState
         };
+
+    private static ScoreMonthCloseLogEntryDto BuildMonthCloseLog(string level, string recordId, string clientName, string productName, string message) =>
+        BuildMonthCloseLog(level, "", "", recordId, clientName, productName, message, "");
 
     private static string CompactMonthCloseError(string raw)
     {
@@ -1368,13 +1942,127 @@ public sealed partial class DataverseService
         additional.LastClosedBy = closure.ClosedBy;
     }
 
-    private static bool HasMonthlyClosure(ScoreAdditionalDataSnapshot additional, string? activePeriodKey)
+    private static bool HasMonthlyClosure(ScoreAdditionalDataSnapshot additional, string? activePeriodKey, IEnumerable<string>? expectedLineKeys = null)
     {
         if (string.IsNullOrWhiteSpace(activePeriodKey) || additional.MonthlyClosures.Count == 0)
             return false;
 
-        return additional.MonthlyClosures.Any(item =>
-            string.Equals(item.PeriodKey, activePeriodKey, StringComparison.OrdinalIgnoreCase));
+        var periodClosures = additional.MonthlyClosures
+            .Where(item => string.Equals(item.PeriodKey, activePeriodKey, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (periodClosures.Count == 0)
+            return false;
+
+        if (!periodClosures.Any(item => item.Lines.Count > 0))
+            return true;
+
+        var normalizedLineKeys = (expectedLineKeys ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (normalizedLineKeys.Count == 0)
+            return true;
+
+        return normalizedLineKeys.All(lineKey => ResolveMonthlyClosureLine(additional, activePeriodKey, lineKey) is not null);
+    }
+
+    private static ScoreMonthlyClosureLineSnapshot? ResolveMonthlyClosureLine(ScoreAdditionalDataSnapshot additional, string? periodKey, string? lineKey)
+    {
+        if (string.IsNullOrWhiteSpace(periodKey) || string.IsNullOrWhiteSpace(lineKey))
+            return null;
+
+        return additional.MonthlyClosures
+            .Where(item => string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.ClosedAt)
+            .SelectMany(item => item.Lines.Select(line => new { item.ClosedAt, Line = line }))
+            .Where(item => string.Equals(item.Line.LineKey, lineKey.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.ClosedAt)
+            .Select(item => item.Line)
+            .FirstOrDefault();
+    }
+
+    private static ScoreMonthlyClosureSnapshot? ResolveLatestMonthCloseBatch(IEnumerable<ScoreRecordContext> contexts, string? periodKey)
+    {
+        if (string.IsNullOrWhiteSpace(periodKey))
+            return null;
+
+        return contexts
+            .SelectMany(item => item.Additional.MonthlyClosures)
+            .Where(item =>
+                string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(item.BatchId)
+                && item.Lines.Count > 0)
+            .OrderByDescending(item => item.ClosedAt)
+            .FirstOrDefault();
+    }
+
+    private static void AppendMonthlyClosure(
+        ScoreAdditionalDataSnapshot additional,
+        string periodKey,
+        string batchId,
+        Models.CurrentUserInfo currentUser,
+        IReadOnlyList<ScoreMonthlyClosureLineSnapshot> lines)
+    {
+        if (string.IsNullOrWhiteSpace(periodKey) || string.IsNullOrWhiteSpace(batchId) || lines.Count == 0)
+            return;
+
+        additional.MonthlyClosures ??= new List<ScoreMonthlyClosureSnapshot>();
+        var closure = additional.MonthlyClosures
+            .FirstOrDefault(item =>
+                string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.BatchId, batchId, StringComparison.OrdinalIgnoreCase));
+        if (closure is null)
+        {
+            closure = new ScoreMonthlyClosureSnapshot
+            {
+                PeriodKey = periodKey,
+                BatchId = batchId,
+                ClosedAt = DateTimeOffset.UtcNow,
+                ClosedBy = ResolveUserDisplayName(currentUser)
+            };
+            additional.MonthlyClosures.Add(closure);
+        }
+
+        foreach (var line in lines.Where(item => !string.IsNullOrWhiteSpace(item.LineKey)))
+        {
+            closure.Lines.RemoveAll(item => string.Equals(item.LineKey, line.LineKey, StringComparison.OrdinalIgnoreCase));
+            closure.Lines.Add(line);
+        }
+
+        closure.ClosedAt = DateTimeOffset.UtcNow;
+        closure.ClosedBy = ResolveUserDisplayName(currentUser);
+        RefreshMonthlyClosureMetadata(additional);
+    }
+
+    private static void RemoveMonthlyClosureLines(
+        ScoreAdditionalDataSnapshot additional,
+        string periodKey,
+        string batchId,
+        ISet<string> lineKeys)
+    {
+        if (string.IsNullOrWhiteSpace(periodKey) || string.IsNullOrWhiteSpace(batchId) || lineKeys.Count == 0)
+            return;
+
+        foreach (var closure in additional.MonthlyClosures
+                     .Where(item =>
+                         string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase)
+                         && string.Equals(item.BatchId, batchId, StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            closure.Lines.RemoveAll(line => lineKeys.Contains(line.LineKey));
+            if (closure.Lines.Count == 0)
+                additional.MonthlyClosures.Remove(closure);
+        }
+
+        RefreshMonthlyClosureMetadata(additional);
+    }
+
+    private static void RefreshMonthlyClosureMetadata(ScoreAdditionalDataSnapshot additional)
+    {
+        var lastClosure = ResolveLastClosure(additional);
+        additional.LastClosedAt = lastClosure?.ClosedAt;
+        additional.LastClosedBy = lastClosure?.ClosedBy ?? "";
     }
 
     private static ScoreMonthlyClosureSnapshot? ResolveLastClosure(ScoreAdditionalDataSnapshot additional)
@@ -1385,6 +2073,145 @@ public sealed partial class DataverseService
         return additional.MonthlyClosures
             .OrderByDescending(item => item.ClosedAt)
             .FirstOrDefault();
+    }
+
+    private static string ResolveMonthCloseLineReason(int autoBillOptionValue, bool isAlreadyClosed)
+    {
+        if (isAlreadyClosed)
+            return "La linea ya fue consolidada en un cierre anterior.";
+
+        return autoBillOptionValue == 1
+            ? "La linea quedara incluida porque tiene facturacion automatica habilitada."
+            : "Se excluye por defecto porque AutoBillOptionValue es distinto de 1.";
+    }
+
+    private static int ResolveSalesPerformanceBillingDay(ScoreVerificationDetailDto detail) =>
+        detail.BillingDay > 0
+            ? detail.BillingDay
+            : DeriveBillingDay(detail.RenewalDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
+
+    private static int ResolveSalesPerformanceHasVatOptionValue(ScoreVerificationLineInput line) =>
+        line.HasVatOptionValue is 0 or 1 ? line.HasVatOptionValue : ResolveHasVatOptionValue(line.HasVat);
+
+    private static int ResolveSalesPerformanceProductLineOptionValue(ScoreVerificationDetailDto detail, ScoreVerificationLineInput line)
+    {
+        if (AllowedLineOptionValues.Contains(line.LineOptionValue))
+            return line.LineOptionValue;
+
+        if (AllowedLineOptionValues.Contains(detail.ProductLineOptionValue))
+            return detail.ProductLineOptionValue;
+
+        return AllowedProductLineOptionValues.Contains(detail.ProductLineOptionValue)
+            ? detail.ProductLineOptionValue
+            : 0;
+    }
+
+    private static bool HasSalesPerformanceProductLineValue(ScoreVerificationDetailDto detail, ScoreVerificationLineInput line) =>
+        AllowedLineOptionValues.Contains(line.LineOptionValue)
+        || AllowedLineOptionValues.Contains(detail.ProductLineOptionValue)
+        || AllowedProductLineOptionValues.Contains(detail.ProductLineOptionValue);
+
+    private static List<string> BuildMonthCloseWarnings(ScoreRecordDto record, ScoreVerificationDetailDto detail, ScoreVerificationLineInput line)
+    {
+        var warnings = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(record.ClientId))
+            warnings.Add("Falta el lookup del cliente.");
+
+        if (string.IsNullOrWhiteSpace(line.ProductId))
+            warnings.Add("Falta el lookup del producto.");
+
+        if (detail.AutoBillOptionValue == 1 && ResolveSalesPerformanceBillingDay(detail) <= 0)
+            warnings.Add("No se pudo determinar el dia de facturacion; debes completarlo manualmente.");
+
+        if (!HasSalesPerformanceProductLineValue(detail, line))
+            warnings.Add("No se pudo determinar la linea de producto; debes completarla manualmente.");
+
+        if (!AllowedContractTypeOptionValues.Contains(detail.ContractTypeOptionValue))
+            warnings.Add("No se pudo determinar el tipo de contrato; debes completarlo manualmente.");
+
+        if (string.IsNullOrWhiteSpace(ResolveSalesPerformanceRenewalDate(detail)))
+            warnings.Add("La fecha de renovacion quedo vacia; revisala manualmente despues del cierre.");
+
+        return warnings;
+    }
+
+    private static string BuildCreatedLineState(ScoreRecordDto record, ScoreVerificationDetailDto detail, ScoreVerificationLineInput line)
+    {
+        var renewalDateValue = ResolveSalesPerformanceRenewalDate(detail);
+        var billingDay = ResolveSalesPerformanceBillingDay(detail);
+        var productLineOptionValue = ResolveSalesPerformanceProductLineOptionValue(detail, line);
+        var hasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(line);
+
+        return $"Cliente: {record.ClientName}. Producto: {line.ProductName}. Cantidad: {Math.Max(line.Quantity, 0)}. " +
+               $"Venta UND USD: {line.SaleUnit:0.##}. Contrato: {ResolveOptionLabel(PuntajesOptionCatalog.ContractTypeOptions, detail.ContractTypeOptionValue)}. " +
+               $"Facturable automatico: {ResolveOptionLabel(PuntajesOptionCatalog.AutoBillOptions, detail.AutoBillOptionValue)}. " +
+               $"IVA: {ResolveOptionLabel(PuntajesOptionCatalog.HasVatOptions, hasVatOptionValue)}. " +
+               $"Linea: {ResolveProductLineLabel(productLineOptionValue)}. " +
+               $"Dia facturacion: {(billingDay > 0 ? billingDay.ToString(CultureInfo.InvariantCulture) : "Pendiente")}. " +
+               $"Renovacion: {(string.IsNullOrWhiteSpace(renewalDateValue) ? "Pendiente" : renewalDateValue)}.";
+    }
+
+    private static string BuildUpdatedLineState(ScoreMonthCloseLinePlan linePlan, int previousQuantity, int appliedQuantity, int newQuantity) =>
+        $"Cliente: {linePlan.Record.ClientName}. Producto: {linePlan.Line.ProductName}. Cantidad final: {newQuantity} (antes {previousQuantity}, cierre {appliedQuantity}).";
+
+    private static string BuildPreviewLineState(ScoreMonthCloseLinePlan linePlan)
+    {
+        var finalQuantity = linePlan.ExistingMatch is null
+            ? Math.Max(linePlan.Line.Quantity, 0)
+            : Math.Max(linePlan.ExistingMatch.Quantity, 0) + Math.Max(linePlan.Line.Quantity, 0);
+
+        return $"Accion prevista: {(linePlan.ExistingMatch is null ? "Nueva linea" : "Incremento")}. Cantidad final estimada: {finalQuantity}.";
+    }
+
+    private static ScoreMonthlyClosureLineSnapshot BuildClosureLineSnapshot(
+        ScoreMonthCloseLinePlan linePlan,
+        string status,
+        string salesPerformanceRecordId,
+        int previousQuantity,
+        int appliedQuantity,
+        int finalQuantity,
+        IReadOnlyList<string> warnings) =>
+        new()
+        {
+            LineKey = linePlan.LineKey,
+            LineId = linePlan.Line.LineId,
+            ProductId = linePlan.Line.ProductId,
+            ProductName = linePlan.Line.ProductName,
+            Status = status,
+            SalesPerformanceRecordId = salesPerformanceRecordId,
+            PreviousQuantity = previousQuantity,
+            AppliedQuantity = appliedQuantity,
+            FinalQuantity = finalQuantity,
+            Warnings = warnings.ToList()
+        };
+
+    private static string BuildMonthCloseLineKey(string recordId, string? lineId, int index)
+    {
+        var normalizedLineId = string.IsNullOrWhiteSpace(lineId) ? $"line-{index}" : lineId.Trim();
+        return $"{recordId.Trim()}::{normalizedLineId}";
+    }
+
+    private static string ResolveOptionLabel(IEnumerable<ScoreOptionItem> items, int value) =>
+        items.FirstOrDefault(item => item.Value == value)?.Label ?? value.ToString(CultureInfo.InvariantCulture);
+
+    private static string ResolveProductLineLabel(int value)
+    {
+        if (AllowedLineOptionValues.Contains(value))
+            return ResolveOptionLabel(PuntajesOptionCatalog.LineOptions, value);
+
+        if (AllowedProductLineOptionValues.Contains(value))
+            return ResolveOptionLabel(PuntajesOptionCatalog.ProductLineOptions, value);
+
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatDateDisplay(string? value)
+    {
+        if (!TryParseDateOnly(value, out var date))
+            return value?.Trim() ?? "";
+
+        return date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
     }
 
     private static void NormalizeAdditionalSnapshot(ScoreAdditionalDataSnapshot additional)
@@ -1399,6 +2226,22 @@ public sealed partial class DataverseService
         additional.LastClosedBy ??= "";
         additional.Lines ??= new List<ScoreVerificationLineInput>();
         additional.MonthlyClosures ??= new List<ScoreMonthlyClosureSnapshot>();
+        foreach (var closure in additional.MonthlyClosures)
+        {
+            closure.BatchId ??= "";
+            closure.ClosedBy ??= "";
+            closure.Lines ??= new List<ScoreMonthlyClosureLineSnapshot>();
+            foreach (var line in closure.Lines)
+            {
+                line.LineKey ??= "";
+                line.LineId ??= "";
+                line.ProductId ??= "";
+                line.ProductName ??= "";
+                line.Status ??= "";
+                line.SalesPerformanceRecordId ??= "";
+                line.Warnings ??= new List<string>();
+            }
+        }
     }
 
     private static string NormalizeLookupToken(string? value)
@@ -2439,8 +3282,24 @@ public sealed partial class DataverseService
     private sealed class ScoreMonthlyClosureSnapshot
     {
         public string PeriodKey { get; set; } = "";
+        public string BatchId { get; set; } = "";
         public DateTimeOffset ClosedAt { get; set; }
         public string ClosedBy { get; set; } = "";
+        public List<ScoreMonthlyClosureLineSnapshot> Lines { get; set; } = new();
+    }
+
+    private sealed class ScoreMonthlyClosureLineSnapshot
+    {
+        public string LineKey { get; set; } = "";
+        public string LineId { get; set; } = "";
+        public string ProductId { get; set; } = "";
+        public string ProductName { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string SalesPerformanceRecordId { get; set; } = "";
+        public int PreviousQuantity { get; set; }
+        public int AppliedQuantity { get; set; }
+        public int FinalQuantity { get; set; }
+        public List<string> Warnings { get; set; } = new();
     }
 
     private sealed class ScoreComputationContext
@@ -2466,6 +3325,46 @@ public sealed partial class DataverseService
         public string ClientId { get; set; } = "";
         public string ProductId { get; set; } = "";
         public int Quantity { get; set; }
+        public decimal UnitSaleUsd { get; set; }
+    }
+
+    private sealed class SalesPerformanceCreateResult
+    {
+        public string RecordId { get; set; } = "";
+        public string FinalState { get; set; } = "";
+        public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
+    }
+
+    private sealed class ScoreMonthClosePlan
+    {
+        public ScoreMonthInfo MonthInfo { get; set; } = new(false, "", "");
+        public List<ScoreMonthCloseRecordPlan> Records { get; set; } = new();
+        public Dictionary<string, List<SalesPerformanceCompactRecord>> SalesPerformanceCache { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class ScoreMonthCloseRecordPlan
+    {
+        public ScoreRecordContext Context { get; set; } = new();
+        public ScoreRecordDto Record { get; set; } = new();
+        public ScoreVerificationDetailDto Detail { get; set; } = new();
+        public List<ScoreMonthCloseLinePlan> Lines { get; set; } = new();
+    }
+
+    private sealed class ScoreMonthCloseLinePlan
+    {
+        public ScoreRecordContext Context { get; set; } = new();
+        public ScoreRecordDto Record { get; set; } = new();
+        public ScoreVerificationDetailDto Detail { get; set; } = new();
+        public ScoreVerificationLineInput Line { get; set; } = new();
+        public string LineKey { get; set; } = "";
+        public SalesPerformanceCompactRecord? ExistingMatch { get; set; }
+        public ScoreMonthlyClosureLineSnapshot? ExistingClosure { get; set; }
+        public bool IsAlreadyClosed { get; set; }
+        public bool SelectedByDefault { get; set; }
+        public bool CanChangeSelection { get; set; }
+        public string Reason { get; set; } = "";
+        public string PredictedAction { get; set; } = "";
+        public List<string> Warnings { get; set; } = new();
     }
 
     private sealed class RawScoreProductLine

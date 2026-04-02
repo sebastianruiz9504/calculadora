@@ -17,9 +17,21 @@
     const summaryCommission = document.getElementById("summaryCommission");
     const summaryAnnualValue = document.getElementById("summaryAnnualValue");
     const closeMonthButton = document.getElementById("closeMonthBtn");
+    const undoCloseMonthButton = document.getElementById("undoCloseMonthBtn");
     const closeMonthSummaryText = document.getElementById("closeMonthSummaryText");
     const closeMonthLogEmpty = document.getElementById("closeMonthLogEmpty");
     const closeMonthLogList = document.getElementById("closeMonthLogList");
+    const closeMonthReviewModalElement = document.getElementById("closeMonthReviewModal");
+    const closeMonthReviewTitle = document.getElementById("closeMonthReviewTitle");
+    const closeMonthReviewSubtitle = document.getElementById("closeMonthReviewSubtitle");
+    const closeMonthReviewStatus = document.getElementById("closeMonthReviewStatus");
+    const closeMonthReviewSummary = document.getElementById("closeMonthReviewSummary");
+    const closeMonthReviewIncludedEmpty = document.getElementById("closeMonthReviewIncludedEmpty");
+    const closeMonthReviewIncludedList = document.getElementById("closeMonthReviewIncludedList");
+    const closeMonthReviewExcludedEmpty = document.getElementById("closeMonthReviewExcludedEmpty");
+    const closeMonthReviewExcludedList = document.getElementById("closeMonthReviewExcludedList");
+    const closeMonthReviewConfirmCheck = document.getElementById("closeMonthReviewConfirmCheck");
+    const submitCloseMonthReviewBtn = document.getElementById("submitCloseMonthReviewBtn");
 
     const verifyModalElement = document.getElementById("verifyScoreModal");
     const verifyModalTitle = document.getElementById("verifyScoreModalTitle");
@@ -56,6 +68,7 @@
     const verifyResultMonthly = document.getElementById("verifyResultMonthly");
     const verifyResultTotal = document.getElementById("verifyResultTotal");
     const verifyModal = verifyModalElement && window.bootstrap ? new bootstrap.Modal(verifyModalElement) : null;
+    const closeMonthReviewModal = closeMonthReviewModalElement && window.bootstrap ? new bootstrap.Modal(closeMonthReviewModalElement) : null;
 
     const optionMaps = {
         dealType: buildOptionMap(options.dealTypeOptions),
@@ -94,7 +107,8 @@
         isSaving: false,
         isRecalculating: false,
         isClosingMonth: false,
-        lastCloseResult: null
+        lastCloseResult: null,
+        closeMonthPreview: null
     };
 
     function buildOptionMap(items) {
@@ -521,6 +535,19 @@
         return map.get(String(value)) || String(value);
     }
 
+    function productLineLabel(value) {
+        if (value === null || value === undefined || value === "") {
+            return "";
+        }
+
+        const lineLabel = optionMaps.line.get(String(value));
+        if (lineLabel) {
+            return lineLabel;
+        }
+
+        return optionLabel(optionMaps.productLine, value);
+    }
+
     function setStatus(type, message) {
         if (!statusBanner) {
             return;
@@ -549,6 +576,21 @@
 
         verifyModalStatus.className = `scores-modal__status show ${type}`;
         verifyModalStatus.textContent = message;
+    }
+
+    function setCloseReviewStatus(type, message) {
+        if (!closeMonthReviewStatus) {
+            return;
+        }
+
+        if (!message) {
+            closeMonthReviewStatus.className = "scores-modal__status";
+            closeMonthReviewStatus.textContent = "";
+            return;
+        }
+
+        closeMonthReviewStatus.className = `scores-modal__status show ${type}`;
+        closeMonthReviewStatus.textContent = message;
     }
 
     function formatErrorMessage(error, fallbackMessage) {
@@ -651,6 +693,7 @@
         state.isClosingMonth = closing;
         closeMonthButton && (closeMonthButton.disabled = closing);
         refreshButton && (refreshButton.disabled = closing || state.isLoading || state.isSaving);
+        updateCloseMonthReviewSubmitState();
         renderCloseMonthPanel();
     }
 
@@ -917,6 +960,7 @@
         const board = state.board;
         if (!board) {
             closeMonthButton.disabled = true;
+            undoCloseMonthButton && (undoCloseMonthButton.disabled = true);
             closeMonthSummaryText.textContent = "Carga un periodo para revisar si el cierre mensual ya puede ejecutarse.";
             renderCloseMonthLogs();
             return;
@@ -924,6 +968,7 @@
 
         if (!board.supportsMonthClose) {
             closeMonthButton.disabled = true;
+            undoCloseMonthButton && (undoCloseMonthButton.disabled = true);
             closeMonthSummaryText.textContent = "El cierre de mes solo se habilita en vistas mensuales para evitar consolidaciones ambiguas.";
             renderCloseMonthLogs();
             return;
@@ -931,6 +976,7 @@
 
         if (!board.recordsCount) {
             closeMonthButton.disabled = true;
+            undoCloseMonthButton && (undoCloseMonthButton.disabled = true);
             closeMonthSummaryText.textContent = `No hay registros para consolidar en ${board.monthClosePeriodLabel || "el periodo actual"}.`;
             renderCloseMonthLogs();
             return;
@@ -938,6 +984,7 @@
 
         if (board.verifiedRecordsCount < board.recordsCount) {
             closeMonthButton.disabled = true;
+            undoCloseMonthButton && (undoCloseMonthButton.disabled = !board.canUndoMonthClose || state.isClosingMonth || state.isLoading || state.isSaving);
             closeMonthSummaryText.textContent = `${board.monthClosePeriodLabel}: faltan ${board.recordsCount - board.verifiedRecordsCount} lineas por verificar antes del cierre.`;
             renderCloseMonthLogs();
             return;
@@ -945,13 +992,15 @@
 
         if (board.closedRecordsCount >= board.recordsCount) {
             closeMonthButton.disabled = true;
-            closeMonthSummaryText.textContent = `${board.monthClosePeriodLabel}: todas las lineas visibles ya quedaron consolidadas en sales performance.`;
+            undoCloseMonthButton && (undoCloseMonthButton.disabled = !board.canUndoMonthClose || state.isClosingMonth || state.isLoading || state.isSaving);
+            closeMonthSummaryText.textContent = `${board.monthClosePeriodLabel}: todas las lineas visibles ya quedaron consolidadas en sales performance.${board.undoMonthCloseLabel ? ` ${board.undoMonthCloseLabel}` : ""}`;
             renderCloseMonthLogs();
             return;
         }
 
         closeMonthButton.disabled = state.isClosingMonth || state.isLoading || state.isSaving;
-        closeMonthSummaryText.textContent = `${board.monthClosePeriodLabel}: ${board.verifiedRecordsCount}/${board.recordsCount} lineas verificadas y ${board.closedRecordsCount} ya consolidadas.`;
+        undoCloseMonthButton && (undoCloseMonthButton.disabled = !board.canUndoMonthClose || state.isClosingMonth || state.isLoading || state.isSaving);
+        closeMonthSummaryText.textContent = `${board.monthClosePeriodLabel}: ${board.verifiedRecordsCount}/${board.recordsCount} lineas verificadas y ${board.closedRecordsCount} ya consolidadas.${board.undoMonthCloseLabel ? ` ${board.undoMonthCloseLabel}` : ""}`;
         renderCloseMonthLogs();
     }
 
@@ -972,8 +1021,132 @@
             <article class="scores-close-log__entry ${escapeHtml(entry.level || "info")}">
                 <div class="scores-close-log__title">${escapeHtml(entry.clientName || "Registro")} ${entry.productName ? `| ${escapeHtml(entry.productName)}` : ""}</div>
                 <div class="scores-close-log__text">${escapeHtml(entry.message || "")}</div>
+                ${entry.finalState ? `<div class="scores-close-log__text">${escapeHtml(entry.finalState)}</div>` : ""}
             </article>
         `).join("");
+    }
+
+    function normalizeCloseMonthPreview(preview) {
+        return {
+            ...(preview || {}),
+            lines: (Array.isArray(preview?.lines) ? preview.lines : []).map(line => ({
+                ...line,
+                selected: line.selectedByDefault === true
+            }))
+        };
+    }
+
+    function getCloseMonthPreviewLines() {
+        return Array.isArray(state.closeMonthPreview?.lines) ? state.closeMonthPreview.lines : [];
+    }
+
+    function updateCloseMonthReviewSubmitState() {
+        if (!submitCloseMonthReviewBtn) {
+            return;
+        }
+
+        const hasLines = getCloseMonthPreviewLines().length > 0;
+        submitCloseMonthReviewBtn.disabled = state.isClosingMonth || !hasLines || !closeMonthReviewConfirmCheck?.checked;
+    }
+
+    function renderCloseMonthReviewList(lines, container, emptyState) {
+        if (!container || !emptyState) {
+            return;
+        }
+
+        if (!lines.length) {
+            emptyState.style.display = "";
+            container.innerHTML = "";
+            return;
+        }
+
+        emptyState.style.display = "none";
+        container.innerHTML = lines.map(line => {
+            const locked = line.canChangeSelection === false;
+            const warnings = Array.isArray(line.warnings) ? line.warnings : [];
+            const predictedAction = line.predictedAction === "increment"
+                ? `Incremento a ${formatNumber(line.finalQuantity)}`
+                : `Nueva linea con ${formatNumber(line.finalQuantity)}`;
+
+            return `
+                <article class="close-review-item ${warnings.length ? "close-review-item--warning" : ""} ${locked ? "close-review-item--locked" : ""}">
+                    <div class="close-review-item__top">
+                        <label class="close-review-item__toggle">
+                            <input type="checkbox" class="close-review-toggle" data-line-key="${escapeHtml(line.lineKey || "")}" ${line.selected ? "checked" : ""} ${locked ? "disabled" : ""} />
+                            <span>${escapeHtml(line.clientName || "Cliente")} | ${escapeHtml(line.productName || "Producto")}</span>
+                        </label>
+                        <span class="close-review-chip ${line.predictedAction === "increment" ? "close-review-chip--muted" : "close-review-chip--success"}">${escapeHtml(predictedAction)}</span>
+                    </div>
+                    <div class="close-review-item__meta">
+                        <span class="close-review-chip">Cantidad: ${escapeHtml(formatNumber(line.quantity))}</span>
+                        <span class="close-review-chip">AutoBill: ${escapeHtml(optionLabel(optionMaps.autoBill, line.autoBillOptionValue))}</span>
+                        <span class="close-review-chip">Contrato: ${escapeHtml(optionLabel(optionMaps.contractType, line.contractTypeOptionValue))}</span>
+                        <span class="close-review-chip">Linea: ${escapeHtml(productLineLabel(line.productLineOptionValue))}</span>
+                        <span class="close-review-chip">IVA: ${escapeHtml(optionLabel(optionMaps.hasVat, line.hasVatOptionValue))}</span>
+                        <span class="close-review-chip">Facturacion: ${escapeHtml(line.billingDay ? `Dia ${line.billingDay}` : "Pendiente")}</span>
+                        <span class="close-review-chip">Venta UND USD: ${escapeHtml(formatNumber(line.unitSaleUsd))}</span>
+                        <span class="close-review-chip">Renovacion: ${escapeHtml(line.renewalDateDisplay || line.renewalDateValue || "Pendiente")}</span>
+                    </div>
+                    <div class="close-review-item__reason">${escapeHtml(line.reason || "")}</div>
+                    ${warnings.length ? `<div class="close-review-item__warnings">${escapeHtml(warnings.join(" "))}</div>` : ""}
+                </article>
+            `;
+        }).join("");
+    }
+
+    function renderCloseMonthReview() {
+        const preview = state.closeMonthPreview;
+        if (!preview) {
+            closeMonthReviewSummary && (closeMonthReviewSummary.innerHTML = "");
+            renderCloseMonthReviewList([], closeMonthReviewIncludedList, closeMonthReviewIncludedEmpty);
+            renderCloseMonthReviewList([], closeMonthReviewExcludedList, closeMonthReviewExcludedEmpty);
+            updateCloseMonthReviewSubmitState();
+            return;
+        }
+
+        const lines = getCloseMonthPreviewLines();
+        const selectedLines = lines.filter(line => line.selected);
+        const excludedLines = lines.filter(line => !line.selected);
+        closeMonthReviewTitle && (closeMonthReviewTitle.textContent = `Cerrar ${preview.periodLabel || "mes"}`);
+        closeMonthReviewSubtitle && (closeMonthReviewSubtitle.textContent = preview.message || "");
+        closeMonthReviewSummary && (closeMonthReviewSummary.innerHTML = `
+            <article class="close-review-summary__card">
+                <span class="scores-summary__label">Lineas revisadas</span>
+                <strong class="close-review-summary__value">${formatNumber(lines.length)}</strong>
+            </article>
+            <article class="close-review-summary__card">
+                <span class="scores-summary__label">Se enviaran</span>
+                <strong class="close-review-summary__value">${formatNumber(selectedLines.length)}</strong>
+            </article>
+            <article class="close-review-summary__card">
+                <span class="scores-summary__label">No se enviaran</span>
+                <strong class="close-review-summary__value">${formatNumber(excludedLines.length)}</strong>
+            </article>
+            <article class="close-review-summary__card">
+                <span class="scores-summary__label">Warnings</span>
+                <strong class="close-review-summary__value">${formatNumber(lines.filter(line => Array.isArray(line.warnings) && line.warnings.length).length)}</strong>
+            </article>
+        `);
+
+        renderCloseMonthReviewList(selectedLines, closeMonthReviewIncludedList, closeMonthReviewIncludedEmpty);
+        renderCloseMonthReviewList(excludedLines, closeMonthReviewExcludedList, closeMonthReviewExcludedEmpty);
+        (closeMonthReviewModalElement ? Array.from(closeMonthReviewModalElement.querySelectorAll(".close-review-toggle")) : []).forEach(toggle => {
+            toggle.addEventListener("change", event => {
+                const lineKey = event.currentTarget.dataset.lineKey;
+                if (!lineKey) {
+                    return;
+                }
+
+                const line = getCloseMonthPreviewLines().find(item => item.lineKey === lineKey);
+                if (!line || line.canChangeSelection === false) {
+                    return;
+                }
+
+                line.selected = event.currentTarget.checked;
+                renderCloseMonthReview();
+            });
+        });
+        updateCloseMonthReviewSubmitState();
     }
 
     function bindGroupEvents() {
@@ -1610,21 +1783,94 @@
         }
 
         setClosingMonth(true);
-        setStatus("info", "Consolidando registros del mes en sales performance...");
+        setStatus("info", "Preparando la revision final del cierre...");
+
+        try {
+            const result = await fetchJson(app.dataset.previewCloseMonthUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filter: state.filter })
+            });
+
+            state.closeMonthPreview = normalizeCloseMonthPreview(result);
+            closeMonthReviewConfirmCheck && (closeMonthReviewConfirmCheck.checked = false);
+            setCloseReviewStatus("", "");
+            renderCloseMonthReview();
+            closeMonthReviewModal?.show();
+            setStatus("", "");
+        } catch (error) {
+            console.error(error);
+            setStatus("error", formatErrorMessage(error, "No fue posible preparar el cierre del mes."));
+        } finally {
+            setClosingMonth(false);
+        }
+    }
+
+    async function submitCloseMonthReview() {
+        if (!state.closeMonthPreview) {
+            return;
+        }
+
+        setClosingMonth(true);
+        setCloseReviewStatus("info", "Enviando el cierre a sales performance...");
 
         try {
             const result = await fetchJson(app.dataset.closeMonthUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    filter: state.filter,
+                    confirmed: true,
+                    decisions: getCloseMonthPreviewLines().map(line => ({
+                        lineKey: line.lineKey,
+                        include: line.selected === true
+                    }))
+                })
+            });
+
+            state.lastCloseResult = result;
+            state.closeMonthPreview = null;
+            closeMonthReviewModal?.hide();
+            await loadBoard();
+            setStatus(result?.hasErrors ? "error" : result?.hasWarnings ? "info" : "success", result?.message || "Cierre mensual finalizado.");
+        } catch (error) {
+            console.error(error);
+            setCloseReviewStatus("error", formatErrorMessage(error, "No fue posible cerrar el mes."));
+        } finally {
+            setClosingMonth(false);
+            renderCloseMonthLogs();
+            renderCloseMonthReview();
+        }
+    }
+
+    async function undoCloseMonth() {
+        if (!state.board) {
+            return;
+        }
+
+        const label = state.board.monthClosePeriodLabel || "el periodo actual";
+        if (!window.confirm(`Se va a deshacer el ultimo cierre de ${label}.`)) {
+            return;
+        }
+
+        setClosingMonth(true);
+        setStatus("info", "Deshaciendo el ultimo cierre del mes...");
+
+        try {
+            const result = await fetchJson(app.dataset.undoCloseMonthUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ filter: state.filter })
             });
 
             state.lastCloseResult = result;
+            state.closeMonthPreview = null;
+            closeMonthReviewModal?.hide();
             await loadBoard();
-            setStatus(result?.hasErrors ? "error" : "success", result?.message || "Cierre mensual finalizado.");
+            setStatus(result?.hasErrors ? "error" : "success", result?.message || "Se deshizo el ultimo cierre.");
         } catch (error) {
             console.error(error);
-            setStatus("error", formatErrorMessage(error, "No fue posible cerrar el mes."));
+            setStatus("error", formatErrorMessage(error, "No fue posible deshacer el cierre del mes."));
         } finally {
             setClosingMonth(false);
             renderCloseMonthLogs();
@@ -1707,6 +1953,9 @@
     recalculateVerifyScoreBtn?.addEventListener("click", recalculateVerification);
     submitVerifyScoreBtn?.addEventListener("click", submitVerification);
     closeMonthButton?.addEventListener("click", closeMonth);
+    undoCloseMonthButton?.addEventListener("click", undoCloseMonth);
+    submitCloseMonthReviewBtn?.addEventListener("click", submitCloseMonthReview);
+    closeMonthReviewConfirmCheck?.addEventListener("change", updateCloseMonthReviewSubmitState);
 
     verifyModalElement?.addEventListener("hidden.bs.modal", () => {
         state.prorationLookupToken += 1;
@@ -1714,6 +1963,12 @@
         state.activeDraft = null;
         setModalStatus("", "");
         toggleModalLoading(false);
+    });
+
+    closeMonthReviewModalElement?.addEventListener("hidden.bs.modal", () => {
+        closeMonthReviewConfirmCheck && (closeMonthReviewConfirmCheck.checked = false);
+        setCloseReviewStatus("", "");
+        updateCloseMonthReviewSubmitState();
     });
 
     populateSelect(dealTypeSelect, options.dealTypeOptions, "Selecciona un tipo");
@@ -1724,5 +1979,6 @@
     setFilterButtonState();
     updateSummary(null);
     renderCloseMonthPanel();
+    renderCloseMonthReview();
     loadBoard();
 })();

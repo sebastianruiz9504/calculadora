@@ -120,6 +120,29 @@ public sealed class PuntajesController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> PreviewCloseMonth([FromBody] ScoreMonthCloseRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest("Debes indicar el periodo a revisar.");
+
+        try
+        {
+            var parsedFilter = ScorePeriodFilterExtensions.ParseOrDefault(request.Filter);
+            var result = await _dataverse.PreviewScoreMonthCloseAsync(parsedFilter, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible preparar el cierre del mes.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> CloseMonth([FromBody] ScoreMonthCloseRequest? request, CancellationToken ct)
     {
         if (request is null)
@@ -127,8 +150,7 @@ public sealed class PuntajesController : Controller
 
         try
         {
-            var parsedFilter = ScorePeriodFilterExtensions.ParseOrDefault(request.Filter);
-            var result = await _dataverse.CloseScoreMonthAsync(parsedFilter, ct);
+            var result = await _dataverse.CloseScoreMonthAsync(request, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)
@@ -138,6 +160,29 @@ public sealed class PuntajesController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cerrar el mes.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UndoCloseMonth([FromBody] ScoreMonthUndoRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest("Debes indicar el periodo a deshacer.");
+
+        try
+        {
+            var parsedFilter = ScorePeriodFilterExtensions.ParseOrDefault(request.Filter);
+            var result = await _dataverse.UndoScoreMonthCloseAsync(parsedFilter, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible deshacer el cierre del mes.", ex));
         }
     }
 

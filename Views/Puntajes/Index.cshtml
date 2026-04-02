@@ -25,7 +25,9 @@
      data-detail-url="@Url.Action("Detail", "Puntajes")"
      data-verify-url="@Url.Action("Verify", "Puntajes")"
      data-recalculate-url="@Url.Action("Recalculate", "Puntajes")"
+     data-preview-close-month-url="@Url.Action("PreviewCloseMonth", "Puntajes")"
      data-close-month-url="@Url.Action("CloseMonth", "Puntajes")"
+     data-undo-close-month-url="@Url.Action("UndoCloseMonth", "Puntajes")"
      data-offer-url="@Url.Action("Offer", "Puntajes")"
      data-product-search-url="@Url.Action("ProductSearch", "Calculator")"
      data-initial-filter="@Model.InitialFilter.ToKey()">
@@ -105,11 +107,64 @@
                 <h2 class="scores-close-card__title">Consolidación interna a sales performance</h2>
                 <p class="scores-close-card__subtitle" id="closeMonthSummaryText"></p>
             </div>
-            <button type="button" class="btn btn-success" id="closeMonthBtn">Cerrar mes</button>
+            <div class="scores-close-card__actions">
+                <button type="button" class="btn btn-outline-secondary" id="undoCloseMonthBtn">Deshacer cierre</button>
+                <button type="button" class="btn btn-success" id="closeMonthBtn">Cerrar mes</button>
+            </div>
         </div>
         <div id="closeMonthLogEmpty" class="scores-close-log__empty">Todavía no se ha ejecutado ningún cierre en esta sesión.</div>
         <div id="closeMonthLogList" class="scores-close-log"></div>
     </section>
+</div>
+
+<div class="modal fade" id="closeMonthReviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable close-review-modal-dialog">
+        <div class="modal-content scores-modal close-review-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <div class="scores-modal__eyebrow">Revision final del cierre</div>
+                    <h5 class="modal-title" id="closeMonthReviewTitle">Cerrar mes</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p class="scores-modal__subtitle" id="closeMonthReviewSubtitle"></p>
+                <div id="closeMonthReviewStatus" class="scores-modal__status"></div>
+                <section class="close-review-summary" id="closeMonthReviewSummary"></section>
+
+                <section class="close-review-section">
+                    <div class="close-review-section__header">
+                        <div>
+                            <div class="scores-toolbar__label">Lineas que se enviaran</div>
+                            <p class="scores-close-card__subtitle mb-0">Puedes desmarcar una linea si no debe ir en este cierre.</p>
+                        </div>
+                    </div>
+                    <div id="closeMonthReviewIncludedEmpty" class="scores-close-log__empty">No hay lineas seleccionadas en este momento.</div>
+                    <div id="closeMonthReviewIncludedList" class="close-review-list"></div>
+                </section>
+
+                <section class="close-review-section">
+                    <div class="close-review-section__header">
+                        <div>
+                            <div class="scores-toolbar__label">Lineas que no se enviaran</div>
+                            <p class="scores-close-card__subtitle mb-0">Puedes incluir una linea manualmente antes de confirmar, excepto las que ya quedaron cerradas.</p>
+                        </div>
+                    </div>
+                    <div id="closeMonthReviewExcludedEmpty" class="scores-close-log__empty">Todas las lineas quedaran incluidas.</div>
+                    <div id="closeMonthReviewExcludedList" class="close-review-list"></div>
+                </section>
+
+                <label class="close-review-confirm">
+                    <input type="checkbox" id="closeMonthReviewConfirmCheck" />
+                    <span>Confirmo que revise las lineas que se enviaran y las que quedaran fuera del cierre.</span>
+                </label>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="submitCloseMonthReviewBtn" disabled>Confirmar y cerrar mes</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal fade" id="verifyScoreModal" tabindex="-1" aria-hidden="true">

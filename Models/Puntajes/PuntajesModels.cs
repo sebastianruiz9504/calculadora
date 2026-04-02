@@ -78,6 +78,8 @@ public sealed class ScoreBoardDto
     public bool SupportsMonthClose { get; set; }
     public string MonthClosePeriodKey { get; set; } = "";
     public string MonthClosePeriodLabel { get; set; } = "";
+    public bool CanUndoMonthClose { get; set; }
+    public string UndoMonthCloseLabel { get; set; } = "";
     public IReadOnlyList<ScoreClientGroupDto> Groups { get; set; } = Array.Empty<ScoreClientGroupDto>();
 }
 
@@ -257,27 +259,103 @@ public sealed class ScoreVerificationSaveResultDto
 public sealed class ScoreMonthCloseRequest
 {
     public string Filter { get; set; } = "";
+    public bool Confirmed { get; set; }
+    public List<ScoreMonthCloseLineDecisionDto> Decisions { get; set; } = new();
+}
+
+public sealed class ScoreMonthCloseLineDecisionDto
+{
+    public string LineKey { get; set; } = "";
+    public bool Include { get; set; }
+}
+
+public sealed class ScoreMonthClosePreviewLineDto
+{
+    public string LineKey { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string LineId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string ProductId { get; set; } = "";
+    public int Quantity { get; set; }
+    public decimal UnitSaleUsd { get; set; }
+    public int AutoBillOptionValue { get; set; }
+    public int BillingDay { get; set; }
+    public int ProductLineOptionValue { get; set; }
+    public int ContractTypeOptionValue { get; set; }
+    public int HasVatOptionValue { get; set; }
+    public string RenewalDateValue { get; set; } = "";
+    public string RenewalDateDisplay { get; set; } = "";
+    public bool SelectedByDefault { get; set; }
+    public bool CanChangeSelection { get; set; } = true;
+    public string Reason { get; set; } = "";
+    public string PredictedAction { get; set; } = "";
+    public int ExistingQuantity { get; set; }
+    public int FinalQuantity { get; set; }
+    public bool RequiresManualReview { get; set; }
+    public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
+}
+
+public sealed class ScoreMonthClosePreviewResultDto
+{
+    public string Message { get; set; } = "";
+    public string PeriodKey { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public int TotalLines { get; set; }
+    public int SelectedCount { get; set; }
+    public int ExcludedCount { get; set; }
+    public int WarningCount { get; set; }
+    public bool CanUndo { get; set; }
+    public IReadOnlyList<ScoreMonthClosePreviewLineDto> Lines { get; set; } = Array.Empty<ScoreMonthClosePreviewLineDto>();
+}
+
+public sealed class ScoreMonthUndoRequest
+{
+    public string Filter { get; set; } = "";
 }
 
 public sealed class ScoreMonthCloseLogEntryDto
 {
     public string Level { get; set; } = "info";
+    public string Action { get; set; } = "";
+    public string LineKey { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string ProductName { get; set; } = "";
     public string Message { get; set; } = "";
+    public string FinalState { get; set; } = "";
 }
 
 public sealed class ScoreMonthCloseResultDto
 {
     public bool HasErrors { get; set; }
+    public bool HasWarnings { get; set; }
     public string Message { get; set; } = "";
     public string PeriodKey { get; set; } = "";
     public string PeriodLabel { get; set; } = "";
+    public string BatchId { get; set; } = "";
+    public bool CanUndo { get; set; }
     public int ProcessedRecordsCount { get; set; }
+    public int SelectedCount { get; set; }
+    public int ExcludedCount { get; set; }
     public int CreatedCount { get; set; }
     public int UpdatedCount { get; set; }
     public int SkippedCount { get; set; }
+    public int WarningCount { get; set; }
+    public int ErrorCount { get; set; }
+    public IReadOnlyList<ScoreMonthCloseLogEntryDto> Logs { get; set; } = Array.Empty<ScoreMonthCloseLogEntryDto>();
+}
+
+public sealed class ScoreMonthUndoResultDto
+{
+    public bool HasErrors { get; set; }
+    public string Message { get; set; } = "";
+    public string PeriodKey { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public string BatchId { get; set; } = "";
+    public int RevertedCreatedCount { get; set; }
+    public int RevertedUpdatedCount { get; set; }
+    public int RestoredExcludedCount { get; set; }
     public int ErrorCount { get; set; }
     public IReadOnlyList<ScoreMonthCloseLogEntryDto> Logs { get; set; } = Array.Empty<ScoreMonthCloseLogEntryDto>();
 }
