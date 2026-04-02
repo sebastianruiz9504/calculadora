@@ -1696,16 +1696,10 @@ public sealed partial class DataverseService
             try
             {
                 var filter = $"{lookupField} eq {clientGuid:D}";
-                var select = string.Join(",", new[]
-                {
-                    _salesPerformanceIdField,
-                    "_cr07a_clientelookup_value",
-                    "_cr07a_clienteid_value",
-                    "_cr07a_producto_value",
-                    DefaultSalesPerformanceQuantityField,
-                    DefaultSalesPerformanceUnitSaleUsdField
-                });
-                var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+                // Do not force raw lookup properties in $select. Dataverse rejects unknown
+                // lookup backing-field names before fallback detection can run, and we already
+                // parse the lookup property dynamically from the returned payload.
+                var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$filter={Uri.EscapeDataString(filter)}";
                 var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
                 return items
                     .Select(ParseSalesPerformanceCompactRecord)

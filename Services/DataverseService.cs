@@ -32,7 +32,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScenariosTableName = "cr07a_negocioscomerciales";
     private const string DefaultSalesPerformanceTableSetName = "cr07a_salesperformancerecords";
     private const string DefaultSalesPerformanceIdField = "cr07a_salesperformancerecordid";
-    private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_clienteid_value";
+    private const string DefaultSalesPerformanceClientLookupFilterField = "_cr07a_clientelookup_value";
     private const string DefaultSalesPerformanceRenewalDateField = "cr07a_fecharenovacion";
     private const string DefaultSalesPerformanceClientLookupLogicalName = "cr07a_clienteid";
     private const string DefaultSalesPerformanceProductLookupLogicalName = "cr07a_producto";
