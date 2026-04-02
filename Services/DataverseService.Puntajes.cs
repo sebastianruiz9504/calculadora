@@ -1804,8 +1804,8 @@ public sealed partial class DataverseService
             [_salesPerformancePrimaryNameField] = createName,
             [DefaultSalesPerformanceQuantityField] = line.Quantity,
             [DefaultSalesPerformanceUnitSaleUsdField] = line.SaleUnit,
-            [_salesPerformanceHasVatField] = hasVatOptionValue,
-            [_salesPerformanceAutoBillField] = detail.AutoBillOptionValue
+            [_salesPerformanceHasVatField] = hasVatOptionValue == 1,
+            [_salesPerformanceAutoBillField] = detail.AutoBillOptionValue == 1
         };
 
         if (HasSalesPerformanceProductLineValue(detail, line))
