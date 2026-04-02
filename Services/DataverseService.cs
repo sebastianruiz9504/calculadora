@@ -24,6 +24,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly ILogger<DataverseService> _logger;
     private readonly IQuoteCalculator _calculator;
     private readonly ConcurrentDictionary<string, string[]> _salesPerformanceNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _salesPerformancePrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1238,11 +1239,7 @@ public sealed partial class DataverseService : IDataverseService
                     ReadString(relationship, "ReferencingAttribute"),
                     attributeLogicalName,
                     StringComparison.OrdinalIgnoreCase))
-                .SelectMany(relationship => new[]
-                {
-                    ReadString(relationship, "ReferencingEntityNavigationPropertyName"),
-                    ReadString(relationship, "SchemaName")
-                })
+                .Select(relationship => ReadString(relationship, "ReferencingEntityNavigationPropertyName"))
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1256,6 +1253,42 @@ public sealed partial class DataverseService : IDataverseService
                 attributeLogicalName);
             return Array.Empty<string>();
         }
+    }
+
+    private async Task<string> ResolveSalesPerformancePrimaryNameFieldAsync(
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var cacheKey = DefaultSalesPerformanceEntityLogicalName;
+        if (_salesPerformancePrimaryNameFieldCache.TryGetValue(cacheKey, out var cachedField)
+            && !string.IsNullOrWhiteSpace(cachedField))
+        {
+            return cachedField;
+        }
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(DefaultSalesPerformanceEntityLogicalName)}')" +
+                "?$select=PrimaryNameAttribute";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+            using var doc = JsonDocument.Parse(json);
+            var primaryNameAttribute = ReadString(doc.RootElement, "PrimaryNameAttribute").Trim();
+            if (!string.IsNullOrWhiteSpace(primaryNameAttribute))
+            {
+                _salesPerformancePrimaryNameFieldCache[cacheKey] = primaryNameAttribute;
+                return primaryNameAttribute;
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible consultar la metadata de Dataverse para resolver el campo primario de sales performance.");
+        }
+
+        return _salesPerformancePrimaryNameField;
     }
 
     private static decimal RoundCurrency(decimal value) =>

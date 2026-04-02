@@ -1792,6 +1792,7 @@ public sealed partial class DataverseService
         var clientId = NormalizeGuid(record.ClientId, nameof(record.ClientId));
         var productId = NormalizeGuid(line.ProductId, nameof(line.ProductId));
         var createName = BuildSalesPerformanceName(record, line);
+        var primaryNameField = await ResolveSalesPerformancePrimaryNameFieldAsync(user, ct);
         var renewalDateValue = ResolveSalesPerformanceRenewalDate(detail);
         var billingDay = ResolveSalesPerformanceBillingDay(detail);
         var hasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(line);
@@ -1801,7 +1802,7 @@ public sealed partial class DataverseService
 
         var basePayload = new Dictionary<string, object?>
         {
-            [_salesPerformancePrimaryNameField] = createName,
+            [primaryNameField] = createName,
             [DefaultSalesPerformanceQuantityField] = line.Quantity,
             [DefaultSalesPerformanceUnitSaleUsdField] = line.SaleUnit,
             [_salesPerformanceHasVatField] = hasVatOptionValue == 1,
