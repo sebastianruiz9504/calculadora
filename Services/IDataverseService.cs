@@ -4,6 +4,7 @@ using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Puntajes;
+using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Models.Renovaciones;
 
 namespace CotizadorInterno.Web.Services;
@@ -26,11 +27,15 @@ public interface IDataverseService
     Task<ScoreOfferDownloadResult?> DownloadScoreOfferAsync(string recordId, CancellationToken ct = default);
     Task<NominaPreviewResultDto> PreviewNominaAsync(NominaPreviewRequest request, CancellationToken ct = default);
     Task<NominaConfirmResultDto> ConfirmNominaAsync(NominaConfirmRequest request, CancellationToken ct = default);
+    Task<RhTableDataResultDto> GetRhTableDataAsync(string tableKey, CancellationToken ct = default);
+    Task<RhSaveResultDto> SaveRhRecordAsync(RhSaveRequest request, CancellationToken ct = default);
+    Task<RhFileUploadResultDto> UploadRhFieldFileAsync(string tableKey, string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<RhFileDownloadResult?> DownloadRhFieldFileAsync(string tableKey, string recordId, string fieldName, CancellationToken ct = default);
     Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, MetricsViewMode view, string? sellerKey = null, CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);
     Task UpsertScenarioAsync(ScenarioSaveRequest request, CancellationToken ct = default);
-      Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default);
+    Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default);
 
 }

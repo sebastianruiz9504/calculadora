@@ -1,0 +1,46 @@
+@model RhHomePageViewModel
+@{
+    ViewData["Title"] = "RH";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/rh.css" asp-append-version="true" />
+}
+
+<div class="rh-shell">
+    <section class="rh-hero">
+        <div>
+            <div class="rh-kicker">Modulo Dataverse</div>
+            <h1 class="rh-title">RH</h1>
+            <p class="rh-subtitle">
+                Administra tablas base de recurso humano desde submodulos separados y con navegacion simple.
+            </p>
+        </div>
+        <div class="rh-user-pill">
+            <span class="rh-user-pill__label">Acceso</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <section class="rh-card">
+        <div class="rh-section-header">
+            <div>
+                <div class="rh-kicker">Submodulos</div>
+                <h2 class="rh-section-title">Tablas disponibles</h2>
+                <p class="rh-section-subtitle">Haz clic en una tabla para abrir su pantalla de edicion.</p>
+            </div>
+        </div>
+
+        <div class="rh-module-grid">
+            @foreach (var module in Model.Modules)
+            {
+                <a class="rh-module-card" asp-action="Table" asp-route-key="@module.Key">
+                    <span class="rh-module-card__eyebrow">@module.Subtitle</span>
+                    <strong class="rh-module-card__title">@module.Title</strong>
+                    <span class="rh-module-card__description">@module.Description</span>
+                    <span class="rh-module-card__action">Abrir modulo</span>
+                </a>
+            }
+        </div>
+    </section>
+</div>
