@@ -18,9 +18,7 @@
             <div class="payroll-kicker">Modulo Dataverse</div>
             <h1 class="payroll-title">Liquidacion Nominas</h1>
             <p class="payroll-subtitle">
-                Consolida la nomina mensual desde <span class="payroll-highlight">cr07a_empleado</span>,
-                cruza las comisiones del cierre de mes en <span class="payroll-highlight">cr07a_contractrecord1</span>
-                y prepara el envio final a <span class="payroll-highlight">cr07a_nomina</span>.
+                Prepara, revisa y confirma la liquidacion mensual antes de enviarla al proceso contable.
             </p>
         </div>
         <div class="payroll-user-pill">
@@ -43,7 +41,7 @@
             </div>
             <div class="payroll-toolbar__actions">
                 <p class="payroll-toolbar__hint">
-                    Si al confirmar algo falla, el sistema mostrara el detalle por empleado, operacion, tabla, campo y sugerencia de solucion.
+                    Si algo falla veras un detalle claro para corregirlo.
                 </p>
                 <div class="payroll-toolbar__buttons">
                     <button type="button" class="btn btn-outline-secondary" id="resetNominaBtn">Limpiar vista</button>
@@ -88,13 +86,11 @@
             <div>
                 <div class="payroll-kicker">Preliquidacion</div>
                 <h2 class="payroll-section-title">Detalle por empleado</h2>
-                <p class="payroll-section-subtitle">
-                    Puedes ajustar bono, otras deducciones, prestamo y retenciones antes de confirmar.
-                </p>
+                <p class="payroll-section-subtitle">Ajusta valores antes de confirmar.</p>
             </div>
             <div class="payroll-section-meta" id="nominaPeriodLabel"></div>
         </div>
-        <div class="table-responsive">
+        <div class="table-responsive payroll-table-wrap">
             <table class="table align-middle payroll-table">
                 <thead>
                     <tr>
@@ -129,10 +125,10 @@
             <div>
                 <div class="payroll-kicker">Resumen final</div>
                 <h2 class="payroll-section-title">Totales por vertical</h2>
-                <p class="payroll-section-subtitle">Vista final para revisar cuanto corresponde pagar por cada vertical.</p>
+                <p class="payroll-section-subtitle">Vista final del reparto por vertical.</p>
             </div>
         </div>
-        <div class="table-responsive">
+        <div class="table-responsive payroll-vertical-wrap">
             <table class="table align-middle payroll-vertical-table">
                 <thead>
                     <tr>
@@ -150,7 +146,7 @@
             <div>
                 <div class="payroll-kicker">Resultado</div>
                 <h2 class="payroll-section-title">Detalle operativo y errores</h2>
-                <p class="payroll-section-subtitle">Si algo falla, aqui quedara el detalle tecnico y la sugerencia para corregirlo.</p>
+                <p class="payroll-section-subtitle">Resumen del proceso y mensajes para correccion.</p>
             </div>
         </div>
         <div id="nominaLogsEmpty" class="payroll-logs__empty">Todavia no hay mensajes del proceso.</div>
