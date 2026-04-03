@@ -171,21 +171,24 @@ public sealed partial class DataverseService
 
     private async Task<List<NominaEmployeeInfo>> GetNominaEmployeesAsync(ClaimsPrincipal user, CancellationToken ct)
     {
+        var employeeNameField = await ResolveEntityPrimaryNameFieldAsync(_nominaEmployeeTableName, _nominaEmployeeNameField, user, ct);
         var select = string.Join(",", new[]
         {
             _nominaEmployeeIdField,
-            _nominaEmployeeNameField,
+            employeeNameField,
             _nominaEmployeeSalaryField,
             _nominaEmployeeConnectivityAllowanceField,
             _nominaEmployeeCommissionCapField,
             _nominaEmployeeCopiersFactorField,
             _nominaEmployeeCloudFactorField
-        });
+        }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
 
-        var relativeUrl = $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}&$orderby={_nominaEmployeeNameField} asc";
+        var relativeUrl = string.IsNullOrWhiteSpace(employeeNameField)
+            ? $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}"
+            : $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}&$orderby={employeeNameField} asc";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         return items
-            .Select(ParseNominaEmployee)
+            .Select(item => ParseNominaEmployee(item, employeeNameField))
             .Where(item => item is not null)
             .Select(item => item!)
             .ToList();
@@ -248,11 +251,12 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
+        var payrollNameField = await ResolveEntityPrimaryNameFieldAsync(_nominaPayrollTableName, _nominaPayrollNameField, user, ct);
         var employeeLookupProperty = $"_{_nominaPayrollEmployeeLookupField}_value";
         var select = string.Join(",", new[]
         {
             _nominaPayrollIdField,
-            _nominaPayrollNameField,
+            payrollNameField,
             _nominaPayrollPaymentDateField,
             employeeLookupProperty,
             _nominaPayrollBonusComplianceField,
@@ -260,14 +264,16 @@ public sealed partial class DataverseService
             _nominaPayrollLoanField,
             _nominaPayrollWithholdingField,
             _nominaPayrollExternalWithholdingField
-        });
+        }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
 
-        var filter = $"{employeeLookupProperty} ne null and contains({_nominaPayrollNameField},'{EscapeOdataLiteral(period.Key)}')";
+        var filter = string.IsNullOrWhiteSpace(payrollNameField)
+            ? $"{employeeLookupProperty} ne null"
+            : $"{employeeLookupProperty} ne null and contains({payrollNameField},'{EscapeOdataLiteral(period.Key)}')";
         var relativeUrl = $"/api/data/v9.2/{_nominaPayrollTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         return items
-            .Select(ParseNominaExistingRecord)
+            .Select(item => ParseNominaExistingRecord(item, payrollNameField))
             .Where(item => item is not null)
             .Select(item => item!)
             .GroupBy(item => item.EmployeeId, StringComparer.OrdinalIgnoreCase)
@@ -281,9 +287,10 @@ public sealed partial class DataverseService
         CancellationToken ct)
     {
         var employeeId = NormalizeGuid(row.EmployeeId, nameof(row.EmployeeId));
+        var payrollNameField = await ResolveEntityPrimaryNameFieldAsync(_nominaPayrollTableName, _nominaPayrollNameField, user, ct);
         var payload = new Dictionary<string, object?>
         {
-            [_nominaPayrollNameField] = BuildNominaRecordName(row.PeriodKey, row.EmployeeName),
+            [payrollNameField] = BuildNominaRecordName(row.PeriodKey, row.EmployeeName),
             [_nominaPayrollPaymentDateField] = row.PaymentDateValue,
             [_nominaPayrollSalaryBaseField] = row.SalaryBase,
             [_nominaPayrollConnectivityAllowanceField] = row.Auxilio,
@@ -545,13 +552,40 @@ public sealed partial class DataverseService
         };
     }
 
-    private NominaEmployeeInfo? ParseNominaEmployee(JsonElement item)
+    private static string ResolveNominaEmployeeName(JsonElement item, string employeeNameField)
+    {
+        var employeeName = ReadDataverseDisplayValue(item, employeeNameField, "nombre", "name", "empleado", "fullname");
+        if (!string.IsNullOrWhiteSpace(employeeName))
+            return employeeName.Trim();
+
+        foreach (var property in item.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.String)
+                continue;
+
+            if (!property.Name.Contains("nombre", StringComparison.OrdinalIgnoreCase)
+                && !property.Name.Contains("name", StringComparison.OrdinalIgnoreCase)
+                && !property.Name.Contains("fullname", StringComparison.OrdinalIgnoreCase)
+                && !property.Name.Contains("empleado", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value = property.Value.GetString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return "";
+    }
+
+    private NominaEmployeeInfo? ParseNominaEmployee(JsonElement item, string employeeNameField)
     {
         var employeeId = ReadString(item, _nominaEmployeeIdField).Trim();
         if (string.IsNullOrWhiteSpace(employeeId))
             return null;
 
-        var employeeName = ReadDataverseDisplayValue(item, _nominaEmployeeNameField, "nombre", "name", "empleado");
+        var employeeName = ResolveNominaEmployeeName(item, employeeNameField);
         if (string.IsNullOrWhiteSpace(employeeName))
             employeeName = $"Empleado {employeeId[..Math.Min(8, employeeId.Length)]}";
 
@@ -567,7 +601,7 @@ public sealed partial class DataverseService
         };
     }
 
-    private NominaExistingRecordInfo? ParseNominaExistingRecord(JsonElement item)
+    private NominaExistingRecordInfo? ParseNominaExistingRecord(JsonElement item, string payrollNameField)
     {
         var recordId = ReadString(item, _nominaPayrollIdField).Trim();
         if (string.IsNullOrWhiteSpace(recordId))
@@ -581,7 +615,7 @@ public sealed partial class DataverseService
         {
             RecordId = recordId,
             EmployeeId = employeeId,
-            RecordName = ReadString(item, _nominaPayrollNameField).Trim(),
+            RecordName = ReadString(item, payrollNameField).Trim(),
             PaymentDateValue = ReadDateOnly(item, _nominaPayrollPaymentDateField)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             BonusCompliance = RoundCurrency(Math.Max(ReadDecimal(item, _nominaPayrollBonusComplianceField) ?? 0m, 0m)),
             OtherDeductions = RoundCurrency(Math.Max(ReadDecimal(item, _nominaPayrollOtherDeductionsField) ?? 0m, 0m)),

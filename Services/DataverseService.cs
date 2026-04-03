@@ -26,6 +26,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IQuoteCalculator _calculator;
     private readonly ConcurrentDictionary<string, string[]> _salesPerformanceNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _salesPerformancePrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _entityPrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1426,6 +1427,48 @@ public sealed partial class DataverseService : IDataverseService
         }
 
         return _salesPerformancePrimaryNameField;
+    }
+
+    private async Task<string> ResolveEntityPrimaryNameFieldAsync(
+        string logicalName,
+        string fallbackField,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var cacheKey = logicalName?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(cacheKey))
+            return fallbackField;
+
+        if (_entityPrimaryNameFieldCache.TryGetValue(cacheKey, out var cachedField)
+            && !string.IsNullOrWhiteSpace(cachedField))
+        {
+            return cachedField;
+        }
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(cacheKey)}')" +
+                "?$select=PrimaryNameAttribute";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+            using var doc = JsonDocument.Parse(json);
+            var primaryNameAttribute = ReadString(doc.RootElement, "PrimaryNameAttribute").Trim();
+            if (!string.IsNullOrWhiteSpace(primaryNameAttribute))
+            {
+                _entityPrimaryNameFieldCache[cacheKey] = primaryNameAttribute;
+                return primaryNameAttribute;
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible consultar la metadata de Dataverse para resolver el campo primario de {EntityLogicalName}.",
+                cacheKey);
+        }
+
+        return fallbackField;
     }
 
     private static decimal RoundCurrency(decimal value) =>
