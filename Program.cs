@@ -39,6 +39,7 @@ builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<RenovacionesAccessFilter>();
 builder.Services.AddScoped<PuntajesAccessFilter>();
 builder.Services.AddScoped<MetricasAccessFilter>();
+builder.Services.AddScoped<NominaAccessFilter>();
 builder.Services.AddScoped<PortalProveedoresAccessFilter>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));

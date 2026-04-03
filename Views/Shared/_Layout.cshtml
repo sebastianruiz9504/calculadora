@@ -15,6 +15,7 @@
     var canAccessPortalProveedores = PortalProveedoresAccessPolicy.HasAccess(User);
     var canAccessPuntajes = PuntajesAccessPolicy.HasAccess(User);
     var canAccessMetricas = MetricasAccessPolicy.HasAccess(User);
+    var canAccessNomina = NominaAccessPolicy.HasAccess(User);
 }
 <header>
     <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom mb-3">
@@ -46,6 +47,12 @@
                     {
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-controller="Metricas" asp-action="Index">Metricas</a>
+                        </li>
+                    }
+                    @if (canAccessNomina)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-controller="LiquidacionNominas" asp-action="Index">Liquidacion nominas</a>
                         </li>
                     }
                     @if (canAccessPortalProveedores)

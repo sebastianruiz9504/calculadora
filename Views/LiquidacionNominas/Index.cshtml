@@ -1,0 +1,163 @@
+@model NominaPageViewModel
+@{
+    ViewData["Title"] = "Liquidacion Nominas";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/liquidacion-nominas.css" asp-append-version="true" />
+}
+
+<div class="payroll-shell"
+     id="nominaApp"
+     data-preview-url="@Url.Action("Preview", "LiquidacionNominas")"
+     data-confirm-url="@Url.Action("Confirm", "LiquidacionNominas")"
+     data-initial-period="@Model.InitialPeriodKey"
+     data-suggested-payment-date="@Model.SuggestedPaymentDateValue">
+    <section class="payroll-hero">
+        <div>
+            <div class="payroll-kicker">Modulo Dataverse</div>
+            <h1 class="payroll-title">Liquidacion Nominas</h1>
+            <p class="payroll-subtitle">
+                Consolida la nomina mensual desde <span class="payroll-highlight">cr07a_empleado</span>,
+                cruza las comisiones del cierre de mes en <span class="payroll-highlight">cr07a_contractrecord1</span>
+                y prepara el envio final a <span class="payroll-highlight">cr07a_nomina</span>.
+            </p>
+        </div>
+        <div class="payroll-user-pill">
+            <span class="payroll-user-pill__label">Acceso</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <section class="payroll-card">
+        <div class="payroll-toolbar">
+            <div class="payroll-toolbar__filters">
+                <div class="payroll-field">
+                    <label class="form-label" for="periodInput">Mes a liquidar</label>
+                    <input class="form-control" id="periodInput" type="month" value="@Model.InitialPeriodKey" />
+                </div>
+                <div class="payroll-field">
+                    <label class="form-label" for="paymentDateInput">Fecha de pago</label>
+                    <input class="form-control" id="paymentDateInput" type="date" value="@Model.SuggestedPaymentDateValue" />
+                </div>
+            </div>
+            <div class="payroll-toolbar__actions">
+                <p class="payroll-toolbar__hint">
+                    Si al confirmar algo falla, el sistema mostrara el detalle por empleado, operacion, tabla, campo y sugerencia de solucion.
+                </p>
+                <div class="payroll-toolbar__buttons">
+                    <button type="button" class="btn btn-outline-secondary" id="resetNominaBtn">Limpiar vista</button>
+                    <button type="button" class="btn btn-primary" id="previewNominaBtn">Preparar liquidacion</button>
+                    <button type="button" class="btn btn-success" id="confirmNominaBtn" disabled>Confirmar y enviar</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div id="nominaStatusBanner" class="payroll-status" role="status" aria-live="polite"></div>
+
+    <section class="payroll-summary" id="nominaSummary" hidden>
+        <article class="payroll-summary__card">
+            <span class="payroll-summary__label">Empleados</span>
+            <strong class="payroll-summary__value" id="summaryEmployees">0</strong>
+        </article>
+        <article class="payroll-summary__card">
+            <span class="payroll-summary__label">Total nomina</span>
+            <strong class="payroll-summary__value" id="summaryPayroll">0</strong>
+        </article>
+        <article class="payroll-summary__card">
+            <span class="payroll-summary__label">Total cuenta de cobro</span>
+            <strong class="payroll-summary__value" id="summaryCuentaCobro">0</strong>
+        </article>
+        <article class="payroll-summary__card">
+            <span class="payroll-summary__label">Total desembolso</span>
+            <strong class="payroll-summary__value" id="summaryDisbursement">0</strong>
+        </article>
+        <article class="payroll-summary__card">
+            <span class="payroll-summary__label">Total copiers</span>
+            <strong class="payroll-summary__value" id="summaryCopiers">0</strong>
+        </article>
+        <article class="payroll-summary__card">
+            <span class="payroll-summary__label">Total cloud</span>
+            <strong class="payroll-summary__value" id="summaryCloud">0</strong>
+        </article>
+    </section>
+
+    <section class="payroll-card" id="nominaRowsCard" hidden>
+        <div class="payroll-section-header">
+            <div>
+                <div class="payroll-kicker">Preliquidacion</div>
+                <h2 class="payroll-section-title">Detalle por empleado</h2>
+                <p class="payroll-section-subtitle">
+                    Puedes ajustar bono, otras deducciones, prestamo y retenciones antes de confirmar.
+                </p>
+            </div>
+            <div class="payroll-section-meta" id="nominaPeriodLabel"></div>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle payroll-table">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Accion</th>
+                        <th class="text-end">Sueldo base</th>
+                        <th class="text-end">Auxilio</th>
+                        <th class="text-end">Comis. copiers</th>
+                        <th class="text-end">Comis. cloud</th>
+                        <th class="text-end">Bono</th>
+                        <th class="text-end">Salud</th>
+                        <th class="text-end">Pension</th>
+                        <th class="text-end">Otras ded.</th>
+                        <th class="text-end">Prestamo</th>
+                        <th class="text-end">Rete nomina</th>
+                        <th class="text-end">Cuenta cobro</th>
+                        <th class="text-end">Rete externo</th>
+                        <th class="text-end">Monto pagado</th>
+                        <th class="text-end">Monto pagado cxc</th>
+                        <th class="text-end">Total copiers</th>
+                        <th class="text-end">Total cloud</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody id="nominaRowsBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="payroll-card" id="nominaVerticalsCard" hidden>
+        <div class="payroll-section-header">
+            <div>
+                <div class="payroll-kicker">Resumen final</div>
+                <h2 class="payroll-section-title">Totales por vertical</h2>
+                <p class="payroll-section-subtitle">Vista final para revisar cuanto corresponde pagar por cada vertical.</p>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle payroll-vertical-table">
+                <thead>
+                    <tr>
+                        <th>Vertical</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody id="nominaVerticalsBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="payroll-card" id="nominaLogsCard" hidden>
+        <div class="payroll-section-header">
+            <div>
+                <div class="payroll-kicker">Resultado</div>
+                <h2 class="payroll-section-title">Detalle operativo y errores</h2>
+                <p class="payroll-section-subtitle">Si algo falla, aqui quedara el detalle tecnico y la sugerencia para corregirlo.</p>
+            </div>
+        </div>
+        <div id="nominaLogsEmpty" class="payroll-logs__empty">Todavia no hay mensajes del proceso.</div>
+        <div id="nominaLogsList" class="payroll-logs"></div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/liquidacion-nominas.js" asp-append-version="true"></script>
+}

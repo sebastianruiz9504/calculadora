@@ -10,6 +10,7 @@ using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Renovaciones;
 using CotizadorInterno.Web.Services.Calculator;
@@ -62,6 +63,39 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresLineField = "cr07a_linea";
     private const string DefaultScoresVerticalField = "cr07a_vertical";
     private const string DefaultScoresAdditionalField = "cr07a_adicionales";
+    private const string DefaultNominaEmployeeTableSetName = "cr07a_empleados";
+    private const string DefaultNominaEmployeeTableName = "cr07a_empleado";
+    private const string DefaultNominaEmployeeIdField = "cr07a_empleadoid";
+    private const string DefaultNominaEmployeeNameField = "cr07a_name";
+    private const string DefaultNominaEmployeeSalaryField = "cr07a_sueldomensual";
+    private const string DefaultNominaEmployeeConnectivityAllowanceField = "cr07a_auxconectividad";
+    private const string DefaultNominaEmployeeCommissionCapField = "cr07a_topecomisional";
+    private const string DefaultNominaEmployeeCopiersFactorField = "cr07a_factorcopiers";
+    private const string DefaultNominaEmployeeCloudFactorField = "cr07a_factorcloud";
+    private const string DefaultNominaPayrollTableSetName = "cr07a_nominas";
+    private const string DefaultNominaPayrollTableName = "cr07a_nomina";
+    private const string DefaultNominaPayrollIdField = "cr07a_nominaid";
+    private const string DefaultNominaPayrollNameField = "cr07a_name";
+    private const string DefaultNominaPayrollEmployeeLookupField = "cr07a_idempleado";
+    private const string DefaultNominaPayrollEmployeeLookupNavigationProperty = "cr07a_Nomina_cr07a_IDEmpleado_cr07a_Empleado";
+    private const string DefaultNominaPayrollPaymentDateField = "cr07a_fechapago";
+    private const string DefaultNominaPayrollSalaryBaseField = "cr07a_sueldobase";
+    private const string DefaultNominaPayrollConnectivityAllowanceField = "cr07a_auxilio";
+    private const string DefaultNominaPayrollBonusComplianceField = "cr07a_bonocumplimiento";
+    private const string DefaultNominaPayrollCommissionsCopiersField = "cr07a_comisionescopiers";
+    private const string DefaultNominaPayrollCommissionsCloudField = "cr07a_comisionescloud";
+    private const string DefaultNominaPayrollCommissionsField = "cr07a_comisiones";
+    private const string DefaultNominaPayrollGrossSalaryField = "cr07a_sueldobruto";
+    private const string DefaultNominaPayrollHealthField = "cr07a_salud";
+    private const string DefaultNominaPayrollPensionField = "cr07a_pension";
+    private const string DefaultNominaPayrollOtherDeductionsField = "cr07a_otrasdeducciones";
+    private const string DefaultNominaPayrollLoanField = "cr07a_prestamo";
+    private const string DefaultNominaPayrollCuentaDeCobroField = "cr07a_cuentadecobro";
+    private const string DefaultNominaPayrollWithholdingField = "cr07a_retencionenlafuentenomina";
+    private const string DefaultNominaPayrollExternalWithholdingField = "cr07a_retencionenlafuenteexterno";
+    private const string DefaultNominaPayrollNetAmountField = "cr07a_montopagado";
+    private const string DefaultNominaPayrollNetCuentaDeCobroField = "cr07a_montopagadocuentadecobro";
+    private const string DefaultNominaScoresEmployeeLookupField = "cr07a_comercial";
     private const string DefaultSalesPerformancePrimaryNameField = "cr07a_name";
     private const string DefaultSalesPerformanceBillingDayField = "cr07a_billingday";
     private const string DefaultSalesPerformanceHasVatField = "cr07a_sitieneiva";
@@ -118,6 +152,41 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresAdditionalField;
     private readonly string _scoresBillingNotificationFlowUrl;
     private readonly string _scoresBillingNotificationRecipientEmail;
+    private readonly string _nominaEmployeeTableSetName;
+    private readonly string _nominaEmployeeTableName;
+    private readonly string _nominaEmployeeIdField;
+    private readonly string _nominaEmployeeNameField;
+    private readonly string _nominaEmployeeSalaryField;
+    private readonly string _nominaEmployeeConnectivityAllowanceField;
+    private readonly string _nominaEmployeeCommissionCapField;
+    private readonly string _nominaEmployeeCopiersFactorField;
+    private readonly string _nominaEmployeeCloudFactorField;
+    private readonly string _nominaPayrollTableSetName;
+    private readonly string _nominaPayrollTableName;
+    private readonly string _nominaPayrollIdField;
+    private readonly string _nominaPayrollNameField;
+    private readonly string _nominaPayrollEmployeeLookupField;
+    private readonly string _nominaPayrollEmployeeLookupNavigationProperty;
+    private readonly string _nominaPayrollPaymentDateField;
+    private readonly string _nominaPayrollSalaryBaseField;
+    private readonly string _nominaPayrollConnectivityAllowanceField;
+    private readonly string _nominaPayrollBonusComplianceField;
+    private readonly string _nominaPayrollCommissionsCopiersField;
+    private readonly string _nominaPayrollCommissionsCloudField;
+    private readonly string _nominaPayrollCommissionsField;
+    private readonly string _nominaPayrollGrossSalaryField;
+    private readonly string _nominaPayrollHealthField;
+    private readonly string _nominaPayrollPensionField;
+    private readonly string _nominaPayrollOtherDeductionsField;
+    private readonly string _nominaPayrollLoanField;
+    private readonly string _nominaPayrollCuentaDeCobroField;
+    private readonly string _nominaPayrollWithholdingField;
+    private readonly string _nominaPayrollExternalWithholdingField;
+    private readonly string _nominaPayrollNetAmountField;
+    private readonly string _nominaPayrollNetCuentaDeCobroField;
+    private readonly string _nominaScoresEmployeeLookupField;
+    private readonly decimal _nominaHealthRate;
+    private readonly decimal _nominaPensionRate;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
@@ -202,6 +271,74 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresAdditionalField;
         _scoresBillingNotificationFlowUrl = configuration["Scores:BillingNotificationFlowUrl"] ?? "";
         _scoresBillingNotificationRecipientEmail = configuration["Scores:BillingNotificationRecipientEmail"] ?? "";
+        _nominaEmployeeTableSetName = configuration["Nomina:EmployeeTableSetName"]
+            ?? DefaultNominaEmployeeTableSetName;
+        _nominaEmployeeTableName = configuration["Nomina:EmployeeTableName"]
+            ?? DefaultNominaEmployeeTableName;
+        _nominaEmployeeIdField = configuration["Nomina:EmployeeIdField"]
+            ?? DefaultNominaEmployeeIdField;
+        _nominaEmployeeNameField = configuration["Nomina:EmployeeNameField"]
+            ?? DefaultNominaEmployeeNameField;
+        _nominaEmployeeSalaryField = configuration["Nomina:EmployeeSalaryField"]
+            ?? DefaultNominaEmployeeSalaryField;
+        _nominaEmployeeConnectivityAllowanceField = configuration["Nomina:EmployeeConnectivityAllowanceField"]
+            ?? DefaultNominaEmployeeConnectivityAllowanceField;
+        _nominaEmployeeCommissionCapField = configuration["Nomina:EmployeeCommissionCapField"]
+            ?? DefaultNominaEmployeeCommissionCapField;
+        _nominaEmployeeCopiersFactorField = configuration["Nomina:EmployeeCopiersFactorField"]
+            ?? DefaultNominaEmployeeCopiersFactorField;
+        _nominaEmployeeCloudFactorField = configuration["Nomina:EmployeeCloudFactorField"]
+            ?? DefaultNominaEmployeeCloudFactorField;
+        _nominaPayrollTableSetName = configuration["Nomina:PayrollTableSetName"]
+            ?? DefaultNominaPayrollTableSetName;
+        _nominaPayrollTableName = configuration["Nomina:PayrollTableName"]
+            ?? DefaultNominaPayrollTableName;
+        _nominaPayrollIdField = configuration["Nomina:PayrollIdField"]
+            ?? DefaultNominaPayrollIdField;
+        _nominaPayrollNameField = configuration["Nomina:PayrollNameField"]
+            ?? DefaultNominaPayrollNameField;
+        _nominaPayrollEmployeeLookupField = configuration["Nomina:PayrollEmployeeLookupField"]
+            ?? DefaultNominaPayrollEmployeeLookupField;
+        _nominaPayrollEmployeeLookupNavigationProperty = configuration["Nomina:PayrollEmployeeLookupNavigationProperty"]
+            ?? DefaultNominaPayrollEmployeeLookupNavigationProperty;
+        _nominaPayrollPaymentDateField = configuration["Nomina:PayrollPaymentDateField"]
+            ?? DefaultNominaPayrollPaymentDateField;
+        _nominaPayrollSalaryBaseField = configuration["Nomina:PayrollSalaryBaseField"]
+            ?? DefaultNominaPayrollSalaryBaseField;
+        _nominaPayrollConnectivityAllowanceField = configuration["Nomina:PayrollConnectivityAllowanceField"]
+            ?? DefaultNominaPayrollConnectivityAllowanceField;
+        _nominaPayrollBonusComplianceField = configuration["Nomina:PayrollBonusComplianceField"]
+            ?? DefaultNominaPayrollBonusComplianceField;
+        _nominaPayrollCommissionsCopiersField = configuration["Nomina:PayrollCommissionsCopiersField"]
+            ?? DefaultNominaPayrollCommissionsCopiersField;
+        _nominaPayrollCommissionsCloudField = configuration["Nomina:PayrollCommissionsCloudField"]
+            ?? DefaultNominaPayrollCommissionsCloudField;
+        _nominaPayrollCommissionsField = configuration["Nomina:PayrollCommissionsField"]
+            ?? DefaultNominaPayrollCommissionsField;
+        _nominaPayrollGrossSalaryField = configuration["Nomina:PayrollGrossSalaryField"]
+            ?? DefaultNominaPayrollGrossSalaryField;
+        _nominaPayrollHealthField = configuration["Nomina:PayrollHealthField"]
+            ?? DefaultNominaPayrollHealthField;
+        _nominaPayrollPensionField = configuration["Nomina:PayrollPensionField"]
+            ?? DefaultNominaPayrollPensionField;
+        _nominaPayrollOtherDeductionsField = configuration["Nomina:PayrollOtherDeductionsField"]
+            ?? DefaultNominaPayrollOtherDeductionsField;
+        _nominaPayrollLoanField = configuration["Nomina:PayrollLoanField"]
+            ?? DefaultNominaPayrollLoanField;
+        _nominaPayrollCuentaDeCobroField = configuration["Nomina:PayrollCuentaDeCobroField"]
+            ?? DefaultNominaPayrollCuentaDeCobroField;
+        _nominaPayrollWithholdingField = configuration["Nomina:PayrollWithholdingField"]
+            ?? DefaultNominaPayrollWithholdingField;
+        _nominaPayrollExternalWithholdingField = configuration["Nomina:PayrollExternalWithholdingField"]
+            ?? DefaultNominaPayrollExternalWithholdingField;
+        _nominaPayrollNetAmountField = configuration["Nomina:PayrollNetAmountField"]
+            ?? DefaultNominaPayrollNetAmountField;
+        _nominaPayrollNetCuentaDeCobroField = configuration["Nomina:PayrollNetCuentaDeCobroField"]
+            ?? DefaultNominaPayrollNetCuentaDeCobroField;
+        _nominaScoresEmployeeLookupField = configuration["Nomina:ScoresEmployeeLookupField"]
+            ?? DefaultNominaScoresEmployeeLookupField;
+        _nominaHealthRate = NormalizeNominaRate(configuration["Nomina:HealthRate"], 0.04m);
+        _nominaPensionRate = NormalizeNominaRate(configuration["Nomina:PensionRate"], 0.04m);
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)
@@ -1293,6 +1430,17 @@ public sealed partial class DataverseService : IDataverseService
 
     private static decimal RoundCurrency(decimal value) =>
         Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static decimal NormalizeNominaRate(string? rawValue, decimal fallback)
+    {
+        if (!decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+            return fallback;
+
+        if (parsed <= 0m)
+            return fallback;
+
+        return parsed > 1m ? parsed / 100m : parsed;
+    }
 
     private async Task<string> CallDataverseGetJsonAsync(
         string relativeUrl,
