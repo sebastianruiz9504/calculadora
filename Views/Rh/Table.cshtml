@@ -17,7 +17,7 @@
     <section class="rh-hero">
         <div>
             <a class="rh-back-link" asp-action="Index">Volver al menu RH</a>
-            <div class="rh-kicker">@Model.Module.Subtitle</div>
+            <div class="rh-kicker">Recurso humano</div>
             <h1 class="rh-title">@Model.Module.Title</h1>
             <p class="rh-subtitle">@Model.Module.Description</p>
         </div>
@@ -32,14 +32,13 @@
     <section class="rh-card">
         <div class="rh-toolbar">
             <div>
-                <div class="rh-kicker">Edicion</div>
-                <h2 class="rh-section-title">Listado y formulario</h2>
-                <p class="rh-section-subtitle">Selecciona un registro para editarlo o crea uno nuevo.</p>
+                <div class="rh-kicker">Gestion</div>
+                <h2 class="rh-section-title">Administracion de registros</h2>
+                <p class="rh-section-subtitle">Usa el boton de nuevo registro o haz clic en una fila para editar.</p>
             </div>
             <div class="rh-toolbar__actions">
                 <button type="button" class="btn btn-outline-secondary" id="rhRefreshBtn">Recargar</button>
                 <button type="button" class="btn btn-outline-primary" id="rhNewBtn">Nuevo registro</button>
-                <button type="button" class="btn btn-primary" id="rhSaveBtn">Guardar cambios</button>
             </div>
         </div>
     </section>
@@ -48,7 +47,7 @@
         <div class="rh-section-header">
             <div>
                 <div class="rh-kicker">Registros</div>
-                <h2 class="rh-section-title">Tabla actual</h2>
+                <h2 class="rh-section-title">Listado</h2>
                 <p class="rh-section-subtitle" id="rhTableDescription">@Model.Module.Description</p>
             </div>
             <div class="rh-counter" id="rhRecordsCount">0 registros</div>
@@ -65,19 +64,29 @@
             No hay registros todavia.
         </div>
     </section>
+</div>
 
-    <section class="rh-card">
-        <div class="rh-section-header">
-            <div>
-                <div class="rh-kicker">Formulario</div>
-                <h2 class="rh-section-title" id="rhFormTitle">Nuevo registro</h2>
-                <p class="rh-section-subtitle" id="rhFormSubtitle">Completa los campos y guarda.</p>
+<div class="modal fade rh-modal" id="rhEditorModal" tabindex="-1" aria-labelledby="rhEditorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header rh-modal__header">
+                <div>
+                    <div class="rh-kicker">Formulario</div>
+                    <h2 class="modal-title rh-section-title" id="rhEditorModalLabel">Nuevo registro</h2>
+                    <p class="rh-section-subtitle" id="rhFormSubtitle">Completa los campos y guarda.</p>
+                </div>
+                <div class="rh-record-pill" id="rhRecordPill">Sin guardar</div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
-            <div class="rh-record-pill" id="rhRecordPill">Sin guardar</div>
+            <div class="modal-body rh-modal__body">
+                <div id="rhFormBody" class="rh-form-grid"></div>
+            </div>
+            <div class="modal-footer rh-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" id="rhSaveBtn">Guardar cambios</button>
+            </div>
         </div>
-
-        <div id="rhFormBody" class="rh-form-grid"></div>
-    </section>
+    </div>
 </div>
 
 @section Scripts {

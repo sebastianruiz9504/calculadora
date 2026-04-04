@@ -18,11 +18,15 @@
     const listBody = document.getElementById("rhListBody");
     const emptyState = document.getElementById("rhEmptyState");
     const formBody = document.getElementById("rhFormBody");
-    const formTitle = document.getElementById("rhFormTitle");
+    const formTitle = document.getElementById("rhEditorModalLabel");
     const formSubtitle = document.getElementById("rhFormSubtitle");
     const recordPill = document.getElementById("rhRecordPill");
     const tableDescription = document.getElementById("rhTableDescription");
     const recordsCount = document.getElementById("rhRecordsCount");
+    const modalElement = document.getElementById("rhEditorModal");
+    const editorModal = modalElement && window.bootstrap
+        ? window.bootstrap.Modal.getOrCreateInstance(modalElement)
+        : null;
 
     const state = {
         data: null,
@@ -35,9 +39,7 @@
     });
 
     newBtn.addEventListener("click", () => {
-        state.currentId = "";
-        renderForm();
-        renderStatus("info", "Formulario listo para crear un nuevo registro.");
+        openEditor("");
     });
 
     saveBtn.addEventListener("click", async () => {
@@ -45,6 +47,10 @@
     });
 
     listBody.addEventListener("click", (event) => {
+        if (state.busy) {
+            return;
+        }
+
         const target = event.target;
         const row = target instanceof HTMLElement
             ? target.closest("[data-record-id]")
@@ -54,9 +60,7 @@
             return;
         }
 
-        state.currentId = row.dataset.recordId || "";
-        renderList();
-        renderForm();
+        openEditor(row.dataset.recordId || "");
     });
 
     formBody.addEventListener("click", async (event) => {
@@ -97,14 +101,12 @@
 
             if (preferredRecordId && records.some((item) => item.recordId === preferredRecordId)) {
                 state.currentId = preferredRecordId;
-            } else if (!state.currentId && records.length > 0) {
-                state.currentId = records[0].recordId;
-            } else if (!records.some((item) => item.recordId === state.currentId)) {
+            } else if (state.currentId && !records.some((item) => item.recordId === state.currentId)) {
                 state.currentId = "";
             }
 
             renderAll();
-            renderStatus("success", `Tabla cargada: ${payload.title || "RH"}.`);
+            renderStatus("success", `Modulo cargado: ${payload.title || "RH"}.`);
         } catch (error) {
             renderStatus("error", buildErrorMessage(error));
         } finally {
@@ -142,6 +144,7 @@
             upsertRecord(payload.record);
             state.currentId = payload.record?.recordId || "";
             renderAll();
+            renderForm();
             renderStatus("success", payload.message || "Registro guardado correctamente.");
         } catch (error) {
             renderStatus("error", buildErrorMessage(error));
@@ -185,6 +188,7 @@
 
             upsertRecord(payload.record);
             renderAll();
+            renderForm();
             renderStatus("success", payload.message || "Archivo cargado correctamente.");
         } catch (error) {
             renderStatus("error", buildErrorMessage(error));
@@ -193,9 +197,18 @@
         }
     }
 
-    function renderAll() {
+    function openEditor(recordId) {
+        state.currentId = recordId || "";
         renderList();
         renderForm();
+
+        if (editorModal) {
+            editorModal.show();
+        }
+    }
+
+    function renderAll() {
+        renderList();
         updateSummary();
     }
 
@@ -205,7 +218,6 @@
 
         listHead.innerHTML = `
             <tr>
-                <th>Registro</th>
                 ${fields.map((field) => `<th>${escapeHtml(field.label)}</th>`).join("")}
             </tr>
         `;
@@ -218,10 +230,6 @@
 
             return `
                 <tr class="rh-list-row ${record.recordId === state.currentId ? "is-selected" : ""}" data-record-id="${escapeHtml(record.recordId)}">
-                    <td>
-                        <div class="rh-list-row__title">${escapeHtml(record.title || "Registro")}</div>
-                        <div class="rh-list-row__meta">${escapeHtml(record.recordId)}</div>
-                    </td>
                     ${cells}
                 </tr>
             `;
@@ -235,12 +243,11 @@
         const record = getCurrentRecord();
         const isNew = !record;
 
-        formTitle.textContent = isNew ? "Nuevo registro" : (record.title || "Editar registro");
+        formTitle.textContent = isNew ? "Nuevo registro" : "Editar registro";
         formSubtitle.textContent = isNew
             ? "Completa los campos y guarda para crear el registro."
             : "Actualiza la informacion necesaria y guarda los cambios.";
         recordPill.textContent = isNew ? "Sin guardar" : "Editando";
-
         formBody.innerHTML = fields.map((field) => buildFieldMarkup(field, record)).join("");
     }
 
@@ -443,6 +450,7 @@
         refreshBtn.disabled = isBusy;
         newBtn.disabled = isBusy;
         saveBtn.disabled = isBusy;
+
         formBody.querySelectorAll("button, input, select, textarea").forEach((element) => {
             if (element instanceof HTMLButtonElement && element.dataset.uploadField) {
                 element.disabled = isBusy || !state.currentId;
@@ -451,6 +459,11 @@
 
             if (element instanceof HTMLInputElement && element.type === "file") {
                 element.disabled = isBusy || !state.currentId;
+                return;
+            }
+
+            if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) {
+                element.disabled = isBusy;
             }
         });
     }

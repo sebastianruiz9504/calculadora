@@ -147,6 +147,10 @@
     font-size: 0.93rem;
 }
 
+.rh-module-card__action {
+    margin-top: 0.2rem;
+}
+
 .rh-back-link {
     display: inline-flex;
     margin-bottom: 0.4rem;
@@ -219,18 +223,12 @@
     cursor: pointer;
 }
 
+.rh-list-row:hover {
+    background: #f8fafc;
+}
+
 .rh-list-row.is-selected {
     background: #eff6ff;
-}
-
-.rh-list-row__title {
-    font-weight: 700;
-    color: #0f172a;
-}
-
-.rh-list-row__meta {
-    font-size: 0.78rem;
-    color: #64748b;
 }
 
 .rh-empty-state {
@@ -312,6 +310,29 @@
     color: #115e59;
 }
 
+.rh-modal .modal-content {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 22px;
+    box-shadow: 0 30px 70px rgba(15, 23, 42, 0.2);
+}
+
+.rh-modal__header {
+    align-items: flex-start;
+    gap: 0.9rem;
+    padding: 1.1rem 1.2rem 0.9rem;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.rh-modal__body {
+    padding: 1rem 1.2rem 1.1rem;
+}
+
+.rh-modal__footer {
+    gap: 0.6rem;
+    padding: 0.9rem 1.2rem 1.15rem;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
 @media (max-width: 991px) {
     .rh-hero,
     .rh-section-header,
@@ -324,6 +345,10 @@
     .rh-counter {
         min-width: 0;
         width: 100%;
+    }
+
+    .rh-modal__header {
+        flex-wrap: wrap;
     }
 }
 
