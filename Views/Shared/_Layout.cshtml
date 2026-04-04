@@ -1,3 +1,5 @@
+@using System.Globalization
+@using System.Security.Claims
 @using Microsoft.Identity.Web
 @{
     var canAccessRenovaciones = RenovacionesAccessPolicy.HasAccess(User);
@@ -15,6 +17,44 @@
             : "app-shell__nav-link";
     }
 
+    string NormalizeUserDisplayName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Usuario";
+        }
+
+        var trimmed = value.Trim();
+        if (!trimmed.Contains('@'))
+        {
+            return trimmed;
+        }
+
+        var localPart = trimmed.Split('@', 2)[0]
+            .Replace('.', ' ')
+            .Replace('_', ' ')
+            .Replace('-', ' ');
+
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(localPart.ToLowerInvariant());
+    }
+
+    string ResolveUserDisplayName()
+    {
+        var givenName = User.FindFirstValue(ClaimTypes.GivenName);
+        var surname = User.FindFirstValue(ClaimTypes.Surname);
+        var fullName = string.Join(" ", new[] { givenName, surname }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+
+        return NormalizeUserDisplayName(
+            User.FindFirstValue("name")
+            ?? User.FindFirstValue(ClaimTypes.Name)
+            ?? (string.IsNullOrWhiteSpace(fullName) ? null : fullName)
+            ?? User.GetDisplayName()
+            ?? User.Identity?.Name
+            ?? User.FindFirstValue("preferred_username")
+            ?? User.FindFirstValue(ClaimTypes.Upn)
+            ?? User.FindFirstValue(ClaimTypes.Email));
+    }
+
     var navItems = new[]
     {
         new { Controller = "Calculator", Label = "Calculadora", Visible = true },
@@ -25,6 +65,7 @@
         new { Controller = "Rh", Label = "RH", Visible = canAccessRh },
         new { Controller = "PortalProveedores", Label = "Proveedores", Visible = canAccessPortalProveedores }
     };
+    var userDisplayName = ResolveUserDisplayName();
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -43,11 +84,7 @@
         <div class="container-xl">
             <div class="app-shell__nav-frame">
                 <a class="app-shell__brand" asp-controller="Calculator" asp-action="Index">
-                    <span class="app-shell__brand-mark" aria-hidden="true">DT</span>
-                    <span class="app-shell__brand-text">
-                        <span class="app-shell__brand-title">Digital Tech</span>
-                        <span class="app-shell__brand-caption">Plataforma interna</span>
-                    </span>
+                    <span class="app-shell__brand-title">Digital Tech</span>
                 </a>
 
                 <button class="navbar-toggler app-shell__toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavigation" aria-controls="mainNavigation" aria-expanded="false" aria-label="Alternar navegacion">
@@ -72,11 +109,10 @@
                     <div class="app-shell__actions">
                         @if (User?.Identity?.IsAuthenticated == true)
                         {
-                            <div class="app-shell__user-chip" title="@User.Identity!.Name">
-                                <span class="app-shell__user-eyebrow">Usuario</span>
-                                <span class="app-shell__user-name">@User.Identity!.Name</span>
+                            <div class="app-shell__user-chip" title="@userDisplayName">
+                                <span class="app-shell__user-name">@userDisplayName</span>
                             </div>
-                            <a class="app-shell__session-link" asp-area="MicrosoftIdentity" asp-controller="Account" asp-action="SignOut">
+                            <a class="app-shell__session-link is-danger" asp-area="MicrosoftIdentity" asp-controller="Account" asp-action="SignOut">
                                 Cerrar sesion
                             </a>
                         }
