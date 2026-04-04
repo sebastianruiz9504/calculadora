@@ -487,9 +487,11 @@ public sealed partial class DataverseService
 
         if (string.Equals(field.EditorType, "image", StringComparison.OrdinalIgnoreCase))
         {
-            var imageUrl = ReadString(item, field.ImageUrlLogicalName);
             var raw = ReadString(item, field.LogicalName);
-            var hasContent = !string.IsNullOrWhiteSpace(imageUrl) || !string.IsNullOrWhiteSpace(raw);
+            var imageUrl = string.IsNullOrWhiteSpace(field.ImageUrlLogicalName)
+                ? ""
+                : ReadString(item, field.ImageUrlLogicalName);
+            var hasContent = !string.IsNullOrWhiteSpace(raw) || !string.IsNullOrWhiteSpace(imageUrl);
             return new RhCellValueDto
             {
                 Value = raw,
@@ -595,7 +597,14 @@ public sealed partial class DataverseService
 
             if (string.Equals(field.EditorType, "image", StringComparison.OrdinalIgnoreCase))
             {
-                fields.Add(field.ImageUrlLogicalName);
+                fields.Add(field.LogicalName);
+
+                if (!string.IsNullOrWhiteSpace(field.ImageUrlLogicalName)
+                    && !string.Equals(field.ImageUrlLogicalName, field.LogicalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    fields.Add(field.ImageUrlLogicalName);
+                }
+
                 continue;
             }
 
@@ -974,7 +983,6 @@ public sealed partial class DataverseService
                         EditorType = "image",
                         Accept = "image/*",
                         ShowInList = false,
-                        ImageUrlLogicalName = "cr07a_foto_URL",
                         HelpText = "Guarda primero el registro para cargar o reemplazar la foto."
                     },
                     new RhFieldDefinition { LogicalName = "cr07a_auxconectividad", Label = "Auxilio de conectividad", EditorType = "currency" },
