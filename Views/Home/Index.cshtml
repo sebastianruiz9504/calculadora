@@ -1,22 +1,88 @@
-@model CurrentUserInfo
+@model HomePageViewModel
 @{
-    ViewData["Title"] = "Sin acceso";
+    ViewData["Title"] = "Inicio";
+    var availableModulesCount = Model.AvailableModules.Count;
+    var primaryModule = Model.AvailableModules.FirstOrDefault();
+    var userEmail = string.IsNullOrWhiteSpace(Model.CurrentUser.Email)
+        ? "Sin correo disponible"
+        : Model.CurrentUser.Email;
 }
 
-<div class="container py-5">
-    <div class="mx-auto" style="max-width: 720px;">
-        <div class="card shadow-sm border-0">
-            <div class="card-body p-4 p-lg-5">
-                <div class="text-uppercase text-secondary fw-bold small mb-2">Acceso restringido</div>
-                <h1 class="h3 mb-3">No tienes modulos asignados</h1>
-                <p class="text-secondary mb-3">
-                    El acceso de esta aplicacion ahora depende unicamente de la columna <code>cr07a_modulos</code>
-                    en <code>cr07a_empleado</code>.
-                </p>
-                <p class="mb-0">
-                    Usuario autenticado: <strong>@(string.IsNullOrWhiteSpace(Model.Email) ? "Sin correo disponible" : Model.Email)</strong>
+@section Styles {
+    <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
+}
+
+<div class="home-shell">
+    <section class="home-hero">
+        <div class="home-hero__content">
+            <div>
+                <div class="home-kicker">Digital Tech</div>
+                <h1 class="home-title">Bienvenido, @Model.UserDisplayName</h1>
+                <p class="home-subtitle">
+                    Este es tu punto de entrada. Desde aqui puedes abrir los modulos habilitados para tu perfil y mantener la navegacion en una sola sintonia visual.
                 </p>
             </div>
+            <div class="home-user-pill">
+                <span class="home-user-pill__label">Usuario activo</span>
+                <span>@userEmail</span>
+            </div>
         </div>
-    </div>
+
+        <div class="home-insights">
+            <article class="home-insight">
+                <span class="home-insight__label">Modulos habilitados</span>
+                <strong class="home-insight__value">@availableModulesCount</strong>
+            </article>
+            <article class="home-insight">
+                <span class="home-insight__label">Modulo principal</span>
+                <strong class="home-insight__value">@(primaryModule?.Label ?? "Pendiente")</strong>
+            </article>
+            <article class="home-insight">
+                <span class="home-insight__label">Perfil</span>
+                <strong class="home-insight__value">@(availableModulesCount > 0 ? "Con acceso" : "Sin acceso")</strong>
+            </article>
+        </div>
+    </section>
+
+    @if (availableModulesCount > 0)
+    {
+        <section class="home-card">
+            <div class="home-card__header">
+                <div>
+                    <div class="home-kicker">Accesos</div>
+                    <h2 class="home-section-title">Tus modulos disponibles</h2>
+                    <p class="home-section-subtitle">
+                        Haz clic en cualquier tarjeta para entrar directo al flujo correspondiente.
+                    </p>
+                </div>
+            </div>
+
+            <div class="home-module-grid">
+                @foreach (var module in Model.AvailableModules)
+                {
+                    <a class="home-module-card" asp-controller="@module.Controller" asp-action="@module.Action" data-category="@module.Category">
+                        <span class="home-module-card__eyebrow">@module.Category</span>
+                        <strong class="home-module-card__title">@module.Label</strong>
+                        <span class="home-module-card__description">@module.Description</span>
+                        <span class="home-module-card__action">Abrir modulo</span>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="home-card home-card--empty">
+            <div class="home-empty">
+                <div class="home-kicker">Acceso restringido</div>
+                <h2 class="home-section-title">No tienes modulos asignados</h2>
+                <p class="home-section-subtitle">
+                    El acceso depende de la columna <code>cr07a_modulos</code> en <code>cr07a_empleado</code>. Cuando tu perfil tenga modulos activos, apareceran aqui en formato de tarjetas.
+                </p>
+                <div class="home-empty__meta">
+                    Usuario autenticado: <strong>@userEmail</strong>
+                </div>
+            </div>
+        </section>
+    }
 </div>

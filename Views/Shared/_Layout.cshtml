@@ -101,6 +101,12 @@
 
                 <div class="collapse navbar-collapse app-shell__collapse" id="mainNavigation">
                     <ul class="navbar-nav app-shell__nav-list">
+                        @if (User?.Identity?.IsAuthenticated == true)
+                        {
+                            <li class="nav-item">
+                                <a class="@GetNavLinkClass("Home")" asp-controller="Home" asp-action="Index">Inicio</a>
+                            </li>
+                        }
                         @foreach (var item in navItems)
                         {
                             <li class="nav-item">

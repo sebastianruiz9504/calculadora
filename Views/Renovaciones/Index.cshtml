@@ -3,6 +3,10 @@
     ViewData["Title"] = "Renovaciones";
 }
 
+@section Styles {
+    <link rel="stylesheet" href="~/css/renovaciones.css" asp-append-version="true" />
+}
+
 <style>
     .renew-shell {
         display: grid;
@@ -345,16 +349,17 @@
 
 <div class="renew-shell">
     <section class="renew-hero">
-        <div class="d-flex justify-content-between gap-3 flex-wrap align-items-start">
+        <div class="renew-hero__content">
             <div>
+                <div class="renew-kicker">Modulo Dataverse</div>
                 <h1 class="renew-title">Renovaciones</h1>
                 <p class="renew-subtitle">
                     Administra las lineas de <span class="fw-semibold">cr07a_salesperformancerecord</span>,
                     filtradas por fecha de renovacion, agrupadas por cliente y con edicion masiva sobre los registros seleccionados.
                 </p>
             </div>
-            <div class="renew-pill">
-                <span>Usuario</span>
+            <div class="renew-user-pill">
+                <span class="renew-user-pill__label">Acceso</span>
                 <span>@Model.CurrentUser.Email</span>
             </div>
         </div>

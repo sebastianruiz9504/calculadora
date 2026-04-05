@@ -19,6 +19,8 @@ public sealed class AppModuleDefinition
 {
     public AppModule Key { get; init; }
     public string Label { get; init; } = "";
+    public string Category { get; init; } = "";
+    public string Description { get; init; } = "";
     public int OptionValue { get; init; }
     public string Controller { get; init; } = "";
     public string Action { get; init; } = "Index";
@@ -31,6 +33,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Calculator,
         Label = "Calculadora",
+        Category = "Comercial",
+        Description = "Cotiza escenarios, compara lineas de negocio y prepara solicitudes de aprovisionamiento.",
         OptionValue = 645250000,
         Controller = "Calculator"
     };
@@ -39,6 +43,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Renovaciones,
         Label = "Renovaciones",
+        Category = "Comercial",
+        Description = "Actualiza lineas masivas por cliente y ejecuta renovaciones con una sola vista de trabajo.",
         OptionValue = 645250001,
         Controller = "Renovaciones"
     };
@@ -47,6 +53,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Puntajes,
         Label = "Puntajes",
+        Category = "Comercial",
+        Description = "Verifica negocios, recalcula puntajes y consolida cierres mensuales con soporte en Dataverse.",
         OptionValue = 645250002,
         Controller = "Puntajes"
     };
@@ -55,6 +63,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Nomina,
         Label = "Nomina",
+        Category = "Finanzas",
+        Description = "Prepara la liquidacion mensual, revisa novedades y confirma el envio al proceso contable.",
         OptionValue = 645250003,
         Controller = "LiquidacionNominas"
     };
@@ -63,6 +73,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Rh,
         Label = "RH",
+        Category = "Gestion interna",
+        Description = "Administra empleados, vacaciones e incapacidades desde un espacio centralizado.",
         OptionValue = 645250004,
         Controller = "Rh"
     };
@@ -71,6 +83,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.PortalProveedores,
         Label = "Proveedor",
+        Category = "Proveedores",
+        Description = "Solicita certificados, consulta retenciones y emite documentos consolidados por periodo.",
         OptionValue = 645250005,
         Controller = "PortalProveedores"
     };
@@ -79,6 +93,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.GestionHumana,
         Label = "Gestion humana",
+        Category = "Gestion interna",
+        Description = "Modulo reservado para procesos internos de gestion humana.",
         OptionValue = 645250006,
         IsNavigable = false
     };
@@ -87,6 +103,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Permissions,
         Label = "Permisos",
+        Category = "Administracion",
+        Description = "Controla accesos por empleado y actualiza la matriz de modulos directamente en Dataverse.",
         OptionValue = 645250007,
         Controller = "Permissions"
     };

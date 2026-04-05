@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
-using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,7 +35,6 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
-builder.Services.AddScoped<ModuleAccessFilter>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<CookiePolicyOptions>(options =>

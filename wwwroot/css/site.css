@@ -265,3 +265,219 @@ a.app-shell__session-link.is-danger:focus {
     font-size: 1.08rem;
   }
 }
+
+body.app-shell {
+  --app-text: #10213a;
+  --app-muted: #64748b;
+  --app-border: #dbe4f0;
+  --app-surface: rgba(255, 255, 255, 0.86);
+  --app-surface-soft: #f5f9ff;
+  --app-brand: #145af2;
+  --app-brand-deep: #0f45c6;
+  --app-brand-soft: rgba(20, 90, 242, 0.12);
+  --app-danger: #be123c;
+  --app-danger-hover: #9f1239;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(20, 90, 242, 0.08), transparent 26%),
+    linear-gradient(180deg, #f7fbff 0%, #eef4fb 100%);
+  color: var(--app-text);
+}
+
+.app-shell__header {
+  backdrop-filter: blur(18px);
+  background: rgba(247, 251, 255, 0.78);
+  border-bottom: 1px solid rgba(219, 228, 240, 0.92);
+}
+
+.app-shell__nav-frame {
+  min-height: 82px;
+  padding: 0.95rem 0;
+  gap: 1rem;
+}
+
+a.app-shell__brand,
+a.app-shell__brand:hover,
+a.app-shell__brand:focus,
+a.app-shell__brand:visited {
+  padding: 0.62rem 0.95rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.app-shell__brand-title {
+  color: var(--app-brand);
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.app-shell__toggler {
+  border-color: var(--app-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.app-shell__nav-list {
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+a.app-shell__nav-link,
+a.app-shell__nav-link:hover,
+a.app-shell__nav-link:focus,
+a.app-shell__nav-link:visited {
+  padding: 0.7rem 1rem;
+  border: 1px solid transparent;
+  color: var(--app-text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+a.app-shell__nav-link:hover,
+a.app-shell__nav-link:focus {
+  background: rgba(20, 90, 242, 0.08);
+  border-color: rgba(20, 90, 242, 0.16);
+  color: var(--app-brand);
+  transform: translateY(-1px);
+}
+
+a.app-shell__nav-link.is-active,
+a.app-shell__nav-link.is-active:hover,
+a.app-shell__nav-link.is-active:focus,
+a.app-shell__nav-link.is-active:visited {
+  background: linear-gradient(135deg, #145af2, #0f45c6);
+  border-color: transparent;
+  box-shadow: 0 14px 28px rgba(20, 90, 242, 0.22);
+  color: #ffffff;
+}
+
+.app-shell__actions {
+  gap: 0.65rem;
+}
+
+.app-shell__user-chip {
+  border-color: var(--app-border);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.app-shell__user-name {
+  color: var(--app-text);
+}
+
+a.app-shell__session-link,
+a.app-shell__session-link:hover,
+a.app-shell__session-link:focus,
+a.app-shell__session-link:visited {
+  padding: 0.8rem 1rem;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+}
+
+a.app-shell__session-link.is-primary,
+a.app-shell__session-link.is-primary:hover,
+a.app-shell__session-link.is-primary:focus,
+a.app-shell__session-link.is-primary:visited {
+  background: linear-gradient(135deg, #145af2, #0f45c6);
+  color: #ffffff;
+}
+
+.app-shell__content {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+body.app-shell .btn {
+  border-radius: 16px;
+  font-weight: 600;
+  padding: 0.78rem 1rem;
+  box-shadow: none;
+}
+
+body.app-shell .btn-primary {
+  background: linear-gradient(135deg, #145af2, #0f45c6);
+  border-color: #145af2;
+}
+
+body.app-shell .btn-primary:hover,
+body.app-shell .btn-primary:focus {
+  background: linear-gradient(135deg, #0f45c6, #0a37a0);
+  border-color: #0f45c6;
+}
+
+body.app-shell .btn-outline-secondary {
+  border-color: #c8d5e6;
+  color: #334155;
+  background: #ffffff;
+}
+
+body.app-shell .btn-outline-secondary:hover,
+body.app-shell .btn-outline-secondary:focus {
+  border-color: #9eb7dc;
+  background: #f8fbff;
+  color: #145af2;
+}
+
+body.app-shell .btn-outline-danger {
+  border-color: rgba(190, 18, 60, 0.2);
+  color: #be123c;
+}
+
+body.app-shell .btn-outline-danger:hover,
+body.app-shell .btn-outline-danger:focus {
+  background: rgba(190, 18, 60, 0.08);
+  border-color: rgba(190, 18, 60, 0.28);
+  color: #9f1239;
+}
+
+body.app-shell .form-control,
+body.app-shell .form-select,
+body.app-shell textarea.form-control {
+  min-height: 48px;
+  border-color: #cfdaea;
+  border-radius: 16px;
+  color: var(--app-text);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+body.app-shell textarea.form-control {
+  min-height: 140px;
+}
+
+body.app-shell .form-control:focus,
+body.app-shell .form-select:focus,
+body.app-shell .form-check-input:focus,
+body.app-shell .btn:focus {
+  border-color: rgba(20, 90, 242, 0.5);
+  box-shadow: 0 0 0 0.2rem rgba(20, 90, 242, 0.14);
+}
+
+body.app-shell .dropdown-menu {
+  border: 1px solid var(--app-border);
+  border-radius: 18px;
+  box-shadow: 0 22px 40px rgba(15, 23, 42, 0.12);
+  padding: 0.4rem;
+}
+
+body.app-shell .dropdown-item {
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  font-weight: 500;
+}
+
+body.app-shell .dropdown-item:hover,
+body.app-shell .dropdown-item:focus {
+  background: rgba(20, 90, 242, 0.08);
+  color: var(--app-brand);
+}
+
+body.app-shell code {
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(20, 90, 242, 0.08);
+  color: var(--app-brand-deep);
+}

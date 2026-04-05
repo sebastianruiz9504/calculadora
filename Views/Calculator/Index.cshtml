@@ -12,6 +12,10 @@
     var storedScenarios = (IReadOnlyList<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>?)ViewData["StoredScenarios"] ?? new List<CotizadorInterno.Web.Models.Calculator.ScenarioStoredDto>();
 }
 
+@section Styles {
+    <link rel="stylesheet" href="~/css/calculator.css" asp-append-version="true" />
+}
+
 <style>
     .pill {
         padding: 2px 10px;
@@ -223,15 +227,21 @@
     }
 </style>
 
-<div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+<div class="calc-shell">
+<div class="calc-hero">
     <div>
-        <h1 class="mb-1">Cotizador Interno</h1>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="calc-kicker">Modulo comercial</div>
+        <h1 class="mb-1 calc-title">Cotizador Interno</h1>
+        <p class="calc-subtitle mb-0">
+            Construye escenarios, calcula puntajes y prepara solicitudes de aprovisionamiento desde una sola vista.
+        </p>
+        <div class="d-flex align-items-center gap-2 flex-wrap mt-3">
             <span class="pill">Solo uso interno</span>
+            <span class="pill pill--ghost">@(string.IsNullOrWhiteSpace(currentUser.Email) ? "Sin correo disponible" : currentUser.Email)</span>
         </div>
     </div>
 
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap calc-hero__actions">
         <button id="btnNewScenario" class="btn btn-primary" type="button">Nuevo escenario</button>
         <button id="btnDuplicateScenario" class="btn btn-outline-secondary" type="button">Duplicar</button>
         <button id="btnDeleteScenario" class="btn btn-outline-danger" type="button">Eliminar</button>
@@ -239,10 +249,19 @@
 </div>
 
 <!-- Escenarios -->
-<div class="d-flex gap-2 flex-wrap mb-3" id="scenarioBar"></div>
+<div class="calc-card calc-card--tabs">
+    <div class="calc-section-header">
+        <div>
+            <div class="calc-kicker">Escenarios</div>
+            <h2 class="calc-section-title">Tabs de trabajo</h2>
+            <p class="calc-section-subtitle mb-0">Usa un escenario por propuesta y cambia entre ellos sin perder el contexto.</p>
+        </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap calc-scenario-bar" id="scenarioBar"></div>
+</div>
 
 <!-- Panel principal -->
-<div class="soft-card">
+<div class="soft-card calc-card calc-card--composer">
     <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-2">
         <div style="min-width: 260px;">
             <label class="form-label fw-bold mb-1">Nombre del escenario</label>
@@ -287,7 +306,7 @@
 </div>
 
 <!-- Configuración inferior -->
-<div class="soft-card mt-3">
+<div class="soft-card calc-card calc-card--config">
     <div class="row g-3 align-items-end">
         <div class="col-md-4">
             <label class="form-label fw-bold">Tipo de negocio (negocio global)</label>
@@ -339,25 +358,28 @@
 </div>
 
 <!-- Resultado abajo -->
-<div class="soft-card mt-3">
-    <div class="d-flex align-items-center justify-content-between mb-2">
-        <h5 class="mb-0">Resultado</h5>
+<div class="soft-card calc-card calc-card--result">
+    <div class="d-flex align-items-center justify-content-between mb-2 calc-result-head">
+        <div>
+            <div class="calc-kicker">Resultado</div>
+            <h5 class="mb-0 calc-section-title">Resumen del escenario</h5>
+        </div>
         <span class="pill">Solo visible</span>
     </div>
 
     <div class="row g-3">
-        <div class="col-lg-4">
+        <div class="col-lg-4 calc-result-block">
             <div class="muted">Puntaje total</div>
             <div id="resultPoints" style="font-size:36px; font-weight:900;">—</div>
         </div>
 
-        <div class="col-lg-4">
+        <div class="col-lg-4 calc-result-block">
             <div class="muted">Comisión final (COP)</div>
             <div id="resultCommission" style="font-size:30px; font-weight:900;">—</div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="small muted">
+        <div class="col-lg-4 calc-result-block">
+            <div class="small muted calc-result-list">
                 <div class="d-flex justify-content-between"><span>Prorrateo</span><span id="resultProration">—</span></div>
                 <div class="d-flex justify-content-between"><span>Venta mensual</span><span id="resultMonthly">—</span></div>
                 <div class="d-flex justify-content-between"><span>Venta total</span><span id="resultTotal">—</span></div>
@@ -370,6 +392,8 @@
             <div id="provisioningLog" class="small mt-2 text-muted"></div>
         </div>
     </div>
+</div>
+
 </div>
 
 <!-- Modal adjunto -->
