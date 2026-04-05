@@ -118,6 +118,36 @@ public sealed partial class DataverseService
         return value[0].Clone();
     }
 
+    private async Task<JsonElement?> GetCurrentEmployeeRecordByEmailAsync(
+        string email,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var select = string.Join(",", new[]
+        {
+            _nominaEmployeeIdField,
+            _nominaEmployeeNameField,
+            EmployeeFullNameField,
+            EmployeeEmailField,
+            EmployeeModulesField,
+            EmployeeUserLookupField
+        });
+
+        var filter = $"{EmployeeEmailField} eq '{EscapeOdataLiteral(email.Trim())}'";
+        var relativeUrl = $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+        if (value.GetArrayLength() == 0)
+            return null;
+
+        return value[0].Clone();
+    }
+
     private static EmployeeModulePermissionRowDto BuildEmployeeModulePermissionRow(JsonElement employeeRecord)
     {
         var employeeId = ReadString(employeeRecord, "cr07a_empleadoid");

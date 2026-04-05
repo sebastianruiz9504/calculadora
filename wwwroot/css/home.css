@@ -124,6 +124,13 @@
     padding: 22px;
 }
 
+.home-card--warning {
+    border-color: #f3d08a;
+    background:
+        radial-gradient(circle at top right, rgba(217, 119, 6, .12), transparent 34%),
+        linear-gradient(180deg, #fffaf0 0%, #ffffff 100%);
+}
+
 .home-section-title {
     margin: 6px 0;
     font-size: 28px;
@@ -200,6 +207,29 @@
 
 .home-empty__meta {
     margin-top: 18px;
+}
+
+.home-warning__details {
+    margin-top: 16px;
+}
+
+.home-warning__details summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #9a6700;
+}
+
+.home-warning__pre {
+    margin: 12px 0 0;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid #f2d6a2;
+    background: rgba(255, 255, 255, .78);
+    color: #5f370e;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 768px) {

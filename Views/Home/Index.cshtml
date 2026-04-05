@@ -44,6 +44,21 @@
         </div>
     </section>
 
+    @if (Model.CurrentUser.HasPermissionLoadWarning)
+    {
+        <section class="home-card home-card--warning">
+            <div class="home-kicker">Diagnostico</div>
+            <h2 class="home-section-title">La sesion cargo, pero la lectura de permisos fallo</h2>
+            <p class="home-section-subtitle">
+                La aplicacion continuo en modo degradado para no enviarte a la pagina generica de error. Si tus modulos no aparecen, revisa el detalle tecnico.
+            </p>
+            <details class="home-warning__details">
+                <summary>Ver error exacto</summary>
+                <pre class="home-warning__pre">@Model.CurrentUser.PermissionLoadWarning</pre>
+            </details>
+        </section>
+    }
+
     @if (availableModulesCount > 0)
     {
         <section class="home-card">
@@ -82,6 +97,12 @@
                 <div class="home-empty__meta">
                     Usuario autenticado: <strong>@userEmail</strong>
                 </div>
+                @if (Model.CurrentUser.HasPermissionLoadWarning)
+                {
+                    <div class="home-empty__meta">
+                        La carga de permisos reporto un error tecnico. Revisa el bloque de diagnostico de esta pagina.
+                    </div>
+                }
             </div>
         </section>
     }

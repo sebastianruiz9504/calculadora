@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Security.Claims;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Home;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 
@@ -14,10 +16,12 @@ public class HomeController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private readonly IDataverseService _dataverse;
+    private readonly ILogger<HomeController> _logger;
 
-    public HomeController(IDataverseService dataverse)
+    public HomeController(IDataverseService dataverse, ILogger<HomeController> logger)
     {
         _dataverse = dataverse;
+        _logger = logger;
     }
 
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
@@ -46,7 +50,20 @@ public class HomeController : Controller
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {
-        return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+        var feature = HttpContext.Features.Get<IExceptionHandlerPathFeature>();
+        if (feature?.Error is not null)
+        {
+            _logger.LogError(feature.Error, "Unhandled exception while processing {Path}", feature.Path);
+        }
+
+        var showDiagnostics = IsLocalRequest(HttpContext);
+        return View(new ErrorViewModel
+        {
+            RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+            Path = feature?.Path,
+            ErrorMessage = showDiagnostics ? feature?.Error.Message : null,
+            ErrorDetails = showDiagnostics ? feature?.Error.ToString() : null
+        });
     }
 
     private string ResolveUserDisplayName(CurrentUserInfo currentUser)
@@ -95,5 +112,14 @@ public class HomeController : Controller
             .Replace('-', ' ');
 
         return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(localPart.ToLowerInvariant());
+    }
+
+    private static bool IsLocalRequest(HttpContext httpContext)
+    {
+        var host = httpContext.Request.Host.Host;
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return IPAddress.TryParse(host, out var ipAddress) && IPAddress.IsLoopback(ipAddress);
     }
 }

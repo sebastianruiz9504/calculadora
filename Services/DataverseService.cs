@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -896,18 +897,63 @@ public sealed partial class DataverseService : IDataverseService
             return currentUserInfo;
         }
 
-        var userRecord = await GetCurrentUserRecordAsync(httpContext.User, ct);
-        if (userRecord is null)
-            return null;
+        var currentUser = BuildCurrentUserInfoFromClaims(httpContext.User);
 
-        var currentUser = new CurrentUserInfo
+        JsonElement? userRecord = null;
+        try
         {
-            SystemUserId = userRecord.Value.TryGetProperty("systemuserid", out var idProp) ? (idProp.GetString() ?? "") : "",
-            DisplayName = userRecord.Value.TryGetProperty("fullname", out var nameProp) ? (nameProp.GetString() ?? "") : "",
-            Email = userRecord.Value.TryGetProperty("internalemailaddress", out var emailProp) ? (emailProp.GetString() ?? "") : ""
-        };
+            userRecord = await GetCurrentUserRecordAsync(httpContext.User, ct);
+        }
+        catch (Exception ex)
+        {
+            AppendCurrentUserPermissionWarning(
+                currentUser,
+                "No fue posible consultar el system user actual en Dataverse.",
+                ex);
+        }
 
-        var employeeRecord = await GetCurrentEmployeeRecordAsync(currentUser.SystemUserId, httpContext.User, ct);
+        if (userRecord is not null)
+        {
+            currentUser.SystemUserId = userRecord.Value.TryGetProperty("systemuserid", out var idProp) ? (idProp.GetString() ?? "") : "";
+            currentUser.DisplayName = FirstNonEmpty(
+                userRecord.Value.TryGetProperty("fullname", out var nameProp) ? nameProp.GetString() : null,
+                currentUser.DisplayName);
+            currentUser.Email = FirstNonEmpty(
+                userRecord.Value.TryGetProperty("internalemailaddress", out var emailProp) ? emailProp.GetString() : null,
+                currentUser.Email);
+        }
+
+        JsonElement? employeeRecord = null;
+        if (!string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+        {
+            try
+            {
+                employeeRecord = await GetCurrentEmployeeRecordAsync(currentUser.SystemUserId, httpContext.User, ct);
+            }
+            catch (Exception ex)
+            {
+                AppendCurrentUserPermissionWarning(
+                    currentUser,
+                    "No fue posible cargar el empleado actual en Dataverse usando el lookup de usuario.",
+                    ex);
+            }
+        }
+
+        if (employeeRecord is null && !string.IsNullOrWhiteSpace(currentUser.Email))
+        {
+            try
+            {
+                employeeRecord = await GetCurrentEmployeeRecordByEmailAsync(currentUser.Email, httpContext.User, ct);
+            }
+            catch (Exception ex)
+            {
+                AppendCurrentUserPermissionWarning(
+                    currentUser,
+                    "No fue posible cargar el empleado actual en Dataverse usando el correo.",
+                    ex);
+            }
+        }
+
         if (employeeRecord is not null)
         {
             currentUser.EmployeeId = ReadString(employeeRecord.Value, _nominaEmployeeIdField);
@@ -923,6 +969,53 @@ public sealed partial class DataverseService : IDataverseService
 
         httpContext.Items[CurrentUserCacheKey] = currentUser;
         return currentUser;
+    }
+
+    private CurrentUserInfo BuildCurrentUserInfoFromClaims(ClaimsPrincipal user)
+    {
+        var givenName = user.FindFirstValue(ClaimTypes.GivenName);
+        var surname = user.FindFirstValue(ClaimTypes.Surname);
+        var fullName = string.Join(" ", new[] { givenName, surname }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+
+        return new CurrentUserInfo
+        {
+            DisplayName = FirstNonEmpty(
+                user.FindFirstValue("name"),
+                user.FindFirstValue(ClaimTypes.Name),
+                string.IsNullOrWhiteSpace(fullName) ? null : fullName,
+                user.GetDisplayName(),
+                user.Identity?.Name),
+            Email = FirstNonEmpty(
+                user.FindFirstValue("preferred_username"),
+                user.FindFirstValue(ClaimTypes.Upn),
+                user.FindFirstValue(ClaimTypes.Email),
+                user.Identity?.Name)
+        };
+    }
+
+    private void AppendCurrentUserPermissionWarning(CurrentUserInfo currentUser, string context, Exception ex)
+    {
+        _logger.LogError(ex, "{Context}", context);
+
+        var detail = $"{context} {SummarizeException(ex)}".Trim();
+        if (string.IsNullOrWhiteSpace(currentUser.PermissionLoadWarning))
+        {
+            currentUser.PermissionLoadWarning = detail;
+            return;
+        }
+
+        if (!currentUser.PermissionLoadWarning.Contains(detail, StringComparison.OrdinalIgnoreCase))
+            currentUser.PermissionLoadWarning = $"{currentUser.PermissionLoadWarning}{Environment.NewLine}{Environment.NewLine}{detail}";
+    }
+
+    private static string SummarizeException(Exception ex)
+    {
+        if (ex is AggregateException aggregate && aggregate.InnerExceptions.Count == 1)
+            ex = aggregate.InnerExceptions[0];
+
+        return string.IsNullOrWhiteSpace(ex.Message)
+            ? ex.GetType().Name
+            : ex.Message.Trim();
     }
 
     private async Task<JsonElement?> GetCurrentUserRecordAsync(System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)

@@ -12,6 +12,10 @@ public sealed class CurrentUserInfo
     public string EmployeeUserDisplayName { get; set; } = "";
     public string EmployeeUserEmail { get; set; } = "";
     public List<int> ModuleOptionValues { get; set; } = new();
+    public string PermissionLoadWarning { get; set; } = "";
+
+    public bool HasPermissionLoadWarning =>
+        !string.IsNullOrWhiteSpace(PermissionLoadWarning);
 
     public bool HasModule(int optionValue) =>
         ModuleOptionValues.Contains(optionValue);
