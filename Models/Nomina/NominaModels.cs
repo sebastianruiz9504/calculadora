@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using CotizadorInterno.Web.Models;
 
 namespace CotizadorInterno.Web.Models.Nomina;
@@ -119,35 +118,4 @@ public sealed class NominaProcessLogEntryDto
     public string Detail { get; set; } = "";
     public string OffendingValue { get; set; } = "";
     public string Suggestion { get; set; } = "";
-}
-
-public static class NominaAccessPolicy
-{
-    private static readonly HashSet<string> AllowedEmails = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "msuarez@digitaltechcolombia.com",
-        "adaza@digitaltechcolombia.com",
-        "sruiz@digitaltechcolombia.com"
-    };
-
-    public static bool HasAccess(string? email) =>
-        !string.IsNullOrWhiteSpace(email) && AllowedEmails.Contains(email.Trim());
-
-    public static bool HasAccess(ClaimsPrincipal? user)
-    {
-        if (user?.Identity?.IsAuthenticated != true)
-            return false;
-
-        var candidateEmails = new[]
-        {
-            user.Identity?.Name,
-            user.FindFirstValue("preferred_username"),
-            user.FindFirstValue("upn"),
-            user.FindFirstValue(ClaimTypes.Upn),
-            user.FindFirstValue(ClaimTypes.Email),
-            user.FindFirstValue("email")
-        };
-
-        return candidateEmails.Any(HasAccess);
-    }
 }

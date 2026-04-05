@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using CotizadorInterno.Web.Models;
 
 namespace CotizadorInterno.Web.Models.Metricas;
@@ -146,34 +145,4 @@ public sealed class MetricsSeriesDto
     public decimal TotalAnnualValue { get; set; }
     public IReadOnlyList<decimal> Values { get; set; } = Array.Empty<decimal>();
     public IReadOnlyList<decimal> AnnualValues { get; set; } = Array.Empty<decimal>();
-}
-
-public static class MetricasAccessPolicy
-{
-    private static readonly HashSet<string> AllowedEmails = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "sruiz@digitaltechcolombia.com",
-        "adaza@digitaltechcolombia.com"
-    };
-
-    public static bool HasAccess(string? email) =>
-        !string.IsNullOrWhiteSpace(email) && AllowedEmails.Contains(email.Trim());
-
-    public static bool HasAccess(ClaimsPrincipal? user)
-    {
-        if (user?.Identity?.IsAuthenticated != true)
-            return false;
-
-        var candidateEmails = new[]
-        {
-            user.Identity?.Name,
-            user.FindFirstValue("preferred_username"),
-            user.FindFirstValue("upn"),
-            user.FindFirstValue(ClaimTypes.Upn),
-            user.FindFirstValue(ClaimTypes.Email),
-            user.FindFirstValue("email")
-        };
-
-        return candidateEmails.Any(HasAccess);
-    }
 }

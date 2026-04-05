@@ -1,8 +1,22 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@model CurrentUserInfo
+@{
+    ViewData["Title"] = "Sin acceso";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="container py-5">
+    <div class="mx-auto" style="max-width: 720px;">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4 p-lg-5">
+                <div class="text-uppercase text-secondary fw-bold small mb-2">Acceso restringido</div>
+                <h1 class="h3 mb-3">No tienes modulos asignados</h1>
+                <p class="text-secondary mb-3">
+                    El acceso de esta aplicacion ahora depende unicamente de la columna <code>cr07a_modulos</code>
+                    en <code>cr07a_empleado</code>.
+                </p>
+                <p class="mb-0">
+                    Usuario autenticado: <strong>@(string.IsNullOrWhiteSpace(Model.Email) ? "Sin correo disponible" : Model.Email)</strong>
+                </p>
+            </div>
+        </div>
+    </div>
 </div>

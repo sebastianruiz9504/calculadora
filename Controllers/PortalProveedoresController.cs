@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
 
-[ServiceFilter(typeof(PortalProveedoresAccessFilter))]
+[ModuleAuthorize(AppModule.PortalProveedores)]
 public sealed class PortalProveedoresController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
@@ -212,12 +213,6 @@ public sealed class PortalProveedoresController : Controller
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct)
     {
-        if (HttpContext.Items.TryGetValue(PortalProveedoresAccessFilter.CurrentUserItemKey, out var cachedUser)
-            && cachedUser is CurrentUserInfo currentUser)
-        {
-            return currentUser;
-        }
-
         return await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
     }
 

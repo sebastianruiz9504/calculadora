@@ -1,5 +1,6 @@
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,7 @@ using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
 
-[ServiceFilter(typeof(RhAccessFilter))]
+[ModuleAuthorize(AppModule.Rh)]
 public sealed class RhController : Controller
 {
     private readonly IDataverseService _dataverse;
@@ -151,12 +152,6 @@ public sealed class RhController : Controller
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct)
     {
-        if (HttpContext.Items.TryGetValue(RhAccessFilter.CurrentUserItemKey, out var cachedUser)
-            && cachedUser is CurrentUserInfo currentUser)
-        {
-            return currentUser;
-        }
-
         return await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
     }
 

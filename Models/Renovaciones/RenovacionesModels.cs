@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using CotizadorInterno.Web.Models;
 
 namespace CotizadorInterno.Web.Models.Renovaciones;
@@ -109,34 +108,4 @@ public sealed class RenovacionesPageViewModel
 {
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public RenewalPeriodFilter InitialFilter { get; set; } = RenewalPeriodFilter.ThisMonth;
-}
-
-public static class RenovacionesAccessPolicy
-{
-    private static readonly HashSet<string> AllowedEmails = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "sruiz@digitaltechcolombia.com",
-        "adaza@digitaltechcolombia.com"
-    };
-
-    public static bool HasAccess(string? email) =>
-        !string.IsNullOrWhiteSpace(email) && AllowedEmails.Contains(email.Trim());
-
-    public static bool HasAccess(ClaimsPrincipal? user)
-    {
-        if (user?.Identity?.IsAuthenticated != true)
-            return false;
-
-        var candidateEmails = new[]
-        {
-            user.Identity?.Name,
-            user.FindFirstValue("preferred_username"),
-            user.FindFirstValue("upn"),
-            user.FindFirstValue(ClaimTypes.Upn),
-            user.FindFirstValue(ClaimTypes.Email),
-            user.FindFirstValue("email")
-        };
-
-        return candidateEmails.Any(HasAccess);
-    }
 }

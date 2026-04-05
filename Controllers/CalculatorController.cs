@@ -1,8 +1,10 @@
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
+using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
 using System.Globalization;
@@ -15,6 +17,7 @@ using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Controllers;
 
+[ModuleAuthorize(AppModule.Calculator)]
 public sealed class CalculatorController : Controller
 {
     private readonly IDataverseService _dataverse;

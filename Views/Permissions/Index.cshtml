@@ -1,0 +1,173 @@
+@model EmployeeModulePermissionsPageViewModel
+@{
+    ViewData["Title"] = "Permisos";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/permissions.css" asp-append-version="true" />
+}
+
+<div class="permissions-shell"
+     id="permissionsApp"
+     data-save-url="@Url.Action("Save", "Permissions")">
+    <section class="permissions-hero">
+        <div>
+            <div class="permissions-kicker">Control de acceso</div>
+            <h1 class="permissions-title">Permisos</h1>
+            <p class="permissions-subtitle">
+                Esta pantalla actualiza directamente <span class="permissions-highlight">cr07a_modulos</span>
+                en la tabla <span class="permissions-highlight">cr07a_empleado</span>.
+            </p>
+        </div>
+        <div class="permissions-user-pill">
+            <span class="permissions-user-pill__label">Administrador</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <section class="permissions-card">
+        <div class="permissions-card__header">
+            <div>
+                <div class="permissions-kicker">Matriz</div>
+                <h2 class="permissions-section-title">Empleados por modulo</h2>
+                <p class="permissions-section-subtitle">
+                    Marca los checks requeridos y usa guardar para actualizar Dataverse.
+                </p>
+            </div>
+            <button type="button" class="btn btn-primary permissions-save-btn" id="savePermissionsBtn">
+                Guardar cambios
+            </button>
+        </div>
+
+        <div id="permissionsStatus" class="permissions-status" role="status" aria-live="polite"></div>
+
+        <div class="permissions-table-wrap">
+            <table class="permissions-table">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Usuario</th>
+                        @foreach (var module in Model.Modules)
+                        {
+                            <th>@module.Label</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var employee in Model.Employees)
+                    {
+                        <tr data-employee-id="@employee.EmployeeId">
+                            <td>
+                                <div class="permissions-employee">@employee.EmployeeName</div>
+                            </td>
+                            <td>
+                                <div class="permissions-user">
+                                    <div>@(string.IsNullOrWhiteSpace(employee.UserDisplayName) ? "Sin usuario" : employee.UserDisplayName)</div>
+                                    @if (!string.IsNullOrWhiteSpace(employee.UserEmail))
+                                    {
+                                        <small>@employee.UserEmail</small>
+                                    }
+                                </div>
+                            </td>
+                            @foreach (var module in Model.Modules)
+                            {
+                                var checkboxId = $"perm_{employee.EmployeeId}_{module.OptionValue}";
+                                <td class="permissions-check-cell">
+                                    <label class="permissions-check" for="@checkboxId">
+                                        <input id="@checkboxId"
+                                               type="checkbox"
+                                               value="@module.OptionValue"
+                                               @(employee.ModuleOptionValues.Contains(module.OptionValue) ? "checked" : null) />
+                                        <span></span>
+                                    </label>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const app = document.getElementById("permissionsApp");
+            if (!app) {
+                return;
+            }
+
+            const saveUrl = app.dataset.saveUrl || "";
+            const saveButton = document.getElementById("savePermissionsBtn");
+            const status = document.getElementById("permissionsStatus");
+
+            const setStatus = (message, tone) => {
+                if (!status) {
+                    return;
+                }
+
+                status.textContent = message || "";
+                status.className = "permissions-status";
+                if (tone) {
+                    status.classList.add(`is-${tone}`);
+                }
+                status.classList.toggle("show", Boolean(message));
+            };
+
+            const buildPayload = () => {
+                const employees = Array.from(app.querySelectorAll("tbody tr[data-employee-id]")).map((row) => {
+                    const employeeId = row.dataset.employeeId || "";
+                    const moduleOptionValues = Array.from(row.querySelectorAll("input[type='checkbox']:checked"))
+                        .map((checkbox) => Number.parseInt(checkbox.value, 10))
+                        .filter((value) => Number.isInteger(value));
+
+                    return {
+                        employeeId,
+                        moduleOptionValues
+                    };
+                });
+
+                return { employees };
+            };
+
+            const setBusy = (isBusy) => {
+                if (saveButton) {
+                    saveButton.disabled = isBusy;
+                    saveButton.textContent = isBusy ? "Guardando..." : "Guardar cambios";
+                }
+            };
+
+            saveButton?.addEventListener("click", async () => {
+                if (!saveUrl) {
+                    setStatus("No se encontro la ruta para guardar permisos.", "error");
+                    return;
+                }
+
+                setBusy(true);
+                setStatus("Guardando cambios en Dataverse...", "info");
+
+                try {
+                    const response = await fetch(saveUrl, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(buildPayload())
+                    });
+
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(payload.detail || payload.message || "No fue posible guardar los permisos.");
+                    }
+
+                    setStatus(payload.message || "Permisos guardados correctamente.", "success");
+                } catch (error) {
+                    setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado guardando permisos.", "error");
+                } finally {
+                    setBusy(false);
+                }
+            });
+        })();
+    </script>
+}

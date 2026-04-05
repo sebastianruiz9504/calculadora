@@ -890,17 +890,39 @@ public sealed partial class DataverseService : IDataverseService
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
-       
- var userRecord = await GetCurrentUserRecordAsync(httpContext.User, ct);
+        if (httpContext.Items.TryGetValue(CurrentUserCacheKey, out var cachedUser)
+            && cachedUser is CurrentUserInfo currentUserInfo)
+        {
+            return currentUserInfo;
+        }
+
+        var userRecord = await GetCurrentUserRecordAsync(httpContext.User, ct);
         if (userRecord is null)
             return null;
 
-        return new CurrentUserInfo
+        var currentUser = new CurrentUserInfo
         {
             SystemUserId = userRecord.Value.TryGetProperty("systemuserid", out var idProp) ? (idProp.GetString() ?? "") : "",
             DisplayName = userRecord.Value.TryGetProperty("fullname", out var nameProp) ? (nameProp.GetString() ?? "") : "",
             Email = userRecord.Value.TryGetProperty("internalemailaddress", out var emailProp) ? (emailProp.GetString() ?? "") : ""
         };
+
+        var employeeRecord = await GetCurrentEmployeeRecordAsync(currentUser.SystemUserId, httpContext.User, ct);
+        if (employeeRecord is not null)
+        {
+            currentUser.EmployeeId = ReadString(employeeRecord.Value, _nominaEmployeeIdField);
+            currentUser.EmployeeName = FirstNonEmpty(
+                ReadString(employeeRecord.Value, EmployeeFullNameField),
+                ReadString(employeeRecord.Value, _nominaEmployeeNameField));
+            currentUser.EmployeeUserDisplayName = ReadString(employeeRecord.Value, $"{EmployeeUserLookupField}{FormattedValueAnnotationSuffix}");
+            currentUser.EmployeeUserEmail = FirstNonEmpty(
+                ReadString(employeeRecord.Value, EmployeeEmailField),
+                currentUser.Email);
+            currentUser.ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord.Value, EmployeeModulesField);
+        }
+
+        httpContext.Items[CurrentUserCacheKey] = currentUser;
+        return currentUser;
     }
 
     private async Task<JsonElement?> GetCurrentUserRecordAsync(System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)

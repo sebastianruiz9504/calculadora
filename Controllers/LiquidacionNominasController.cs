@@ -1,6 +1,7 @@
 using System.Globalization;
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,7 @@ using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
 
-[ServiceFilter(typeof(NominaAccessFilter))]
+[ModuleAuthorize(AppModule.Nomina)]
 public sealed class LiquidacionNominasController : Controller
 {
     private readonly IDataverseService _dataverse;
@@ -84,12 +85,6 @@ public sealed class LiquidacionNominasController : Controller
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct)
     {
-        if (HttpContext.Items.TryGetValue(NominaAccessFilter.CurrentUserItemKey, out var cachedUser)
-            && cachedUser is CurrentUserInfo currentUser)
-        {
-            return currentUser;
-        }
-
         return await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
     }
 

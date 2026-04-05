@@ -2,6 +2,7 @@ using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
+using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Models.RH;
@@ -37,5 +38,6 @@ public interface IDataverseService
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);
     Task UpsertScenarioAsync(ScenarioSaveRequest request, CancellationToken ct = default);
     Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default);
-
+    Task<IReadOnlyList<EmployeeModulePermissionRowDto>> GetEmployeeModulePermissionsAsync(CancellationToken ct = default);
+    Task<EmployeeModulePermissionSaveResult> SaveEmployeeModulePermissionsAsync(EmployeeModulePermissionSaveRequest request, CancellationToken ct = default);
 }

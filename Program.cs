@@ -36,12 +36,7 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
-builder.Services.AddScoped<RenovacionesAccessFilter>();
-builder.Services.AddScoped<PuntajesAccessFilter>();
-builder.Services.AddScoped<MetricasAccessFilter>();
-builder.Services.AddScoped<NominaAccessFilter>();
-builder.Services.AddScoped<RhAccessFilter>();
-builder.Services.AddScoped<PortalProveedoresAccessFilter>();
+builder.Services.AddScoped<ModuleAccessFilter>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<CookiePolicyOptions>(options =>
@@ -78,6 +73,6 @@ app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Calculator}/{action=Index}/{id?}");
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();

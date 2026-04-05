@@ -1,14 +1,23 @@
 @using System.Globalization
 @using System.Security.Claims
+@using CotizadorInterno.Web.Models.Permissions
 @using Microsoft.Identity.Web
+@inject IDataverseService Dataverse
 @{
-    var canAccessRenovaciones = RenovacionesAccessPolicy.HasAccess(User);
-    var canAccessPortalProveedores = PortalProveedoresAccessPolicy.HasAccess(User);
-    var canAccessPuntajes = PuntajesAccessPolicy.HasAccess(User);
-    var canAccessMetricas = MetricasAccessPolicy.HasAccess(User);
-    var canAccessNomina = NominaAccessPolicy.HasAccess(User);
-    var canAccessRh = RhAccessPolicy.HasAccess(User);
     var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+    CurrentUserInfo? layoutCurrentUser = null;
+
+    if (User?.Identity?.IsAuthenticated == true)
+    {
+        try
+        {
+            layoutCurrentUser = await Dataverse.GetCurrentUserAsync(Context.RequestAborted);
+        }
+        catch
+        {
+            layoutCurrentUser = null;
+        }
+    }
 
     string GetNavLinkClass(string controller)
     {
@@ -40,31 +49,30 @@
 
     string ResolveUserDisplayName()
     {
-        var givenName = User.FindFirstValue(ClaimTypes.GivenName);
-        var surname = User.FindFirstValue(ClaimTypes.Surname);
+        var principal = User;
+        if (principal is null)
+        {
+            return "Usuario";
+        }
+
+        var givenName = principal.FindFirstValue(ClaimTypes.GivenName);
+        var surname = principal.FindFirstValue(ClaimTypes.Surname);
         var fullName = string.Join(" ", new[] { givenName, surname }.Where(static part => !string.IsNullOrWhiteSpace(part)));
 
         return NormalizeUserDisplayName(
-            User.FindFirstValue("name")
-            ?? User.FindFirstValue(ClaimTypes.Name)
+            principal.FindFirstValue("name")
+            ?? principal.FindFirstValue(ClaimTypes.Name)
             ?? (string.IsNullOrWhiteSpace(fullName) ? null : fullName)
-            ?? User.GetDisplayName()
-            ?? User.Identity?.Name
-            ?? User.FindFirstValue("preferred_username")
-            ?? User.FindFirstValue(ClaimTypes.Upn)
-            ?? User.FindFirstValue(ClaimTypes.Email));
+            ?? principal.GetDisplayName()
+            ?? principal.Identity?.Name
+            ?? principal.FindFirstValue("preferred_username")
+            ?? principal.FindFirstValue(ClaimTypes.Upn)
+            ?? principal.FindFirstValue(ClaimTypes.Email));
     }
 
-    var navItems = new[]
-    {
-        new { Controller = "Calculator", Label = "Calculadora", Visible = true },
-        new { Controller = "Renovaciones", Label = "Renovaciones", Visible = canAccessRenovaciones },
-        new { Controller = "Puntajes", Label = "Puntajes", Visible = canAccessPuntajes },
-        new { Controller = "Metricas", Label = "Metricas", Visible = canAccessMetricas },
-        new { Controller = "LiquidacionNominas", Label = "Nomina", Visible = canAccessNomina },
-        new { Controller = "Rh", Label = "RH", Visible = canAccessRh },
-        new { Controller = "PortalProveedores", Label = "Proveedores", Visible = canAccessPortalProveedores }
-    };
+    var navItems = AppModuleCatalog.NavigationModules
+        .Where(module => layoutCurrentUser?.HasModule(module.OptionValue) == true)
+        .ToList();
     var userDisplayName = ResolveUserDisplayName();
 }
 <!DOCTYPE html>
@@ -83,7 +91,7 @@
     <nav class="navbar navbar-expand-lg app-shell__navbar">
         <div class="container-xl">
             <div class="app-shell__nav-frame">
-                <a class="app-shell__brand" asp-controller="Calculator" asp-action="Index">
+                <a class="app-shell__brand" asp-controller="Home" asp-action="Index">
                     <span class="app-shell__brand-title">Digital Tech</span>
                 </a>
 
@@ -95,13 +103,8 @@
                     <ul class="navbar-nav app-shell__nav-list">
                         @foreach (var item in navItems)
                         {
-                            if (!item.Visible)
-                            {
-                                continue;
-                            }
-
                             <li class="nav-item">
-                                <a class="@GetNavLinkClass(item.Controller)" asp-controller="@item.Controller" asp-action="Index">@item.Label</a>
+                                <a class="@GetNavLinkClass(item.Controller)" asp-controller="@item.Controller" asp-action="@item.Action">@item.Label</a>
                             </li>
                         }
                     </ul>
