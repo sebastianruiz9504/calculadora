@@ -25,7 +25,7 @@ public sealed partial class DataverseService
             EmployeeEmailField,
             EmployeeModulesField,
             EmployeeUserLookupField
-        });
+        }.Distinct(StringComparer.OrdinalIgnoreCase));
 
         var orderBy = Uri.EscapeDataString($"{EmployeeFullNameField} asc");
         var relativeUrl = $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}&$orderby={orderBy}";
@@ -104,7 +104,7 @@ public sealed partial class DataverseService
             EmployeeEmailField,
             EmployeeModulesField,
             EmployeeUserLookupField
-        });
+        }.Distinct(StringComparer.OrdinalIgnoreCase));
 
         var filter = $"{EmployeeUserLookupField} eq {parsedSystemUserId:D}";
         var relativeUrl = $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
@@ -134,7 +134,7 @@ public sealed partial class DataverseService
             EmployeeEmailField,
             EmployeeModulesField,
             EmployeeUserLookupField
-        });
+        }.Distinct(StringComparer.OrdinalIgnoreCase));
 
         var filter = $"{EmployeeEmailField} eq '{EscapeOdataLiteral(email.Trim())}'";
         var relativeUrl = $"/api/data/v9.2/{_nominaEmployeeTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
@@ -148,12 +148,12 @@ public sealed partial class DataverseService
         return value[0].Clone();
     }
 
-    private static EmployeeModulePermissionRowDto BuildEmployeeModulePermissionRow(JsonElement employeeRecord)
+    private EmployeeModulePermissionRowDto BuildEmployeeModulePermissionRow(JsonElement employeeRecord)
     {
-        var employeeId = ReadString(employeeRecord, "cr07a_empleadoid");
+        var employeeId = ReadString(employeeRecord, _nominaEmployeeIdField);
         var employeeName = FirstNonEmpty(
             ReadString(employeeRecord, EmployeeFullNameField),
-            ReadString(employeeRecord, "cr07a_name"),
+            ReadString(employeeRecord, _nominaEmployeeNameField),
             employeeId);
         var lookupDisplayName = ReadString(employeeRecord, $"{EmployeeUserLookupField}{FormattedValueAnnotationSuffix}");
         var employeeEmail = FirstNonEmpty(ReadString(employeeRecord, EmployeeEmailField), "");

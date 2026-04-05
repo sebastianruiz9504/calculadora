@@ -69,7 +69,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaEmployeeTableSetName = "cr07a_empleados";
     private const string DefaultNominaEmployeeTableName = "cr07a_empleado";
     private const string DefaultNominaEmployeeIdField = "cr07a_empleadoid";
-    private const string DefaultNominaEmployeeNameField = "cr07a_name";
+    private const string DefaultNominaEmployeeNameField = "cr07a_nombrecompleto";
     private const string DefaultNominaEmployeeSalaryField = "cr07a_sueldomensual";
     private const string DefaultNominaEmployeeConnectivityAllowanceField = "cr07a_auxconectividad";
     private const string DefaultNominaEmployeeCommissionCapField = "cr07a_topecomisional";
