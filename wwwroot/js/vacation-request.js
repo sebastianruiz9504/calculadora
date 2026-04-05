@@ -19,8 +19,8 @@
     const endDateInput = document.getElementById("vacationEndDate");
     const notesInput = document.getElementById("vacationNotes");
     const employeeNameInput = document.getElementById("vacationEmployeeName");
-    const employeePositionInput = document.getElementById("vacationEmployeePosition");
-    const employeeEmailInput = document.getElementById("vacationEmployeeEmail");
+    const employeePositionValue = document.getElementById("vacationEmployeePosition");
+    const employeeEmailValue = document.getElementById("vacationEmployeeEmail");
     const accruedDaysLabel = document.getElementById("vacationAccruedDays");
     const registeredDaysLabel = document.getElementById("vacationRegisteredDays");
     const availableDaysLabel = document.getElementById("vacationAvailableDays");
@@ -143,8 +143,8 @@
         const context = state.context;
         const employee = context?.employee || {};
         employeeNameInput.value = employee.fullName || "";
-        employeePositionInput.value = employee.position || "";
-        employeeEmailInput.value = employee.email || "";
+        employeePositionValue.textContent = employee.position || "Sin cargo registrado";
+        employeeEmailValue.textContent = employee.email || "Sin correo registrado";
 
         accruedDaysLabel.textContent = formatDays(context?.accruedDays || 0);
         registeredDaysLabel.textContent = formatDays(context?.registeredDays || 0);
