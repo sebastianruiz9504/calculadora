@@ -263,12 +263,12 @@
 <!-- Panel principal -->
 <div class="soft-card calc-card calc-card--composer">
     <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-2">
-        <div style="min-width: 260px;">
+        <div class="calc-composer-field calc-composer-field--name">
             <label class="form-label fw-bold mb-1">Nombre del escenario</label>
             <input id="scenarioName" class="form-control" />
         </div>
 
-        <div style="min-width: 520px;">
+        <div class="calc-composer-field calc-composer-field--types">
             <label class="form-label fw-bold mb-1">Tipo de negocio (agrega una línea marcando el tipo)</label>
             <div class="d-flex gap-2 flex-wrap" id="typeChips"></div>
             <div class="small muted mt-1">Selecciona un tipo para crear una nueva línea. Luego busca el producto.</div>
@@ -277,23 +277,23 @@
 
     <hr />
 
-    <div class="table-wrap">
-        <table class="table table-sm align-middle mb-0" style="min-width:1450px;">
+    <div class="table-wrap calc-table-wrap">
+        <table class="table table-sm align-middle mb-0 calc-lines-table">
             <thead>
                 <tr>
                     <th style="width:110px;">Tipo</th>
-                    <th style="width:500px;">Producto</th>
-                    <th style="width:130px;">Costo UND</th>
+                    <th style="width:360px;">Producto</th>
+                    <th style="width:120px;">Costo UND</th>
                     <th style="width:110px;">Margen %</th>
                     <th style="width:110px;">Duración (meses)</th>
-                    <th style="width:140px;">Venta UND</th>
-                    <th style="width:110px;">Cantidad</th>
-                    <th style="width:105px;">Tiene IVA?</th>
-                    <th style="width:150px;">Venta Mensual</th>
-                    <th style="width:140px;">Venta Total</th>
+                    <th style="width:130px;">Venta UND</th>
+                    <th style="width:100px;">Cantidad</th>
+                    <th style="width:90px;">Tiene IVA?</th>
+                    <th style="width:130px;">Venta Mensual</th>
+                    <th style="width:130px;">Venta Total</th>
 
-                    <th style="width:150px;">Precio Sugerido</th>
-                    <th style="width:70px;"></th>
+                    <th style="width:130px;">Precio Sugerido</th>
+                    <th style="width:64px;"></th>
                 </tr>
             </thead>
             <tbody id="linesBody"></tbody>

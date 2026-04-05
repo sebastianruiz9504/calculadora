@@ -1,6 +1,12 @@
 .calc-shell {
     display: grid;
     gap: 20px;
+    width: 100%;
+    min-width: 0;
+}
+
+.calc-shell > * {
+    min-width: 0;
 }
 
 .calc-hero,
@@ -9,6 +15,8 @@
     border: 1px solid #dbe4f0;
     border-radius: 24px;
     box-shadow: 0 20px 45px rgba(15, 23, 42, .08);
+    min-width: 0;
+    max-width: 100%;
 }
 
 .calc-hero {
@@ -21,6 +29,12 @@
     background:
         radial-gradient(circle at top right, rgba(20, 90, 242, .16), transparent 34%),
         linear-gradient(135deg, #ffffff 0%, #f7fbff 100%);
+}
+
+.calc-hero > *,
+.calc-section-header > *,
+.calc-result-head > * {
+    min-width: 0;
 }
 
 .calc-kicker,
@@ -130,12 +144,22 @@
 }
 
 .calc-shell .scenario-tab {
-    min-width: 250px;
+    flex: 1 1 220px;
+    min-width: 14rem;
     padding: 12px 14px;
     border: 1px solid #dbe4f0;
     border-radius: 18px;
     background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
+}
+
+.calc-composer-field {
+    flex: 1 1 18rem;
+    min-width: 0;
+}
+
+.calc-composer-field--types {
+    flex: 2 1 28rem;
 }
 
 .calc-shell .scenario-tab.active {
@@ -190,6 +214,24 @@
     border: 1px solid #dbe4f0;
     border-radius: 20px;
     background: #ffffff;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+}
+
+.calc-lines-table {
+    width: max-content;
+    min-width: 100%;
+}
+
+.calc-lines-table th,
+.calc-lines-table td,
+.calc-lines-table .form-control,
+.calc-lines-table .form-select {
+    min-width: 0;
+}
+
+.calc-lines-table td {
+    overflow-wrap: anywhere;
 }
 
 .calc-shell .table thead th {
@@ -243,6 +285,7 @@
 
 .calc-result-block {
     display: flex;
+    min-width: 0;
 }
 
 .calc-result-block > .muted:first-child {
@@ -270,6 +313,16 @@
 .calc-result-block #resultCommission {
     color: #10213a;
     letter-spacing: -.02em;
+    overflow-wrap: anywhere;
+    line-height: 1.05;
+}
+
+.calc-result-block #resultPoints {
+    font-size: clamp(2rem, 4vw, 2.25rem) !important;
+}
+
+.calc-result-block #resultCommission {
+    font-size: clamp(1.55rem, 3vw, 1.875rem) !important;
 }
 
 .calc-result-list {
@@ -392,6 +445,7 @@
 
     .calc-shell .scenario-tab {
         min-width: 100%;
+        flex-basis: 100%;
     }
 
     .calc-title {
@@ -400,5 +454,10 @@
 
     .calc-section-title {
         font-size: 22px;
+    }
+
+    .calc-composer-field,
+    .calc-composer-field--types {
+        flex-basis: 100%;
     }
 }
