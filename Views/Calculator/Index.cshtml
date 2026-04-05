@@ -367,25 +367,25 @@
         <span class="pill">Solo visible</span>
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-4 calc-result-block">
+    <div class="calc-result-grid">
+        <div class="calc-result-block calc-result-block--metric calc-result-block--score">
             <div class="muted">Puntaje total</div>
             <div id="resultPoints" style="font-size:36px; font-weight:900;">—</div>
         </div>
 
-        <div class="col-lg-4 calc-result-block">
+        <div class="calc-result-block calc-result-block--metric calc-result-block--commission">
             <div class="muted">Comisión final (COP)</div>
             <div id="resultCommission" style="font-size:30px; font-weight:900;">—</div>
         </div>
 
-        <div class="col-lg-4 calc-result-block">
+        <div class="calc-result-block calc-result-block--summary">
             <div class="small muted calc-result-list">
                 <div class="d-flex justify-content-between"><span>Prorrateo</span><span id="resultProration">—</span></div>
                 <div class="d-flex justify-content-between"><span>Venta mensual</span><span id="resultMonthly">—</span></div>
                 <div class="d-flex justify-content-between"><span>Venta total</span><span id="resultTotal">—</span></div>
             </div>
 
-           <div class="d-flex gap-2 flex-wrap mt-3">
+           <div class="calc-result-actions">
                 <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>
                 <button id="btnProvisioning" class="btn btn-primary" type="button">Solicitar Aprovisionamiento</button>
             </div>
