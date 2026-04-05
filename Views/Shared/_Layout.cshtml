@@ -19,9 +19,7 @@
         }
     }
 
-    var canAccessRenovaciones = layoutCurrentUser?.HasModule(AppModuleCatalog.Renovaciones.OptionValue) == true;
     var canAccessPortalProveedores = layoutCurrentUser?.HasModule(AppModuleCatalog.PortalProveedores.OptionValue) == true;
-    var canAccessPuntajes = layoutCurrentUser?.HasModule(AppModuleCatalog.Puntajes.OptionValue) == true;
     var canAccessMetricas = false;
     var canAccessNomina = layoutCurrentUser?.HasModule(AppModuleCatalog.Nomina.OptionValue) == true;
     var canAccessRh = layoutCurrentUser?.HasModule(AppModuleCatalog.Rh.OptionValue) == true;
@@ -81,8 +79,6 @@
     var navItems = new[]
     {
         new { Controller = "Calculator", Label = "Calculadora", Visible = true },
-        new { Controller = "Renovaciones", Label = "Renovaciones", Visible = canAccessRenovaciones },
-        new { Controller = "Puntajes", Label = "Puntajes", Visible = canAccessPuntajes },
         new { Controller = "Metricas", Label = "Metricas", Visible = canAccessMetricas },
         new { Controller = "LiquidacionNominas", Label = "Nomina", Visible = canAccessNomina },
         new { Controller = "Rh", Label = "RH", Visible = canAccessRh },
