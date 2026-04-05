@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
@@ -190,6 +191,14 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaScoresEmployeeLookupField;
     private readonly decimal _nominaHealthRate;
     private readonly decimal _nominaPensionRate;
+    private readonly string _rhVacationApprovalFlowUrl;
+    private readonly string _rhVacationRequestNotesField;
+    private readonly string _rhVacationRequestFormatField;
+    private readonly string _rhVacationRequestFormatFileNameField;
+    private readonly string _rhCompanyName;
+    private readonly string _rhCompanyNit;
+    private readonly string _rhCompanyAddress;
+    private readonly string _rhCompanyCity;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
@@ -197,6 +206,7 @@ public sealed partial class DataverseService : IDataverseService
         IHttpClientFactory httpClientFactory,
         IQuoteCalculator calculator,
         IConfiguration configuration,
+        IOptions<RhOptions> rhOptions,
         ILogger<DataverseService> logger)
     {
         _downstreamApi = downstreamApi;
@@ -204,6 +214,7 @@ public sealed partial class DataverseService : IDataverseService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _calculator = calculator;
+        var rh = rhOptions.Value;
         _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
             ?? DefaultScenariosTableSetName;
         _scenariosTableName = configuration["Dataverse:ScenariosTableName"]
@@ -342,6 +353,14 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaScoresEmployeeLookupField;
         _nominaHealthRate = NormalizeNominaRate(configuration["Nomina:HealthRate"], 0.04m);
         _nominaPensionRate = NormalizeNominaRate(configuration["Nomina:PensionRate"], 0.04m);
+        _rhVacationApprovalFlowUrl = rh.VacationApprovalFlowUrl?.Trim() ?? "";
+        _rhVacationRequestNotesField = rh.VacationRequestNotesField?.Trim() ?? "";
+        _rhVacationRequestFormatField = rh.VacationRequestFormatField?.Trim() ?? "cr07a_formato";
+        _rhVacationRequestFormatFileNameField = rh.VacationRequestFormatFileNameField?.Trim() ?? "cr07a_formato_name";
+        _rhCompanyName = rh.CompanyName?.Trim() ?? "";
+        _rhCompanyNit = rh.CompanyNit?.Trim() ?? "";
+        _rhCompanyAddress = rh.CompanyAddress?.Trim() ?? "";
+        _rhCompanyCity = rh.CompanyCity?.Trim() ?? "";
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

@@ -85,6 +85,17 @@
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
                 <button type="button" class="btn btn-primary" id="rhSaveBtn">Guardar cambios</button>
             </div>
+            <div class="rh-modal-result" id="rhResultDialog" hidden>
+                <div class="rh-modal-result__card" role="alertdialog" aria-modal="true" aria-labelledby="rhResultDialogTitle" aria-describedby="rhResultDialogMessage">
+                    <div class="rh-kicker">Resultado</div>
+                    <h3 class="rh-modal-result__title" id="rhResultDialogTitle">Operacion completada</h3>
+                    <p class="rh-modal-result__message" id="rhResultDialogMessage"></p>
+                    <pre class="rh-modal-result__detail" id="rhResultDialogDetail" hidden></pre>
+                    <div class="rh-modal-result__actions">
+                        <button type="button" class="btn btn-primary" id="rhResultDialogCloseBtn">Entendido</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

@@ -44,10 +44,16 @@ public sealed partial class DataverseService
             ct);
 
         var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
-        var employeeNameById = await LoadRhEmployeeNameMapAsync(httpContext.User, ct);
-        var payload = await BuildRhPayloadAsync(table, metadata, request.Values, employeeNameById, httpContext.User, ct);
-
         var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
+        var employeeNameById = await LoadRhEmployeeNameMapAsync(httpContext.User, ct);
+        var payload = await BuildRhPayloadAsync(
+            table,
+            metadata,
+            request.Values,
+            employeeNameById,
+            httpContext.User,
+            clearEmptyLookups: !isCreate,
+            ct: ct);
         var relativeUrl = isCreate
             ? $"/api/data/v9.2/{metadata.EntitySetName}"
             : $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})";
@@ -202,9 +208,12 @@ public sealed partial class DataverseService
             relativeUrl += $"&$orderby={table.OrderBy}";
 
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
-        var lookupOptions = table.Fields.Any(field => string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase))
-            ? await LoadRhEmployeeLookupOptionsAsync(user, ct)
-            : Array.Empty<RhOptionDto>();
+        var lookupOptionsByField = new Dictionary<string, IReadOnlyList<RhOptionDto>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lookupField in table.Fields.Where(field =>
+                     string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase)))
+        {
+            lookupOptionsByField[lookupField.LogicalName] = await LoadRhLookupOptionsAsync(lookupField, user, ct);
+        }
 
         return new RhTableDataResultDto
         {
@@ -213,7 +222,11 @@ public sealed partial class DataverseService
             Subtitle = table.Subtitle,
             Description = table.Description,
             EmptyStateMessage = table.EmptyStateMessage,
-            Fields = table.Fields.Select(field => ToRhFieldDto(field, lookupOptions)).ToList(),
+            Fields = table.Fields.Select(field => ToRhFieldDto(
+                field,
+                lookupOptionsByField.TryGetValue(field.LogicalName, out var options)
+                    ? options
+                    : Array.Empty<RhOptionDto>())).ToList(),
             Records = items
                 .Select(item => BuildRhRecordDto(table, metadata, item))
                 .Where(item => item is not null)
@@ -271,6 +284,7 @@ public sealed partial class DataverseService
         IReadOnlyDictionary<string, string?>? values,
         IReadOnlyDictionary<string, string> employeeNameById,
         ClaimsPrincipal user,
+        bool clearEmptyLookups,
         CancellationToken ct)
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -292,24 +306,29 @@ public sealed partial class DataverseService
 
             if (string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase))
             {
-                if (string.IsNullOrWhiteSpace(rawValue))
-                    continue;
-
                 if (string.IsNullOrWhiteSpace(field.LookupTargetLogicalName))
                     throw new InvalidOperationException($"El lookup {field.Label} no tiene configurado su destino.");
+
+                var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                    table.LogicalName,
+                    field.LogicalName,
+                    field.LookupNavigationPropertyFallback,
+                    user,
+                    ct);
+
+                if (string.IsNullOrWhiteSpace(rawValue))
+                {
+                    if (clearEmptyLookups)
+                        payload[$"{navigationProperty}@odata.bind"] = null;
+
+                    continue;
+                }
 
                 var targetMetadata = await ResolveRhEntityMetadataAsync(
                     field.LookupTargetLogicalName,
                     field.LookupTargetFallbackEntitySetName,
                     field.LookupTargetFallbackPrimaryIdField,
                     field.LookupTargetFallbackPrimaryNameField,
-                    user,
-                    ct);
-
-                var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
-                    table.LogicalName,
-                    field.LogicalName,
-                    field.LookupNavigationPropertyFallback,
                     user,
                     ct);
 
@@ -386,6 +405,69 @@ public sealed partial class DataverseService
             .Where(item => !string.IsNullOrWhiteSpace(item.Value))
             .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private async Task<IReadOnlyList<RhOptionDto>> LoadRhSystemUserLookupOptionsAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        var metadata = await ResolveRhEntityMetadataAsync(
+            "systemuser",
+            "systemusers",
+            "systemuserid",
+            "fullname",
+            user,
+            ct);
+
+        const string secondaryField = "internalemailaddress";
+        const string preferredNameField = "fullname";
+        var selectFields = new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            preferredNameField,
+            secondaryField
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        var relativeUrl =
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields)}&$filter={Uri.EscapeDataString("isdisabled eq false")}&$orderby=fullname asc";
+
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        return items
+            .Select(item =>
+            {
+                var id = ReadString(item, metadata.PrimaryIdField);
+                var name = FirstNonEmpty(
+                    ReadString(item, preferredNameField),
+                    ReadString(item, metadata.PrimaryNameField),
+                    id);
+                var email = ReadString(item, secondaryField);
+
+                return new RhOptionDto
+                {
+                    Value = id,
+                    Label = string.IsNullOrWhiteSpace(email) ? name : $"{name} ({email})"
+                };
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
+            .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<RhOptionDto>> LoadRhLookupOptionsAsync(
+        RhFieldDefinition field,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (!string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase))
+            return Array.Empty<RhOptionDto>();
+
+        return field.LookupTargetLogicalName switch
+        {
+            "cr07a_empleado" => await LoadRhEmployeeLookupOptionsAsync(user, ct),
+            "systemuser" => await LoadRhSystemUserLookupOptionsAsync(user, ct),
+            _ => Array.Empty<RhOptionDto>()
+        };
     }
 
     private async Task<Dictionary<string, string>> LoadRhEmployeeNameMapAsync(ClaimsPrincipal user, CancellationToken ct)
@@ -961,6 +1043,21 @@ public sealed partial class DataverseService
                     new RhFieldDefinition { LogicalName = "cr07a_sueldomensual", Label = "Sueldo mensual", EditorType = "currency" },
                     new RhFieldDefinition { LogicalName = "cr07a_telefono", Label = "Telefono principal", EditorType = "phone" },
                     new RhFieldDefinition { LogicalName = "cr07a_correo", Label = "Correo", EditorType = "email" },
+                    new RhFieldDefinition
+                    {
+                        LogicalName = "cr07a_usuario",
+                        Label = "Usuario",
+                        EditorType = "lookup",
+                        Placeholder = "Escribe el nombre del usuario",
+                        ShowInList = false,
+                        HelpText = "Escribe el nombre del usuario y seleccionalo en la lista.",
+                        LookupFallbackTokens = new[] { "usuario", "systemuser" },
+                        LookupNavigationPropertyFallback = "cr07a_usuario",
+                        LookupTargetLogicalName = "systemuser",
+                        LookupTargetFallbackEntitySetName = "systemusers",
+                        LookupTargetFallbackPrimaryIdField = "systemuserid",
+                        LookupTargetFallbackPrimaryNameField = "fullname"
+                    },
                     new RhFieldDefinition { LogicalName = "cr07a_cargo", Label = "Cargo", EditorType = "text" },
                     new RhFieldDefinition { LogicalName = "cr07a_diasdevacacionesdisponibles", Label = "Dias de vacaciones disponibles", EditorType = "number" },
                     new RhFieldDefinition { LogicalName = "cr07a_cedula", Label = "Cedula", EditorType = "text" },
@@ -992,9 +1089,9 @@ public sealed partial class DataverseService
             new RhTableDefinition
             {
                 Key = RhModuleKeys.VacationRequests,
-                Title = "Vacaciones",
+                Title = "Solicitud de vacaciones",
                 Subtitle = "cr07a_solicituddevacaciones",
-                Description = "Edita solicitudes de vacaciones y su duracion.",
+                Description = "Gestiona solicitudes de vacaciones, su duracion y el formato asociado.",
                 EmptyStateMessage = "Todavia no hay solicitudes de vacaciones cargadas.",
                 LogicalName = "cr07a_solicituddevacaciones",
                 FallbackEntitySetName = "cr07a_solicituddevacacioneses",
@@ -1018,7 +1115,17 @@ public sealed partial class DataverseService
                     },
                     new RhFieldDefinition { LogicalName = "cr07a_fechainicio", Label = "Fecha inicio", EditorType = "date", Required = true },
                     new RhFieldDefinition { LogicalName = "cr07a_fechafin", Label = "Fecha fin", EditorType = "date", Required = true },
-                    new RhFieldDefinition { LogicalName = "cr07a_cantidaddedias", Label = "Cantidad de dias", EditorType = "number", Required = true }
+                    new RhFieldDefinition { LogicalName = "cr07a_cantidaddedias", Label = "Cantidad de dias", EditorType = "number", Required = true },
+                    new RhFieldDefinition
+                    {
+                        LogicalName = "cr07a_formato",
+                        Label = "Formato solicitud",
+                        EditorType = "file",
+                        Accept = "application/pdf",
+                        ShowInList = false,
+                        FileNameLogicalName = "cr07a_formato_name",
+                        HelpText = "El PDF final puede quedar cargado por el flujo de aprobacion."
+                    }
                 }
             },
             new RhTableDefinition

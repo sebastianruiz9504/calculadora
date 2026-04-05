@@ -197,6 +197,10 @@ public sealed class CalculatorController : Controller
         if (!string.IsNullOrWhiteSpace(licenseValidation))
             return BadRequest(licenseValidation);
 
+        var productValidation = ValidateSelectedProducts(input.Lines, "exportar el Excel");
+        if (!string.IsNullOrWhiteSpace(productValidation))
+            return BadRequest(productValidation);
+
         var fileName = BuildFileName(input.ScenarioName);
         using var workbook = BuildWorkbook(input);
         using var stream = new MemoryStream();
@@ -346,6 +350,10 @@ public sealed class CalculatorController : Controller
     {
         if (input.LineItems is null || input.LineItems.Count == 0)
             return "No hay lÃ­neas para enviar.";
+
+        var productValidation = ValidateSelectedProducts(input.LineItems, "enviar la solicitud de aprovisionamiento");
+        if (!string.IsNullOrWhiteSpace(productValidation))
+            return productValidation;
 
         var attachment = input.Attachment;
         if (attachment is null)
@@ -577,6 +585,38 @@ public sealed class CalculatorController : Controller
 
     private static string? ValidateLicenseCaps(QuoteScenarioInput input)
     {
+        return null;
+    }
+
+    private static string? ValidateSelectedProducts(IReadOnlyList<QuoteLineInput> lines, string actionLabel)
+    {
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            var productDescription = line.ProductDescription?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(productDescription))
+                return $"La linea {index + 1} no tiene producto.";
+
+            if (string.IsNullOrWhiteSpace(line.ProductId))
+                return $"La linea {index + 1} debe seleccionar un producto valido de la lista antes de {actionLabel}.";
+        }
+
+        return null;
+    }
+
+    private static string? ValidateSelectedProducts(IReadOnlyList<ProvisioningLineItem> lines, string actionLabel)
+    {
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            var productName = line.ProductoNombre?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(productName))
+                return $"La linea {index + 1} no tiene producto.";
+
+            if (string.IsNullOrWhiteSpace(line.ProductoId))
+                return $"La linea {index + 1} debe seleccionar un producto valido de la lista antes de {actionLabel}.";
+        }
+
         return null;
     }
 

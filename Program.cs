@@ -38,6 +38,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
+builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.Unspecified;

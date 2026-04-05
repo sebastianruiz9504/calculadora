@@ -1,10 +1,20 @@
 .rh-shell {
     display: grid;
     gap: 1.1rem;
+    width: 100%;
+    min-width: 0;
 }
 
 .rh-shell--table {
     gap: 0.9rem;
+}
+
+.rh-shell--vacation {
+    gap: 1rem;
+}
+
+.rh-shell > * {
+    min-width: 0;
 }
 
 .rh-hero {
@@ -12,6 +22,7 @@
     justify-content: space-between;
     align-items: flex-start;
     gap: 1rem;
+    min-width: 0;
     padding: 1.6rem 1.7rem;
     border-radius: 24px;
     color: #10213a;
@@ -20,6 +31,10 @@
         linear-gradient(135deg, #ffffff 0%, #f7fbff 100%);
     border: 1px solid #dbe4f0;
     box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.rh-hero > * {
+    min-width: 0;
 }
 
 .rh-kicker {
@@ -78,6 +93,8 @@
     border: 1px solid #dbe4f0;
     box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
     padding: 1.25rem;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .rh-section-header,
@@ -87,6 +104,7 @@
     align-items: flex-start;
     gap: 1rem;
     margin-bottom: 0.9rem;
+    min-width: 0;
 }
 
 .rh-section-title {
@@ -208,11 +226,17 @@
 }
 
 .rh-table-wrap {
+    width: 100%;
+    max-width: 100%;
     overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.2rem;
+    overscroll-behavior-x: contain;
 }
 
 .rh-list-table {
-    min-width: 780px;
+    width: max-content;
+    min-width: 100%;
     margin-bottom: 0;
 }
 
@@ -224,6 +248,13 @@
     color: #4b5c75;
     white-space: nowrap;
     background: #f7fbff;
+}
+
+.rh-list-table tbody td {
+    min-width: 9rem;
+    max-width: 18rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .rh-list-row {
@@ -250,11 +281,13 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
     gap: 0.9rem;
+    min-width: 0;
 }
 
 .rh-field {
     display: grid;
     gap: 0.35rem;
+    min-width: 0;
 }
 
 .rh-field--span-2 {
@@ -276,6 +309,15 @@
     color: #b91c1c;
 }
 
+.rh-lookup {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.rh-lookup__input::-webkit-search-cancel-button {
+    cursor: pointer;
+}
+
 .rh-file-card {
     display: grid;
     gap: 0.6rem;
@@ -290,6 +332,149 @@
     gap: 0.55rem;
     flex-wrap: wrap;
     align-items: center;
+}
+
+.vacation-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.vacation-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.vacation-metric {
+    display: grid;
+    gap: 0.35rem;
+    padding: 1rem;
+    border-radius: 20px;
+    border: 1px solid #dbe4f0;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.vacation-metric--highlight {
+    background: linear-gradient(135deg, #0f4aa1 0%, #145af2 100%);
+    border-color: transparent;
+    color: #ffffff;
+}
+
+.vacation-metric--highlight .vacation-metric__label,
+.vacation-metric--highlight small {
+    color: rgba(255, 255, 255, 0.84);
+}
+
+.vacation-metric__label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.vacation-metric__value {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    line-height: 1;
+    color: inherit;
+}
+
+.vacation-metric small {
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.vacation-info-grid,
+.vacation-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.vacation-divider {
+    height: 1px;
+    margin: 1rem 0;
+    background: #dbe4f0;
+}
+
+.vacation-textarea {
+    min-height: 128px;
+    resize: vertical;
+}
+
+.vacation-preview {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 22px;
+    border: 1px solid #dbe4f0;
+    background: #f8fbff;
+}
+
+.vacation-preview.is-valid {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.vacation-preview.is-invalid {
+    border-color: #fda4af;
+    background: #fff1f2;
+}
+
+.vacation-preview__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.95rem;
+}
+
+.vacation-preview__row strong {
+    color: #10213a;
+}
+
+.vacation-preview__hint {
+    font-size: 0.84rem;
+    color: #64748b;
+}
+
+.vacation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.vacation-history-table th:last-child,
+.vacation-history-table td:last-child {
+    min-width: 11rem;
+}
+
+.vacation-history-table__notes {
+    min-width: 14rem;
+}
+
+.vacation-history-table__actions {
+    display: flex;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.vacation-link {
+    color: #145af2;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.vacation-link:hover {
+    color: #0f45c6;
+}
+
+.vacation-muted {
+    color: #64748b;
 }
 
 .rh-file-meta {
@@ -318,6 +503,8 @@
 }
 
 .rh-modal .modal-content {
+    position: relative;
+    overflow: hidden;
     border: 1px solid #dbe4f0;
     border-radius: 24px;
     box-shadow: 0 30px 70px rgba(15, 23, 42, 0.2);
@@ -340,6 +527,78 @@
     border-top: 1px solid #dbe4f0;
 }
 
+.rh-modal-result {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1.35rem;
+    background: rgba(15, 23, 42, 0.34);
+    z-index: 20;
+}
+
+.rh-modal-result.is-visible {
+    display: flex;
+}
+
+.rh-modal-result__card {
+    display: grid;
+    gap: 0.8rem;
+    width: min(100%, 34rem);
+    max-height: 100%;
+    padding: 1.25rem;
+    border-radius: 24px;
+    background: #fff;
+    border: 1px solid #dbe4f0;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+}
+
+.rh-modal-result--success .rh-modal-result__card {
+    border-color: #b4e8ca;
+}
+
+.rh-modal-result--warning .rh-modal-result__card {
+    border-color: #fde68a;
+}
+
+.rh-modal-result--error .rh-modal-result__card {
+    border-color: #fecdd6;
+}
+
+.rh-modal-result__title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #10213a;
+}
+
+.rh-modal-result__message {
+    margin: 0;
+    color: #42526b;
+    line-height: 1.55;
+}
+
+.rh-modal-result__detail {
+    margin: 0;
+    padding: 0.85rem 0.95rem;
+    max-height: 12rem;
+    overflow: auto;
+    border-radius: 18px;
+    border: 1px solid #dbe4f0;
+    background: #f8fbff;
+    color: #334155;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    font-family: inherit;
+}
+
+.rh-modal-result__actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
 @media (max-width: 991px) {
     .rh-hero,
     .rh-section-header,
@@ -357,6 +616,13 @@
     .rh-modal__header {
         flex-wrap: wrap;
     }
+
+    .vacation-grid,
+    .vacation-metrics,
+    .vacation-info-grid,
+    .vacation-form-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 640px) {
@@ -370,5 +636,13 @@
 
     .rh-field--span-2 {
         grid-column: auto;
+    }
+
+    .rh-list-table {
+        min-width: 640px;
+    }
+
+    .rh-modal-result {
+        padding: 1rem;
     }
 }

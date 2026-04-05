@@ -1,0 +1,178 @@
+@model VacationRequestPageViewModel
+@{
+    ViewData["Title"] = $"RH - {Model.Module.Title}";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/rh.css" asp-append-version="true" />
+}
+
+<div class="rh-shell rh-shell--vacation"
+     id="vacationRequestApp"
+     data-context-url="@Url.Action("VacationRequestContext", "Rh")"
+     data-submit-url="@Url.Action("SubmitVacationRequest", "Rh")"
+     data-document-url="@Url.Action("VacationDocument", "Rh")"
+     data-download-url="@Url.Action("DownloadFile", "Rh")"
+     data-table-key="@RhModuleKeys.VacationRequests"
+     data-format-field="@Model.FormatFieldName"
+     data-flow-configured="@(Model.IsApprovalFlowConfigured ? "true" : "false")">
+    <section class="rh-hero">
+        <div>
+            <a class="rh-back-link" asp-action="Index">Volver al menu RH</a>
+            <div class="rh-kicker">Gestion humana</div>
+            <h1 class="rh-title">@Model.Module.Title</h1>
+            <p class="rh-subtitle">
+                Consulta tu saldo real de vacaciones, calcula los dias habiles del rango solicitado
+                y envia la solicitud al flujo de aprobacion con su formato.
+            </p>
+        </div>
+        <div class="rh-user-pill">
+            <span class="rh-user-pill__label">Acceso</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <div id="vacationStatusBanner" class="rh-status" role="status" aria-live="polite"></div>
+
+    @if (!Model.IsApprovalFlowConfigured)
+    {
+        <section class="rh-card">
+            <div class="rh-status rh-status--warning is-visible">
+                El flujo de aprobacion aun no esta configurado. Define <strong>@Model.ApprovalFlowConfigPath</strong>
+                para enviar la solicitud y generar el PDF automatico.
+            </div>
+        </section>
+    }
+
+    <section class="rh-card vacation-overview">
+        <div class="rh-section-header">
+            <div>
+                <div class="rh-kicker">Resumen</div>
+                <h2 class="rh-section-title">Saldo de vacaciones</h2>
+                <p class="rh-section-subtitle">El saldo real se recalcula al cargar la pantalla usando empleado menos solicitudes registradas.</p>
+            </div>
+            <div class="rh-toolbar__actions">
+                <button type="button" class="btn btn-outline-secondary" id="vacationRefreshBtn">Recargar</button>
+            </div>
+        </div>
+
+        <div class="vacation-metrics">
+            <article class="vacation-metric">
+                <span class="vacation-metric__label">Dias acumulados</span>
+                <strong class="vacation-metric__value" id="vacationAccruedDays">0</strong>
+                <small>Campo calculado de empleado</small>
+            </article>
+            <article class="vacation-metric">
+                <span class="vacation-metric__label">Dias registrados</span>
+                <strong class="vacation-metric__value" id="vacationRegisteredDays">0</strong>
+                <small>Solicitudes guardadas en Dataverse</small>
+            </article>
+            <article class="vacation-metric vacation-metric--highlight">
+                <span class="vacation-metric__label">Disponibles por tomar</span>
+                <strong class="vacation-metric__value" id="vacationAvailableDays">0</strong>
+                <small>Saldo disponible para la nueva solicitud</small>
+            </article>
+        </div>
+    </section>
+
+    <div class="vacation-grid">
+        <section class="rh-card">
+            <div class="rh-section-header">
+                <div>
+                    <div class="rh-kicker">Colaborador</div>
+                    <h2 class="rh-section-title">Datos de la solicitud</h2>
+                    <p class="rh-section-subtitle">La informacion del empleado se toma desde tu registro en Dataverse.</p>
+                </div>
+            </div>
+
+            <div class="vacation-info-grid">
+                <div class="rh-field">
+                    <label for="vacationEmployeeName">Nombre</label>
+                    <input class="form-control" id="vacationEmployeeName" type="text" readonly />
+                </div>
+                <div class="rh-field">
+                    <label for="vacationEmployeePosition">Cargo</label>
+                    <input class="form-control" id="vacationEmployeePosition" type="text" readonly />
+                </div>
+                <div class="rh-field rh-field--span-2">
+                    <label for="vacationEmployeeEmail">Correo</label>
+                    <input class="form-control" id="vacationEmployeeEmail" type="text" readonly />
+                </div>
+            </div>
+
+            <div class="vacation-divider"></div>
+
+            <div class="vacation-form-grid">
+                <div class="rh-field">
+                    <label for="vacationStartDate">Fecha inicial</label>
+                    <input class="form-control" id="vacationStartDate" type="date" />
+                </div>
+                <div class="rh-field">
+                    <label for="vacationEndDate">Fecha final</label>
+                    <input class="form-control" id="vacationEndDate" type="date" />
+                </div>
+                <div class="rh-field rh-field--span-2">
+                    <label for="vacationNotes">Notas, reemplazo o tareas por seguir</label>
+                    <textarea class="form-control vacation-textarea" id="vacationNotes" rows="5" placeholder="Deja aqui el reemplazo, pendientes o cualquier seguimiento que deba quedar en la solicitud."></textarea>
+                </div>
+            </div>
+
+            <div class="vacation-preview" id="vacationPreviewCard">
+                <div class="vacation-preview__row">
+                    <span>Dias habiles a solicitar</span>
+                    <strong id="vacationRequestedDays">0</strong>
+                </div>
+                <div class="vacation-preview__row">
+                    <span>Saldo despues de esta solicitud</span>
+                    <strong id="vacationRemainingDays">0</strong>
+                </div>
+                <div class="vacation-preview__row">
+                    <span>Validacion</span>
+                    <strong id="vacationAvailabilityText">Selecciona un rango para calcular.</strong>
+                </div>
+                <div class="vacation-preview__hint" id="vacationPreviewHint">
+                    El calculo excluye sabados, domingos y festivos nacionales de Colombia.
+                </div>
+            </div>
+
+            <div class="vacation-actions">
+                <button type="button" class="btn btn-outline-secondary" id="vacationResetBtn">Limpiar fechas</button>
+                <button type="button" class="btn btn-primary" id="vacationSubmitBtn">Enviar solicitud</button>
+            </div>
+        </section>
+
+        <section class="rh-card">
+            <div class="rh-section-header">
+                <div>
+                    <div class="rh-kicker">Historial</div>
+                    <h2 class="rh-section-title">Solicitudes registradas</h2>
+                    <p class="rh-section-subtitle">Aqui ves lo ya descontado de tu saldo y el acceso al formato de cada solicitud.</p>
+                </div>
+                <div class="rh-counter" id="vacationRequestsCount">0 registros</div>
+            </div>
+
+            <div class="rh-table-wrap">
+                <table class="table align-middle rh-list-table vacation-history-table">
+                    <thead>
+                        <tr>
+                            <th>Periodo</th>
+                            <th>Dias</th>
+                            <th>Notas</th>
+                            <th>Creada</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vacationRequestsBody"></tbody>
+                </table>
+            </div>
+
+            <div id="vacationEmptyState" class="rh-empty-state" hidden>
+                Aun no tienes solicitudes registradas.
+            </div>
+        </section>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/vacation-request.js" asp-append-version="true"></script>
+}

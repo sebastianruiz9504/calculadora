@@ -221,6 +221,10 @@
         border: 1px solid #fecdd3;
         color: #991b1b;
     }
+    .calc-action-warning {
+        color: #991b1b;
+        font-weight: 600;
+    }
     .file-name {
         font-size: 12px;
         color: #6b7280;
@@ -389,6 +393,7 @@
                 <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>
                 <button id="btnProvisioning" class="btn btn-primary" type="button">Solicitar Aprovisionamiento</button>
             </div>
+            <div id="actionValidationMessage" class="small calc-action-warning mt-2" style="display:none;"></div>
             <div id="provisioningLog" class="small mt-2 text-muted"></div>
         </div>
     </div>
@@ -544,6 +549,7 @@
     const clientSuggestions = document.getElementById("clientSuggestions");
     const provisioningStatus = document.getElementById("provisioningStatus");
     const provisioningLog = document.getElementById("provisioningLog");
+    const actionValidationMessage = document.getElementById("actionValidationMessage");
     const attachmentInput = document.getElementById("attachmentInput");
     const attachmentStatus = document.getElementById("attachmentStatus");
     const attachmentLabel = document.getElementById("attachmentLabel");
@@ -716,6 +722,72 @@ const showDebugCalcModal = false;
         return t.includes("prepaid") || t.includes("1 year");
     }
 
+    function hasSelectedProduct(line) {
+        return Boolean((line?.productId || "").trim());
+    }
+
+    function getScenarioProductSelectionIssues(scenario = getActiveScenario()) {
+        if (!scenario || !Array.isArray(scenario.lines)) {
+            return [];
+        }
+
+        const issues = [];
+        scenario.lines.forEach((line, index) => {
+            const productDescription = (line?.productDescription || "").trim();
+            if (!productDescription) {
+                issues.push({ lineNumber: index + 1, reason: "empty" });
+                return;
+            }
+
+            if (!hasSelectedProduct(line)) {
+                issues.push({ lineNumber: index + 1, reason: "unselected" });
+            }
+        });
+
+        return issues;
+    }
+
+    function buildScenarioProductSelectionMessage(issues) {
+        if (!Array.isArray(issues) || !issues.length) {
+            return "";
+        }
+
+        const lineNumbers = issues.map(issue => issue.lineNumber);
+        const lineLabel = lineNumbers.length === 1
+            ? `la linea ${lineNumbers[0]}`
+            : `las lineas ${lineNumbers.join(", ")}`;
+
+        return `Debes seleccionar un producto valido de la lista en ${lineLabel} antes de exportar o solicitar aprovisionamiento.`;
+    }
+
+    function syncScenarioActionButtons() {
+        const s = getActiveScenario();
+        const hasLines = Boolean(s?.lines?.length);
+        const issues = hasLines ? getScenarioProductSelectionIssues(s) : [];
+        const blockingMessage = buildScenarioProductSelectionMessage(issues);
+        const disableActions = !hasLines || issues.length > 0;
+
+        btnExport.disabled = disableActions;
+        btnProvisioning.disabled = disableActions;
+
+        const actionTitle = issues.length > 0 ? blockingMessage : "";
+        btnExport.title = actionTitle;
+        btnProvisioning.title = actionTitle;
+
+        if (!actionValidationMessage) {
+            return;
+        }
+
+        if (issues.length > 0) {
+            actionValidationMessage.innerText = blockingMessage;
+            actionValidationMessage.style.display = "block";
+            return;
+        }
+
+        actionValidationMessage.innerText = "";
+        actionValidationMessage.style.display = "none";
+    }
+
     function getActiveScenario() { return scenarios.find(s => s.id === activeScenarioId); }
 
     function normalizeScenarioDealType(scenario) {
@@ -764,6 +836,7 @@ const showDebugCalcModal = false;
 
     function markScenarioDirty() {
         resetResults(true);
+        syncScenarioActionButtons();
     }
 
     function roundMoneyValue(value) {
@@ -862,6 +935,7 @@ const showDebugCalcModal = false;
                     </td>
                 </tr>
             `;
+            syncScenarioActionButtons();
             return;
         }
 
@@ -872,6 +946,16 @@ const showDebugCalcModal = false;
 
             const costDisabled = lockCost ? "disabled" : "";
             const monthsDisabled = lockMonths ? "disabled" : "";
+            const showProductSelectionWarning = Boolean((line.productDescription || "").trim()) && !hasSelectedProduct(line);
+            const helperMessages = [];
+
+            if (showProductSelectionWarning) {
+                helperMessages.push('<span class="text-danger fw-semibold">Selecciona un producto valido del listado.</span>');
+            }
+
+            const helperMarkup = helperMessages.length
+                ? `<div class="small mt-1">${helperMessages.join(" | ")}</div>`
+                : "";
 
             return `
                 <tr data-idx="${idx}">
@@ -882,6 +966,7 @@ const showDebugCalcModal = false;
                             <textarea class="form-control form-control-sm product-input" rows="3" style="min-height:78px; resize:vertical;" placeholder="Buscar producto..." autocomplete="off">${escapeHtml(line.productDescription)}</textarea>
                             <div class="suggestions"></div>
                         </div>
+                        ${helperMarkup}
                         <div class="small muted mt-1">${lockMonths ? 'Duración fija 12 meses (Prepaid/1 Year)' : ''}</div>
                     </td>
 
@@ -926,6 +1011,7 @@ const showDebugCalcModal = false;
 
         linesBody.innerHTML = rows + totalsRow;
         wireLineEvents();
+        syncScenarioActionButtons();
     }
 
     function createScenario(name) {
@@ -1079,7 +1165,7 @@ function toDateInputValue(value) {
             prorationRenewalError: "",
             lines: Array.isArray(stored.lines) ? stored.lines.map(line => ({
                 businessType: Number(line.businessType || 0),
-                productId: line.productId || "",
+                productId: (line.productId || "").trim(),
                 productDescription: line.productDescription || "",
                 costUnit: Number(line.costUnit || 0),
                 marginPercent: Number(line.marginPercent || 0),
@@ -1297,6 +1383,12 @@ function toDateInputValue(value) {
             productInput.addEventListener("input", () => {
                 const q = productInput.value.trim();
                 line.productDescription = q;
+                line.productId = "";
+                line.suggestedRetailPrice = 0;
+                line.acelerador = 0;
+                if (Number(line.businessType) === 0) {
+                    line.costUnit = 0;
+                }
                 markScenarioDirty();
 
                 clearTimeout(timer);
@@ -1425,7 +1517,7 @@ function toDateInputValue(value) {
         prorationHint.innerText = `Prorrateo: ${days} días. Factor aproximado: ${factor.toFixed(4)} (sobre 365).`;
     }
 
-    function validateScenarioLines() {
+    function validateScenarioLines(options = {}) {
         const s = getActiveScenario();
         if (!s) {
             alert("Selecciona un escenario activo.");
@@ -1436,6 +1528,8 @@ function toDateInputValue(value) {
 
         if (!s.lines.length) { alert("Agrega al menos 1 línea."); return null; }
 
+        const requireSelectedProducts = Boolean(options.requireSelectedProducts);
+        const actionLabel = options.actionLabel || "continuar";
         const normalizedLines = [];
         for (const [i, line] of s.lines.entries()) {
             const productDescription = (line.productDescription || "").trim();
@@ -1448,9 +1542,14 @@ function toDateInputValue(value) {
             const months = Number(line.contractMonths || 0);
             if (months <= 0) { alert(`La línea ${i + 1} tiene duración inválida.`); return null; }
 
+            if (requireSelectedProducts && !hasSelectedProduct(line)) {
+                alert(`La linea ${i + 1} debe seleccionar un producto valido de la lista antes de ${actionLabel}.`);
+                return null;
+            }
+
             normalizedLines.push({
                 businessType: Number(line.businessType),
-                productId: line.productId || "",
+                productId: (line.productId || "").trim(),
                 productDescription,
                 costUnit: Number(line.costUnit || 0),
                 marginPercent: Number(line.marginPercent || 0),
@@ -1475,8 +1574,8 @@ function toDateInputValue(value) {
     }
 
 
-    function buildPayload() {
-        const validated = validateScenarioLines();
+    function buildPayload(options = {}) {
+        const validated = validateScenarioLines(options);
         if (!validated) return null;
 
         const { scenario: s, lines } = validated;
@@ -1581,7 +1680,10 @@ async function saveScenarioToDataverse(scenario, lines) {
     }
 
     async function exportExcel() {
-        const payload = buildPayload();
+        const payload = buildPayload({
+            requireSelectedProducts: true,
+            actionLabel: "exportar el Excel"
+        });
         if (!payload) return;
 
         btnExport.disabled = true;
@@ -1612,8 +1714,8 @@ async function saveScenarioToDataverse(scenario, lines) {
         } catch (err) {
             alert("Error: " + (err?.message || err));
         } finally {
-            btnExport.disabled = false;
             btnExport.innerText = "Exportar Excel";
+            syncScenarioActionButtons();
         }
     }
 
@@ -1760,7 +1862,10 @@ function setAttachmentStatus(message, type = "error") {
 
 
     function buildProvisioningPayload() {
-        const validated = validateScenarioLines();
+        const validated = validateScenarioLines({
+            requireSelectedProducts: true,
+            actionLabel: "solicitar el aprovisionamiento"
+        });
         if (!validated) return null;
 
         const { scenario: s, lines } = validated;

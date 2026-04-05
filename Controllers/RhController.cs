@@ -4,6 +4,7 @@ using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
@@ -12,11 +13,13 @@ namespace CotizadorInterno.Web.Controllers;
 public sealed class RhController : Controller
 {
     private readonly IDataverseService _dataverse;
+    private readonly RhOptions _options;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
 
-    public RhController(IDataverseService dataverse)
+    public RhController(IDataverseService dataverse, IOptions<RhOptions> options)
     {
         _dataverse = dataverse;
+        _options = options.Value;
     }
 
     [HttpGet]
@@ -39,6 +42,22 @@ public sealed class RhController : Controller
         var module = RhModuleCatalog.Find(key);
         if (module is null)
             return NotFound();
+
+        if (string.Equals(module.Key, RhModuleKeys.VacationRequests, StringComparison.OrdinalIgnoreCase))
+        {
+            var vacationModel = new VacationRequestPageViewModel
+            {
+                CurrentUser = await GetCurrentUserAsync(ct),
+                Module = module,
+                IsApprovalFlowConfigured = !string.IsNullOrWhiteSpace(_options.VacationApprovalFlowUrl),
+                ApprovalFlowConfigPath = "Rh:VacationApprovalFlowUrl",
+                FormatFieldName = string.IsNullOrWhiteSpace(_options.VacationRequestFormatField)
+                    ? "cr07a_formato"
+                    : _options.VacationRequestFormatField
+            };
+
+            return View("VacationRequest", vacationModel);
+        }
 
         var model = new RhTablePageViewModel
         {
@@ -147,6 +166,66 @@ public sealed class RhController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el archivo de RH.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> VacationRequestContext(CancellationToken ct)
+    {
+        try
+        {
+            var result = await _dataverse.GetVacationRequestContextAsync(ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar la solicitud de vacaciones.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SubmitVacationRequest([FromBody] VacationRequestSubmitInput? input, CancellationToken ct)
+    {
+        if (input is null)
+            return BadRequest(CreateErrorPayload("Debes indicar el rango de fechas para la solicitud."));
+
+        try
+        {
+            var result = await _dataverse.SubmitVacationRequestAsync(input, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar la solicitud de vacaciones.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> VacationDocument(string recordId, int autoprint = 0, CancellationToken ct = default)
+    {
+        try
+        {
+            var html = await _dataverse.GetVacationRequestDocumentHtmlAsync(recordId, autoprint == 1, ct);
+            return Content(html, "text/html; charset=utf-8");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible generar el formato de vacaciones.", ex));
         }
     }
 

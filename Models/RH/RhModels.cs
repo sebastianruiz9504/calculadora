@@ -24,19 +24,19 @@ public static class RhModuleCatalog
     {
         new RhModuleDescriptor
         {
+            Key = RhModuleKeys.VacationRequests,
+            Title = "Solicitud de vacaciones",
+            Subtitle = "cr07a_solicituddevacaciones",
+            Description = "Consulta tu saldo real, calcula dias habiles y envia la solicitud al flujo de aprobacion.",
+            LogicalName = "cr07a_solicituddevacaciones"
+        },
+        new RhModuleDescriptor
+        {
             Key = RhModuleKeys.Employees,
             Title = "Empleados",
             Subtitle = "cr07a_empleado",
             Description = "Administra informacion base del colaborador, contrato, foto y datos de compensacion.",
             LogicalName = "cr07a_empleado"
-        },
-        new RhModuleDescriptor
-        {
-            Key = RhModuleKeys.VacationRequests,
-            Title = "Vacaciones",
-            Subtitle = "cr07a_solicituddevacaciones",
-            Description = "Gestiona solicitudes de vacaciones con fechas, cantidad de dias y empleado relacionado.",
-            LogicalName = "cr07a_solicituddevacaciones"
         },
         new RhModuleDescriptor
         {
@@ -62,6 +62,15 @@ public sealed class RhTablePageViewModel
 {
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public RhModuleDescriptor Module { get; set; } = new();
+}
+
+public sealed class VacationRequestPageViewModel
+{
+    public CurrentUserInfo CurrentUser { get; set; } = new();
+    public RhModuleDescriptor Module { get; set; } = new();
+    public bool IsApprovalFlowConfigured { get; set; }
+    public string ApprovalFlowConfigPath { get; set; } = "Rh:VacationApprovalFlowUrl";
+    public string FormatFieldName { get; set; } = "cr07a_formato";
 }
 
 public sealed class RhTableDataResultDto
@@ -135,4 +144,56 @@ public sealed class RhFileDownloadResult
     public string FileName { get; set; } = "";
     public string ContentType { get; set; } = "application/octet-stream";
     public byte[] Content { get; set; } = Array.Empty<byte>();
+}
+
+public sealed class VacationRequestContextDto
+{
+    public VacationEmployeeSummaryDto Employee { get; set; } = new();
+    public decimal AccruedDays { get; set; }
+    public decimal RegisteredDays { get; set; }
+    public decimal AvailableDays { get; set; }
+    public IReadOnlyList<VacationRequestHistoryDto> Requests { get; set; } = Array.Empty<VacationRequestHistoryDto>();
+}
+
+public sealed class VacationEmployeeSummaryDto
+{
+    public string EmployeeId { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Position { get; set; } = "";
+    public string Email { get; set; } = "";
+}
+
+public sealed class VacationRequestHistoryDto
+{
+    public string RecordId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string StartDateValue { get; set; } = "";
+    public string StartDateDisplay { get; set; } = "";
+    public string EndDateValue { get; set; } = "";
+    public string EndDateDisplay { get; set; } = "";
+    public decimal RequestedDays { get; set; }
+    public string Notes { get; set; } = "";
+    public bool HasDocument { get; set; }
+    public string DocumentFileName { get; set; } = "";
+    public string CreatedOnDisplay { get; set; } = "";
+}
+
+public sealed class VacationRequestSubmitInput
+{
+    public string StartDate { get; set; } = "";
+    public string EndDate { get; set; } = "";
+    public string Notes { get; set; } = "";
+}
+
+public sealed class VacationRequestSubmitResultDto
+{
+    public string Status { get; set; } = "success";
+    public string Message { get; set; } = "";
+    public bool FlowTriggered { get; set; }
+    public string FlowMessage { get; set; } = "";
+    public decimal RequestedDays { get; set; }
+    public decimal AvailableDaysBefore { get; set; }
+    public decimal AvailableDaysAfter { get; set; }
+    public VacationRequestHistoryDto Request { get; set; } = new();
+    public string DocumentUrl { get; set; } = "";
 }

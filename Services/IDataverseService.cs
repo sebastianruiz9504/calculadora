@@ -32,6 +32,9 @@ public interface IDataverseService
     Task<RhSaveResultDto> SaveRhRecordAsync(RhSaveRequest request, CancellationToken ct = default);
     Task<RhFileUploadResultDto> UploadRhFieldFileAsync(string tableKey, string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadRhFieldFileAsync(string tableKey, string recordId, string fieldName, CancellationToken ct = default);
+    Task<VacationRequestContextDto> GetVacationRequestContextAsync(CancellationToken ct = default);
+    Task<VacationRequestSubmitResultDto> SubmitVacationRequestAsync(VacationRequestSubmitInput input, CancellationToken ct = default);
+    Task<string> GetVacationRequestDocumentHtmlAsync(string recordId, bool autoPrint = false, CancellationToken ct = default);
     Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, MetricsViewMode view, string? sellerKey = null, CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
