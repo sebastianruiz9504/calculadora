@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Abstractions;
+using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
@@ -906,6 +907,9 @@ public sealed partial class DataverseService : IDataverseService
         }
         catch (Exception ex)
         {
+            if (IsIncrementalConsentChallenge(ex))
+                throw;
+
             AppendCurrentUserPermissionWarning(
                 currentUser,
                 "No fue posible consultar el system user actual en Dataverse.",
@@ -932,6 +936,9 @@ public sealed partial class DataverseService : IDataverseService
             }
             catch (Exception ex)
             {
+                if (IsIncrementalConsentChallenge(ex))
+                    throw;
+
                 AppendCurrentUserPermissionWarning(
                     currentUser,
                     "No fue posible cargar el empleado actual en Dataverse usando el lookup de usuario.",
@@ -947,6 +954,9 @@ public sealed partial class DataverseService : IDataverseService
             }
             catch (Exception ex)
             {
+                if (IsIncrementalConsentChallenge(ex))
+                    throw;
+
                 AppendCurrentUserPermissionWarning(
                     currentUser,
                     "No fue posible cargar el empleado actual en Dataverse usando el correo.",
@@ -1016,6 +1026,20 @@ public sealed partial class DataverseService : IDataverseService
         return string.IsNullOrWhiteSpace(ex.Message)
             ? ex.GetType().Name
             : ex.Message.Trim();
+    }
+
+    private static bool IsIncrementalConsentChallenge(Exception ex)
+    {
+        if (ex is null)
+            return false;
+
+        if (ex is MicrosoftIdentityWebChallengeUserException or MsalUiRequiredException)
+            return true;
+
+        if (ex is AggregateException aggregate)
+            return aggregate.InnerExceptions.Any(IsIncrementalConsentChallenge);
+
+        return ex.InnerException is not null && IsIncrementalConsentChallenge(ex.InnerException);
     }
 
     private async Task<JsonElement?> GetCurrentUserRecordAsync(System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)

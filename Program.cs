@@ -6,22 +6,22 @@ using Microsoft.Identity.Web.UI;
 using CotizadorInterno.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+var dataverseBaseUrl = builder.Configuration["Dataverse:BaseUrl"]
+    ?? throw new InvalidOperationException("Dataverse:BaseUrl missing in configuration.");
+var dataverseScope = $"{dataverseBaseUrl}/user_impersonation";
 
 // ================= AUTH =================
 builder.Services
     .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
-    .EnableTokenAcquisitionToCallDownstreamApi()
+    .EnableTokenAcquisitionToCallDownstreamApi(new[] { dataverseScope })
     .AddInMemoryTokenCaches();
 
 // ✅ Downstream API: Dataverse (delegated)
 builder.Services.AddDownstreamApi("Dataverse", options =>
 {
-    var baseUrl = builder.Configuration["Dataverse:BaseUrl"]
-        ?? throw new InvalidOperationException("Dataverse:BaseUrl missing in configuration.");
-
-    options.BaseUrl = baseUrl;
-    options.Scopes = new[] { $"{baseUrl}/user_impersonation" };
+    options.BaseUrl = dataverseBaseUrl;
+    options.Scopes = new[] { dataverseScope };
 });
 builder.Services.AddScoped<CotizadorInterno.Web.Services.Calculator.IQuoteCalculator, CotizadorInterno.Web.Services.Calculator.QuoteCalculator>();
 builder.Services.AddHttpClient();
@@ -32,6 +32,7 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AuthorizeFilter());
 })
 .AddMicrosoftIdentityUI();
+builder.Services.AddMicrosoftIdentityConsentHandler();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
