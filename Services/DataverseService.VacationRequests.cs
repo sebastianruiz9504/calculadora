@@ -150,7 +150,7 @@ public sealed partial class DataverseService
             AvailableDaysBefore = availableDaysBefore,
             AvailableDaysAfter = availableDaysAfter,
             Request = savedRequest.ToHistoryDto(),
-            DocumentUrl = $"/Rh/VacationDocument?recordId={Uri.EscapeDataString(recordId)}"
+            DocumentUrl = $"/GestionHumana/VacationDocument?recordId={Uri.EscapeDataString(recordId)}"
         };
     }
 

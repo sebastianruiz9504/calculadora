@@ -4,29 +4,44 @@ using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
 
-[ModuleAuthorize(AppModule.Rh)]
-public sealed class RhController : Controller
+[ModuleAuthorize(AppModule.GestionHumana)]
+public sealed class GestionHumanaController : Controller
 {
     private readonly IDataverseService _dataverse;
+    private readonly RhOptions _options;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
 
-    public RhController(IDataverseService dataverse)
+    public GestionHumanaController(IDataverseService dataverse, IOptions<RhOptions> options)
     {
         _dataverse = dataverse;
+        _options = options.Value;
     }
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var model = new RhHomePageViewModel
+        var model = new VacationRequestPageViewModel
         {
             CurrentUser = await GetCurrentUserAsync(ct),
-            Modules = RhModuleCatalog.All
+            Module = new RhModuleDescriptor
+            {
+                Key = RhModuleKeys.VacationRequests,
+                Title = "Solicitud de vacaciones",
+                Subtitle = "cr07a_solicituddevacaciones",
+                Description = "Consulta tu saldo real, calcula dias habiles y envia tu solicitud al flujo de aprobacion.",
+                LogicalName = "cr07a_solicituddevacaciones"
+            },
+            IsApprovalFlowConfigured = !string.IsNullOrWhiteSpace(_options.VacationApprovalFlowUrl),
+            ApprovalFlowConfigPath = "Rh:VacationApprovalFlowUrl",
+            FormatFieldName = string.IsNullOrWhiteSpace(_options.VacationRequestFormatField)
+                ? "cr07a_formato"
+                : _options.VacationRequestFormatField
         };
 
         return View(model);
@@ -34,29 +49,53 @@ public sealed class RhController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Table(string key, CancellationToken ct)
+    public async Task<IActionResult> VacationRequestContext(CancellationToken ct)
     {
-        var module = RhModuleCatalog.Find(key);
-        if (module is null)
-            return NotFound();
-
-        var model = new RhTablePageViewModel
+        try
         {
-            CurrentUser = await GetCurrentUserAsync(ct),
-            Module = module
-        };
+            var result = await _dataverse.GetVacationRequestContextAsync(ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar la solicitud de vacaciones.", ex));
+        }
+    }
 
-        return View(model);
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SubmitVacationRequest([FromBody] VacationRequestSubmitInput? input, CancellationToken ct)
+    {
+        if (input is null)
+            return BadRequest(CreateErrorPayload("Debes indicar el rango de fechas para la solicitud."));
+
+        try
+        {
+            var result = await _dataverse.SubmitVacationRequestAsync(input, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar la solicitud de vacaciones.", ex));
+        }
     }
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Data(string tableKey, CancellationToken ct)
+    public async Task<IActionResult> VacationDocument(string recordId, int autoprint = 0, CancellationToken ct = default)
     {
         try
         {
-            var result = await _dataverse.GetRhTableDataAsync(tableKey, ct);
-            return Ok(result);
+            var html = await _dataverse.GetVacationRequestDocumentHtmlAsync(recordId, autoprint == 1, ct);
+            return Content(html, "text/html; charset=utf-8");
         }
         catch (InvalidOperationException ex)
         {
@@ -64,65 +103,7 @@ public sealed class RhController : Controller
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar la tabla de RH.", ex));
-        }
-    }
-
-    [HttpPost]
-    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Save([FromBody] RhSaveRequest? request, CancellationToken ct)
-    {
-        if (request is null)
-            return BadRequest(CreateErrorPayload("Debes indicar la tabla y los valores a guardar."));
-
-        try
-        {
-            var result = await _dataverse.SaveRhRecordAsync(request, ct);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible guardar el registro de RH.", ex));
-        }
-    }
-
-    [HttpPost]
-    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    [RequestSizeLimit(134217728)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 134217728)]
-    public async Task<IActionResult> UploadFile(string tableKey, string recordId, string fieldName, IFormFile? file, CancellationToken ct)
-    {
-        if (file is null || file.Length <= 0)
-            return BadRequest(CreateErrorPayload("Debes seleccionar un archivo valido."));
-
-        try
-        {
-            await using var stream = file.OpenReadStream();
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer, ct);
-
-            var result = await _dataverse.UploadRhFieldFileAsync(
-                tableKey,
-                recordId,
-                fieldName,
-                file.FileName,
-                file.ContentType,
-                buffer.ToArray(),
-                ct);
-
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el archivo en RH.", ex));
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible generar el formato de vacaciones.", ex));
         }
     }
 
@@ -146,7 +127,7 @@ public sealed class RhController : Controller
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el archivo de RH.", ex));
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el archivo de gestion humana.", ex));
         }
     }
 

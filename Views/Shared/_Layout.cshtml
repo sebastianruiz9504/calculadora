@@ -25,6 +25,7 @@
     var canAccessMetricas = false;
     var canAccessNomina = layoutCurrentUser?.HasModule(AppModuleCatalog.Nomina.OptionValue) == true;
     var canAccessRh = layoutCurrentUser?.HasModule(AppModuleCatalog.Rh.OptionValue) == true;
+    var canAccessGestionHumana = layoutCurrentUser?.HasModule(AppModuleCatalog.GestionHumana.OptionValue) == true;
 
     string GetNavLinkClass(string controller)
     {
@@ -85,6 +86,7 @@
         new { Controller = "Metricas", Label = "Metricas", Visible = canAccessMetricas },
         new { Controller = "LiquidacionNominas", Label = "Nomina", Visible = canAccessNomina },
         new { Controller = "Rh", Label = "RH", Visible = canAccessRh },
+        new { Controller = "GestionHumana", Label = "Gestion humana", Visible = canAccessGestionHumana },
         new { Controller = "PortalProveedores", Label = "Proveedores", Visible = canAccessPortalProveedores }
     };
     var userDisplayName = ResolveUserDisplayName();

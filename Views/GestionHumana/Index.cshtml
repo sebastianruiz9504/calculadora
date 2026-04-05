@@ -1,6 +1,6 @@
 @model VacationRequestPageViewModel
 @{
-    ViewData["Title"] = $"RH - {Model.Module.Title}";
+    ViewData["Title"] = "Gestion humana - Solicitud de vacaciones";
 }
 
 @section Styles {
@@ -9,16 +9,16 @@
 
 <div class="rh-shell rh-shell--vacation"
      id="vacationRequestApp"
-     data-context-url="@Url.Action("VacationRequestContext", "Rh")"
-     data-submit-url="@Url.Action("SubmitVacationRequest", "Rh")"
-     data-document-url="@Url.Action("VacationDocument", "Rh")"
-     data-download-url="@Url.Action("DownloadFile", "Rh")"
+     data-context-url="@Url.Action("VacationRequestContext", "GestionHumana")"
+     data-submit-url="@Url.Action("SubmitVacationRequest", "GestionHumana")"
+     data-document-url="@Url.Action("VacationDocument", "GestionHumana")"
+     data-download-url="@Url.Action("DownloadFile", "GestionHumana")"
      data-table-key="@RhModuleKeys.VacationRequests"
      data-format-field="@Model.FormatFieldName"
      data-flow-configured="@(Model.IsApprovalFlowConfigured ? "true" : "false")">
     <section class="rh-hero">
         <div>
-            <a class="rh-back-link" asp-action="Index">Volver al menu RH</a>
+            <a class="rh-back-link" asp-controller="Home" asp-action="Index">Volver al inicio</a>
             <div class="rh-kicker">Gestion humana</div>
             <h1 class="rh-title">@Model.Module.Title</h1>
             <p class="rh-subtitle">
@@ -145,8 +145,8 @@
             <div class="rh-section-header">
                 <div>
                     <div class="rh-kicker">Historial</div>
-                    <h2 class="rh-section-title">Solicitudes registradas</h2>
-                    <p class="rh-section-subtitle">Aqui ves lo ya descontado de tu saldo y el acceso al formato de cada solicitud.</p>
+                    <h2 class="rh-section-title">Tus solicitudes registradas</h2>
+                    <p class="rh-section-subtitle">Aqui solo ves tus solicitudes y el acceso al formato de cada una.</p>
                 </div>
                 <div class="rh-counter" id="vacationRequestsCount">0 registros</div>
             </div>

@@ -94,9 +94,9 @@ public static class AppModuleCatalog
         Key = AppModule.GestionHumana,
         Label = "Gestion humana",
         Category = "Gestion interna",
-        Description = "Modulo reservado para procesos internos de gestion humana.",
+        Description = "Permite al colaborador consultar su saldo y registrar sus propias solicitudes de vacaciones.",
         OptionValue = 645250006,
-        IsNavigable = false
+        Controller = "GestionHumana"
     };
 
     public static readonly AppModuleDefinition Permissions = new()

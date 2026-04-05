@@ -24,19 +24,19 @@ public static class RhModuleCatalog
     {
         new RhModuleDescriptor
         {
-            Key = RhModuleKeys.VacationRequests,
-            Title = "Solicitud de vacaciones",
-            Subtitle = "cr07a_solicituddevacaciones",
-            Description = "Consulta tu saldo real, calcula dias habiles y envia la solicitud al flujo de aprobacion.",
-            LogicalName = "cr07a_solicituddevacaciones"
-        },
-        new RhModuleDescriptor
-        {
             Key = RhModuleKeys.Employees,
             Title = "Empleados",
             Subtitle = "cr07a_empleado",
             Description = "Administra informacion base del colaborador, contrato, foto y datos de compensacion.",
             LogicalName = "cr07a_empleado"
+        },
+        new RhModuleDescriptor
+        {
+            Key = RhModuleKeys.VacationRequests,
+            Title = "Vacaciones",
+            Subtitle = "cr07a_solicituddevacaciones",
+            Description = "Gestiona solicitudes de vacaciones con fechas, cantidad de dias y empleado relacionado.",
+            LogicalName = "cr07a_solicituddevacaciones"
         },
         new RhModuleDescriptor
         {

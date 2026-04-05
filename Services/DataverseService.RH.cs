@@ -1089,9 +1089,9 @@ public sealed partial class DataverseService
             new RhTableDefinition
             {
                 Key = RhModuleKeys.VacationRequests,
-                Title = "Solicitud de vacaciones",
+                Title = "Vacaciones",
                 Subtitle = "cr07a_solicituddevacaciones",
-                Description = "Gestiona solicitudes de vacaciones, su duracion y el formato asociado.",
+                Description = "Edita solicitudes de vacaciones y su duracion.",
                 EmptyStateMessage = "Todavia no hay solicitudes de vacaciones cargadas.",
                 LogicalName = "cr07a_solicituddevacaciones",
                 FallbackEntitySetName = "cr07a_solicituddevacacioneses",
@@ -1115,17 +1115,7 @@ public sealed partial class DataverseService
                     },
                     new RhFieldDefinition { LogicalName = "cr07a_fechainicio", Label = "Fecha inicio", EditorType = "date", Required = true },
                     new RhFieldDefinition { LogicalName = "cr07a_fechafin", Label = "Fecha fin", EditorType = "date", Required = true },
-                    new RhFieldDefinition { LogicalName = "cr07a_cantidaddedias", Label = "Cantidad de dias", EditorType = "number", Required = true },
-                    new RhFieldDefinition
-                    {
-                        LogicalName = "cr07a_formato",
-                        Label = "Formato solicitud",
-                        EditorType = "file",
-                        Accept = "application/pdf",
-                        ShowInList = false,
-                        FileNameLogicalName = "cr07a_formato_name",
-                        HelpText = "El PDF final puede quedar cargado por el flujo de aprobacion."
-                    }
+                    new RhFieldDefinition { LogicalName = "cr07a_cantidaddedias", Label = "Cantidad de dias", EditorType = "number", Required = true }
                 }
             },
             new RhTableDefinition
