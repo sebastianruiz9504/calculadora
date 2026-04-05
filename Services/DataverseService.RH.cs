@@ -972,8 +972,8 @@ public sealed partial class DataverseService
                         EditorType = "option",
                         Options = new[]
                         {
-                            new RhOptionDto { Value = "1", Label = "Nomina" },
-                            new RhOptionDto { Value = "2", Label = "Prestacion de servicios" }
+                            new RhOptionDto { Value = "645250000", Label = "Nomina" },
+                            new RhOptionDto { Value = "645250001", Label = "Prestacion de servicios" }
                         }
                     },
                     new RhFieldDefinition
