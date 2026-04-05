@@ -93,6 +93,7 @@
 
     const CROSS_SALE_DEAL_TYPE = 1;
     const AUTO_BILL_YES_VALUE = 1;
+    const MODERN_WORK_LINE_OPTION_VALUE = 645250000;
 
     const state = {
         filter: app.dataset.initialFilter || "this-month",
@@ -128,8 +129,13 @@
             .replace(/'/g, "&#39;");
     }
 
+    function toNumber(value, fallback = 0) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
     function roundMoney(value) {
-        return Number(Number(value || 0).toFixed(2));
+        return Number(toNumber(value, 0).toFixed(2));
     }
 
     function formatNumber(value) {
@@ -142,6 +148,63 @@
 
     function formatPercent(value) {
         return `${formatNumber(value)}%`;
+    }
+
+    function containsPrepaidOrYear(value) {
+        const normalized = (value || "").toString().toLowerCase();
+        return normalized.includes("prepaid") || normalized.includes("1 year");
+    }
+
+    function isModernWorkLine(line) {
+        return Number(line?.lineOptionValue || 0) === MODERN_WORK_LINE_OPTION_VALUE;
+    }
+
+    function normalizePositiveInteger(value, fallback) {
+        return Math.max(1, Math.trunc(toNumber(value, fallback)));
+    }
+
+    function recomputeVerifyLine(line, source = "margin") {
+        if (!line) {
+            return line;
+        }
+
+        line.costUnit = roundMoney(Math.max(toNumber(line.costUnit, 0), 0));
+        line.marginPercent = roundMoney(toNumber(line.marginPercent, 0));
+        line.contractMonths = normalizePositiveInteger(line.contractMonths, 12);
+        line.quantity = normalizePositiveInteger(line.quantity, 1);
+        line.saleUnit = roundMoney(toNumber(line.saleUnit, 0));
+        line.monthlyValue = roundMoney(Math.max(toNumber(line.monthlyValue, 0), 0));
+        line.totalValue = roundMoney(Math.max(toNumber(line.totalValue, 0), 0));
+
+        if (containsPrepaidOrYear(line.productName)) {
+            line.contractMonths = 12;
+        }
+
+        if (source === "sale") {
+            line.marginPercent = line.costUnit > 0 ? roundMoney(((line.saleUnit / line.costUnit) - 1) * 100) : 0;
+            line.monthlyValue = roundMoney(line.saleUnit * line.quantity);
+            line.totalValue = roundMoney(line.monthlyValue * line.contractMonths);
+            return line;
+        }
+
+        if (source === "monthly") {
+            line.saleUnit = line.quantity > 0 ? roundMoney(line.monthlyValue / line.quantity) : 0;
+            line.marginPercent = line.costUnit > 0 ? roundMoney(((line.saleUnit / line.costUnit) - 1) * 100) : 0;
+            line.totalValue = roundMoney(line.monthlyValue * line.contractMonths);
+            return line;
+        }
+
+        if (source === "total") {
+            line.monthlyValue = line.contractMonths > 0 ? roundMoney(line.totalValue / line.contractMonths) : 0;
+            line.saleUnit = line.quantity > 0 ? roundMoney(line.monthlyValue / line.quantity) : 0;
+            line.marginPercent = line.costUnit > 0 ? roundMoney(((line.saleUnit / line.costUnit) - 1) * 100) : 0;
+            return line;
+        }
+
+        line.saleUnit = roundMoney(line.costUnit * (1 + (line.marginPercent / 100)));
+        line.monthlyValue = roundMoney(line.saleUnit * line.quantity);
+        line.totalValue = roundMoney(line.monthlyValue * line.contractMonths);
+        return line;
     }
 
     function parseDateValue(value) {
@@ -1254,15 +1317,7 @@
     }
 
     function normalizeLine(line, index) {
-        const costUnit = roundMoney(line.costUnit || 0);
-        const marginPercent = roundMoney(line.marginPercent || 0);
-        const contractMonths = Math.max(1, Number(line.contractMonths || 12));
-        const quantity = Math.max(1, Number(line.quantity || 1));
-        const saleUnit = roundMoney(costUnit * (1 + (marginPercent / 100)));
-        const monthlyValue = roundMoney(saleUnit * quantity);
-        const totalValue = roundMoney(monthlyValue * contractMonths);
-
-        return {
+        const normalized = {
             lineId: line.lineId || `line-${index + 1}`,
             productId: line.productId || "",
             productName: line.productName || "",
@@ -1270,16 +1325,18 @@
             lineOptionValue: Number(line.lineOptionValue || 645250004),
             hasVat: line.hasVatOptionValue > 0 ? Number(line.hasVatOptionValue) === 1 : Boolean(line.hasVat),
             hasVatOptionValue: line.hasVatOptionValue > 0 ? Number(line.hasVatOptionValue) : (Boolean(line.hasVat) ? 1 : 0),
-            costUnit,
-            marginPercent,
-            contractMonths,
-            quantity,
+            costUnit: line.costUnit,
+            marginPercent: line.marginPercent,
+            contractMonths: line.contractMonths,
+            quantity: line.quantity,
             suggestedRetailPrice: roundMoney(line.suggestedRetailPrice || 0),
             acelerador: roundMoney(line.acelerador || 0),
-            saleUnit,
-            monthlyValue,
-            totalValue
+            saleUnit: line.saleUnit,
+            monthlyValue: line.monthlyValue,
+            totalValue: line.totalValue
         };
+
+        return recomputeVerifyLine(normalized, "margin");
     }
 
     function createEmptyLine() {
@@ -1390,28 +1447,33 @@
             return;
         }
 
-        const rows = lines.map((line, index) => `
+        const rows = lines.map((line, index) => {
+            const lockCost = isModernWorkLine(line);
+            const lockMonths = containsPrepaidOrYear(line.productName);
+
+            return `
             <tr data-line-index="${index}">
                 <td>
                     <div class="scores-verify-product">
                         <input type="text" class="form-control form-control-sm verify-product-input" value="${escapeHtml(line.productName)}" placeholder="Buscar producto..." autocomplete="off" />
                         <div class="scores-verify-product__search"></div>
-                        <div class="scores-verify-product__meta">Tipo: ${escapeHtml(line.lineType || "Otro")} | IVA: ${line.hasVat ? "Si" : "No"} | Lookup: ${escapeHtml(line.productId || "pendiente")} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}</div>
+                        <div class="scores-verify-product__meta">Tipo: ${escapeHtml(line.lineType || "Otro")} | IVA: ${line.hasVat ? "Si" : "No"} | Lookup: ${escapeHtml(line.productId || "pendiente")} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}${lockCost ? " | Costo fijo por ModernWork" : ""}${lockMonths ? " | Duracion fija 12 meses" : ""}</div>
                     </div>
                 </td>
-                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-cost-input" value="${line.costUnit}" /></td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-cost-input" value="${line.costUnit}" ${lockCost ? "disabled" : ""} /></td>
                 <td><input type="number" step="0.01" class="form-control form-control-sm text-end verify-margin-input" value="${line.marginPercent}" /></td>
-                <td><input type="number" step="1" min="1" class="form-control form-control-sm text-end verify-months-input" value="${line.contractMonths}" /></td>
+                <td><input type="number" step="1" min="1" class="form-control form-control-sm text-end verify-months-input" value="${line.contractMonths}" ${lockMonths ? "disabled" : ""} /></td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-sale-input" value="${line.saleUnit}" /></td>
                 <td><input type="number" step="1" min="1" class="form-control form-control-sm text-end verify-qty-input" value="${line.quantity}" /></td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-monthly-input" value="${line.monthlyValue}" /></td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end verify-total-input" value="${line.totalValue}" /></td>
                 <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger verify-remove-line-btn">×</button></td>
             </tr>
-        `).join("");
+        `;
+        }).join("");
 
         const totals = lines.reduce((acc, line) => {
-            acc.cost += Number(line.costUnit || 0);
+            acc.cost += Number(line.costUnit || 0) * Number(line.quantity || 0);
             acc.monthly += Number(line.monthlyValue || 0);
             acc.total += Number(line.totalValue || 0);
             return acc;
@@ -1550,48 +1612,36 @@
                 }
             };
 
-            const syncInputs = () => {
-                costInput && (costInput.value = String(line.costUnit));
-                marginInput && (marginInput.value = String(line.marginPercent));
-                monthsInput && (monthsInput.value = String(line.contractMonths));
-                saleInput && (saleInput.value = String(line.saleUnit));
-                qtyInput && (qtyInput.value = String(line.quantity));
-                monthlyInput && (monthlyInput.value = String(line.monthlyValue));
-                totalInput && (totalInput.value = String(line.totalValue));
-                const meta = row.querySelector(".scores-verify-product__meta");
-                if (meta) {
-                    meta.textContent = `Tipo: ${line.lineType || "Otro"} | IVA: ${line.hasVat ? "Si" : "No"} | Lookup: ${line.productId || "pendiente"} | Sug.: ${formatNumber(line.suggestedRetailPrice)} | Acel.: ${formatNumber(line.acelerador)}`;
-                }
-            };
-
-            const normalizeFromSource = source => {
-                line.costUnit = roundMoney(costInput?.value || line.costUnit);
-                line.marginPercent = roundMoney(marginInput?.value || line.marginPercent);
-                line.contractMonths = Math.max(1, Number(monthsInput?.value || line.contractMonths || 12));
-                line.quantity = Math.max(1, Number(qtyInput?.value || line.quantity || 1));
-                line.saleUnit = roundMoney(saleInput?.value || line.saleUnit);
-                line.monthlyValue = roundMoney(monthlyInput?.value || line.monthlyValue);
-                line.totalValue = roundMoney(totalInput?.value || line.totalValue);
-
-                if (source === "sale") {
-                    line.marginPercent = line.costUnit > 0 ? roundMoney(((line.saleUnit / line.costUnit) - 1) * 100) : 0;
-                    line.monthlyValue = roundMoney(line.saleUnit * line.quantity);
-                    line.totalValue = roundMoney(line.monthlyValue * line.contractMonths);
-                } else if (source === "monthly") {
-                    line.saleUnit = line.quantity > 0 ? roundMoney(line.monthlyValue / line.quantity) : 0;
-                    line.marginPercent = line.costUnit > 0 ? roundMoney(((line.saleUnit / line.costUnit) - 1) * 100) : 0;
-                    line.totalValue = roundMoney(line.monthlyValue * line.contractMonths);
-                } else if (source === "total") {
-                    line.monthlyValue = line.contractMonths > 0 ? roundMoney(line.totalValue / line.contractMonths) : 0;
-                    line.saleUnit = line.quantity > 0 ? roundMoney(line.monthlyValue / line.quantity) : 0;
-                    line.marginPercent = line.costUnit > 0 ? roundMoney(((line.saleUnit / line.costUnit) - 1) * 100) : 0;
-                } else {
-                    line.saleUnit = roundMoney(line.costUnit * (1 + (line.marginPercent / 100)));
-                    line.monthlyValue = roundMoney(line.saleUnit * line.quantity);
-                    line.totalValue = roundMoney(line.monthlyValue * line.contractMonths);
+            const applyLineChange = source => {
+                if (costInput && !costInput.disabled) {
+                    line.costUnit = roundMoney(costInput.value);
                 }
 
-                syncInputs();
+                if (marginInput) {
+                    line.marginPercent = roundMoney(marginInput.value);
+                }
+
+                if (monthsInput && !monthsInput.disabled) {
+                    line.contractMonths = normalizePositiveInteger(monthsInput.value, line.contractMonths || 12);
+                }
+
+                if (qtyInput) {
+                    line.quantity = normalizePositiveInteger(qtyInput.value, line.quantity || 1);
+                }
+
+                if (saleInput) {
+                    line.saleUnit = roundMoney(saleInput.value);
+                }
+
+                if (monthlyInput) {
+                    line.monthlyValue = roundMoney(monthlyInput.value);
+                }
+
+                if (totalInput) {
+                    line.totalValue = roundMoney(totalInput.value);
+                }
+
+                recomputeVerifyLine(line, source);
                 renderVerifyLines();
                 markDraftDirty();
             };
@@ -1650,12 +1700,16 @@
 
                 line.productId = item.id || "";
                 line.productName = item.description || "";
-                line.costUnit = roundMoney(item.purchasePrice || 0);
                 line.suggestedRetailPrice = roundMoney(item.suggestedRetailPrice || 0);
                 line.acelerador = roundMoney(item.acelerador || 0);
+                if (isModernWorkLine(line)) {
+                    line.costUnit = roundMoney(item.purchasePrice || 0);
+                }
                 productInput.value = line.productName;
                 hideSuggestions();
-                normalizeFromSource("cost");
+                recomputeVerifyLine(line, "cost");
+                renderVerifyLines();
+                markDraftDirty();
             });
 
             document.addEventListener("click", event => {
@@ -1665,13 +1719,13 @@
                 hideSuggestions();
             }, { once: true });
 
-            costInput?.addEventListener("change", () => normalizeFromSource("cost"));
-            marginInput?.addEventListener("change", () => normalizeFromSource("margin"));
-            monthsInput?.addEventListener("change", () => normalizeFromSource("months"));
-            saleInput?.addEventListener("change", () => normalizeFromSource("sale"));
-            qtyInput?.addEventListener("change", () => normalizeFromSource("quantity"));
-            monthlyInput?.addEventListener("change", () => normalizeFromSource("monthly"));
-            totalInput?.addEventListener("change", () => normalizeFromSource("total"));
+            costInput?.addEventListener("change", () => applyLineChange("cost"));
+            marginInput?.addEventListener("change", () => applyLineChange("margin"));
+            monthsInput?.addEventListener("change", () => applyLineChange("months"));
+            saleInput?.addEventListener("change", () => applyLineChange("sale"));
+            qtyInput?.addEventListener("change", () => applyLineChange("quantity"));
+            monthlyInput?.addEventListener("change", () => applyLineChange("monthly"));
+            totalInput?.addEventListener("change", () => applyLineChange("total"));
             removeBtn?.addEventListener("click", () => {
                 state.activeDraft.lines.splice(index, 1);
                 renderVerifyLines();

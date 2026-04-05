@@ -1427,7 +1427,8 @@ public sealed partial class DataverseService
     {
         var costUnit = RoundCurrency(Math.Max(line.CostUnit, 0m));
         var marginPercent = RoundCurrency(line.MarginPercent);
-        var contractMonths = line.ContractMonths > 0 ? line.ContractMonths : 12;
+        var productName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim();
+        var contractMonths = NormalizeContractMonths(line.ContractMonths, productName);
         var quantity = line.Quantity > 0 ? line.Quantity : 1;
         var saleUnit = RoundCurrency(costUnit * (1m + (marginPercent / 100m)));
         var monthlyValue = RoundCurrency(saleUnit * quantity);
@@ -1437,7 +1438,7 @@ public sealed partial class DataverseService
         {
             LineId = string.IsNullOrWhiteSpace(line.LineId) ? $"line-{index}" : line.LineId.Trim(),
             ProductId = line.ProductId?.Trim() ?? "",
-            ProductName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim(),
+            ProductName = productName,
             LineType = ResolveLineTypeLabel(
                 AllowedLineOptionValues.Contains(line.LineOptionValue) ? line.LineOptionValue : ResolveLineOptionValue(line.LineType),
                 line.LineType),
@@ -2418,6 +2419,21 @@ public sealed partial class DataverseService
             : (string.IsNullOrWhiteSpace(fallback) ? "Otro" : fallback.Trim());
     }
 
+    private static bool ContainsPrepaidOrYear(string? productName)
+    {
+        if (string.IsNullOrWhiteSpace(productName))
+            return false;
+
+        return productName.Contains("prepaid", StringComparison.OrdinalIgnoreCase)
+            || productName.Contains("1 year", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int NormalizeContractMonths(int contractMonths, string? productName)
+    {
+        var normalizedMonths = contractMonths > 0 ? contractMonths : 12;
+        return ContainsPrepaidOrYear(productName) ? 12 : normalizedMonths;
+    }
+
     private static int ResolveHasVatOptionValue(bool hasVat) => hasVat ? 1 : 0;
 
     private static int ResolvePrimaryLineOptionValue(IEnumerable<ScoreVerificationLineInput>? lines, int fallback = 0)
@@ -2993,7 +3009,8 @@ public sealed partial class DataverseService
     {
         var costUnit = RoundCurrency(Math.Max(line.CostUnit, 0m));
         var marginPercent = RoundCurrency(line.MarginPercent);
-        var contractMonths = line.ContractMonths > 0 ? line.ContractMonths : 12;
+        var productName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim();
+        var contractMonths = NormalizeContractMonths(line.ContractMonths, productName);
         var quantity = line.Quantity > 0 ? line.Quantity : 1;
         var saleUnit = RoundCurrency(costUnit * (1m + (marginPercent / 100m)));
         var monthlyValue = RoundCurrency(saleUnit * quantity);
@@ -3003,7 +3020,7 @@ public sealed partial class DataverseService
         {
             LineId = string.IsNullOrWhiteSpace(line.LineId) ? $"line-{index}" : line.LineId.Trim(),
             ProductId = line.ProductId?.Trim() ?? "",
-            ProductName = string.IsNullOrWhiteSpace(line.ProductName) ? $"Producto {index}" : line.ProductName.Trim(),
+            ProductName = productName,
             LineType = ResolveLineTypeLabel(
                 AllowedLineOptionValues.Contains(line.LineOptionValue) ? line.LineOptionValue : ResolveLineOptionValue(line.LineType),
                 line.LineType),
