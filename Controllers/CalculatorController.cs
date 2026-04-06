@@ -457,14 +457,14 @@ public sealed class CalculatorController : Controller
             },
             resultado = resultado is null ? null : new
             {
-                puntaje = resultado.Puntaje,
-                comision = resultado.Comision,
+                puntaje = RoundWholeNumber(resultado.Puntaje),
+                comision = RoundWholeNumber(resultado.Comision),
                 prorrateoDias = resultado.ProrrateoDias,
-                prorrateoFactor = resultado.ProrrateoFactor,
+                prorrateoFactor = RoundWholeNumber(resultado.ProrrateoFactor),
                 prorrateoTexto = resultado.ProrrateoTexto?.Trim() ?? "",
-                ventaMensualTotal = resultado.VentaMensualTotal,
-                ventaTotal = resultado.VentaTotal,
-                ventaTotalAnual = resultado.VentaTotalAnual
+                ventaMensualTotal = RoundWholeNumber(resultado.VentaMensualTotal),
+                ventaTotal = RoundWholeNumber(resultado.VentaTotal),
+                ventaTotalAnual = RoundWholeNumber(resultado.VentaTotalAnual)
             },
             descriptionText,
             lineItems = lineItems.Select(item => new
@@ -472,14 +472,15 @@ public sealed class CalculatorController : Controller
                 lineId = item.LineId,
                 productoId = item.ProductoId,
                 productoNombre = item.ProductoNombre,
-                cantidad = item.Cantidad,
-                number = item.Number,
-                costoUnd = item.CostoUnd,
-                ventaUnd = item.VentaUnd,
-                margenPorcentaje = item.MargenPorcentaje,
+                // The Power Automate trigger schema expects integers for these fields.
+                cantidad = RoundWholeNumber(item.Cantidad),
+                number = RoundWholeNumber(item.Number),
+                costoUnd = RoundWholeNumber(item.CostoUnd),
+                ventaUnd = RoundWholeNumber(item.VentaUnd),
+                margenPorcentaje = RoundWholeNumber(item.MargenPorcentaje),
                 duracionMeses = item.DuracionMeses,
-                ventaMensual = item.VentaMensual,
-                ventaTotal = item.VentaTotal,
+                ventaMensual = RoundWholeNumber(item.VentaMensual),
+                ventaTotal = RoundWholeNumber(item.VentaTotal),
                 tieneIva = item.TieneIva,
                 tipo = item.Tipo,
                 requiereProrrateo = item.RequiereProrrateo,
@@ -643,6 +644,9 @@ public sealed class CalculatorController : Controller
 
     private static decimal Round2(decimal v) =>
         Math.Round(v, 2, MidpointRounding.AwayFromZero);
+
+    private static int RoundWholeNumber(decimal value) =>
+        (int)Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
     private static string BuildFileName(string? scenarioName)
     {
