@@ -77,6 +77,29 @@ public sealed class BillingDashboardDto
     public IReadOnlyList<BillingDifferenceInvoiceDto> DifferenceInvoices { get; set; } = Array.Empty<BillingDifferenceInvoiceDto>();
 }
 
+public sealed class PortfolioDashboardDto
+{
+    public string AsOfDateLabel { get; set; } = "";
+    public string FocusLabel { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public IReadOnlyList<PortfolioKpiDto> Kpis { get; set; } = Array.Empty<PortfolioKpiDto>();
+    public IReadOnlyList<BillingUnpaidInvoiceDto> OverdueInvoices { get; set; } = Array.Empty<BillingUnpaidInvoiceDto>();
+}
+
+public sealed class PortfolioKpiDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Hint { get; set; } = "";
+    public decimal Value { get; set; }
+    public string ValueFormat { get; set; } = "currency";
+    public string SecondaryLabel { get; set; } = "";
+    public string SecondaryValue { get; set; } = "";
+}
+
 public sealed class BillingKpiDto
 {
     public string Key { get; set; } = "";

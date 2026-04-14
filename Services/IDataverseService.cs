@@ -38,6 +38,7 @@ public interface IDataverseService
     Task<string> GetVacationRequestDocumentHtmlAsync(string recordId, bool autoPrint = false, CancellationToken ct = default);
     Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, MetricsViewMode view, string? sellerKey = null, CancellationToken ct = default);
     Task<BillingDashboardDto> GetBillingDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
+    Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);

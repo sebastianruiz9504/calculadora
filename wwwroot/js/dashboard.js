@@ -8,19 +8,23 @@
     const periodFilter = document.getElementById("dashboardPeriodFilter");
     const valueFilter = document.getElementById("dashboardValueFilter");
     const refreshButton = document.getElementById("dashboardRefreshBtn");
-    const statusBanner = document.getElementById("dashboardStatusBanner");
+    const portfolioRefreshButton = document.getElementById("portfolioRefreshBtn");
+    const billingStatusBanner = document.getElementById("dashboardStatusBanner");
+    const portfolioStatusBanner = document.getElementById("portfolioStatusBanner");
     const periodLabel = document.getElementById("dashboardPeriodLabel");
     const dateRangeLabel = document.getElementById("dashboardDateRangeLabel");
     const compareLabel = document.getElementById("dashboardCompareLabel");
     const granularityLabel = document.getElementById("dashboardGranularityLabel");
     const recordCount = document.getElementById("dashboardRecordCount");
-    const kpisContainer = document.getElementById("billingKpisContainer");
+    const portfolioAsOfLabel = document.getElementById("portfolioAsOfLabel");
+    const portfolioFocusLabel = document.getElementById("portfolioFocusLabel");
+    const billingKpisContainer = document.getElementById("billingKpisContainer");
+    const portfolioKpisContainer = document.getElementById("portfolioKpisContainer");
     const trendsContainer = document.getElementById("billingTrendsContainer");
     const retentionsContainer = document.getElementById("billingRetentionsContainer");
-    const verticalsContainer = document.getElementById("billingVerticalsContainer");
-    const clientsContainer = document.getElementById("billingClientsContainer");
-    const unpaidBody = document.getElementById("billingUnpaidBody");
-    const differenceBody = document.getElementById("billingDifferenceBody");
+    const portfolioUnpaidBody = document.getElementById("portfolioUnpaidBody");
+    const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
+    const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
 
     const currentYear = Number(app.dataset.initialYear || new Date().getFullYear());
     const currentPeriod = app.dataset.initialPeriod || "month";
@@ -39,11 +43,14 @@
     });
 
     const state = {
+        activeTab: "billing",
         year: currentYear,
         period: currentPeriod,
         value: currentValue,
-        dashboard: null,
-        isLoading: false
+        billingDashboard: null,
+        portfolioDashboard: null,
+        billingLoading: false,
+        portfolioLoading: false
     };
 
     function escapeHtml(value) {
@@ -82,28 +89,35 @@
         return `${numberFormatter.format(Number(value || 0))}%`;
     }
 
-    function setStatus(type, message) {
-        if (!statusBanner) {
+    function setStatus(target, type, message) {
+        if (!target) {
             return;
         }
 
         if (!message) {
-            statusBanner.className = "dashboard-status";
-            statusBanner.textContent = "";
+            target.className = "dashboard-status";
+            target.textContent = "";
             return;
         }
 
-        statusBanner.className = `dashboard-status show ${type}`;
-        statusBanner.textContent = message;
+        target.className = `dashboard-status show ${type}`;
+        target.textContent = message;
     }
 
-    function setLoading(loading) {
-        state.isLoading = loading;
+    function setBillingLoading(loading) {
+        state.billingLoading = loading;
         [yearFilter, periodFilter, valueFilter, refreshButton].forEach(element => {
             if (element) {
                 element.disabled = loading;
             }
         });
+    }
+
+    function setPortfolioLoading(loading) {
+        state.portfolioLoading = loading;
+        if (portfolioRefreshButton) {
+            portfolioRefreshButton.disabled = loading;
+        }
     }
 
     function buildYearOptions() {
@@ -176,7 +190,7 @@
         valueFilter.value = String(state.value);
     }
 
-    function buildDashboardUrl() {
+    function buildBillingUrl() {
         const params = new URLSearchParams({
             year: String(state.year),
             period: state.period,
@@ -184,6 +198,10 @@
         });
 
         return `${app.dataset.billingUrl}?${params.toString()}`;
+    }
+
+    function buildPortfolioUrl() {
+        return app.dataset.portfolioUrl || "";
     }
 
     async function fetchJson(url) {
@@ -209,9 +227,9 @@
         return response.json();
     }
 
-    function renderKpis(dashboard) {
+    function renderBillingKpis(dashboard) {
         const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
-        if (!kpisContainer) {
+        if (!billingKpisContainer) {
             return;
         }
 
@@ -237,7 +255,7 @@
             `;
         };
 
-        kpisContainer.innerHTML = kpis.map(kpi => `
+        billingKpisContainer.innerHTML = kpis.map(kpi => `
             <article class="dashboard-kpi dashboard-kpi--${escapeHtml(kpi.tone || "neutral")}">
                 <div class="dashboard-kpi__header">
                     <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
@@ -254,6 +272,27 @@
                     <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
                 </div>
                 ${renderBreakdowns(kpi.breakdowns)}
+            </article>
+        `).join("");
+    }
+
+    function renderPortfolioKpis(dashboard) {
+        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
+        if (!portfolioKpisContainer) {
+            return;
+        }
+
+        portfolioKpisContainer.innerHTML = kpis.map(kpi => `
+            <article class="dashboard-kpi dashboard-kpi--neutral">
+                <div class="dashboard-kpi__header">
+                    <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
+                </div>
+                <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
+                <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
+                <div class="dashboard-kpi__secondary">
+                    <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
+                    <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
+                </div>
             </article>
         `).join("");
     }
@@ -453,72 +492,12 @@
             : '<div class="dashboard-table__empty">No hay retenciones registradas en este periodo.</div>';
     }
 
-    function renderVerticals(dashboard) {
-        const items = Array.isArray(dashboard?.verticals) ? dashboard.verticals : [];
-        if (!verticalsContainer) {
+    function renderOverdueTable(rows, tbody) {
+        if (!tbody) {
             return;
         }
 
-        verticalsContainer.innerHTML = items.length
-            ? items.map(item => `
-                <article class="dashboard-vertical-card">
-                    <div class="dashboard-vertical-card__header">
-                        <div>
-                            <strong>${escapeHtml(item.label)}</strong>
-                            <div class="dashboard-contract-row__meta">${escapeHtml(currencyFormatter.format(Number(item.previousTotalBilling || 0)))} ano anterior</div>
-                        </div>
-                        <span class="dashboard-growth ${Number(item.totalBilling || 0) >= Number(item.previousTotalBilling || 0) ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
-                    </div>
-                    <div class="dashboard-vertical-card__total">${escapeHtml(currencyFormatter.format(Number(item.totalBilling || 0)))}</div>
-                    <div class="dashboard-vertical-card__metrics">
-                        <span class="dashboard-metric-tag">IVA ${escapeHtml(currencyFormatter.format(Number(item.totalVat || 0)))}</span>
-                        <span class="dashboard-metric-tag">Facturas ${escapeHtml(numberFormatter.format(Number(item.invoicesCount || 0)))}</span>
-                        <span class="dashboard-metric-tag">Sin pago ${escapeHtml(numberFormatter.format(Number(item.unpaidInvoicesCount || 0)))}</span>
-                    </div>
-                    <div class="dashboard-contract-list">
-                        ${(item.contractTypes || []).map(contract => `
-                            <div class="dashboard-contract-row">
-                                <div>
-                                    <div class="dashboard-contract-row__name">${escapeHtml(contract.label)}</div>
-                                    <div class="dashboard-contract-row__meta">${escapeHtml(currencyFormatter.format(Number(contract.totalBilling || 0)))} · ${escapeHtml(formatGrowth(contract.growthPercent))}</div>
-                                </div>
-                                <span>${escapeHtml(formatPercent(contract.sharePercent || 0))}</span>
-                            </div>
-                            <div class="dashboard-progress"><span style="width:${Math.min(Number(contract.sharePercent || 0), 100)}%"></span></div>
-                        `).join("")}
-                    </div>
-                </article>
-            `).join("")
-            : '<div class="dashboard-table__empty">No hay verticales para mostrar en este periodo.</div>';
-    }
-
-    function renderClients(dashboard) {
-        const items = Array.isArray(dashboard?.topClients) ? dashboard.topClients : [];
-        if (!clientsContainer) {
-            return;
-        }
-
-        clientsContainer.innerHTML = items.length
-            ? `<div class="dashboard-client-list">${items.map(item => `
-                <div class="dashboard-client-row">
-                    <div>
-                        <div class="dashboard-client-row__name">${escapeHtml(item.clientName)}</div>
-                        <div class="dashboard-client-row__meta">${escapeHtml(currencyFormatter.format(Number(item.totalBilling || 0)))} · ${escapeHtml(numberFormatter.format(Number(item.invoicesCount || 0)))} facturas</div>
-                    </div>
-                    <span class="dashboard-growth ${Number(item.totalBilling || 0) >= Number(item.previousTotalBilling || 0) ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
-                </div>
-                <div class="dashboard-progress"><span style="width:${Math.min(Number(item.sharePercent || 0), 100)}%"></span></div>
-            `).join("")}</div>`
-            : '<div class="dashboard-table__empty">No hay clientes con facturacion en este periodo.</div>';
-    }
-
-    function renderUnpaidTable(dashboard) {
-        const rows = Array.isArray(dashboard?.unpaidInvoices) ? dashboard.unpaidInvoices : [];
-        if (!unpaidBody) {
-            return;
-        }
-
-        unpaidBody.innerHTML = rows.length
+        tbody.innerHTML = rows.length
             ? rows.map(row => `
                 <tr>
                     <td>${escapeHtml(row.invoiceNumber)}</td>
@@ -530,63 +509,104 @@
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas vencidas sin pago para este periodo.</td></tr>';
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas vencidas sin pago en este momento.</td></tr>';
     }
 
-    function renderDifferenceTable(dashboard) {
-        const rows = Array.isArray(dashboard?.differenceInvoices) ? dashboard.differenceInvoices : [];
-        if (!differenceBody) {
-            return;
-        }
-
-        differenceBody.innerHTML = rows.length
-            ? rows.map(row => `
-                <tr>
-                    <td>${escapeHtml(row.invoiceNumber)}</td>
-                    <td>${escapeHtml(row.clientName)}</td>
-                    <td>${escapeHtml(row.verticalLabel)}</td>
-                    <td>${escapeHtml(row.paymentDateDisplay)}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.retentionsTotal || 0)))}</td>
-                    <td class="text-end">
-                        <span class="dashboard-badge ${Math.abs(Number(row.difference || 0)) < 0.01 ? "is-success" : "is-danger"}">
-                            ${escapeHtml(currencyFormatter.format(Number(row.difference || 0)))}
-                        </span>
-                    </td>
-                </tr>
-            `).join("")
-            : '<tr><td colspan="8" class="dashboard-table__empty">Las facturas pagadas del periodo cuadran sin diferencia.</td></tr>';
-    }
-
-    function updateContext(dashboard) {
-        state.dashboard = dashboard;
-        periodLabel && (periodLabel.textContent = dashboard?.periodLabel || "Sin periodo");
-        dateRangeLabel && (dateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+    function updateHeroForBilling(dashboard) {
         compareLabel && (compareLabel.textContent = dashboard?.compareLabel || "Mismo periodo del ano anterior");
         granularityLabel && (granularityLabel.textContent = dashboard?.granularityLabel || "Mensual");
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
-    async function loadDashboard() {
-        setLoading(true);
-        setStatus("info", "Actualizando tablero de facturacion...");
+    function updateHeroForPortfolio(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.asOfDateLabel ? `Corte al ${dashboard.asOfDateLabel}` : "Corte actual");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Facturas vencidas sin pago");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
+    function updateBillingContext(dashboard) {
+        state.billingDashboard = dashboard;
+        periodLabel && (periodLabel.textContent = dashboard?.periodLabel || "Sin periodo");
+        dateRangeLabel && (dateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+
+        if (state.activeTab === "billing") {
+            updateHeroForBilling(dashboard);
+        }
+    }
+
+    function updatePortfolioContext(dashboard) {
+        state.portfolioDashboard = dashboard;
+        portfolioAsOfLabel && (portfolioAsOfLabel.textContent = dashboard?.asOfDateLabel || "Sin corte");
+        portfolioFocusLabel && (portfolioFocusLabel.textContent = dashboard?.focusLabel || "Facturas vencidas sin pago");
+
+        if (state.activeTab === "portfolio") {
+            updateHeroForPortfolio(dashboard);
+        }
+    }
+
+    function setActiveTab(tabKey) {
+        state.activeTab = tabKey;
+
+        tabButtons.forEach(button => {
+            const isActive = button.dataset.dashboardTab === tabKey;
+            button.classList.toggle("is-active", isActive);
+            button.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+
+        tabPanels.forEach(panel => {
+            const isActive = panel.dataset.dashboardPanel === tabKey;
+            panel.classList.toggle("is-active", isActive);
+            panel.hidden = !isActive;
+        });
+
+        if (tabKey === "portfolio") {
+            if (state.portfolioDashboard) {
+                updateHeroForPortfolio(state.portfolioDashboard);
+            } else {
+                loadPortfolio();
+            }
+            return;
+        }
+
+        if (state.billingDashboard) {
+            updateHeroForBilling(state.billingDashboard);
+        } else {
+            loadBilling();
+        }
+    }
+
+    async function loadBilling() {
+        setBillingLoading(true);
+        setStatus(billingStatusBanner, "info", "Actualizando tablero de facturacion...");
 
         try {
-            const dashboard = await fetchJson(buildDashboardUrl());
-            updateContext(dashboard);
-            renderKpis(dashboard);
+            const dashboard = await fetchJson(buildBillingUrl());
+            updateBillingContext(dashboard);
+            renderBillingKpis(dashboard);
             renderTrends(dashboard);
             renderRetentions(dashboard);
-            renderVerticals(dashboard);
-            renderClients(dashboard);
-            renderUnpaidTable(dashboard);
-            renderDifferenceTable(dashboard);
-            setStatus("", "");
+            setStatus(billingStatusBanner, "", "");
         } catch (error) {
-            setStatus("error", error instanceof Error ? error.message : "No fue posible cargar el dashboard.");
+            setStatus(billingStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard.");
         } finally {
-            setLoading(false);
+            setBillingLoading(false);
+        }
+    }
+
+    async function loadPortfolio() {
+        setPortfolioLoading(true);
+        setStatus(portfolioStatusBanner, "info", "Actualizando tablero de cartera...");
+
+        try {
+            const dashboard = await fetchJson(buildPortfolioUrl());
+            updatePortfolioContext(dashboard);
+            renderPortfolioKpis(dashboard);
+            renderOverdueTable(Array.isArray(dashboard?.overdueInvoices) ? dashboard.overdueInvoices : [], portfolioUnpaidBody);
+            setStatus(portfolioStatusBanner, "", "");
+        } catch (error) {
+            setStatus(portfolioStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar la cartera.");
+        } finally {
+            setPortfolioLoading(false);
         }
     }
 
@@ -594,25 +614,35 @@
         state.year = Number(yearFilter.value || currentYear);
         state.value = getDefaultValue(state.period, state.year);
         buildValueOptions();
-        loadDashboard();
+        loadBilling();
     });
 
     periodFilter?.addEventListener("change", () => {
         state.period = periodFilter.value || "month";
         state.value = getDefaultValue(state.period, state.year);
         buildValueOptions();
-        loadDashboard();
+        loadBilling();
     });
 
     valueFilter?.addEventListener("change", () => {
         state.value = Number(valueFilter.value || 1);
-        loadDashboard();
+        loadBilling();
     });
 
-    refreshButton?.addEventListener("click", loadDashboard);
+    refreshButton?.addEventListener("click", loadBilling);
+    portfolioRefreshButton?.addEventListener("click", loadPortfolio);
+
+    tabButtons.forEach(button => {
+        button.addEventListener("click", () => {
+            const tabKey = button.dataset.dashboardTab || "billing";
+            if (tabKey !== state.activeTab) {
+                setActiveTab(tabKey);
+            }
+        });
+    });
 
     buildYearOptions();
     periodFilter && (periodFilter.value = state.period);
     buildValueOptions();
-    loadDashboard();
+    loadBilling();
 })();

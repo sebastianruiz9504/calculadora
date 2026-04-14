@@ -60,6 +60,25 @@ public sealed class DashboardController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Portfolio(CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetPortfolioDashboardAsync(ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de cartera.");
+        }
+    }
+
     private static DateOnly ResolveBogotaToday()
     {
         var utcNow = DateTimeOffset.UtcNow;

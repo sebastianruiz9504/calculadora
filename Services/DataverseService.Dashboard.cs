@@ -13,6 +13,46 @@ public sealed partial class DataverseService
     private const int DashboardContractTypeOneTimeOption = 645250001;
     private static readonly CultureInfo DashboardCulture = CultureInfo.GetCultureInfo("es-CO");
 
+    public async Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var today = GetBogotaToday();
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var overdueCandidates = await GetBillingRecordsAsync(
+            metadata,
+            new DateOnly(2000, 1, 1),
+            today.AddDays(1),
+            _dashboardBillingDueDateField,
+            _dashboardBillingDueDateFieldKind,
+            httpContext.User,
+            ct);
+
+        var overdueInvoices = overdueCandidates
+            .Where(record => record.IsOverdue(today))
+            .ToList();
+
+        return new PortfolioDashboardDto
+        {
+            AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
+            FocusLabel = "Facturas vencidas sin pago",
+            HasData = overdueInvoices.Count > 0,
+            RecordsCount = overdueInvoices.Count,
+            EmptyStateTitle = "No encontramos cartera vencida.",
+            EmptyStateMessage = "Cuando existan facturas vencidas sin pago las veras aqui.",
+            Kpis = BuildPortfolioKpis(overdueInvoices),
+            OverdueInvoices = BuildUnpaidInvoices(overdueInvoices, today)
+        };
+    }
+
     public async Task<BillingDashboardDto> GetBillingDashboardAsync(
         int year,
         BillingPeriodKind periodKind,
@@ -115,7 +155,6 @@ public sealed partial class DataverseService
                 compareEmission,
                 currentPayments,
                 comparePayments,
-                today,
                 totalBilling,
                 previousTotalBilling,
                 totalCollections,
@@ -234,7 +273,6 @@ public sealed partial class DataverseService
         IReadOnlyList<BillingRecordRow> compareEmission,
         IReadOnlyList<BillingRecordRow> currentPayments,
         IReadOnlyList<BillingRecordRow> comparePayments,
-        DateOnly today,
         decimal totalBilling,
         decimal previousTotalBilling,
         decimal totalCollections,
@@ -260,30 +298,12 @@ public sealed partial class DataverseService
         var previousCopiersBilling = SumCurrency(
             compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption),
             static record => record.TotalInvoice);
-        var currentCloudPortfolio = SumCurrency(
-            currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment),
-            static record => record.TotalInvoice);
-        var previousCloudPortfolio = SumCurrency(
-            compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment),
-            static record => record.TotalInvoice);
-        var currentCopiersPortfolio = SumCurrency(
-            currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment),
-            static record => record.TotalInvoice);
-        var previousCopiersPortfolio = SumCurrency(
-            compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment),
-            static record => record.TotalInvoice);
         var cloudRows = currentEmission
             .Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption)
             .ToList();
         var copiersRows = currentEmission
             .Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption)
             .ToList();
-        var currentCloudOverduePortfolio = SumCurrency(
-            currentEmission.Where(record => record.VerticalOptionValue == DashboardVerticalCloudOption && record.IsOverdue(today)),
-            static record => record.TotalInvoice);
-        var currentCopiersOverduePortfolio = SumCurrency(
-            currentEmission.Where(record => record.VerticalOptionValue == DashboardVerticalCopiersOption && record.IsOverdue(today)),
-            static record => record.TotalInvoice);
 
         return new[]
         {
@@ -307,27 +327,52 @@ public sealed partial class DataverseService
                 "currency",
                 "Participacion periodo",
                 FormatPercentValue(totalBilling == 0m ? 0m : (currentCopiersBilling / totalBilling) * 100m),
-                breakdowns: BuildVerticalContractBreakdowns(copiersRows)),
-            BuildBillingKpi(
+                breakdowns: BuildVerticalContractBreakdowns(copiersRows))
+        };
+    }
+
+    private IReadOnlyList<PortfolioKpiDto> BuildPortfolioKpis(IReadOnlyList<BillingRecordRow> overdueInvoices)
+    {
+        var cloudRows = overdueInvoices
+            .Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption)
+            .ToList();
+        var copiersRows = overdueInvoices
+            .Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption)
+            .ToList();
+
+        return new[]
+        {
+            BuildPortfolioKpi(
                 "cloud-portfolio",
                 "Cartera Cloud",
-                "Facturas Cloud del periodo que aun no registran pago.",
-                currentCloudPortfolio,
-                previousCloudPortfolio,
-                "currency",
-                "Cartera vencida",
-                FormatCurrencyValue(currentCloudOverduePortfolio),
-                lowerIsBetter: true),
-            BuildBillingKpi(
+                "Facturas Cloud vencidas y aun sin pago.",
+                SumCurrency(cloudRows, static record => record.TotalInvoice),
+                cloudRows.Count),
+            BuildPortfolioKpi(
                 "copiers-portfolio",
                 "Cartera Copiers",
-                "Facturas Copiers del periodo que aun no registran pago.",
-                currentCopiersPortfolio,
-                previousCopiersPortfolio,
-                "currency",
-                "Cartera vencida",
-                FormatCurrencyValue(currentCopiersOverduePortfolio),
-                lowerIsBetter: true)
+                "Facturas Copiers vencidas y aun sin pago.",
+                SumCurrency(copiersRows, static record => record.TotalInvoice),
+                copiersRows.Count)
+        };
+    }
+
+    private PortfolioKpiDto BuildPortfolioKpi(
+        string key,
+        string label,
+        string hint,
+        decimal value,
+        int invoicesCount)
+    {
+        return new PortfolioKpiDto
+        {
+            Key = key,
+            Label = label,
+            Hint = hint,
+            Value = RoundCurrency(value),
+            ValueFormat = "currency",
+            SecondaryLabel = "Facturas vencidas",
+            SecondaryValue = invoicesCount.ToString("N0", DashboardCulture)
         };
     }
 
