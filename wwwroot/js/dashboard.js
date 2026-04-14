@@ -4,28 +4,41 @@
         return;
     }
 
+    const dashboardPeriodScope = document.getElementById("dashboardPeriodScope");
     const yearFilter = document.getElementById("dashboardYearFilter");
     const periodFilter = document.getElementById("dashboardPeriodFilter");
     const valueFilter = document.getElementById("dashboardValueFilter");
     const refreshButton = document.getElementById("dashboardRefreshBtn");
     const portfolioRefreshButton = document.getElementById("portfolioRefreshBtn");
     const billingStatusBanner = document.getElementById("dashboardStatusBanner");
+    const taxesStatusBanner = document.getElementById("taxesStatusBanner");
     const portfolioStatusBanner = document.getElementById("portfolioStatusBanner");
     const periodLabel = document.getElementById("dashboardPeriodLabel");
     const dateRangeLabel = document.getElementById("dashboardDateRangeLabel");
     const compareLabel = document.getElementById("dashboardCompareLabel");
     const granularityLabel = document.getElementById("dashboardGranularityLabel");
     const recordCount = document.getElementById("dashboardRecordCount");
+
+    const billingKpisContainer = document.getElementById("billingKpisContainer");
+    const trendsContainer = document.getElementById("billingTrendsContainer");
+
+    const taxesReteFuenteDescription = document.getElementById("taxesReteFuenteDescription");
+    const taxesReteIvaDescription = document.getElementById("taxesReteIvaDescription");
+    const taxesReteIcaDescription = document.getElementById("taxesReteIcaDescription");
+    const taxesReteFuenteContainer = document.getElementById("taxesReteFuenteContainer");
+    const taxesReteIvaContainer = document.getElementById("taxesReteIvaContainer");
+    const taxesReteIcaContainer = document.getElementById("taxesReteIcaContainer");
+    const taxesExpenseBody = document.getElementById("taxesExpenseBody");
+    const taxesExpenseResultsCount = document.getElementById("taxesExpenseResultsCount");
+
     const portfolioAsOfLabel = document.getElementById("portfolioAsOfLabel");
     const portfolioFocusLabel = document.getElementById("portfolioFocusLabel");
     const portfolioClientSearch = document.getElementById("portfolioClientSearch");
     const portfolioSortFilter = document.getElementById("portfolioSortFilter");
     const portfolioResultsCount = document.getElementById("portfolioResultsCount");
-    const billingKpisContainer = document.getElementById("billingKpisContainer");
     const portfolioKpisContainer = document.getElementById("portfolioKpisContainer");
-    const trendsContainer = document.getElementById("billingTrendsContainer");
-    const retentionsContainer = document.getElementById("billingRetentionsContainer");
     const portfolioUnpaidBody = document.getElementById("portfolioUnpaidBody");
+
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
 
@@ -51,10 +64,13 @@
         period: currentPeriod,
         value: currentValue,
         billingDashboard: null,
+        taxesDashboard: null,
         portfolioDashboard: null,
+        billingSignature: "",
+        taxesSignature: "",
         portfolioSearchTerm: "",
         portfolioSort: "age",
-        billingLoading: false,
+        periodLoading: false,
         portfolioLoading: false
     };
 
@@ -74,6 +90,10 @@
             .replace(/[\u0300-\u036f]/g, "")
             .toLowerCase()
             .trim();
+    }
+
+    function getPeriodSignature() {
+        return `${state.year}|${state.period}|${state.value}`;
     }
 
     function formatMetric(value, format) {
@@ -118,8 +138,8 @@
         target.textContent = message;
     }
 
-    function setBillingLoading(loading) {
-        state.billingLoading = loading;
+    function setPeriodLoading(loading) {
+        state.periodLoading = loading;
         [yearFilter, periodFilter, valueFilter, refreshButton].forEach(element => {
             if (element) {
                 element.disabled = loading;
@@ -216,6 +236,16 @@
         return `${app.dataset.billingUrl}?${params.toString()}`;
     }
 
+    function buildTaxesUrl() {
+        const params = new URLSearchParams({
+            year: String(state.year),
+            period: state.period,
+            value: String(state.value)
+        });
+
+        return `${app.dataset.taxesUrl}?${params.toString()}`;
+    }
+
     function buildPortfolioUrl() {
         return app.dataset.portfolioUrl || "";
     }
@@ -243,12 +273,12 @@
         return response.json();
     }
 
-    function renderBillingKpis(dashboard) {
-        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
-        if (!billingKpisContainer) {
+    function renderComparativeKpis(container, kpis, compareYear) {
+        if (!container) {
             return;
         }
 
+        const items = Array.isArray(kpis) ? kpis : [];
         const renderBreakdowns = breakdowns => {
             if (!Array.isArray(breakdowns) || !breakdowns.length) {
                 return "";
@@ -271,7 +301,7 @@
             `;
         };
 
-        billingKpisContainer.innerHTML = kpis.map(kpi => `
+        container.innerHTML = items.map(kpi => `
             <article class="dashboard-kpi dashboard-kpi--${escapeHtml(kpi.tone || "neutral")}">
                 <div class="dashboard-kpi__header">
                     <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
@@ -280,13 +310,15 @@
                 <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
                 <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
                 <div class="dashboard-kpi__footer">
-                    <span>${escapeHtml(String(dashboard.compareYear || ""))}</span>
+                    <span>${escapeHtml(String(compareYear || ""))}</span>
                     <strong>${escapeHtml(formatMetric(kpi.previousValue, kpi.valueFormat))}</strong>
                 </div>
-                <div class="dashboard-kpi__secondary">
-                    <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
-                    <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
-                </div>
+                ${kpi.secondaryLabel || kpi.secondaryValue ? `
+                    <div class="dashboard-kpi__secondary">
+                        <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
+                        <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
+                    </div>
+                ` : ""}
                 ${renderBreakdowns(kpi.breakdowns)}
             </article>
         `).join("");
@@ -488,24 +520,37 @@
         }).join("");
     }
 
-    function renderRetentions(dashboard) {
-        const items = Array.isArray(dashboard?.retentions) ? dashboard.retentions : [];
-        if (!retentionsContainer) {
+    function renderTaxesSection(descriptionElement, container, section, compareYear) {
+        if (descriptionElement) {
+            descriptionElement.textContent = section?.description || "";
+        }
+
+        renderComparativeKpis(container, Array.isArray(section?.metrics) ? section.metrics : [], compareYear);
+    }
+
+    function renderTaxesExpenseTable(dashboard) {
+        const rows = Array.isArray(dashboard?.expenseDetails) ? dashboard.expenseDetails : [];
+        if (taxesExpenseResultsCount) {
+            taxesExpenseResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} registros`;
+        }
+
+        if (!taxesExpenseBody) {
             return;
         }
 
-        retentionsContainer.innerHTML = items.length
-            ? items.map(item => `
-                <article class="dashboard-retention-card">
-                    <div class="dashboard-retention-card__header">
-                        <span class="dashboard-retention-card__label">${escapeHtml(item.label)}</span>
-                        <span class="dashboard-growth ${Number(item.total || 0) >= Number(item.previousTotal || 0) ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
-                    </div>
-                    <strong class="dashboard-retention-card__value">${escapeHtml(currencyFormatter.format(Number(item.total || 0)))}</strong>
-                    <span class="dashboard-retention-card__label">Ano anterior: ${escapeHtml(currencyFormatter.format(Number(item.previousTotal || 0)))}</span>
-                </article>
+        taxesExpenseBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.paymentDateDisplay)}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.reteFuenteValue || 0)))}</td>
+                    <td>${escapeHtml(row.recipientName)}</td>
+                    <td>${escapeHtml(row.recipientNit)}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.cloudValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.copiersValue || 0)))}</td>
+                </tr>
             `).join("")
-            : '<div class="dashboard-table__empty">No hay retenciones registradas en este periodo.</div>';
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay gastos con retefuente en este periodo.</td></tr>';
     }
 
     function getFilteredPortfolioRows() {
@@ -578,6 +623,12 @@
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
+    function updateHeroForTaxes(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.compareLabel || "Mismo periodo del ano anterior");
+        granularityLabel && (granularityLabel.textContent = dashboard?.granularityLabel || "Mensual");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
     function updateHeroForPortfolio(dashboard) {
         compareLabel && (compareLabel.textContent = dashboard?.asOfDateLabel ? `Corte al ${dashboard.asOfDateLabel}` : "Corte actual");
         granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Facturas vencidas sin pago");
@@ -586,11 +637,23 @@
 
     function updateBillingContext(dashboard) {
         state.billingDashboard = dashboard;
+        state.billingSignature = getPeriodSignature();
         periodLabel && (periodLabel.textContent = dashboard?.periodLabel || "Sin periodo");
         dateRangeLabel && (dateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
 
         if (state.activeTab === "billing") {
             updateHeroForBilling(dashboard);
+        }
+    }
+
+    function updateTaxesContext(dashboard) {
+        state.taxesDashboard = dashboard;
+        state.taxesSignature = getPeriodSignature();
+        periodLabel && (periodLabel.textContent = dashboard?.periodLabel || "Sin periodo");
+        dateRangeLabel && (dateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+
+        if (state.activeTab === "taxes") {
+            updateHeroForTaxes(dashboard);
         }
     }
 
@@ -604,8 +667,15 @@
         }
     }
 
+    function syncPeriodScopeVisibility() {
+        if (dashboardPeriodScope) {
+            dashboardPeriodScope.hidden = state.activeTab === "portfolio";
+        }
+    }
+
     function setActiveTab(tabKey) {
         state.activeTab = tabKey;
+        syncPeriodScopeVisibility();
 
         tabButtons.forEach(button => {
             const isActive = button.dataset.dashboardTab === tabKey;
@@ -628,28 +698,64 @@
             return;
         }
 
-        if (state.billingDashboard) {
+        if (tabKey === "taxes") {
+            if (state.taxesDashboard && state.taxesSignature === getPeriodSignature()) {
+                updateHeroForTaxes(state.taxesDashboard);
+            } else {
+                loadTaxes();
+            }
+            return;
+        }
+
+        if (state.billingDashboard && state.billingSignature === getPeriodSignature()) {
             updateHeroForBilling(state.billingDashboard);
         } else {
             loadBilling();
         }
     }
 
+    function loadActivePeriodTab() {
+        if (state.activeTab === "taxes") {
+            loadTaxes();
+            return;
+        }
+
+        loadBilling();
+    }
+
     async function loadBilling() {
-        setBillingLoading(true);
+        setPeriodLoading(true);
         setStatus(billingStatusBanner, "info", "Actualizando tablero de facturacion...");
 
         try {
             const dashboard = await fetchJson(buildBillingUrl());
             updateBillingContext(dashboard);
-            renderBillingKpis(dashboard);
+            renderComparativeKpis(billingKpisContainer, dashboard?.kpis, dashboard?.compareYear);
             renderTrends(dashboard);
-            renderRetentions(dashboard);
             setStatus(billingStatusBanner, "", "");
         } catch (error) {
             setStatus(billingStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard.");
         } finally {
-            setBillingLoading(false);
+            setPeriodLoading(false);
+        }
+    }
+
+    async function loadTaxes() {
+        setPeriodLoading(true);
+        setStatus(taxesStatusBanner, "info", "Actualizando tablero de impuestos...");
+
+        try {
+            const dashboard = await fetchJson(buildTaxesUrl());
+            updateTaxesContext(dashboard);
+            renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, dashboard?.reteFuente, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, dashboard?.reteIva, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, dashboard?.reteIca, dashboard?.compareYear);
+            renderTaxesExpenseTable(dashboard);
+            setStatus(taxesStatusBanner, "", "");
+        } catch (error) {
+            setStatus(taxesStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard de impuestos.");
+        } finally {
+            setPeriodLoading(false);
         }
     }
 
@@ -674,22 +780,22 @@
         state.year = Number(yearFilter.value || currentYear);
         state.value = getDefaultValue(state.period, state.year);
         buildValueOptions();
-        loadBilling();
+        loadActivePeriodTab();
     });
 
     periodFilter?.addEventListener("change", () => {
         state.period = periodFilter.value || "month";
         state.value = getDefaultValue(state.period, state.year);
         buildValueOptions();
-        loadBilling();
+        loadActivePeriodTab();
     });
 
     valueFilter?.addEventListener("change", () => {
         state.value = Number(valueFilter.value || 1);
-        loadBilling();
+        loadActivePeriodTab();
     });
 
-    refreshButton?.addEventListener("click", loadBilling);
+    refreshButton?.addEventListener("click", loadActivePeriodTab);
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
     portfolioClientSearch?.addEventListener("input", () => {
         state.portfolioSearchTerm = portfolioClientSearch.value || "";
@@ -713,5 +819,6 @@
     periodFilter && (periodFilter.value = state.period);
     portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     buildValueOptions();
+    syncPeriodScopeVisibility();
     loadBilling();
 })();

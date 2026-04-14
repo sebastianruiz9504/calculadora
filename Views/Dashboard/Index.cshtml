@@ -10,6 +10,7 @@
 <div class="dashboard-shell"
      id="billingDashboardApp"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
+     data-taxes-url="@Url.Action("Taxes", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-initial-year="@Model.InitialYear"
      data-initial-period="@Model.InitialPeriodKind.ToKey()"
@@ -18,7 +19,7 @@
         <div class="dashboard-hero__content">
             <h1 class="dashboard-title">Dashboard financiero</h1>
             <p class="dashboard-subtitle">
-                Un tablero estilo control ejecutivo para seguir facturacion, recaudo, IVA, retenciones y alertas operativas
+                Un tablero estilo control ejecutivo para seguir facturacion, recaudo, impuestos y alertas operativas
                 sobre <span class="dashboard-highlight">cr07a_facturacion</span>.
             </p>
             <div class="dashboard-hero__facts">
@@ -39,46 +40,47 @@
         <aside class="dashboard-user-card">
             <span class="dashboard-user-card__label">Acceso actual</span>
             <strong class="dashboard-user-card__value">@Model.CurrentUser.Email</strong>
-            <span class="dashboard-user-card__caption">Facturaci&oacute;n compara contra el mismo periodo del a&ntilde;o anterior y Cartera muestra el corte actual de facturas vencidas sin pago.</span>
+            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior y Cartera muestra el corte actual de facturas vencidas sin pago.</span>
         </aside>
     </section>
 
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
     </section>
 
-    <div class="dashboard-tab-panel is-active" data-dashboard-panel="billing">
-        <section class="dashboard-toolbar">
-            <div class="dashboard-filters">
-                <div class="dashboard-filter">
-                    <label class="dashboard-filter__label" for="dashboardYearFilter">A&ntilde;o</label>
-                    <select id="dashboardYearFilter" class="form-select dashboard-select"></select>
-                </div>
-                <div class="dashboard-filter">
-                    <label class="dashboard-filter__label" for="dashboardPeriodFilter">Periodo</label>
-                    <select id="dashboardPeriodFilter" class="form-select dashboard-select">
-                        <option value="month">Mes</option>
-                        <option value="quarter">Trimestre</option>
-                        <option value="semester">Semestre</option>
-                        <option value="year">Anual</option>
-                    </select>
-                </div>
-                <div class="dashboard-filter">
-                    <label class="dashboard-filter__label" for="dashboardValueFilter">Detalle</label>
-                    <select id="dashboardValueFilter" class="form-select dashboard-select"></select>
-                </div>
+    <section class="dashboard-toolbar" id="dashboardPeriodScope">
+        <div class="dashboard-filters">
+            <div class="dashboard-filter">
+                <label class="dashboard-filter__label" for="dashboardYearFilter">A&ntilde;o</label>
+                <select id="dashboardYearFilter" class="form-select dashboard-select"></select>
             </div>
-            <div class="dashboard-toolbar__actions">
-                <div class="dashboard-toolbar__summary">
-                    <span class="dashboard-toolbar__summary-label">Periodo activo</span>
-                    <strong id="dashboardPeriodLabel">Cargando...</strong>
-                    <span id="dashboardDateRangeLabel">-</span>
-                </div>
-                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="dashboardRefreshBtn">Actualizar</button>
+            <div class="dashboard-filter">
+                <label class="dashboard-filter__label" for="dashboardPeriodFilter">Periodo</label>
+                <select id="dashboardPeriodFilter" class="form-select dashboard-select">
+                    <option value="month">Mes</option>
+                    <option value="quarter">Trimestre</option>
+                    <option value="semester">Semestre</option>
+                    <option value="year">Anual</option>
+                </select>
             </div>
-        </section>
+            <div class="dashboard-filter">
+                <label class="dashboard-filter__label" for="dashboardValueFilter">Detalle</label>
+                <select id="dashboardValueFilter" class="form-select dashboard-select"></select>
+            </div>
+        </div>
+        <div class="dashboard-toolbar__actions">
+            <div class="dashboard-toolbar__summary">
+                <span class="dashboard-toolbar__summary-label">Periodo activo</span>
+                <strong id="dashboardPeriodLabel">Cargando...</strong>
+                <span id="dashboardDateRangeLabel">-</span>
+            </div>
+            <button type="button" class="btn btn-primary dashboard-refresh-btn" id="dashboardRefreshBtn">Actualizar</button>
+        </div>
+    </section>
 
+    <div class="dashboard-tab-panel is-active" data-dashboard-panel="billing">
         <div id="dashboardStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
 
         <section class="dashboard-kpis dashboard-kpis--billing" id="billingKpisContainer"></section>
@@ -88,20 +90,68 @@
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Tendencias</div>
-                        <h2 class="dashboard-panel__title">Facturacion, recaudo y retenciones</h2>
+                        <h2 class="dashboard-panel__title">Facturacion y recaudo</h2>
                     </div>
                 </div>
                 <div class="dashboard-trends" id="billingTrendsContainer"></div>
+            </article>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="taxes" hidden>
+        <div id="taxesStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="dashboard-grid">
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Impuestos</div>
+                        <h2 class="dashboard-panel__title">Retefuente</h2>
+                        <p class="dashboard-panel__description" id="taxesReteFuenteDescription"></p>
+                    </div>
+                </div>
+                <div class="dashboard-metric-grid" id="taxesReteFuenteContainer"></div>
+                <div class="dashboard-table-meta">
+                    <span id="taxesExpenseResultsCount">Mostrando 0 registros</span>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha pago</th>
+                                <th class="text-end">Valor pago</th>
+                                <th class="text-end">Retefuente</th>
+                                <th>Receptor</th>
+                                <th>NIT receptor</th>
+                                <th class="text-end">Cloud</th>
+                                <th class="text-end">Copiers</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taxesExpenseBody"></tbody>
+                    </table>
+                </div>
             </article>
 
             <article class="dashboard-panel dashboard-panel--full">
                 <div class="dashboard-panel__header">
                     <div>
-                        <div class="dashboard-panel__kicker">Impuestos retenidos</div>
-                        <h2 class="dashboard-panel__title">Retenciones a nuestro favor</h2>
+                        <div class="dashboard-panel__kicker">Impuestos</div>
+                        <h2 class="dashboard-panel__title">Rete IVA</h2>
+                        <p class="dashboard-panel__description" id="taxesReteIvaDescription"></p>
                     </div>
                 </div>
-                <div class="dashboard-retentions" id="billingRetentionsContainer"></div>
+                <div class="dashboard-metric-grid" id="taxesReteIvaContainer"></div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Impuestos</div>
+                        <h2 class="dashboard-panel__title">Rete ICA</h2>
+                        <p class="dashboard-panel__description" id="taxesReteIcaDescription"></p>
+                    </div>
+                </div>
+                <div class="dashboard-metric-grid" id="taxesReteIcaContainer"></div>
             </article>
         </section>
     </div>

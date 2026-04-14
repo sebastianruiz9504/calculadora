@@ -79,6 +79,31 @@ public sealed class DashboardController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Taxes([FromQuery] int? year, [FromQuery] string? period, [FromQuery] int? value, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(
+                year ?? today.Year,
+                BillingPeriodKindExtensions.ParseOrDefault(period),
+                value,
+                ct);
+
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de impuestos.");
+        }
+    }
+
     private static DateOnly ResolveBogotaToday()
     {
         var utcNow = DateTimeOffset.UtcNow;

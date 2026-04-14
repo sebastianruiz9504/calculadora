@@ -428,6 +428,14 @@
     letter-spacing: -.02em;
 }
 
+.dashboard-panel__description {
+    max-width: 860px;
+    margin: 10px 0 0;
+    color: #516279;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
 .dashboard-panel__actions {
     justify-content: flex-end;
 }
@@ -478,7 +486,8 @@
 }
 
 .dashboard-trends,
-.dashboard-retentions {
+.dashboard-retentions,
+.dashboard-metric-grid {
     display: grid;
     gap: 16px;
 }
@@ -489,6 +498,10 @@
 
 .dashboard-retentions {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.dashboard-metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .dashboard-trend-card,

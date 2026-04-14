@@ -89,6 +89,46 @@ public sealed class PortfolioDashboardDto
     public IReadOnlyList<BillingUnpaidInvoiceDto> OverdueInvoices { get; set; } = Array.Empty<BillingUnpaidInvoiceDto>();
 }
 
+public sealed class TaxesDashboardDto
+{
+    public int Year { get; set; }
+    public int CompareYear { get; set; }
+    public string PeriodKind { get; set; } = BillingPeriodKind.Month.ToKey();
+    public string PeriodKindLabel { get; set; } = BillingPeriodKind.Month.ToLabel();
+    public int PeriodValue { get; set; }
+    public string PeriodLabel { get; set; } = "";
+    public string DateRangeLabel { get; set; } = "";
+    public string CompareLabel { get; set; } = "";
+    public string GranularityLabel { get; set; } = "";
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public TaxesSectionDto ReteFuente { get; set; } = new();
+    public TaxesSectionDto ReteIva { get; set; } = new();
+    public TaxesSectionDto ReteIca { get; set; } = new();
+    public IReadOnlyList<TaxExpenseDetailDto> ExpenseDetails { get; set; } = Array.Empty<TaxExpenseDetailDto>();
+}
+
+public sealed class TaxesSectionDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Description { get; set; } = "";
+    public IReadOnlyList<BillingKpiDto> Metrics { get; set; } = Array.Empty<BillingKpiDto>();
+}
+
+public sealed class TaxExpenseDetailDto
+{
+    public string PaymentDateDisplay { get; set; } = "";
+    public decimal PaymentValue { get; set; }
+    public decimal ReteFuenteValue { get; set; }
+    public string RecipientName { get; set; } = "";
+    public string RecipientNit { get; set; } = "";
+    public decimal CloudValue { get; set; }
+    public decimal CopiersValue { get; set; }
+}
+
 public sealed class PortfolioKpiDto
 {
     public string Key { get; set; } = "";

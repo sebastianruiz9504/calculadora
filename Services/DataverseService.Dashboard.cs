@@ -11,6 +11,16 @@ public sealed partial class DataverseService
     private const int DashboardVerticalCopiersOption = 645250001;
     private const int DashboardContractTypeMonthlyOption = 645250000;
     private const int DashboardContractTypeOneTimeOption = 645250001;
+    private const decimal DashboardAutoFuenteRate = 0.00414m;
+    private const decimal DashboardIcaRate = 0.0069m;
+    private const string DashboardExpensePaymentDateField = "cr07a_fechadepago";
+    private const string DashboardExpensePaymentDateFieldKind = "date-only";
+    private const string DashboardExpensePaymentValueField = "cr07a_valorpago";
+    private const string DashboardExpenseReteFuenteField = "cr07a_retefuente";
+    private const string DashboardExpenseRecipientNameField = "cr07a_nombrereceptor";
+    private const string DashboardExpenseRecipientNitField = "cr07a_nitreceptor";
+    private const string DashboardExpenseCloudField = "cr07a_cloud";
+    private const string DashboardExpenseCopiersField = "cr07a_copiers";
     private static readonly CultureInfo DashboardCulture = CultureInfo.GetCultureInfo("es-CO");
 
     public async Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default)
@@ -177,6 +187,168 @@ public sealed partial class DataverseService
             Retentions = BuildRetentionSummaries(currentPayments, comparePayments),
             UnpaidInvoices = unpaidInvoices,
             DifferenceInvoices = differenceInvoices
+        };
+    }
+
+    public async Task<TaxesDashboardDto> GetTaxesDashboardAsync(
+        int year,
+        BillingPeriodKind periodKind,
+        int? periodValue = null,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var today = GetBogotaToday();
+        var period = BuildBillingPeriodDefinition(year, periodKind, periodValue, today);
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var emissionRecords = await GetBillingRecordsAsync(
+            metadata,
+            period.CompareStartInclusive,
+            period.CurrentEndExclusive,
+            _dashboardBillingEmissionDateField,
+            _dashboardBillingEmissionDateFieldKind,
+            httpContext.User,
+            ct);
+
+        var paymentRecords = await GetBillingRecordsAsync(
+            metadata,
+            period.CompareStartInclusive,
+            period.CurrentEndExclusive,
+            _dashboardBillingPaymentDateField,
+            _dashboardBillingPaymentDateFieldKind,
+            httpContext.User,
+            ct);
+
+        var expenseRecords = await GetTaxExpenseRowsAsync(
+            period.CompareStartInclusive,
+            period.CurrentEndExclusive,
+            httpContext.User,
+            ct);
+
+        var currentEmission = emissionRecords
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value >= period.CurrentStartInclusive
+                && record.EmissionDate.Value < period.CurrentEndExclusive)
+            .ToList();
+
+        var compareEmission = emissionRecords
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value >= period.CompareStartInclusive
+                && record.EmissionDate.Value < period.CompareEndExclusive)
+            .ToList();
+
+        var currentPayments = paymentRecords
+            .Where(record => record.PaymentDate is not null
+                && record.PaymentDate.Value >= period.CurrentStartInclusive
+                && record.PaymentDate.Value < period.CurrentEndExclusive)
+            .ToList();
+
+        var comparePayments = paymentRecords
+            .Where(record => record.PaymentDate is not null
+                && record.PaymentDate.Value >= period.CompareStartInclusive
+                && record.PaymentDate.Value < period.CompareEndExclusive)
+            .ToList();
+
+        var currentExpenses = expenseRecords
+            .Where(record => record.PaymentDate is not null
+                && record.PaymentDate.Value >= period.CurrentStartInclusive
+                && record.PaymentDate.Value < period.CurrentEndExclusive)
+            .ToList();
+
+        var compareExpenses = expenseRecords
+            .Where(record => record.PaymentDate is not null
+                && record.PaymentDate.Value >= period.CompareStartInclusive
+                && record.PaymentDate.Value < period.CompareEndExclusive)
+            .ToList();
+
+        var hasData = currentEmission.Count > 0
+            || compareEmission.Count > 0
+            || currentPayments.Count > 0
+            || comparePayments.Count > 0
+            || currentExpenses.Count > 0
+            || compareExpenses.Count > 0;
+
+        var expenseDetails = BuildTaxExpenseDetails(currentExpenses);
+        var currentExpenseVerticals = CalculateExpenseRetentionByVertical(currentExpenses);
+        var compareExpenseVerticals = CalculateExpenseRetentionByVertical(compareExpenses);
+
+        var currentClientReteFuente = SumCurrency(currentPayments, static row => row.RteFteValue);
+        var compareClientReteFuente = SumCurrency(comparePayments, static row => row.RteFteValue);
+        var currentExpenseReteFuente = SumExpenseCurrency(currentExpenses, static row => row.ReteFuenteValue);
+        var compareExpenseReteFuente = SumExpenseCurrency(compareExpenses, static row => row.ReteFuenteValue);
+        var currentAutoFuente = CalculateAutoFuente(currentEmission);
+        var compareAutoFuente = CalculateAutoFuente(compareEmission);
+
+        var currentGeneratedVat = SumCurrency(currentEmission, static row => row.VatValue);
+        var compareGeneratedVat = SumCurrency(compareEmission, static row => row.VatValue);
+        var currentClientReteIva = SumCurrency(currentPayments, static row => row.RteIvaValue);
+        var compareClientReteIva = SumCurrency(comparePayments, static row => row.RteIvaValue);
+        var currentVatPeriod = RoundCurrency(currentGeneratedVat - currentClientReteIva);
+        var compareVatPeriod = RoundCurrency(compareGeneratedVat - compareClientReteIva);
+
+        var currentIcaPeriodValue = CalculateIcaGenerated(currentEmission);
+        var compareIcaPeriodValue = CalculateIcaGenerated(compareEmission);
+        var currentClientReteIca = SumCurrency(currentPayments, static row => row.ReteIcaValue);
+        var compareClientReteIca = SumCurrency(comparePayments, static row => row.ReteIcaValue);
+        var currentIcaTotal = RoundCurrency(currentIcaPeriodValue - currentClientReteIca);
+        var compareIcaTotal = RoundCurrency(compareIcaPeriodValue - compareClientReteIca);
+
+        return new TaxesDashboardDto
+        {
+            Year = period.Year,
+            CompareYear = period.CompareYear,
+            PeriodKind = period.PeriodKind.ToKey(),
+            PeriodKindLabel = period.PeriodKind.ToLabel(),
+            PeriodValue = period.PeriodValue,
+            PeriodLabel = period.PeriodLabel,
+            DateRangeLabel = period.DateRangeLabel,
+            CompareLabel = period.CompareLabel,
+            GranularityLabel = period.GranularityLabel,
+            EmptyStateTitle = "No encontramos movimientos de impuestos para este periodo.",
+            EmptyStateMessage = "Cambia el rango y seguimos comparando contra el mismo periodo del año anterior.",
+            HasData = hasData,
+            RecordsCount = currentEmission.Count + currentPayments.Count + currentExpenses.Count,
+            ReteFuente = BuildTaxesSection(
+                "retefuente",
+                "Retefuente",
+                "Cruza lo retenido por clientes, lo practicado en gastos, el reparto por vertical y la autofuente estimada del periodo.",
+                new[]
+                {
+                    BuildBillingKpi("client-rtefte", "Clientes nos retuvieron", "ReteFuente retenida por clientes sobre pagos del periodo.", currentClientReteFuente, compareClientReteFuente, "currency", "", ""),
+                    BuildBillingKpi("expense-rtefte", "Nosotros practicamos", "ReteFuente practicada en gastos pagados durante el periodo.", currentExpenseReteFuente, compareExpenseReteFuente, "currency", "Registros", expenseDetails.Count.ToString("N0", DashboardCulture)),
+                    BuildBillingKpi("expense-rtefte-cloud", "Retefuente Cloud", "Retefuente practicada en gastos clasificados en Cloud.", currentExpenseVerticals.Cloud, compareExpenseVerticals.Cloud, "currency", "", ""),
+                    BuildBillingKpi("expense-rtefte-copiers", "Retefuente Copiers", "Retefuente practicada en gastos clasificados en Copiers.", currentExpenseVerticals.Copiers, compareExpenseVerticals.Copiers, "currency", "", ""),
+                    BuildBillingKpi("autofuente", "Autofuente del periodo", "Formula: (Total factura - IVA) x 0.00414 para la facturacion emitida.", currentAutoFuente, compareAutoFuente, "currency", "", "")
+                }),
+            ReteIva = BuildTaxesSection(
+                "reteiva",
+                "Rete IVA",
+                "Mide el IVA generado y el descuento por reteIVA que nos practicaron los clientes.",
+                new[]
+                {
+                    BuildBillingKpi("generated-vat", "IVA generado", "IVA de la facturacion emitida en el periodo.", currentGeneratedVat, compareGeneratedVat, "currency", "", ""),
+                    BuildBillingKpi("client-rteiva", "ReteIVA clientes", "ReteIVA retenida por clientes sobre pagos del periodo.", currentClientReteIva, compareClientReteIva, "currency", "", ""),
+                    BuildBillingKpi("vat-net", "IVA del periodo", "IVA generado menos reteIVA practicada por clientes.", currentVatPeriod, compareVatPeriod, "currency", "", "")
+                }),
+            ReteIca = BuildTaxesSection(
+                "reteica",
+                "Rete ICA",
+                "Calcula el ICA generado del periodo y descuenta lo retenido por clientes.",
+                new[]
+                {
+                    BuildBillingKpi("generated-ica", "ICA del periodo", "Formula: (Total factura - IVA) x 0.0069 para la facturacion emitida.", currentIcaPeriodValue, compareIcaPeriodValue, "currency", "", ""),
+                    BuildBillingKpi("client-reteica", "ICA retenido clientes", "ICA retenido por clientes sobre pagos del periodo.", currentClientReteIca, compareClientReteIca, "currency", "", ""),
+                    BuildBillingKpi("ica-net", "Total del periodo", "ICA generado menos ICA retenido por clientes.", currentIcaTotal, compareIcaTotal, "currency", "", "")
+                }),
+            ExpenseDetails = expenseDetails
         };
     }
 
@@ -369,6 +541,21 @@ public sealed partial class DataverseService
         };
     }
 
+    private TaxesSectionDto BuildTaxesSection(
+        string key,
+        string label,
+        string description,
+        IReadOnlyList<BillingKpiDto> metrics)
+    {
+        return new TaxesSectionDto
+        {
+            Key = key,
+            Label = label,
+            Description = description,
+            Metrics = metrics
+        };
+    }
+
     private PortfolioKpiDto BuildPortfolioKpi(
         string key,
         string label,
@@ -442,6 +629,62 @@ public sealed partial class DataverseService
                 Value = oneTime,
                 SharePercent = total == 0m ? 0m : RoundCurrency((oneTime / total) * 100m)
             }
+        };
+    }
+
+    private async Task<List<TaxExpenseRow>> GetTaxExpenseRowsAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var select = string.Join(",", new[]
+        {
+            _supplierExpensesIdField,
+            DashboardExpensePaymentDateField,
+            DashboardExpensePaymentValueField,
+            DashboardExpenseReteFuenteField,
+            DashboardExpenseRecipientNameField,
+            DashboardExpenseRecipientNitField,
+            DashboardExpenseCloudField,
+            DashboardExpenseCopiersField
+        });
+
+        var filter = BuildBillingDateFilter(
+            DashboardExpensePaymentDateField,
+            DashboardExpensePaymentDateFieldKind,
+            startInclusive,
+            endExclusive);
+
+        var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(ParseTaxExpenseRow)
+            .Where(static row => row is not null)
+            .Cast<TaxExpenseRow>()
+            .ToList();
+    }
+
+    private TaxExpenseRow? ParseTaxExpenseRow(JsonElement item)
+    {
+        var recordId = FirstNonEmpty(
+            ReadString(item, _supplierExpensesIdField),
+            $"{ReadString(item, DashboardExpenseRecipientNitField)}|{ReadString(item, DashboardExpenseRecipientNameField)}|{ReadString(item, DashboardExpensePaymentDateField)}");
+
+        if (string.IsNullOrWhiteSpace(recordId))
+            return null;
+
+        return new TaxExpenseRow
+        {
+            RecordId = recordId.Trim(),
+            PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
+            PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
+            ReteFuenteValue = RoundCurrency(ReadDecimal(item, DashboardExpenseReteFuenteField) ?? 0m),
+            RecipientName = ReadString(item, DashboardExpenseRecipientNameField).Trim(),
+            RecipientNit = ReadString(item, DashboardExpenseRecipientNitField).Trim(),
+            CloudValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCloudField) ?? 0m),
+            CopiersValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCopiersField) ?? 0m)
         };
     }
 
@@ -636,6 +879,71 @@ public sealed partial class DataverseService
             BuildRetentionSummary("rtefte", "ReteFuente", SumCurrency(currentPayments, static row => row.RteFteValue), SumCurrency(comparePayments, static row => row.RteFteValue))
         };
     }
+
+    private IReadOnlyList<TaxExpenseDetailDto> BuildTaxExpenseDetails(IReadOnlyList<TaxExpenseRow> currentExpenses)
+    {
+        return currentExpenses
+            .Where(static row => row.ReteFuenteValue > 0m)
+            .OrderByDescending(row => row.PaymentDate)
+            .ThenByDescending(static row => row.ReteFuenteValue)
+            .ThenBy(static row => row.RecipientName, StringComparer.OrdinalIgnoreCase)
+            .Select(row => new TaxExpenseDetailDto
+            {
+                PaymentDateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                PaymentValue = row.PaymentValue,
+                ReteFuenteValue = row.ReteFuenteValue,
+                RecipientName = string.IsNullOrWhiteSpace(row.RecipientName) ? "Sin receptor" : row.RecipientName,
+                RecipientNit = string.IsNullOrWhiteSpace(row.RecipientNit) ? "Sin NIT" : row.RecipientNit,
+                CloudValue = row.CloudValue,
+                CopiersValue = row.CopiersValue
+            })
+            .ToList();
+    }
+
+    private static (decimal Cloud, decimal Copiers) CalculateExpenseRetentionByVertical(IEnumerable<TaxExpenseRow> rows)
+    {
+        decimal cloud = 0m;
+        decimal copiers = 0m;
+
+        foreach (var row in rows)
+        {
+            if (row.ReteFuenteValue <= 0m)
+                continue;
+
+            var cloudBase = Math.Max(row.CloudValue, 0m);
+            var copiersBase = Math.Max(row.CopiersValue, 0m);
+
+            if (cloudBase > 0m && copiersBase <= 0m)
+            {
+                cloud += row.ReteFuenteValue;
+                continue;
+            }
+
+            if (copiersBase > 0m && cloudBase <= 0m)
+            {
+                copiers += row.ReteFuenteValue;
+                continue;
+            }
+
+            var totalBase = cloudBase + copiersBase;
+            if (totalBase <= 0m)
+                continue;
+
+            cloud += row.ReteFuenteValue * (cloudBase / totalBase);
+            copiers += row.ReteFuenteValue * (copiersBase / totalBase);
+        }
+
+        return (RoundCurrency(cloud), RoundCurrency(copiers));
+    }
+
+    private static decimal CalculateAutoFuente(IEnumerable<BillingRecordRow> rows) =>
+        SumCurrency(rows, row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate);
+
+    private static decimal CalculateIcaGenerated(IEnumerable<BillingRecordRow> rows) =>
+        SumCurrency(rows, row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
+
+    private static decimal CalculateInvoiceTaxBase(BillingRecordRow row) =>
+        RoundCurrency(Math.Max(row.TotalInvoice - row.VatValue, 0m));
 
     private BillingRetentionItemDto BuildRetentionSummary(string key, string label, decimal current, decimal previous)
     {
@@ -939,6 +1247,9 @@ public sealed partial class DataverseService
     private static decimal SumCurrency(IEnumerable<BillingRecordRow> rows, Func<BillingRecordRow, decimal> selector) =>
         RoundCurrency(rows.Sum(selector));
 
+    private static decimal SumExpenseCurrency(IEnumerable<TaxExpenseRow> rows, Func<TaxExpenseRow, decimal> selector) =>
+        RoundCurrency(rows.Sum(selector));
+
     private static decimal? CalculateGrowthPercent(decimal current, decimal previous)
     {
         if (previous == 0m)
@@ -1025,6 +1336,18 @@ public sealed partial class DataverseService
         public bool HasPayment => PaymentDate.HasValue || PaymentValue > 0m;
         public bool IsOverdue(DateOnly today) => !HasPayment && DueDate is not null && DueDate.Value < today;
         public int GetOverdueDays(DateOnly today) => !IsOverdue(today) ? 0 : today.DayNumber - DueDate!.Value.DayNumber;
+    }
+
+    private sealed class TaxExpenseRow
+    {
+        public string RecordId { get; set; } = "";
+        public DateOnly? PaymentDate { get; set; }
+        public decimal PaymentValue { get; set; }
+        public decimal ReteFuenteValue { get; set; }
+        public string RecipientName { get; set; } = "";
+        public string RecipientNit { get; set; } = "";
+        public decimal CloudValue { get; set; }
+        public decimal CopiersValue { get; set; }
     }
 
     private sealed record BillingCategory(string Key, string Label);
