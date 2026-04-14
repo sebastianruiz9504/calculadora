@@ -164,7 +164,7 @@ public sealed class BillingUnpaidInvoiceDto
     public string ClientName { get; set; } = "";
     public string VerticalLabel { get; set; } = "";
     public string ContractTypeLabel { get; set; } = "";
-    public string EmissionDateDisplay { get; set; } = "";
+    public string DueDateDisplay { get; set; } = "";
     public decimal TotalInvoice { get; set; }
     public int AgeDays { get; set; }
 }

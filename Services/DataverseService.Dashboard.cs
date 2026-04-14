@@ -115,6 +115,7 @@ public sealed partial class DataverseService
                 compareEmission,
                 currentPayments,
                 comparePayments,
+                today,
                 totalBilling,
                 previousTotalBilling,
                 totalCollections,
@@ -155,6 +156,7 @@ public sealed partial class DataverseService
             BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
             _dashboardBillingVerticalField,
             _dashboardBillingContractTypeField,
+            _dashboardBillingDueDateField,
             _dashboardBillingEmissionDateField,
             _dashboardBillingTotalField,
             _dashboardBillingVatField,
@@ -214,6 +216,7 @@ public sealed partial class DataverseService
                 ReadString(item, $"{_dashboardBillingContractTypeField}{FormattedValueAnnotationSuffix}"),
                 ResolveDashboardContractTypeLabel(contractTypeOption),
                 "Sin contrato"),
+            DueDate = ReadDateOnly(item, _dashboardBillingDueDateField),
             EmissionDate = ReadDateOnly(item, _dashboardBillingEmissionDateField),
             PaymentDate = ReadDateOnly(item, _dashboardBillingPaymentDateField),
             TotalInvoice = RoundCurrency(ReadDecimal(item, _dashboardBillingTotalField) ?? 0m),
@@ -231,6 +234,7 @@ public sealed partial class DataverseService
         IReadOnlyList<BillingRecordRow> compareEmission,
         IReadOnlyList<BillingRecordRow> currentPayments,
         IReadOnlyList<BillingRecordRow> comparePayments,
+        DateOnly today,
         decimal totalBilling,
         decimal previousTotalBilling,
         decimal totalCollections,
@@ -274,6 +278,12 @@ public sealed partial class DataverseService
         var copiersRows = currentEmission
             .Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption)
             .ToList();
+        var currentCloudOverduePortfolio = SumCurrency(
+            currentEmission.Where(record => record.VerticalOptionValue == DashboardVerticalCloudOption && record.IsOverdue(today)),
+            static record => record.TotalInvoice);
+        var currentCopiersOverduePortfolio = SumCurrency(
+            currentEmission.Where(record => record.VerticalOptionValue == DashboardVerticalCopiersOption && record.IsOverdue(today)),
+            static record => record.TotalInvoice);
 
         return new[]
         {
@@ -298,8 +308,26 @@ public sealed partial class DataverseService
                 "Participacion periodo",
                 FormatPercentValue(totalBilling == 0m ? 0m : (currentCopiersBilling / totalBilling) * 100m),
                 breakdowns: BuildVerticalContractBreakdowns(copiersRows)),
-            BuildBillingKpi("cloud-portfolio", "Cartera Cloud", "Facturas Cloud emitidas y aun sin pago.", currentCloudPortfolio, previousCloudPortfolio, "currency", "Pendientes", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment).ToString("N0", DashboardCulture), lowerIsBetter: true),
-            BuildBillingKpi("copiers-portfolio", "Cartera Copiers", "Facturas Copiers emitidas y aun sin pago.", currentCopiersPortfolio, previousCopiersPortfolio, "currency", "Pendientes", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment).ToString("N0", DashboardCulture), lowerIsBetter: true)
+            BuildBillingKpi(
+                "cloud-portfolio",
+                "Cartera Cloud",
+                "Facturas Cloud del periodo que aun no registran pago.",
+                currentCloudPortfolio,
+                previousCloudPortfolio,
+                "currency",
+                "Cartera vencida",
+                FormatCurrencyValue(currentCloudOverduePortfolio),
+                lowerIsBetter: true),
+            BuildBillingKpi(
+                "copiers-portfolio",
+                "Cartera Copiers",
+                "Facturas Copiers del periodo que aun no registran pago.",
+                currentCopiersPortfolio,
+                previousCopiersPortfolio,
+                "currency",
+                "Cartera vencida",
+                FormatCurrencyValue(currentCopiersOverduePortfolio),
+                lowerIsBetter: true)
         };
     }
 
@@ -569,21 +597,19 @@ public sealed partial class DataverseService
         DateOnly today)
     {
         return currentEmission
-            .Where(static record => !record.HasPayment)
+            .Where(record => record.IsOverdue(today))
             .Select(record => new BillingUnpaidInvoiceDto
             {
                 InvoiceNumber = record.InvoiceNumber,
                 ClientName = record.ClientName,
                 VerticalLabel = record.VerticalLabel,
                 ContractTypeLabel = record.ContractTypeLabel,
-                EmissionDateDisplay = record.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                DueDateDisplay = record.DueDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
                 TotalInvoice = record.TotalInvoice,
-                AgeDays = record.EmissionDate is null
-                    ? 0
-                    : Math.Max((today.ToDateTime(TimeOnly.MinValue) - record.EmissionDate.Value.ToDateTime(TimeOnly.MinValue)).Days, 0)
+                AgeDays = record.GetOverdueDays(today)
             })
-            .OrderByDescending(static record => record.TotalInvoice)
-            .ThenByDescending(static record => record.AgeDays)
+            .OrderByDescending(static record => record.AgeDays)
+            .ThenByDescending(static record => record.TotalInvoice)
             .Take(12)
             .ToList();
     }
@@ -901,6 +927,9 @@ public sealed partial class DataverseService
     private static string FormatPercentValue(decimal value) =>
         $"{RoundCurrency(value).ToString("N2", DashboardCulture)}%";
 
+    private static string FormatCurrencyValue(decimal value) =>
+        RoundCurrency(value).ToString("C0", DashboardCulture);
+
     private static string GetBillingCategoryKey(DateOnly date, DateOnly periodStart, BillingTrendGranularity granularity)
     {
         return granularity switch
@@ -926,6 +955,7 @@ public sealed partial class DataverseService
         public string ContractTypeLabel { get; set; } = "";
         public int VerticalOptionValue { get; set; }
         public int ContractTypeOptionValue { get; set; }
+        public DateOnly? DueDate { get; set; }
         public DateOnly? EmissionDate { get; set; }
         public DateOnly? PaymentDate { get; set; }
         public decimal TotalInvoice { get; set; }
@@ -937,6 +967,8 @@ public sealed partial class DataverseService
         public decimal DifferenceValue { get; set; }
         public decimal RetentionsTotal => RoundCurrency(ReteIcaValue + RteIvaValue + RteFteValue);
         public bool HasPayment => PaymentDate.HasValue || PaymentValue > 0m;
+        public bool IsOverdue(DateOnly today) => !HasPayment && DueDate is not null && DueDate.Value < today;
+        public int GetOverdueDays(DateOnly today) => !IsOverdue(today) ? 0 : today.DayNumber - DueDate!.Value.DayNumber;
     }
 
     private sealed record BillingCategory(string Key, string Label);

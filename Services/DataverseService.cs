@@ -117,6 +117,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardBillingClientField = "cr07a_clientenit";
     private const string DefaultDashboardBillingVerticalField = "cr07a_vertical";
     private const string DefaultDashboardBillingContractTypeField = "cr07a_tipocontrato";
+    private const string DefaultDashboardBillingDueDateField = "cr07a_fechavencimiento";
     private const string DefaultDashboardBillingTotalField = "cr07a_totalfactura";
     private const string DefaultDashboardBillingVatField = "cr07a_ivavalor";
     private const string DefaultDashboardBillingPaymentDateField = "cr07a_fechadepago";
@@ -230,6 +231,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardBillingClientField;
     private readonly string _dashboardBillingVerticalField;
     private readonly string _dashboardBillingContractTypeField;
+    private readonly string _dashboardBillingDueDateField;
     private readonly string _dashboardBillingTotalField;
     private readonly string _dashboardBillingVatField;
     private readonly string _dashboardBillingPaymentDateField;
@@ -423,6 +425,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardBillingVerticalField;
         _dashboardBillingContractTypeField = configuration["Dashboard:BillingContractTypeField"]
             ?? DefaultDashboardBillingContractTypeField;
+        _dashboardBillingDueDateField = configuration["Dashboard:BillingDueDateField"]
+            ?? DefaultDashboardBillingDueDateField;
         _dashboardBillingTotalField = configuration["Dashboard:BillingTotalField"]
             ?? DefaultDashboardBillingTotalField;
         _dashboardBillingVatField = configuration["Dashboard:BillingVatField"]

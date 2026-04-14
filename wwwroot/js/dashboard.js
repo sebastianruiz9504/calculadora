@@ -525,12 +525,12 @@
                     <td>${escapeHtml(row.clientName)}</td>
                     <td>${escapeHtml(row.verticalLabel)}</td>
                     <td>${escapeHtml(row.contractTypeLabel)}</td>
-                    <td>${escapeHtml(row.emissionDateDisplay)}</td>
+                    <td>${escapeHtml(row.dueDateDisplay)}</td>
                     <td><span class="dashboard-badge is-danger">${escapeHtml(numberFormatter.format(Number(row.ageDays || 0)))} dias</span></td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas pendientes para este periodo.</td></tr>';
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas vencidas sin pago para este periodo.</td></tr>';
     }
 
     function renderDifferenceTable(dashboard) {
