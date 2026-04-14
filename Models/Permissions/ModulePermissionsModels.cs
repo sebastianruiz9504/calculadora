@@ -12,7 +12,8 @@ public enum AppModule
     Rh = 5,
     PortalProveedores = 6,
     GestionHumana = 7,
-    Permissions = 8
+    Permissions = 8,
+    Dashboard = 9
 }
 
 public sealed class AppModuleDefinition
@@ -109,6 +110,16 @@ public static class AppModuleCatalog
         Controller = "Permissions"
     };
 
+    public static readonly AppModuleDefinition Dashboard = new()
+    {
+        Key = AppModule.Dashboard,
+        Label = "Dashboard",
+        Category = "Analitica",
+        Description = "Consolida facturacion, recaudo, IVA y retenciones en una vista financiera tipo tablero.",
+        OptionValue = 645250008,
+        Controller = "Dashboard"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -118,6 +129,7 @@ public static class AppModuleCatalog
         Rh,
         PortalProveedores,
         GestionHumana,
+        Dashboard,
         Permissions
     };
 

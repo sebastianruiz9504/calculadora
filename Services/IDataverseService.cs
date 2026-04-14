@@ -1,5 +1,6 @@
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Models.Permissions;
@@ -36,6 +37,7 @@ public interface IDataverseService
     Task<VacationRequestSubmitResultDto> SubmitVacationRequestAsync(VacationRequestSubmitInput input, CancellationToken ct = default);
     Task<string> GetVacationRequestDocumentHtmlAsync(string recordId, bool autoPrint = false, CancellationToken ct = default);
     Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, MetricsViewMode view, string? sellerKey = null, CancellationToken ct = default);
+    Task<BillingDashboardDto> GetBillingDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);

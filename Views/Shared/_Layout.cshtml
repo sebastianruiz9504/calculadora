@@ -21,6 +21,7 @@
 
     var canAccessPortalProveedores = layoutCurrentUser?.HasModule(AppModuleCatalog.PortalProveedores.OptionValue) == true;
     var canAccessMetricas = false;
+    var canAccessDashboard = layoutCurrentUser?.HasModule(AppModuleCatalog.Dashboard.OptionValue) == true;
     var canAccessNomina = layoutCurrentUser?.HasModule(AppModuleCatalog.Nomina.OptionValue) == true;
     var canAccessRh = layoutCurrentUser?.HasModule(AppModuleCatalog.Rh.OptionValue) == true;
     var canAccessGestionHumana = layoutCurrentUser?.HasModule(AppModuleCatalog.GestionHumana.OptionValue) == true;
@@ -80,6 +81,7 @@
     {
         new { Controller = "Calculator", Label = "Calculadora", Visible = true },
         new { Controller = "Metricas", Label = "Metricas", Visible = canAccessMetricas },
+        new { Controller = "Dashboard", Label = "Dashboard", Visible = canAccessDashboard },
         new { Controller = "LiquidacionNominas", Label = "Nomina", Visible = canAccessNomina },
         new { Controller = "Rh", Label = "RH", Visible = canAccessRh },
         new { Controller = "GestionHumana", Label = "Gestion humana", Visible = canAccessGestionHumana },

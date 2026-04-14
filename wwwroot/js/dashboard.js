@@ -1,0 +1,595 @@
+(() => {
+    const app = document.getElementById("billingDashboardApp");
+    if (!app) {
+        return;
+    }
+
+    const yearFilter = document.getElementById("dashboardYearFilter");
+    const periodFilter = document.getElementById("dashboardPeriodFilter");
+    const valueFilter = document.getElementById("dashboardValueFilter");
+    const refreshButton = document.getElementById("dashboardRefreshBtn");
+    const statusBanner = document.getElementById("dashboardStatusBanner");
+    const periodLabel = document.getElementById("dashboardPeriodLabel");
+    const dateRangeLabel = document.getElementById("dashboardDateRangeLabel");
+    const compareLabel = document.getElementById("dashboardCompareLabel");
+    const granularityLabel = document.getElementById("dashboardGranularityLabel");
+    const recordCount = document.getElementById("dashboardRecordCount");
+    const kpisContainer = document.getElementById("billingKpisContainer");
+    const trendsContainer = document.getElementById("billingTrendsContainer");
+    const retentionsContainer = document.getElementById("billingRetentionsContainer");
+    const verticalsContainer = document.getElementById("billingVerticalsContainer");
+    const clientsContainer = document.getElementById("billingClientsContainer");
+    const unpaidBody = document.getElementById("billingUnpaidBody");
+    const differenceBody = document.getElementById("billingDifferenceBody");
+
+    const currentYear = Number(app.dataset.initialYear || new Date().getFullYear());
+    const currentPeriod = app.dataset.initialPeriod || "month";
+    const currentValue = Number(app.dataset.initialValue || 1);
+
+    const currencyFormatter = new Intl.NumberFormat("es-CO", {
+        style: "currency",
+        currency: "COP",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+
+    const numberFormatter = new Intl.NumberFormat("es-CO", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+    });
+
+    const state = {
+        year: currentYear,
+        period: currentPeriod,
+        value: currentValue,
+        dashboard: null,
+        isLoading: false
+    };
+
+    function escapeHtml(value) {
+        return (value ?? "").toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function formatMetric(value, format) {
+        const numericValue = Number(value || 0);
+        if (format === "days") {
+            return `${numberFormatter.format(numericValue)} dias`;
+        }
+
+        if (format === "percent") {
+            return `${numberFormatter.format(numericValue)}%`;
+        }
+
+        return currencyFormatter.format(numericValue);
+    }
+
+    function formatGrowth(value) {
+        if (value === null || value === undefined) {
+            return "Nuevo";
+        }
+
+        const numericValue = Number(value || 0);
+        const prefix = numericValue > 0 ? "+" : "";
+        return `${prefix}${numberFormatter.format(numericValue)}%`;
+    }
+
+    function formatPercent(value) {
+        return `${numberFormatter.format(Number(value || 0))}%`;
+    }
+
+    function setStatus(type, message) {
+        if (!statusBanner) {
+            return;
+        }
+
+        if (!message) {
+            statusBanner.className = "dashboard-status";
+            statusBanner.textContent = "";
+            return;
+        }
+
+        statusBanner.className = `dashboard-status show ${type}`;
+        statusBanner.textContent = message;
+    }
+
+    function setLoading(loading) {
+        state.isLoading = loading;
+        [yearFilter, periodFilter, valueFilter, refreshButton].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+    }
+
+    function buildYearOptions() {
+        if (!yearFilter) {
+            return;
+        }
+
+        const options = [];
+        for (let year = currentYear + 1; year >= currentYear - 5; year -= 1) {
+            options.push(`<option value="${year}">${year}</option>`);
+        }
+
+        yearFilter.innerHTML = options.join("");
+        yearFilter.value = String(state.year);
+    }
+
+    function getDefaultValue(period, year) {
+        if (year !== currentYear) {
+            return 1;
+        }
+
+        const today = new Date();
+        switch (period) {
+            case "quarter":
+                return Math.floor(today.getMonth() / 3) + 1;
+            case "semester":
+                return today.getMonth() < 6 ? 1 : 2;
+            case "year":
+                return 1;
+            default:
+                return today.getMonth() + 1;
+        }
+    }
+
+    function buildValueOptions() {
+        if (!valueFilter) {
+            return;
+        }
+
+        const options = [];
+        switch (state.period) {
+            case "quarter":
+                ["T1", "T2", "T3", "T4"].forEach((label, index) => {
+                    options.push({ value: index + 1, label });
+                });
+                break;
+            case "semester":
+                ["S1", "S2"].forEach((label, index) => {
+                    options.push({ value: index + 1, label });
+                });
+                break;
+            case "year":
+                options.push({ value: 1, label: "Ano completo" });
+                break;
+            default:
+                ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                    .forEach((label, index) => {
+                        options.push({ value: index + 1, label });
+                    });
+                break;
+        }
+
+        if (!options.some(option => option.value === state.value)) {
+            state.value = getDefaultValue(state.period, state.year);
+        }
+
+        valueFilter.innerHTML = options
+            .map(option => `<option value="${option.value}">${escapeHtml(option.label)}</option>`)
+            .join("");
+        valueFilter.value = String(state.value);
+    }
+
+    function buildDashboardUrl() {
+        const params = new URLSearchParams({
+            year: String(state.year),
+            period: state.period,
+            value: String(state.value)
+        });
+
+        return `${app.dataset.billingUrl}?${params.toString()}`;
+    }
+
+    async function fetchJson(url) {
+        const response = await fetch(url, {
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok) {
+            const message = contentType.includes("application/json")
+                ? (await response.json())?.message || "No fue posible completar la solicitud."
+                : await response.text();
+            throw new Error(message || "No fue posible completar la solicitud.");
+        }
+
+        if (!contentType.includes("application/json")) {
+            const message = await response.text();
+            throw new Error(message || "La respuesta del servidor no fue valida.");
+        }
+
+        return response.json();
+    }
+
+    function renderKpis(dashboard) {
+        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
+        if (!kpisContainer) {
+            return;
+        }
+
+        kpisContainer.innerHTML = kpis.map(kpi => `
+            <article class="dashboard-kpi dashboard-kpi--${escapeHtml(kpi.tone || "neutral")}">
+                <div class="dashboard-kpi__header">
+                    <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
+                    <span class="dashboard-kpi__delta">${escapeHtml(formatGrowth(kpi.growthPercent))}</span>
+                </div>
+                <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
+                <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
+                <div class="dashboard-kpi__footer">
+                    <span>${escapeHtml(String(dashboard.compareYear || ""))}</span>
+                    <strong>${escapeHtml(formatMetric(kpi.previousValue, kpi.valueFormat))}</strong>
+                </div>
+                <div class="dashboard-kpi__secondary">
+                    <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
+                    <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
+                </div>
+            </article>
+        `).join("");
+    }
+
+    function getNiceMaxValue(value) {
+        const numericValue = Number(value || 0);
+        if (numericValue <= 0) {
+            return 1;
+        }
+
+        const exponent = Math.floor(Math.log10(numericValue));
+        const base = 10 ** exponent;
+        const fraction = numericValue / base;
+
+        if (fraction <= 1) {
+            return base;
+        }
+
+        if (fraction <= 2) {
+            return 2 * base;
+        }
+
+        if (fraction <= 5) {
+            return 5 * base;
+        }
+
+        return 10 * base;
+    }
+
+    function buildLinePath(points) {
+        if (!points.length) {
+            return "";
+        }
+
+        return points
+            .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+            .join(" ");
+    }
+
+    function buildAreaPath(points, baselineY) {
+        if (!points.length) {
+            return "";
+        }
+
+        const start = `M ${points[0].x.toFixed(2)} ${baselineY.toFixed(2)}`;
+        const line = points.map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+        const end = `L ${points[points.length - 1].x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
+        return `${start} ${line} ${end}`;
+    }
+
+    function buildSampleLabelIndexes(length) {
+        if (length <= 8) {
+            return new Set(Array.from({ length }, (_, index) => index));
+        }
+
+        const indexes = new Set([0, length - 1]);
+        const step = Math.ceil(length / 5);
+        for (let index = 0; index < length; index += step) {
+            indexes.add(index);
+        }
+
+        return indexes;
+    }
+
+    function renderTrendChart(trend, currentKey, previousKey, accentColor) {
+        const labels = trend.map(item => item.label || "");
+        const currentValues = trend.map(item => Number(item[currentKey] || 0));
+        const previousValues = trend.map(item => Number(item[previousKey] || 0));
+        const maxValue = getNiceMaxValue(Math.max(1, ...currentValues, ...previousValues));
+        const width = 620;
+        const height = 220;
+        const padding = { top: 18, right: 20, bottom: 36, left: 52 };
+        const plotWidth = width - padding.left - padding.right;
+        const plotHeight = height - padding.top - padding.bottom;
+        const denominator = Math.max(labels.length - 1, 1);
+        const labelIndexes = buildSampleLabelIndexes(labels.length);
+
+        const gridLines = Array.from({ length: 4 }, (_, index) => {
+            const ratio = index / 3;
+            const y = padding.top + plotHeight - (plotHeight * ratio);
+            const value = maxValue * ratio;
+            return `
+                <line class="dashboard-chart__grid" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"></line>
+                <text class="dashboard-chart__axis-label" x="${padding.left - 8}" y="${y + 4}" text-anchor="end">${escapeHtml(numberFormatter.format(value))}</text>
+            `;
+        }).join("");
+
+        const xLabels = labels.map((label, index) => {
+            if (!labelIndexes.has(index)) {
+                return "";
+            }
+
+            const x = padding.left + (plotWidth * (index / denominator));
+            return `<text class="dashboard-chart__axis-label" x="${x}" y="${height - 10}" text-anchor="middle">${escapeHtml(label)}</text>`;
+        }).join("");
+
+        const buildPoints = values => values.map((value, index) => ({
+            x: padding.left + (plotWidth * (index / denominator)),
+            y: padding.top + plotHeight - ((Number(value || 0) / maxValue) * plotHeight),
+            value: Number(value || 0),
+            label: labels[index] || ""
+        }));
+
+        const currentPoints = buildPoints(currentValues);
+        const previousPoints = buildPoints(previousValues);
+        const currentPath = buildLinePath(currentPoints);
+        const previousPath = buildLinePath(previousPoints);
+        const areaPath = buildAreaPath(currentPoints, padding.top + plotHeight);
+
+        const currentDots = currentPoints.map(point => `
+            <g>
+                <title>${escapeHtml(`${point.label}: ${currencyFormatter.format(point.value)}`)}</title>
+                <circle class="dashboard-chart__dot" cx="${point.x}" cy="${point.y}" r="4.2" fill="${accentColor}" stroke="#ffffff"></circle>
+            </g>
+        `).join("");
+
+        const previousDots = previousPoints.map(point => `
+            <g>
+                <title>${escapeHtml(`${point.label}: ${currencyFormatter.format(point.value)}`)}</title>
+                <circle class="dashboard-chart__dot" cx="${point.x}" cy="${point.y}" r="3.4" fill="#ffffff" stroke="#94a3b8"></circle>
+            </g>
+        `).join("");
+
+        return `
+            <svg class="dashboard-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Tendencia">
+                <defs>
+                    <linearGradient id="dashboardGradient-${currentKey}" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stop-color="${accentColor}" stop-opacity=".28"></stop>
+                        <stop offset="100%" stop-color="${accentColor}" stop-opacity="0"></stop>
+                    </linearGradient>
+                </defs>
+                ${gridLines}
+                ${xLabels}
+                <path class="dashboard-chart__area" d="${areaPath}" fill="url(#dashboardGradient-${currentKey})"></path>
+                <path class="dashboard-chart__line dashboard-chart__line--reference" d="${previousPath}" stroke="#94a3b8"></path>
+                <path class="dashboard-chart__line" d="${currentPath}" stroke="${accentColor}"></path>
+                ${previousDots}
+                ${currentDots}
+            </svg>
+        `;
+    }
+
+    function renderTrends(dashboard) {
+        const trend = Array.isArray(dashboard?.trend) ? dashboard.trend : [];
+        if (!trendsContainer) {
+            return;
+        }
+
+        if (!trend.length) {
+            trendsContainer.innerHTML = '<div class="dashboard-table__empty">Todavia no hay puntos suficientes para dibujar la tendencia.</div>';
+            return;
+        }
+
+        const cards = [
+            { title: "Facturacion emitida", currentKey: "billingCurrent", previousKey: "billingPrevious", color: "#0f766e" },
+            { title: "Recaudo", currentKey: "collectionsCurrent", previousKey: "collectionsPrevious", color: "#1d4ed8" },
+            { title: "Retenciones", currentKey: "retentionsCurrent", previousKey: "retentionsPrevious", color: "#f97316" }
+        ];
+
+        trendsContainer.innerHTML = cards.map(card => {
+            const currentTotal = trend.reduce((sum, point) => sum + Number(point[card.currentKey] || 0), 0);
+            const previousTotal = trend.reduce((sum, point) => sum + Number(point[card.previousKey] || 0), 0);
+            return `
+                <article class="dashboard-trend-card">
+                    <div class="dashboard-trend-card__header">
+                        <strong>${escapeHtml(card.title)}</strong>
+                        <span class="dashboard-growth ${currentTotal >= previousTotal ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(previousTotal === 0 && currentTotal > 0 ? null : ((currentTotal - previousTotal) / (previousTotal || 1)) * 100))}</span>
+                    </div>
+                    <div class="dashboard-trend-card__value">${escapeHtml(currencyFormatter.format(currentTotal))}</div>
+                    ${renderTrendChart(trend, card.currentKey, card.previousKey, card.color)}
+                    <div class="dashboard-trend-legend">
+                        <span class="dashboard-legend-chip" style="color:${card.color}">Actual</span>
+                        <span class="dashboard-legend-chip dashboard-legend-chip--muted">Ano anterior</span>
+                    </div>
+                </article>
+            `;
+        }).join("");
+    }
+
+    function renderRetentions(dashboard) {
+        const items = Array.isArray(dashboard?.retentions) ? dashboard.retentions : [];
+        if (!retentionsContainer) {
+            return;
+        }
+
+        retentionsContainer.innerHTML = items.length
+            ? items.map(item => `
+                <article class="dashboard-retention-card">
+                    <div class="dashboard-retention-card__header">
+                        <span class="dashboard-retention-card__label">${escapeHtml(item.label)}</span>
+                        <span class="dashboard-growth ${Number(item.total || 0) >= Number(item.previousTotal || 0) ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
+                    </div>
+                    <strong class="dashboard-retention-card__value">${escapeHtml(currencyFormatter.format(Number(item.total || 0)))}</strong>
+                    <span class="dashboard-retention-card__label">Ano anterior: ${escapeHtml(currencyFormatter.format(Number(item.previousTotal || 0)))}</span>
+                </article>
+            `).join("")
+            : '<div class="dashboard-table__empty">No hay retenciones registradas en este periodo.</div>';
+    }
+
+    function renderVerticals(dashboard) {
+        const items = Array.isArray(dashboard?.verticals) ? dashboard.verticals : [];
+        if (!verticalsContainer) {
+            return;
+        }
+
+        verticalsContainer.innerHTML = items.length
+            ? items.map(item => `
+                <article class="dashboard-vertical-card">
+                    <div class="dashboard-vertical-card__header">
+                        <div>
+                            <strong>${escapeHtml(item.label)}</strong>
+                            <div class="dashboard-contract-row__meta">${escapeHtml(currencyFormatter.format(Number(item.previousTotalBilling || 0)))} ano anterior</div>
+                        </div>
+                        <span class="dashboard-growth ${Number(item.totalBilling || 0) >= Number(item.previousTotalBilling || 0) ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
+                    </div>
+                    <div class="dashboard-vertical-card__total">${escapeHtml(currencyFormatter.format(Number(item.totalBilling || 0)))}</div>
+                    <div class="dashboard-vertical-card__metrics">
+                        <span class="dashboard-metric-tag">IVA ${escapeHtml(currencyFormatter.format(Number(item.totalVat || 0)))}</span>
+                        <span class="dashboard-metric-tag">Facturas ${escapeHtml(numberFormatter.format(Number(item.invoicesCount || 0)))}</span>
+                        <span class="dashboard-metric-tag">Sin pago ${escapeHtml(numberFormatter.format(Number(item.unpaidInvoicesCount || 0)))}</span>
+                    </div>
+                    <div class="dashboard-contract-list">
+                        ${(item.contractTypes || []).map(contract => `
+                            <div class="dashboard-contract-row">
+                                <div>
+                                    <div class="dashboard-contract-row__name">${escapeHtml(contract.label)}</div>
+                                    <div class="dashboard-contract-row__meta">${escapeHtml(currencyFormatter.format(Number(contract.totalBilling || 0)))} · ${escapeHtml(formatGrowth(contract.growthPercent))}</div>
+                                </div>
+                                <span>${escapeHtml(formatPercent(contract.sharePercent || 0))}</span>
+                            </div>
+                            <div class="dashboard-progress"><span style="width:${Math.min(Number(contract.sharePercent || 0), 100)}%"></span></div>
+                        `).join("")}
+                    </div>
+                </article>
+            `).join("")
+            : '<div class="dashboard-table__empty">No hay verticales para mostrar en este periodo.</div>';
+    }
+
+    function renderClients(dashboard) {
+        const items = Array.isArray(dashboard?.topClients) ? dashboard.topClients : [];
+        if (!clientsContainer) {
+            return;
+        }
+
+        clientsContainer.innerHTML = items.length
+            ? `<div class="dashboard-client-list">${items.map(item => `
+                <div class="dashboard-client-row">
+                    <div>
+                        <div class="dashboard-client-row__name">${escapeHtml(item.clientName)}</div>
+                        <div class="dashboard-client-row__meta">${escapeHtml(currencyFormatter.format(Number(item.totalBilling || 0)))} · ${escapeHtml(numberFormatter.format(Number(item.invoicesCount || 0)))} facturas</div>
+                    </div>
+                    <span class="dashboard-growth ${Number(item.totalBilling || 0) >= Number(item.previousTotalBilling || 0) ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
+                </div>
+                <div class="dashboard-progress"><span style="width:${Math.min(Number(item.sharePercent || 0), 100)}%"></span></div>
+            `).join("")}</div>`
+            : '<div class="dashboard-table__empty">No hay clientes con facturacion en este periodo.</div>';
+    }
+
+    function renderUnpaidTable(dashboard) {
+        const rows = Array.isArray(dashboard?.unpaidInvoices) ? dashboard.unpaidInvoices : [];
+        if (!unpaidBody) {
+            return;
+        }
+
+        unpaidBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.invoiceNumber)}</td>
+                    <td>${escapeHtml(row.clientName)}</td>
+                    <td>${escapeHtml(row.verticalLabel)}</td>
+                    <td>${escapeHtml(row.contractTypeLabel)}</td>
+                    <td>${escapeHtml(row.emissionDateDisplay)}</td>
+                    <td><span class="dashboard-badge is-danger">${escapeHtml(numberFormatter.format(Number(row.ageDays || 0)))} dias</span></td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas pendientes para este periodo.</td></tr>';
+    }
+
+    function renderDifferenceTable(dashboard) {
+        const rows = Array.isArray(dashboard?.differenceInvoices) ? dashboard.differenceInvoices : [];
+        if (!differenceBody) {
+            return;
+        }
+
+        differenceBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.invoiceNumber)}</td>
+                    <td>${escapeHtml(row.clientName)}</td>
+                    <td>${escapeHtml(row.verticalLabel)}</td>
+                    <td>${escapeHtml(row.paymentDateDisplay)}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.retentionsTotal || 0)))}</td>
+                    <td class="text-end">
+                        <span class="dashboard-badge ${Math.abs(Number(row.difference || 0)) < 0.01 ? "is-success" : "is-danger"}">
+                            ${escapeHtml(currencyFormatter.format(Number(row.difference || 0)))}
+                        </span>
+                    </td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="8" class="dashboard-table__empty">Las facturas pagadas del periodo cuadran sin diferencia.</td></tr>';
+    }
+
+    function updateContext(dashboard) {
+        state.dashboard = dashboard;
+        periodLabel && (periodLabel.textContent = dashboard?.periodLabel || "Sin periodo");
+        dateRangeLabel && (dateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+        compareLabel && (compareLabel.textContent = dashboard?.compareLabel || "Mismo periodo del ano anterior");
+        granularityLabel && (granularityLabel.textContent = dashboard?.granularityLabel || "Mensual");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
+    async function loadDashboard() {
+        setLoading(true);
+        setStatus("info", "Actualizando tablero de facturacion...");
+
+        try {
+            const dashboard = await fetchJson(buildDashboardUrl());
+            updateContext(dashboard);
+            renderKpis(dashboard);
+            renderTrends(dashboard);
+            renderRetentions(dashboard);
+            renderVerticals(dashboard);
+            renderClients(dashboard);
+            renderUnpaidTable(dashboard);
+            renderDifferenceTable(dashboard);
+            setStatus("", "");
+        } catch (error) {
+            setStatus("error", error instanceof Error ? error.message : "No fue posible cargar el dashboard.");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    yearFilter?.addEventListener("change", () => {
+        state.year = Number(yearFilter.value || currentYear);
+        state.value = getDefaultValue(state.period, state.year);
+        buildValueOptions();
+        loadDashboard();
+    });
+
+    periodFilter?.addEventListener("change", () => {
+        state.period = periodFilter.value || "month";
+        state.value = getDefaultValue(state.period, state.year);
+        buildValueOptions();
+        loadDashboard();
+    });
+
+    valueFilter?.addEventListener("change", () => {
+        state.value = Number(valueFilter.value || 1);
+        loadDashboard();
+    });
+
+    refreshButton?.addEventListener("click", loadDashboard);
+
+    buildYearOptions();
+    periodFilter && (periodFilter.value = state.period);
+    buildValueOptions();
+    loadDashboard();
+})();

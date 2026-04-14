@@ -106,6 +106,26 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultSalesPerformanceAutoBillField = "cr07a_facturableautomatico";
     private const string DefaultSalesPerformanceProductLineField = "cr07a_productline";
     private const string DefaultSalesPerformanceContractTypeField = "cr07a_contracttype";
+    private const string DefaultDashboardBillingTableLogicalName = "cr07a_facturacion";
+    private const string DefaultDashboardBillingTableSetName = "cr07a_facturacions";
+    private const string DefaultDashboardBillingIdField = "cr07a_facturacionid";
+    private const string DefaultDashboardBillingPrimaryNameField = "cr07a_name";
+    private const string DefaultDashboardBillingEmissionDateField = "cr07a_fechadeemision";
+    private const string DefaultDashboardBillingEmissionDateFieldKind = "date-only";
+    private const string DefaultDashboardBillingCompanyTaxIdField = "cr07a_nitempresa";
+    private const string DefaultDashboardBillingInvoiceNumberField = "cr07a_name";
+    private const string DefaultDashboardBillingClientField = "cr07a_clientenit";
+    private const string DefaultDashboardBillingVerticalField = "cr07a_vertical";
+    private const string DefaultDashboardBillingContractTypeField = "cr07a_tipocontrato";
+    private const string DefaultDashboardBillingTotalField = "cr07a_totalfactura";
+    private const string DefaultDashboardBillingVatField = "cr07a_ivavalor";
+    private const string DefaultDashboardBillingPaymentDateField = "cr07a_fechadepago";
+    private const string DefaultDashboardBillingPaymentDateFieldKind = "date-only";
+    private const string DefaultDashboardBillingPaymentValueField = "cr07a_valorpago";
+    private const string DefaultDashboardBillingReteIcaField = "cr07a_reteicavalor";
+    private const string DefaultDashboardBillingRteIvaField = "cr07a_rteivavalor";
+    private const string DefaultDashboardBillingRteFteField = "cr07a_rteftevalor";
+    private const string DefaultDashboardBillingDifferenceField = "cr07a_diferencia";
     private const string DefaultSalesPerformanceClientCreateLookupLogicalName = "cr07a_clientelookup";
     private const string ClientsEntitySetName = "cr07a_clientes";
     private const string ProductsEntitySetName = "cr07a_preciosclouds";
@@ -199,6 +219,26 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _rhCompanyNit;
     private readonly string _rhCompanyAddress;
     private readonly string _rhCompanyCity;
+    private readonly string _dashboardBillingTableLogicalName;
+    private readonly string _dashboardBillingTableSetName;
+    private readonly string _dashboardBillingIdField;
+    private readonly string _dashboardBillingPrimaryNameField;
+    private readonly string _dashboardBillingEmissionDateField;
+    private readonly string _dashboardBillingEmissionDateFieldKind;
+    private readonly string _dashboardBillingCompanyTaxIdField;
+    private readonly string _dashboardBillingInvoiceNumberField;
+    private readonly string _dashboardBillingClientField;
+    private readonly string _dashboardBillingVerticalField;
+    private readonly string _dashboardBillingContractTypeField;
+    private readonly string _dashboardBillingTotalField;
+    private readonly string _dashboardBillingVatField;
+    private readonly string _dashboardBillingPaymentDateField;
+    private readonly string _dashboardBillingPaymentDateFieldKind;
+    private readonly string _dashboardBillingPaymentValueField;
+    private readonly string _dashboardBillingReteIcaField;
+    private readonly string _dashboardBillingRteIvaField;
+    private readonly string _dashboardBillingRteFteField;
+    private readonly string _dashboardBillingDifferenceField;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
@@ -361,6 +401,46 @@ public sealed partial class DataverseService : IDataverseService
         _rhCompanyNit = rh.CompanyNit?.Trim() ?? "";
         _rhCompanyAddress = rh.CompanyAddress?.Trim() ?? "";
         _rhCompanyCity = rh.CompanyCity?.Trim() ?? "";
+        _dashboardBillingTableLogicalName = configuration["Dashboard:BillingTableLogicalName"]
+            ?? DefaultDashboardBillingTableLogicalName;
+        _dashboardBillingTableSetName = configuration["Dashboard:BillingTableSetName"]
+            ?? DefaultDashboardBillingTableSetName;
+        _dashboardBillingIdField = configuration["Dashboard:BillingIdField"]
+            ?? DefaultDashboardBillingIdField;
+        _dashboardBillingPrimaryNameField = configuration["Dashboard:BillingPrimaryNameField"]
+            ?? DefaultDashboardBillingPrimaryNameField;
+        _dashboardBillingEmissionDateField = configuration["Dashboard:BillingEmissionDateField"]
+            ?? DefaultDashboardBillingEmissionDateField;
+        _dashboardBillingEmissionDateFieldKind = configuration["Dashboard:BillingEmissionDateFieldKind"]
+            ?? DefaultDashboardBillingEmissionDateFieldKind;
+        _dashboardBillingCompanyTaxIdField = configuration["Dashboard:BillingCompanyTaxIdField"]
+            ?? DefaultDashboardBillingCompanyTaxIdField;
+        _dashboardBillingInvoiceNumberField = configuration["Dashboard:BillingInvoiceNumberField"]
+            ?? DefaultDashboardBillingInvoiceNumberField;
+        _dashboardBillingClientField = configuration["Dashboard:BillingClientField"]
+            ?? DefaultDashboardBillingClientField;
+        _dashboardBillingVerticalField = configuration["Dashboard:BillingVerticalField"]
+            ?? DefaultDashboardBillingVerticalField;
+        _dashboardBillingContractTypeField = configuration["Dashboard:BillingContractTypeField"]
+            ?? DefaultDashboardBillingContractTypeField;
+        _dashboardBillingTotalField = configuration["Dashboard:BillingTotalField"]
+            ?? DefaultDashboardBillingTotalField;
+        _dashboardBillingVatField = configuration["Dashboard:BillingVatField"]
+            ?? DefaultDashboardBillingVatField;
+        _dashboardBillingPaymentDateField = configuration["Dashboard:BillingPaymentDateField"]
+            ?? DefaultDashboardBillingPaymentDateField;
+        _dashboardBillingPaymentDateFieldKind = configuration["Dashboard:BillingPaymentDateFieldKind"]
+            ?? DefaultDashboardBillingPaymentDateFieldKind;
+        _dashboardBillingPaymentValueField = configuration["Dashboard:BillingPaymentValueField"]
+            ?? DefaultDashboardBillingPaymentValueField;
+        _dashboardBillingReteIcaField = configuration["Dashboard:BillingReteIcaField"]
+            ?? DefaultDashboardBillingReteIcaField;
+        _dashboardBillingRteIvaField = configuration["Dashboard:BillingRteIvaField"]
+            ?? DefaultDashboardBillingRteIvaField;
+        _dashboardBillingRteFteField = configuration["Dashboard:BillingRteFteField"]
+            ?? DefaultDashboardBillingRteFteField;
+        _dashboardBillingDifferenceField = configuration["Dashboard:BillingDifferenceField"]
+            ?? DefaultDashboardBillingDifferenceField;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

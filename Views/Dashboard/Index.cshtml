@@ -1,0 +1,179 @@
+@model DashboardPageViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
+}
+
+<div class="dashboard-shell"
+     id="billingDashboardApp"
+     data-billing-url="@Url.Action("Billing", "Dashboard")"
+     data-initial-year="@Model.InitialYear"
+     data-initial-period="@Model.InitialPeriodKind.ToKey()"
+     data-initial-value="@Model.InitialPeriodValue">
+    <section class="dashboard-hero">
+        <div class="dashboard-hero__content">
+            <div class="dashboard-pill-row">
+                <span class="dashboard-pill">Seccion 1</span>
+                <span class="dashboard-pill dashboard-pill--soft">Facturacion</span>
+            </div>
+            <h1 class="dashboard-title">Dashboard financiero</h1>
+            <p class="dashboard-subtitle">
+                Un tablero estilo control ejecutivo para seguir facturacion, recaudo, IVA, retenciones y alertas operativas
+                sobre <span class="dashboard-highlight">cr07a_facturacion</span>.
+            </p>
+            <div class="dashboard-hero__facts">
+                <div class="dashboard-fact">
+                    <span class="dashboard-fact__label">Comparativo</span>
+                    <strong id="dashboardCompareLabel">Mismo periodo del a&ntilde;o anterior</strong>
+                </div>
+                <div class="dashboard-fact">
+                    <span class="dashboard-fact__label">Resolucion</span>
+                    <strong id="dashboardGranularityLabel">Mensual</strong>
+                </div>
+                <div class="dashboard-fact">
+                    <span class="dashboard-fact__label">Registros</span>
+                    <strong id="dashboardRecordCount">0</strong>
+                </div>
+            </div>
+        </div>
+        <aside class="dashboard-user-card">
+            <span class="dashboard-user-card__label">Acceso actual</span>
+            <strong class="dashboard-user-card__value">@Model.CurrentUser.Email</strong>
+            <span class="dashboard-user-card__caption">La comparacion siempre enfrenta el mismo rango contra el mismo periodo del a&ntilde;o anterior.</span>
+        </aside>
+    </section>
+
+    <section class="dashboard-toolbar">
+        <div class="dashboard-filters">
+            <div class="dashboard-filter">
+                <label class="dashboard-filter__label" for="dashboardYearFilter">A&ntilde;o</label>
+                <select id="dashboardYearFilter" class="form-select dashboard-select"></select>
+            </div>
+            <div class="dashboard-filter">
+                <label class="dashboard-filter__label" for="dashboardPeriodFilter">Periodo</label>
+                <select id="dashboardPeriodFilter" class="form-select dashboard-select">
+                    <option value="month">Mes</option>
+                    <option value="quarter">Trimestre</option>
+                    <option value="semester">Semestre</option>
+                    <option value="year">Anual</option>
+                </select>
+            </div>
+            <div class="dashboard-filter">
+                <label class="dashboard-filter__label" for="dashboardValueFilter">Detalle</label>
+                <select id="dashboardValueFilter" class="form-select dashboard-select"></select>
+            </div>
+        </div>
+        <div class="dashboard-toolbar__actions">
+            <div class="dashboard-toolbar__summary">
+                <span class="dashboard-toolbar__summary-label">Periodo activo</span>
+                <strong id="dashboardPeriodLabel">Cargando...</strong>
+                <span id="dashboardDateRangeLabel">-</span>
+            </div>
+            <button type="button" class="btn btn-primary dashboard-refresh-btn" id="dashboardRefreshBtn">Actualizar</button>
+        </div>
+    </section>
+
+    <div id="dashboardStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+    <section class="dashboard-kpis" id="billingKpisContainer"></section>
+
+    <section class="dashboard-grid">
+        <article class="dashboard-panel dashboard-panel--wide">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Tendencias</div>
+                    <h2 class="dashboard-panel__title">Facturacion, recaudo y retenciones</h2>
+                </div>
+            </div>
+            <div class="dashboard-trends" id="billingTrendsContainer"></div>
+        </article>
+
+        <article class="dashboard-panel">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Impuestos retenidos</div>
+                    <h2 class="dashboard-panel__title">Retenciones a nuestro favor</h2>
+                </div>
+            </div>
+            <div class="dashboard-retentions" id="billingRetentionsContainer"></div>
+        </article>
+
+        <article class="dashboard-panel dashboard-panel--wide">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Composicion</div>
+                    <h2 class="dashboard-panel__title">Facturacion por vertical y tipo de contrato</h2>
+                </div>
+            </div>
+            <div class="dashboard-verticals" id="billingVerticalsContainer"></div>
+        </article>
+
+        <article class="dashboard-panel">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Clientes</div>
+                    <h2 class="dashboard-panel__title">Facturacion por cliente</h2>
+                </div>
+            </div>
+            <div class="dashboard-clients" id="billingClientsContainer"></div>
+        </article>
+
+        <article class="dashboard-panel dashboard-panel--wide">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Pendientes</div>
+                    <h2 class="dashboard-panel__title">Facturas sin pago</h2>
+                </div>
+            </div>
+            <div class="dashboard-table-wrap">
+                <table class="table dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Factura</th>
+                            <th>Cliente</th>
+                            <th>Vertical</th>
+                            <th>Contrato</th>
+                            <th>Emision</th>
+                            <th>Antiguedad</th>
+                            <th class="text-end">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="billingUnpaidBody"></tbody>
+                </table>
+            </div>
+        </article>
+
+        <article class="dashboard-panel dashboard-panel--wide">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Calidad del recaudo</div>
+                    <h2 class="dashboard-panel__title">Facturas con diferencia</h2>
+                </div>
+            </div>
+            <div class="dashboard-table-wrap">
+                <table class="table dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Factura</th>
+                            <th>Cliente</th>
+                            <th>Vertical</th>
+                            <th>Fecha pago</th>
+                            <th class="text-end">Factura</th>
+                            <th class="text-end">Pago</th>
+                            <th class="text-end">Retenciones</th>
+                            <th class="text-end">Diferencia</th>
+                        </tr>
+                    </thead>
+                    <tbody id="billingDifferenceBody"></tbody>
+                </table>
+            </div>
+        </article>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/dashboard.js" asp-append-version="true"></script>
+}
