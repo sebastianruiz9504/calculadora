@@ -36,7 +36,6 @@
 }
 
 .dashboard-hero__content,
-.dashboard-toolbar,
 .dashboard-panel__header,
 .dashboard-kpi__header,
 .dashboard-kpi__footer,
@@ -51,7 +50,16 @@
 }
 
 .dashboard-hero__content {
-    align-items: stretch;
+    display: grid;
+    gap: 10px;
+}
+
+.dashboard-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
 }
 
 .dashboard-pill-row,
@@ -217,7 +225,7 @@
 .dashboard-kpis {
     display: grid;
     gap: 16px;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .dashboard-kpi {
@@ -225,6 +233,12 @@
     gap: 12px;
     padding: 18px;
     background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    grid-column: span 2;
+}
+
+.dashboard-kpi:nth-child(4),
+.dashboard-kpi:nth-child(5) {
+    grid-column: span 3;
 }
 
 .dashboard-kpi--positive {
@@ -272,6 +286,54 @@
 .dashboard-kpi__secondary {
     color: var(--dashboard-muted);
     font-size: 14px;
+}
+
+.dashboard-kpi__secondary {
+    align-items: center;
+}
+
+.dashboard-kpi__breakdowns {
+    display: grid;
+    gap: 10px;
+    padding-top: 4px;
+}
+
+.dashboard-kpi__breakdown {
+    display: grid;
+    gap: 6px;
+}
+
+.dashboard-kpi__breakdown-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--dashboard-ink);
+    font-size: 13px;
+}
+
+.dashboard-kpi__breakdown-label {
+    font-weight: 600;
+}
+
+.dashboard-kpi__breakdown-value {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+}
+
+.dashboard-kpi__breakdown-track {
+    width: 100%;
+    height: 10px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e7eef7;
+}
+
+.dashboard-kpi__breakdown-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--dashboard-brand), #63a7e9);
 }
 
 .dashboard-grid {
@@ -461,6 +523,16 @@
         align-items: stretch;
     }
 
+    .dashboard-kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-kpi,
+    .dashboard-kpi:nth-child(4),
+    .dashboard-kpi:nth-child(5) {
+        grid-column: span 1;
+    }
+
     .dashboard-user-card {
         max-width: none;
     }
@@ -491,5 +563,9 @@
 
     .dashboard-kpi__value {
         font-size: 24px;
+    }
+
+    .dashboard-kpis {
+        grid-template-columns: 1fr;
     }
 }

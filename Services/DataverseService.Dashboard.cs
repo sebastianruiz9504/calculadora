@@ -152,6 +152,7 @@ public sealed partial class DataverseService
             _dashboardBillingInvoiceNumberField,
             _dashboardBillingCompanyTaxIdField,
             _dashboardBillingClientField,
+            BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
             _dashboardBillingVerticalField,
             _dashboardBillingContractTypeField,
             _dashboardBillingEmissionDateField,
@@ -267,12 +268,36 @@ public sealed partial class DataverseService
         var previousCopiersPortfolio = SumCurrency(
             compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment),
             static record => record.TotalInvoice);
+        var cloudRows = currentEmission
+            .Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption)
+            .ToList();
+        var copiersRows = currentEmission
+            .Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption)
+            .ToList();
 
         return new[]
         {
             BuildBillingKpi("total-billing", "Facturacion total", "Emitida con fecha de emision dentro del periodo.", totalBilling, previousTotalBilling, "currency", "Facturas", currentEmission.Count.ToString("N0", DashboardCulture)),
-            BuildBillingKpi("cloud-billing", "Facturacion Vertical Cloud", "Facturacion emitida en Cloud.", currentCloudBilling, previousCloudBilling, "currency", "Facturas Cloud", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCloudOption).ToString("N0", DashboardCulture)),
-            BuildBillingKpi("copiers-billing", "Facturacion Vertical Copiers", "Facturacion emitida en Copiers.", currentCopiersBilling, previousCopiersBilling, "currency", "Facturas Copiers", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption).ToString("N0", DashboardCulture)),
+            BuildBillingKpi(
+                "cloud-billing",
+                "Facturacion Vertical Cloud",
+                "Facturacion emitida en Cloud.",
+                currentCloudBilling,
+                previousCloudBilling,
+                "currency",
+                "Participacion periodo",
+                FormatPercentValue(totalBilling == 0m ? 0m : (currentCloudBilling / totalBilling) * 100m),
+                breakdowns: BuildVerticalContractBreakdowns(cloudRows)),
+            BuildBillingKpi(
+                "copiers-billing",
+                "Facturacion Vertical Copiers",
+                "Facturacion emitida en Copiers.",
+                currentCopiersBilling,
+                previousCopiersBilling,
+                "currency",
+                "Participacion periodo",
+                FormatPercentValue(totalBilling == 0m ? 0m : (currentCopiersBilling / totalBilling) * 100m),
+                breakdowns: BuildVerticalContractBreakdowns(copiersRows)),
             BuildBillingKpi("cloud-portfolio", "Cartera Cloud", "Facturas Cloud emitidas y aun sin pago.", currentCloudPortfolio, previousCloudPortfolio, "currency", "Pendientes", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment).ToString("N0", DashboardCulture), lowerIsBetter: true),
             BuildBillingKpi("copiers-portfolio", "Cartera Copiers", "Facturas Copiers emitidas y aun sin pago.", currentCopiersPortfolio, previousCopiersPortfolio, "currency", "Pendientes", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment).ToString("N0", DashboardCulture), lowerIsBetter: true)
         };
@@ -287,6 +312,7 @@ public sealed partial class DataverseService
         string valueFormat,
         string secondaryLabel,
         string secondaryValue,
+        IReadOnlyList<BillingKpiBreakdownDto>? breakdowns = null,
         bool lowerIsBetter = false)
     {
         return new BillingKpiDto
@@ -300,7 +326,37 @@ public sealed partial class DataverseService
             ValueFormat = valueFormat,
             Tone = ResolveTrendTone(value, previousValue, lowerIsBetter),
             SecondaryLabel = secondaryLabel,
-            SecondaryValue = secondaryValue
+            SecondaryValue = secondaryValue,
+            Breakdowns = breakdowns ?? Array.Empty<BillingKpiBreakdownDto>()
+        };
+    }
+
+    private IReadOnlyList<BillingKpiBreakdownDto> BuildVerticalContractBreakdowns(IReadOnlyList<BillingRecordRow> rows)
+    {
+        var total = SumCurrency(rows, static row => row.TotalInvoice);
+        var mensual = SumCurrency(
+            rows.Where(static row => row.ContractTypeOptionValue == DashboardContractTypeMonthlyOption),
+            static row => row.TotalInvoice);
+        var oneTime = SumCurrency(
+            rows.Where(static row => row.ContractTypeOptionValue == DashboardContractTypeOneTimeOption),
+            static row => row.TotalInvoice);
+
+        return new[]
+        {
+            new BillingKpiBreakdownDto
+            {
+                Key = "mensual",
+                Label = "Mensual",
+                Value = mensual,
+                SharePercent = total == 0m ? 0m : RoundCurrency((mensual / total) * 100m)
+            },
+            new BillingKpiBreakdownDto
+            {
+                Key = "onetime",
+                Label = "OneTime",
+                Value = oneTime,
+                SharePercent = total == 0m ? 0m : RoundCurrency((oneTime / total) * 100m)
+            }
         };
     }
 
@@ -753,16 +809,19 @@ public sealed partial class DataverseService
 
     private string ReadDashboardClientName(JsonElement item)
     {
+        var configuredLookupProperty = BuildDashboardLookupValuePropertyName(_dashboardBillingClientField);
         var lookupProperty = DetectLookupValueProperty(
             item,
             new[]
             {
-                $"_{_dashboardBillingClientField}_value",
+                configuredLookupProperty,
                 "_cr07a_clientenit_value",
+                "_cr07a_clientenitid_value",
                 "_cr07a_cliente_value",
+                "_cr07a_clienteid_value",
                 "_cr07a_clientelookup_value"
             },
-            "client");
+            "cliente");
 
         var scannedClientValue = item.EnumerateObject()
             .Where(property =>
@@ -776,11 +835,23 @@ public sealed partial class DataverseService
 
         return FirstNonEmpty(
             ReadLookupFormattedValue(item, lookupProperty),
+            ReadLookupFormattedValue(item, configuredLookupProperty),
             ReadString(item, $"{_dashboardBillingClientField}{FormattedValueAnnotationSuffix}"),
             ReadString(item, $"{_dashboardBillingClientField}_name"),
             ReadString(item, _dashboardBillingClientField),
             scannedClientValue,
             "Cliente sin nombre");
+    }
+
+    private static string BuildDashboardLookupValuePropertyName(string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName))
+            return "";
+
+        var trimmed = fieldName.Trim();
+        return trimmed.StartsWith("_", StringComparison.OrdinalIgnoreCase) && trimmed.EndsWith("_value", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : $"_{trimmed}_value";
     }
 
     private static decimal SumCurrency(IEnumerable<BillingRecordRow> rows, Func<BillingRecordRow, decimal> selector) =>

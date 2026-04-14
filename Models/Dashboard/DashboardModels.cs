@@ -89,6 +89,15 @@ public sealed class BillingKpiDto
     public string Tone { get; set; } = "neutral";
     public string SecondaryLabel { get; set; } = "";
     public string SecondaryValue { get; set; } = "";
+    public IReadOnlyList<BillingKpiBreakdownDto> Breakdowns { get; set; } = Array.Empty<BillingKpiBreakdownDto>();
+}
+
+public sealed class BillingKpiBreakdownDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public decimal Value { get; set; }
+    public decimal SharePercent { get; set; }
 }
 
 public sealed class BillingTrendPointDto

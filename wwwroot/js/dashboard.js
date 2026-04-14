@@ -215,6 +215,28 @@
             return;
         }
 
+        const renderBreakdowns = breakdowns => {
+            if (!Array.isArray(breakdowns) || !breakdowns.length) {
+                return "";
+            }
+
+            return `
+                <div class="dashboard-kpi__breakdowns">
+                    ${breakdowns.map(item => `
+                        <div class="dashboard-kpi__breakdown">
+                            <div class="dashboard-kpi__breakdown-head">
+                                <span class="dashboard-kpi__breakdown-label">${escapeHtml(item.label)}</span>
+                                <span class="dashboard-kpi__breakdown-value">${escapeHtml(currencyFormatter.format(Number(item.value || 0)))} · ${escapeHtml(formatPercent(item.sharePercent || 0))}</span>
+                            </div>
+                            <div class="dashboard-kpi__breakdown-track">
+                                <span class="dashboard-kpi__breakdown-fill" style="width:${Math.min(Number(item.sharePercent || 0), 100)}%"></span>
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        };
+
         kpisContainer.innerHTML = kpis.map(kpi => `
             <article class="dashboard-kpi dashboard-kpi--${escapeHtml(kpi.tone || "neutral")}">
                 <div class="dashboard-kpi__header">
@@ -231,6 +253,7 @@
                     <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
                     <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
                 </div>
+                ${renderBreakdowns(kpi.breakdowns)}
             </article>
         `).join("");
     }
