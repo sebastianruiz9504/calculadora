@@ -8,7 +8,7 @@ using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
 
-[ModuleAuthorize(AppModule.Disabled)]
+[ModuleAuthorize(AppModule.Metricas)]
 public sealed class MetricasController : Controller
 {
     private readonly IDataverseService _dataverse;

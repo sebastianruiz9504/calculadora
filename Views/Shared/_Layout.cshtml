@@ -20,7 +20,7 @@
     }
 
     var canAccessPortalProveedores = layoutCurrentUser?.HasModule(AppModuleCatalog.PortalProveedores.OptionValue) == true;
-    var canAccessMetricas = false;
+    var canAccessMetricas = layoutCurrentUser?.HasModule(AppModuleCatalog.Metricas.OptionValue) == true;
     var canAccessDashboard = layoutCurrentUser?.HasModule(AppModuleCatalog.Dashboard.OptionValue) == true;
     var canAccessNomina = layoutCurrentUser?.HasModule(AppModuleCatalog.Nomina.OptionValue) == true;
     var canAccessRh = layoutCurrentUser?.HasModule(AppModuleCatalog.Rh.OptionValue) == true;

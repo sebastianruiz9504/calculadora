@@ -13,7 +13,8 @@ public enum AppModule
     PortalProveedores = 6,
     GestionHumana = 7,
     Permissions = 8,
-    Dashboard = 9
+    Dashboard = 9,
+    Metricas = 10
 }
 
 public sealed class AppModuleDefinition
@@ -120,6 +121,16 @@ public static class AppModuleCatalog
         Controller = "Dashboard"
     };
 
+    public static readonly AppModuleDefinition Metricas = new()
+    {
+        Key = AppModule.Metricas,
+        Label = "Metricas",
+        Category = "Analitica",
+        Description = "Consulta puntajes, metas y graficas por vendedor o por equipo en una sola vista.",
+        OptionValue = 645250009,
+        Controller = "Metricas"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -130,6 +141,7 @@ public static class AppModuleCatalog
         PortalProveedores,
         GestionHumana,
         Dashboard,
+        Metricas,
         Permissions
     };
 
