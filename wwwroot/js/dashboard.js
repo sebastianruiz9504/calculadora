@@ -18,6 +18,9 @@
     const recordCount = document.getElementById("dashboardRecordCount");
     const portfolioAsOfLabel = document.getElementById("portfolioAsOfLabel");
     const portfolioFocusLabel = document.getElementById("portfolioFocusLabel");
+    const portfolioClientSearch = document.getElementById("portfolioClientSearch");
+    const portfolioSortFilter = document.getElementById("portfolioSortFilter");
+    const portfolioResultsCount = document.getElementById("portfolioResultsCount");
     const billingKpisContainer = document.getElementById("billingKpisContainer");
     const portfolioKpisContainer = document.getElementById("portfolioKpisContainer");
     const trendsContainer = document.getElementById("billingTrendsContainer");
@@ -49,6 +52,8 @@
         value: currentValue,
         billingDashboard: null,
         portfolioDashboard: null,
+        portfolioSearchTerm: "",
+        portfolioSort: "age",
         billingLoading: false,
         portfolioLoading: false
     };
@@ -60,6 +65,15 @@
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#39;");
+    }
+
+    function normalizeText(value) {
+        return (value ?? "")
+            .toString()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
     }
 
     function formatMetric(value, format) {
@@ -115,9 +129,11 @@
 
     function setPortfolioLoading(loading) {
         state.portfolioLoading = loading;
-        if (portfolioRefreshButton) {
-            portfolioRefreshButton.disabled = loading;
-        }
+        [portfolioRefreshButton, portfolioClientSearch, portfolioSortFilter].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
     }
 
     function buildYearOptions() {
@@ -492,6 +508,37 @@
             : '<div class="dashboard-table__empty">No hay retenciones registradas en este periodo.</div>';
     }
 
+    function getFilteredPortfolioRows() {
+        const rows = Array.isArray(state.portfolioDashboard?.overdueInvoices)
+            ? [...state.portfolioDashboard.overdueInvoices]
+            : [];
+        const searchTerm = normalizeText(state.portfolioSearchTerm);
+
+        const filteredRows = !searchTerm
+            ? rows
+            : rows.filter(row => normalizeText(row.clientName).includes(searchTerm));
+
+        filteredRows.sort((left, right) => {
+            if (state.portfolioSort === "value") {
+                const valueDiff = Number(right.totalInvoice || 0) - Number(left.totalInvoice || 0);
+                if (valueDiff !== 0) {
+                    return valueDiff;
+                }
+
+                return Number(right.ageDays || 0) - Number(left.ageDays || 0);
+            }
+
+            const ageDiff = Number(right.ageDays || 0) - Number(left.ageDays || 0);
+            if (ageDiff !== 0) {
+                return ageDiff;
+            }
+
+            return Number(right.totalInvoice || 0) - Number(left.totalInvoice || 0);
+        });
+
+        return filteredRows;
+    }
+
     function renderOverdueTable(rows, tbody) {
         if (!tbody) {
             return;
@@ -510,6 +557,19 @@
                 </tr>
             `).join("")
             : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas vencidas sin pago en este momento.</td></tr>';
+    }
+
+    function renderPortfolioTable() {
+        const allRows = Array.isArray(state.portfolioDashboard?.overdueInvoices)
+            ? state.portfolioDashboard.overdueInvoices
+            : [];
+        const filteredRows = getFilteredPortfolioRows();
+
+        if (portfolioResultsCount) {
+            portfolioResultsCount.textContent = `Mostrando ${numberFormatter.format(filteredRows.length)} de ${numberFormatter.format(allRows.length)} registros`;
+        }
+
+        renderOverdueTable(filteredRows, portfolioUnpaidBody);
     }
 
     function updateHeroForBilling(dashboard) {
@@ -601,7 +661,7 @@
             const dashboard = await fetchJson(buildPortfolioUrl());
             updatePortfolioContext(dashboard);
             renderPortfolioKpis(dashboard);
-            renderOverdueTable(Array.isArray(dashboard?.overdueInvoices) ? dashboard.overdueInvoices : [], portfolioUnpaidBody);
+            renderPortfolioTable();
             setStatus(portfolioStatusBanner, "", "");
         } catch (error) {
             setStatus(portfolioStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar la cartera.");
@@ -631,6 +691,14 @@
 
     refreshButton?.addEventListener("click", loadBilling);
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
+    portfolioClientSearch?.addEventListener("input", () => {
+        state.portfolioSearchTerm = portfolioClientSearch.value || "";
+        renderPortfolioTable();
+    });
+    portfolioSortFilter?.addEventListener("change", () => {
+        state.portfolioSort = portfolioSortFilter.value || "age";
+        renderPortfolioTable();
+    });
 
     tabButtons.forEach(button => {
         button.addEventListener("click", () => {
@@ -643,6 +711,7 @@
 
     buildYearOptions();
     periodFilter && (periodFilter.value = state.period);
+    portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     buildValueOptions();
     loadBilling();
 })();

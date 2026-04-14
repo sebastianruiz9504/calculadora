@@ -129,8 +129,27 @@
                         <div class="dashboard-panel__kicker">Pendientes</div>
                         <h2 class="dashboard-panel__title">Facturas vencidas sin pago</h2>
                     </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <label class="dashboard-search" for="portfolioClientSearch">
+                            <span class="dashboard-search__label">Cliente</span>
+                            <input type="search"
+                                   id="portfolioClientSearch"
+                                   class="form-control dashboard-search__input"
+                                   placeholder="Buscar cliente..." />
+                        </label>
+                        <label class="dashboard-filter dashboard-filter--compact" for="portfolioSortFilter">
+                            <span class="dashboard-filter__label">Ordenar por</span>
+                            <select id="portfolioSortFilter" class="form-select dashboard-select dashboard-select--compact">
+                                <option value="age">Mayor antiguedad</option>
+                                <option value="value">Mayor valor</option>
+                            </select>
+                        </label>
+                    </div>
                 </div>
-                <div class="dashboard-table-wrap">
+                <div class="dashboard-table-meta">
+                    <span id="portfolioResultsCount">Mostrando 0 registros</span>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
                     <table class="table dashboard-table">
                         <thead>
                             <tr>

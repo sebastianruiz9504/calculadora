@@ -655,7 +655,6 @@ public sealed partial class DataverseService
             })
             .OrderByDescending(static record => record.AgeDays)
             .ThenByDescending(static record => record.TotalInvoice)
-            .Take(12)
             .ToList();
     }
 

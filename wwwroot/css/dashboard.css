@@ -67,6 +67,7 @@
 
 .dashboard-hero__content,
 .dashboard-panel__header,
+.dashboard-panel__actions,
 .dashboard-kpi__header,
 .dashboard-kpi__footer,
 .dashboard-kpi__secondary,
@@ -403,6 +404,55 @@
     letter-spacing: -.02em;
 }
 
+.dashboard-panel__actions {
+    justify-content: flex-end;
+}
+
+.dashboard-panel__actions--table {
+    align-items: flex-end;
+}
+
+.dashboard-table-meta {
+    color: var(--dashboard-muted);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.dashboard-search {
+    min-width: 260px;
+    display: grid;
+    gap: 8px;
+}
+
+.dashboard-search__label {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.dashboard-search__input {
+    min-height: 48px;
+    border-radius: 16px;
+    border-color: #c8d6e6;
+    color: var(--dashboard-ink);
+    box-shadow: none;
+}
+
+.dashboard-search__input:focus {
+    border-color: var(--dashboard-brand);
+    box-shadow: 0 0 0 .2rem rgba(15, 108, 189, .14);
+}
+
+.dashboard-filter--compact {
+    min-width: 210px;
+}
+
+.dashboard-select--compact {
+    min-width: 210px;
+}
+
 .dashboard-trends,
 .dashboard-retentions {
     display: grid;
@@ -516,6 +566,13 @@
     overflow-x: auto;
 }
 
+.dashboard-table-wrap--tall {
+    max-height: 68vh;
+    overflow: auto;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 20px;
+}
+
 .dashboard-table {
     width: 100%;
     margin: 0;
@@ -523,6 +580,10 @@
 }
 
 .dashboard-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fdfefe;
     border-bottom-color: rgba(148, 163, 184, 0.28);
     color: var(--dashboard-muted);
     font-size: 12px;
@@ -562,7 +623,8 @@
 
 @media (max-width: 991px) {
     .dashboard-toolbar,
-    .dashboard-toolbar__actions {
+    .dashboard-toolbar__actions,
+    .dashboard-panel__actions {
         flex-direction: column;
         align-items: stretch;
     }
@@ -583,6 +645,12 @@
 
     .dashboard-user-card {
         max-width: none;
+    }
+
+    .dashboard-search,
+    .dashboard-filter--compact,
+    .dashboard-select--compact {
+        min-width: 100%;
     }
 }
 
