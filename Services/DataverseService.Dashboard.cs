@@ -202,10 +202,7 @@ public sealed partial class DataverseService
                 ReadString(item, primaryNameField),
                 recordId),
             CompanyTaxId = ReadString(item, _dashboardBillingCompanyTaxIdField).Trim(),
-            ClientName = FirstNonEmpty(
-                ReadString(item, $"{_dashboardBillingClientField}{FormattedValueAnnotationSuffix}"),
-                ReadString(item, _dashboardBillingClientField),
-                "Cliente sin nombre"),
+            ClientName = ReadDashboardClientName(item),
             VerticalOptionValue = verticalOption,
             VerticalLabel = FirstNonEmpty(
                 ReadString(item, $"{_dashboardBillingVerticalField}{FormattedValueAnnotationSuffix}"),
@@ -246,26 +243,38 @@ public sealed partial class DataverseService
         IReadOnlyList<BillingDifferenceInvoiceDto> differenceInvoices,
         decimal previousDifferenceAmount)
     {
-        var currentUnpaidAmount = RoundCurrency(unpaidInvoices.Sum(static item => item.TotalInvoice));
-        var currentDifferenceAmount = RoundCurrency(differenceInvoices.Sum(item => Math.Abs(item.Difference)));
-        var currentAverageTicket = currentEmission.Count == 0 ? 0m : RoundCurrency(totalBilling / currentEmission.Count);
-        var previousAverageTicket = compareEmission.Count == 0
-            ? 0m
-            : RoundCurrency(previousTotalBilling / compareEmission.Count);
-        var currentAverageDaysToPay = CalculateAverageDaysToPay(currentEmission);
-        var previousAverageDaysToPay = CalculateAverageDaysToPay(compareEmission);
-        var currentCoverage = CalculatePaymentCoverage(currentEmission);
+        var currentCloudBilling = SumCurrency(
+            currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption),
+            static record => record.TotalInvoice);
+        var previousCloudBilling = SumCurrency(
+            compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption),
+            static record => record.TotalInvoice);
+        var currentCopiersBilling = SumCurrency(
+            currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption),
+            static record => record.TotalInvoice);
+        var previousCopiersBilling = SumCurrency(
+            compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption),
+            static record => record.TotalInvoice);
+        var currentCloudPortfolio = SumCurrency(
+            currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment),
+            static record => record.TotalInvoice);
+        var previousCloudPortfolio = SumCurrency(
+            compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment),
+            static record => record.TotalInvoice);
+        var currentCopiersPortfolio = SumCurrency(
+            currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment),
+            static record => record.TotalInvoice);
+        var previousCopiersPortfolio = SumCurrency(
+            compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment),
+            static record => record.TotalInvoice);
 
         return new[]
         {
             BuildBillingKpi("total-billing", "Facturacion total", "Emitida con fecha de emision dentro del periodo.", totalBilling, previousTotalBilling, "currency", "Facturas", currentEmission.Count.ToString("N0", DashboardCulture)),
-            BuildBillingKpi("collections", "Recaudo del periodo", "Pagos registrados por fecha de pago en el periodo.", totalCollections, previousTotalCollections, "currency", "Pagos", currentPayments.Count.ToString("N0", DashboardCulture)),
-            BuildBillingKpi("vat", "IVA total", "Suma del IVA sobre facturas emitidas en el periodo.", totalVat, previousTotalVat, "currency", "Sobre facturacion", FormatPercentValue(totalBilling == 0m ? 0m : (totalVat / totalBilling) * 100m)),
-            BuildBillingKpi("retentions", "Retenciones a favor", "ReteICA, reteIVA y retefuente basadas en fecha de pago.", totalRetentions, previousTotalRetentions, "currency", "Conceptos", "3"),
-            BuildBillingKpi("unpaid", "Facturas sin pago", "Monto pendiente de facturas emitidas sin fecha de pago.", currentUnpaidAmount, previousUnpaidAmount, "currency", "Pendientes", unpaidInvoices.Count.ToString("N0", DashboardCulture), lowerIsBetter: true),
-            BuildBillingKpi("difference", "Descuadre pagado", "Suma absoluta de cr07a_diferencia en facturas pagadas.", currentDifferenceAmount, previousDifferenceAmount, "currency", "Facturas con diferencia", differenceInvoices.Count.ToString("N0", DashboardCulture), lowerIsBetter: true),
-            BuildBillingKpi("average-ticket", "Ticket promedio", "Valor promedio por factura emitida en el periodo.", currentAverageTicket, previousAverageTicket, "currency", "Cliente top", currentEmission.OrderByDescending(static record => record.TotalInvoice).FirstOrDefault()?.ClientName ?? "Sin datos"),
-            BuildBillingKpi("average-days", "Dias promedio de pago", "Tiempo promedio entre emision y pago sobre facturas ya pagadas.", currentAverageDaysToPay, previousAverageDaysToPay, "days", "Cobertura de pago", FormatPercentValue(currentCoverage), lowerIsBetter: true)
+            BuildBillingKpi("cloud-billing", "Facturacion Vertical Cloud", "Facturacion emitida en Cloud.", currentCloudBilling, previousCloudBilling, "currency", "Facturas Cloud", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCloudOption).ToString("N0", DashboardCulture)),
+            BuildBillingKpi("copiers-billing", "Facturacion Vertical Copiers", "Facturacion emitida en Copiers.", currentCopiersBilling, previousCopiersBilling, "currency", "Facturas Copiers", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption).ToString("N0", DashboardCulture)),
+            BuildBillingKpi("cloud-portfolio", "Cartera Cloud", "Facturas Cloud emitidas y aun sin pago.", currentCloudPortfolio, previousCloudPortfolio, "currency", "Pendientes", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCloudOption && !record.HasPayment).ToString("N0", DashboardCulture), lowerIsBetter: true),
+            BuildBillingKpi("copiers-portfolio", "Cartera Copiers", "Facturas Copiers emitidas y aun sin pago.", currentCopiersPortfolio, previousCopiersPortfolio, "currency", "Pendientes", currentEmission.Count(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption && !record.HasPayment).ToString("N0", DashboardCulture), lowerIsBetter: true)
         };
     }
 
@@ -740,6 +749,38 @@ public sealed partial class DataverseService
             return "empty";
 
         return value.Trim().ToLowerInvariant();
+    }
+
+    private string ReadDashboardClientName(JsonElement item)
+    {
+        var lookupProperty = DetectLookupValueProperty(
+            item,
+            new[]
+            {
+                $"_{_dashboardBillingClientField}_value",
+                "_cr07a_clientenit_value",
+                "_cr07a_cliente_value",
+                "_cr07a_clientelookup_value"
+            },
+            "client");
+
+        var scannedClientValue = item.EnumerateObject()
+            .Where(property =>
+                property.Value.ValueKind == JsonValueKind.String
+                && (property.Name.Contains("cliente", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Contains("client", StringComparison.OrdinalIgnoreCase))
+                && !property.Name.EndsWith("_value", StringComparison.OrdinalIgnoreCase)
+                && !property.Name.EndsWith("id", StringComparison.OrdinalIgnoreCase))
+            .Select(property => property.Value.GetString())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        return FirstNonEmpty(
+            ReadLookupFormattedValue(item, lookupProperty),
+            ReadString(item, $"{_dashboardBillingClientField}{FormattedValueAnnotationSuffix}"),
+            ReadString(item, $"{_dashboardBillingClientField}_name"),
+            ReadString(item, _dashboardBillingClientField),
+            scannedClientValue,
+            "Cliente sin nombre");
     }
 
     private static decimal SumCurrency(IEnumerable<BillingRecordRow> rows, Func<BillingRecordRow, decimal> selector) =>

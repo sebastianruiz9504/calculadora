@@ -81,7 +81,7 @@
     <section class="dashboard-kpis" id="billingKpisContainer"></section>
 
     <section class="dashboard-grid">
-        <article class="dashboard-panel dashboard-panel--wide">
+        <article class="dashboard-panel dashboard-panel--full">
             <div class="dashboard-panel__header">
                 <div>
                     <div class="dashboard-panel__kicker">Tendencias</div>
@@ -91,7 +91,7 @@
             <div class="dashboard-trends" id="billingTrendsContainer"></div>
         </article>
 
-        <article class="dashboard-panel">
+        <article class="dashboard-panel dashboard-panel--full">
             <div class="dashboard-panel__header">
                 <div>
                     <div class="dashboard-panel__kicker">Impuestos retenidos</div>
@@ -101,27 +101,7 @@
             <div class="dashboard-retentions" id="billingRetentionsContainer"></div>
         </article>
 
-        <article class="dashboard-panel dashboard-panel--wide">
-            <div class="dashboard-panel__header">
-                <div>
-                    <div class="dashboard-panel__kicker">Composicion</div>
-                    <h2 class="dashboard-panel__title">Facturacion por vertical y tipo de contrato</h2>
-                </div>
-            </div>
-            <div class="dashboard-verticals" id="billingVerticalsContainer"></div>
-        </article>
-
-        <article class="dashboard-panel">
-            <div class="dashboard-panel__header">
-                <div>
-                    <div class="dashboard-panel__kicker">Clientes</div>
-                    <h2 class="dashboard-panel__title">Facturacion por cliente</h2>
-                </div>
-            </div>
-            <div class="dashboard-clients" id="billingClientsContainer"></div>
-        </article>
-
-        <article class="dashboard-panel dashboard-panel--wide">
+        <article class="dashboard-panel dashboard-panel--full">
             <div class="dashboard-panel__header">
                 <div>
                     <div class="dashboard-panel__kicker">Pendientes</div>
@@ -142,32 +122,6 @@
                         </tr>
                     </thead>
                     <tbody id="billingUnpaidBody"></tbody>
-                </table>
-            </div>
-        </article>
-
-        <article class="dashboard-panel dashboard-panel--wide">
-            <div class="dashboard-panel__header">
-                <div>
-                    <div class="dashboard-panel__kicker">Calidad del recaudo</div>
-                    <h2 class="dashboard-panel__title">Facturas con diferencia</h2>
-                </div>
-            </div>
-            <div class="dashboard-table-wrap">
-                <table class="table dashboard-table">
-                    <thead>
-                        <tr>
-                            <th>Factura</th>
-                            <th>Cliente</th>
-                            <th>Vertical</th>
-                            <th>Fecha pago</th>
-                            <th class="text-end">Factura</th>
-                            <th class="text-end">Pago</th>
-                            <th class="text-end">Retenciones</th>
-                            <th class="text-end">Diferencia</th>
-                        </tr>
-                    </thead>
-                    <tbody id="billingDifferenceBody"></tbody>
                 </table>
             </div>
         </article>
