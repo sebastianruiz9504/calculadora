@@ -305,9 +305,9 @@
                 </div>
                 <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
                 <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
-                <div class="dashboard-kpi__secondary">
-                    <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
-                    <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
+                <div class="dashboard-kpi__alert">
+                    <span class="dashboard-kpi__alert-label">${escapeHtml(kpi.secondaryLabel || "")}</span>
+                    <strong class="dashboard-kpi__alert-value">${escapeHtml(kpi.secondaryValue || "")}</strong>
                 </div>
             </article>
         `).join("");

@@ -337,6 +337,30 @@
     align-items: center;
 }
 
+.dashboard-kpi__alert {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid #f3c7cf;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #fff5f7 0%, #fff0f3 100%);
+}
+
+.dashboard-kpi__alert-label {
+    color: #9f1239;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.dashboard-kpi__alert-value {
+    color: var(--dashboard-danger);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+}
+
 .dashboard-kpi__breakdowns {
     display: grid;
     gap: 10px;
