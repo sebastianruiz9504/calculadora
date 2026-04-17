@@ -22,6 +22,14 @@
     const billingKpisContainer = document.getElementById("billingKpisContainer");
     const trendsContainer = document.getElementById("billingTrendsContainer");
 
+    const copiersRefreshButton = document.getElementById("copiersRefreshBtn");
+    const copiersStatusBanner = document.getElementById("copiersStatusBanner");
+    const copiersAsOfLabel = document.getElementById("copiersAsOfLabel");
+    const copiersFocusLabel = document.getElementById("copiersFocusLabel");
+    const copiersResultsCount = document.getElementById("copiersResultsCount");
+    const copiersKpisContainer = document.getElementById("copiersKpisContainer");
+    const copiersBillingBody = document.getElementById("copiersBillingBody");
+
     const taxesReteFuenteDescription = document.getElementById("taxesReteFuenteDescription");
     const taxesReteIvaDescription = document.getElementById("taxesReteIvaDescription");
     const taxesReteIcaDescription = document.getElementById("taxesReteIcaDescription");
@@ -83,12 +91,14 @@
         period: currentPeriod,
         value: currentValue,
         billingDashboard: null,
+        copiersDashboard: null,
         taxesDashboard: null,
         portfolioDashboard: null,
         pnlDashboard: null,
         billingSignature: "",
         taxesSignature: "",
         pnlSignature: "",
+        copiersLoading: false,
         portfolioSearchTerm: "",
         portfolioSort: "age",
         pnlYear: currentYear,
@@ -131,6 +141,10 @@
 
     function formatMetric(value, format) {
         const numericValue = Number(value || 0);
+        if (format === "number") {
+            return numberFormatter.format(numericValue);
+        }
+
         if (format === "days") {
             return `${numberFormatter.format(numericValue)} dias`;
         }
@@ -183,6 +197,15 @@
     function setPortfolioLoading(loading) {
         state.portfolioLoading = loading;
         [portfolioRefreshButton, portfolioClientSearch, portfolioSortFilter].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+    }
+
+    function setCopiersLoading(loading) {
+        state.copiersLoading = loading;
+        [copiersRefreshButton].forEach(element => {
             if (element) {
                 element.disabled = loading;
             }
@@ -619,6 +642,10 @@
         return app.dataset.portfolioUrl || "";
     }
 
+    function buildCopiersUrl() {
+        return app.dataset.copiersUrl || "";
+    }
+
     function buildPnlUrl() {
         const params = new URLSearchParams({
             year: String(state.pnlYear),
@@ -733,6 +760,27 @@
         }
 
         portfolioKpisContainer.innerHTML = kpis.map(kpi => `
+            <article class="dashboard-kpi dashboard-kpi--neutral">
+                <div class="dashboard-kpi__header">
+                    <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
+                </div>
+                <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
+                <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
+                <div class="dashboard-kpi__alert">
+                    <span class="dashboard-kpi__alert-label">${escapeHtml(kpi.secondaryLabel || "")}</span>
+                    <strong class="dashboard-kpi__alert-value">${escapeHtml(kpi.secondaryValue || "")}</strong>
+                </div>
+            </article>
+        `).join("");
+    }
+
+    function renderCopiersKpis(dashboard) {
+        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
+        if (!copiersKpisContainer) {
+            return;
+        }
+
+        copiersKpisContainer.innerHTML = kpis.map(kpi => `
             <article class="dashboard-kpi dashboard-kpi--neutral">
                 <div class="dashboard-kpi__header">
                     <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
@@ -972,6 +1020,50 @@
             : '<tr><td colspan="7" class="dashboard-table__empty">No hay gastos con retefuente en este periodo.</td></tr>';
     }
 
+    function renderCopiersTable(dashboard) {
+        const rows = Array.isArray(dashboard?.rows)
+            ? [...dashboard.rows]
+            : [];
+
+        rows.sort((left, right) => {
+            const leftDay = Number(left.billingDay || 0) > 0 ? Number(left.billingDay || 0) : Number.MAX_SAFE_INTEGER;
+            const rightDay = Number(right.billingDay || 0) > 0 ? Number(right.billingDay || 0) : Number.MAX_SAFE_INTEGER;
+            if (leftDay !== rightDay) {
+                return leftDay - rightDay;
+            }
+
+            const clientCompare = normalizeText(left.clientName).localeCompare(normalizeText(right.clientName), "es");
+            if (clientCompare !== 0) {
+                return clientCompare;
+            }
+
+            return normalizeText(left.productName).localeCompare(normalizeText(right.productName), "es");
+        });
+
+        if (copiersResultsCount) {
+            copiersResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} registros`;
+        }
+
+        if (!copiersBillingBody) {
+            return;
+        }
+
+        copiersBillingBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.billingDayDisplay || "Sin dia")}</td>
+                    <td>${escapeHtml(row.clientName)}</td>
+                    <td>${escapeHtml(row.productName)}</td>
+                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}</td>
+                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.unitValueBeforeVat || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.unitValueWithVat || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalWithVat || 0)))}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="8" class="dashboard-table__empty">No hay registros de facturacion copiers disponibles.</td></tr>';
+    }
+
     function renderPnlTable(dashboard) {
         if (!pnlTableContainer) {
             return;
@@ -1144,6 +1236,12 @@
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
+    function updateHeroForCopiers(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.asOfDateLabel ? `Corte al ${dashboard.asOfDateLabel}` : "Corte actual");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Ordenado por dia de facturacion");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
     function updateHeroForPnl(dashboard) {
         compareLabel && (compareLabel.textContent = dashboard?.monthCutoffLabel ? `Corte a ${dashboard.monthCutoffLabel} ${dashboard.year || ""}` : "Corte P&L");
         granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "P&L mensual");
@@ -1182,6 +1280,16 @@
         }
     }
 
+    function updateCopiersContext(dashboard) {
+        state.copiersDashboard = dashboard;
+        copiersAsOfLabel && (copiersAsOfLabel.textContent = dashboard?.asOfDateLabel || "Sin corte");
+        copiersFocusLabel && (copiersFocusLabel.textContent = dashboard?.focusLabel || "Ordenado por dia de facturacion");
+
+        if (state.activeTab === "copiers") {
+            updateHeroForCopiers(dashboard);
+        }
+    }
+
     function updatePnlContext(dashboard) {
         state.pnlDashboard = dashboard;
         state.pnlYear = Number(dashboard?.year || state.pnlYear);
@@ -1209,7 +1317,7 @@
 
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
-            dashboardPeriodScope.hidden = state.activeTab === "portfolio" || state.activeTab === "pnl";
+            dashboardPeriodScope.hidden = state.activeTab === "portfolio" || state.activeTab === "copiers" || state.activeTab === "pnl";
         }
     }
 
@@ -1238,6 +1346,15 @@
                 updateHeroForPnl(state.pnlDashboard);
             } else {
                 loadPnl();
+            }
+            return;
+        }
+
+        if (tabKey === "copiers") {
+            if (state.copiersDashboard) {
+                updateHeroForCopiers(state.copiersDashboard);
+            } else {
+                loadCopiers();
             }
             return;
         }
@@ -1329,6 +1446,23 @@
         }
     }
 
+    async function loadCopiers() {
+        setCopiersLoading(true);
+        setStatus(copiersStatusBanner, "info", "Actualizando facturacion copiers...");
+
+        try {
+            const dashboard = await fetchJson(buildCopiersUrl());
+            updateCopiersContext(dashboard);
+            renderCopiersKpis(dashboard);
+            renderCopiersTable(dashboard);
+            setStatus(copiersStatusBanner, "", "");
+        } catch (error) {
+            setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar la facturacion copiers.");
+        } finally {
+            setCopiersLoading(false);
+        }
+    }
+
     async function loadPnl() {
         setPnlLoading(true);
         setStatus(pnlStatusBanner, "info", "Actualizando tablero P&L...");
@@ -1367,6 +1501,7 @@
 
     refreshButton?.addEventListener("click", loadActivePeriodTab);
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
+    copiersRefreshButton?.addEventListener("click", loadCopiers);
     pnlRefreshButton?.addEventListener("click", loadPnl);
     portfolioClientSearch?.addEventListener("input", () => {
         state.portfolioSearchTerm = portfolioClientSearch.value || "";

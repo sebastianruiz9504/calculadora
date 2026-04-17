@@ -10,6 +10,7 @@
 <div class="dashboard-shell"
      id="billingDashboardApp"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
+     data-copiers-url="@Url.Action("Copiers", "Dashboard")"
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
@@ -22,8 +23,9 @@
         <div class="dashboard-hero__content">
             <h1 class="dashboard-title">Dashboard financiero</h1>
             <p class="dashboard-subtitle">
-                Un tablero estilo control ejecutivo para seguir facturacion, recaudo, impuestos y alertas operativas
-                sobre <span class="dashboard-highlight">cr07a_facturacion</span>.
+                Un tablero estilo control ejecutivo para seguir facturacion, recaudo, impuestos, cartera, P&amp;L
+                y la facturacion de productos copiers sobre <span class="dashboard-highlight">cr07a_facturacion</span>
+                y <span class="dashboard-highlight">cr07a_productoscopiers</span>.
             </p>
             <div class="dashboard-hero__facts">
                 <div class="dashboard-fact">
@@ -43,12 +45,13 @@
         <aside class="dashboard-user-card">
             <span class="dashboard-user-card__label">Acceso actual</span>
             <strong class="dashboard-user-card__value">@Model.CurrentUser.Email</strong>
-            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior, Cartera muestra el corte actual de facturas vencidas sin pago y P&amp;L consolida ingresos y costos hasta el &uacute;ltimo mes con datos.</span>
+            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior, Cartera muestra el corte actual de facturas vencidas sin pago, P&amp;L consolida ingresos y costos hasta el &uacute;ltimo mes con datos y Facturaci&oacute;n Copiers ordena la tabla operativa de productos.</span>
         </aside>
     </section>
 
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Facturaci&oacute;n Copiers</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
@@ -156,6 +159,55 @@
                     </div>
                 </div>
                 <div class="dashboard-metric-grid" id="taxesReteIcaContainer"></div>
+            </article>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="copiers" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static">
+            <div class="dashboard-toolbar__summary">
+                <span class="dashboard-toolbar__summary-label">Corte actual</span>
+                <strong id="copiersAsOfLabel">Cargando...</strong>
+                <span id="copiersFocusLabel">Ordenado por dia de facturacion</span>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="copiersRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="copiersStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="dashboard-kpis dashboard-kpis--portfolio" id="copiersKpisContainer"></section>
+
+        <section class="dashboard-grid">
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Copiers</div>
+                        <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
+                        <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>.</p>
+                    </div>
+                </div>
+                <div class="dashboard-table-meta">
+                    <span id="copiersResultsCount">Mostrando 0 registros</span>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>Dia fact.</th>
+                                <th>Cliente</th>
+                                <th>Producto</th>
+                                <th class="text-end">Cantidad</th>
+                                <th class="text-end">Oper. incluidas</th>
+                                <th class="text-end">Valor unit. antes IVA</th>
+                                <th class="text-end">Valor unit. con IVA</th>
+                                <th class="text-end">Total con IVA</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersBillingBody"></tbody>
+                    </table>
+                </div>
             </article>
         </section>
     </div>

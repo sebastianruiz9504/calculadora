@@ -89,6 +89,31 @@ public sealed class PortfolioDashboardDto
     public IReadOnlyList<BillingUnpaidInvoiceDto> OverdueInvoices { get; set; } = Array.Empty<BillingUnpaidInvoiceDto>();
 }
 
+public sealed class CopiersDashboardDto
+{
+    public string AsOfDateLabel { get; set; } = "";
+    public string FocusLabel { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public IReadOnlyList<PortfolioKpiDto> Kpis { get; set; } = Array.Empty<PortfolioKpiDto>();
+    public IReadOnlyList<CopiersBillingRowDto> Rows { get; set; } = Array.Empty<CopiersBillingRowDto>();
+}
+
+public sealed class CopiersBillingRowDto
+{
+    public string ClientName { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal IncludedOperations { get; set; }
+    public decimal UnitValueBeforeVat { get; set; }
+    public decimal UnitValueWithVat { get; set; }
+    public decimal TotalWithVat { get; set; }
+    public int BillingDay { get; set; }
+    public string BillingDayDisplay { get; set; } = "";
+}
+
 public sealed class TaxesDashboardDto
 {
     public int Year { get; set; }

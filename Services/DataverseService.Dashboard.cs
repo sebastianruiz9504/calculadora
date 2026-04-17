@@ -67,6 +67,35 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<CopiersDashboardDto> GetCopiersDashboardAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var today = GetBogotaToday();
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardCopiersTableLogicalName,
+            _dashboardCopiersTableSetName,
+            _dashboardCopiersIdField,
+            _dashboardCopiersPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var rows = await GetCopiersRecordsAsync(metadata, httpContext.User, ct);
+
+        return new CopiersDashboardDto
+        {
+            AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
+            FocusLabel = "Ordenado por dia de facturacion, cliente y producto",
+            HasData = rows.Count > 0,
+            RecordsCount = rows.Count,
+            EmptyStateTitle = "No encontramos registros de facturacion copiers.",
+            EmptyStateMessage = "Cuando Dataverse tenga filas en cr07a_productoscopiers las veras aqui.",
+            Kpis = BuildCopiersKpis(rows),
+            Rows = BuildCopiersRows(rows)
+        };
+    }
+
     public async Task<BillingDashboardDto> GetBillingDashboardAsync(
         int year,
         BillingPeriodKind periodKind,
@@ -350,6 +379,200 @@ public sealed partial class DataverseService
                 }),
             ExpenseDetails = expenseDetails
         };
+    }
+
+    private async Task<List<CopiersBillingRecordRow>> GetCopiersRecordsAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var select = string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            _dashboardCopiersQuantityField,
+            _dashboardCopiersProductField,
+            _dashboardCopiersUnitValueBeforeVatField,
+            _dashboardCopiersBillingDayField,
+            _dashboardCopiersIncludedOperationsField,
+            _dashboardCopiersClientField,
+            BuildDashboardLookupValuePropertyName(_dashboardCopiersClientField),
+            _dashboardCopiersUnitValueWithVatField,
+            _dashboardCopiersTotalWithVatField
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        var orderBy = Uri.EscapeDataString($"{_dashboardCopiersBillingDayField} asc");
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={orderBy}";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(item => ParseCopiersRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
+            .Where(static item => item is not null)
+            .Cast<CopiersBillingRecordRow>()
+            .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(static item => item.BillingDay is >= 1 and <= 31 ? item.BillingDay : int.MaxValue)
+            .ThenBy(static item => item.ClientName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.ProductName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private CopiersBillingRecordRow? ParseCopiersRecord(JsonElement item, string primaryIdField, string primaryNameField)
+    {
+        var productName = ReadCopiersFieldDisplayValue(
+            item,
+            _dashboardCopiersProductField,
+            "producto",
+            FirstNonEmpty(ReadString(item, primaryNameField).Trim(), "Producto sin nombre"));
+        var clientName = ReadCopiersFieldDisplayValue(
+            item,
+            _dashboardCopiersClientField,
+            "cliente",
+            "Cliente sin nombre");
+        var billingDay = ReadIntFlexible(item, _dashboardCopiersBillingDayField);
+        var recordId = FirstNonEmpty(
+            ReadString(item, primaryIdField),
+            ReadString(item, _dashboardCopiersIdField),
+            $"{clientName}|{productName}|{billingDay}");
+
+        if (string.IsNullOrWhiteSpace(recordId))
+            return null;
+
+        return new CopiersBillingRecordRow
+        {
+            RecordId = recordId.Trim(),
+            ClientName = clientName,
+            ProductName = productName,
+            Quantity = RoundCurrency(ReadDecimal(item, _dashboardCopiersQuantityField) ?? 0m),
+            IncludedOperations = RoundCurrency(ReadDecimal(item, _dashboardCopiersIncludedOperationsField) ?? 0m),
+            UnitValueBeforeVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersUnitValueBeforeVatField) ?? 0m),
+            UnitValueWithVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersUnitValueWithVatField) ?? 0m),
+            TotalWithVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersTotalWithVatField) ?? 0m),
+            BillingDay = billingDay
+        };
+    }
+
+    private IReadOnlyList<PortfolioKpiDto> BuildCopiersKpis(IReadOnlyList<CopiersBillingRecordRow> rows)
+    {
+        var totalWithVat = RoundCurrency(rows.Sum(static row => row.TotalWithVat));
+        var totalQuantity = RoundCurrency(rows.Sum(static row => row.Quantity));
+        var totalOperations = RoundCurrency(rows.Sum(static row => row.IncludedOperations));
+        var averageUnitWithVat = rows.Count == 0
+            ? 0m
+            : RoundCurrency(rows.Average(static row => row.UnitValueWithVat));
+        var averageTotal = rows.Count == 0
+            ? 0m
+            : RoundCurrency(rows.Average(static row => row.TotalWithVat));
+        var firstBillingDay = rows
+            .Where(static row => row.BillingDay is >= 1 and <= 31)
+            .Select(static row => row.BillingDay)
+            .DefaultIfEmpty(0)
+            .Min();
+        var uniqueClients = rows
+            .Select(static row => NormalizeBillingGroupKey(row.ClientName))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count(key => !string.Equals(key, "empty", StringComparison.OrdinalIgnoreCase));
+        var uniqueProducts = rows
+            .Select(static row => NormalizeBillingGroupKey(row.ProductName))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count(key => !string.Equals(key, "empty", StringComparison.OrdinalIgnoreCase));
+
+        return new[]
+        {
+            new PortfolioKpiDto
+            {
+                Key = "copiers-total-with-vat",
+                Label = "Total con IVA",
+                Hint = "Suma del campo cr07a_totalconiva para los productos copiers.",
+                Value = totalWithVat,
+                ValueFormat = "currency",
+                SecondaryLabel = "Promedio por registro",
+                SecondaryValue = FormatCurrencyValue(averageTotal)
+            },
+            new PortfolioKpiDto
+            {
+                Key = "copiers-quantity",
+                Label = "Cantidad total",
+                Hint = "Suma de cr07a_cantidad en la tabla de productos copiers.",
+                Value = totalQuantity,
+                ValueFormat = "number",
+                SecondaryLabel = "Operaciones incluidas",
+                SecondaryValue = totalOperations.ToString("N2", DashboardCulture)
+            },
+            new PortfolioKpiDto
+            {
+                Key = "copiers-clients",
+                Label = "Clientes",
+                Hint = "Clientes distintos vinculados desde el lookup cr07a_cliente.",
+                Value = uniqueClients,
+                ValueFormat = "number",
+                SecondaryLabel = "Productos distintos",
+                SecondaryValue = uniqueProducts.ToString("N0", DashboardCulture)
+            },
+            new PortfolioKpiDto
+            {
+                Key = "copiers-unit-with-vat",
+                Label = "Valor unitario con IVA",
+                Hint = "Promedio de cr07a_valorunidadconiva sobre los registros cargados.",
+                Value = averageUnitWithVat,
+                ValueFormat = "currency",
+                SecondaryLabel = "Dia mas temprano",
+                SecondaryValue = firstBillingDay > 0
+                    ? $"Dia {firstBillingDay}"
+                    : "Sin dia"
+            }
+        };
+    }
+
+    private IReadOnlyList<CopiersBillingRowDto> BuildCopiersRows(IReadOnlyList<CopiersBillingRecordRow> rows)
+    {
+        return rows
+            .Select(row => new CopiersBillingRowDto
+            {
+                ClientName = row.ClientName,
+                ProductName = row.ProductName,
+                Quantity = row.Quantity,
+                IncludedOperations = row.IncludedOperations,
+                UnitValueBeforeVat = row.UnitValueBeforeVat,
+                UnitValueWithVat = row.UnitValueWithVat,
+                TotalWithVat = row.TotalWithVat,
+                BillingDay = row.BillingDay,
+                BillingDayDisplay = row.BillingDay is >= 1 and <= 31 ? $"Dia {row.BillingDay}" : "Sin dia"
+            })
+            .ToList();
+    }
+
+    private string ReadCopiersFieldDisplayValue(JsonElement item, string fieldName, string containsToken, string fallbackValue)
+    {
+        var configuredLookupProperty = BuildDashboardLookupValuePropertyName(fieldName);
+        var lookupProperty = DetectLookupValueProperty(
+            item,
+            new[]
+            {
+                configuredLookupProperty,
+                $"_{fieldName}id_value"
+            },
+            containsToken);
+
+        var scannedValue = item.EnumerateObject()
+            .Where(property =>
+                property.Value.ValueKind == JsonValueKind.String
+                && property.Name.Contains(containsToken, StringComparison.OrdinalIgnoreCase)
+                && !property.Name.EndsWith("_value", StringComparison.OrdinalIgnoreCase)
+                && !property.Name.EndsWith("id", StringComparison.OrdinalIgnoreCase))
+            .Select(property => property.Value.GetString())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        return FirstNonEmpty(
+            ReadLookupFormattedValue(item, lookupProperty),
+            ReadLookupFormattedValue(item, configuredLookupProperty),
+            ReadString(item, $"{fieldName}{FormattedValueAnnotationSuffix}"),
+            ReadString(item, $"{fieldName}_name"),
+            ReadString(item, fieldName),
+            scannedValue,
+            fallbackValue);
     }
 
     private async Task<List<BillingRecordRow>> GetBillingRecordsAsync(
@@ -1348,6 +1571,19 @@ public sealed partial class DataverseService
         public string RecipientNit { get; set; } = "";
         public decimal CloudValue { get; set; }
         public decimal CopiersValue { get; set; }
+    }
+
+    private sealed class CopiersBillingRecordRow
+    {
+        public string RecordId { get; set; } = "";
+        public string ClientName { get; set; } = "";
+        public string ProductName { get; set; } = "";
+        public decimal Quantity { get; set; }
+        public decimal IncludedOperations { get; set; }
+        public decimal UnitValueBeforeVat { get; set; }
+        public decimal UnitValueWithVat { get; set; }
+        public decimal TotalWithVat { get; set; }
+        public int BillingDay { get; set; }
     }
 
     private sealed record BillingCategory(string Key, string Label);

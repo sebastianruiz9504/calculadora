@@ -128,6 +128,18 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardBillingRteIvaField = "cr07a_rteivavalor";
     private const string DefaultDashboardBillingRteFteField = "cr07a_rteftevalor";
     private const string DefaultDashboardBillingDifferenceField = "cr07a_diferencia";
+    private const string DefaultDashboardCopiersTableLogicalName = "cr07a_productoscopiers";
+    private const string DefaultDashboardCopiersTableSetName = "cr07a_productoscopiers";
+    private const string DefaultDashboardCopiersIdField = "cr07a_productoscopiersid";
+    private const string DefaultDashboardCopiersPrimaryNameField = "cr07a_producto";
+    private const string DefaultDashboardCopiersQuantityField = "cr07a_cantidad";
+    private const string DefaultDashboardCopiersProductField = "cr07a_producto";
+    private const string DefaultDashboardCopiersUnitValueBeforeVatField = "cr07a_valorunidadantesdeiva";
+    private const string DefaultDashboardCopiersBillingDayField = "cr07a_diadefacturacion";
+    private const string DefaultDashboardCopiersIncludedOperationsField = "cr07a_operacionesincluidas";
+    private const string DefaultDashboardCopiersClientField = "cr07a_cliente";
+    private const string DefaultDashboardCopiersUnitValueWithVatField = "cr07a_valorunidadconiva";
+    private const string DefaultDashboardCopiersTotalWithVatField = "cr07a_totalconiva";
     private const string DefaultSalesPerformanceClientCreateLookupLogicalName = "cr07a_clientelookup";
     private const string ClientsEntitySetName = "cr07a_clientes";
     private const string ProductsEntitySetName = "cr07a_preciosclouds";
@@ -243,6 +255,18 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardBillingRteIvaField;
     private readonly string _dashboardBillingRteFteField;
     private readonly string _dashboardBillingDifferenceField;
+    private readonly string _dashboardCopiersTableLogicalName;
+    private readonly string _dashboardCopiersTableSetName;
+    private readonly string _dashboardCopiersIdField;
+    private readonly string _dashboardCopiersPrimaryNameField;
+    private readonly string _dashboardCopiersQuantityField;
+    private readonly string _dashboardCopiersProductField;
+    private readonly string _dashboardCopiersUnitValueBeforeVatField;
+    private readonly string _dashboardCopiersBillingDayField;
+    private readonly string _dashboardCopiersIncludedOperationsField;
+    private readonly string _dashboardCopiersClientField;
+    private readonly string _dashboardCopiersUnitValueWithVatField;
+    private readonly string _dashboardCopiersTotalWithVatField;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
@@ -449,6 +473,30 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardBillingRteFteField;
         _dashboardBillingDifferenceField = configuration["Dashboard:BillingDifferenceField"]
             ?? DefaultDashboardBillingDifferenceField;
+        _dashboardCopiersTableLogicalName = configuration["Dashboard:CopiersTableLogicalName"]
+            ?? DefaultDashboardCopiersTableLogicalName;
+        _dashboardCopiersTableSetName = configuration["Dashboard:CopiersTableSetName"]
+            ?? DefaultDashboardCopiersTableSetName;
+        _dashboardCopiersIdField = configuration["Dashboard:CopiersIdField"]
+            ?? DefaultDashboardCopiersIdField;
+        _dashboardCopiersPrimaryNameField = configuration["Dashboard:CopiersPrimaryNameField"]
+            ?? DefaultDashboardCopiersPrimaryNameField;
+        _dashboardCopiersQuantityField = configuration["Dashboard:CopiersQuantityField"]
+            ?? DefaultDashboardCopiersQuantityField;
+        _dashboardCopiersProductField = configuration["Dashboard:CopiersProductField"]
+            ?? DefaultDashboardCopiersProductField;
+        _dashboardCopiersUnitValueBeforeVatField = configuration["Dashboard:CopiersUnitValueBeforeVatField"]
+            ?? DefaultDashboardCopiersUnitValueBeforeVatField;
+        _dashboardCopiersBillingDayField = configuration["Dashboard:CopiersBillingDayField"]
+            ?? DefaultDashboardCopiersBillingDayField;
+        _dashboardCopiersIncludedOperationsField = configuration["Dashboard:CopiersIncludedOperationsField"]
+            ?? DefaultDashboardCopiersIncludedOperationsField;
+        _dashboardCopiersClientField = configuration["Dashboard:CopiersClientField"]
+            ?? DefaultDashboardCopiersClientField;
+        _dashboardCopiersUnitValueWithVatField = configuration["Dashboard:CopiersUnitValueWithVatField"]
+            ?? DefaultDashboardCopiersUnitValueWithVatField;
+        _dashboardCopiersTotalWithVatField = configuration["Dashboard:CopiersTotalWithVatField"]
+            ?? DefaultDashboardCopiersTotalWithVatField;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)
