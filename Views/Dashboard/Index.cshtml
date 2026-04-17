@@ -12,6 +12,7 @@
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
+     data-pnl-url="@Url.Action("Pnl", "Dashboard")"
      data-initial-year="@Model.InitialYear"
      data-initial-period="@Model.InitialPeriodKind.ToKey()"
      data-initial-value="@Model.InitialPeriodValue">
@@ -40,7 +41,7 @@
         <aside class="dashboard-user-card">
             <span class="dashboard-user-card__label">Acceso actual</span>
             <strong class="dashboard-user-card__value">@Model.CurrentUser.Email</strong>
-            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior y Cartera muestra el corte actual de facturas vencidas sin pago.</span>
+            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior, Cartera muestra el corte actual de facturas vencidas sin pago y P&amp;L consolida ingresos y costos hasta el &uacute;ltimo mes con datos.</span>
         </aside>
     </section>
 
@@ -48,6 +49,7 @@
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
     </section>
 
     <section class="dashboard-toolbar" id="dashboardPeriodScope">
@@ -214,6 +216,56 @@
                         </thead>
                         <tbody id="portfolioUnpaidBody"></tbody>
                     </table>
+                </div>
+            </article>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="pnl" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static">
+            <div class="dashboard-filters">
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="pnlYearFilter">A&ntilde;o</label>
+                    <select id="pnlYearFilter" class="form-select dashboard-select"></select>
+                </div>
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="pnlMonthFilter">Corte por mes</label>
+                    <select id="pnlMonthFilter" class="form-select dashboard-select"></select>
+                </div>
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="pnlVerticalFilter">Vertical</label>
+                    <select id="pnlVerticalFilter" class="form-select dashboard-select">
+                        <option value="all">Consolidado</option>
+                        <option value="cloud">Cloud</option>
+                        <option value="copiers">Copiers</option>
+                    </select>
+                </div>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <div class="dashboard-toolbar__summary">
+                    <span class="dashboard-toolbar__summary-label">Corte activo</span>
+                    <strong id="pnlPeriodLabel">Cargando...</strong>
+                    <span id="pnlDateRangeLabel">-</span>
+                </div>
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="pnlRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="pnlStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="dashboard-kpis dashboard-kpis--pnl" id="pnlKpisContainer"></section>
+
+        <section class="dashboard-grid">
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">P&amp;L</div>
+                        <h2 class="dashboard-panel__title">Profit &amp; Loss mensual</h2>
+                        <p class="dashboard-panel__description" id="pnlDescription"></p>
+                    </div>
+                </div>
+                <div class="dashboard-table-wrap">
+                    <div id="pnlTableContainer"></div>
                 </div>
             </article>
         </section>

@@ -39,6 +39,17 @@
     const portfolioKpisContainer = document.getElementById("portfolioKpisContainer");
     const portfolioUnpaidBody = document.getElementById("portfolioUnpaidBody");
 
+    const pnlYearFilter = document.getElementById("pnlYearFilter");
+    const pnlMonthFilter = document.getElementById("pnlMonthFilter");
+    const pnlVerticalFilter = document.getElementById("pnlVerticalFilter");
+    const pnlRefreshButton = document.getElementById("pnlRefreshBtn");
+    const pnlStatusBanner = document.getElementById("pnlStatusBanner");
+    const pnlPeriodLabel = document.getElementById("pnlPeriodLabel");
+    const pnlDateRangeLabel = document.getElementById("pnlDateRangeLabel");
+    const pnlKpisContainer = document.getElementById("pnlKpisContainer");
+    const pnlDescription = document.getElementById("pnlDescription");
+    const pnlTableContainer = document.getElementById("pnlTableContainer");
+
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
 
@@ -58,6 +69,8 @@
         maximumFractionDigits: 2
     });
 
+    const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
     const state = {
         activeTab: "billing",
         year: currentYear,
@@ -66,12 +79,18 @@
         billingDashboard: null,
         taxesDashboard: null,
         portfolioDashboard: null,
+        pnlDashboard: null,
         billingSignature: "",
         taxesSignature: "",
+        pnlSignature: "",
         portfolioSearchTerm: "",
         portfolioSort: "age",
+        pnlYear: currentYear,
+        pnlMonth: new Date().getMonth() + 1,
+        pnlVertical: "all",
         periodLoading: false,
-        portfolioLoading: false
+        portfolioLoading: false,
+        pnlLoading: false
     };
 
     function escapeHtml(value) {
@@ -94,6 +113,10 @@
 
     function getPeriodSignature() {
         return `${state.year}|${state.period}|${state.value}`;
+    }
+
+    function getPnlSignature() {
+        return `${state.pnlYear}|${state.pnlMonth}|${state.pnlVertical}`;
     }
 
     function formatMetric(value, format) {
@@ -156,6 +179,15 @@
         });
     }
 
+    function setPnlLoading(loading) {
+        state.pnlLoading = loading;
+        [pnlYearFilter, pnlMonthFilter, pnlVerticalFilter, pnlRefreshButton].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+    }
+
     function buildYearOptions() {
         if (!yearFilter) {
             return;
@@ -168,6 +200,37 @@
 
         yearFilter.innerHTML = options.join("");
         yearFilter.value = String(state.year);
+    }
+
+    function buildPnlYearOptions() {
+        if (!pnlYearFilter) {
+            return;
+        }
+
+        const options = [];
+        for (let year = currentYear + 1; year >= currentYear - 5; year -= 1) {
+            options.push(`<option value="${year}">${year}</option>`);
+        }
+
+        pnlYearFilter.innerHTML = options.join("");
+        pnlYearFilter.value = String(state.pnlYear);
+    }
+
+    function buildPnlMonthOptions(maxMonth = 12) {
+        if (!pnlMonthFilter) {
+            return;
+        }
+
+        const safeMaxMonth = Math.min(Math.max(Number(maxMonth || 1), 1), 12);
+        if (state.pnlMonth > safeMaxMonth) {
+            state.pnlMonth = safeMaxMonth;
+        }
+
+        pnlMonthFilter.innerHTML = monthLabels
+            .slice(0, safeMaxMonth)
+            .map((label, index) => `<option value="${index + 1}">${escapeHtml(label)}</option>`)
+            .join("");
+        pnlMonthFilter.value = String(state.pnlMonth);
     }
 
     function getDefaultValue(period, year) {
@@ -248,6 +311,16 @@
 
     function buildPortfolioUrl() {
         return app.dataset.portfolioUrl || "";
+    }
+
+    function buildPnlUrl() {
+        const params = new URLSearchParams({
+            year: String(state.pnlYear),
+            month: String(state.pnlMonth),
+            vertical: state.pnlVertical
+        });
+
+        return `${app.dataset.pnlUrl}?${params.toString()}`;
     }
 
     async function fetchJson(url) {
@@ -341,6 +414,23 @@
                     <span class="dashboard-kpi__alert-label">${escapeHtml(kpi.secondaryLabel || "")}</span>
                     <strong class="dashboard-kpi__alert-value">${escapeHtml(kpi.secondaryValue || "")}</strong>
                 </div>
+            </article>
+        `).join("");
+    }
+
+    function renderPnlKpis(dashboard) {
+        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
+        if (!pnlKpisContainer) {
+            return;
+        }
+
+        pnlKpisContainer.innerHTML = kpis.map(kpi => `
+            <article class="dashboard-kpi dashboard-kpi--${escapeHtml(kpi.tone || "neutral")}">
+                <div class="dashboard-kpi__header">
+                    <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
+                </div>
+                <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
+                <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
             </article>
         `).join("");
     }
@@ -553,6 +643,64 @@
             : '<tr><td colspan="7" class="dashboard-table__empty">No hay gastos con retefuente en este periodo.</td></tr>';
     }
 
+    function renderPnlTable(dashboard) {
+        if (!pnlTableContainer) {
+            return;
+        }
+
+        const months = Array.isArray(dashboard?.months) ? dashboard.months : [];
+        const rows = Array.isArray(dashboard?.rows) ? dashboard.rows : [];
+
+        if (!months.length || !rows.length) {
+            pnlTableContainer.innerHTML = `
+                <div class="dashboard-table__empty">
+                    <strong>${escapeHtml(dashboard?.emptyStateTitle || "No hay datos para el P&L.")}</strong><br />
+                    <span>${escapeHtml(dashboard?.emptyStateMessage || "Sin movimientos en este corte.")}</span>
+                </div>
+            `;
+            return;
+        }
+
+        const headerCells = months
+            .map(month => `<th class="text-end">${escapeHtml(month.label)}</th>`)
+            .join("");
+
+        const bodyRows = rows.map(row => {
+            if ((row.rowType || "").toLowerCase() === "section") {
+                return `
+                    <tr class="dashboard-pnl-row dashboard-pnl-row--section">
+                        <td colspan="${months.length + 2}">${escapeHtml(row.label)}</td>
+                    </tr>
+                `;
+            }
+
+            const valueCells = (Array.isArray(row.values) ? row.values : [])
+                .map(value => `<td class="text-end">${escapeHtml(formatMetric(value, row.valueFormat))}</td>`)
+                .join("");
+
+            return `
+                <tr class="dashboard-pnl-row dashboard-pnl-row--${escapeHtml(row.rowType || "detail")}">
+                    <td class="dashboard-pnl-row__label dashboard-pnl-row__label--level-${Number(row.level || 0)}">${escapeHtml(row.label)}</td>
+                    ${valueCells}
+                    <td class="text-end dashboard-pnl-row__total">${escapeHtml(formatMetric(row.total, row.valueFormat))}</td>
+                </tr>
+            `;
+        }).join("");
+
+        pnlTableContainer.innerHTML = `
+            <table class="table dashboard-table dashboard-pnl-table">
+                <thead>
+                    <tr>
+                        <th>Cuenta</th>
+                        ${headerCells}
+                        <th class="text-end">Total YTD</th>
+                    </tr>
+                </thead>
+                <tbody>${bodyRows}</tbody>
+            </table>
+        `;
+    }
+
     function getFilteredPortfolioRows() {
         const rows = Array.isArray(state.portfolioDashboard?.overdueInvoices)
             ? [...state.portfolioDashboard.overdueInvoices]
@@ -635,6 +783,12 @@
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
+    function updateHeroForPnl(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.monthCutoffLabel ? `Corte a ${dashboard.monthCutoffLabel} ${dashboard.year || ""}` : "Corte P&L");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "P&L mensual");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
     function updateBillingContext(dashboard) {
         state.billingDashboard = dashboard;
         state.billingSignature = getPeriodSignature();
@@ -667,9 +821,34 @@
         }
     }
 
+    function updatePnlContext(dashboard) {
+        state.pnlDashboard = dashboard;
+        state.pnlYear = Number(dashboard?.year || state.pnlYear);
+        state.pnlMonth = Number(dashboard?.monthCutoff || state.pnlMonth || 1);
+        state.pnlVertical = dashboard?.verticalKey || state.pnlVertical || "all";
+        state.pnlSignature = getPnlSignature();
+        pnlPeriodLabel && (pnlPeriodLabel.textContent = dashboard?.monthCutoffLabel ? `${dashboard.monthCutoffLabel} ${dashboard.year || ""}` : "Sin corte");
+        pnlDateRangeLabel && (pnlDateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+        pnlDescription && (pnlDescription.textContent = dashboard?.description || "");
+
+        if (pnlYearFilter) {
+            pnlYearFilter.value = String(state.pnlYear);
+        }
+
+        if (pnlVerticalFilter) {
+            pnlVerticalFilter.value = state.pnlVertical;
+        }
+
+        buildPnlMonthOptions(dashboard?.latestMonthAvailable || 12);
+
+        if (state.activeTab === "pnl") {
+            updateHeroForPnl(dashboard);
+        }
+    }
+
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
-            dashboardPeriodScope.hidden = state.activeTab === "portfolio";
+            dashboardPeriodScope.hidden = state.activeTab === "portfolio" || state.activeTab === "pnl";
         }
     }
 
@@ -688,6 +867,15 @@
             panel.classList.toggle("is-active", isActive);
             panel.hidden = !isActive;
         });
+
+        if (tabKey === "pnl") {
+            if (state.pnlDashboard && state.pnlSignature === getPnlSignature()) {
+                updateHeroForPnl(state.pnlDashboard);
+            } else {
+                loadPnl();
+            }
+            return;
+        }
 
         if (tabKey === "portfolio") {
             if (state.portfolioDashboard) {
@@ -776,6 +964,23 @@
         }
     }
 
+    async function loadPnl() {
+        setPnlLoading(true);
+        setStatus(pnlStatusBanner, "info", "Actualizando tablero P&L...");
+
+        try {
+            const dashboard = await fetchJson(buildPnlUrl());
+            updatePnlContext(dashboard);
+            renderPnlKpis(dashboard);
+            renderPnlTable(dashboard);
+            setStatus(pnlStatusBanner, "", "");
+        } catch (error) {
+            setStatus(pnlStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard P&L.");
+        } finally {
+            setPnlLoading(false);
+        }
+    }
+
     yearFilter?.addEventListener("change", () => {
         state.year = Number(yearFilter.value || currentYear);
         state.value = getDefaultValue(state.period, state.year);
@@ -797,6 +1002,7 @@
 
     refreshButton?.addEventListener("click", loadActivePeriodTab);
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
+    pnlRefreshButton?.addEventListener("click", loadPnl);
     portfolioClientSearch?.addEventListener("input", () => {
         state.portfolioSearchTerm = portfolioClientSearch.value || "";
         renderPortfolioTable();
@@ -804,6 +1010,20 @@
     portfolioSortFilter?.addEventListener("change", () => {
         state.portfolioSort = portfolioSortFilter.value || "age";
         renderPortfolioTable();
+    });
+    pnlYearFilter?.addEventListener("change", () => {
+        state.pnlYear = Number(pnlYearFilter.value || currentYear);
+        state.pnlMonth = Math.min(state.pnlMonth || 1, 12);
+        buildPnlMonthOptions(12);
+        loadPnl();
+    });
+    pnlMonthFilter?.addEventListener("change", () => {
+        state.pnlMonth = Number(pnlMonthFilter.value || 1);
+        loadPnl();
+    });
+    pnlVerticalFilter?.addEventListener("change", () => {
+        state.pnlVertical = pnlVerticalFilter.value || "all";
+        loadPnl();
     });
 
     tabButtons.forEach(button => {
@@ -816,9 +1036,12 @@
     });
 
     buildYearOptions();
+    buildPnlYearOptions();
     periodFilter && (periodFilter.value = state.period);
     portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
+    pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
     buildValueOptions();
+    buildPnlMonthOptions(12);
     syncPeriodScopeVisibility();
     loadBilling();
 })();
