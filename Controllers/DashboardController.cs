@@ -129,6 +129,58 @@ public sealed class DashboardController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> PnlDetail(
+        [FromQuery] int? year,
+        [FromQuery(Name = "cutoffMonth")] int? monthCutoff,
+        [FromQuery] string? vertical,
+        [FromQuery] string? rowKey,
+        [FromQuery] int? cellMonth,
+        CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var detail = await _dataverse.GetPnlCellDetailAsync(
+                year ?? today.Year,
+                monthCutoff,
+                vertical,
+                rowKey ?? "",
+                cellMonth,
+                ct);
+
+            return Json(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el detalle de la celda P&L.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> PnlDetailRecord([FromBody] PnlDetailRecordUpdateRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _dataverse.UpdatePnlDetailRecordAsync(request, ct);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible actualizar el registro del detalle P&L.");
+        }
+    }
+
     private static DateOnly ResolveBogotaToday()
     {
         var utcNow = DateTimeOffset.UtcNow;

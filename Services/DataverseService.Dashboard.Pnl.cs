@@ -217,6 +217,254 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<PnlCellDetailDto> GetPnlCellDetailAsync(
+        int year,
+        int? monthCutoff,
+        string? vertical,
+        string rowKey,
+        int? cellMonth = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(rowKey))
+            throw new InvalidOperationException("Debes indicar la fila del P&L que quieres revisar.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var today = GetBogotaToday();
+        var resolvedYear = year is < 2000 or > 2100 ? today.Year : year;
+        var verticalKey = NormalizePnlVerticalKey(vertical);
+        var verticalLabel = ResolvePnlVerticalLabel(verticalKey);
+        var yearStart = new DateOnly(resolvedYear, 1, 1);
+        var yearEnd = yearStart.AddYears(1);
+        var rowMetadata = ResolvePnlRowMetadata(rowKey);
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var billingRecords = await GetBillingRecordsAsync(
+            metadata,
+            yearStart,
+            yearEnd,
+            _dashboardBillingEmissionDateField,
+            _dashboardBillingEmissionDateFieldKind,
+            httpContext.User,
+            ct);
+
+        var expenseRecords = await GetPnlExpenseRowsAsync(
+            yearStart,
+            yearEnd,
+            httpContext.User,
+            ct);
+
+        var latestMonthAvailable = ResolveLatestPnlMonthAvailable(
+            resolvedYear,
+            today,
+            verticalKey,
+            billingRecords,
+            expenseRecords);
+
+        var resolvedMonthCutoff = ResolvePnlMonthCutoff(latestMonthAvailable, monthCutoff);
+        var resolvedCellMonth = ResolvePnlCellMonth(cellMonth, resolvedMonthCutoff);
+
+        var scopedBillingRecords = billingRecords
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value.Year == resolvedYear
+                && record.EmissionDate.Value.Month <= resolvedMonthCutoff
+                && (!resolvedCellMonth.HasValue || record.EmissionDate.Value.Month == resolvedCellMonth.Value))
+            .ToList();
+
+        var scopedExpenseRecords = expenseRecords
+            .Where(record => record.PaymentDate is not null
+                && record.PaymentDate.Value.Year == resolvedYear
+                && record.PaymentDate.Value.Month <= resolvedMonthCutoff
+                && (!resolvedCellMonth.HasValue || record.PaymentDate.Value.Month == resolvedCellMonth.Value))
+            .ToList();
+
+        var records = new List<PnlCellDetailRecordDto>();
+
+        foreach (var record in scopedBillingRecords)
+        {
+            var contribution = GetPnlBillingContributionForRow(record, verticalKey, rowMetadata.Key);
+            if (Math.Abs(contribution) < 0.01m)
+                continue;
+
+            records.Add(BuildPnlBillingDetailRecord(record, contribution));
+        }
+
+        foreach (var record in scopedExpenseRecords)
+        {
+            var contribution = GetPnlExpenseContributionForRow(record, verticalKey, rowMetadata.Key);
+            if (Math.Abs(contribution) < 0.01m)
+                continue;
+
+            records.Add(BuildPnlExpenseDetailRecord(record, contribution));
+        }
+
+        var orderedRecords = records
+            .OrderByDescending(record => Math.Abs(record.CellValue))
+            .ThenBy(record => record.DateDisplay, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(record => record.DocumentNumber, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new PnlCellDetailDto
+        {
+            Year = resolvedYear,
+            MonthCutoff = resolvedMonthCutoff,
+            CellMonth = resolvedCellMonth,
+            RowKey = rowMetadata.Key,
+            RowLabel = rowMetadata.Label,
+            CellLabel = ResolvePnlCellLabel(resolvedYear, resolvedMonthCutoff, resolvedCellMonth),
+            VerticalKey = verticalKey,
+            VerticalLabel = verticalLabel,
+            ValueFormat = rowMetadata.ValueFormat,
+            Total = RoundCurrency(orderedRecords.Sum(record => record.CellValue)),
+            RecordsCount = orderedRecords.Count,
+            EmptyMessage = BuildPnlDetailEmptyMessage(rowMetadata.Key),
+            VerticalOptions = BuildPnlVerticalOptions(),
+            CategoryOptions = BuildPnlCategoryOptions(),
+            Records = orderedRecords
+        };
+    }
+
+    public async Task<PnlDetailRecordUpdateResultDto> UpdatePnlDetailRecordAsync(
+        PnlDetailRecordUpdateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new InvalidOperationException("No recibimos informacion para actualizar el registro.");
+
+        if (string.IsNullOrWhiteSpace(request.RecordId))
+            throw new InvalidOperationException("Debes indicar el registro que quieres actualizar.");
+
+        if (string.IsNullOrWhiteSpace(request.SourceType))
+            throw new InvalidOperationException("Debes indicar el origen del registro que quieres actualizar.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var sourceType = request.SourceType.Trim().ToLowerInvariant();
+        switch (sourceType)
+        {
+            case "billing":
+                await UpdatePnlBillingDetailRecordAsync(request, httpContext.User, ct);
+                return new PnlDetailRecordUpdateResultDto
+                {
+                    RecordId = request.RecordId.Trim(),
+                    Message = "La vertical de la factura se actualizo correctamente."
+                };
+
+            case "expense":
+                await UpdatePnlExpenseDetailRecordAsync(request, httpContext.User, ct);
+                return new PnlDetailRecordUpdateResultDto
+                {
+                    RecordId = request.RecordId.Trim(),
+                    Message = "El gasto se actualizo correctamente en Dataverse."
+                };
+
+            default:
+                throw new InvalidOperationException("El origen del registro no es compatible con el detalle del P&L.");
+        }
+    }
+
+    private async Task UpdatePnlBillingDetailRecordAsync(
+        PnlDetailRecordUpdateRequestDto request,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var verticalOption = ResolveDashboardVerticalOptionValue(request.VerticalKey);
+        var payload = new Dictionary<string, object>
+        {
+            [_dashboardBillingVerticalField] = verticalOption
+        };
+
+        var relativeUrl = $"/api/data/v9.2/{_dashboardBillingTableSetName}({request.RecordId.Trim()})";
+        await CallDataverseSendAsync(relativeUrl, "PATCH", payload, user, ct);
+    }
+
+    private async Task UpdatePnlExpenseDetailRecordAsync(
+        PnlDetailRecordUpdateRequestDto request,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var recordId = request.RecordId.Trim();
+        var current = await GetPnlExpenseRowByIdAsync(recordId, user, ct)
+            ?? throw new InvalidOperationException("No encontramos el gasto seleccionado en Dataverse.");
+
+        var requestedVerticalKey = NormalizeEditablePnlVerticalKey(request.VerticalKey);
+        var finalCategoryOption = request.CategoryOptionValue ?? current.CategoryOptionValue;
+        var payload = new Dictionary<string, object>();
+
+        if (IsPnlExpensePersonalCategory(finalCategoryOption))
+        {
+            var personalVerticalKey = requestedVerticalKey
+                ?? (finalCategoryOption == PnlExpensePersonalCloudOption ? DashboardPnlVerticalCloud : DashboardPnlVerticalCopiers);
+            finalCategoryOption = personalVerticalKey == DashboardPnlVerticalCloud
+                ? PnlExpensePersonalCloudOption
+                : PnlExpensePersonalCopiersOption;
+            requestedVerticalKey = personalVerticalKey;
+        }
+        else if (IsPnlExpensePersonalCategory(current.CategoryOptionValue) && requestedVerticalKey is null && request.CategoryOptionValue.HasValue)
+        {
+            requestedVerticalKey = ResolvePnlExpenseEditorVerticalKey(current);
+        }
+
+        if (finalCategoryOption != current.CategoryOptionValue)
+        {
+            payload[DashboardExpenseCategoryField] = finalCategoryOption;
+        }
+
+        var shouldRewriteAllocation = requestedVerticalKey is not null
+            || (request.CategoryOptionValue.HasValue
+                && (IsPnlExpensePersonalCategory(current.CategoryOptionValue) || IsPnlExpensePersonalCategory(finalCategoryOption)));
+
+        if (shouldRewriteAllocation)
+        {
+            var allocationVerticalKey = requestedVerticalKey ?? ResolvePnlExpenseEditorVerticalKey(current);
+            if (allocationVerticalKey is DashboardPnlVerticalCloud or DashboardPnlVerticalCopiers)
+            {
+                var baseValue = GetPnlExpenseBaseValue(current);
+                payload[DashboardExpenseCloudField] = allocationVerticalKey == DashboardPnlVerticalCloud ? baseValue : 0m;
+                payload[DashboardExpenseCopiersField] = allocationVerticalKey == DashboardPnlVerticalCopiers ? baseValue : 0m;
+            }
+        }
+
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos cambios para guardar en este registro.");
+
+        var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}({recordId})";
+        await CallDataverseSendAsync(relativeUrl, "PATCH", payload, user, ct);
+    }
+
+    private async Task<PnlExpenseRow?> GetPnlExpenseRowByIdAsync(
+        string recordId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var select = string.Join(",", new[]
+        {
+            _supplierExpensesIdField,
+            DashboardExpensePaymentDateField,
+            DashboardExpensePaymentValueField,
+            DashboardExpenseCloudField,
+            DashboardExpenseCopiersField,
+            DashboardExpenseCategoryField,
+            DashboardExpenseTotalField,
+            DashboardExpenseVatField,
+            DashboardExpenseTotalBeforeVatField
+        });
+
+        var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}({recordId})?$select={select}";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        using var doc = JsonDocument.Parse(json);
+        return ParsePnlExpenseRow(doc.RootElement);
+    }
+
     private async Task<List<PnlExpenseRow>> GetPnlExpenseRowsAsync(
         DateOnly startInclusive,
         DateOnly endExclusive,
@@ -319,7 +567,7 @@ public sealed partial class DataverseService
 
         return new[]
         {
-            BuildPnlKpi("operating-revenue", "Revenue", $"Ingresos operacionales netos acumulados hasta {cutoffLabel} {year} para {verticalLabel}.", operatingRevenueTotal, "currency"),
+            BuildPnlKpi("operating-revenue", "Revenue", $"Ingresos operacionales acumulados hasta {cutoffLabel} {year} para {verticalLabel}.", operatingRevenueTotal, "currency"),
             BuildPnlKpi("gross-profit", "Gross Profit", "Utilidad bruta: ingresos operacionales menos COGS.", grossProfitTotal, "currency"),
             BuildPnlKpi("ebitda", "EBITDA", "EBITDA: utilidad bruta menos gastos operacionales.", ebitdaTotal, "currency"),
             BuildPnlKpi("gross-margin", "Gross Margin", "Margen bruto = utilidad bruta / ingresos operacionales.", grossMargin, "percent"),
@@ -452,6 +700,277 @@ public sealed partial class DataverseService
         };
     }
 
+    private static int? ResolvePnlCellMonth(int? requestedMonth, int resolvedMonthCutoff)
+    {
+        if (!requestedMonth.HasValue)
+            return null;
+
+        return Math.Clamp(requestedMonth.Value, 1, resolvedMonthCutoff);
+    }
+
+    private static decimal GetPnlBillingContributionForRow(BillingRecordRow row, string verticalKey, string rowKey)
+    {
+        var cloudAmount = GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCloudOption);
+        var copiersAmount = GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption);
+
+        return rowKey switch
+        {
+            "income-cloud" => cloudAmount,
+            "income-copiers" => copiersAmount,
+            "income-total" or "gross-profit" or "ebitda" => RoundCurrency(cloudAmount + copiersAmount),
+            _ => 0m
+        };
+    }
+
+    private static decimal GetPnlExpenseContributionForRow(PnlExpenseRow row, string verticalKey, string rowKey)
+    {
+        var amount = GetPnlExpenseViewAmount(row, verticalKey);
+        if (Math.Abs(amount) < 0.01m)
+            return 0m;
+
+        var bucketKey = ResolvePnlExpenseBucketKey(row);
+
+        return rowKey switch
+        {
+            "cogs-licensing" => bucketKey == "licensing" ? amount : 0m,
+            "cogs-rebates" => 0m,
+            "cogs-supplies" => bucketKey == "supplies" ? amount : 0m,
+            "cogs-machines" => bucketKey == "machines" ? amount : 0m,
+            "cogs-technical-service" => bucketKey == "technical-service" ? amount : 0m,
+            "cogs-total" => IsPnlCogsBucket(bucketKey) ? amount : 0m,
+            "gross-profit" => IsPnlCogsBucket(bucketKey) ? RoundCurrency(-amount) : 0m,
+            "personal-administrative" => bucketKey == "personal-administrative" ? amount : 0m,
+            "personal-cloud" => bucketKey == "personal-cloud" ? amount : 0m,
+            "personal-copiers" => bucketKey == "personal-copiers" ? amount : 0m,
+            "personal-total" => IsPnlPersonalBucket(bucketKey) ? amount : 0m,
+            "admin-office-rent" => bucketKey == "office-rent" ? amount : 0m,
+            "admin-warehouse" => bucketKey == "warehouse" ? amount : 0m,
+            "admin-transport" => bucketKey == "transport" ? amount : 0m,
+            "admin-internal" => bucketKey == "internal" ? amount : 0m,
+            "admin-recurring" => bucketKey == "recurring" ? amount : 0m,
+            "admin-equipment" => bucketKey == "equipment" ? amount : 0m,
+            "admin-travel" => bucketKey == "travel" ? amount : 0m,
+            "admin-empty" => bucketKey == "empty" ? amount : 0m,
+            "admin-total" => IsPnlAdministrativeBucket(bucketKey) ? amount : 0m,
+            "commercial-marketing" => bucketKey == "marketing" ? amount : 0m,
+            "commercial-total" => bucketKey == "marketing" ? amount : 0m,
+            "ebitda" => IsPnlEbitdaExpenseBucket(bucketKey) ? RoundCurrency(-amount) : 0m,
+            "other-taxes" => bucketKey == "taxes" ? amount : 0m,
+            "other-financial" => bucketKey == "financial" ? amount : 0m,
+            "other-total" => bucketKey is "taxes" or "financial" ? amount : 0m,
+            _ => 0m
+        };
+    }
+
+    private static bool IsPnlCogsBucket(string bucketKey) =>
+        bucketKey is "licensing" or "supplies" or "machines" or "technical-service";
+
+    private static bool IsPnlPersonalBucket(string bucketKey) =>
+        bucketKey is "personal-administrative" or "personal-cloud" or "personal-copiers";
+
+    private static bool IsPnlAdministrativeBucket(string bucketKey) =>
+        bucketKey is "office-rent" or "warehouse" or "transport" or "internal" or "recurring" or "equipment" or "travel" or "empty";
+
+    private static bool IsPnlEbitdaExpenseBucket(string bucketKey) =>
+        IsPnlCogsBucket(bucketKey) || IsPnlPersonalBucket(bucketKey) || IsPnlAdministrativeBucket(bucketKey) || bucketKey == "marketing";
+
+    private static PnlCellDetailRecordDto BuildPnlBillingDetailRecord(BillingRecordRow row, decimal cellValue)
+    {
+        var verticalKey = ResolvePnlVerticalKeyFromOptionValue(row.VerticalOptionValue);
+        return new PnlCellDetailRecordDto
+        {
+            SourceType = "billing",
+            SourceLabel = "Facturacion",
+            RecordId = row.RecordId,
+            DocumentNumber = row.InvoiceNumber,
+            Description = row.ClientName,
+            DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "-",
+            VerticalKey = verticalKey,
+            VerticalLabel = string.IsNullOrWhiteSpace(row.VerticalLabel) ? ResolvePnlDetailVerticalLabel(verticalKey) : row.VerticalLabel,
+            CategoryLabel = "No aplica",
+            TotalInvoice = row.TotalInvoice,
+            VatValue = row.VatValue,
+            TotalBeforeVatValue = CalculateInvoiceTaxBase(row),
+            PaymentValue = row.PaymentValue,
+            CloudValue = 0m,
+            CopiersValue = 0m,
+            CellValue = RoundCurrency(cellValue),
+            CanEditVertical = true,
+            CanEditCategory = false
+        };
+    }
+
+    private static PnlCellDetailRecordDto BuildPnlExpenseDetailRecord(PnlExpenseRow row, decimal cellValue)
+    {
+        var verticalKey = ResolvePnlExpenseEditorVerticalKey(row);
+        return new PnlCellDetailRecordDto
+        {
+            SourceType = "expense",
+            SourceLabel = "Gasto",
+            RecordId = row.RecordId,
+            DocumentNumber = row.RecordId,
+            Description = row.CategoryLabel,
+            DateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "-",
+            VerticalKey = verticalKey,
+            VerticalLabel = ResolvePnlDetailVerticalLabel(verticalKey),
+            CategoryOptionValue = row.CategoryOptionValue,
+            CategoryLabel = string.IsNullOrWhiteSpace(row.CategoryLabel) ? "Sin categoria" : row.CategoryLabel,
+            TotalInvoice = row.TotalValue,
+            VatValue = row.VatValue,
+            TotalBeforeVatValue = row.TotalBeforeVatValue,
+            PaymentValue = row.PaymentValue,
+            CloudValue = row.CloudValue,
+            CopiersValue = row.CopiersValue,
+            CellValue = RoundCurrency(cellValue),
+            CanEditVertical = true,
+            CanEditCategory = true
+        };
+    }
+
+    private static PnlRowMetadata ResolvePnlRowMetadata(string rowKey)
+    {
+        var normalizedKey = rowKey.Trim();
+        return normalizedKey switch
+        {
+            "income-copiers" => new PnlRowMetadata(normalizedKey, "Copiers"),
+            "income-cloud" => new PnlRowMetadata(normalizedKey, "Cloud"),
+            "income-total" => new PnlRowMetadata(normalizedKey, "INGRESOS OPERACIONALES (total)"),
+            "cogs-licensing" => new PnlRowMetadata(normalizedKey, "Licenciamiento (gross)"),
+            "cogs-rebates" => new PnlRowMetadata(normalizedKey, "Rebates"),
+            "cogs-supplies" => new PnlRowMetadata(normalizedKey, "Suministros"),
+            "cogs-machines" => new PnlRowMetadata(normalizedKey, "Maquinas"),
+            "cogs-technical-service" => new PnlRowMetadata(normalizedKey, "Servicio Tecnico"),
+            "cogs-total" => new PnlRowMetadata(normalizedKey, "COGS (total)"),
+            "gross-profit" => new PnlRowMetadata(normalizedKey, "UTILIDAD BRUTA"),
+            "personal-administrative" => new PnlRowMetadata(normalizedKey, "Personal Administrativo"),
+            "personal-cloud" => new PnlRowMetadata(normalizedKey, "Personal Cloud"),
+            "personal-copiers" => new PnlRowMetadata(normalizedKey, "Personal Copiers"),
+            "personal-total" => new PnlRowMetadata(normalizedKey, "Subtotal personal"),
+            "admin-office-rent" => new PnlRowMetadata(normalizedKey, "Arriendo Oficina"),
+            "admin-warehouse" => new PnlRowMetadata(normalizedKey, "Bodegaje"),
+            "admin-transport" => new PnlRowMetadata(normalizedKey, "Transporte Equipos"),
+            "admin-internal" => new PnlRowMetadata(normalizedKey, "Gastos internos"),
+            "admin-recurring" => new PnlRowMetadata(normalizedKey, "Recurrente"),
+            "admin-equipment" => new PnlRowMetadata(normalizedKey, "Equipamiento"),
+            "admin-travel" => new PnlRowMetadata(normalizedKey, "Viaticos"),
+            "admin-empty" => new PnlRowMetadata(normalizedKey, "Vacios"),
+            "admin-total" => new PnlRowMetadata(normalizedKey, "Subtotal administrativos"),
+            "commercial-marketing" => new PnlRowMetadata(normalizedKey, "Marketing"),
+            "commercial-total" => new PnlRowMetadata(normalizedKey, "Subtotal comerciales"),
+            "ebitda" => new PnlRowMetadata(normalizedKey, "EBITDA"),
+            "other-taxes" => new PnlRowMetadata(normalizedKey, "Impuestos"),
+            "other-financial" => new PnlRowMetadata(normalizedKey, "Financieros / Contables"),
+            "other-total" => new PnlRowMetadata(normalizedKey, "Otros ingresos / gastos (total)"),
+            _ => throw new InvalidOperationException("La fila seleccionada no existe dentro de la estructura del P&L.")
+        };
+    }
+
+    private static string ResolvePnlCellLabel(int year, int monthCutoff, int? cellMonth)
+    {
+        if (cellMonth.HasValue)
+            return $"{ResolvePnlMonthLabel(year, cellMonth.Value)} {year}";
+
+        return $"Total acumulado a {ResolvePnlMonthLabel(year, monthCutoff)} {year}";
+    }
+
+    private static string BuildPnlDetailEmptyMessage(string rowKey) => rowKey switch
+    {
+        "cogs-rebates" => "La fila de rebates sigue siendo manual y por ahora no tiene registros de detalle en Dataverse.",
+        _ => "No encontramos registros que compongan esta celda con los filtros actuales."
+    };
+
+    private static IReadOnlyList<PnlOptionDto> BuildPnlVerticalOptions() => new[]
+    {
+        new PnlOptionDto { Key = DashboardPnlVerticalCloud, Label = "Cloud" },
+        new PnlOptionDto { Key = DashboardPnlVerticalCopiers, Label = "Copiers" }
+    };
+
+    private static IReadOnlyList<PnlOptionDto> BuildPnlCategoryOptions() => new[]
+    {
+        PnlExpensePersonalAdministrativeOption,
+        PnlExpensePersonalCloudOption,
+        PnlExpensePersonalCopiersOption,
+        PnlExpenseOfficeRentOption,
+        PnlExpenseWarehouseOption,
+        PnlExpenseTransportOption,
+        PnlExpenseInternalOption,
+        PnlExpenseRecurringOption,
+        PnlExpenseEquipmentOption,
+        PnlExpenseTravelOption,
+        PnlExpenseMarketingOption,
+        PnlExpenseTaxesOption,
+        PnlExpenseMachinesOption,
+        PnlExpenseSuppliesOption,
+        PnlExpenseLicensingOption,
+        PnlExpenseFinancialOption,
+        PnlExpenseTechnicalServiceOption
+    }
+        .Select(optionValue => new PnlOptionDto
+        {
+            Key = optionValue.ToString(CultureInfo.InvariantCulture),
+            Label = ResolvePnlExpenseCategoryLabel(optionValue),
+            Value = optionValue
+        })
+        .ToList();
+
+    private static string ResolvePnlVerticalKeyFromOptionValue(int optionValue) => optionValue switch
+    {
+        DashboardVerticalCloudOption => DashboardPnlVerticalCloud,
+        DashboardVerticalCopiersOption => DashboardPnlVerticalCopiers,
+        _ => "none"
+    };
+
+    private static int ResolveDashboardVerticalOptionValue(string? verticalKey) => NormalizeEditablePnlVerticalKey(verticalKey) switch
+    {
+        DashboardPnlVerticalCloud => DashboardVerticalCloudOption,
+        DashboardPnlVerticalCopiers => DashboardVerticalCopiersOption,
+        _ => throw new InvalidOperationException("La vertical debe ser Cloud o Copiers para poder guardar.")
+    };
+
+    private static string? NormalizeEditablePnlVerticalKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            DashboardPnlVerticalCloud => DashboardPnlVerticalCloud,
+            DashboardPnlVerticalCopiers => DashboardPnlVerticalCopiers,
+            _ => throw new InvalidOperationException("La vertical seleccionada no es valida para actualizar el registro.")
+        };
+    }
+
+    private static string ResolvePnlExpenseEditorVerticalKey(PnlExpenseRow row)
+    {
+        if (row.CategoryOptionValue == PnlExpensePersonalCloudOption)
+            return DashboardPnlVerticalCloud;
+
+        if (row.CategoryOptionValue == PnlExpensePersonalCopiersOption)
+            return DashboardPnlVerticalCopiers;
+
+        var hasCloud = Math.Abs(row.CloudValue) >= 0.01m;
+        var hasCopiers = Math.Abs(row.CopiersValue) >= 0.01m;
+
+        return (hasCloud, hasCopiers) switch
+        {
+            (true, false) => DashboardPnlVerticalCloud,
+            (false, true) => DashboardPnlVerticalCopiers,
+            (true, true) => "mixed",
+            _ => "none"
+        };
+    }
+
+    private static string ResolvePnlDetailVerticalLabel(string verticalKey) => verticalKey switch
+    {
+        DashboardPnlVerticalCloud => "Cloud",
+        DashboardPnlVerticalCopiers => "Copiers",
+        "mixed" => "Mixto",
+        _ => "Sin vertical"
+    };
+
+    private static bool IsPnlExpensePersonalCategory(int optionValue) =>
+        optionValue is PnlExpensePersonalCloudOption or PnlExpensePersonalCopiersOption;
+
     private static IReadOnlyList<PnlMonthColumnDto> BuildPnlMonthColumns(int year, int monthCutoff)
     {
         return Enumerable.Range(1, Math.Clamp(monthCutoff, 1, 12))
@@ -572,7 +1091,7 @@ public sealed partial class DataverseService
         if (!MatchesPnlVerticalSelection(targetVerticalOption, verticalKey))
             return 0m;
 
-        return CalculateInvoiceTaxBase(row);
+        return row.TotalInvoice;
     }
 
     private static decimal GetPnlExpenseViewAmount(PnlExpenseRow row, string verticalKey)
@@ -834,6 +1353,8 @@ public sealed partial class DataverseService
 
         return builder.ToString().Normalize(NormalizationForm.FormC);
     }
+
+    private sealed record PnlRowMetadata(string Key, string Label, string ValueFormat = "currency");
 
     private sealed class PnlExpenseRow
     {

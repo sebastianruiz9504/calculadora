@@ -13,6 +13,8 @@
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
+     data-pnl-detail-url="@Url.Action("PnlDetail", "Dashboard")"
+     data-pnl-detail-update-url="@Url.Action("PnlDetailRecord", "Dashboard")"
      data-initial-year="@Model.InitialYear"
      data-initial-period="@Model.InitialPeriodKind.ToKey()"
      data-initial-value="@Model.InitialPeriodValue">
@@ -269,6 +271,50 @@
                 </div>
             </article>
         </section>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="pnlDetailModal" hidden>
+    <div class="dashboard-modal__backdrop" data-pnl-detail-close></div>
+    <div class="dashboard-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="pnlDetailTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Detalle P&amp;L</div>
+                <h2 class="dashboard-modal__title" id="pnlDetailTitle">Detalle de la celda</h2>
+                <p class="dashboard-modal__subtitle" id="pnlDetailSubtitle">Selecciona una celda del P&amp;L para ver su composici&oacute;n.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="pnlDetailCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="pnlDetailStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+            <table class="table dashboard-table dashboard-pnl-detail-table">
+                <thead>
+                    <tr>
+                        <th>Origen</th>
+                        <th>Documento</th>
+                        <th>Fecha</th>
+                        <th>Detalle</th>
+                        <th>Vertical</th>
+                        <th>Categoria</th>
+                        <th class="text-end">Total factura</th>
+                        <th class="text-end">IVA</th>
+                        <th class="text-end">Base</th>
+                        <th class="text-end">Valor pago</th>
+                        <th class="text-end">Cloud</th>
+                        <th class="text-end">Copiers</th>
+                        <th class="text-end">Valor celda</th>
+                        <th>Acci&oacute;n</th>
+                    </tr>
+                </thead>
+                <tbody id="pnlDetailBody">
+                    <tr>
+                        <td colspan="14" class="dashboard-table__empty">Selecciona una celda del P&amp;L para ver el detalle.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 

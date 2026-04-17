@@ -48,3 +48,66 @@ public sealed class PnlRowDto
     public IReadOnlyList<decimal> Values { get; set; } = Array.Empty<decimal>();
     public decimal Total { get; set; }
 }
+
+public sealed class PnlCellDetailDto
+{
+    public int Year { get; set; }
+    public int MonthCutoff { get; set; }
+    public int? CellMonth { get; set; }
+    public string RowKey { get; set; } = "";
+    public string RowLabel { get; set; } = "";
+    public string CellLabel { get; set; } = "";
+    public string VerticalKey { get; set; } = "all";
+    public string VerticalLabel { get; set; } = "";
+    public string ValueFormat { get; set; } = "currency";
+    public decimal Total { get; set; }
+    public int RecordsCount { get; set; }
+    public string EmptyMessage { get; set; } = "";
+    public IReadOnlyList<PnlOptionDto> VerticalOptions { get; set; } = Array.Empty<PnlOptionDto>();
+    public IReadOnlyList<PnlOptionDto> CategoryOptions { get; set; } = Array.Empty<PnlOptionDto>();
+    public IReadOnlyList<PnlCellDetailRecordDto> Records { get; set; } = Array.Empty<PnlCellDetailRecordDto>();
+}
+
+public sealed class PnlCellDetailRecordDto
+{
+    public string SourceType { get; set; } = "";
+    public string SourceLabel { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string DocumentNumber { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string DateDisplay { get; set; } = "";
+    public string VerticalKey { get; set; } = "";
+    public string VerticalLabel { get; set; } = "";
+    public int? CategoryOptionValue { get; set; }
+    public string CategoryLabel { get; set; } = "";
+    public decimal TotalInvoice { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal TotalBeforeVatValue { get; set; }
+    public decimal PaymentValue { get; set; }
+    public decimal CloudValue { get; set; }
+    public decimal CopiersValue { get; set; }
+    public decimal CellValue { get; set; }
+    public bool CanEditVertical { get; set; }
+    public bool CanEditCategory { get; set; }
+}
+
+public sealed class PnlOptionDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int? Value { get; set; }
+}
+
+public sealed class PnlDetailRecordUpdateRequestDto
+{
+    public string SourceType { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string? VerticalKey { get; set; }
+    public int? CategoryOptionValue { get; set; }
+}
+
+public sealed class PnlDetailRecordUpdateResultDto
+{
+    public string RecordId { get; set; } = "";
+    public string Message { get; set; } = "";
+}

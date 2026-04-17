@@ -49,6 +49,12 @@
     const pnlKpisContainer = document.getElementById("pnlKpisContainer");
     const pnlDescription = document.getElementById("pnlDescription");
     const pnlTableContainer = document.getElementById("pnlTableContainer");
+    const pnlDetailModal = document.getElementById("pnlDetailModal");
+    const pnlDetailCloseBtn = document.getElementById("pnlDetailCloseBtn");
+    const pnlDetailTitle = document.getElementById("pnlDetailTitle");
+    const pnlDetailSubtitle = document.getElementById("pnlDetailSubtitle");
+    const pnlDetailStatus = document.getElementById("pnlDetailStatus");
+    const pnlDetailBody = document.getElementById("pnlDetailBody");
 
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
@@ -88,6 +94,10 @@
         pnlYear: currentYear,
         pnlMonth: new Date().getMonth() + 1,
         pnlVertical: "all",
+        pnlDetail: null,
+        pnlDetailContext: null,
+        pnlDetailLoading: false,
+        pnlDetailSavingRecordId: "",
         periodLoading: false,
         portfolioLoading: false,
         pnlLoading: false
@@ -186,6 +196,302 @@
                 element.disabled = loading;
             }
         });
+    }
+
+    function isPnlDetailOpen() {
+        return Boolean(pnlDetailModal && !pnlDetailModal.hidden);
+    }
+
+    function openPnlDetailModal() {
+        if (!pnlDetailModal) {
+            return;
+        }
+
+        pnlDetailModal.hidden = false;
+        document.body.classList.add("dashboard-modal-open");
+    }
+
+    function closePnlDetailModal() {
+        if (!pnlDetailModal) {
+            return;
+        }
+
+        pnlDetailModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        state.pnlDetail = null;
+        state.pnlDetailContext = null;
+        state.pnlDetailLoading = false;
+        state.pnlDetailSavingRecordId = "";
+        setStatus(pnlDetailStatus, "", "");
+
+        if (pnlDetailTitle) {
+            pnlDetailTitle.textContent = "Detalle de la celda";
+        }
+
+        if (pnlDetailSubtitle) {
+            pnlDetailSubtitle.textContent = "Selecciona una celda del P&L para ver su composición.";
+        }
+
+        if (pnlDetailBody) {
+            pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Selecciona una celda del P&L para ver el detalle.</td></tr>';
+        }
+    }
+
+    function renderPnlDetailLoading(rowLabel, cellMonth) {
+        if (pnlDetailTitle) {
+            pnlDetailTitle.textContent = rowLabel || "Detalle de la celda";
+        }
+
+        if (pnlDetailSubtitle) {
+            pnlDetailSubtitle.textContent = cellMonth
+                ? `Cargando composición de ${rowLabel || "la celda"} para ${monthLabels[Math.max(Number(cellMonth) - 1, 0)] || "el mes seleccionado"}...`
+                : `Cargando composición acumulada de ${rowLabel || "la celda"}...`;
+        }
+
+        if (pnlDetailBody) {
+            pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Cargando detalle...</td></tr>';
+        }
+    }
+
+    function buildPnlDetailSubtitle(detail) {
+        const parts = [];
+        if (detail?.cellLabel) {
+            parts.push(detail.cellLabel);
+        }
+
+        if (detail?.verticalLabel) {
+            parts.push(detail.verticalLabel);
+        }
+
+        parts.push(formatMetric(detail?.total || 0, detail?.valueFormat || "currency"));
+        parts.push(`${numberFormatter.format(Number(detail?.recordsCount || 0))} registros`);
+        return parts.join(" · ");
+    }
+
+    function buildPnlDetailSelectOptions(options, currentKey, currentLabel, currentValue, useNumericValue) {
+        const normalizedOptions = Array.isArray(options) ? [...options] : [];
+        const hasCurrent = normalizedOptions.some(option => {
+            if (useNumericValue) {
+                return Number(option?.value) === Number(currentValue);
+            }
+
+            return (option?.key || "") === (currentKey || "");
+        });
+
+        if (!hasCurrent && ((useNumericValue && Number.isFinite(Number(currentValue))) || (!useNumericValue && currentKey))) {
+            normalizedOptions.unshift({
+                key: currentKey || String(currentValue || ""),
+                label: currentLabel || "Actual",
+                value: useNumericValue ? Number(currentValue) : currentValue
+            });
+        }
+
+        return normalizedOptions;
+    }
+
+    function renderPnlVerticalEditor(record, verticalOptions) {
+        if (!record?.canEditVertical) {
+            return `<span class="dashboard-pnl-detail__static">${escapeHtml(record?.verticalLabel || "No aplica")}</span>`;
+        }
+
+        const options = buildPnlDetailSelectOptions(
+            verticalOptions,
+            record?.verticalKey || "",
+            record?.verticalLabel || "",
+            record?.verticalKey || "",
+            false
+        );
+
+        return `
+            <select class="form-select form-select-sm dashboard-select dashboard-select--detail" data-pnl-edit-field="vertical">
+                ${options.map(option => `
+                    <option value="${escapeHtml(option?.key || "")}" ${(option?.key || "") === (record?.verticalKey || "") ? "selected" : ""}>
+                        ${escapeHtml(option?.label || option?.key || "")}
+                    </option>
+                `).join("")}
+            </select>
+        `;
+    }
+
+    function renderPnlCategoryEditor(record, categoryOptions) {
+        if (!record?.canEditCategory) {
+            return `<span class="dashboard-pnl-detail__static">${escapeHtml(record?.categoryLabel || "No aplica")}</span>`;
+        }
+
+        const options = buildPnlDetailSelectOptions(
+            categoryOptions,
+            String(record?.categoryOptionValue || ""),
+            record?.categoryLabel || "",
+            record?.categoryOptionValue,
+            true
+        );
+
+        return `
+            <select class="form-select form-select-sm dashboard-select dashboard-select--detail" data-pnl-edit-field="category">
+                ${options.map(option => `
+                    <option value="${escapeHtml(String(option?.value ?? ""))}" ${Number(option?.value) === Number(record?.categoryOptionValue) ? "selected" : ""}>
+                        ${escapeHtml(option?.label || "")}
+                    </option>
+                `).join("")}
+            </select>
+        `;
+    }
+
+    function renderPnlDetail(detail) {
+        state.pnlDetail = detail || null;
+
+        if (pnlDetailTitle) {
+            pnlDetailTitle.textContent = detail?.rowLabel || "Detalle de la celda";
+        }
+
+        if (pnlDetailSubtitle) {
+            pnlDetailSubtitle.textContent = buildPnlDetailSubtitle(detail);
+        }
+
+        if (!pnlDetailBody) {
+            return;
+        }
+
+        const records = Array.isArray(detail?.records) ? detail.records : [];
+        if (!records.length) {
+            pnlDetailBody.innerHTML = `
+                <tr>
+                    <td colspan="14" class="dashboard-table__empty">${escapeHtml(detail?.emptyMessage || "No encontramos registros para esta celda.")}</td>
+                </tr>
+            `;
+            return;
+        }
+
+        pnlDetailBody.innerHTML = records.map(record => {
+            const isSaving = state.pnlDetailSavingRecordId && state.pnlDetailSavingRecordId === record.recordId;
+            return `
+                <tr
+                    data-record-id="${escapeHtml(record.recordId || "")}"
+                    data-source-type="${escapeHtml(record.sourceType || "")}"
+                    data-original-vertical="${escapeHtml(record.verticalKey || "")}"
+                    data-original-category="${escapeHtml(String(record.categoryOptionValue ?? ""))}">
+                    <td>${escapeHtml(record.sourceLabel || "")}</td>
+                    <td>${escapeHtml(record.documentNumber || "")}</td>
+                    <td>${escapeHtml(record.dateDisplay || "-")}</td>
+                    <td>${escapeHtml(record.description || "")}</td>
+                    <td>${renderPnlVerticalEditor(record, detail?.verticalOptions)}</td>
+                    <td>${renderPnlCategoryEditor(record, detail?.categoryOptions)}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.totalInvoice || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.vatValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.totalBeforeVatValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.paymentValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.cloudValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.copiersValue || 0)))}</td>
+                    <td class="text-end"><strong>${escapeHtml(currencyFormatter.format(Number(record.cellValue || 0)))}</strong></td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-pnl-detail-save ${isSaving ? "disabled" : ""}>
+                            ${isSaving ? "Guardando..." : "Guardar"}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    async function loadPnlDetail(rowKey, rowLabel, cellMonth) {
+        if (!rowKey) {
+            return;
+        }
+
+        state.pnlDetailContext = {
+            rowKey,
+            rowLabel: rowLabel || "Detalle de la celda",
+            cellMonth: Number.isFinite(Number(cellMonth)) ? Number(cellMonth) : null
+        };
+
+        state.pnlDetailLoading = true;
+        openPnlDetailModal();
+        renderPnlDetailLoading(rowLabel, state.pnlDetailContext.cellMonth);
+        setStatus(pnlDetailStatus, "info", "Cargando detalle de la celda...");
+
+        try {
+            const detail = await fetchJson(buildPnlDetailUrl(rowKey, state.pnlDetailContext.cellMonth));
+            renderPnlDetail(detail);
+            setStatus(pnlDetailStatus, "", "");
+        } catch (error) {
+            setStatus(pnlDetailStatus, "error", error instanceof Error ? error.message : "No fue posible cargar el detalle de la celda.");
+            if (pnlDetailBody) {
+                pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">No fue posible cargar el detalle.</td></tr>';
+            }
+            throw error;
+        } finally {
+            state.pnlDetailLoading = false;
+        }
+    }
+
+    async function refreshCurrentPnlDetail() {
+        if (!state.pnlDetailContext) {
+            return;
+        }
+
+        await loadPnlDetail(
+            state.pnlDetailContext.rowKey,
+            state.pnlDetailContext.rowLabel,
+            state.pnlDetailContext.cellMonth
+        );
+    }
+
+    async function savePnlDetailRecord(saveButton) {
+        if (!saveButton) {
+            return;
+        }
+
+        const row = saveButton.closest("tr[data-record-id]");
+        if (!row) {
+            return;
+        }
+
+        const payload = {
+            sourceType: row.dataset.sourceType || "",
+            recordId: row.dataset.recordId || ""
+        };
+
+        const verticalSelect = row.querySelector("[data-pnl-edit-field='vertical']");
+        const categorySelect = row.querySelector("[data-pnl-edit-field='category']");
+        const originalVertical = (row.dataset.originalVertical || "").toLowerCase();
+        const originalCategory = Number(row.dataset.originalCategory || 0);
+        const verticalValue = verticalSelect && !verticalSelect.disabled ? (verticalSelect.value || "").toLowerCase() : "";
+        if ((verticalValue === "cloud" || verticalValue === "copiers") && verticalValue !== originalVertical) {
+            payload.verticalKey = verticalValue;
+        }
+
+        const categoryValue = categorySelect && !categorySelect.disabled ? Number(categorySelect.value || 0) : NaN;
+        if (!Number.isNaN(categoryValue) && categoryValue > 0 && categoryValue !== originalCategory) {
+            payload.categoryOptionValue = categoryValue;
+        }
+
+        if (!payload.verticalKey && !payload.categoryOptionValue) {
+            setStatus(pnlDetailStatus, "info", "No hay cambios pendientes en este registro.");
+            return;
+        }
+
+        state.pnlDetailSavingRecordId = payload.recordId;
+        renderPnlDetail(state.pnlDetail);
+        setStatus(pnlDetailStatus, "info", "Guardando cambios en Dataverse...");
+
+        try {
+            const result = await fetchJson(app.dataset.pnlDetailUpdateUrl, {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+
+            await loadPnl();
+            await refreshCurrentPnlDetail();
+            setStatus(pnlDetailStatus, "info", result?.message || "Registro actualizado correctamente.");
+        } catch (error) {
+            state.pnlDetailSavingRecordId = "";
+            renderPnlDetail(state.pnlDetail);
+            setStatus(pnlDetailStatus, "error", error instanceof Error ? error.message : "No fue posible guardar el registro.");
+            return;
+        }
+
+        state.pnlDetailSavingRecordId = "";
+        renderPnlDetail(state.pnlDetail);
     }
 
     function buildYearOptions() {
@@ -323,11 +629,34 @@
         return `${app.dataset.pnlUrl}?${params.toString()}`;
     }
 
-    async function fetchJson(url) {
+    function buildPnlDetailUrl(rowKey, cellMonth) {
+        const params = new URLSearchParams({
+            year: String(state.pnlYear),
+            cutoffMonth: String(state.pnlMonth),
+            vertical: state.pnlVertical,
+            rowKey: rowKey || ""
+        });
+
+        if (Number.isFinite(Number(cellMonth))) {
+            params.set("cellMonth", String(Number(cellMonth)));
+        }
+
+        return `${app.dataset.pnlDetailUrl}?${params.toString()}`;
+    }
+
+    async function fetchJson(url, options = {}) {
+        const headers = {
+            Accept: "application/json",
+            ...(options.headers || {})
+        };
+        if (options.body && !headers["Content-Type"]) {
+            headers["Content-Type"] = "application/json";
+        }
+
         const response = await fetch(url, {
-            headers: {
-                Accept: "application/json"
-            }
+            method: options.method || "GET",
+            headers,
+            body: options.body
         });
 
         const contentType = response.headers.get("content-type") || "";
@@ -675,14 +1004,36 @@
             }
 
             const valueCells = (Array.isArray(row.values) ? row.values : [])
-                .map(value => `<td class="text-end">${escapeHtml(formatMetric(value, row.valueFormat))}</td>`)
+                .map((value, index) => {
+                    const month = Number(months[index]?.month || index + 1);
+                    return `
+                        <td class="text-end">
+                            <button
+                                type="button"
+                                class="dashboard-pnl-cell-btn"
+                                data-pnl-row-key="${escapeHtml(row.key || "")}"
+                                data-pnl-row-label="${escapeHtml(row.label || "")}"
+                                data-pnl-cell-month="${month}">
+                                ${escapeHtml(formatMetric(value, row.valueFormat))}
+                            </button>
+                        </td>
+                    `;
+                })
                 .join("");
 
             return `
                 <tr class="dashboard-pnl-row dashboard-pnl-row--${escapeHtml(row.rowType || "detail")}">
                     <td class="dashboard-pnl-row__label dashboard-pnl-row__label--level-${Number(row.level || 0)}">${escapeHtml(row.label)}</td>
                     ${valueCells}
-                    <td class="text-end dashboard-pnl-row__total">${escapeHtml(formatMetric(row.total, row.valueFormat))}</td>
+                    <td class="text-end dashboard-pnl-row__total">
+                        <button
+                            type="button"
+                            class="dashboard-pnl-cell-btn dashboard-pnl-cell-btn--total"
+                            data-pnl-row-key="${escapeHtml(row.key || "")}"
+                            data-pnl-row-label="${escapeHtml(row.label || "")}">
+                            ${escapeHtml(formatMetric(row.total, row.valueFormat))}
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join("");
@@ -699,6 +1050,16 @@
                 <tbody>${bodyRows}</tbody>
             </table>
         `;
+
+        pnlTableContainer.querySelectorAll("[data-pnl-row-key]").forEach(button => {
+            button.addEventListener("click", () => {
+                loadPnlDetail(
+                    button.dataset.pnlRowKey || "",
+                    button.dataset.pnlRowLabel || "",
+                    button.dataset.pnlCellMonth || null
+                ).catch(() => {});
+            });
+        });
     }
 
     function getFilteredPortfolioRows() {
@@ -856,6 +1217,10 @@
         state.activeTab = tabKey;
         syncPeriodScopeVisibility();
 
+        if (tabKey !== "pnl" && isPnlDetailOpen()) {
+            closePnlDetailModal();
+        }
+
         tabButtons.forEach(button => {
             const isActive = button.dataset.dashboardTab === tabKey;
             button.classList.toggle("is-active", isActive);
@@ -1012,18 +1377,38 @@
         renderPortfolioTable();
     });
     pnlYearFilter?.addEventListener("change", () => {
+        closePnlDetailModal();
         state.pnlYear = Number(pnlYearFilter.value || currentYear);
         state.pnlMonth = Math.min(state.pnlMonth || 1, 12);
         buildPnlMonthOptions(12);
         loadPnl();
     });
     pnlMonthFilter?.addEventListener("change", () => {
+        closePnlDetailModal();
         state.pnlMonth = Number(pnlMonthFilter.value || 1);
         loadPnl();
     });
     pnlVerticalFilter?.addEventListener("change", () => {
+        closePnlDetailModal();
         state.pnlVertical = pnlVerticalFilter.value || "all";
         loadPnl();
+    });
+    pnlDetailCloseBtn?.addEventListener("click", closePnlDetailModal);
+    pnlDetailModal?.querySelectorAll("[data-pnl-detail-close]").forEach(element => {
+        element.addEventListener("click", closePnlDetailModal);
+    });
+    pnlDetailBody?.addEventListener("click", event => {
+        const saveButton = event.target.closest("[data-pnl-detail-save]");
+        if (!saveButton) {
+            return;
+        }
+
+        savePnlDetailRecord(saveButton);
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && isPnlDetailOpen()) {
+            closePnlDetailModal();
+        }
     });
 
     tabButtons.forEach(button => {

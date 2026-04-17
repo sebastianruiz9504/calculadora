@@ -40,6 +40,8 @@ public interface IDataverseService
     Task<BillingDashboardDto> GetBillingDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
     Task<TaxesDashboardDto> GetTaxesDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
     Task<PnlDashboardDto> GetPnlDashboardAsync(int year, int? monthCutoff = null, string? vertical = null, CancellationToken ct = default);
+    Task<PnlCellDetailDto> GetPnlCellDetailAsync(int year, int? monthCutoff, string? vertical, string rowKey, int? cellMonth = null, CancellationToken ct = default);
+    Task<PnlDetailRecordUpdateResultDto> UpdatePnlDetailRecordAsync(PnlDetailRecordUpdateRequestDto request, CancellationToken ct = default);
     Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
