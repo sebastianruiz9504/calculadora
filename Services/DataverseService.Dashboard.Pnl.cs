@@ -13,6 +13,7 @@ public sealed partial class DataverseService
     private const string DashboardPnlVerticalCopiers = "copiers";
 
     private const string DashboardExpenseCategoryField = "cr07a_categoria";
+    private const string DashboardExpenseIssuerNameField = "cr07a_nombreemisor";
     private const string DashboardExpenseTotalField = "cr07a_total";
     private const string DashboardExpenseVatField = "cr07a_iva";
     private const string DashboardExpenseTotalBeforeVatField = "cr07a_totalantesdeiva";
@@ -479,6 +480,7 @@ public sealed partial class DataverseService
             DashboardExpenseCloudField,
             DashboardExpenseCopiersField,
             DashboardExpenseCategoryField,
+            DashboardExpenseIssuerNameField,
             DashboardExpenseTotalField,
             DashboardExpenseVatField,
             DashboardExpenseTotalBeforeVatField
@@ -491,7 +493,8 @@ public sealed partial class DataverseService
             DashboardExpensePaymentValueField,
             DashboardExpenseCloudField,
             DashboardExpenseCopiersField,
-            DashboardExpenseCategoryField
+            DashboardExpenseCategoryField,
+            DashboardExpenseIssuerNameField
         });
 
         var filter = BuildBillingDateFilter(
@@ -541,6 +544,7 @@ public sealed partial class DataverseService
             RecordId = recordId.Trim(),
             PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
             PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
+            IssuerName = ReadString(item, DashboardExpenseIssuerNameField).Trim(),
             CategoryOptionValue = categoryOptionValue,
             CategoryLabel = FirstNonEmpty(
                 ReadString(item, $"{DashboardExpenseCategoryField}{FormattedValueAnnotationSuffix}"),
@@ -809,7 +813,7 @@ public sealed partial class DataverseService
             SourceLabel = "Gasto",
             RecordId = row.RecordId,
             DocumentNumber = row.RecordId,
-            Description = row.CategoryLabel,
+            Description = string.IsNullOrWhiteSpace(row.IssuerName) ? row.CategoryLabel : row.IssuerName,
             DateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "-",
             VerticalKey = verticalKey,
             VerticalLabel = ResolvePnlDetailVerticalLabel(verticalKey),
@@ -1361,6 +1365,7 @@ public sealed partial class DataverseService
         public string RecordId { get; set; } = "";
         public DateOnly? PaymentDate { get; set; }
         public decimal PaymentValue { get; set; }
+        public string IssuerName { get; set; } = "";
         public int CategoryOptionValue { get; set; }
         public string CategoryLabel { get; set; } = "";
         public decimal TotalValue { get; set; }
