@@ -98,6 +98,10 @@ public sealed partial class DataverseService
             .ToList();
 
         var months = BuildPnlMonthColumns(resolvedYear, resolvedMonthCutoff);
+        var orphanRows = BuildPnlOrphanRows(
+            resolvedMonthCutoff,
+            scopedBillingRecords,
+            scopedExpenseRecords);
 
         var copiersRevenue = BuildPnlBillingSeries(
             resolvedMonthCutoff,
@@ -175,6 +179,7 @@ public sealed partial class DataverseService
             RecordsCount = recordsCount,
             EmptyStateTitle = "No encontramos movimientos para construir el P&L.",
             EmptyStateMessage = "Cuando existan ingresos o costos cargados en el año seleccionado veras la matriz mensual aqui.",
+            OrphanDescription = "Estos conteos muestran facturas sin vertical y gastos pendientes de clasificacion o reparto. Haz clic sobre cualquier numero para abrir el detalle y corregir el registro.",
             Months = months,
             Kpis = BuildPnlKpis(
                 operatingRevenueTotal,
@@ -214,7 +219,8 @@ public sealed partial class DataverseService
                 ebitda,
                 taxes,
                 financial,
-                otherNonOperating)
+                otherNonOperating),
+            OrphanRows = orphanRows
         };
     }
 
@@ -272,6 +278,17 @@ public sealed partial class DataverseService
 
         var resolvedMonthCutoff = ResolvePnlMonthCutoff(latestMonthAvailable, monthCutoff);
         var resolvedCellMonth = ResolvePnlCellMonth(cellMonth, resolvedMonthCutoff);
+
+        if (IsPnlOrphanRow(rowMetadata.Key))
+        {
+            return BuildPnlOrphanCellDetail(
+                resolvedYear,
+                resolvedMonthCutoff,
+                resolvedCellMonth,
+                rowMetadata,
+                billingRecords,
+                expenseRecords);
+        }
 
         var scopedBillingRecords = billingRecords
             .Where(record => record.EmissionDate is not null
@@ -398,7 +415,12 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No encontramos el gasto seleccionado en Dataverse.");
 
         var requestedVerticalKey = NormalizeEditablePnlVerticalKey(request.VerticalKey);
+        var requestedCloudValue = NormalizeEditablePnlAllocationValue(request.CloudValue, "Cloud");
+        var requestedCopiersValue = NormalizeEditablePnlAllocationValue(request.CopiersValue, "Copiers");
+        var hasExplicitAllocation = requestedCloudValue.HasValue || requestedCopiersValue.HasValue;
         var finalCategoryOption = request.CategoryOptionValue ?? current.CategoryOptionValue;
+        var finalCloudValue = requestedCloudValue ?? current.CloudValue;
+        var finalCopiersValue = requestedCopiersValue ?? current.CopiersValue;
         var payload = new Dictionary<string, object>();
 
         if (IsPnlExpensePersonalCategory(finalCategoryOption))
@@ -410,29 +432,40 @@ public sealed partial class DataverseService
                 : PnlExpensePersonalCopiersOption;
             requestedVerticalKey = personalVerticalKey;
         }
-        else if (IsPnlExpensePersonalCategory(current.CategoryOptionValue) && requestedVerticalKey is null && request.CategoryOptionValue.HasValue)
-        {
-            requestedVerticalKey = ResolvePnlExpenseEditorVerticalKey(current);
-        }
 
         if (finalCategoryOption != current.CategoryOptionValue)
         {
             payload[DashboardExpenseCategoryField] = finalCategoryOption;
         }
 
-        var shouldRewriteAllocation = requestedVerticalKey is not null
-            || (request.CategoryOptionValue.HasValue
-                && (IsPnlExpensePersonalCategory(current.CategoryOptionValue) || IsPnlExpensePersonalCategory(finalCategoryOption)));
+        var shouldRewriteAllocation = requestedVerticalKey is not null && !hasExplicitAllocation;
+        if (IsPnlExpensePersonalCategory(finalCategoryOption))
+        {
+            shouldRewriteAllocation = true;
+        }
 
         if (shouldRewriteAllocation)
         {
             var allocationVerticalKey = requestedVerticalKey ?? ResolvePnlExpenseEditorVerticalKey(current);
             if (allocationVerticalKey is DashboardPnlVerticalCloud or DashboardPnlVerticalCopiers)
             {
-                var baseValue = GetPnlExpenseBaseValue(current);
-                payload[DashboardExpenseCloudField] = allocationVerticalKey == DashboardPnlVerticalCloud ? baseValue : 0m;
-                payload[DashboardExpenseCopiersField] = allocationVerticalKey == DashboardPnlVerticalCopiers ? baseValue : 0m;
+                var allocationValue = GetPnlExpenseAllocationReferenceValue(current);
+                finalCloudValue = allocationVerticalKey == DashboardPnlVerticalCloud ? allocationValue : 0m;
+                finalCopiersValue = allocationVerticalKey == DashboardPnlVerticalCopiers ? allocationValue : 0m;
             }
+        }
+
+        finalCloudValue = RoundCurrency(finalCloudValue);
+        finalCopiersValue = RoundCurrency(finalCopiersValue);
+
+        if (finalCloudValue != current.CloudValue)
+        {
+            payload[DashboardExpenseCloudField] = finalCloudValue;
+        }
+
+        if (finalCopiersValue != current.CopiersValue)
+        {
+            payload[DashboardExpenseCopiersField] = finalCopiersValue;
         }
 
         if (payload.Count == 0)
@@ -455,6 +488,7 @@ public sealed partial class DataverseService
             DashboardExpenseCloudField,
             DashboardExpenseCopiersField,
             DashboardExpenseCategoryField,
+            DashboardExpenseIssuerNameField,
             DashboardExpenseTotalField,
             DashboardExpenseVatField,
             DashboardExpenseTotalBeforeVatField
@@ -673,6 +707,89 @@ public sealed partial class DataverseService
         };
     }
 
+    private static IReadOnlyList<PnlOrphanRowDto> BuildPnlOrphanRows(
+        int monthCutoff,
+        IReadOnlyList<BillingRecordRow> billingRecords,
+        IReadOnlyList<PnlExpenseRow> expenseRecords)
+    {
+        return new[]
+        {
+            BuildPnlOrphanRow(
+                "orphan-billing-no-vertical",
+                "Facturacion sin vertical",
+                "Facturas emitidas sin Cloud o Copiers.",
+                BuildPnlBillingOrphanSeries(monthCutoff, billingRecords, IsPnlBillingMissingVertical)),
+            BuildPnlOrphanRow(
+                "orphan-expense-no-category",
+                "Gastos sin categoria",
+                "Gastos que todavia no tienen categoria asignada.",
+                BuildPnlExpenseOrphanSeries(monthCutoff, expenseRecords, IsPnlExpenseMissingCategory)),
+            BuildPnlOrphanRow(
+                "orphan-expense-allocation-mismatch",
+                "Gastos con reparto invalido",
+                "Cloud + Copiers no coincide con el valor pago del gasto.",
+                BuildPnlExpenseOrphanSeries(monthCutoff, expenseRecords, IsPnlExpenseAllocationMismatch))
+        };
+    }
+
+    private static PnlOrphanRowDto BuildPnlOrphanRow(
+        string key,
+        string label,
+        string hint,
+        IReadOnlyList<int> values)
+    {
+        return new PnlOrphanRowDto
+        {
+            Key = key,
+            Label = label,
+            Hint = hint,
+            Values = values,
+            Total = values.Sum()
+        };
+    }
+
+    private static IReadOnlyList<int> BuildPnlBillingOrphanSeries(
+        int monthCutoff,
+        IReadOnlyList<BillingRecordRow> rows,
+        Func<BillingRecordRow, bool> predicate)
+    {
+        var values = new int[Math.Clamp(monthCutoff, 1, 12)];
+        foreach (var row in rows)
+        {
+            if (row.EmissionDate is null || !predicate(row))
+                continue;
+
+            var month = row.EmissionDate.Value.Month;
+            if (month is < 1 or > 12 || month > values.Length)
+                continue;
+
+            values[month - 1] += 1;
+        }
+
+        return values;
+    }
+
+    private static IReadOnlyList<int> BuildPnlExpenseOrphanSeries(
+        int monthCutoff,
+        IReadOnlyList<PnlExpenseRow> rows,
+        Func<PnlExpenseRow, bool> predicate)
+    {
+        var values = new int[Math.Clamp(monthCutoff, 1, 12)];
+        foreach (var row in rows)
+        {
+            if (row.PaymentDate is null || !predicate(row))
+                continue;
+
+            var month = row.PaymentDate.Value.Month;
+            if (month is < 1 or > 12 || month > values.Length)
+                continue;
+
+            values[month - 1] += 1;
+        }
+
+        return values;
+    }
+
     private static PnlRowDto BuildPnlSection(string key, string label, int level)
     {
         return new PnlRowDto
@@ -710,6 +827,79 @@ public sealed partial class DataverseService
             return null;
 
         return Math.Clamp(requestedMonth.Value, 1, resolvedMonthCutoff);
+    }
+
+    private static bool IsPnlOrphanRow(string rowKey) => rowKey switch
+    {
+        "orphan-billing-no-vertical" => true,
+        "orphan-expense-no-category" => true,
+        "orphan-expense-allocation-mismatch" => true,
+        _ => false
+    };
+
+    private static PnlCellDetailDto BuildPnlOrphanCellDetail(
+        int year,
+        int monthCutoff,
+        int? cellMonth,
+        PnlRowMetadata rowMetadata,
+        IReadOnlyList<BillingRecordRow> billingRecords,
+        IReadOnlyList<PnlExpenseRow> expenseRecords)
+    {
+        var scopedBillingRecords = billingRecords
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value.Year == year
+                && record.EmissionDate.Value.Month <= monthCutoff
+                && (!cellMonth.HasValue || record.EmissionDate.Value.Month == cellMonth.Value))
+            .ToList();
+
+        var scopedExpenseRecords = expenseRecords
+            .Where(record => record.PaymentDate is not null
+                && record.PaymentDate.Value.Year == year
+                && record.PaymentDate.Value.Month <= monthCutoff
+                && (!cellMonth.HasValue || record.PaymentDate.Value.Month == cellMonth.Value))
+            .ToList();
+
+        List<PnlCellDetailRecordDto> records = rowMetadata.Key switch
+        {
+            "orphan-billing-no-vertical" => scopedBillingRecords
+                .Where(IsPnlBillingMissingVertical)
+                .Select(record => BuildPnlBillingDetailRecord(record, 1m, "Facturacion sin vertical"))
+                .ToList(),
+            "orphan-expense-no-category" => scopedExpenseRecords
+                .Where(IsPnlExpenseMissingCategory)
+                .Select(record => BuildPnlExpenseDetailRecord(record, 1m, "Gasto sin categoria"))
+                .ToList(),
+            "orphan-expense-allocation-mismatch" => scopedExpenseRecords
+                .Where(IsPnlExpenseAllocationMismatch)
+                .Select(record => BuildPnlExpenseDetailRecord(record, 1m, "Gasto con reparto invalido"))
+                .ToList(),
+            _ => new List<PnlCellDetailRecordDto>()
+        };
+
+        var orderedRecords = records
+            .OrderByDescending(record => Math.Max(Math.Abs(record.TotalInvoice), Math.Abs(record.PaymentValue)))
+            .ThenBy(record => record.DateDisplay, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(record => record.DocumentNumber, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new PnlCellDetailDto
+        {
+            Year = year,
+            MonthCutoff = monthCutoff,
+            CellMonth = cellMonth,
+            RowKey = rowMetadata.Key,
+            RowLabel = rowMetadata.Label,
+            CellLabel = ResolvePnlCellLabel(year, monthCutoff, cellMonth),
+            VerticalKey = DashboardPnlVerticalAll,
+            VerticalLabel = "",
+            ValueFormat = rowMetadata.ValueFormat,
+            Total = orderedRecords.Count,
+            RecordsCount = orderedRecords.Count,
+            EmptyMessage = BuildPnlDetailEmptyMessage(rowMetadata.Key),
+            VerticalOptions = BuildPnlVerticalOptions(),
+            CategoryOptions = BuildPnlCategoryOptions(),
+            Records = orderedRecords
+        };
     }
 
     private static decimal GetPnlBillingContributionForRow(BillingRecordRow row, string verticalKey, string rowKey)
@@ -778,13 +968,13 @@ public sealed partial class DataverseService
     private static bool IsPnlEbitdaExpenseBucket(string bucketKey) =>
         IsPnlCogsBucket(bucketKey) || IsPnlPersonalBucket(bucketKey) || IsPnlAdministrativeBucket(bucketKey) || bucketKey == "marketing";
 
-    private static PnlCellDetailRecordDto BuildPnlBillingDetailRecord(BillingRecordRow row, decimal cellValue)
+    private static PnlCellDetailRecordDto BuildPnlBillingDetailRecord(BillingRecordRow row, decimal cellValue, string sourceLabel = "Facturacion")
     {
         var verticalKey = ResolvePnlVerticalKeyFromOptionValue(row.VerticalOptionValue);
         return new PnlCellDetailRecordDto
         {
             SourceType = "billing",
-            SourceLabel = "Facturacion",
+            SourceLabel = sourceLabel,
             RecordId = row.RecordId,
             DocumentNumber = row.InvoiceNumber,
             Description = row.ClientName,
@@ -800,17 +990,18 @@ public sealed partial class DataverseService
             CopiersValue = 0m,
             CellValue = RoundCurrency(cellValue),
             CanEditVertical = true,
-            CanEditCategory = false
+            CanEditCategory = false,
+            CanEditAllocation = false
         };
     }
 
-    private static PnlCellDetailRecordDto BuildPnlExpenseDetailRecord(PnlExpenseRow row, decimal cellValue)
+    private static PnlCellDetailRecordDto BuildPnlExpenseDetailRecord(PnlExpenseRow row, decimal cellValue, string sourceLabel = "Gasto")
     {
         var verticalKey = ResolvePnlExpenseEditorVerticalKey(row);
         return new PnlCellDetailRecordDto
         {
             SourceType = "expense",
-            SourceLabel = "Gasto",
+            SourceLabel = sourceLabel,
             RecordId = row.RecordId,
             DocumentNumber = row.RecordId,
             Description = string.IsNullOrWhiteSpace(row.IssuerName) ? row.CategoryLabel : row.IssuerName,
@@ -827,7 +1018,8 @@ public sealed partial class DataverseService
             CopiersValue = row.CopiersValue,
             CellValue = RoundCurrency(cellValue),
             CanEditVertical = true,
-            CanEditCategory = true
+            CanEditCategory = true,
+            CanEditAllocation = true
         };
     }
 
@@ -865,6 +1057,9 @@ public sealed partial class DataverseService
             "other-taxes" => new PnlRowMetadata(normalizedKey, "Impuestos"),
             "other-financial" => new PnlRowMetadata(normalizedKey, "Financieros / Contables"),
             "other-total" => new PnlRowMetadata(normalizedKey, "Otros ingresos / gastos (total)"),
+            "orphan-billing-no-vertical" => new PnlRowMetadata(normalizedKey, "Facturacion sin vertical", "number"),
+            "orphan-expense-no-category" => new PnlRowMetadata(normalizedKey, "Gastos sin categoria", "number"),
+            "orphan-expense-allocation-mismatch" => new PnlRowMetadata(normalizedKey, "Gastos con reparto invalido", "number"),
             _ => throw new InvalidOperationException("La fila seleccionada no existe dentro de la estructura del P&L.")
         };
     }
@@ -880,6 +1075,9 @@ public sealed partial class DataverseService
     private static string BuildPnlDetailEmptyMessage(string rowKey) => rowKey switch
     {
         "cogs-rebates" => "La fila de rebates sigue siendo manual y por ahora no tiene registros de detalle en Dataverse.",
+        "orphan-billing-no-vertical" => "No encontramos facturas sin vertical para este corte.",
+        "orphan-expense-no-category" => "No encontramos gastos sin categoria para este corte.",
+        "orphan-expense-allocation-mismatch" => "No encontramos gastos con reparto Cloud/Copiers descuadrado para este corte.",
         _ => "No encontramos registros que compongan esta celda con los filtros actuales."
     };
 
@@ -962,6 +1160,37 @@ public sealed partial class DataverseService
             (true, true) => "mixed",
             _ => "none"
         };
+    }
+
+    private static bool IsPnlBillingMissingVertical(BillingRecordRow row) =>
+        !IsKnownDashboardVertical(row.VerticalOptionValue);
+
+    private static bool IsKnownDashboardVertical(int optionValue) =>
+        optionValue is DashboardVerticalCloudOption or DashboardVerticalCopiersOption;
+
+    private static bool IsPnlExpenseMissingCategory(PnlExpenseRow row) =>
+        row.CategoryOptionValue <= 0;
+
+    private static bool IsPnlExpenseAllocationMismatch(PnlExpenseRow row)
+    {
+        if (row.CloudValue < 0m || row.CopiersValue < 0m)
+            return true;
+
+        var assignedValue = RoundCurrency(row.CloudValue + row.CopiersValue);
+        var expectedValue = GetPnlExpenseAllocationReferenceValue(row);
+        return Math.Abs(assignedValue - expectedValue) >= 0.01m;
+    }
+
+    private static decimal? NormalizeEditablePnlAllocationValue(decimal? value, string fieldName)
+    {
+        if (!value.HasValue)
+            return null;
+
+        var rounded = RoundCurrency(value.Value);
+        if (rounded < 0m)
+            throw new InvalidOperationException($"El valor de {fieldName} no puede ser negativo.");
+
+        return rounded;
     }
 
     private static string ResolvePnlDetailVerticalLabel(string verticalKey) => verticalKey switch
@@ -1139,6 +1368,14 @@ public sealed partial class DataverseService
             return RoundCurrency(row.TotalValue - row.VatValue);
 
         return row.PaymentValue;
+    }
+
+    private static decimal GetPnlExpenseAllocationReferenceValue(PnlExpenseRow row)
+    {
+        if (Math.Abs(row.PaymentValue) >= 0.01m)
+            return row.PaymentValue;
+
+        return GetPnlExpenseBaseValue(row);
     }
 
     private static string ResolvePnlExpenseBucketKey(PnlExpenseRow row)

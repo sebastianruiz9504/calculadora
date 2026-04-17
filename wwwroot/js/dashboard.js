@@ -57,6 +57,8 @@
     const pnlKpisContainer = document.getElementById("pnlKpisContainer");
     const pnlDescription = document.getElementById("pnlDescription");
     const pnlTableContainer = document.getElementById("pnlTableContainer");
+    const pnlOrphanDescription = document.getElementById("pnlOrphanDescription");
+    const pnlOrphanTableContainer = document.getElementById("pnlOrphanTableContainer");
     const pnlDetailModal = document.getElementById("pnlDetailModal");
     const pnlDetailCloseBtn = document.getElementById("pnlDetailCloseBtn");
     const pnlDetailTitle = document.getElementById("pnlDetailTitle");
@@ -286,6 +288,11 @@
             parts.push(detail.verticalLabel);
         }
 
+        if ((detail?.valueFormat || "currency") === "number") {
+            parts.push(`${numberFormatter.format(Number(detail?.recordsCount || 0))} registros`);
+            return parts.join(" · ");
+        }
+
         parts.push(formatMetric(detail?.total || 0, detail?.valueFormat || "currency"));
         parts.push(`${numberFormatter.format(Number(detail?.recordsCount || 0))} registros`);
         return parts.join(" · ");
@@ -360,6 +367,37 @@
         `;
     }
 
+    function formatEditableDecimalValue(value) {
+        const numericValue = Number(value ?? 0);
+        return Number.isFinite(numericValue) ? numericValue.toFixed(2) : "0.00";
+    }
+
+    function parseEditableDecimalValue(value) {
+        const normalizedValue = (value ?? "").toString().trim().replace(",", ".");
+        if (!normalizedValue) {
+            return NaN;
+        }
+
+        const numericValue = Number(normalizedValue);
+        return Number.isFinite(numericValue) ? numericValue : NaN;
+    }
+
+    function renderPnlAllocationEditor(record, fieldKey) {
+        const numericValue = Number(record?.[fieldKey] || 0);
+        if (!record?.canEditAllocation) {
+            return `<span class="dashboard-pnl-detail__static">${escapeHtml(currencyFormatter.format(numericValue))}</span>`;
+        }
+
+        return `
+            <input
+                type="number"
+                step="0.01"
+                class="form-control form-control-sm dashboard-detail-number-input"
+                data-pnl-edit-field="${escapeHtml(fieldKey)}"
+                value="${escapeHtml(formatEditableDecimalValue(numericValue))}" />
+        `;
+    }
+
     function renderPnlDetail(detail) {
         state.pnlDetail = detail || null;
 
@@ -385,6 +423,7 @@
             return;
         }
 
+        const cellValueFormat = detail?.valueFormat || "currency";
         pnlDetailBody.innerHTML = records.map(record => {
             const isSaving = state.pnlDetailSavingRecordId && state.pnlDetailSavingRecordId === record.recordId;
             return `
@@ -392,7 +431,9 @@
                     data-record-id="${escapeHtml(record.recordId || "")}"
                     data-source-type="${escapeHtml(record.sourceType || "")}"
                     data-original-vertical="${escapeHtml(record.verticalKey || "")}"
-                    data-original-category="${escapeHtml(String(record.categoryOptionValue ?? ""))}">
+                    data-original-category="${escapeHtml(String(record.categoryOptionValue ?? ""))}"
+                    data-original-cloud="${escapeHtml(String(Number(record.cloudValue || 0)))}"
+                    data-original-copiers="${escapeHtml(String(Number(record.copiersValue || 0)))}">
                     <td>${escapeHtml(record.sourceLabel || "")}</td>
                     <td>${escapeHtml(record.documentNumber || "")}</td>
                     <td>${escapeHtml(record.dateDisplay || "-")}</td>
@@ -403,9 +444,9 @@
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.vatValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.totalBeforeVatValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.paymentValue || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.cloudValue || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.copiersValue || 0)))}</td>
-                    <td class="text-end"><strong>${escapeHtml(currencyFormatter.format(Number(record.cellValue || 0)))}</strong></td>
+                    <td class="text-end">${renderPnlAllocationEditor(record, "cloudValue")}</td>
+                    <td class="text-end">${renderPnlAllocationEditor(record, "copiersValue")}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatMetric(record.cellValue || 0, cellValueFormat))}</strong></td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-primary" data-pnl-detail-save ${isSaving ? "disabled" : ""}>
                             ${isSaving ? "Guardando..." : "Guardar"}
@@ -476,8 +517,12 @@
 
         const verticalSelect = row.querySelector("[data-pnl-edit-field='vertical']");
         const categorySelect = row.querySelector("[data-pnl-edit-field='category']");
+        const cloudInput = row.querySelector("[data-pnl-edit-field='cloudValue']");
+        const copiersInput = row.querySelector("[data-pnl-edit-field='copiersValue']");
         const originalVertical = (row.dataset.originalVertical || "").toLowerCase();
         const originalCategory = Number(row.dataset.originalCategory || 0);
+        const originalCloud = Number(row.dataset.originalCloud || 0);
+        const originalCopiers = Number(row.dataset.originalCopiers || 0);
         const verticalValue = verticalSelect && !verticalSelect.disabled ? (verticalSelect.value || "").toLowerCase() : "";
         if ((verticalValue === "cloud" || verticalValue === "copiers") && verticalValue !== originalVertical) {
             payload.verticalKey = verticalValue;
@@ -488,7 +533,31 @@
             payload.categoryOptionValue = categoryValue;
         }
 
-        if (!payload.verticalKey && !payload.categoryOptionValue) {
+        if (cloudInput) {
+            const cloudValue = parseEditableDecimalValue(cloudInput.value);
+            if (Number.isNaN(cloudValue) || cloudValue < 0) {
+                setStatus(pnlDetailStatus, "error", "El valor Cloud debe ser numerico y no puede ser negativo.");
+                return;
+            }
+
+            if (Math.abs(cloudValue - originalCloud) >= 0.01) {
+                payload.cloudValue = cloudValue;
+            }
+        }
+
+        if (copiersInput) {
+            const copiersValue = parseEditableDecimalValue(copiersInput.value);
+            if (Number.isNaN(copiersValue) || copiersValue < 0) {
+                setStatus(pnlDetailStatus, "error", "El valor Copiers debe ser numerico y no puede ser negativo.");
+                return;
+            }
+
+            if (Math.abs(copiersValue - originalCopiers) >= 0.01) {
+                payload.copiersValue = copiersValue;
+            }
+        }
+
+        if (!payload.verticalKey && !payload.categoryOptionValue && payload.cloudValue === undefined && payload.copiersValue === undefined) {
             setStatus(pnlDetailStatus, "info", "No hay cambios pendientes en este registro.");
             return;
         }
@@ -1165,6 +1234,95 @@
         });
     }
 
+    function renderPnlOrphanCell(row, month, value, isTotal = false) {
+        const count = Number(value || 0);
+        if (count <= 0) {
+            return `<span class="dashboard-pnl-orphan-zero">${escapeHtml(numberFormatter.format(count))}</span>`;
+        }
+
+        const monthAttribute = isTotal ? "" : `data-pnl-cell-month="${Number(month || 0)}"`;
+        return `
+            <button
+                type="button"
+                class="dashboard-pnl-cell-btn dashboard-pnl-cell-btn--count"
+                data-pnl-row-key="${escapeHtml(row.key || "")}"
+                data-pnl-row-label="${escapeHtml(row.label || "")}"
+                ${monthAttribute}>
+                ${escapeHtml(numberFormatter.format(count))}
+            </button>
+        `;
+    }
+
+    function renderPnlOrphanTable(dashboard) {
+        if (!pnlOrphanTableContainer) {
+            return;
+        }
+
+        pnlOrphanDescription && (pnlOrphanDescription.textContent = dashboard?.orphanDescription || "");
+
+        const months = Array.isArray(dashboard?.months) ? dashboard.months : [];
+        const rows = Array.isArray(dashboard?.orphanRows) ? dashboard.orphanRows : [];
+        if (!months.length || !rows.length) {
+            pnlOrphanTableContainer.innerHTML = `
+                <div class="dashboard-table__empty">
+                    <strong>Sin controles de registros huerfanos.</strong><br />
+                    <span>Cuando el P&L tenga meses visibles mostraremos aqui los registros pendientes de clasificacion.</span>
+                </div>
+            `;
+            return;
+        }
+
+        const headerCells = months
+            .map(month => `<th class="text-end">${escapeHtml(month.label)}</th>`)
+            .join("");
+
+        const bodyRows = rows.map(row => {
+            const valueCells = (Array.isArray(row.values) ? row.values : [])
+                .map((value, index) => `
+                    <td class="text-end">
+                        ${renderPnlOrphanCell(row, months[index]?.month || index + 1, value)}
+                    </td>
+                `)
+                .join("");
+
+            return `
+                <tr class="dashboard-pnl-row dashboard-pnl-row--orphan">
+                    <td class="dashboard-pnl-row__label dashboard-pnl-orphan-row__label">
+                        <strong>${escapeHtml(row.label || "")}</strong>
+                        <span class="dashboard-pnl-orphan-row__hint">${escapeHtml(row.hint || "")}</span>
+                    </td>
+                    ${valueCells}
+                    <td class="text-end dashboard-pnl-row__total">
+                        ${renderPnlOrphanCell(row, null, row.total, true)}
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
+        pnlOrphanTableContainer.innerHTML = `
+            <table class="table dashboard-table dashboard-pnl-table dashboard-pnl-orphan-table">
+                <thead>
+                    <tr>
+                        <th>Control</th>
+                        ${headerCells}
+                        <th class="text-end">Total YTD</th>
+                    </tr>
+                </thead>
+                <tbody>${bodyRows}</tbody>
+            </table>
+        `;
+
+        pnlOrphanTableContainer.querySelectorAll("[data-pnl-row-key]").forEach(button => {
+            button.addEventListener("click", () => {
+                loadPnlDetail(
+                    button.dataset.pnlRowKey || "",
+                    button.dataset.pnlRowLabel || "",
+                    button.dataset.pnlCellMonth || null
+                ).catch(() => {});
+            });
+        });
+    }
+
     function getFilteredPortfolioRows() {
         const rows = Array.isArray(state.portfolioDashboard?.overdueInvoices)
             ? [...state.portfolioDashboard.overdueInvoices]
@@ -1483,6 +1641,7 @@
             updatePnlContext(dashboard);
             renderPnlKpis(dashboard);
             renderPnlTable(dashboard);
+            renderPnlOrphanTable(dashboard);
             setStatus(pnlStatusBanner, "", "");
         } catch (error) {
             setStatus(pnlStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard P&L.");

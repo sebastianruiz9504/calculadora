@@ -16,9 +16,11 @@ public sealed class PnlDashboardDto
     public int RecordsCount { get; set; }
     public string EmptyStateTitle { get; set; } = "";
     public string EmptyStateMessage { get; set; } = "";
+    public string OrphanDescription { get; set; } = "";
     public IReadOnlyList<PnlMonthColumnDto> Months { get; set; } = Array.Empty<PnlMonthColumnDto>();
     public IReadOnlyList<PnlKpiDto> Kpis { get; set; } = Array.Empty<PnlKpiDto>();
     public IReadOnlyList<PnlRowDto> Rows { get; set; } = Array.Empty<PnlRowDto>();
+    public IReadOnlyList<PnlOrphanRowDto> OrphanRows { get; set; } = Array.Empty<PnlOrphanRowDto>();
 }
 
 public sealed class PnlMonthColumnDto
@@ -47,6 +49,15 @@ public sealed class PnlRowDto
     public string ValueFormat { get; set; } = "currency";
     public IReadOnlyList<decimal> Values { get; set; } = Array.Empty<decimal>();
     public decimal Total { get; set; }
+}
+
+public sealed class PnlOrphanRowDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Hint { get; set; } = "";
+    public IReadOnlyList<int> Values { get; set; } = Array.Empty<int>();
+    public int Total { get; set; }
 }
 
 public sealed class PnlCellDetailDto
@@ -89,6 +100,7 @@ public sealed class PnlCellDetailRecordDto
     public decimal CellValue { get; set; }
     public bool CanEditVertical { get; set; }
     public bool CanEditCategory { get; set; }
+    public bool CanEditAllocation { get; set; }
 }
 
 public sealed class PnlOptionDto
@@ -104,6 +116,8 @@ public sealed class PnlDetailRecordUpdateRequestDto
     public string RecordId { get; set; } = "";
     public string? VerticalKey { get; set; }
     public int? CategoryOptionValue { get; set; }
+    public decimal? CloudValue { get; set; }
+    public decimal? CopiersValue { get; set; }
 }
 
 public sealed class PnlDetailRecordUpdateResultDto
