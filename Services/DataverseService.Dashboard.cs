@@ -386,16 +386,33 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
+        try
+        {
+            return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup: false);
+        }
+        catch (InvalidOperationException ex) when (ShouldRetryCopiersQueryWithProductLookup(ex))
+        {
+            return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup: true);
+        }
+    }
+
+    private async Task<List<CopiersBillingRecordRow>> GetCopiersRecordsCoreAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        bool preferProductLookup)
+    {
         var select = string.Join(",", new[]
         {
             metadata.PrimaryIdField,
             metadata.PrimaryNameField,
             _dashboardCopiersQuantityField,
-            _dashboardCopiersProductField,
+            preferProductLookup
+                ? BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField)
+                : _dashboardCopiersProductField,
             _dashboardCopiersUnitValueBeforeVatField,
             _dashboardCopiersBillingDayField,
             _dashboardCopiersIncludedOperationsField,
-            _dashboardCopiersClientField,
             BuildDashboardLookupValuePropertyName(_dashboardCopiersClientField),
             _dashboardCopiersUnitValueWithVatField,
             _dashboardCopiersTotalWithVatField
@@ -417,6 +434,20 @@ public sealed partial class DataverseService
             .ThenBy(static item => item.ClientName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static item => item.ProductName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private bool ShouldRetryCopiersQueryWithProductLookup(InvalidOperationException exception)
+    {
+        var lookupField = BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField);
+        if (string.IsNullOrWhiteSpace(_dashboardCopiersProductField)
+            || string.Equals(lookupField, _dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return exception.Message.Contains(_dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
     }
 
     private CopiersBillingRecordRow? ParseCopiersRecord(JsonElement item, string primaryIdField, string primaryNameField)

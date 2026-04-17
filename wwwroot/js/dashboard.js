@@ -688,9 +688,20 @@
 
         const contentType = response.headers.get("content-type") || "";
         if (!response.ok) {
-            const message = contentType.includes("application/json")
-                ? (await response.json())?.message || "No fue posible completar la solicitud."
-                : await response.text();
+            const rawBody = await response.text();
+            let message = rawBody;
+
+            if (contentType.includes("application/json")) {
+                try {
+                    const payload = rawBody ? JSON.parse(rawBody) : null;
+                    message = typeof payload === "string"
+                        ? payload
+                        : payload?.message || payload?.title || payload?.error?.message || rawBody;
+                } catch {
+                    message = rawBody;
+                }
+            }
+
             throw new Error(message || "No fue posible completar la solicitud.");
         }
 
