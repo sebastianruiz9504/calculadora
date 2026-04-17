@@ -727,7 +727,7 @@ public sealed partial class DataverseService
             BuildPnlOrphanRow(
                 "orphan-expense-allocation-mismatch",
                 "Gastos con reparto invalido",
-                "Cloud + Copiers no coincide con el valor pago del gasto.",
+                "Gastos donde ni Cloud ni Copiers tienen valor asignado.",
                 BuildPnlExpenseOrphanSeries(monthCutoff, expenseRecords, IsPnlExpenseAllocationMismatch))
         };
     }
@@ -871,7 +871,7 @@ public sealed partial class DataverseService
                 .ToList(),
             "orphan-expense-allocation-mismatch" => scopedExpenseRecords
                 .Where(IsPnlExpenseAllocationMismatch)
-                .Select(record => BuildPnlExpenseDetailRecord(record, 1m, "Gasto con reparto invalido"))
+                .Select(record => BuildPnlExpenseDetailRecord(record, 1m, "Gasto sin valor en Cloud/Copiers"))
                 .ToList(),
             _ => new List<PnlCellDetailRecordDto>()
         };
@@ -1077,7 +1077,7 @@ public sealed partial class DataverseService
         "cogs-rebates" => "La fila de rebates sigue siendo manual y por ahora no tiene registros de detalle en Dataverse.",
         "orphan-billing-no-vertical" => "No encontramos facturas sin vertical para este corte.",
         "orphan-expense-no-category" => "No encontramos gastos sin categoria para este corte.",
-        "orphan-expense-allocation-mismatch" => "No encontramos gastos con reparto Cloud/Copiers descuadrado para este corte.",
+        "orphan-expense-allocation-mismatch" => "No encontramos gastos sin valor asignado en Cloud y Copiers para este corte.",
         _ => "No encontramos registros que compongan esta celda con los filtros actuales."
     };
 
@@ -1173,12 +1173,7 @@ public sealed partial class DataverseService
 
     private static bool IsPnlExpenseAllocationMismatch(PnlExpenseRow row)
     {
-        if (row.CloudValue < 0m || row.CopiersValue < 0m)
-            return true;
-
-        var assignedValue = RoundCurrency(row.CloudValue + row.CopiersValue);
-        var expectedValue = GetPnlExpenseAllocationReferenceValue(row);
-        return Math.Abs(assignedValue - expectedValue) >= 0.01m;
+        return row.CloudValue <= 0m && row.CopiersValue <= 0m;
     }
 
     private static decimal? NormalizeEditablePnlAllocationValue(decimal? value, string fieldName)
