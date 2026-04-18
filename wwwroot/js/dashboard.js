@@ -152,6 +152,7 @@
     });
 
     const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const weekdayLabels = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
     const state = {
         activeTab: "billing",
@@ -686,7 +687,8 @@
         if (isoMatch) {
             return {
                 year: Number(isoMatch[1]),
-                month: Number(isoMatch[2])
+                month: Number(isoMatch[2]),
+                day: Number(isoMatch[3])
             };
         }
 
@@ -695,11 +697,79 @@
         if (displayMatch) {
             return {
                 year: Number(displayMatch[3]),
-                month: Number(displayMatch[2])
+                month: Number(displayMatch[2]),
+                day: Number(displayMatch[1])
             };
         }
 
-        return { year: null, month: null };
+        return { year: null, month: null, day: null };
+    }
+
+    function renderCopiersMaintenanceDateCell(row) {
+        const dateParts = parseCopiersMaintenanceDateParts(row);
+        const formattedDate = (row?.dateDisplay || "").trim() || "-";
+        if (!dateParts.year || !dateParts.month || !dateParts.day) {
+            return `
+                <div class="dashboard-maintenance-date">
+                    <strong>${escapeHtml(formattedDate)}</strong>
+                </div>
+            `;
+        }
+
+        const weekdayIndex = new Date(dateParts.year, dateParts.month - 1, dateParts.day).getDay();
+        const weekdayLabel = weekdayLabels[weekdayIndex] || "";
+        return `
+            <div class="dashboard-maintenance-date">
+                <strong>${escapeHtml(formattedDate)}</strong>
+                <span>${escapeHtml(weekdayLabel)}</span>
+            </div>
+        `;
+    }
+
+    function renderCopiersMaintenanceTypeBadge(row) {
+        const label = (row?.maintenanceTypeLabel || "").trim();
+        const normalizedLabel = normalizeText(label);
+        if (normalizedLabel === "correctivo") {
+            return '<span class="dashboard-badge is-danger">Correctivo</span>';
+        }
+
+        if (normalizedLabel === "preventivo") {
+            return '<span class="dashboard-badge is-success">Preventivo</span>';
+        }
+
+        return label
+            ? `<span class="dashboard-pill dashboard-pill--soft">${escapeHtml(label)}</span>`
+            : '<span class="dashboard-muted-text">Sin tipo</span>';
+    }
+
+    function renderCopiersMaintenanceDetailCell(row) {
+        const title = (row?.title || "").trim();
+        const internalId = (row?.internalId || "").trim();
+        const description = (row?.description || "").trim();
+
+        return `
+            <div class="dashboard-maintenance-detail">
+                ${title ? `<strong class="dashboard-maintenance-detail__title">${escapeHtml(title)}</strong>` : ""}
+                <div class="dashboard-maintenance-detail__meta">
+                    <span class="dashboard-maintenance-detail__id">${escapeHtml(internalId || "Sin ID interno")}</span>
+                    ${renderCopiersMaintenanceTypeBadge(row)}
+                </div>
+                <span class="dashboard-maintenance-detail__description">${escapeHtml(description || "Sin descripcion")}</span>
+            </div>
+        `;
+    }
+
+    function renderCopiersMaintenanceAttachmentCell(row) {
+        if (!row?.hasAttachment) {
+            return '<span class="dashboard-muted-text">-</span>';
+        }
+
+        return `
+            <a class="dashboard-icon-link" href="${escapeHtml(buildCopiersMaintenanceFileUrl(row.recordId || ""))}" target="_blank" rel="noopener noreferrer" aria-label="Descargar acta de entrega">
+                <span aria-hidden="true">&#8681;</span>
+                <span class="visually-hidden">Descargar acta</span>
+            </a>
+        `;
     }
 
     function getCopiersMaintenanceOwnerFilterValue(row) {
@@ -850,28 +920,15 @@
         copiersMaintenanceBody.innerHTML = rows.length
             ? rows.map(row => `
                 <tr>
-                    <td>${escapeHtml(row.dateDisplay || "-")}</td>
-                    <td>${escapeHtml(row.title || "-")}</td>
-                    <td>${escapeHtml(row.maintenanceTypeLabel || "-")}</td>
+                    <td>${renderCopiersMaintenanceDateCell(row)}</td>
                     <td>${escapeHtml(row.equipmentSerial || "Sin equipo")}</td>
-                    <td>${escapeHtml(row.equipmentId || "-")}</td>
                     <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
-                    <td>${escapeHtml(row.clientId || "-")}</td>
                     <td>${escapeHtml(row.technicianName || "Sin owner")}</td>
-                    <td>${escapeHtml(row.technicianId || "-")}</td>
-                    <td>${escapeHtml(row.description || "Sin descripcion")}</td>
-                    <td>${escapeHtml(row.internalId || "-")}</td>
-                    <td>${escapeHtml(row.recordId || "-")}</td>
-                    <td>
-                        ${row.hasAttachment ? `
-                            <a class="dashboard-link-btn" href="${escapeHtml(buildCopiersMaintenanceFileUrl(row.recordId || ""))}" target="_blank" rel="noopener noreferrer">
-                                ${escapeHtml(row.attachmentFileName || "Descargar")}
-                            </a>
-                        ` : '<span class="dashboard-muted-text">Sin acta</span>'}
-                    </td>
+                    <td>${renderCopiersMaintenanceDetailCell(row)}</td>
+                    <td class="text-center">${renderCopiersMaintenanceAttachmentCell(row)}</td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="13" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
+            : '<tr><td colspan="6" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
     }
 
     function renderCopiersMaintenanceDashboard(dashboard) {
