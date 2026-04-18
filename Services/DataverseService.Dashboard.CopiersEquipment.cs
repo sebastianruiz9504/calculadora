@@ -406,12 +406,10 @@ public sealed partial class DataverseService
             BuildDashboardLookupValuePropertyName(equipmentLookupField),
             DashboardMaintenanceDateField,
             DashboardMaintenanceDescriptionField,
-            DashboardMaintenanceClientField,
             BuildDashboardLookupValuePropertyName(DashboardMaintenanceClientField),
             DashboardMaintenanceAttachmentField,
             DashboardMaintenanceExternalIdField,
             DashboardMaintenanceTypeField,
-            DashboardMaintenanceOwnerField,
             BuildDashboardLookupValuePropertyName(DashboardMaintenanceOwnerField)
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
