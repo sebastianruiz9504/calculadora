@@ -287,7 +287,6 @@ public sealed partial class DataverseService
             metadata.PrimaryIdField,
             metadata.PrimaryNameField,
             DashboardEquipmentSerialField,
-            DashboardEquipmentClientField,
             BuildDashboardLookupValuePropertyName(DashboardEquipmentClientField),
             DashboardEquipmentCategoryField,
             DashboardEquipmentReferenceField,
