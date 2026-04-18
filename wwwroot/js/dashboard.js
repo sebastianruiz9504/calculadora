@@ -29,6 +29,29 @@
     const copiersResultsCount = document.getElementById("copiersResultsCount");
     const copiersKpisContainer = document.getElementById("copiersKpisContainer");
     const copiersBillingBody = document.getElementById("copiersBillingBody");
+    const copiersNewRecordButton = document.getElementById("copiersNewRecordBtn");
+    const copiersEditorModal = document.getElementById("copiersEditorModal");
+    const copiersEditorCloseBtn = document.getElementById("copiersEditorCloseBtn");
+    const copiersEditorCancelBtn = document.getElementById("copiersEditorCancelBtn");
+    const copiersEditorForm = document.getElementById("copiersEditorForm");
+    const copiersEditorTitle = document.getElementById("copiersEditorTitle");
+    const copiersEditorSubtitle = document.getElementById("copiersEditorSubtitle");
+    const copiersEditorStatus = document.getElementById("copiersEditorStatus");
+    const copiersEditorSaveBtn = document.getElementById("copiersEditorSaveBtn");
+    const copiersRecordIdInput = document.getElementById("copiersRecordIdInput");
+    const copiersBillingDayInput = document.getElementById("copiersBillingDayInput");
+    const copiersClientIdInput = document.getElementById("copiersClientIdInput");
+    const copiersClientNameInput = document.getElementById("copiersClientNameInput");
+    const copiersClientOptions = document.getElementById("copiersClientOptions");
+    const copiersProductIdInput = document.getElementById("copiersProductIdInput");
+    const copiersProductNameInput = document.getElementById("copiersProductNameInput");
+    const copiersProductOptions = document.getElementById("copiersProductOptions");
+    const copiersQuantityInput = document.getElementById("copiersQuantityInput");
+    const copiersIncludedOperationsInput = document.getElementById("copiersIncludedOperationsInput");
+    const copiersAdditionalOperationInput = document.getElementById("copiersAdditionalOperationInput");
+    const copiersUnitValueBeforeVatInput = document.getElementById("copiersUnitValueBeforeVatInput");
+    const copiersUnitValueWithVatInput = document.getElementById("copiersUnitValueWithVatInput");
+    const copiersTotalWithVatInput = document.getElementById("copiersTotalWithVatInput");
 
     const taxesReteFuenteDescription = document.getElementById("taxesReteFuenteDescription");
     const taxesReteIvaDescription = document.getElementById("taxesReteIvaDescription");
@@ -101,6 +124,10 @@
         taxesSignature: "",
         pnlSignature: "",
         copiersLoading: false,
+        copiersEditorSaving: false,
+        copiersEditorOriginal: null,
+        copiersClientSuggestions: [],
+        copiersProductSuggestions: [],
         portfolioSearchTerm: "",
         portfolioSort: "age",
         pnlYear: currentYear,
@@ -207,9 +234,18 @@
 
     function setCopiersLoading(loading) {
         state.copiersLoading = loading;
-        [copiersRefreshButton].forEach(element => {
+        [copiersRefreshButton, copiersNewRecordButton].forEach(element => {
             if (element) {
                 element.disabled = loading;
+            }
+        });
+    }
+
+    function setCopiersEditorSaving(saving) {
+        state.copiersEditorSaving = saving;
+        [copiersEditorSaveBtn, copiersEditorCloseBtn, copiersEditorCancelBtn].forEach(element => {
+            if (element) {
+                element.disabled = saving;
             }
         });
     }
@@ -260,6 +296,128 @@
         if (pnlDetailBody) {
             pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Selecciona una celda del P&L para ver el detalle.</td></tr>';
         }
+    }
+
+    function isCopiersEditorOpen() {
+        return Boolean(copiersEditorModal && !copiersEditorModal.hidden);
+    }
+
+    function resetCopiersEditorForm() {
+        state.copiersEditorOriginal = null;
+        setStatus(copiersEditorStatus, "", "");
+        copiersRecordIdInput && (copiersRecordIdInput.value = "");
+        copiersBillingDayInput && (copiersBillingDayInput.value = "");
+        copiersClientIdInput && (copiersClientIdInput.value = "");
+        copiersClientNameInput && (copiersClientNameInput.value = "");
+        copiersProductIdInput && (copiersProductIdInput.value = "");
+        copiersProductNameInput && (copiersProductNameInput.value = "");
+        copiersQuantityInput && (copiersQuantityInput.value = "");
+        copiersIncludedOperationsInput && (copiersIncludedOperationsInput.value = "");
+        copiersAdditionalOperationInput && (copiersAdditionalOperationInput.value = "");
+        copiersUnitValueBeforeVatInput && (copiersUnitValueBeforeVatInput.value = "");
+        copiersUnitValueWithVatInput && (copiersUnitValueWithVatInput.value = "");
+        copiersTotalWithVatInput && (copiersTotalWithVatInput.value = "");
+        state.copiersClientSuggestions = [];
+        state.copiersProductSuggestions = [];
+        if (copiersClientOptions) {
+            copiersClientOptions.innerHTML = "";
+        }
+
+        if (copiersProductOptions) {
+            copiersProductOptions.innerHTML = "";
+        }
+    }
+
+    function closeCopiersEditorModal() {
+        if (!copiersEditorModal) {
+            return;
+        }
+
+        copiersEditorModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        resetCopiersEditorForm();
+        setCopiersEditorSaving(false);
+
+        if (copiersEditorTitle) {
+            copiersEditorTitle.textContent = "Editar registro";
+        }
+
+        if (copiersEditorSubtitle) {
+            copiersEditorSubtitle.textContent = "Actualiza los campos del registro seleccionado.";
+        }
+    }
+
+    function fillCopiersEditorForm(row) {
+        if (!row) {
+            return;
+        }
+
+        copiersRecordIdInput && (copiersRecordIdInput.value = row.recordId || "");
+        copiersBillingDayInput && (copiersBillingDayInput.value = Number(row.billingDay || 0) > 0 ? String(Number(row.billingDay || 0)) : "");
+        copiersClientIdInput && (copiersClientIdInput.value = row.clientId || "");
+        copiersClientNameInput && (copiersClientNameInput.value = row.clientName || "");
+        copiersProductIdInput && (copiersProductIdInput.value = row.productId || "");
+        copiersProductNameInput && (copiersProductNameInput.value = row.productName || "");
+        copiersQuantityInput && (copiersQuantityInput.value = formatEditableDecimalValue(row.quantity));
+        copiersIncludedOperationsInput && (copiersIncludedOperationsInput.value = formatEditableDecimalValue(row.includedOperations));
+        copiersAdditionalOperationInput && (copiersAdditionalOperationInput.value = formatEditableDecimalValue(row.additionalOperation));
+        copiersUnitValueBeforeVatInput && (copiersUnitValueBeforeVatInput.value = formatEditableDecimalValue(row.unitValueBeforeVat));
+        copiersUnitValueWithVatInput && (copiersUnitValueWithVatInput.value = formatEditableDecimalValue(row.unitValueWithVat));
+        copiersTotalWithVatInput && (copiersTotalWithVatInput.value = formatEditableDecimalValue(row.totalWithVat));
+    }
+
+    function focusCopiersField(fieldKey) {
+        if (!fieldKey) {
+            return;
+        }
+
+        const target = copiersEditorForm?.querySelector(`[data-copiers-input-field="${fieldKey}"]`);
+        if (!target) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            target.focus();
+            if (typeof target.select === "function") {
+                target.select();
+            }
+        }, 30);
+    }
+
+    function openCopiersEditorModal(mode, row, focusField) {
+        if (!copiersEditorModal) {
+            return;
+        }
+
+        resetCopiersEditorForm();
+        document.body.classList.add("dashboard-modal-open");
+        copiersEditorModal.hidden = false;
+        setCopiersEditorSaving(false);
+
+        if (mode === "create") {
+            if (copiersEditorTitle) {
+                copiersEditorTitle.textContent = "Nuevo registro Copiers";
+            }
+
+            if (copiersEditorSubtitle) {
+                copiersEditorSubtitle.textContent = "Completa todas las columnas para crear un nuevo registro en el popup.";
+            }
+        } else {
+            state.copiersEditorOriginal = row ? { ...row } : null;
+            fillCopiersEditorForm(row);
+
+            if (copiersEditorTitle) {
+                copiersEditorTitle.textContent = "Editar registro Copiers";
+            }
+
+            if (copiersEditorSubtitle) {
+                copiersEditorSubtitle.textContent = focusField
+                    ? `Campo seleccionado: ${getCopiersFieldLabel(focusField)}. Puedes ajustar el registro completo antes de guardar.`
+                    : "Actualiza los campos del registro seleccionado.";
+            }
+        }
+
+        focusCopiersField(mode === "create" ? "clientName" : focusField);
     }
 
     function renderPnlDetailLoading(rowLabel, cellMonth) {
@@ -380,6 +538,198 @@
 
         const numericValue = Number(normalizedValue);
         return Number.isFinite(numericValue) ? numericValue : NaN;
+    }
+
+    function parseCopiersDecimalInputValue(input, label) {
+        const rawValue = input?.value ?? "";
+        if (!rawValue.toString().trim()) {
+            return 0;
+        }
+
+        const numericValue = parseEditableDecimalValue(rawValue);
+        if (Number.isNaN(numericValue) || numericValue < 0) {
+            throw new Error(`El valor de ${label} debe ser numerico y no puede ser negativo.`);
+        }
+
+        return numericValue;
+    }
+
+    function parseCopiersBillingDayValue() {
+        const rawValue = (copiersBillingDayInput?.value || "").trim();
+        if (!rawValue) {
+            return null;
+        }
+
+        const numericValue = Number(rawValue);
+        if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 31) {
+            throw new Error("El dia de facturacion debe estar entre 1 y 31.");
+        }
+
+        return numericValue;
+    }
+
+    function buildCopiersSavePayload() {
+        const clientName = (copiersClientNameInput?.value || "").trim();
+        const productName = (copiersProductNameInput?.value || "").trim();
+        if (!clientName) {
+            throw new Error("Debes indicar el cliente del registro.");
+        }
+
+        if (!productName) {
+            throw new Error("Debes indicar el producto del registro.");
+        }
+
+        return {
+            recordId: copiersRecordIdInput?.value || "",
+            billingDay: parseCopiersBillingDayValue(),
+            clientId: copiersClientIdInput?.value || "",
+            clientName,
+            productId: copiersProductIdInput?.value || "",
+            productName,
+            quantity: parseCopiersDecimalInputValue(copiersQuantityInput, "Cantidad"),
+            includedOperations: parseCopiersDecimalInputValue(copiersIncludedOperationsInput, "Operaciones incluidas"),
+            additionalOperation: parseCopiersDecimalInputValue(copiersAdditionalOperationInput, "cr07a_operacionadicional"),
+            unitValueBeforeVat: parseCopiersDecimalInputValue(copiersUnitValueBeforeVatInput, "Valor unitario antes de IVA"),
+            unitValueWithVat: parseCopiersDecimalInputValue(copiersUnitValueWithVatInput, "Valor unitario con IVA"),
+            totalWithVat: parseCopiersDecimalInputValue(copiersTotalWithVatInput, "Total con IVA")
+        };
+    }
+
+    function syncCopiersLookupSelection(input, hiddenInput, suggestions, labelKey) {
+        const typedValue = (input?.value || "").trim();
+        if (!typedValue) {
+            if (hiddenInput) {
+                hiddenInput.value = "";
+            }
+            return;
+        }
+
+        const match = (Array.isArray(suggestions) ? suggestions : []).find(item => {
+            return (item?.[labelKey] || "").trim().toLowerCase() === typedValue.toLowerCase();
+        });
+
+        if (hiddenInput) {
+            hiddenInput.value = match?.id || "";
+        }
+    }
+
+    function renderCopiersLookupOptions(target, items, labelKey) {
+        if (!target) {
+            return;
+        }
+
+        const options = Array.isArray(items) ? items : [];
+        target.innerHTML = options.map(item => `
+            <option value="${escapeHtml(item?.[labelKey] || "")}"></option>
+        `).join("");
+    }
+
+    function buildCopiersClientSearchUrl(query) {
+        const baseUrl = app.dataset.copiersClientSearchUrl || "";
+        return `${baseUrl}?q=${encodeURIComponent(query || "")}`;
+    }
+
+    function buildCopiersProductSearchUrl(query) {
+        const baseUrl = app.dataset.copiersProductSearchUrl || "";
+        return `${baseUrl}?q=${encodeURIComponent(query || "")}`;
+    }
+
+    function wireCopiersLookupInput(input, hiddenInput, datalist, stateKey, labelKey, urlBuilder) {
+        if (!input || !hiddenInput) {
+            return;
+        }
+
+        let timer = 0;
+        let requestSequence = 0;
+
+        const applySuggestions = items => {
+            state[stateKey] = Array.isArray(items) ? items : [];
+            renderCopiersLookupOptions(datalist, state[stateKey], labelKey);
+            syncCopiersLookupSelection(input, hiddenInput, state[stateKey], labelKey);
+        };
+
+        input.addEventListener("input", () => {
+            hiddenInput.value = "";
+            const query = (input.value || "").trim();
+            window.clearTimeout(timer);
+
+            if (query.length < 2) {
+                applySuggestions([]);
+                return;
+            }
+
+            const currentSequence = ++requestSequence;
+            timer = window.setTimeout(async () => {
+                try {
+                    const items = await fetchJson(urlBuilder(query));
+                    if (currentSequence !== requestSequence) {
+                        return;
+                    }
+
+                    applySuggestions(items);
+                } catch {
+                    if (currentSequence !== requestSequence) {
+                        return;
+                    }
+
+                    applySuggestions([]);
+                }
+            }, 220);
+        });
+
+        input.addEventListener("change", () => {
+            syncCopiersLookupSelection(input, hiddenInput, state[stateKey], labelKey);
+        });
+
+        input.addEventListener("blur", () => {
+            syncCopiersLookupSelection(input, hiddenInput, state[stateKey], labelKey);
+        });
+    }
+
+    function getCopiersFieldLabel(fieldKey) {
+        return ({
+            billingDay: "Dia facturacion",
+            clientName: "Cliente",
+            productName: "Producto",
+            quantity: "Cantidad",
+            includedOperations: "Operaciones incluidas",
+            additionalOperation: "cr07a_operacionadicional",
+            unitValueBeforeVat: "Valor unitario antes IVA",
+            unitValueWithVat: "Valor unitario con IVA",
+            totalWithVat: "Total con IVA"
+        })[fieldKey] || "Registro";
+    }
+
+    async function saveCopiersEditor() {
+        if (state.copiersEditorSaving) {
+            return;
+        }
+
+        let payload;
+        try {
+            payload = buildCopiersSavePayload();
+        } catch (error) {
+            setStatus(copiersEditorStatus, "error", error instanceof Error ? error.message : "Revisa los datos del registro.");
+            return;
+        }
+
+        setCopiersEditorSaving(true);
+        setStatus(copiersEditorStatus, "info", payload.recordId ? "Guardando cambios en Dataverse..." : "Creando registro en Dataverse...");
+
+        try {
+            const result = await fetchJson(app.dataset.copiersSaveUrl || "", {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+
+            closeCopiersEditorModal();
+            await loadCopiers();
+            setStatus(copiersStatusBanner, "info", result?.message || "Registro guardado correctamente.");
+        } catch (error) {
+            setStatus(copiersEditorStatus, "error", error instanceof Error ? error.message : "No fue posible guardar el registro.");
+        } finally {
+            setCopiersEditorSaving(false);
+        }
     }
 
     function renderPnlAllocationEditor(record, fieldKey) {
@@ -1131,17 +1481,59 @@
         copiersBillingBody.innerHTML = rows.length
             ? rows.map(row => `
                 <tr>
-                    <td>${escapeHtml(row.billingDayDisplay || "Sin dia")}</td>
-                    <td>${escapeHtml(row.clientName)}</td>
-                    <td>${escapeHtml(row.productName)}</td>
-                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}</td>
-                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.unitValueBeforeVat || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.unitValueWithVat || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalWithVat || 0)))}</td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="billingDay">
+                            ${escapeHtml(row.billingDayDisplay || "Sin dia")}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="clientName">
+                            ${escapeHtml(row.clientName)}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="productName">
+                            ${escapeHtml(row.productName)}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="quantity">
+                            ${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="includedOperations">
+                            ${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="additionalOperation">
+                            ${escapeHtml(numberFormatter.format(Number(row.additionalOperation || 0)))}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="unitValueBeforeVat">
+                            ${escapeHtml(currencyFormatter.format(Number(row.unitValueBeforeVat || 0)))}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="unitValueWithVat">
+                            ${escapeHtml(currencyFormatter.format(Number(row.unitValueWithVat || 0)))}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="totalWithVat">
+                            ${escapeHtml(currencyFormatter.format(Number(row.totalWithVat || 0)))}
+                        </button>
+                    </td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="8" class="dashboard-table__empty">No hay registros de facturacion copiers disponibles.</td></tr>';
+            : '<tr><td colspan="9" class="dashboard-table__empty">No hay registros de facturacion copiers disponibles.</td></tr>';
+    }
+
+    function getCopiersRowById(recordId) {
+        const rows = Array.isArray(state.copiersDashboard?.rows) ? state.copiersDashboard.rows : [];
+        return rows.find(row => (row?.recordId || "") === (recordId || "")) || null;
     }
 
     function renderPnlTable(dashboard) {
@@ -1498,6 +1890,10 @@
             closePnlDetailModal();
         }
 
+        if (tabKey !== "copiers" && isCopiersEditorOpen()) {
+            closeCopiersEditorModal();
+        }
+
         tabButtons.forEach(button => {
             const isActive = button.dataset.dashboardTab === tabKey;
             button.classList.toggle("is-active", isActive);
@@ -1622,7 +2018,6 @@
         try {
             const dashboard = await fetchJson(buildCopiersUrl());
             updateCopiersContext(dashboard);
-            renderCopiersKpis(dashboard);
             renderCopiersTable(dashboard);
             setStatus(copiersStatusBanner, "", "");
         } catch (error) {
@@ -1672,6 +2067,9 @@
     refreshButton?.addEventListener("click", loadActivePeriodTab);
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
     copiersRefreshButton?.addEventListener("click", loadCopiers);
+    copiersNewRecordButton?.addEventListener("click", () => {
+        openCopiersEditorModal("create");
+    });
     pnlRefreshButton?.addEventListener("click", loadPnl);
     portfolioClientSearch?.addEventListener("input", () => {
         state.portfolioSearchTerm = portfolioClientSearch.value || "";
@@ -1702,6 +2100,28 @@
     pnlDetailModal?.querySelectorAll("[data-pnl-detail-close]").forEach(element => {
         element.addEventListener("click", closePnlDetailModal);
     });
+    copiersEditorCloseBtn?.addEventListener("click", closeCopiersEditorModal);
+    copiersEditorCancelBtn?.addEventListener("click", closeCopiersEditorModal);
+    copiersEditorModal?.querySelectorAll("[data-copiers-editor-close]").forEach(element => {
+        element.addEventListener("click", closeCopiersEditorModal);
+    });
+    copiersEditorForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        saveCopiersEditor();
+    });
+    copiersBillingBody?.addEventListener("click", event => {
+        const button = event.target.closest("[data-copiers-row-id]");
+        if (!button) {
+            return;
+        }
+
+        const row = getCopiersRowById(button.dataset.copiersRowId || "");
+        if (!row) {
+            return;
+        }
+
+        openCopiersEditorModal("edit", row, button.dataset.copiersField || "");
+    });
     pnlDetailBody?.addEventListener("click", event => {
         const saveButton = event.target.closest("[data-pnl-detail-save]");
         if (!saveButton) {
@@ -1711,6 +2131,11 @@
         savePnlDetailRecord(saveButton);
     });
     document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && isCopiersEditorOpen()) {
+            closeCopiersEditorModal();
+            return;
+        }
+
         if (event.key === "Escape" && isPnlDetailOpen()) {
             closePnlDetailModal();
         }
@@ -1730,6 +2155,8 @@
     periodFilter && (periodFilter.value = state.period);
     portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
+    wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
+    wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
     buildValueOptions();
     buildPnlMonthOptions(12);
     syncPeriodScopeVisibility();

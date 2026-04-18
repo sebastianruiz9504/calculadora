@@ -14,7 +14,8 @@ public enum AppModule
     GestionHumana = 7,
     Permissions = 8,
     Dashboard = 9,
-    Metricas = 10
+    Metricas = 10,
+    CuentasCobro = 11
 }
 
 public sealed class AppModuleDefinition
@@ -131,6 +132,16 @@ public static class AppModuleCatalog
         Controller = "Metricas"
     };
 
+    public static readonly AppModuleDefinition CuentasCobro = new()
+    {
+        Key = AppModule.CuentasCobro,
+        Label = "Cuentas de cobro",
+        Category = "Finanzas",
+        Description = "Carga cuentas de cobro, valida retenciones, adjunta soportes y marca impresiones por periodo.",
+        OptionValue = 645250010,
+        Controller = "CuentasCobro"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -142,6 +153,7 @@ public static class AppModuleCatalog
         GestionHumana,
         Dashboard,
         Metricas,
+        CuentasCobro,
         Permissions
     };
 

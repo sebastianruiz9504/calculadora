@@ -11,6 +11,9 @@
      id="billingDashboardApp"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
+     data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
+     data-copiers-client-search-url="@Url.Action("CopiersClientSearch", "Dashboard")"
+     data-copiers-product-search-url="@Url.Action("CopiersProductSearch", "Dashboard")"
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
@@ -164,20 +167,7 @@
     </div>
 
     <div class="dashboard-tab-panel" data-dashboard-panel="copiers" hidden>
-        <section class="dashboard-toolbar dashboard-toolbar--static">
-            <div class="dashboard-toolbar__summary">
-                <span class="dashboard-toolbar__summary-label">Corte actual</span>
-                <strong id="copiersAsOfLabel">Cargando...</strong>
-                <span id="copiersFocusLabel">Ordenado por dia de facturacion</span>
-            </div>
-            <div class="dashboard-toolbar__actions">
-                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="copiersRefreshBtn">Actualizar</button>
-            </div>
-        </section>
-
         <div id="copiersStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
-
-        <section class="dashboard-kpis dashboard-kpis--portfolio" id="copiersKpisContainer"></section>
 
         <section class="dashboard-grid">
             <article class="dashboard-panel dashboard-panel--full">
@@ -185,14 +175,16 @@
                     <div>
                         <div class="dashboard-panel__kicker">Copiers</div>
                         <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
-                        <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>.</p>
+                        <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>. Haz clic sobre cualquier celda para editar el registro en un popup.</p>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <span id="copiersResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
+                        <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersRefreshBtn">Actualizar</button>
+                        <button type="button" class="btn btn-primary" id="copiersNewRecordBtn">Nuevo registro</button>
                     </div>
                 </div>
-                <div class="dashboard-table-meta">
-                    <span id="copiersResultsCount">Mostrando 0 registros</span>
-                </div>
                 <div class="dashboard-table-wrap dashboard-table-wrap--tall">
-                    <table class="table dashboard-table">
+                    <table class="table dashboard-table dashboard-copiers-table">
                         <thead>
                             <tr>
                                 <th>Dia fact.</th>
@@ -200,6 +192,7 @@
                                 <th>Producto</th>
                                 <th class="text-end">Cantidad</th>
                                 <th class="text-end">Oper. incluidas</th>
+                                <th class="text-end">cr07a_operacionadicional</th>
                                 <th class="text-end">Valor unit. antes IVA</th>
                                 <th class="text-end">Valor unit. con IVA</th>
                                 <th class="text-end">Total con IVA</th>
@@ -379,6 +372,84 @@
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="copiersEditorModal" hidden>
+    <div class="dashboard-modal__backdrop" data-copiers-editor-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--medium" role="dialog" aria-modal="true" aria-labelledby="copiersEditorTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Copiers</div>
+                <h2 class="dashboard-modal__title" id="copiersEditorTitle">Editar registro</h2>
+                <p class="dashboard-modal__subtitle" id="copiersEditorSubtitle">Actualiza los campos del registro seleccionado.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="copiersEditorCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="copiersEditorStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <form id="copiersEditorForm" class="dashboard-copiers-form">
+            <input type="hidden" id="copiersRecordIdInput" />
+            <input type="hidden" id="copiersClientIdInput" />
+            <input type="hidden" id="copiersProductIdInput" />
+
+            <div class="dashboard-copiers-form__grid">
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Dia facturaci&oacute;n</span>
+                    <input type="number" min="1" max="31" step="1" class="form-control" id="copiersBillingDayInput" data-copiers-input-field="billingDay" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Cliente</span>
+                    <input type="text" class="form-control" id="copiersClientNameInput" list="copiersClientOptions" autocomplete="off" data-copiers-input-field="clientName" />
+                    <datalist id="copiersClientOptions"></datalist>
+                    <span class="dashboard-copiers-form__hint">Escribe al menos 2 caracteres y selecciona una coincidencia si aparece.</span>
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Producto</span>
+                    <input type="text" class="form-control" id="copiersProductNameInput" list="copiersProductOptions" autocomplete="off" data-copiers-input-field="productName" />
+                    <datalist id="copiersProductOptions"></datalist>
+                    <span class="dashboard-copiers-form__hint">Puedes escribir el nombre completo o escoger una sugerencia.</span>
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Cantidad</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="copiersQuantityInput" data-copiers-input-field="quantity" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Oper. incluidas</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="copiersIncludedOperationsInput" data-copiers-input-field="includedOperations" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">cr07a_operacionadicional</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="copiersAdditionalOperationInput" data-copiers-input-field="additionalOperation" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Valor unit. antes IVA</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="copiersUnitValueBeforeVatInput" data-copiers-input-field="unitValueBeforeVat" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Valor unit. con IVA</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="copiersUnitValueWithVatInput" data-copiers-input-field="unitValueWithVat" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Total con IVA</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="copiersTotalWithVatInput" data-copiers-input-field="totalWithVat" />
+                </label>
+            </div>
+
+            <div class="dashboard-copiers-form__actions">
+                <button type="button" class="btn btn-outline-secondary" id="copiersEditorCancelBtn">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersEditorSaveBtn">Guardar</button>
+            </div>
+        </form>
     </div>
 </div>
 

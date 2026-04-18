@@ -100,6 +100,41 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersClientSearch([FromQuery] string q, CancellationToken ct)
+    {
+        var items = await _dataverse.SearchClientsAsync(q, top: 12, ct: ct);
+        return Json(items);
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersProductSearch([FromQuery] string q, CancellationToken ct)
+    {
+        var items = await _dataverse.SearchProductsAsync(q, top: 12, ct: ct);
+        return Json(items);
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersRecord([FromBody] CopiersRecordSaveRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _dataverse.SaveCopiersRecordAsync(request, ct);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar el registro de facturacion copiers.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Taxes([FromQuery] int? year, [FromQuery] string? period, [FromQuery] int? value, CancellationToken ct)
     {
         try

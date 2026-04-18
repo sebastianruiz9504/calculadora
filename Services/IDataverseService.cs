@@ -1,5 +1,6 @@
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.CuentasCobro;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
@@ -44,6 +45,7 @@ public interface IDataverseService
     Task<PnlDetailRecordUpdateResultDto> UpdatePnlDetailRecordAsync(PnlDetailRecordUpdateRequestDto request, CancellationToken ct = default);
     Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default);
     Task<CopiersDashboardDto> GetCopiersDashboardAsync(CancellationToken ct = default);
+    Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);
@@ -51,4 +53,10 @@ public interface IDataverseService
     Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default);
     Task<IReadOnlyList<EmployeeModulePermissionRowDto>> GetEmployeeModulePermissionsAsync(CancellationToken ct = default);
     Task<EmployeeModulePermissionSaveResult> SaveEmployeeModulePermissionsAsync(EmployeeModulePermissionSaveRequest request, CancellationToken ct = default);
+    Task<CuentaCobroBoardDto> GetCuentasCobroBoardAsync(int year, int month, CancellationToken ct = default);
+    Task<CuentaCobroSaveResultDto> SaveCuentaCobroAsync(CuentaCobroSaveRequest request, CancellationToken ct = default);
+    Task<CuentaCobroFileUploadResultDto> UploadCuentaCobroAttachmentAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<CuentaCobroFileDownloadResult?> DownloadCuentaCobroAttachmentAsync(string recordId, CancellationToken ct = default);
+    Task<CuentaCobroPrintResultDto> MarkCuentaCobroAsPrintedAsync(string recordId, CancellationToken ct = default);
+    Task<CuentaCobroRowDto> GetCuentaCobroByIdAsync(string recordId, CancellationToken ct = default);
 }

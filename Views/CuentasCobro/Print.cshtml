@@ -1,0 +1,208 @@
+@model CuentaCobroPrintViewModel
+@{
+    Layout = null;
+    var estadoImpresion = Model.Record.Impresa ? "Impresa" : "Pendiente";
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cuenta de cobro</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #14213d;
+            --muted: #5f6b7a;
+            --line: #d8dde6;
+            --panel: #f7f9fc;
+            --accent: #0d6e6e;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--ink);
+            background: white;
+        }
+
+        .ccb-print {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 32px 28px 48px;
+        }
+
+        .ccb-print__header {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            border-bottom: 2px solid var(--ink);
+            padding-bottom: 18px;
+            margin-bottom: 24px;
+        }
+
+        .ccb-print__kicker {
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            font-size: 12px;
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+
+        .ccb-print__title {
+            margin: 0;
+            font-size: 34px;
+        }
+
+        .ccb-print__meta {
+            text-align: right;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .ccb-print__grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+
+        .ccb-print__card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 18px;
+        }
+
+        .ccb-print__label {
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .ccb-print__value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .ccb-print__table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+        }
+
+        .ccb-print__table th,
+        .ccb-print__table td {
+            border: 1px solid var(--line);
+            padding: 12px 14px;
+            font-size: 14px;
+        }
+
+        .ccb-print__table th {
+            background: var(--panel);
+            text-align: left;
+        }
+
+        .ccb-print__footnote {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        @@media print {
+            .ccb-print {
+                padding: 18px 12px 24px;
+            }
+        }
+
+        @@media (max-width: 720px) {
+            .ccb-print__header,
+            .ccb-print__grid {
+                grid-template-columns: 1fr;
+                display: grid;
+            }
+
+            .ccb-print__meta {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="ccb-print">
+        <header class="ccb-print__header">
+            <div>
+                <div class="ccb-print__kicker">Digital Tech</div>
+                <h1 class="ccb-print__title">Cuenta de cobro</h1>
+                <div>Periodo: <strong>@Model.Record.PeriodLabel</strong></div>
+            </div>
+            <div class="ccb-print__meta">
+                <div>Estado: <strong>@estadoImpresion</strong></div>
+                <div>Impresa: @Model.PrintedAtDisplay</div>
+                <div>Usuario: @Model.CurrentUser.Email</div>
+            </div>
+        </header>
+
+        <section class="ccb-print__grid">
+            <article class="ccb-print__card">
+                <span class="ccb-print__label">Receptor</span>
+                <div class="ccb-print__value">@Model.Record.Receptor</div>
+            </article>
+            <article class="ccb-print__card">
+                <span class="ccb-print__label">NIT o Cedula</span>
+                <div class="ccb-print__value">@Model.Record.NitOCedula</div>
+            </article>
+        </section>
+
+        <table class="ccb-print__table">
+            <thead>
+                <tr>
+                    <th>Concepto</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Valor total</td>
+                    <td>@Model.Record.ValorTotal.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td>Rete fuente %</td>
+                    <td>@Model.Record.ReteFuentePorcentaje.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td>Valor pago</td>
+                    <td>@Model.Record.ValorPago.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td>Rete fuente valor</td>
+                    <td>@Model.Record.ReteFuenteValor.ToString("N2")</td>
+                </tr>
+                <tr>
+                    <td>Validacion</td>
+                    <td>@(Model.Record.TotalesCuadran ? "Cuadra correctamente" : "No cuadra")</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="ccb-print__footnote">
+            Este formato fue generado desde el modulo interno de cuentas de cobro. La validacion del total compara valor total contra valor pago + rete fuente valor.
+        </div>
+    </main>
+
+    @if (Model.AutoPrint)
+    {
+        <script>
+            window.addEventListener("load", function () {
+                window.print();
+            });
+        </script>
+    }
+</body>
+</html>

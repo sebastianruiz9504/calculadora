@@ -1,0 +1,120 @@
+@model CuentasCobroPageViewModel
+@{
+    ViewData["Title"] = "Cuentas de cobro";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/cuentas-cobro.css" asp-append-version="true" />
+}
+
+<div class="ccb-shell"
+     id="cuentasCobroApp"
+     data-load-url="@Url.Action("Data", "CuentasCobro")"
+     data-save-url="@Url.Action("Save", "CuentasCobro")"
+     data-upload-url="@Url.Action("UploadFile", "CuentasCobro")"
+     data-download-url="@Url.Action("DownloadFile", "CuentasCobro")"
+     data-mark-printed-url="@Url.Action("MarkPrinted", "CuentasCobro")"
+     data-print-url="@Url.Action("Print", "CuentasCobro")"
+     data-initial-year="@Model.InitialYear"
+     data-initial-month="@Model.InitialMonth">
+    <section class="ccb-hero">
+        <div>
+            <div class="ccb-kicker">Finanzas</div>
+            <h1 class="ccb-title">Cuentas de cobro</h1>
+            <p class="ccb-subtitle">
+                Carga documentos, valida retenciones, adjunta soportes y marca las cuentas ya impresas por periodo.
+            </p>
+        </div>
+        <div class="ccb-user-pill">
+            <span class="ccb-user-pill__label">Acceso</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <div id="ccbStatusBanner" class="ccb-status" role="status" aria-live="polite"></div>
+
+    <section class="ccb-card">
+        <div class="ccb-toolbar">
+            <div class="ccb-toolbar__filters">
+                <div class="ccb-field">
+                    <label class="form-label" for="ccbYearSelect">Año</label>
+                    <select class="form-select" id="ccbYearSelect"></select>
+                </div>
+                <div class="ccb-field">
+                    <label class="form-label" for="ccbMonthSelect">Mes</label>
+                    <select class="form-select" id="ccbMonthSelect"></select>
+                </div>
+            </div>
+            <div class="ccb-toolbar__actions">
+                <div class="ccb-toolbar__hint" id="ccbPeriodSource">
+                    El periodo cargado se toma desde la cuenta de cobro.
+                </div>
+                <div class="ccb-toolbar__buttons">
+                    <button type="button" class="btn btn-outline-secondary" id="ccbRefreshBtn">Recargar</button>
+                    <button type="button" class="btn btn-primary" id="ccbAddRowBtn">Nueva linea</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="ccb-summary" id="ccbSummary">
+        <article class="ccb-summary__card">
+            <span class="ccb-summary__label">Registros</span>
+            <strong class="ccb-summary__value" id="ccbSummaryCount">0</strong>
+        </article>
+        <article class="ccb-summary__card">
+            <span class="ccb-summary__label">Valor total</span>
+            <strong class="ccb-summary__value" id="ccbSummaryValorTotal">$0</strong>
+        </article>
+        <article class="ccb-summary__card">
+            <span class="ccb-summary__label">Valor pago</span>
+            <strong class="ccb-summary__value" id="ccbSummaryValorPago">$0</strong>
+        </article>
+        <article class="ccb-summary__card">
+            <span class="ccb-summary__label">Rete fuente valor</span>
+            <strong class="ccb-summary__value" id="ccbSummaryReteValor">$0</strong>
+        </article>
+    </section>
+
+    <section class="ccb-card">
+        <div class="ccb-section-header">
+            <div>
+                <div class="ccb-kicker">Tabla</div>
+                <h2 class="ccb-section-title" id="ccbTableTitle">Detalle por periodo</h2>
+                <p class="ccb-section-subtitle">
+                    El valor de rete fuente se calcula automaticamente y la fila solo queda valida cuando el total cuadra.
+                </p>
+            </div>
+            <div class="ccb-counter" id="ccbRecordsCount">0 filas</div>
+        </div>
+
+        <div class="table-responsive ccb-table-wrap">
+            <table class="table align-middle ccb-table" id="ccbTable">
+                <thead>
+                    <tr>
+                        <th>Receptor</th>
+                        <th>NIT o Cedula</th>
+                        <th class="text-end">Valor total</th>
+                        <th class="text-end">Rete fuente %</th>
+                        <th class="text-end">Valor pago</th>
+                        <th class="text-end">Rete fuente valor</th>
+                        <th>Valida</th>
+                        <th>Adjunto</th>
+                        <th>Impresion</th>
+                        <th>Estado</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="ccbRowsBody"></tbody>
+            </table>
+        </div>
+
+        <div id="ccbEmptyState" class="ccb-empty" hidden>
+            No hay cuentas de cobro para este periodo. Puedes crear una nueva linea desde aqui.
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/cuentas-cobro.js" asp-append-version="true"></script>
+}

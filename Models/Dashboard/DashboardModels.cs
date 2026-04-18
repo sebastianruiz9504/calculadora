@@ -103,15 +103,42 @@ public sealed class CopiersDashboardDto
 
 public sealed class CopiersBillingRowDto
 {
+    public string RecordId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ProductId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string ProductName { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal IncludedOperations { get; set; }
+    public decimal AdditionalOperation { get; set; }
     public decimal UnitValueBeforeVat { get; set; }
     public decimal UnitValueWithVat { get; set; }
     public decimal TotalWithVat { get; set; }
     public int BillingDay { get; set; }
     public string BillingDayDisplay { get; set; } = "";
+}
+
+public sealed class CopiersRecordSaveRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal IncludedOperations { get; set; }
+    public decimal AdditionalOperation { get; set; }
+    public decimal UnitValueBeforeVat { get; set; }
+    public int? BillingDay { get; set; }
+    public decimal UnitValueWithVat { get; set; }
+    public decimal TotalWithVat { get; set; }
+}
+
+public sealed class CopiersRecordSaveResultDto
+{
+    public string RecordId { get; set; } = "";
+    public bool IsCreated { get; set; }
+    public string Message { get; set; } = "";
 }
 
 public sealed class TaxesDashboardDto

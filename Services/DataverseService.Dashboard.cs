@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Dashboard;
 
@@ -21,7 +23,9 @@ public sealed partial class DataverseService
     private const string DashboardExpenseRecipientNitField = "cr07a_nitreceptor";
     private const string DashboardExpenseCloudField = "cr07a_cloud";
     private const string DashboardExpenseCopiersField = "cr07a_copiers";
+    private const string DashboardCopiersAdditionalOperationField = "cr07a_operacionadicional";
     private static readonly CultureInfo DashboardCulture = CultureInfo.GetCultureInfo("es-CO");
+    private readonly ConcurrentDictionary<string, string> _dashboardAttributeTypeCache = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default)
     {
@@ -93,6 +97,46 @@ public sealed partial class DataverseService
             EmptyStateMessage = "Cuando Dataverse tenga filas en cr07a_productoscopiers las veras aqui.",
             Kpis = BuildCopiersKpis(rows),
             Rows = BuildCopiersRows(rows)
+        };
+    }
+
+    public async Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardCopiersTableLogicalName,
+            _dashboardCopiersTableSetName,
+            _dashboardCopiersIdField,
+            _dashboardCopiersPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
+        var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
+        var current = isCreate
+            ? null
+            : await GetCopiersRecordByIdAsync(metadata, normalizedRecordId!, httpContext.User, ct)
+                ?? throw new InvalidOperationException("No encontramos el registro de facturacion copiers que quieres editar.");
+
+        var payload = await BuildCopiersSavePayloadAsync(metadata, request, current, httpContext.User, ct);
+        var relativeUrl = isCreate
+            ? $"/api/data/v9.2/{metadata.EntitySetName}"
+            : $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})";
+
+        await CallDataverseSendAsync(relativeUrl, isCreate ? "POST" : "PATCH", payload, httpContext.User, ct);
+
+        return new CopiersRecordSaveResultDto
+        {
+            RecordId = normalizedRecordId ?? "",
+            IsCreated = isCreate,
+            Message = isCreate
+                ? "Registro creado correctamente en facturacion copiers."
+                : "Registro actualizado correctamente en facturacion copiers."
         };
     }
 
@@ -402,23 +446,7 @@ public sealed partial class DataverseService
         CancellationToken ct,
         bool preferProductLookup)
     {
-        var select = string.Join(",", new[]
-        {
-            metadata.PrimaryIdField,
-            metadata.PrimaryNameField,
-            _dashboardCopiersQuantityField,
-            preferProductLookup
-                ? BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField)
-                : _dashboardCopiersProductField,
-            _dashboardCopiersUnitValueBeforeVatField,
-            _dashboardCopiersBillingDayField,
-            _dashboardCopiersIncludedOperationsField,
-            BuildDashboardLookupValuePropertyName(_dashboardCopiersClientField),
-            _dashboardCopiersUnitValueWithVatField,
-            _dashboardCopiersTotalWithVatField
-        }
-        .Where(static field => !string.IsNullOrWhiteSpace(field))
-        .Distinct(StringComparer.OrdinalIgnoreCase));
+        var select = BuildCopiersSelectClause(metadata, preferProductLookup);
 
         var orderBy = Uri.EscapeDataString($"{_dashboardCopiersBillingDayField} asc");
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={orderBy}";
@@ -436,6 +464,28 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private string BuildCopiersSelectClause(RhEntityMetadata metadata, bool preferProductLookup)
+    {
+        return string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            _dashboardCopiersQuantityField,
+            preferProductLookup
+                ? BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField)
+                : _dashboardCopiersProductField,
+            _dashboardCopiersUnitValueBeforeVatField,
+            _dashboardCopiersBillingDayField,
+            _dashboardCopiersIncludedOperationsField,
+            DashboardCopiersAdditionalOperationField,
+            BuildDashboardLookupValuePropertyName(_dashboardCopiersClientField),
+            _dashboardCopiersUnitValueWithVatField,
+            _dashboardCopiersTotalWithVatField
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
     private bool ShouldRetryCopiersQueryWithProductLookup(InvalidOperationException exception)
     {
         var lookupField = BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField);
@@ -448,6 +498,35 @@ public sealed partial class DataverseService
         return exception.Message.Contains(_dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase)
             || exception.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase)
             || exception.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<CopiersBillingRecordRow?> GetCopiersRecordByIdAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await GetCopiersRecordByIdCoreAsync(metadata, recordId, user, ct, preferProductLookup: false);
+        }
+        catch (InvalidOperationException ex) when (ShouldRetryCopiersQueryWithProductLookup(ex))
+        {
+            return await GetCopiersRecordByIdCoreAsync(metadata, recordId, user, ct, preferProductLookup: true);
+        }
+    }
+
+    private async Task<CopiersBillingRecordRow?> GetCopiersRecordByIdCoreAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        bool preferProductLookup)
+    {
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(recordId, nameof(recordId))})?$select={BuildCopiersSelectClause(metadata, preferProductLookup)}";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        using var doc = JsonDocument.Parse(json);
+        return ParseCopiersRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
     }
 
     private CopiersBillingRecordRow? ParseCopiersRecord(JsonElement item, string primaryIdField, string primaryNameField)
@@ -474,10 +553,13 @@ public sealed partial class DataverseService
         return new CopiersBillingRecordRow
         {
             RecordId = recordId.Trim(),
+            ClientId = ReadCopiersLookupId(item, _dashboardCopiersClientField, "cliente"),
+            ProductId = ReadCopiersLookupId(item, _dashboardCopiersProductField, "producto"),
             ClientName = clientName,
             ProductName = productName,
             Quantity = RoundCurrency(ReadDecimal(item, _dashboardCopiersQuantityField) ?? 0m),
             IncludedOperations = RoundCurrency(ReadDecimal(item, _dashboardCopiersIncludedOperationsField) ?? 0m),
+            AdditionalOperation = RoundCurrency(ReadDecimal(item, DashboardCopiersAdditionalOperationField) ?? 0m),
             UnitValueBeforeVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersUnitValueBeforeVatField) ?? 0m),
             UnitValueWithVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersUnitValueWithVatField) ?? 0m),
             TotalWithVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersTotalWithVatField) ?? 0m),
@@ -562,10 +644,14 @@ public sealed partial class DataverseService
         return rows
             .Select(row => new CopiersBillingRowDto
             {
+                RecordId = row.RecordId,
+                ClientId = row.ClientId,
+                ProductId = row.ProductId,
                 ClientName = row.ClientName,
                 ProductName = row.ProductName,
                 Quantity = row.Quantity,
                 IncludedOperations = row.IncludedOperations,
+                AdditionalOperation = row.AdditionalOperation,
                 UnitValueBeforeVat = row.UnitValueBeforeVat,
                 UnitValueWithVat = row.UnitValueWithVat,
                 TotalWithVat = row.TotalWithVat,
@@ -573,6 +659,243 @@ public sealed partial class DataverseService
                 BillingDayDisplay = row.BillingDay is >= 1 and <= 31 ? $"Dia {row.BillingDay}" : "Sin dia"
             })
             .ToList();
+    }
+
+    private async Task<Dictionary<string, object>> BuildCopiersSavePayloadAsync(
+        RhEntityMetadata metadata,
+        CopiersRecordSaveRequestDto request,
+        CopiersBillingRecordRow? current,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var clientName = (request.ClientName ?? "").Trim();
+        var productName = (request.ProductName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(clientName))
+            throw new InvalidOperationException("Debes indicar un cliente para el registro.");
+
+        if (string.IsNullOrWhiteSpace(productName))
+            throw new InvalidOperationException("Debes indicar un producto para el registro.");
+
+        var payload = new Dictionary<string, object>
+        {
+            [_dashboardCopiersQuantityField] = NormalizeCopiersAmount(request.Quantity, "cantidad"),
+            [_dashboardCopiersIncludedOperationsField] = NormalizeCopiersAmount(request.IncludedOperations, "operaciones incluidas"),
+            [DashboardCopiersAdditionalOperationField] = NormalizeCopiersAmount(request.AdditionalOperation, "cr07a_operacionadicional"),
+            [_dashboardCopiersUnitValueBeforeVatField] = NormalizeCopiersAmount(request.UnitValueBeforeVat, "valor unitario antes de IVA"),
+            [_dashboardCopiersBillingDayField] = NormalizeCopiersBillingDay(request.BillingDay),
+            [_dashboardCopiersUnitValueWithVatField] = NormalizeCopiersAmount(request.UnitValueWithVat, "valor unitario con IVA"),
+            [_dashboardCopiersTotalWithVatField] = NormalizeCopiersAmount(request.TotalWithVat, "total con IVA")
+        };
+
+        await ApplyCopiersClientPayloadAsync(payload, clientName, request.ClientId, current, user, ct);
+        await ApplyCopiersProductPayloadAsync(payload, productName, request.ProductId, current, user, ct);
+
+        var primaryNameField = metadata.PrimaryNameField?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(primaryNameField)
+            && !payload.ContainsKey(primaryNameField)
+            && !string.Equals(primaryNameField, _dashboardCopiersClientField, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(primaryNameField, _dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase))
+        {
+            payload[primaryNameField] = productName;
+        }
+
+        return payload;
+    }
+
+    private async Task ApplyCopiersClientPayloadAsync(
+        IDictionary<string, object> payload,
+        string clientName,
+        string? rawClientId,
+        CopiersBillingRecordRow? current,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (await IsCopiersLookupFieldAsync(_dashboardCopiersClientField, user, ct))
+        {
+            var requestedClientId = NormalizeOptionalGuid(rawClientId);
+            var resolvedClientId = !string.IsNullOrWhiteSpace(requestedClientId)
+                ? requestedClientId
+                : string.Equals(
+                    NormalizeCopiersComparableValue(clientName),
+                    NormalizeCopiersComparableValue(current?.ClientName),
+                    StringComparison.Ordinal)
+                    ? NormalizeOptionalGuid(current?.ClientId)
+                    : await ResolveCopiersClientIdAsync(clientName, ct);
+
+            if (string.IsNullOrWhiteSpace(resolvedClientId))
+                throw new InvalidOperationException("No encontramos un cliente valido para el valor digitado. Selecciona una opcion sugerida.");
+
+            var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                _dashboardCopiersTableLogicalName,
+                _dashboardCopiersClientField,
+                _dashboardCopiersClientField,
+                user,
+                ct);
+
+            payload[$"{navigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({resolvedClientId})";
+            return;
+        }
+
+        payload[_dashboardCopiersClientField] = clientName;
+    }
+
+    private async Task ApplyCopiersProductPayloadAsync(
+        IDictionary<string, object> payload,
+        string productName,
+        string? rawProductId,
+        CopiersBillingRecordRow? current,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var requestedProductId = NormalizeOptionalGuid(rawProductId);
+        var currentProductId = NormalizeOptionalGuid(current?.ProductId);
+        var useLookup = !string.IsNullOrWhiteSpace(requestedProductId)
+            || !string.IsNullOrWhiteSpace(currentProductId)
+            || await IsCopiersLookupFieldAsync(_dashboardCopiersProductField, user, ct);
+
+        if (useLookup)
+        {
+            var resolvedProductId = !string.IsNullOrWhiteSpace(requestedProductId)
+                ? requestedProductId
+                : string.Equals(
+                    NormalizeCopiersComparableValue(productName),
+                    NormalizeCopiersComparableValue(current?.ProductName),
+                    StringComparison.Ordinal)
+                    ? currentProductId
+                    : await ResolveCopiersProductIdAsync(productName, ct);
+
+            if (string.IsNullOrWhiteSpace(resolvedProductId))
+                throw new InvalidOperationException("No encontramos un producto valido para el valor digitado. Selecciona una opcion sugerida.");
+
+            var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                _dashboardCopiersTableLogicalName,
+                _dashboardCopiersProductField,
+                _dashboardCopiersProductField,
+                user,
+                ct);
+
+            payload[$"{navigationProperty}@odata.bind"] = $"/{ProductsEntitySetName}({resolvedProductId})";
+            return;
+        }
+
+        payload[_dashboardCopiersProductField] = productName;
+    }
+
+    private async Task<string> ResolveCopiersClientIdAsync(string clientName, CancellationToken ct)
+    {
+        var matches = (await SearchClientsAsync(clientName, top: 25, ct: ct))
+            .Where(item => string.Equals(
+                NormalizeCopiersComparableValue(item.Name),
+                NormalizeCopiersComparableValue(clientName),
+                StringComparison.Ordinal))
+            .Select(item => NormalizeOptionalGuid(item.Id))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count > 1)
+            throw new InvalidOperationException("Hay varios clientes con el mismo nombre. Selecciona una opcion sugerida para continuar.");
+
+        return matches.FirstOrDefault() ?? "";
+    }
+
+    private async Task<string> ResolveCopiersProductIdAsync(string productName, CancellationToken ct)
+    {
+        var matches = (await SearchProductsAsync(productName, top: 25, ct: ct))
+            .Where(item => string.Equals(
+                NormalizeCopiersComparableValue(item.Description),
+                NormalizeCopiersComparableValue(productName),
+                StringComparison.Ordinal))
+            .Select(item => NormalizeOptionalGuid(item.Id))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count > 1)
+            throw new InvalidOperationException("Hay varios productos con el mismo nombre. Selecciona una opcion sugerida para continuar.");
+
+        return matches.FirstOrDefault() ?? "";
+    }
+
+    private async Task<bool> IsCopiersLookupFieldAsync(string fieldName, ClaimsPrincipal user, CancellationToken ct)
+    {
+        var attributeType = await ResolveCopiersAttributeTypeAsync(fieldName, user, ct);
+        return string.Equals(attributeType, "Lookup", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(attributeType, "Customer", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(attributeType, "Owner", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<string> ResolveCopiersAttributeTypeAsync(string fieldName, ClaimsPrincipal user, CancellationToken ct)
+    {
+        var cacheKey = $"{_dashboardCopiersTableLogicalName}|{fieldName}";
+        if (_dashboardAttributeTypeCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(_dashboardCopiersTableLogicalName)}')" +
+                $"/Attributes(LogicalName='{EscapeOdataLiteral(fieldName)}')?$select=LogicalName,AttributeType";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+            using var doc = JsonDocument.Parse(json);
+            var attributeType = ReadString(doc.RootElement, "AttributeType").Trim();
+            if (!string.IsNullOrWhiteSpace(attributeType))
+            {
+                _dashboardAttributeTypeCache[cacheKey] = attributeType;
+                return attributeType;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible resolver el tipo del atributo {FieldName} en la entidad {EntityLogicalName}.",
+                fieldName,
+                _dashboardCopiersTableLogicalName);
+        }
+
+        var fallback = string.Equals(fieldName, _dashboardCopiersClientField, StringComparison.OrdinalIgnoreCase)
+            ? "Lookup"
+            : "";
+        _dashboardAttributeTypeCache[cacheKey] = fallback;
+        return fallback;
+    }
+
+    private static string NormalizeCopiersComparableValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var normalized = value.Trim().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private static decimal NormalizeCopiersAmount(decimal value, string label)
+    {
+        if (value < 0m)
+            throw new InvalidOperationException($"El valor de {label} no puede ser negativo.");
+
+        return RoundCurrency(value);
+    }
+
+    private static int NormalizeCopiersBillingDay(int? billingDay)
+    {
+        if (!billingDay.HasValue || billingDay.Value <= 0)
+            return 0;
+
+        if (billingDay.Value > 31)
+            throw new InvalidOperationException("El dia de facturacion debe estar entre 1 y 31.");
+
+        return billingDay.Value;
     }
 
     private string ReadCopiersFieldDisplayValue(JsonElement item, string fieldName, string containsToken, string fallbackValue)
@@ -604,6 +927,21 @@ public sealed partial class DataverseService
             ReadString(item, fieldName),
             scannedValue,
             fallbackValue);
+    }
+
+    private string ReadCopiersLookupId(JsonElement item, string fieldName, string containsToken)
+    {
+        var configuredLookupProperty = BuildDashboardLookupValuePropertyName(fieldName);
+        var lookupProperty = DetectLookupValueProperty(
+            item,
+            new[]
+            {
+                configuredLookupProperty,
+                $"_{fieldName}id_value"
+            },
+            containsToken);
+
+        return ReadString(item, lookupProperty).Trim();
     }
 
     private async Task<List<BillingRecordRow>> GetBillingRecordsAsync(
@@ -1607,10 +1945,13 @@ public sealed partial class DataverseService
     private sealed class CopiersBillingRecordRow
     {
         public string RecordId { get; set; } = "";
+        public string ClientId { get; set; } = "";
+        public string ProductId { get; set; } = "";
         public string ClientName { get; set; } = "";
         public string ProductName { get; set; } = "";
         public decimal Quantity { get; set; }
         public decimal IncludedOperations { get; set; }
+        public decimal AdditionalOperation { get; set; }
         public decimal UnitValueBeforeVat { get; set; }
         public decimal UnitValueWithVat { get; set; }
         public decimal TotalWithVat { get; set; }
