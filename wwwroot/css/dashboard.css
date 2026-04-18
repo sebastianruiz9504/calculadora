@@ -923,17 +923,17 @@
 
 .dashboard-copiers-maintenance-table thead th:nth-child(1),
 .dashboard-copiers-maintenance-table tbody td:nth-child(1) {
-    width: 14%;
+    width: 10%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(2),
 .dashboard-copiers-maintenance-table tbody td:nth-child(2) {
-    width: 15%;
+    width: 11%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(3),
 .dashboard-copiers-maintenance-table tbody td:nth-child(3) {
-    width: 15%;
+    width: 18%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(4),
@@ -943,7 +943,7 @@
 
 .dashboard-copiers-maintenance-table thead th:nth-child(5),
 .dashboard-copiers-maintenance-table tbody td:nth-child(5) {
-    width: 36%;
+    width: 41%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(6),

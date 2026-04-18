@@ -29,34 +29,8 @@
      data-initial-value="@Model.InitialPeriodValue">
     <section class="dashboard-hero">
         <div class="dashboard-hero__content">
-            <h1 class="dashboard-title">Dashboard financiero</h1>
-            <p class="dashboard-subtitle">
-                Un tablero estilo control ejecutivo para seguir facturacion, recaudo, impuestos, cartera, P&amp;L
-                y la operacion de copiers sobre <span class="dashboard-highlight">cr07a_facturacion</span>,
-                <span class="dashboard-highlight">cr07a_productoscopiers</span>,
-                <span class="dashboard-highlight">cr07a_equipo</span> y
-                <span class="dashboard-highlight">cr07a_mantenimiento</span>.
-            </p>
-            <div class="dashboard-hero__facts">
-                <div class="dashboard-fact">
-                    <span class="dashboard-fact__label">Referencia</span>
-                    <strong id="dashboardCompareLabel">Mismo periodo del a&ntilde;o anterior</strong>
-                </div>
-                <div class="dashboard-fact">
-                    <span class="dashboard-fact__label">Enfoque</span>
-                    <strong id="dashboardGranularityLabel">Mensual</strong>
-                </div>
-                <div class="dashboard-fact">
-                    <span class="dashboard-fact__label">Registros</span>
-                    <strong id="dashboardRecordCount">0</strong>
-                </div>
-            </div>
+            <h1 class="dashboard-title">Dashboard Financiero</h1>
         </div>
-        <aside class="dashboard-user-card">
-            <span class="dashboard-user-card__label">Acceso actual</span>
-            <strong class="dashboard-user-card__value">@Model.CurrentUser.Email</strong>
-            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior, Cartera muestra el corte actual de facturas vencidas sin pago, P&amp;L consolida ingresos y costos hasta el &uacute;ltimo mes con datos y Copiers concentra facturaci&oacute;n, equipos, stock y mantenimientos.</span>
-        </aside>
     </section>
 
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
