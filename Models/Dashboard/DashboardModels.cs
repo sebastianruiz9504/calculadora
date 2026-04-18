@@ -173,6 +173,7 @@ public sealed class CopiersEquipmentDashboardDto
     public IReadOnlyList<CopiersEquipmentClientSummaryDto> ClientSummaries { get; set; } = Array.Empty<CopiersEquipmentClientSummaryDto>();
     public IReadOnlyList<CopiersEquipmentRowDto> EquipmentRows { get; set; } = Array.Empty<CopiersEquipmentRowDto>();
     public IReadOnlyList<CopiersEquipmentRowDto> StockRows { get; set; } = Array.Empty<CopiersEquipmentRowDto>();
+    public IReadOnlyList<CopiersMaintenanceRowDto> MaintenanceRows { get; set; } = Array.Empty<CopiersMaintenanceRowDto>();
     public CopiersMaintenanceChartDto MaintenanceChart { get; set; } = new();
 }
 

@@ -88,6 +88,7 @@ public sealed partial class DataverseService
             StockRows = BuildEquipmentRows(
                 equipmentRows.Where(static row => row.InStock).ToList(),
                 maintenanceRows),
+            MaintenanceRows = BuildMaintenanceRows(maintenanceRows),
             MaintenanceChart = BuildMaintenanceChart(maintenanceRows, today)
         };
     }

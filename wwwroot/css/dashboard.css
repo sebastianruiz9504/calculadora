@@ -300,6 +300,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.dashboard-kpis--copiers-equipment {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-kpis--copiers-maintenance {
+    grid-template-columns: minmax(0, 420px);
+}
+
 .dashboard-kpis--pnl {
     grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -320,6 +328,15 @@
 .dashboard-kpis--portfolio .dashboard-kpi,
 .dashboard-kpis--portfolio .dashboard-kpi:nth-child(4),
 .dashboard-kpis--portfolio .dashboard-kpi:nth-child(5) {
+    grid-column: span 1;
+}
+
+.dashboard-kpis--copiers-equipment .dashboard-kpi,
+.dashboard-kpis--copiers-equipment .dashboard-kpi:nth-child(4),
+.dashboard-kpis--copiers-equipment .dashboard-kpi:nth-child(5),
+.dashboard-kpis--copiers-maintenance .dashboard-kpi,
+.dashboard-kpis--copiers-maintenance .dashboard-kpi:nth-child(4),
+.dashboard-kpis--copiers-maintenance .dashboard-kpi:nth-child(5) {
     grid-column: span 1;
 }
 
@@ -780,6 +797,7 @@
 }
 
 .dashboard-equipment-table,
+.dashboard-copiers-maintenance-table,
 .dashboard-equipment-maintenance-table,
 .dashboard-equipment-summary-table,
 .dashboard-equipment-stock-table {
@@ -788,6 +806,8 @@
 
 .dashboard-equipment-table thead th,
 .dashboard-equipment-table tbody td,
+.dashboard-copiers-maintenance-table thead th,
+.dashboard-copiers-maintenance-table tbody td,
 .dashboard-equipment-maintenance-table thead th,
 .dashboard-equipment-maintenance-table tbody td,
 .dashboard-equipment-summary-table thead th,
@@ -895,6 +915,60 @@
 .dashboard-equipment-maintenance-table thead th:nth-child(8),
 .dashboard-equipment-maintenance-table tbody td:nth-child(8) {
     width: 6%;
+}
+
+.dashboard-copiers-maintenance-table {
+    min-width: 1760px;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(1),
+.dashboard-copiers-maintenance-table tbody td:nth-child(1) {
+    width: 7%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(2),
+.dashboard-copiers-maintenance-table tbody td:nth-child(2) {
+    width: 12%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(3),
+.dashboard-copiers-maintenance-table tbody td:nth-child(3) {
+    width: 8%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(4),
+.dashboard-copiers-maintenance-table tbody td:nth-child(4) {
+    width: 11%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(5),
+.dashboard-copiers-maintenance-table tbody td:nth-child(5),
+.dashboard-copiers-maintenance-table thead th:nth-child(7),
+.dashboard-copiers-maintenance-table tbody td:nth-child(7),
+.dashboard-copiers-maintenance-table thead th:nth-child(9),
+.dashboard-copiers-maintenance-table tbody td:nth-child(9),
+.dashboard-copiers-maintenance-table thead th:nth-child(11),
+.dashboard-copiers-maintenance-table tbody td:nth-child(11),
+.dashboard-copiers-maintenance-table thead th:nth-child(12),
+.dashboard-copiers-maintenance-table tbody td:nth-child(12) {
+    width: 8%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(6),
+.dashboard-copiers-maintenance-table tbody td:nth-child(6),
+.dashboard-copiers-maintenance-table thead th:nth-child(8),
+.dashboard-copiers-maintenance-table tbody td:nth-child(8) {
+    width: 10%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(10),
+.dashboard-copiers-maintenance-table tbody td:nth-child(10) {
+    width: 14%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(13),
+.dashboard-copiers-maintenance-table tbody td:nth-child(13) {
+    width: 8%;
 }
 
 .dashboard-pnl-table,
@@ -1329,6 +1403,10 @@
         grid-template-columns: 1fr;
     }
 
+    .dashboard-kpis--copiers-maintenance {
+        grid-template-columns: 1fr;
+    }
+
     .dashboard-kpis--pnl {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1426,7 +1504,8 @@
     }
 
     .dashboard-equipment-table,
-    .dashboard-equipment-maintenance-table {
+    .dashboard-equipment-maintenance-table,
+    .dashboard-copiers-maintenance-table {
         min-width: 980px;
     }
 

@@ -179,6 +179,7 @@
         <section class="dashboard-subtabs" aria-label="Subsecciones de copiers">
             <button type="button" class="dashboard-subtab is-active" data-copiers-subtab="billing">Facturaci&oacute;n copiers</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="equipment">Equipos</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance">Mantenimientos</button>
         </section>
 
         <div class="dashboard-subpanel is-active" data-copiers-subpanel="billing">
@@ -219,7 +220,7 @@
         </div>
 
         <div class="dashboard-subpanel" data-copiers-subpanel="equipment" hidden>
-            <section class="dashboard-kpis dashboard-kpis--portfolio" id="copiersEquipmentKpisContainer"></section>
+            <section class="dashboard-kpis dashboard-kpis--copiers-equipment" id="copiersEquipmentKpisContainer"></section>
 
             <section class="dashboard-grid dashboard-grid--copiers-equipment">
                 <article class="dashboard-panel">
@@ -295,17 +296,71 @@
                         </table>
                     </div>
                 </article>
+            </section>
+        </div>
 
+        <div class="dashboard-subpanel" data-copiers-subpanel="maintenance" hidden>
+            <section class="dashboard-kpis dashboard-kpis--copiers-maintenance" id="copiersMaintenanceKpisContainer"></section>
+
+            <section class="dashboard-grid">
                 <article class="dashboard-panel dashboard-panel--full">
                     <div class="dashboard-panel__header">
                         <div>
-                            <div class="dashboard-panel__kicker">Soportes</div>
+                            <div class="dashboard-panel__kicker">Mantenimientos</div>
                             <h2 class="dashboard-panel__title">Cantidad de soportes por mes y t&eacute;cnico</h2>
                             <p class="dashboard-panel__description">Vista mensual para entender la carga operativa del equipo t&eacute;cnico.</p>
                         </div>
                     </div>
                     <div class="dashboard-maintenance-chart" id="copiersMaintenanceChart"></div>
                     <div class="dashboard-maintenance-legend" id="copiersMaintenanceLegend"></div>
+                </article>
+
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Mantenimientos</div>
+                            <h2 class="dashboard-panel__title">Listado completo de mantenimientos</h2>
+                            <p class="dashboard-panel__description">Consulta todos los registros ordenados del m&aacute;s reciente al m&aacute;s antiguo y filtra por a&ntilde;o, mes o owner.</p>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <span id="copiersMaintenanceResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
+                            <label class="dashboard-filter dashboard-filter--compact" for="copiersMaintenanceYearFilter">
+                                <span class="dashboard-filter__label">A&ntilde;o</span>
+                                <select id="copiersMaintenanceYearFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                            </label>
+                            <label class="dashboard-filter dashboard-filter--compact" for="copiersMaintenanceMonthFilter">
+                                <span class="dashboard-filter__label">Mes</span>
+                                <select id="copiersMaintenanceMonthFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                            </label>
+                            <label class="dashboard-filter dashboard-filter--compact" for="copiersMaintenanceOwnerFilter">
+                                <span class="dashboard-filter__label">Owner</span>
+                                <select id="copiersMaintenanceOwnerFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                            </label>
+                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersMaintenanceRefreshBtn">Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                        <table class="table dashboard-table dashboard-copiers-maintenance-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>T&iacute;tulo</th>
+                                    <th>Tipo</th>
+                                    <th>Equipo</th>
+                                    <th>ID equipo</th>
+                                    <th>Cliente</th>
+                                    <th>ID cliente</th>
+                                    <th>Owner</th>
+                                    <th>ID owner</th>
+                                    <th>Descripci&oacute;n</th>
+                                    <th>ID interno</th>
+                                    <th>ID registro</th>
+                                    <th>Acta</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersMaintenanceBody"></tbody>
+                        </table>
+                    </div>
                 </article>
             </section>
         </div>
