@@ -346,28 +346,28 @@ public sealed partial class DataverseService
         CancellationToken ct,
         string? equipmentId = null)
     {
+        var equipmentLookupField = await ResolveCopiersMaintenanceEquipmentLookupFieldAsync(user, ct);
         var relativeUrl =
-            $"/api/data/v9.2/{metadata.EntitySetName}?$select={BuildMaintenanceSelectClause(metadata)}" +
-            $"{BuildMaintenanceFilterQuery(equipmentId)}" +
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={BuildMaintenanceSelectClause(metadata, equipmentLookupField)}" +
+            $"{BuildMaintenanceFilterQuery(equipmentId, equipmentLookupField)}" +
             $"&$orderby={DashboardMaintenanceDateField} desc";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         return items
-            .Select(item => ParseMaintenanceRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
+            .Select(item => ParseMaintenanceRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField, equipmentLookupField))
             .Where(item => item is not null)
             .Cast<CopiersMaintenanceRecordRow>()
             .ToList();
     }
 
-    private string BuildMaintenanceSelectClause(RhEntityMetadata metadata)
+    private string BuildMaintenanceSelectClause(RhEntityMetadata metadata, string equipmentLookupField)
     {
         return string.Join(",", new[]
         {
             metadata.PrimaryIdField,
             metadata.PrimaryNameField,
             DashboardMaintenanceTitleField,
-            DashboardMaintenanceEquipmentField,
-            BuildDashboardLookupValuePropertyName(DashboardMaintenanceEquipmentField),
+            BuildDashboardLookupValuePropertyName(equipmentLookupField),
             DashboardMaintenanceDateField,
             DashboardMaintenanceDescriptionField,
             DashboardMaintenanceClientField,
@@ -382,18 +382,22 @@ public sealed partial class DataverseService
         .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
-    private string BuildMaintenanceFilterQuery(string? equipmentId)
+    private string BuildMaintenanceFilterQuery(string? equipmentId, string equipmentLookupField)
     {
         var normalizedEquipmentId = NormalizeOptionalGuid(equipmentId);
         if (string.IsNullOrWhiteSpace(normalizedEquipmentId))
             return "";
 
-        var lookupValueProperty = BuildDashboardLookupValuePropertyName(DashboardMaintenanceEquipmentField);
+        var lookupValueProperty = BuildDashboardLookupValuePropertyName(equipmentLookupField);
         var filter = $"{lookupValueProperty} eq {normalizedEquipmentId}";
         return $"&$filter={Uri.EscapeDataString(filter)}";
     }
 
-    private CopiersMaintenanceRecordRow? ParseMaintenanceRecord(JsonElement item, string primaryIdField, string primaryNameField)
+    private CopiersMaintenanceRecordRow? ParseMaintenanceRecord(
+        JsonElement item,
+        string primaryIdField,
+        string primaryNameField,
+        string equipmentLookupField)
     {
         var title = FirstNonEmpty(
             ReadString(item, DashboardMaintenanceTitleField).Trim(),
@@ -425,10 +429,10 @@ public sealed partial class DataverseService
             RecordId = recordId.Trim(),
             Title = title,
             InternalId = ReadString(item, DashboardMaintenanceExternalIdField).Trim(),
-            EquipmentId = ReadCopiersLookupId(item, DashboardMaintenanceEquipmentField, "equipo"),
+            EquipmentId = ReadCopiersLookupId(item, equipmentLookupField, "equipo"),
             EquipmentSerial = ReadCopiersFieldDisplayValue(
                 item,
-                DashboardMaintenanceEquipmentField,
+                equipmentLookupField,
                 "equipo",
                 "Equipo sin nombre"),
             MaintenanceDate = date,
@@ -459,6 +463,18 @@ public sealed partial class DataverseService
                 ReadString(item, $"{DashboardMaintenanceOwnerField}{FormattedValueAnnotationSuffix}").Trim(),
                 "Sin tecnico")
         };
+    }
+
+    private async Task<string> ResolveCopiersMaintenanceEquipmentLookupFieldAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            DashboardMaintenanceTableLogicalName,
+            DashboardMaintenanceEquipmentField,
+            DashboardMaintenanceEquipmentField,
+            user,
+            ct);
+
+        return FirstNonEmpty(navigationProperty, DashboardMaintenanceEquipmentField);
     }
 
     private IReadOnlyList<PortfolioKpiDto> BuildEquipmentKpis(
