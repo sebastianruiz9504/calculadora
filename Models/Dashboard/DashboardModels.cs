@@ -141,6 +141,26 @@ public sealed class CopiersRecordSaveResultDto
     public string Message { get; set; } = "";
 }
 
+public sealed class CopiersClientInvoicesDetailDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public IReadOnlyList<CopiersClientInvoiceRowDto> Invoices { get; set; } = Array.Empty<CopiersClientInvoiceRowDto>();
+}
+
+public sealed class CopiersClientInvoiceRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public decimal TotalInvoice { get; set; }
+    public string EmissionDateValue { get; set; } = "";
+    public string EmissionDateDisplay { get; set; } = "";
+}
+
 public sealed class CopiersEquipmentDashboardDto
 {
     public string AsOfDateLabel { get; set; } = "";

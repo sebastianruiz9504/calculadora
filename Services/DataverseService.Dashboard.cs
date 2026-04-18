@@ -100,6 +100,58 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<CopiersClientInvoicesDetailDto> GetCopiersClientInvoicesAsync(
+        string clientId,
+        string? clientName = null,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var normalizedClientId = NormalizeOptionalGuid(clientId);
+        if (string.IsNullOrWhiteSpace(normalizedClientId) && !string.IsNullOrWhiteSpace(clientName))
+        {
+            normalizedClientId = await ResolveCopiersClientIdAsync(clientName.Trim(), ct);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedClientId))
+            throw new InvalidOperationException("No encontramos un cliente valido para consultar sus facturas emitidas.");
+
+        var invoices = await GetBillingRecordsByClientAsync(metadata, normalizedClientId, httpContext.User, ct);
+        var resolvedClientName = FirstNonEmpty(
+            invoices.Select(static row => row.ClientName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+            clientName?.Trim(),
+            "Cliente");
+
+        return new CopiersClientInvoicesDetailDto
+        {
+            ClientId = normalizedClientId,
+            ClientName = resolvedClientName,
+            HasData = invoices.Count > 0,
+            RecordsCount = invoices.Count,
+            EmptyStateTitle = "No encontramos facturas emitidas para este cliente.",
+            EmptyStateMessage = "Cuando existan registros emitidos en cr07a_facturacion para este cliente los veras aqui.",
+            Invoices = invoices
+                .Select(row => new CopiersClientInvoiceRowDto
+                {
+                    RecordId = row.RecordId,
+                    InvoiceNumber = row.InvoiceNumber,
+                    TotalInvoice = row.TotalInvoice,
+                    EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha"
+                })
+                .ToList()
+        };
+    }
+
     public async Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default)
     {
         if (request is null)
@@ -658,6 +710,94 @@ public sealed partial class DataverseService
                 BillingDay = row.BillingDay,
                 BillingDayDisplay = row.BillingDay is >= 1 and <= 31 ? $"Dia {row.BillingDay}" : "Sin dia"
             })
+            .ToList();
+    }
+
+    private async Task<List<BillingRecordRow>> GetBillingRecordsByClientAsync(
+        RhEntityMetadata metadata,
+        string clientId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedClientId = NormalizeGuid(clientId, nameof(clientId));
+        var lookupFieldCandidates = new[]
+        {
+            BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
+            "_cr07a_clientenit_value",
+            "_cr07a_clientenitid_value",
+            "_cr07a_cliente_value",
+            "_cr07a_clienteid_value",
+            "_cr07a_clientelookup_value"
+        }
+        .Where(field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+        List<BillingRecordRow>? emptySuccessfulResult = null;
+        Exception? lastError = null;
+
+        foreach (var lookupField in lookupFieldCandidates)
+        {
+            try
+            {
+                var rows = await GetBillingRecordsByClientCoreAsync(metadata, normalizedClientId, lookupField, user, ct);
+                if (rows.Count > 0)
+                    return rows;
+
+                emptySuccessfulResult ??= rows;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Fallo la consulta de facturas emitidas para cliente {ClientId} usando lookup {LookupField}.",
+                    normalizedClientId,
+                    lookupField);
+                lastError = ex;
+            }
+        }
+
+        if (emptySuccessfulResult is not null)
+            return emptySuccessfulResult;
+
+        throw new InvalidOperationException(
+            "No fue posible consultar las facturas emitidas del cliente seleccionado en cr07a_facturacion.",
+            lastError);
+    }
+
+    private async Task<List<BillingRecordRow>> GetBillingRecordsByClientCoreAsync(
+        RhEntityMetadata metadata,
+        string clientId,
+        string lookupField,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var select = string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            _dashboardBillingInvoiceNumberField,
+            _dashboardBillingClientField,
+            BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
+            _dashboardBillingEmissionDateField,
+            _dashboardBillingTotalField
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        var filter = $"{lookupField} eq {clientId} and {_dashboardBillingEmissionDateField} ne null";
+        var orderBy = Uri.EscapeDataString($"{_dashboardBillingEmissionDateField} desc");
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(item => ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
+            .Where(static item => item is not null && item.EmissionDate is not null)
+            .Cast<BillingRecordRow>()
+            .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(static item => item.EmissionDate)
+            .ThenBy(static item => item.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

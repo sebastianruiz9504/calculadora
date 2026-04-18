@@ -346,7 +346,43 @@ public sealed partial class DataverseService
         CancellationToken ct,
         string? equipmentId = null)
     {
-        var equipmentLookupField = await ResolveCopiersMaintenanceEquipmentLookupFieldAsync(user, ct);
+        var equipmentLookupFieldCandidates = await ResolveCopiersMaintenanceEquipmentLookupFieldCandidatesAsync(user, ct);
+        InvalidOperationException? lastLookupException = null;
+
+        foreach (var equipmentLookupField in equipmentLookupFieldCandidates)
+        {
+            try
+            {
+                return await GetMaintenanceRecordsCoreAsync(metadata, user, ct, equipmentId, equipmentLookupField);
+            }
+            catch (InvalidOperationException ex) when (ShouldRetryCopiersMaintenanceLookupQuery(ex, equipmentLookupField))
+            {
+                lastLookupException = ex;
+                _logger.LogWarning(
+                    ex,
+                    "Fallo la consulta de mantenimientos usando el lookup {LookupField}. Se intentara otra variante del campo.",
+                    equipmentLookupField);
+            }
+        }
+
+        if (lastLookupException is not null)
+            throw lastLookupException;
+
+        return await GetMaintenanceRecordsCoreAsync(
+            metadata,
+            user,
+            ct,
+            equipmentId,
+            DashboardMaintenanceEquipmentField);
+    }
+
+    private async Task<List<CopiersMaintenanceRecordRow>> GetMaintenanceRecordsCoreAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        string? equipmentId,
+        string equipmentLookupField)
+    {
         var relativeUrl =
             $"/api/data/v9.2/{metadata.EntitySetName}?$select={BuildMaintenanceSelectClause(metadata, equipmentLookupField)}" +
             $"{BuildMaintenanceFilterQuery(equipmentId, equipmentLookupField)}" +
@@ -465,7 +501,9 @@ public sealed partial class DataverseService
         };
     }
 
-    private async Task<string> ResolveCopiersMaintenanceEquipmentLookupFieldAsync(ClaimsPrincipal user, CancellationToken ct)
+    private async Task<IReadOnlyList<string>> ResolveCopiersMaintenanceEquipmentLookupFieldCandidatesAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
     {
         var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
             DashboardMaintenanceTableLogicalName,
@@ -474,7 +512,21 @@ public sealed partial class DataverseService
             user,
             ct);
 
-        return FirstNonEmpty(navigationProperty, DashboardMaintenanceEquipmentField);
+        return BuildLookupLogicalNameCandidates(
+                DashboardMaintenanceEquipmentField,
+                navigationProperty)
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Select(candidate => candidate!.Trim())
+            .ToList();
+    }
+
+    private bool ShouldRetryCopiersMaintenanceLookupQuery(InvalidOperationException exception, string equipmentLookupField)
+    {
+        var lookupValueProperty = BuildDashboardLookupValuePropertyName(equipmentLookupField);
+        return exception.Message.Contains(equipmentLookupField, StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains(lookupValueProperty, StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
     }
 
     private IReadOnlyList<PortfolioKpiDto> BuildEquipmentKpis(

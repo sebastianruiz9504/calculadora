@@ -62,6 +62,13 @@
     const copiersUnitValueBeforeVatInput = document.getElementById("copiersUnitValueBeforeVatInput");
     const copiersUnitValueWithVatInput = document.getElementById("copiersUnitValueWithVatInput");
     const copiersTotalWithVatInput = document.getElementById("copiersTotalWithVatInput");
+    const copiersClientInvoicesModal = document.getElementById("copiersClientInvoicesModal");
+    const copiersClientInvoicesCloseBtn = document.getElementById("copiersClientInvoicesCloseBtn");
+    const copiersClientInvoicesStatus = document.getElementById("copiersClientInvoicesStatus");
+    const copiersClientInvoicesTitle = document.getElementById("copiersClientInvoicesTitle");
+    const copiersClientInvoicesSubtitle = document.getElementById("copiersClientInvoicesSubtitle");
+    const copiersClientInvoicesResultsCount = document.getElementById("copiersClientInvoicesResultsCount");
+    const copiersClientInvoicesBody = document.getElementById("copiersClientInvoicesBody");
     const copiersEquipmentDetailModal = document.getElementById("copiersEquipmentDetailModal");
     const copiersEquipmentDetailCloseBtn = document.getElementById("copiersEquipmentDetailCloseBtn");
     const copiersEquipmentDetailCancelBtn = document.getElementById("copiersEquipmentDetailCancelBtn");
@@ -160,6 +167,8 @@
         copiersEditorOriginal: null,
         copiersClientSuggestions: [],
         copiersProductSuggestions: [],
+        copiersClientInvoicesLoading: false,
+        copiersClientInvoicesRequestSequence: 0,
         copiersEquipmentDetail: null,
         copiersEquipmentDetailLoading: false,
         copiersEquipmentAssignmentSaving: false,
@@ -472,6 +481,101 @@
         }
 
         focusCopiersField(mode === "create" ? "clientName" : focusField);
+    }
+
+    function isCopiersClientInvoicesOpen() {
+        return Boolean(copiersClientInvoicesModal && !copiersClientInvoicesModal.hidden);
+    }
+
+    function resetCopiersClientInvoicesModal() {
+        state.copiersClientInvoicesLoading = false;
+        setStatus(copiersClientInvoicesStatus, "", "");
+
+        if (copiersClientInvoicesTitle) {
+            copiersClientInvoicesTitle.textContent = "Facturas del cliente";
+        }
+
+        if (copiersClientInvoicesSubtitle) {
+            copiersClientInvoicesSubtitle.textContent = "Consulta las facturas emitidas en cr07a_facturacion para el cliente seleccionado.";
+        }
+
+        if (copiersClientInvoicesResultsCount) {
+            copiersClientInvoicesResultsCount.textContent = "Mostrando 0 facturas";
+        }
+
+        if (copiersClientInvoicesBody) {
+            copiersClientInvoicesBody.innerHTML = '<tr><td colspan="3" class="dashboard-table__empty">Selecciona un cliente para ver sus facturas emitidas.</td></tr>';
+        }
+    }
+
+    function closeCopiersClientInvoicesModal() {
+        if (!copiersClientInvoicesModal) {
+            return;
+        }
+
+        copiersClientInvoicesModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        resetCopiersClientInvoicesModal();
+    }
+
+    function renderCopiersClientInvoicesLoading(row) {
+        if (!copiersClientInvoicesModal) {
+            return;
+        }
+
+        resetCopiersClientInvoicesModal();
+        document.body.classList.add("dashboard-modal-open");
+        copiersClientInvoicesModal.hidden = false;
+        state.copiersClientInvoicesLoading = true;
+
+        if (copiersClientInvoicesTitle) {
+            copiersClientInvoicesTitle.textContent = row?.clientName || "Facturas del cliente";
+        }
+
+        if (copiersClientInvoicesSubtitle) {
+            copiersClientInvoicesSubtitle.textContent = "Consultando facturas emitidas en cr07a_facturacion para este cliente...";
+        }
+
+        if (copiersClientInvoicesBody) {
+            copiersClientInvoicesBody.innerHTML = '<tr><td colspan="3" class="dashboard-table__empty">Cargando facturas emitidas...</td></tr>';
+        }
+
+        setStatus(copiersClientInvoicesStatus, "info", "Consultando facturas del cliente...");
+
+        window.setTimeout(() => {
+            copiersClientInvoicesCloseBtn?.focus();
+        }, 30);
+    }
+
+    function renderCopiersClientInvoicesDetail(detail) {
+        if (copiersClientInvoicesTitle) {
+            copiersClientInvoicesTitle.textContent = detail?.clientName || "Facturas del cliente";
+        }
+
+        if (copiersClientInvoicesSubtitle) {
+            copiersClientInvoicesSubtitle.textContent = detail?.hasData
+                ? "Facturas emitidas encontradas en cr07a_facturacion para este cliente."
+                : (detail?.emptyStateMessage || "No encontramos facturas emitidas para este cliente.");
+        }
+
+        if (copiersClientInvoicesResultsCount) {
+            copiersClientInvoicesResultsCount.textContent = `Mostrando ${numberFormatter.format(Number(detail?.recordsCount || 0))} facturas`;
+        }
+
+        if (!copiersClientInvoicesBody) {
+            return;
+        }
+
+        const rows = Array.isArray(detail?.invoices) ? detail.invoices : [];
+        copiersClientInvoicesBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.invoiceNumber || "-")}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
+                    <td>${escapeHtml(row.emissionDateDisplay || "Sin fecha")}</td>
+                </tr>
+            `).join("")
+            : `<tr><td colspan="3" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas emitidas para este cliente.")}</td></tr>`;
     }
 
     function isCopiersEquipmentDetailOpen() {
@@ -1243,6 +1347,16 @@
         return app.dataset.copiersUrl || "";
     }
 
+    function buildCopiersClientInvoicesUrl(clientId, clientName) {
+        const baseUrl = app.dataset.copiersClientInvoicesUrl || "";
+        const params = new URLSearchParams({
+            clientId: clientId || "",
+            clientName: clientName || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
     function buildCopiersEquipmentUrl() {
         return app.dataset.copiersEquipmentUrl || "";
     }
@@ -1682,7 +1796,7 @@
                         </button>
                     </td>
                     <td>
-                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="clientName">
+                        <button type="button" class="dashboard-copiers-cell-btn dashboard-copiers-cell-btn--link" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="clientName">
                             ${escapeHtml(row.clientName)}
                         </button>
                     </td>
@@ -2293,6 +2407,10 @@
         state.copiersSubtab = subtabKey === "equipment" ? "equipment" : "billing";
         syncCopiersSubtabVisibility();
 
+        if (state.copiersSubtab !== "billing" && isCopiersClientInvoicesOpen()) {
+            closeCopiersClientInvoicesModal();
+        }
+
         if (state.copiersSubtab !== "billing" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
         }
@@ -2331,6 +2449,10 @@
 
         if (tabKey !== "copiers" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
+        }
+
+        if (tabKey !== "copiers" && isCopiersClientInvoicesOpen()) {
+            closeCopiersClientInvoicesModal();
         }
 
         if (tabKey !== "copiers" && isCopiersEquipmentDetailOpen()) {
@@ -2463,6 +2585,43 @@
             setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar la facturacion copiers.");
         } finally {
             setCopiersLoading(false);
+        }
+    }
+
+    async function loadCopiersClientInvoices(row) {
+        if (!row) {
+            return;
+        }
+
+        const requestSequence = ++state.copiersClientInvoicesRequestSequence;
+        renderCopiersClientInvoicesLoading(row);
+
+        try {
+            const detail = await fetchJson(buildCopiersClientInvoicesUrl(row.clientId || "", row.clientName || ""));
+            if (requestSequence !== state.copiersClientInvoicesRequestSequence) {
+                return;
+            }
+
+            renderCopiersClientInvoicesDetail(detail);
+            setStatus(copiersClientInvoicesStatus, "", "");
+        } catch (error) {
+            if (requestSequence !== state.copiersClientInvoicesRequestSequence) {
+                return;
+            }
+
+            if (copiersClientInvoicesSubtitle) {
+                copiersClientInvoicesSubtitle.textContent = "No fue posible cargar las facturas emitidas del cliente seleccionado.";
+            }
+
+            if (copiersClientInvoicesBody) {
+                copiersClientInvoicesBody.innerHTML = '<tr><td colspan="3" class="dashboard-table__empty">No pudimos consultar las facturas emitidas de este cliente.</td></tr>';
+            }
+
+            setStatus(copiersClientInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible cargar las facturas emitidas.");
+        } finally {
+            if (requestSequence === state.copiersClientInvoicesRequestSequence) {
+                state.copiersClientInvoicesLoading = false;
+            }
         }
     }
 
@@ -2653,6 +2812,10 @@
     copiersEditorModal?.querySelectorAll("[data-copiers-editor-close]").forEach(element => {
         element.addEventListener("click", closeCopiersEditorModal);
     });
+    copiersClientInvoicesCloseBtn?.addEventListener("click", closeCopiersClientInvoicesModal);
+    copiersClientInvoicesModal?.querySelectorAll("[data-copiers-client-invoices-close]").forEach(element => {
+        element.addEventListener("click", closeCopiersClientInvoicesModal);
+    });
     copiersEquipmentDetailCloseBtn?.addEventListener("click", closeCopiersEquipmentDetailModal);
     copiersEquipmentDetailCancelBtn?.addEventListener("click", closeCopiersEquipmentDetailModal);
     copiersEquipmentDetailModal?.querySelectorAll("[data-copiers-equipment-close]").forEach(element => {
@@ -2677,7 +2840,13 @@
             return;
         }
 
-        openCopiersEditorModal("edit", row, button.dataset.copiersField || "");
+        const fieldKey = button.dataset.copiersField || "";
+        if (fieldKey === "clientName") {
+            loadCopiersClientInvoices(row);
+            return;
+        }
+
+        openCopiersEditorModal("edit", row, fieldKey);
     });
     copiersEquipmentBody?.addEventListener("click", event => {
         const button = event.target.closest("[data-copiers-equipment-id]");
@@ -2710,6 +2879,11 @@
         savePnlDetailRecord(saveButton);
     });
     document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && isCopiersClientInvoicesOpen()) {
+            closeCopiersClientInvoicesModal();
+            return;
+        }
+
         if (event.key === "Escape" && isCopiersEquipmentDetailOpen()) {
             closeCopiersEquipmentDetailModal();
             return;

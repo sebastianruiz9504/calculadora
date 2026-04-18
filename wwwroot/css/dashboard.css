@@ -753,6 +753,32 @@
     outline: none;
 }
 
+.dashboard-copiers-cell-btn--link {
+    color: var(--dashboard-brand);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.dashboard-client-invoices-table {
+    min-width: 640px;
+}
+
+.dashboard-client-invoices-table thead th:nth-child(1),
+.dashboard-client-invoices-table tbody td:nth-child(1) {
+    width: 34%;
+}
+
+.dashboard-client-invoices-table thead th:nth-child(2),
+.dashboard-client-invoices-table tbody td:nth-child(2) {
+    width: 28%;
+}
+
+.dashboard-client-invoices-table thead th:nth-child(3),
+.dashboard-client-invoices-table tbody td:nth-child(3) {
+    width: 38%;
+}
+
 .dashboard-equipment-table,
 .dashboard-equipment-maintenance-table,
 .dashboard-equipment-summary-table,

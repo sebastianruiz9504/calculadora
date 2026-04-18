@@ -11,6 +11,7 @@
      id="billingDashboardApp"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
+     data-copiers-client-invoices-url="@Url.Action("CopiersClientInvoices", "Dashboard")"
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
      data-copiers-equipment-url="@Url.Action("CopiersEquipment", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
@@ -187,7 +188,7 @@
                         <div>
                             <div class="dashboard-panel__kicker">Copiers</div>
                             <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
-                            <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>. Haz clic sobre cualquier celda para editar el registro en un popup.</p>
+                            <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>. Haz clic sobre <strong>Cliente</strong> para ver sus facturas emitidas y sobre cualquier otra celda para editar el registro en un popup.</p>
                         </div>
                         <div class="dashboard-panel__actions dashboard-panel__actions--table">
                             <span id="copiersResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
@@ -555,6 +556,41 @@
                 <button type="submit" class="btn btn-primary" id="copiersEditorSaveBtn">Guardar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="copiersClientInvoicesModal" hidden>
+    <div class="dashboard-modal__backdrop" data-copiers-client-invoices-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--medium" role="dialog" aria-modal="true" aria-labelledby="copiersClientInvoicesTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Facturas emitidas</div>
+                <h2 class="dashboard-modal__title" id="copiersClientInvoicesTitle">Facturas del cliente</h2>
+                <p class="dashboard-modal__subtitle" id="copiersClientInvoicesSubtitle">Consulta las facturas emitidas en <span class="dashboard-highlight">cr07a_facturacion</span> para el cliente seleccionado.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="copiersClientInvoicesCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="copiersClientInvoicesStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <div class="dashboard-table-meta" id="copiersClientInvoicesResultsCount">Mostrando 0 facturas</div>
+
+        <div class="dashboard-table-wrap">
+            <table class="table dashboard-table dashboard-client-invoices-table">
+                <thead>
+                    <tr>
+                        <th>Factura</th>
+                        <th class="text-end">Valor total</th>
+                        <th>Fecha emisi&oacute;n</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersClientInvoicesBody">
+                    <tr>
+                        <td colspan="3" class="dashboard-table__empty">Selecciona un cliente para ver sus facturas emitidas.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
