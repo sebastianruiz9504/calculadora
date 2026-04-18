@@ -26,10 +26,20 @@
     const copiersStatusBanner = document.getElementById("copiersStatusBanner");
     const copiersAsOfLabel = document.getElementById("copiersAsOfLabel");
     const copiersFocusLabel = document.getElementById("copiersFocusLabel");
+    const copiersSubtabButtons = Array.from(document.querySelectorAll("[data-copiers-subtab]"));
+    const copiersSubpanels = Array.from(document.querySelectorAll("[data-copiers-subpanel]"));
     const copiersResultsCount = document.getElementById("copiersResultsCount");
     const copiersKpisContainer = document.getElementById("copiersKpisContainer");
     const copiersBillingBody = document.getElementById("copiersBillingBody");
     const copiersNewRecordButton = document.getElementById("copiersNewRecordBtn");
+    const copiersEquipmentRefreshButton = document.getElementById("copiersEquipmentRefreshBtn");
+    const copiersEquipmentResultsCount = document.getElementById("copiersEquipmentResultsCount");
+    const copiersEquipmentKpisContainer = document.getElementById("copiersEquipmentKpisContainer");
+    const copiersClientSummaryBody = document.getElementById("copiersClientSummaryBody");
+    const copiersStockBody = document.getElementById("copiersStockBody");
+    const copiersEquipmentBody = document.getElementById("copiersEquipmentBody");
+    const copiersMaintenanceChart = document.getElementById("copiersMaintenanceChart");
+    const copiersMaintenanceLegend = document.getElementById("copiersMaintenanceLegend");
     const copiersEditorModal = document.getElementById("copiersEditorModal");
     const copiersEditorCloseBtn = document.getElementById("copiersEditorCloseBtn");
     const copiersEditorCancelBtn = document.getElementById("copiersEditorCancelBtn");
@@ -52,6 +62,25 @@
     const copiersUnitValueBeforeVatInput = document.getElementById("copiersUnitValueBeforeVatInput");
     const copiersUnitValueWithVatInput = document.getElementById("copiersUnitValueWithVatInput");
     const copiersTotalWithVatInput = document.getElementById("copiersTotalWithVatInput");
+    const copiersEquipmentDetailModal = document.getElementById("copiersEquipmentDetailModal");
+    const copiersEquipmentDetailCloseBtn = document.getElementById("copiersEquipmentDetailCloseBtn");
+    const copiersEquipmentDetailCancelBtn = document.getElementById("copiersEquipmentDetailCancelBtn");
+    const copiersEquipmentDetailStatus = document.getElementById("copiersEquipmentDetailStatus");
+    const copiersEquipmentDetailTitle = document.getElementById("copiersEquipmentDetailTitle");
+    const copiersEquipmentDetailSubtitle = document.getElementById("copiersEquipmentDetailSubtitle");
+    const copiersEquipmentDetailSerial = document.getElementById("copiersEquipmentDetailSerial");
+    const copiersEquipmentDetailCurrentClient = document.getElementById("copiersEquipmentDetailCurrentClient");
+    const copiersEquipmentDetailCategory = document.getElementById("copiersEquipmentDetailCategory");
+    const copiersEquipmentDetailReference = document.getElementById("copiersEquipmentDetailReference");
+    const copiersEquipmentDetailObservations = document.getElementById("copiersEquipmentDetailObservations");
+    const copiersEquipmentAssignmentForm = document.getElementById("copiersEquipmentAssignmentForm");
+    const copiersEquipmentRecordIdInput = document.getElementById("copiersEquipmentRecordIdInput");
+    const copiersEquipmentClientIdInput = document.getElementById("copiersEquipmentClientIdInput");
+    const copiersEquipmentClientNameInput = document.getElementById("copiersEquipmentClientNameInput");
+    const copiersEquipmentClientOptions = document.getElementById("copiersEquipmentClientOptions");
+    const copiersEquipmentMoveToStockInput = document.getElementById("copiersEquipmentMoveToStockInput");
+    const copiersEquipmentSaveBtn = document.getElementById("copiersEquipmentSaveBtn");
+    const copiersEquipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
 
     const taxesReteFuenteDescription = document.getElementById("taxesReteFuenteDescription");
     const taxesReteIvaDescription = document.getElementById("taxesReteIvaDescription");
@@ -117,17 +146,24 @@
         value: currentValue,
         billingDashboard: null,
         copiersDashboard: null,
+        copiersEquipmentDashboard: null,
         taxesDashboard: null,
         portfolioDashboard: null,
         pnlDashboard: null,
         billingSignature: "",
         taxesSignature: "",
         pnlSignature: "",
+        copiersSubtab: "billing",
         copiersLoading: false,
+        copiersEquipmentLoading: false,
         copiersEditorSaving: false,
         copiersEditorOriginal: null,
         copiersClientSuggestions: [],
         copiersProductSuggestions: [],
+        copiersEquipmentDetail: null,
+        copiersEquipmentDetailLoading: false,
+        copiersEquipmentAssignmentSaving: false,
+        copiersEquipmentClientSuggestions: [],
         portfolioSearchTerm: "",
         portfolioSort: "age",
         pnlYear: currentYear,
@@ -241,9 +277,27 @@
         });
     }
 
+    function setCopiersEquipmentLoading(loading) {
+        state.copiersEquipmentLoading = loading;
+        [copiersEquipmentRefreshButton, ...copiersSubtabButtons].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+    }
+
     function setCopiersEditorSaving(saving) {
         state.copiersEditorSaving = saving;
         [copiersEditorSaveBtn, copiersEditorCloseBtn, copiersEditorCancelBtn].forEach(element => {
+            if (element) {
+                element.disabled = saving;
+            }
+        });
+    }
+
+    function setCopiersEquipmentAssignmentSaving(saving) {
+        state.copiersEquipmentAssignmentSaving = saving;
+        [copiersEquipmentSaveBtn, copiersEquipmentDetailCloseBtn, copiersEquipmentDetailCancelBtn, copiersEquipmentClientNameInput, copiersEquipmentMoveToStockInput].forEach(element => {
             if (element) {
                 element.disabled = saving;
             }
@@ -418,6 +472,130 @@
         }
 
         focusCopiersField(mode === "create" ? "clientName" : focusField);
+    }
+
+    function isCopiersEquipmentDetailOpen() {
+        return Boolean(copiersEquipmentDetailModal && !copiersEquipmentDetailModal.hidden);
+    }
+
+    function resetCopiersEquipmentDetail() {
+        state.copiersEquipmentDetail = null;
+        state.copiersEquipmentDetailLoading = false;
+        state.copiersEquipmentAssignmentSaving = false;
+        state.copiersEquipmentClientSuggestions = [];
+        setStatus(copiersEquipmentDetailStatus, "", "");
+        setCopiersEquipmentAssignmentSaving(false);
+
+        copiersEquipmentRecordIdInput && (copiersEquipmentRecordIdInput.value = "");
+        copiersEquipmentClientIdInput && (copiersEquipmentClientIdInput.value = "");
+        copiersEquipmentClientNameInput && (copiersEquipmentClientNameInput.value = "");
+        copiersEquipmentMoveToStockInput && (copiersEquipmentMoveToStockInput.checked = false);
+        copiersEquipmentDetailSerial && (copiersEquipmentDetailSerial.textContent = "-");
+        copiersEquipmentDetailCurrentClient && (copiersEquipmentDetailCurrentClient.textContent = "-");
+        copiersEquipmentDetailCategory && (copiersEquipmentDetailCategory.textContent = "-");
+        copiersEquipmentDetailReference && (copiersEquipmentDetailReference.textContent = "-");
+        copiersEquipmentDetailObservations && (copiersEquipmentDetailObservations.textContent = "-");
+
+        if (copiersEquipmentDetailTitle) {
+            copiersEquipmentDetailTitle.textContent = "Detalle del equipo";
+        }
+
+        if (copiersEquipmentDetailSubtitle) {
+            copiersEquipmentDetailSubtitle.textContent = "Consulta la información del equipo, reasigna su cliente o envíalo a stock y revisa sus mantenimientos.";
+        }
+
+        if (copiersEquipmentClientOptions) {
+            copiersEquipmentClientOptions.innerHTML = "";
+        }
+
+        if (copiersEquipmentMaintenanceBody) {
+            copiersEquipmentMaintenanceBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">Selecciona un equipo para ver su historial de mantenimientos.</td></tr>';
+        }
+    }
+
+    function closeCopiersEquipmentDetailModal() {
+        if (!copiersEquipmentDetailModal) {
+            return;
+        }
+
+        copiersEquipmentDetailModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        resetCopiersEquipmentDetail();
+    }
+
+    function renderCopiersEquipmentMaintenanceTable(rows) {
+        if (!copiersEquipmentMaintenanceBody) {
+            return;
+        }
+
+        const items = Array.isArray(rows) ? rows : [];
+        copiersEquipmentMaintenanceBody.innerHTML = items.length
+            ? items.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.dateDisplay || "-")}</td>
+                    <td>${escapeHtml(row.title || "-")}</td>
+                    <td>${escapeHtml(row.maintenanceTypeLabel || "-")}</td>
+                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td>${escapeHtml(row.technicianName || "Sin tecnico")}</td>
+                    <td>${escapeHtml(row.description || "Sin descripcion")}</td>
+                    <td>${escapeHtml(row.internalId || "-")}</td>
+                    <td>
+                        ${row.hasAttachment ? `
+                            <a class="dashboard-link-btn" href="${escapeHtml(buildCopiersMaintenanceFileUrl(row.recordId || ""))}" target="_blank" rel="noopener noreferrer">
+                                ${escapeHtml(row.attachmentFileName || "Descargar")}
+                            </a>
+                        ` : '<span class="dashboard-muted-text">Sin acta</span>'}
+                    </td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="8" class="dashboard-table__empty">Este equipo todavia no tiene mantenimientos registrados.</td></tr>';
+    }
+
+    function fillCopiersEquipmentDetail(detail) {
+        if (!detail?.equipment) {
+            return;
+        }
+
+        const equipment = detail.equipment;
+        state.copiersEquipmentDetail = detail;
+        copiersEquipmentRecordIdInput && (copiersEquipmentRecordIdInput.value = equipment.recordId || "");
+        copiersEquipmentClientIdInput && (copiersEquipmentClientIdInput.value = equipment.clientId || "");
+        copiersEquipmentClientNameInput && (copiersEquipmentClientNameInput.value = equipment.inStock ? "" : (equipment.clientName || ""));
+        copiersEquipmentMoveToStockInput && (copiersEquipmentMoveToStockInput.checked = Boolean(equipment.inStock));
+        copiersEquipmentDetailSerial && (copiersEquipmentDetailSerial.textContent = equipment.serial || "Sin serial");
+        copiersEquipmentDetailCurrentClient && (copiersEquipmentDetailCurrentClient.textContent = equipment.inStock ? "Stock" : (equipment.clientName || "Sin cliente"));
+        copiersEquipmentDetailCategory && (copiersEquipmentDetailCategory.textContent = equipment.categoryLabel || "Sin categoria");
+        copiersEquipmentDetailReference && (copiersEquipmentDetailReference.textContent = equipment.reference || "Sin referencia");
+        copiersEquipmentDetailObservations && (copiersEquipmentDetailObservations.textContent = equipment.observations || "Sin observaciones");
+
+        if (copiersEquipmentDetailTitle) {
+            copiersEquipmentDetailTitle.textContent = equipment.serial
+                ? `Equipo ${equipment.serial}`
+                : "Detalle del equipo";
+        }
+
+        if (copiersEquipmentDetailSubtitle) {
+            copiersEquipmentDetailSubtitle.textContent = equipment.inStock
+                ? "Este equipo está actualmente en stock. Puedes asignarlo a un cliente desde este popup."
+                : "Revisa la informacion del equipo y actualiza su cliente actual cuando lo necesites.";
+        }
+
+        renderCopiersEquipmentMaintenanceTable(detail.maintenanceRows);
+    }
+
+    function openCopiersEquipmentDetailModal(detail) {
+        if (!copiersEquipmentDetailModal) {
+            return;
+        }
+
+        resetCopiersEquipmentDetail();
+        document.body.classList.add("dashboard-modal-open");
+        copiersEquipmentDetailModal.hidden = false;
+        fillCopiersEquipmentDetail(detail);
+
+        window.setTimeout(() => {
+            copiersEquipmentClientNameInput?.focus();
+        }, 30);
     }
 
     function renderPnlDetailLoading(rowLabel, cellMonth) {
@@ -1065,6 +1243,32 @@
         return app.dataset.copiersUrl || "";
     }
 
+    function buildCopiersEquipmentUrl() {
+        return app.dataset.copiersEquipmentUrl || "";
+    }
+
+    function buildCopiersEquipmentDetailUrl(equipmentId) {
+        const baseUrl = app.dataset.copiersEquipmentDetailUrl || "";
+        const params = new URLSearchParams({
+            equipmentId: equipmentId || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
+    function buildCopiersEquipmentAssignmentUrl() {
+        return app.dataset.copiersEquipmentAssignmentUrl || "";
+    }
+
+    function buildCopiersMaintenanceFileUrl(maintenanceId) {
+        const baseUrl = app.dataset.copiersMaintenanceFileUrl || "";
+        const params = new URLSearchParams({
+            maintenanceId: maintenanceId || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
     function buildPnlUrl() {
         const params = new URLSearchParams({
             year: String(state.pnlYear),
@@ -1184,12 +1388,16 @@
     }
 
     function renderPortfolioKpis(dashboard) {
-        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
-        if (!portfolioKpisContainer) {
+        renderSimpleKpis(portfolioKpisContainer, dashboard?.kpis);
+    }
+
+    function renderSimpleKpis(container, kpis) {
+        const items = Array.isArray(kpis) ? kpis : [];
+        if (!container) {
             return;
         }
 
-        portfolioKpisContainer.innerHTML = kpis.map(kpi => `
+        container.innerHTML = items.map(kpi => `
             <article class="dashboard-kpi dashboard-kpi--neutral">
                 <div class="dashboard-kpi__header">
                     <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
@@ -1205,24 +1413,11 @@
     }
 
     function renderCopiersKpis(dashboard) {
-        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
-        if (!copiersKpisContainer) {
-            return;
-        }
+        renderSimpleKpis(copiersKpisContainer, dashboard?.kpis);
+    }
 
-        copiersKpisContainer.innerHTML = kpis.map(kpi => `
-            <article class="dashboard-kpi dashboard-kpi--neutral">
-                <div class="dashboard-kpi__header">
-                    <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
-                </div>
-                <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
-                <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
-                <div class="dashboard-kpi__alert">
-                    <span class="dashboard-kpi__alert-label">${escapeHtml(kpi.secondaryLabel || "")}</span>
-                    <strong class="dashboard-kpi__alert-value">${escapeHtml(kpi.secondaryValue || "")}</strong>
-                </div>
-            </article>
-        `).join("");
+    function renderCopiersEquipmentKpis(dashboard) {
+        renderSimpleKpis(copiersEquipmentKpisContainer, dashboard?.kpis);
     }
 
     function renderPnlKpis(dashboard) {
@@ -1536,6 +1731,193 @@
         return rows.find(row => (row?.recordId || "") === (recordId || "")) || null;
     }
 
+    function renderCopiersClientSummaries(dashboard) {
+        if (!copiersClientSummaryBody) {
+            return;
+        }
+
+        const rows = Array.isArray(dashboard?.clientSummaries) ? dashboard.clientSummaries : [];
+        copiersClientSummaryBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.equipmentCount || 0)))}</td>
+                    <td>${escapeHtml(row.categoryBreakdown || "Sin detalle")}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="3" class="dashboard-table__empty">No hay clientes con equipos asignados.</td></tr>';
+    }
+
+    function renderCopiersStockTable(dashboard) {
+        if (!copiersStockBody) {
+            return;
+        }
+
+        const rows = Array.isArray(dashboard?.stockRows) ? dashboard.stockRows : [];
+        copiersStockBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.serial || "Sin serial")}</td>
+                    <td>${escapeHtml(row.categoryLabel || "Sin categoria")}</td>
+                    <td>${escapeHtml(row.reference || "Sin referencia")}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="3" class="dashboard-table__empty">No hay equipos en stock en este momento.</td></tr>';
+    }
+
+    function renderCopiersEquipmentTable(dashboard) {
+        const rows = Array.isArray(dashboard?.equipmentRows) ? dashboard.equipmentRows : [];
+
+        if (copiersEquipmentResultsCount) {
+            copiersEquipmentResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} registros`;
+        }
+
+        if (!copiersEquipmentBody) {
+            return;
+        }
+
+        copiersEquipmentBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${escapeHtml(row.serial || "Sin serial")}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${row.inStock
+                                ? '<span class="dashboard-pill dashboard-pill--stock">Stock</span>'
+                                : escapeHtml(row.clientName || "Sin cliente")}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${escapeHtml(row.categoryLabel || "Sin categoria")}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${escapeHtml(row.reference || "Sin referencia")}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${escapeHtml(row.observations || "Sin observaciones")}
+                        </button>
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${escapeHtml(numberFormatter.format(Number(row.maintenanceCount || 0)))}
+                        </button>
+                    </td>
+                    <td>
+                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            ${escapeHtml(row.lastMaintenanceDateDisplay || "Sin mantenimientos")}
+                        </button>
+                    </td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay equipos cargados en este momento.</td></tr>';
+    }
+
+    function renderCopiersMaintenanceChart(chart) {
+        if (!copiersMaintenanceChart || !copiersMaintenanceLegend) {
+            return;
+        }
+
+        const labels = Array.isArray(chart?.labels) ? chart.labels : [];
+        const series = Array.isArray(chart?.series) ? chart.series : [];
+        if (!labels.length || !series.length) {
+            copiersMaintenanceChart.innerHTML = `
+                <div class="dashboard-table__empty">
+                    <strong>Sin soportes para graficar.</strong><br />
+                    <span>Cuando existan mantenimientos con tecnico y fecha apareceran aqui.</span>
+                </div>
+            `;
+            copiersMaintenanceLegend.innerHTML = "";
+            return;
+        }
+
+        const palette = ["#0f6cbd", "#198754", "#f59e0b", "#c2410c", "#8b5cf6", "#ef4444", "#0891b2", "#475569"];
+        const chartHeight = 320;
+        const chartWidth = 1080;
+        const padding = { top: 20, right: 24, bottom: 50, left: 56 };
+        const values = series.flatMap(item => Array.isArray(item.values) ? item.values : []);
+        const maxValue = getNiceMaxValue(Math.max(1, ...values));
+        const plotWidth = chartWidth - padding.left - padding.right;
+        const plotHeight = chartHeight - padding.top - padding.bottom;
+        const axisSteps = 4;
+
+        const gridLines = Array.from({ length: axisSteps + 1 }, (_, index) => {
+            const y = padding.top + ((plotHeight / axisSteps) * index);
+            const axisValue = maxValue - ((maxValue / axisSteps) * index);
+            return `
+                <line x1="${padding.left}" y1="${y}" x2="${chartWidth - padding.right}" y2="${y}" class="dashboard-maintenance-chart__grid" />
+                <text x="${padding.left - 10}" y="${y + 4}" class="dashboard-maintenance-chart__axis">${escapeHtml(numberFormatter.format(axisValue))}</text>
+            `;
+        }).join("");
+
+        const labelNodes = labels.map((label, index) => {
+            const x = labels.length === 1
+                ? padding.left + (plotWidth / 2)
+                : padding.left + ((plotWidth / Math.max(labels.length - 1, 1)) * index);
+            return `<text x="${x}" y="${chartHeight - 18}" text-anchor="middle" class="dashboard-maintenance-chart__axis">${escapeHtml(label)}</text>`;
+        }).join("");
+
+        const seriesNodes = series.map((item, index) => {
+            const valuesList = Array.isArray(item.values) ? item.values : [];
+            const color = palette[index % palette.length];
+            const points = valuesList.map((value, valueIndex) => {
+                const x = labels.length === 1
+                    ? padding.left + (plotWidth / 2)
+                    : padding.left + ((plotWidth / Math.max(labels.length - 1, 1)) * valueIndex);
+                const y = padding.top + plotHeight - ((Number(value || 0) / maxValue) * plotHeight);
+                return { x, y, value: Number(value || 0) };
+            });
+            const circles = points.map(point => `
+                <circle cx="${point.x}" cy="${point.y}" r="4" fill="${color}">
+                    <title>${escapeHtml(item.technicianName || "Tecnico")}: ${escapeHtml(numberFormatter.format(point.value))}</title>
+                </circle>
+            `).join("");
+
+            return `
+                <path d="${buildLinePath(points)}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+                ${circles}
+            `;
+        }).join("");
+
+        copiersMaintenanceChart.innerHTML = `
+            <svg viewBox="0 0 ${chartWidth} ${chartHeight}" class="dashboard-maintenance-chart__svg" role="img" aria-label="Soportes realizados por mes y tecnico">
+                ${gridLines}
+                <line x1="${padding.left}" y1="${padding.top + plotHeight}" x2="${chartWidth - padding.right}" y2="${padding.top + plotHeight}" class="dashboard-maintenance-chart__baseline"></line>
+                ${labelNodes}
+                ${seriesNodes}
+            </svg>
+        `;
+
+        copiersMaintenanceLegend.innerHTML = series.map((item, index) => `
+            <div class="dashboard-maintenance-legend__item">
+                <span class="dashboard-maintenance-legend__swatch" style="--legend-color: ${palette[index % palette.length]};"></span>
+                <span>${escapeHtml(item.technicianName || "Sin tecnico")}</span>
+                <strong>${escapeHtml(numberFormatter.format(Number(item.total || 0)))}</strong>
+            </div>
+        `).join("");
+    }
+
+    function renderCopiersEquipmentDashboard(dashboard) {
+        renderCopiersEquipmentKpis(dashboard);
+        renderCopiersClientSummaries(dashboard);
+        renderCopiersStockTable(dashboard);
+        renderCopiersEquipmentTable(dashboard);
+        renderCopiersMaintenanceChart(dashboard?.maintenanceChart);
+    }
+
+    function getCopiersEquipmentRowById(recordId) {
+        const rows = Array.isArray(state.copiersEquipmentDashboard?.equipmentRows) ? state.copiersEquipmentDashboard.equipmentRows : [];
+        return rows.find(row => (row?.recordId || "") === (recordId || "")) || null;
+    }
+
     function renderPnlTable(dashboard) {
         if (!pnlTableContainer) {
             return;
@@ -1798,8 +2180,11 @@
     }
 
     function updateHeroForCopiers(dashboard) {
+        const fallbackFocus = state.copiersSubtab === "equipment"
+            ? "Equipos asignados, stock y soportes"
+            : "Ordenado por dia de facturacion";
         compareLabel && (compareLabel.textContent = dashboard?.asOfDateLabel ? `Corte al ${dashboard.asOfDateLabel}` : "Corte actual");
-        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Ordenado por dia de facturacion");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || fallbackFocus);
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
@@ -1846,7 +2231,15 @@
         copiersAsOfLabel && (copiersAsOfLabel.textContent = dashboard?.asOfDateLabel || "Sin corte");
         copiersFocusLabel && (copiersFocusLabel.textContent = dashboard?.focusLabel || "Ordenado por dia de facturacion");
 
-        if (state.activeTab === "copiers") {
+        if (state.activeTab === "copiers" && state.copiersSubtab === "billing") {
+            updateHeroForCopiers(dashboard);
+        }
+    }
+
+    function updateCopiersEquipmentContext(dashboard) {
+        state.copiersEquipmentDashboard = dashboard;
+
+        if (state.activeTab === "copiers" && state.copiersSubtab === "equipment") {
             updateHeroForCopiers(dashboard);
         }
     }
@@ -1882,6 +2275,52 @@
         }
     }
 
+    function syncCopiersSubtabVisibility() {
+        copiersSubtabButtons.forEach(button => {
+            const isActive = button.dataset.copiersSubtab === state.copiersSubtab;
+            button.classList.toggle("is-active", isActive);
+            button.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+
+        copiersSubpanels.forEach(panel => {
+            const isActive = panel.dataset.copiersSubpanel === state.copiersSubtab;
+            panel.classList.toggle("is-active", isActive);
+            panel.hidden = !isActive;
+        });
+    }
+
+    function setCopiersSubtab(subtabKey) {
+        state.copiersSubtab = subtabKey === "equipment" ? "equipment" : "billing";
+        syncCopiersSubtabVisibility();
+
+        if (state.copiersSubtab !== "billing" && isCopiersEditorOpen()) {
+            closeCopiersEditorModal();
+        }
+
+        if (state.copiersSubtab !== "equipment" && isCopiersEquipmentDetailOpen()) {
+            closeCopiersEquipmentDetailModal();
+        }
+
+        if (state.activeTab !== "copiers") {
+            return;
+        }
+
+        if (state.copiersSubtab === "equipment") {
+            if (state.copiersEquipmentDashboard) {
+                updateHeroForCopiers(state.copiersEquipmentDashboard);
+            } else {
+                loadCopiersEquipment();
+            }
+            return;
+        }
+
+        if (state.copiersDashboard) {
+            updateHeroForCopiers(state.copiersDashboard);
+        } else {
+            loadCopiers();
+        }
+    }
+
     function setActiveTab(tabKey) {
         state.activeTab = tabKey;
         syncPeriodScopeVisibility();
@@ -1892,6 +2331,10 @@
 
         if (tabKey !== "copiers" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
+        }
+
+        if (tabKey !== "copiers" && isCopiersEquipmentDetailOpen()) {
+            closeCopiersEquipmentDetailModal();
         }
 
         tabButtons.forEach(button => {
@@ -1916,11 +2359,7 @@
         }
 
         if (tabKey === "copiers") {
-            if (state.copiersDashboard) {
-                updateHeroForCopiers(state.copiersDashboard);
-            } else {
-                loadCopiers();
-            }
+            setCopiersSubtab(state.copiersSubtab);
             return;
         }
 
@@ -2027,6 +2466,112 @@
         }
     }
 
+    function renderCopiersEquipmentDetailLoading(row) {
+        if (!copiersEquipmentDetailModal) {
+            return;
+        }
+
+        resetCopiersEquipmentDetail();
+        document.body.classList.add("dashboard-modal-open");
+        copiersEquipmentDetailModal.hidden = false;
+        state.copiersEquipmentDetailLoading = true;
+
+        if (copiersEquipmentDetailTitle) {
+            copiersEquipmentDetailTitle.textContent = row?.serial
+                ? `Equipo ${row.serial}`
+                : "Detalle del equipo";
+        }
+
+        if (copiersEquipmentDetailSubtitle) {
+            copiersEquipmentDetailSubtitle.textContent = "Cargando informacion del equipo y su historial de mantenimientos...";
+        }
+
+        if (copiersEquipmentMaintenanceBody) {
+            copiersEquipmentMaintenanceBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">Cargando historial del equipo...</td></tr>';
+        }
+
+        setStatus(copiersEquipmentDetailStatus, "info", "Consultando detalle del equipo...");
+    }
+
+    function buildCopiersEquipmentAssignmentPayload() {
+        const moveToStock = Boolean(copiersEquipmentMoveToStockInput?.checked);
+        const clientName = (copiersEquipmentClientNameInput?.value || "").trim();
+        if (!moveToStock && !clientName) {
+            throw new Error("Debes indicar el cliente al que quieres reasignar el equipo o marcarlo como stock.");
+        }
+
+        return {
+            recordId: copiersEquipmentRecordIdInput?.value || "",
+            clientId: moveToStock ? "" : (copiersEquipmentClientIdInput?.value || ""),
+            clientName: moveToStock ? "" : clientName,
+            moveToStock
+        };
+    }
+
+    async function loadCopiersEquipment(options = {}) {
+        const quiet = Boolean(options.quiet);
+        setCopiersEquipmentLoading(true);
+        if (!quiet) {
+            setStatus(copiersStatusBanner, "info", "Actualizando inventario de equipos copiers...");
+        }
+
+        try {
+            const dashboard = await fetchJson(buildCopiersEquipmentUrl());
+            updateCopiersEquipmentContext(dashboard);
+            renderCopiersEquipmentDashboard(dashboard);
+            if (!quiet) {
+                setStatus(copiersStatusBanner, "", "");
+            }
+        } catch (error) {
+            setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar los equipos copiers.");
+        } finally {
+            setCopiersEquipmentLoading(false);
+        }
+    }
+
+    async function loadCopiersEquipmentDetail(recordId) {
+        const row = getCopiersEquipmentRowById(recordId);
+        renderCopiersEquipmentDetailLoading(row);
+
+        try {
+            const detail = await fetchJson(buildCopiersEquipmentDetailUrl(recordId));
+            fillCopiersEquipmentDetail(detail);
+            setStatus(copiersEquipmentDetailStatus, "", "");
+        } catch (error) {
+            setStatus(copiersEquipmentDetailStatus, "error", error instanceof Error ? error.message : "No fue posible cargar el detalle del equipo.");
+        } finally {
+            state.copiersEquipmentDetailLoading = false;
+        }
+    }
+
+    async function saveCopiersEquipmentAssignment() {
+        if (state.copiersEquipmentAssignmentSaving) {
+            return;
+        }
+
+        try {
+            const payload = buildCopiersEquipmentAssignmentPayload();
+            setCopiersEquipmentAssignmentSaving(true);
+            setStatus(copiersEquipmentDetailStatus, "info", "Guardando asignacion del equipo...");
+
+            const result = await fetchJson(buildCopiersEquipmentAssignmentUrl(), {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            const dashboard = await fetchJson(buildCopiersEquipmentUrl());
+            updateCopiersEquipmentContext(dashboard);
+            renderCopiersEquipmentDashboard(dashboard);
+            const detail = await fetchJson(buildCopiersEquipmentDetailUrl(result?.recordId || payload.recordId));
+            fillCopiersEquipmentDetail(detail);
+            setStatus(copiersEquipmentDetailStatus, "success", result?.message || "Equipo actualizado correctamente.");
+            setStatus(copiersStatusBanner, "success", result?.message || "Equipo actualizado correctamente.");
+        } catch (error) {
+            setStatus(copiersEquipmentDetailStatus, "error", error instanceof Error ? error.message : "No fue posible guardar la reasignacion del equipo.");
+        } finally {
+            setCopiersEquipmentAssignmentSaving(false);
+        }
+    }
+
     async function loadPnl() {
         setPnlLoading(true);
         setStatus(pnlStatusBanner, "info", "Actualizando tablero P&L...");
@@ -2067,6 +2612,9 @@
     refreshButton?.addEventListener("click", loadActivePeriodTab);
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
     copiersRefreshButton?.addEventListener("click", loadCopiers);
+    copiersEquipmentRefreshButton?.addEventListener("click", () => {
+        loadCopiersEquipment();
+    });
     copiersNewRecordButton?.addEventListener("click", () => {
         openCopiersEditorModal("create");
     });
@@ -2105,9 +2653,18 @@
     copiersEditorModal?.querySelectorAll("[data-copiers-editor-close]").forEach(element => {
         element.addEventListener("click", closeCopiersEditorModal);
     });
+    copiersEquipmentDetailCloseBtn?.addEventListener("click", closeCopiersEquipmentDetailModal);
+    copiersEquipmentDetailCancelBtn?.addEventListener("click", closeCopiersEquipmentDetailModal);
+    copiersEquipmentDetailModal?.querySelectorAll("[data-copiers-equipment-close]").forEach(element => {
+        element.addEventListener("click", closeCopiersEquipmentDetailModal);
+    });
     copiersEditorForm?.addEventListener("submit", event => {
         event.preventDefault();
         saveCopiersEditor();
+    });
+    copiersEquipmentAssignmentForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        saveCopiersEquipmentAssignment();
     });
     copiersBillingBody?.addEventListener("click", event => {
         const button = event.target.closest("[data-copiers-row-id]");
@@ -2122,6 +2679,28 @@
 
         openCopiersEditorModal("edit", row, button.dataset.copiersField || "");
     });
+    copiersEquipmentBody?.addEventListener("click", event => {
+        const button = event.target.closest("[data-copiers-equipment-id]");
+        if (!button) {
+            return;
+        }
+
+        loadCopiersEquipmentDetail(button.dataset.copiersEquipmentId || "");
+    });
+    copiersEquipmentMoveToStockInput?.addEventListener("change", () => {
+        if (copiersEquipmentMoveToStockInput.checked) {
+            copiersEquipmentClientIdInput && (copiersEquipmentClientIdInput.value = "");
+            copiersEquipmentClientNameInput && (copiersEquipmentClientNameInput.value = "");
+            return;
+        }
+
+        copiersEquipmentClientNameInput?.focus();
+    });
+    copiersEquipmentClientNameInput?.addEventListener("input", () => {
+        if ((copiersEquipmentClientNameInput.value || "").trim()) {
+            copiersEquipmentMoveToStockInput && (copiersEquipmentMoveToStockInput.checked = false);
+        }
+    });
     pnlDetailBody?.addEventListener("click", event => {
         const saveButton = event.target.closest("[data-pnl-detail-save]");
         if (!saveButton) {
@@ -2131,6 +2710,11 @@
         savePnlDetailRecord(saveButton);
     });
     document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && isCopiersEquipmentDetailOpen()) {
+            closeCopiersEquipmentDetailModal();
+            return;
+        }
+
         if (event.key === "Escape" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
             return;
@@ -2149,6 +2733,14 @@
             }
         });
     });
+    copiersSubtabButtons.forEach(button => {
+        button.addEventListener("click", () => {
+            const subtabKey = button.dataset.copiersSubtab || "billing";
+            if (subtabKey !== state.copiersSubtab) {
+                setCopiersSubtab(subtabKey);
+            }
+        });
+    });
 
     buildYearOptions();
     buildPnlYearOptions();
@@ -2157,8 +2749,10 @@
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
     wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
+    wireCopiersLookupInput(copiersEquipmentClientNameInput, copiersEquipmentClientIdInput, copiersEquipmentClientOptions, "copiersEquipmentClientSuggestions", "name", buildCopiersClientSearchUrl);
     buildValueOptions();
     buildPnlMonthOptions(12);
     syncPeriodScopeVisibility();
+    syncCopiersSubtabVisibility();
     loadBilling();
 })();

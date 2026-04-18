@@ -12,6 +12,10 @@
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
+     data-copiers-equipment-url="@Url.Action("CopiersEquipment", "Dashboard")"
+     data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
+     data-copiers-equipment-assignment-url="@Url.Action("CopiersEquipmentAssignment", "Dashboard")"
+     data-copiers-maintenance-file-url="@Url.Action("CopiersMaintenanceAttachment", "Dashboard")"
      data-copiers-client-search-url="@Url.Action("CopiersClientSearch", "Dashboard")"
      data-copiers-product-search-url="@Url.Action("CopiersProductSearch", "Dashboard")"
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
@@ -27,8 +31,10 @@
             <h1 class="dashboard-title">Dashboard financiero</h1>
             <p class="dashboard-subtitle">
                 Un tablero estilo control ejecutivo para seguir facturacion, recaudo, impuestos, cartera, P&amp;L
-                y la facturacion de productos copiers sobre <span class="dashboard-highlight">cr07a_facturacion</span>
-                y <span class="dashboard-highlight">cr07a_productoscopiers</span>.
+                y la operacion de copiers sobre <span class="dashboard-highlight">cr07a_facturacion</span>,
+                <span class="dashboard-highlight">cr07a_productoscopiers</span>,
+                <span class="dashboard-highlight">cr07a_equipo</span> y
+                <span class="dashboard-highlight">cr07a_mantenimiento</span>.
             </p>
             <div class="dashboard-hero__facts">
                 <div class="dashboard-fact">
@@ -48,13 +54,13 @@
         <aside class="dashboard-user-card">
             <span class="dashboard-user-card__label">Acceso actual</span>
             <strong class="dashboard-user-card__value">@Model.CurrentUser.Email</strong>
-            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior, Cartera muestra el corte actual de facturas vencidas sin pago, P&amp;L consolida ingresos y costos hasta el &uacute;ltimo mes con datos y Facturaci&oacute;n Copiers ordena la tabla operativa de productos.</span>
+            <span class="dashboard-user-card__caption">Facturaci&oacute;n e Impuestos comparan contra el mismo periodo del a&ntilde;o anterior, Cartera muestra el corte actual de facturas vencidas sin pago, P&amp;L consolida ingresos y costos hasta el &uacute;ltimo mes con datos y Copiers concentra facturaci&oacute;n, equipos, stock y mantenimientos.</span>
         </aside>
     </section>
 
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Facturaci&oacute;n Copiers</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Copiers</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
@@ -169,40 +175,139 @@
     <div class="dashboard-tab-panel" data-dashboard-panel="copiers" hidden>
         <div id="copiersStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
 
-        <section class="dashboard-grid">
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Copiers</div>
-                        <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
-                        <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>. Haz clic sobre cualquier celda para editar el registro en un popup.</p>
-                    </div>
-                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
-                        <span id="copiersResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
-                        <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersRefreshBtn">Actualizar</button>
-                        <button type="button" class="btn btn-primary" id="copiersNewRecordBtn">Nuevo registro</button>
-                    </div>
-                </div>
-                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
-                    <table class="table dashboard-table dashboard-copiers-table">
-                        <thead>
-                            <tr>
-                                <th>Dia fact.</th>
-                                <th>Cliente</th>
-                                <th>Producto</th>
-                                <th class="text-end">Cantidad</th>
-                                <th class="text-end">Oper. incluidas</th>
-                                <th class="text-end">cr07a_operacionadicional</th>
-                                <th class="text-end">Valor unit. antes IVA</th>
-                                <th class="text-end">Valor unit. con IVA</th>
-                                <th class="text-end">Total con IVA</th>
-                            </tr>
-                        </thead>
-                        <tbody id="copiersBillingBody"></tbody>
-                    </table>
-                </div>
-            </article>
+        <section class="dashboard-subtabs" aria-label="Subsecciones de copiers">
+            <button type="button" class="dashboard-subtab is-active" data-copiers-subtab="billing">Facturaci&oacute;n copiers</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="equipment">Equipos</button>
         </section>
+
+        <div class="dashboard-subpanel is-active" data-copiers-subpanel="billing">
+            <section class="dashboard-grid">
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Copiers</div>
+                            <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
+                            <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>. Haz clic sobre cualquier celda para editar el registro en un popup.</p>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <span id="copiersResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
+                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersRefreshBtn">Actualizar</button>
+                            <button type="button" class="btn btn-primary" id="copiersNewRecordBtn">Nuevo registro</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                        <table class="table dashboard-table dashboard-copiers-table">
+                            <thead>
+                                <tr>
+                                    <th>Dia fact.</th>
+                                    <th>Cliente</th>
+                                    <th>Producto</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Oper. incluidas</th>
+                                    <th class="text-end">cr07a_operacionadicional</th>
+                                    <th class="text-end">Valor unit. antes IVA</th>
+                                    <th class="text-end">Valor unit. con IVA</th>
+                                    <th class="text-end">Total con IVA</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersBillingBody"></tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-copiers-subpanel="equipment" hidden>
+            <section class="dashboard-kpis dashboard-kpis--portfolio" id="copiersEquipmentKpisContainer"></section>
+
+            <section class="dashboard-grid dashboard-grid--copiers-equipment">
+                <article class="dashboard-panel">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Clientes</div>
+                            <h2 class="dashboard-panel__title">Equipos por cliente</h2>
+                            <p class="dashboard-panel__description">Resumen r&aacute;pido para identificar qu&eacute; clientes tienen m&aacute;s equipos y c&oacute;mo est&aacute;n distribuidos.</p>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+                        <table class="table dashboard-table dashboard-equipment-summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th class="text-end">Equipos</th>
+                                    <th>Distribuci&oacute;n</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersClientSummaryBody"></tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="dashboard-panel">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Stock</div>
+                            <h2 class="dashboard-panel__title">Equipos sin cliente</h2>
+                            <p class="dashboard-panel__description">Estos equipos est&aacute;n disponibles para reasignarse desde el detalle de cada registro.</p>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+                        <table class="table dashboard-table dashboard-equipment-stock-table">
+                            <thead>
+                                <tr>
+                                    <th>Serial</th>
+                                    <th>Categor&iacute;a</th>
+                                    <th>Referencia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersStockBody"></tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Equipos</div>
+                            <h2 class="dashboard-panel__title">Inventario operativo</h2>
+                            <p class="dashboard-panel__description">Haz clic en cualquier fila para ver el detalle completo, los mantenimientos y reasignar el cliente o enviarlo a stock.</p>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <span id="copiersEquipmentResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
+                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersEquipmentRefreshBtn">Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                        <table class="table dashboard-table dashboard-equipment-table">
+                            <thead>
+                                <tr>
+                                    <th>Serial</th>
+                                    <th>Cliente / estado</th>
+                                    <th>Categor&iacute;a</th>
+                                    <th>Referencia</th>
+                                    <th>Observaciones</th>
+                                    <th class="text-end">Mantenimientos</th>
+                                    <th>&Uacute;ltimo mantenimiento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersEquipmentBody"></tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Soportes</div>
+                            <h2 class="dashboard-panel__title">Cantidad de soportes por mes y t&eacute;cnico</h2>
+                            <p class="dashboard-panel__description">Vista mensual para entender la carga operativa del equipo t&eacute;cnico.</p>
+                        </div>
+                    </div>
+                    <div class="dashboard-maintenance-chart" id="copiersMaintenanceChart"></div>
+                    <div class="dashboard-maintenance-legend" id="copiersMaintenanceLegend"></div>
+                </article>
+            </section>
+        </div>
     </div>
 
     <div class="dashboard-tab-panel" data-dashboard-panel="portfolio" hidden>
@@ -450,6 +555,109 @@
                 <button type="submit" class="btn btn-primary" id="copiersEditorSaveBtn">Guardar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="copiersEquipmentDetailModal" hidden>
+    <div class="dashboard-modal__backdrop" data-copiers-equipment-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersEquipmentDetailTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Equipos Copiers</div>
+                <h2 class="dashboard-modal__title" id="copiersEquipmentDetailTitle">Detalle del equipo</h2>
+                <p class="dashboard-modal__subtitle" id="copiersEquipmentDetailSubtitle">Consulta la informaci&oacute;n del equipo, reasigna su cliente o env&iacute;alo a stock y revisa sus mantenimientos.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="copiersEquipmentDetailCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="copiersEquipmentDetailStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <form id="copiersEquipmentAssignmentForm" class="dashboard-equipment-detail">
+            <input type="hidden" id="copiersEquipmentRecordIdInput" />
+            <input type="hidden" id="copiersEquipmentClientIdInput" />
+
+            <section class="dashboard-equipment-detail__summary">
+                <div class="dashboard-equipment-detail__card">
+                    <span class="dashboard-equipment-detail__label">Serial</span>
+                    <strong id="copiersEquipmentDetailSerial">-</strong>
+                </div>
+                <div class="dashboard-equipment-detail__card">
+                    <span class="dashboard-equipment-detail__label">Cliente actual</span>
+                    <strong id="copiersEquipmentDetailCurrentClient">-</strong>
+                </div>
+                <div class="dashboard-equipment-detail__card">
+                    <span class="dashboard-equipment-detail__label">Categor&iacute;a</span>
+                    <strong id="copiersEquipmentDetailCategory">-</strong>
+                </div>
+                <div class="dashboard-equipment-detail__card">
+                    <span class="dashboard-equipment-detail__label">Referencia</span>
+                    <strong id="copiersEquipmentDetailReference">-</strong>
+                </div>
+                <div class="dashboard-equipment-detail__card dashboard-equipment-detail__card--wide">
+                    <span class="dashboard-equipment-detail__label">Observaciones</span>
+                    <strong id="copiersEquipmentDetailObservations">-</strong>
+                </div>
+            </section>
+
+            <section class="dashboard-equipment-detail__assignment">
+                <div>
+                    <div class="dashboard-panel__kicker">Asignaci&oacute;n</div>
+                    <h3 class="dashboard-equipment-detail__section-title">Reasignar cliente</h3>
+                    <p class="dashboard-panel__description">Busca el cliente actual del equipo o m&aacute;rcalo como stock si debe quedar disponible.</p>
+                </div>
+
+                <div class="dashboard-equipment-detail__assignment-grid">
+                    <label class="dashboard-copiers-form__field">
+                        <span class="dashboard-copiers-form__label">Cliente</span>
+                        <input type="text"
+                               class="form-control"
+                               id="copiersEquipmentClientNameInput"
+                               list="copiersEquipmentClientOptions"
+                               autocomplete="off"
+                               placeholder="Buscar cliente..." />
+                        <datalist id="copiersEquipmentClientOptions"></datalist>
+                        <span class="dashboard-copiers-form__hint">Escribe al menos 2 caracteres y elige una coincidencia para dejarlo asignado.</span>
+                    </label>
+
+                    <label class="dashboard-equipment-detail__stock-toggle" for="copiersEquipmentMoveToStockInput">
+                        <input type="checkbox" id="copiersEquipmentMoveToStockInput" />
+                        <span>Dejar este equipo en stock</span>
+                    </label>
+                </div>
+
+                <div class="dashboard-copiers-form__actions">
+                    <button type="button" class="btn btn-outline-secondary" id="copiersEquipmentDetailCancelBtn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="copiersEquipmentSaveBtn">Guardar reasignaci&oacute;n</button>
+                </div>
+            </section>
+        </form>
+
+        <section class="dashboard-equipment-detail__maintenance">
+            <div class="dashboard-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Mantenimientos</div>
+                    <h3 class="dashboard-equipment-detail__section-title">Historial del equipo</h3>
+                    <p class="dashboard-panel__description">Cada soporte muestra su fecha, cliente asociado, t&eacute;cnico, tipo y enlace al acta si existe.</p>
+                </div>
+            </div>
+            <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                <table class="table dashboard-table dashboard-equipment-maintenance-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>T&iacute;tulo</th>
+                            <th>Tipo</th>
+                            <th>Cliente</th>
+                            <th>T&eacute;cnico</th>
+                            <th>Descripci&oacute;n</th>
+                            <th>ID</th>
+                            <th>Acta</th>
+                        </tr>
+                    </thead>
+                    <tbody id="copiersEquipmentMaintenanceBody"></tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </div>
 

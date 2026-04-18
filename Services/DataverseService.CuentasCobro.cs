@@ -192,10 +192,9 @@ public sealed partial class DataverseService
         ValidateCuentaCobroUpload(safeFileName, content);
 
         using var fileContent = new ByteArrayContent(content);
-        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(
-            string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
 
-        var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({normalizedRecordId})/{CuentaCobroAdjuntoField}/$value";
+        var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({normalizedRecordId})/{CuentaCobroAdjuntoField}";
         using var response = await CallRhDataverseResponseAsync(
             relativeUrl,
             "PATCH",
@@ -204,8 +203,8 @@ public sealed partial class DataverseService
             fileContent,
             request =>
             {
-                request.Headers.TryAddWithoutValidation("x-ms-file-name", safeFileName);
-                request.Headers.TryAddWithoutValidation("If-Match", "*");
+                request.Headers.TryAddWithoutValidation("If-None-Match", "null");
+                request.Headers.TryAddWithoutValidation("x-ms-file-name", BuildCuentaCobroUploadHeaderFileName(safeFileName));
             });
 
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -699,6 +698,26 @@ public sealed partial class DataverseService
         var extension = Path.GetExtension(fileName ?? "");
         if (string.IsNullOrWhiteSpace(extension) || !CuentaCobroAllowedExtensions.Contains(extension))
             throw new InvalidOperationException("El adjunto debe ser PDF, JPG/JPEG, PNG, DOC o DOCX.");
+    }
+
+    private static string BuildCuentaCobroUploadHeaderFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return "cuenta-de-cobro";
+
+        var normalized = fileName.Normalize(NormalizationForm.FormKD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (character <= sbyte.MaxValue && character is not '"' and not '\r' and not '\n')
+                builder.Append(character);
+        }
+
+        var headerFileName = builder.ToString().Trim();
+        return string.IsNullOrWhiteSpace(headerFileName) ? "cuenta-de-cobro" : headerFileName;
     }
 
     private static string ResolveCuentaCobroDownloadFileName(HttpResponseMessage response, string recordId)
