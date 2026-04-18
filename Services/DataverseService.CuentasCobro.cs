@@ -23,6 +23,7 @@ public sealed partial class DataverseService
     private const string CuentaCobroReteFuentePorcentajeField = "cr07a_retefuenteporcentaje";
     private const string CuentaCobroValorPagoField = "cr07a_valorpago";
     private const string CuentaCobroReteFuenteValorField = "cr07a_rteftevalor";
+    private const string CuentaCobroObservacionesField = "cr07a_observaciones";
     private const string CuentaCobroAdjuntoField = "cr07a_adjunto";
     private const string CuentaCobroAdjuntoNameField = "cr07a_adjunto_name";
     private const string CuentaCobroImpresaField = "cr07a_impresa";
@@ -135,6 +136,7 @@ public sealed partial class DataverseService
             [metadata.BaseMetadata.PrimaryNameField] = BuildCuentaCobroPrimaryName(normalized.Year, normalized.Month, normalized.Receptor),
             [CuentaCobroReceptorField] = normalized.Receptor,
             [CuentaCobroNitField] = normalized.NitOCedula,
+            [CuentaCobroObservacionesField] = normalized.Observaciones,
             [CuentaCobroValorTotalField] = normalized.ValorTotal,
             [CuentaCobroReteFuentePorcentajeField] = normalized.ReteFuentePorcentaje,
             [CuentaCobroValorPagoField] = normalized.ValorPago,
@@ -354,6 +356,7 @@ public sealed partial class DataverseService
                 metadata.BaseMetadata.PrimaryNameField,
                 CuentaCobroReceptorField,
                 CuentaCobroNitField,
+                CuentaCobroObservacionesField,
                 CuentaCobroValorTotalField,
                 CuentaCobroReteFuentePorcentajeField,
                 CuentaCobroValorPagoField,
@@ -391,6 +394,7 @@ public sealed partial class DataverseService
             RecordId = recordId,
             Receptor = ReadString(item, CuentaCobroReceptorField),
             NitOCedula = ReadString(item, CuentaCobroNitField),
+            Observaciones = ReadString(item, CuentaCobroObservacionesField),
             ValorTotal = valorTotal,
             ReteFuentePorcentaje = reteFuentePorcentaje,
             ValorPago = valorPago,
@@ -491,6 +495,7 @@ public sealed partial class DataverseService
         var month = request.Month is >= 1 and <= 12 ? request.Month : now.Month;
         var receptor = request.Receptor?.Trim() ?? "";
         var nitOCedula = request.NitOCedula?.Trim() ?? "";
+        var observaciones = request.Observaciones?.Trim() ?? "";
         var valorTotal = RoundCurrency(request.ValorTotal);
         var reteFuentePorcentaje = RoundCurrency(request.ReteFuentePorcentaje);
         var valorPago = RoundCurrency(request.ValorPago);
@@ -520,6 +525,7 @@ public sealed partial class DataverseService
             Month = month,
             Receptor = receptor,
             NitOCedula = nitOCedula,
+            Observaciones = observaciones,
             ValorTotal = valorTotal,
             ReteFuentePorcentaje = reteFuentePorcentaje,
             ValorPago = valorPago,
@@ -740,6 +746,7 @@ public sealed partial class DataverseService
         public int Month { get; init; }
         public string Receptor { get; init; } = "";
         public string NitOCedula { get; init; } = "";
+        public string Observaciones { get; init; } = "";
         public decimal ValorTotal { get; init; }
         public decimal ReteFuentePorcentaje { get; init; }
         public decimal ValorPago { get; init; }

@@ -191,6 +191,22 @@
             </tbody>
         </table>
 
+        @if (!string.IsNullOrWhiteSpace(Model.Record.Observaciones))
+        {
+            <table class="ccb-print__table">
+                <thead>
+                    <tr>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>@Model.Record.Observaciones</td>
+                    </tr>
+                </tbody>
+            </table>
+        }
+
         <div class="ccb-print__footnote">
             Este formato fue generado desde el modulo interno de cuentas de cobro. La validacion del total compara valor total contra valor pago + rete fuente valor.
         </div>

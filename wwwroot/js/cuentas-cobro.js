@@ -26,6 +26,31 @@
     const summaryValorPago = document.getElementById("ccbSummaryValorPago");
     const summaryReteValor = document.getElementById("ccbSummaryReteValor");
 
+    const modal = document.getElementById("ccbEditorModal");
+    const modalStatus = document.getElementById("ccbModalStatus");
+    const modalTitle = document.getElementById("ccbEditorTitle");
+    const modalSubtitle = document.getElementById("ccbEditorSubtitle");
+    const modalMeta = document.getElementById("ccbEditorMeta");
+    const modalCloseBtn = document.getElementById("ccbModalCloseBtn");
+    const modalCancelBtn = document.getElementById("ccbModalCancelBtn");
+    const modalSaveBtn = document.getElementById("ccbModalSaveBtn");
+    const modalPrintBtn = document.getElementById("ccbModalPrintBtn");
+    const editorForm = document.getElementById("ccbEditorForm");
+
+    const receptorInput = document.getElementById("ccbReceptorInput");
+    const nitInput = document.getElementById("ccbNitInput");
+    const retePorcentajeInput = document.getElementById("ccbRetePorcentajeInput");
+    const valorTotalInput = document.getElementById("ccbValorTotalInput");
+    const valorPagoInput = document.getElementById("ccbValorPagoInput");
+    const reteValorInput = document.getElementById("ccbReteValorInput");
+    const observacionesInput = document.getElementById("ccbObservacionesInput");
+    const validationCard = document.getElementById("ccbValidationCard");
+    const validationText = document.getElementById("ccbValidationText");
+    const attachmentName = document.getElementById("ccbAttachmentName");
+    const attachmentHint = document.getElementById("ccbAttachmentHint");
+    const attachmentInput = document.getElementById("ccbAttachmentInput");
+    const attachmentDownloadLink = document.getElementById("ccbAttachmentDownloadLink");
+
     const moneyFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
         currency: "COP",
@@ -38,18 +63,29 @@
         board: null,
         rows: [],
         busy: false,
-        sequence: 0
+        sequence: 0,
+        editor: {
+            isOpen: false,
+            localId: "",
+            record: null,
+            pendingFile: null
+        }
     };
 
     refreshBtn?.addEventListener("click", async () => {
+        if (state.busy) {
+            return;
+        }
+
         await loadBoard(state.year, state.month);
     });
 
     addRowBtn?.addEventListener("click", () => {
-        state.rows.unshift(createEmptyRow());
-        renderRows();
-        updateSummary();
-        renderStatus("info", "Nueva linea lista para diligenciar.");
+        if (state.busy) {
+            return;
+        }
+
+        openEditor("");
     });
 
     yearSelect?.addEventListener("change", async () => {
@@ -64,78 +100,121 @@
         await loadBoard(year, month);
     });
 
-    rowsBody?.addEventListener("input", (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLInputElement)) {
-            return;
-        }
-
-        const row = resolveRowFromElement(target);
-        if (!row) {
-            return;
-        }
-
-        syncInputIntoRow(row, target);
-        const rowElement = target.closest("tr");
-        if (rowElement instanceof HTMLTableRowElement) {
-            syncDerivedMarkup(row, rowElement);
-        }
-
-        updateSummary();
-    });
-
-    rowsBody?.addEventListener("change", async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) {
-            return;
-        }
-
-        const row = resolveRowFromElement(target);
-        if (!row) {
-            return;
-        }
-
-        if (target instanceof HTMLInputElement && target.dataset.field === "adjunto" && target.files && target.files.length > 0) {
-            row.pendingFile = target.files[0];
-            renderRows();
-            renderStatus("info", `Adjunto listo para guardarse en ${row.receptor || "la nueva linea"}.`);
-        }
-    });
-
     rowsBody?.addEventListener("click", async (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
             return;
         }
 
-        const actionElement = target.closest("[data-action]");
-        if (!(actionElement instanceof HTMLElement)) {
+        if (state.busy) {
             return;
         }
 
-        const row = resolveRowFromElement(actionElement);
+        const action = target.closest("[data-action]");
+        if (action instanceof HTMLElement) {
+            const row = resolveRowFromElement(action);
+            if (!row) {
+                return;
+            }
+
+            if (action.dataset.action === "print") {
+                event.stopPropagation();
+                await printRecord(row.recordId);
+            }
+
+            return;
+        }
+
+        const row = resolveRowFromElement(target);
         if (!row) {
             return;
         }
 
-        const action = actionElement.dataset.action || "";
-        if (action === "save") {
-            await saveRow(row.localId);
+        openEditor(row.localId);
+    });
+
+    rowsBody?.addEventListener("keydown", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
             return;
         }
 
-        if (action === "print") {
-            await printRow(row.localId);
+        if (event.key !== "Enter" && event.key !== " ") {
             return;
         }
+
+        const row = resolveRowFromElement(target);
+        if (!row) {
+            return;
+        }
+
+        event.preventDefault();
+        openEditor(row.localId);
+    });
+
+    [modalCloseBtn, modalCancelBtn].forEach((element) => {
+        element?.addEventListener("click", () => {
+            closeEditor();
+        });
+    });
+
+    modal?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        if (target.hasAttribute("data-ccb-close")) {
+            closeEditor();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.editor.isOpen && !state.busy) {
+            closeEditor();
+        }
+    });
+
+    [receptorInput, nitInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput].forEach((element) => {
+        element?.addEventListener("input", syncEditorFromInputs);
+    });
+
+    attachmentInput?.addEventListener("change", () => {
+        if (!state.editor.record) {
+            return;
+        }
+
+        state.editor.pendingFile = attachmentInput?.files?.[0] || null;
+        renderEditorFileState();
+    });
+
+    editorForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveEditor();
+    });
+
+    modalPrintBtn?.addEventListener("click", async () => {
+        if (!state.editor.record?.recordId) {
+            showModalStatus("warning", "Guarda el registro antes de imprimir.");
+            return;
+        }
+
+        await printRecord(state.editor.record.recordId, true);
     });
 
     loadBoard(state.year, state.month);
 
-    async function loadBoard(year, month) {
+    async function loadBoard(year, month, options) {
+        const config = {
+            silent: false,
+            ...options
+        };
+
         try {
             setBusy(true);
-            renderStatus("info", "Cargando cuentas de cobro...");
+            if (!config.silent) {
+                renderStatus("info", "Cargando cuentas de cobro...");
+            }
 
             const response = await fetch(`${loadUrl}?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`, {
                 headers: {
@@ -156,137 +235,17 @@
             renderFilters();
             renderRows();
             updateSummary();
-            renderStatus("success", payload.message || "Tabla cargada correctamente.");
-        } catch (error) {
-            renderStatus("error", buildErrorBannerMessage(error));
-        } finally {
-            setBusy(false);
-        }
-    }
 
-    async function saveRow(localId) {
-        const row = state.rows.find((item) => item.localId === localId);
-        if (!row) {
-            return;
-        }
-
-        let didSaveRecord = false;
-        const pendingFile = row.pendingFile || null;
-
-        const validationMessage = validateRow(row);
-        if (validationMessage) {
-            renderStatus("error", validationMessage);
-            return;
-        }
-
-        try {
-            setBusy(true);
-            renderStatus("info", `Guardando ${row.receptor || "cuenta de cobro"}...`);
-
-            const response = await fetch(saveUrl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    recordId: row.recordId,
-                    year: state.year,
-                    month: state.month,
-                    receptor: row.receptor,
-                    nitOCedula: row.nitOCedula,
-                    valorTotal: row.valorTotal,
-                    reteFuentePorcentaje: row.reteFuentePorcentaje,
-                    valorPago: row.valorPago
-                })
-            });
-
-            const payload = await readPayload(response);
-            if (!response.ok) {
-                throw createResponseError(payload);
-            }
-
-            mergeRow(payload.record, row.localId);
-            didSaveRecord = true;
-            const persistedRow = state.rows.find((item) => item.localId === localId || item.recordId === payload.record?.recordId);
-            if (persistedRow && pendingFile) {
-                persistedRow.pendingFile = pendingFile;
-                await uploadRowAttachment(persistedRow);
-            }
-
-            renderRows();
-            updateSummary();
-            renderStatus("success", payload.message || "Cuenta de cobro guardada correctamente.");
-        } catch (error) {
-            if (didSaveRecord) {
-                renderRows();
-                updateSummary();
-            }
-            renderStatus("error", buildErrorBannerMessage(error));
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    async function uploadRowAttachment(row) {
-        if (!row.recordId || !row.pendingFile) {
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append("recordId", row.recordId);
-        formData.append("file", row.pendingFile);
-
-        const response = await fetch(uploadUrl, {
-            method: "POST",
-            body: formData
-        });
-
-        const payload = await readPayload(response);
-        if (!response.ok) {
-            throw createResponseError(payload);
-        }
-
-        mergeRow(payload.record, row.localId);
-    }
-
-    async function printRow(localId) {
-        const row = state.rows.find((item) => item.localId === localId);
-        if (!row) {
-            return;
-        }
-
-        if (!row.recordId) {
-            renderStatus("error", "Guarda la cuenta de cobro antes de imprimir.");
-            return;
-        }
-
-        try {
-            setBusy(true);
-
-            if (!row.impresa) {
-                renderStatus("info", `Marcando ${row.receptor || "la cuenta"} como impresa...`);
-                const response = await fetch(markPrintedUrl, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify(row.recordId)
-                });
-
-                const payload = await readPayload(response);
-                if (!response.ok) {
-                    throw createResponseError(payload);
+            if (state.editor.isOpen && state.editor.record?.recordId) {
+                const refreshed = findRowByRecordId(state.editor.record.recordId);
+                if (refreshed) {
+                    state.editor.record = cloneRow(refreshed);
+                    renderEditor();
                 }
-
-                mergeRow(payload.record, row.localId);
-                renderRows();
-                updateSummary();
-                renderStatus("success", payload.message || "La cuenta de cobro quedo marcada como impresa.");
             }
 
-            const popup = window.open(`${printUrl}?recordId=${encodeURIComponent(row.recordId)}&autoprint=1`, "_blank", "noopener");
-            if (!popup) {
-                renderStatus("warning", "El navegador bloqueo la ventana de impresion. Permite popups e intenta de nuevo.");
+            if (!config.silent) {
+                renderStatus("success", payload.message || "Tabla cargada correctamente.");
             }
         } catch (error) {
             renderStatus("error", buildErrorBannerMessage(error));
@@ -297,16 +256,20 @@
 
     function renderFilters() {
         const years = Array.isArray(state.board?.availableYears) ? state.board.availableYears : [state.year];
-        yearSelect.innerHTML = years.map((value) => `
-            <option value="${escapeHtml(value)}" ${value === state.year ? "selected" : ""}>${escapeHtml(value)}</option>
-        `).join("");
+        if (yearSelect) {
+            yearSelect.innerHTML = years.map((value) => `
+                <option value="${escapeHtml(value)}" ${value === state.year ? "selected" : ""}>${escapeHtml(value)}</option>
+            `).join("");
+        }
 
         const months = Array.isArray(state.board?.availableMonths) ? state.board.availableMonths : [];
-        monthSelect.innerHTML = months.map((item) => `
-            <option value="${escapeHtml(item.value)}" ${item.value === state.month ? "selected" : ""}>
-                ${escapeHtml(capitalize(item.label || ""))}${item.count ? ` (${escapeHtml(item.count)})` : ""}
-            </option>
-        `).join("");
+        if (monthSelect) {
+            monthSelect.innerHTML = months.map((item) => `
+                <option value="${escapeHtml(item.value)}" ${item.value === state.month ? "selected" : ""}>
+                    ${escapeHtml(capitalize(item.label || ""))}${item.count ? ` (${escapeHtml(item.count)})` : ""}
+                </option>
+            `).join("");
+        }
 
         tableTitle.textContent = state.board?.selectedPeriodLabel
             ? `Detalle de ${capitalize(state.board.selectedPeriodLabel)}`
@@ -317,109 +280,38 @@
     }
 
     function renderRows() {
-        rowsBody.innerHTML = state.rows.map((row) => buildRowMarkup(row)).join("");
-        emptyState.hidden = state.rows.length > 0;
-        recordsCount.textContent = `${state.rows.length} ${state.rows.length === 1 ? "fila" : "filas"}`;
-    }
+        if (!rowsBody) {
+            return;
+        }
 
-    function buildRowMarkup(row) {
-        const attachmentText = row.pendingFile
-            ? `${row.pendingFile.name} pendiente`
-            : row.hasAdjunto
-                ? row.adjuntoFileName || "Adjunto cargado"
-                : "Sin adjunto";
-        const statusText = row.recordId
-            ? (row.modifiedOnDisplay ? `Actualizada ${row.modifiedOnDisplay}` : `Creada ${row.createdOnDisplay || ""}`.trim())
-            : "Nueva linea";
-
-        return `
-            <tr class="ccb-row ${row.totalesCuadran ? "" : "is-invalid"}" data-local-id="${escapeHtml(row.localId)}">
+        rowsBody.innerHTML = state.rows.map((row) => `
+            <tr class="ccb-row ${row.totalesCuadran ? "" : "is-invalid"}" data-local-id="${escapeHtml(row.localId)}" tabindex="0">
                 <td>
-                    <input class="form-control ccb-input" type="text" value="${escapeHtml(row.receptor)}" data-field="receptor" />
+                    <div class="ccb-row__title">${escapeHtml(row.receptor || "Sin receptor")}</div>
+                    <div class="ccb-row__subtitle">${escapeHtml(row.nitOCedula || "Sin NIT o cedula")}</div>
                 </td>
+                <td class="text-end">${escapeHtml(moneyFormatter.format(Number(row.valorTotal || 0)))}</td>
+                <td class="text-end">${escapeHtml(moneyFormatter.format(Number(row.valorPago || 0)))}</td>
                 <td>
-                    <input class="form-control ccb-input" type="text" value="${escapeHtml(row.nitOCedula)}" data-field="nitOCedula" />
-                </td>
-                <td>
-                    <input class="form-control ccb-input ccb-input--number" type="number" step="0.01" value="${escapeHtml(formatInputNumber(row.valorTotal))}" data-field="valorTotal" />
-                </td>
-                <td>
-                    <input class="form-control ccb-input ccb-input--number" type="number" step="0.01" value="${escapeHtml(formatInputNumber(row.reteFuentePorcentaje))}" data-field="reteFuentePorcentaje" />
-                </td>
-                <td>
-                    <input class="form-control ccb-input ccb-input--number" type="number" step="0.01" value="${escapeHtml(formatInputNumber(row.valorPago))}" data-field="valorPago" />
-                </td>
-                <td>
-                    <input class="form-control ccb-input ccb-input--number is-readonly" type="number" step="0.01" value="${escapeHtml(formatInputNumber(row.reteFuenteValor))}" data-derived="reteFuenteValor" readonly />
-                </td>
-                <td>
-                    <label class="ccb-check">
-                        <input type="checkbox" data-derived="totalesCuadran" ${row.totalesCuadran ? "checked" : ""} disabled />
-                        <span class="ccb-check__text" data-derived="totalesCuadranLabel">${row.totalesCuadran ? "Cuadra" : "No cuadra"}</span>
-                    </label>
-                </td>
-                <td>
-                    <div class="ccb-attachment">
-                        <div class="ccb-attachment__name">${escapeHtml(attachmentText)}</div>
-                        ${row.recordId && row.hasAdjunto ? `<a class="ccb-attachment__link" href="${escapeHtml(buildDownloadUrl(row.recordId))}" target="_blank" rel="noopener">Descargar</a>` : `<span class="ccb-attachment__link is-muted">Descargar</span>`}
-                        <input class="form-control form-control-sm" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" data-field="adjunto" ${state.busy ? "disabled" : ""} />
-                    </div>
+                    <span class="ccb-pill ${row.totalesCuadran ? "is-success" : "is-danger"}">
+                        ${row.totalesCuadran ? "Cuadra" : "No cuadra"}
+                    </span>
                 </td>
                 <td>
                     <button type="button" class="btn ${row.impresa ? "btn-outline-secondary" : "btn-outline-success"} btn-sm" data-action="print" ${!row.recordId || state.busy ? "disabled" : ""}>
                         ${row.impresa ? "Impresa" : "Imprimir"}
                     </button>
                 </td>
-                <td>
-                    <div class="ccb-row-status">${escapeHtml(statusText)}</div>
-                    <div class="ccb-row-period">${escapeHtml(row.periodLabel || buildFallbackPeriodLabel())}</div>
-                </td>
-                <td class="text-end">
-                    <button type="button" class="btn btn-primary btn-sm" data-action="save" ${state.busy ? "disabled" : ""}>Guardar</button>
-                </td>
             </tr>
-        `;
-    }
+        `).join("");
 
-    function syncInputIntoRow(row, input) {
-        const field = input.dataset.field || "";
-        if (!field) {
-            return;
+        if (emptyState) {
+            emptyState.hidden = state.rows.length > 0;
         }
 
-        switch (field) {
-            case "receptor":
-            case "nitOCedula":
-                row[field] = input.value || "";
-                break;
-            case "valorTotal":
-            case "reteFuentePorcentaje":
-            case "valorPago":
-                row[field] = parseDecimal(input.value);
-                recomputeRow(row);
-                break;
-            default:
-                break;
+        if (recordsCount) {
+            recordsCount.textContent = `${state.rows.length} ${state.rows.length === 1 ? "fila" : "filas"}`;
         }
-    }
-
-    function syncDerivedMarkup(row, rowElement) {
-        const derivedInput = rowElement.querySelector('[data-derived="reteFuenteValor"]');
-        if (derivedInput instanceof HTMLInputElement) {
-            derivedInput.value = formatInputNumber(row.reteFuenteValor);
-        }
-
-        const derivedCheck = rowElement.querySelector('[data-derived="totalesCuadran"]');
-        if (derivedCheck instanceof HTMLInputElement) {
-            derivedCheck.checked = row.totalesCuadran;
-        }
-
-        const derivedLabel = rowElement.querySelector('[data-derived="totalesCuadranLabel"]');
-        if (derivedLabel instanceof HTMLElement) {
-            derivedLabel.textContent = row.totalesCuadran ? "Cuadra" : "No cuadra";
-        }
-
-        rowElement.classList.toggle("is-invalid", !row.totalesCuadran);
     }
 
     function updateSummary() {
@@ -434,22 +326,313 @@
         summaryReteValor.textContent = moneyFormatter.format(totalReteValor);
     }
 
-    function mergeRow(record, preferredLocalId) {
-        if (!record || !record.recordId) {
+    function openEditor(localId) {
+        if (state.busy) {
             return;
         }
 
-        const incoming = hydrateRow(record);
-        const index = state.rows.findIndex((item) => item.localId === preferredLocalId || (item.recordId && item.recordId === record.recordId));
-        if (index >= 0) {
-            const previous = state.rows[index];
-            incoming.localId = previous.localId;
-            incoming.pendingFile = null;
-            state.rows[index] = incoming;
+        const sourceRow = localId
+            ? state.rows.find((item) => item.localId === localId)
+            : null;
+
+        state.editor.localId = localId || "";
+        state.editor.record = sourceRow ? cloneRow(sourceRow) : createEmptyRow();
+        state.editor.pendingFile = null;
+        state.editor.isOpen = true;
+
+        if (modal) {
+            modal.hidden = false;
+        }
+
+        document.body.classList.add("ccb-modal-open");
+        renderEditor();
+    }
+
+    function closeEditor() {
+        if (state.busy) {
             return;
         }
 
-        state.rows.unshift(incoming);
+        state.editor.isOpen = false;
+        state.editor.localId = "";
+        state.editor.record = null;
+        state.editor.pendingFile = null;
+        resetAttachmentInput();
+        clearModalStatus();
+
+        if (modal) {
+            modal.hidden = true;
+        }
+
+        document.body.classList.remove("ccb-modal-open");
+    }
+
+    function renderEditor() {
+        const record = state.editor.record;
+        if (!record) {
+            return;
+        }
+
+        const isNew = !record.recordId;
+        modalTitle.textContent = isNew ? "Nueva cuenta de cobro" : "Editar cuenta de cobro";
+        modalSubtitle.textContent = isNew
+            ? `El registro se guardara en ${buildFallbackPeriodLabel()}.`
+            : `Edita el formulario completo para ${record.receptor || "la cuenta de cobro seleccionada"}.`;
+        modalMeta.textContent = isNew
+            ? `Periodo: ${buildFallbackPeriodLabel()}`
+            : `Periodo: ${record.periodLabel || buildFallbackPeriodLabel()}${record.modifiedOnDisplay ? ` | Actualizada ${record.modifiedOnDisplay}` : ""}`;
+
+        receptorInput.value = record.receptor || "";
+        nitInput.value = record.nitOCedula || "";
+        retePorcentajeInput.value = formatInputNumber(record.reteFuentePorcentaje);
+        valorTotalInput.value = formatInputNumber(record.valorTotal);
+        valorPagoInput.value = formatInputNumber(record.valorPago);
+        reteValorInput.value = formatInputNumber(record.reteFuenteValor);
+        observacionesInput.value = record.observaciones || "";
+
+        validationCard.classList.toggle("is-danger", !record.totalesCuadran);
+        validationCard.classList.toggle("is-success", record.totalesCuadran);
+        validationText.textContent = record.totalesCuadran ? "La cuenta cuadra correctamente" : "La cuenta no cuadra";
+
+        modalPrintBtn.disabled = !record.recordId || state.busy;
+        renderEditorFileState();
+        clearModalStatus();
+
+        window.setTimeout(() => {
+            receptorInput?.focus();
+        }, 0);
+    }
+
+    function renderEditorFileState() {
+        const record = state.editor.record;
+        if (!record) {
+            return;
+        }
+
+        const pendingFile = state.editor.pendingFile;
+        const downloadHref = record.recordId ? buildDownloadUrl(record.recordId) : "#";
+        const hasPersistedAttachment = Boolean(record.recordId && record.hasAdjunto);
+
+        attachmentName.textContent = pendingFile
+            ? pendingFile.name
+            : hasPersistedAttachment
+                ? record.adjuntoFileName || "Adjunto cargado"
+                : "Sin adjunto cargado";
+
+        attachmentHint.textContent = pendingFile
+            ? "El archivo se subira junto con el guardado del formulario."
+            : hasPersistedAttachment
+                ? "Ya existe un soporte guardado para esta cuenta."
+                : "Selecciona un soporte en PDF, imagen o Word.";
+
+        attachmentDownloadLink.href = hasPersistedAttachment ? downloadHref : "#";
+        attachmentDownloadLink.classList.toggle("is-disabled", !hasPersistedAttachment);
+    }
+
+    function syncEditorFromInputs() {
+        const record = state.editor.record;
+        if (!record) {
+            return;
+        }
+
+        record.receptor = receptorInput.value || "";
+        record.nitOCedula = nitInput.value || "";
+        record.reteFuentePorcentaje = parseDecimal(retePorcentajeInput.value);
+        record.valorTotal = parseDecimal(valorTotalInput.value);
+        record.valorPago = parseDecimal(valorPagoInput.value);
+        record.observaciones = observacionesInput.value || "";
+
+        recomputeRow(record);
+
+        reteValorInput.value = formatInputNumber(record.reteFuenteValor);
+        validationCard.classList.toggle("is-danger", !record.totalesCuadran);
+        validationCard.classList.toggle("is-success", record.totalesCuadran);
+        validationText.textContent = record.totalesCuadran ? "La cuenta cuadra correctamente" : "La cuenta no cuadra";
+    }
+
+    async function saveEditor() {
+        const record = state.editor.record;
+        if (!record) {
+            return;
+        }
+
+        let savedRecordId = record.recordId || "";
+        let savedRecord = null;
+
+        const validationMessage = validateRow(record);
+        if (validationMessage) {
+            showModalStatus("error", validationMessage);
+            return;
+        }
+
+        try {
+            setBusy(true);
+            showModalStatus("info", `Guardando ${record.receptor || "cuenta de cobro"}...`);
+
+            const response = await fetch(saveUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    recordId: record.recordId,
+                    year: state.year,
+                    month: state.month,
+                    receptor: record.receptor,
+                    nitOCedula: record.nitOCedula,
+                    observaciones: record.observaciones,
+                    valorTotal: record.valorTotal,
+                    reteFuentePorcentaje: record.reteFuentePorcentaje,
+                    valorPago: record.valorPago
+                })
+            });
+
+            const payload = await readPayload(response);
+            if (!response.ok) {
+                throw createResponseError(payload);
+            }
+
+            savedRecord = hydrateRow(payload.record);
+            savedRecordId = savedRecord.recordId || savedRecordId;
+            state.editor.record = cloneRow(savedRecord);
+            if (state.editor.pendingFile) {
+                showModalStatus("info", "Guardado correcto. Subiendo adjunto...");
+                savedRecord = await uploadPendingAttachment(savedRecord.recordId);
+                state.editor.record = cloneRow(savedRecord);
+            }
+
+            const message = state.editor.pendingFile
+                ? "Cuenta de cobro y adjunto guardados correctamente."
+                : payload.message || "Cuenta de cobro guardada correctamente.";
+
+            state.editor.pendingFile = null;
+            closeEditor();
+            await loadBoard(state.year, state.month, { silent: true });
+            renderStatus("success", message);
+
+            if (savedRecord.recordId) {
+                const refreshed = findRowByRecordId(savedRecord.recordId);
+                if (refreshed) {
+                    savedRecord = refreshed;
+                }
+            }
+        } catch (error) {
+            if (savedRecordId) {
+                const refreshed = findRowByRecordId(savedRecordId);
+                if (savedRecord) {
+                    state.editor.record = cloneRow(savedRecord);
+                } else if (refreshed) {
+                    state.editor.record = cloneRow(refreshed);
+                }
+
+                await loadBoard(state.year, state.month, { silent: true });
+                renderEditor();
+            }
+
+            const details = buildErrorBannerMessage(error);
+            showModalStatus("error", details);
+            renderStatus("error", details);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function uploadPendingAttachment(recordId) {
+        const pendingFile = state.editor.pendingFile;
+        if (!recordId || !pendingFile) {
+            return state.editor.record;
+        }
+
+        const formData = new FormData();
+        formData.append("recordId", recordId);
+        formData.append("file", pendingFile);
+
+        const response = await fetch(uploadUrl, {
+            method: "POST",
+            body: formData
+        });
+
+        const payload = await readPayload(response);
+        if (!response.ok) {
+            throw createResponseError({
+                message: "La cuenta se guardó, pero el adjunto no se pudo cargar.",
+                detail: payload?.detail || payload?.message || ""
+            });
+        }
+
+        return hydrateRow(payload.record);
+    }
+
+    async function printRecord(recordId, fromModal) {
+        if (!recordId) {
+            renderStatus("error", "Guarda la cuenta de cobro antes de imprimir.");
+            return;
+        }
+
+        try {
+            setBusy(true);
+
+            const currentRow = findRowByRecordId(recordId);
+            if (currentRow && !currentRow.impresa) {
+                const response = await fetch(markPrintedUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(recordId)
+                });
+
+                const payload = await readPayload(response);
+                if (!response.ok) {
+                    throw createResponseError(payload);
+                }
+            }
+
+            await loadBoard(state.year, state.month, { silent: true });
+
+            if (fromModal && state.editor.record?.recordId === recordId) {
+                const refreshed = findRowByRecordId(recordId);
+                if (refreshed) {
+                    state.editor.record = cloneRow(refreshed);
+                    renderEditor();
+                }
+            }
+
+            const popup = window.open(`${printUrl}?recordId=${encodeURIComponent(recordId)}&autoprint=1`, "_blank", "noopener");
+            if (!popup) {
+                renderStatus("warning", "El navegador bloqueo la ventana de impresion. Permite popups e intenta de nuevo.");
+                return;
+            }
+
+            renderStatus("success", "La cuenta de cobro quedo lista para impresion.");
+        } catch (error) {
+            const message = buildErrorBannerMessage(error);
+            if (fromModal) {
+                showModalStatus("error", message);
+            }
+
+            renderStatus("error", message);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function showModalStatus(level, message) {
+        if (!modalStatus) {
+            return;
+        }
+
+        modalStatus.className = `ccb-status ccb-status--${level} is-visible`;
+        modalStatus.textContent = message;
+    }
+
+    function clearModalStatus() {
+        if (!modalStatus) {
+            return;
+        }
+
+        modalStatus.className = "ccb-status";
+        modalStatus.textContent = "";
     }
 
     function resolveRowFromElement(element) {
@@ -462,6 +645,10 @@
         return state.rows.find((item) => item.localId === localId) || null;
     }
 
+    function findRowByRecordId(recordId) {
+        return state.rows.find((item) => item.recordId === recordId) || null;
+    }
+
     function createEmptyRow() {
         state.sequence += 1;
         return recomputeRow({
@@ -469,6 +656,7 @@
             recordId: "",
             receptor: "",
             nitOCedula: "",
+            observaciones: "",
             valorTotal: 0,
             reteFuentePorcentaje: 0,
             valorPago: 0,
@@ -479,8 +667,7 @@
             adjuntoFileName: "",
             periodLabel: buildFallbackPeriodLabel(),
             createdOnDisplay: "",
-            modifiedOnDisplay: "",
-            pendingFile: null
+            modifiedOnDisplay: ""
         });
     }
 
@@ -490,6 +677,7 @@
             recordId: record.recordId || "",
             receptor: record.receptor || "",
             nitOCedula: record.nitOCedula || "",
+            observaciones: record.observaciones || "",
             valorTotal: Number(record.valorTotal || 0),
             reteFuentePorcentaje: Number(record.reteFuentePorcentaje || 0),
             valorPago: Number(record.valorPago || 0),
@@ -500,9 +688,14 @@
             adjuntoFileName: record.adjuntoFileName || "",
             periodLabel: record.periodLabel || buildFallbackPeriodLabel(),
             createdOnDisplay: record.createdOnDisplay || "",
-            modifiedOnDisplay: record.modifiedOnDisplay || "",
-            pendingFile: null
+            modifiedOnDisplay: record.modifiedOnDisplay || ""
         });
+    }
+
+    function cloneRow(row) {
+        return {
+            ...row
+        };
     }
 
     function recomputeRow(row) {
@@ -548,6 +741,12 @@
         return [selectedMonth.replace(/\(\d+\)/g, "").trim(), selectedYear].filter(Boolean).join(" ");
     }
 
+    function resetAttachmentInput() {
+        if (attachmentInput) {
+            attachmentInput.value = "";
+        }
+    }
+
     function setBusy(isBusy) {
         state.busy = isBusy;
 
@@ -567,9 +766,31 @@
             addRowBtn.disabled = isBusy;
         }
 
-        rowsBody.querySelectorAll("input, button").forEach((element) => {
-            if (element instanceof HTMLInputElement || element instanceof HTMLButtonElement) {
+        if (modalCloseBtn) {
+            modalCloseBtn.disabled = isBusy;
+        }
+
+        if (modalCancelBtn) {
+            modalCancelBtn.disabled = isBusy;
+        }
+
+        if (modalSaveBtn) {
+            modalSaveBtn.disabled = isBusy;
+        }
+
+        if (modalPrintBtn) {
+            modalPrintBtn.disabled = isBusy || !state.editor.record?.recordId;
+        }
+
+        [receptorInput, nitInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput, attachmentInput].forEach((element) => {
+            if (element) {
                 element.disabled = isBusy;
+            }
+        });
+
+        rowsBody?.querySelectorAll("button, tr").forEach((element) => {
+            if (element instanceof HTMLButtonElement) {
+                element.disabled = isBusy || (element.dataset.action === "print" && !element.closest("tr[data-local-id]")?.dataset.localId);
             }
         });
     }

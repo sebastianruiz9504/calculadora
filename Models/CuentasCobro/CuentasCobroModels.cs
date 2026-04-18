@@ -22,6 +22,7 @@ public sealed class CuentaCobroRowDto
     public string RecordId { get; set; } = "";
     public string Receptor { get; set; } = "";
     public string NitOCedula { get; set; } = "";
+    public string Observaciones { get; set; } = "";
     public decimal ValorTotal { get; set; }
     public decimal ReteFuentePorcentaje { get; set; }
     public decimal ValorPago { get; set; }
@@ -61,6 +62,7 @@ public sealed class CuentaCobroSaveRequest
     public int Month { get; set; }
     public string Receptor { get; set; } = "";
     public string NitOCedula { get; set; } = "";
+    public string Observaciones { get; set; } = "";
     public decimal ValorTotal { get; set; }
     public decimal ReteFuentePorcentaje { get; set; }
     public decimal ValorPago { get; set; }
