@@ -685,6 +685,13 @@
     border-radius: 20px;
 }
 
+.dashboard-table-wrap--paged {
+    overflow-x: auto;
+    overflow-y: visible;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 20px;
+}
+
 .dashboard-table {
     width: 100%;
     margin: 0;
@@ -918,7 +925,8 @@
 }
 
 .dashboard-copiers-maintenance-table {
-    min-width: 1080px;
+    min-width: 0;
+    width: 100%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(1),
@@ -928,7 +936,7 @@
 
 .dashboard-copiers-maintenance-table thead th:nth-child(2),
 .dashboard-copiers-maintenance-table tbody td:nth-child(2) {
-    width: 11%;
+    width: 12%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(3),
@@ -938,18 +946,35 @@
 
 .dashboard-copiers-maintenance-table thead th:nth-child(4),
 .dashboard-copiers-maintenance-table tbody td:nth-child(4) {
-    width: 14%;
+    width: 15%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(5),
 .dashboard-copiers-maintenance-table tbody td:nth-child(5) {
-    width: 41%;
+    width: 39%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(6),
 .dashboard-copiers-maintenance-table tbody td:nth-child(6) {
     width: 6%;
     text-align: center;
+}
+
+.dashboard-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+}
+
+.dashboard-pagination.is-hidden {
+    display: none;
+}
+
+.dashboard-pagination__btn {
+    min-width: 120px;
 }
 
 .dashboard-maintenance-date {
@@ -1560,7 +1585,7 @@
     .dashboard-equipment-table,
     .dashboard-equipment-maintenance-table,
     .dashboard-copiers-maintenance-table {
-        min-width: 980px;
+        min-width: 760px;
     }
 
     .dashboard-maintenance-chart__svg {

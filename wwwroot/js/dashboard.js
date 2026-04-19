@@ -47,6 +47,10 @@
     const copiersMaintenanceMonthFilter = document.getElementById("copiersMaintenanceMonthFilter");
     const copiersMaintenanceOwnerFilter = document.getElementById("copiersMaintenanceOwnerFilter");
     const copiersMaintenanceBody = document.getElementById("copiersMaintenanceBody");
+    const copiersMaintenancePagination = document.getElementById("copiersMaintenancePagination");
+    const copiersMaintenancePrevBtn = document.getElementById("copiersMaintenancePrevBtn");
+    const copiersMaintenanceNextBtn = document.getElementById("copiersMaintenanceNextBtn");
+    const copiersMaintenancePageSummary = document.getElementById("copiersMaintenancePageSummary");
     const copiersEditorModal = document.getElementById("copiersEditorModal");
     const copiersEditorCloseBtn = document.getElementById("copiersEditorCloseBtn");
     const copiersEditorCancelBtn = document.getElementById("copiersEditorCancelBtn");
@@ -153,6 +157,7 @@
 
     const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     const weekdayLabels = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const copiersMaintenancePageSize = 100;
 
     const state = {
         activeTab: "billing",
@@ -184,6 +189,7 @@
         copiersMaintenanceYear: "all",
         copiersMaintenanceMonth: "all",
         copiersMaintenanceOwner: "all",
+        copiersMaintenancePage: 1,
         portfolioSearchTerm: "",
         portfolioSort: "age",
         pnlYear: currentYear,
@@ -899,18 +905,78 @@
         });
     }
 
+    function getCopiersMaintenancePagination(rows) {
+        const totalRows = Array.isArray(rows) ? rows.length : 0;
+        const totalPages = Math.max(1, Math.ceil(totalRows / copiersMaintenancePageSize));
+        const page = Math.min(Math.max(state.copiersMaintenancePage, 1), totalPages);
+        const startIndex = totalRows ? (page - 1) * copiersMaintenancePageSize : 0;
+        const endIndex = Math.min(startIndex + copiersMaintenancePageSize, totalRows);
+
+        if (page !== state.copiersMaintenancePage) {
+            state.copiersMaintenancePage = page;
+        }
+
+        return {
+            page,
+            totalRows,
+            totalPages,
+            startIndex,
+            endIndex,
+            rows: rows.slice(startIndex, endIndex)
+        };
+    }
+
+    function renderCopiersMaintenancePagination(pagination) {
+        const hasRows = pagination.totalRows > 0;
+
+        if (copiersMaintenancePagination) {
+            copiersMaintenancePagination.classList.toggle("is-hidden", !hasRows);
+        }
+
+        if (copiersMaintenancePageSummary) {
+            copiersMaintenancePageSummary.textContent = hasRows
+                ? `Página ${numberFormatter.format(pagination.page)} de ${numberFormatter.format(pagination.totalPages)} - Registros ${numberFormatter.format(pagination.startIndex + 1)}-${numberFormatter.format(pagination.endIndex)}`
+                : "Página 0 de 0";
+        }
+
+        if (copiersMaintenancePrevBtn) {
+            copiersMaintenancePrevBtn.disabled = !hasRows || pagination.page <= 1;
+        }
+
+        if (copiersMaintenanceNextBtn) {
+            copiersMaintenanceNextBtn.disabled = !hasRows || pagination.page >= pagination.totalPages;
+        }
+    }
+
+    function setCopiersMaintenancePage(page) {
+        const totalRows = getFilteredCopiersMaintenanceRows().length;
+        const totalPages = Math.max(1, Math.ceil(totalRows / copiersMaintenancePageSize));
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        if (nextPage === state.copiersMaintenancePage) {
+            return;
+        }
+
+        state.copiersMaintenancePage = nextPage;
+        renderCopiersMaintenanceTable();
+    }
+
     function renderCopiersMaintenanceTable() {
         const allRows = Array.isArray(state.copiersEquipmentDashboard?.maintenanceRows)
             ? state.copiersEquipmentDashboard.maintenanceRows
             : [];
-        const rows = getFilteredCopiersMaintenanceRows();
+        const filteredRows = getFilteredCopiersMaintenanceRows();
+        const pagination = getCopiersMaintenancePagination(filteredRows);
+        const rows = pagination.rows;
 
         if (copiersMaintenanceResultsCount) {
-            copiersMaintenanceResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} de ${numberFormatter.format(allRows.length)} registros`;
+            copiersMaintenanceResultsCount.textContent = filteredRows.length
+                ? `Mostrando ${numberFormatter.format(pagination.startIndex + 1)}-${numberFormatter.format(pagination.endIndex)} de ${numberFormatter.format(filteredRows.length)} registros${filteredRows.length !== allRows.length ? ` filtrados (${numberFormatter.format(allRows.length)} totales)` : ""}`
+                : `Mostrando 0 de ${numberFormatter.format(allRows.length)} registros`;
         }
 
         if (state.activeTab === "copiers" && state.copiersSubtab === "maintenance" && recordCount) {
-            recordCount.textContent = numberFormatter.format(rows.length);
+            recordCount.textContent = numberFormatter.format(filteredRows.length);
         }
 
         if (!copiersMaintenanceBody) {
@@ -929,12 +995,15 @@
                 </tr>
             `).join("")
             : '<tr><td colspan="6" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
+
+        renderCopiersMaintenancePagination(pagination);
     }
 
     function renderCopiersMaintenanceDashboard(dashboard) {
         renderCopiersMaintenanceKpis(dashboard);
         renderCopiersMaintenanceChart(dashboard?.maintenanceChart);
         buildCopiersMaintenanceFilterOptions();
+        state.copiersMaintenancePage = 1;
         renderCopiersMaintenanceTable();
     }
 
@@ -3171,8 +3240,15 @@
             copiersEquipmentMoveToStockInput && (copiersEquipmentMoveToStockInput.checked = false);
         }
     });
+    copiersMaintenancePrevBtn?.addEventListener("click", () => {
+        setCopiersMaintenancePage(state.copiersMaintenancePage - 1);
+    });
+    copiersMaintenanceNextBtn?.addEventListener("click", () => {
+        setCopiersMaintenancePage(state.copiersMaintenancePage + 1);
+    });
     copiersMaintenanceYearFilter?.addEventListener("change", () => {
         state.copiersMaintenanceYear = copiersMaintenanceYearFilter.value || "all";
+        state.copiersMaintenancePage = 1;
         buildCopiersMaintenanceFilterOptions();
         renderCopiersMaintenanceTable();
         if (state.activeTab === "copiers" && state.copiersSubtab === "maintenance" && state.copiersEquipmentDashboard) {
@@ -3181,6 +3257,7 @@
     });
     copiersMaintenanceMonthFilter?.addEventListener("change", () => {
         state.copiersMaintenanceMonth = copiersMaintenanceMonthFilter.value || "all";
+        state.copiersMaintenancePage = 1;
         buildCopiersMaintenanceFilterOptions();
         renderCopiersMaintenanceTable();
         if (state.activeTab === "copiers" && state.copiersSubtab === "maintenance" && state.copiersEquipmentDashboard) {
@@ -3189,6 +3266,7 @@
     });
     copiersMaintenanceOwnerFilter?.addEventListener("change", () => {
         state.copiersMaintenanceOwner = copiersMaintenanceOwnerFilter.value || "all";
+        state.copiersMaintenancePage = 1;
         renderCopiersMaintenanceTable();
         if (state.activeTab === "copiers" && state.copiersSubtab === "maintenance" && state.copiersEquipmentDashboard) {
             updateHeroForCopiers(state.copiersEquipmentDashboard);

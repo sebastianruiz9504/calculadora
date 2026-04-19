@@ -313,7 +313,7 @@
                             <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersMaintenanceRefreshBtn">Actualizar</button>
                         </div>
                     </div>
-                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <div class="dashboard-table-wrap dashboard-table-wrap--paged">
                         <table class="table dashboard-table dashboard-copiers-maintenance-table">
                             <thead>
                                 <tr>
@@ -327,6 +327,11 @@
                             </thead>
                             <tbody id="copiersMaintenanceBody"></tbody>
                         </table>
+                    </div>
+                    <div class="dashboard-pagination" id="copiersMaintenancePagination">
+                        <button type="button" class="btn btn-outline-secondary dashboard-pagination__btn" id="copiersMaintenancePrevBtn">Anterior</button>
+                        <span id="copiersMaintenancePageSummary" class="dashboard-table-meta">P&aacute;gina 1 de 1</span>
+                        <button type="button" class="btn btn-outline-secondary dashboard-pagination__btn" id="copiersMaintenanceNextBtn">Siguiente</button>
                     </div>
                 </article>
             </section>
