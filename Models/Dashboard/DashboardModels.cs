@@ -286,7 +286,30 @@ public sealed class TaxesSectionDto
     public string Label { get; set; } = "";
     public string Description { get; set; } = "";
     public IReadOnlyList<BillingKpiDto> Metrics { get; set; } = Array.Empty<BillingKpiDto>();
+    public IReadOnlyList<TaxCalculationDetailDto> CalculationDetails { get; set; } = Array.Empty<TaxCalculationDetailDto>();
     public IReadOnlyList<TaxVerticalSummaryDto> VerticalSummaries { get; set; } = Array.Empty<TaxVerticalSummaryDto>();
+}
+
+public sealed class TaxCalculationDetailDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Formula { get; set; } = "";
+    public string BaseLabel { get; set; } = "Base total";
+    public decimal BaseTotal { get; set; }
+    public string InvoiceTotalLabel { get; set; } = "Total facturas";
+    public decimal InvoiceTotal { get; set; }
+    public int InvoiceCount { get; set; }
+    public string ResultLabel { get; set; } = "";
+    public decimal ResultValue { get; set; }
+    public IReadOnlyList<TaxCalculationDetailLineDto> Lines { get; set; } = Array.Empty<TaxCalculationDetailLineDto>();
+}
+
+public sealed class TaxCalculationDetailLineDto
+{
+    public string Label { get; set; } = "";
+    public decimal Value { get; set; }
+    public string ValueFormat { get; set; } = "currency";
 }
 
 public sealed class TaxVerticalSummaryDto

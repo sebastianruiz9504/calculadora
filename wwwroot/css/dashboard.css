@@ -572,6 +572,112 @@
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.dashboard-tax-calculation-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.dashboard-tax-calculation {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid #d7e4f2;
+    border-radius: 8px;
+    background: #fbfdff;
+}
+
+.dashboard-tax-calculation__header,
+.dashboard-tax-calculation__stats,
+.dashboard-tax-calculation__lines,
+.dashboard-tax-calculation__lines div {
+    display: flex;
+    gap: 12px;
+}
+
+.dashboard-tax-calculation__header {
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.dashboard-tax-calculation__header > div {
+    display: grid;
+    gap: 4px;
+}
+
+.dashboard-tax-calculation__header strong {
+    color: var(--dashboard-ink);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.dashboard-tax-calculation__header > span {
+    max-width: 520px;
+    color: var(--dashboard-muted);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: right;
+}
+
+.dashboard-tax-calculation__eyebrow {
+    color: var(--dashboard-brand);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.dashboard-tax-calculation__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-tax-calculation__stats > div,
+.dashboard-tax-calculation__lines div {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #e4edf7;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.dashboard-tax-calculation__stats > div {
+    display: grid;
+    gap: 4px;
+}
+
+.dashboard-tax-calculation__stats span,
+.dashboard-tax-calculation__lines span {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.dashboard-tax-calculation__stats strong,
+.dashboard-tax-calculation__lines strong {
+    color: var(--dashboard-ink);
+    font-size: 18px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-tax-calculation__stats small {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+}
+
+.dashboard-tax-calculation__lines {
+    flex-wrap: wrap;
+}
+
+.dashboard-tax-calculation__lines div {
+    align-items: center;
+    justify-content: space-between;
+    flex: 1 1 220px;
+}
+
 .dashboard-tax-verticals {
     display: grid;
     gap: 12px;
@@ -1654,6 +1760,21 @@
     .dashboard-tax-verticals {
         padding: 14px;
         border-radius: 18px;
+    }
+
+    .dashboard-tax-calculation__header > span {
+        max-width: none;
+        text-align: left;
+    }
+
+    .dashboard-tax-calculation__stats {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-tax-calculation__lines div {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
     }
 
     .dashboard-tax-verticals__header,

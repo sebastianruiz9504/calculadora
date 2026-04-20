@@ -444,6 +444,65 @@ public sealed partial class DataverseService
         var currentIcaTotalVerticals = SubtractTaxVerticalAmounts(currentIcaGeneratedVerticals, currentClientReteIcaVerticals);
         var compareIcaTotalVerticals = SubtractTaxVerticalAmounts(compareIcaGeneratedVerticals, compareClientReteIcaVerticals);
 
+        var currentInvoiceTaxBase = SumCurrency(currentEmission, static row => CalculateInvoiceTaxBase(row));
+        var currentInvoiceTotal = SumCurrency(currentEmission, static row => row.TotalInvoice);
+        var currentRteFtePaymentRows = currentPayments.Where(static row => row.RteFteValue > 0m).ToList();
+        var currentRteIvaPaymentRows = currentPayments.Where(static row => row.RteIvaValue > 0m).ToList();
+        var currentReteIcaPaymentRows = currentPayments.Where(static row => row.ReteIcaValue > 0m).ToList();
+        var currentExpenseReteFuenteRows = currentExpenses.Where(static row => row.ReteFuenteValue > 0m).ToList();
+
+        var reteFuenteCalculationDetails = new[]
+        {
+            BuildTaxCalculationDetail(
+                "retefuente-total",
+                "Detalle retefuente",
+                "Base facturas emitidas x 0,414% + retefuente en gastos",
+                currentInvoiceTaxBase,
+                currentInvoiceTotal,
+                currentEmission.Count,
+                "Total a pagar",
+                currentReteFuentePayable,
+                BuildTaxCalculationLine("Autofuente", currentAutoFuente),
+                BuildTaxCalculationLine("Retefuente en gastos", currentExpenseReteFuente),
+                BuildTaxCalculationLine("Base gastos con retefuente", SumExpenseCurrency(currentExpenseReteFuenteRows, static row => row.PaymentValue)),
+                BuildTaxCalculationLine("Clientes nos retuvieron", currentClientReteFuente),
+                BuildTaxCalculationLine("Total facturas pagadas con retefuente", SumCurrency(currentRteFtePaymentRows, static row => row.TotalInvoice)))
+        };
+
+        var reteIvaCalculationDetails = new[]
+        {
+            BuildTaxCalculationDetail(
+                "reteiva-total",
+                "Detalle reteIVA",
+                "IVA generado de facturas emitidas - reteIVA clientes",
+                currentInvoiceTaxBase,
+                currentInvoiceTotal,
+                currentEmission.Count,
+                "IVA a pagar",
+                currentVatPeriod,
+                BuildTaxCalculationLine("IVA generado", currentGeneratedVat),
+                BuildTaxCalculationLine("ReteIVA clientes", currentClientReteIva),
+                BuildTaxCalculationLine("Total facturas pagadas con reteIVA", SumCurrency(currentRteIvaPaymentRows, static row => row.TotalInvoice)),
+                BuildTaxCalculationLine("Total pagos con reteIVA", SumCurrency(currentRteIvaPaymentRows, static row => row.PaymentValue)))
+        };
+
+        var reteIcaCalculationDetails = new[]
+        {
+            BuildTaxCalculationDetail(
+                "reteica-total",
+                "Detalle reteICA",
+                "Base facturas emitidas x 0,69% - ICA retenido clientes",
+                currentInvoiceTaxBase,
+                currentInvoiceTotal,
+                currentEmission.Count,
+                "Total del periodo",
+                currentIcaTotal,
+                BuildTaxCalculationLine("ICA generado", currentIcaPeriodValue),
+                BuildTaxCalculationLine("ICA retenido clientes", currentClientReteIca),
+                BuildTaxCalculationLine("Total facturas pagadas con ICA", SumCurrency(currentReteIcaPaymentRows, static row => row.TotalInvoice)),
+                BuildTaxCalculationLine("Total pagos con ICA", SumCurrency(currentReteIcaPaymentRows, static row => row.PaymentValue)))
+        };
+
         return new TaxesDashboardDto
         {
             Year = period.Year,
@@ -475,7 +534,8 @@ public sealed partial class DataverseService
                     currentReteFuentePayableVerticals,
                     compareReteFuentePayableVerticals,
                     new TaxVerticalComponentSet("autofuente", "Autofuente", currentAutoFuenteVerticals, compareAutoFuenteVerticals),
-                    new TaxVerticalComponentSet("expense-rtefte", "Retefuente gastos", currentExpenseVerticals, compareExpenseVerticals))),
+                    new TaxVerticalComponentSet("expense-rtefte", "Retefuente gastos", currentExpenseVerticals, compareExpenseVerticals)),
+                reteFuenteCalculationDetails),
             ReteIva = BuildTaxesSection(
                 "reteiva",
                 "Rete IVA",
@@ -491,7 +551,8 @@ public sealed partial class DataverseService
                     currentVatPeriodVerticals,
                     compareVatPeriodVerticals,
                     new TaxVerticalComponentSet("generated-vat", "IVA generado", currentGeneratedVatVerticals, compareGeneratedVatVerticals),
-                    new TaxVerticalComponentSet("client-rteiva", "ReteIVA clientes", currentClientReteIvaVerticals, compareClientReteIvaVerticals))),
+                    new TaxVerticalComponentSet("client-rteiva", "ReteIVA clientes", currentClientReteIvaVerticals, compareClientReteIvaVerticals)),
+                reteIvaCalculationDetails),
             ReteIca = BuildTaxesSection(
                 "reteica",
                 "Rete ICA",
@@ -507,7 +568,8 @@ public sealed partial class DataverseService
                     currentIcaTotalVerticals,
                     compareIcaTotalVerticals,
                     new TaxVerticalComponentSet("generated-ica", "ICA generado", currentIcaGeneratedVerticals, compareIcaGeneratedVerticals),
-                    new TaxVerticalComponentSet("client-reteica", "ICA retenido clientes", currentClientReteIcaVerticals, compareClientReteIcaVerticals))),
+                    new TaxVerticalComponentSet("client-reteica", "ICA retenido clientes", currentClientReteIcaVerticals, compareClientReteIcaVerticals)),
+                reteIcaCalculationDetails),
             ExpenseDetails = expenseDetails
         };
     }
@@ -1313,7 +1375,8 @@ public sealed partial class DataverseService
         string label,
         string description,
         IReadOnlyList<BillingKpiDto> metrics,
-        IReadOnlyList<TaxVerticalSummaryDto>? verticalSummaries = null)
+        IReadOnlyList<TaxVerticalSummaryDto>? verticalSummaries = null,
+        IReadOnlyList<TaxCalculationDetailDto>? calculationDetails = null)
     {
         return new TaxesSectionDto
         {
@@ -1321,7 +1384,46 @@ public sealed partial class DataverseService
             Label = label,
             Description = description,
             Metrics = metrics,
+            CalculationDetails = calculationDetails ?? Array.Empty<TaxCalculationDetailDto>(),
             VerticalSummaries = verticalSummaries ?? Array.Empty<TaxVerticalSummaryDto>()
+        };
+    }
+
+    private static TaxCalculationDetailDto BuildTaxCalculationDetail(
+        string key,
+        string label,
+        string formula,
+        decimal baseTotal,
+        decimal invoiceTotal,
+        int invoiceCount,
+        string resultLabel,
+        decimal resultValue,
+        params TaxCalculationDetailLineDto[] lines)
+    {
+        return new TaxCalculationDetailDto
+        {
+            Key = key,
+            Label = label,
+            Formula = formula,
+            BaseTotal = RoundCurrency(baseTotal),
+            InvoiceTotal = RoundCurrency(invoiceTotal),
+            InvoiceCount = Math.Max(invoiceCount, 0),
+            ResultLabel = resultLabel,
+            ResultValue = RoundCurrency(resultValue),
+            Lines = lines
+        };
+    }
+
+    private static TaxCalculationDetailLineDto BuildTaxCalculationLine(
+        string label,
+        decimal value,
+        string valueFormat = "currency")
+    {
+        return new TaxCalculationDetailLineDto
+        {
+            Label = label,
+            Value = RoundCurrency(value),
+            ValueFormat = valueFormat
         };
     }
 

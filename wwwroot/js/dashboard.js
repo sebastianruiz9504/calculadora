@@ -106,6 +106,9 @@
     const taxesReteFuenteContainer = document.getElementById("taxesReteFuenteContainer");
     const taxesReteIvaContainer = document.getElementById("taxesReteIvaContainer");
     const taxesReteIcaContainer = document.getElementById("taxesReteIcaContainer");
+    const taxesReteFuenteCalculationContainer = document.getElementById("taxesReteFuenteCalculationContainer");
+    const taxesReteIvaCalculationContainer = document.getElementById("taxesReteIvaCalculationContainer");
+    const taxesReteIcaCalculationContainer = document.getElementById("taxesReteIcaCalculationContainer");
     const taxesReteFuenteVerticalContainer = document.getElementById("taxesReteFuenteVerticalContainer");
     const taxesReteIvaVerticalContainer = document.getElementById("taxesReteIvaVerticalContainer");
     const taxesReteIcaVerticalContainer = document.getElementById("taxesReteIcaVerticalContainer");
@@ -2088,13 +2091,68 @@
         }).join("");
     }
 
-    function renderTaxesSection(descriptionElement, container, verticalContainer, section, compareYear) {
+    function renderTaxesSection(descriptionElement, container, calculationContainer, verticalContainer, section, compareYear) {
         if (descriptionElement) {
             descriptionElement.textContent = section?.description || "";
         }
 
         renderComparativeKpis(container, Array.isArray(section?.metrics) ? section.metrics : [], compareYear);
+        renderTaxCalculationDetails(calculationContainer, Array.isArray(section?.calculationDetails) ? section.calculationDetails : []);
         renderTaxVerticalSummaries(verticalContainer, Array.isArray(section?.verticalSummaries) ? section.verticalSummaries : [], compareYear);
+    }
+
+    function renderTaxCalculationDetails(container, details) {
+        if (!container) {
+            return;
+        }
+
+        const items = Array.isArray(details) ? details : [];
+        if (!items.length) {
+            container.innerHTML = "";
+            return;
+        }
+
+        container.innerHTML = items.map(detail => {
+            const lines = Array.isArray(detail.lines) ? detail.lines : [];
+            const invoiceCount = numberFormatter.format(Number(detail.invoiceCount || 0));
+
+            return `
+                <article class="dashboard-tax-calculation">
+                    <div class="dashboard-tax-calculation__header">
+                        <div>
+                            <span class="dashboard-tax-calculation__eyebrow">Detalle del calculo</span>
+                            <strong>${escapeHtml(detail.label || "Calculo")}</strong>
+                        </div>
+                        <span>${escapeHtml(detail.formula || "")}</span>
+                    </div>
+                    <div class="dashboard-tax-calculation__stats">
+                        <div>
+                            <span>${escapeHtml(detail.baseLabel || "Base total")}</span>
+                            <strong>${escapeHtml(formatMetric(detail.baseTotal, "currency"))}</strong>
+                        </div>
+                        <div>
+                            <span>${escapeHtml(detail.invoiceTotalLabel || "Total facturas")}</span>
+                            <strong>${escapeHtml(formatMetric(detail.invoiceTotal, "currency"))}</strong>
+                            <small>${escapeHtml(invoiceCount)} facturas</small>
+                        </div>
+                        <div>
+                            <span>${escapeHtml(detail.resultLabel || "Resultado")}</span>
+                            <strong>${escapeHtml(formatMetric(detail.resultValue, "currency"))}</strong>
+                        </div>
+                    </div>
+                    ${lines.length ? `
+                        <div class="dashboard-tax-calculation__lines">
+                            ${lines.map(line => `
+                                <div>
+                                    <span>${escapeHtml(line.label || "")}</span>
+                                    <strong>${escapeHtml(formatMetric(line.value, line.valueFormat))}</strong>
+                                </div>
+                            `).join("")}
+                        </div>
+                    ` : ""}
+                </article>
+            `;
+        }).join("");
     }
 
     function renderTaxVerticalSummaries(container, summaries, compareYear) {
@@ -2962,9 +3020,9 @@
         try {
             const dashboard = await fetchJson(buildTaxesUrl());
             updateTaxesContext(dashboard);
-            renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, taxesReteFuenteVerticalContainer, dashboard?.reteFuente, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, taxesReteIvaVerticalContainer, dashboard?.reteIva, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, taxesReteIcaVerticalContainer, dashboard?.reteIca, dashboard?.compareYear);
+            renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, taxesReteFuenteCalculationContainer, taxesReteFuenteVerticalContainer, dashboard?.reteFuente, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, taxesReteIvaCalculationContainer, taxesReteIvaVerticalContainer, dashboard?.reteIva, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, taxesReteIcaCalculationContainer, taxesReteIcaVerticalContainer, dashboard?.reteIca, dashboard?.compareYear);
             renderTaxesExpenseTable(dashboard);
             setStatus(taxesStatusBanner, "", "");
         } catch (error) {
