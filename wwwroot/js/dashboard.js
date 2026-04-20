@@ -1625,6 +1625,8 @@
 
         const today = new Date();
         switch (period) {
+            case "bimonthly":
+                return Math.floor(today.getMonth() / 2) + 1;
             case "quarter":
                 return Math.floor(today.getMonth() / 3) + 1;
             case "semester":
@@ -1643,6 +1645,11 @@
 
         const options = [];
         switch (state.period) {
+            case "bimonthly":
+                ["B1 Ene-Feb", "B2 Mar-Abr", "B3 May-Jun", "B4 Jul-Ago", "B5 Sep-Oct", "B6 Nov-Dic"].forEach((label, index) => {
+                    options.push({ value: index + 1, label });
+                });
+                break;
             case "quarter":
                 ["T1", "T2", "T3", "T4"].forEach((label, index) => {
                     options.push({ value: index + 1, label });

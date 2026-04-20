@@ -36,6 +36,11 @@
     const modalSaveBtn = document.getElementById("ccbModalSaveBtn");
     const modalPrintBtn = document.getElementById("ccbModalPrintBtn");
     const editorForm = document.getElementById("ccbEditorForm");
+    const resultDialog = document.getElementById("ccbResultDialog");
+    const resultDialogTitle = document.getElementById("ccbResultDialogTitle");
+    const resultDialogMessage = document.getElementById("ccbResultDialogMessage");
+    const resultDialogDetail = document.getElementById("ccbResultDialogDetail");
+    const resultDialogCloseBtn = document.getElementById("ccbResultDialogCloseBtn");
 
     const receptorInput = document.getElementById("ccbReceptorInput");
     const nitInput = document.getElementById("ccbNitInput");
@@ -169,7 +174,23 @@
         }
     });
 
+    resultDialogCloseBtn?.addEventListener("click", () => {
+        hideResultDialog();
+    });
+
+    resultDialog?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.hasAttribute("data-ccb-result-close")) {
+            hideResultDialog();
+        }
+    });
+
     document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && resultDialog && !resultDialog.hidden) {
+            hideResultDialog();
+            return;
+        }
+
         if (event.key === "Escape" && state.editor.isOpen && !state.busy) {
             closeEditor();
         }
@@ -331,6 +352,8 @@
             return;
         }
 
+        hideResultDialog();
+
         const sourceRow = localId
             ? state.rows.find((item) => item.localId === localId)
             : null;
@@ -359,6 +382,7 @@
         state.editor.pendingFile = null;
         resetAttachmentInput();
         clearModalStatus();
+        hideResultDialog();
 
         if (modal) {
             modal.hidden = true;
@@ -462,6 +486,7 @@
         const validationMessage = validateRow(record);
         if (validationMessage) {
             showModalStatus("error", validationMessage);
+            showResultDialog("error", "No se pudo guardar", validationMessage);
             return;
         }
 
@@ -509,6 +534,7 @@
             closeEditor();
             await loadBoard(state.year, state.month, { silent: true });
             renderStatus("success", message);
+            showResultDialog("success", "Guardado exitosamente", message);
 
             if (savedRecord.recordId) {
                 const refreshed = findRowByRecordId(savedRecord.recordId);
@@ -532,6 +558,11 @@
             const details = buildErrorBannerMessage(error);
             showModalStatus("error", details);
             renderStatus("error", details);
+            showResultDialog(
+                "error",
+                "No se pudo guardar",
+                buildErrorMessage(error),
+                buildErrorDetail(error));
         } finally {
             setBusy(false);
         }
@@ -633,6 +664,46 @@
 
         modalStatus.className = "ccb-status";
         modalStatus.textContent = "";
+    }
+
+    function showResultDialog(level, title, message, detail) {
+        const safeMessage = message || title || "Operacion completada.";
+        const safeDetail = detail || "";
+
+        if (!resultDialog || !resultDialogTitle || !resultDialogMessage || !resultDialogCloseBtn) {
+            renderStatus(level, [safeMessage, safeDetail].filter(Boolean).join(" | "));
+            return;
+        }
+
+        resultDialog.hidden = false;
+        resultDialog.className = `ccb-result-dialog ccb-result-dialog--${level} is-visible`;
+        resultDialogTitle.textContent = title || "Resultado";
+        resultDialogMessage.textContent = safeMessage;
+        document.body.classList.add("ccb-result-open");
+
+        if (resultDialogDetail) {
+            resultDialogDetail.hidden = !safeDetail;
+            resultDialogDetail.textContent = safeDetail;
+        }
+
+        window.setTimeout(() => {
+            resultDialogCloseBtn.focus();
+        }, 0);
+    }
+
+    function hideResultDialog() {
+        if (!resultDialog) {
+            return;
+        }
+
+        resultDialog.hidden = true;
+        resultDialog.className = "ccb-result-dialog";
+        document.body.classList.remove("ccb-result-open");
+
+        if (resultDialogDetail) {
+            resultDialogDetail.hidden = true;
+            resultDialogDetail.textContent = "";
+        }
     }
 
     function resolveRowFromElement(element) {
@@ -839,7 +910,17 @@
     }
 
     function buildErrorBannerMessage(error) {
-        const parts = [error?.message || "Ocurrio un error inesperado."];
+        return [buildErrorMessage(error), buildErrorDetail(error).replaceAll("\n", " | ")]
+            .filter(Boolean)
+            .join(" | ");
+    }
+
+    function buildErrorMessage(error) {
+        return error?.message || "Ocurrio un error inesperado.";
+    }
+
+    function buildErrorDetail(error) {
+        const parts = [];
         if (error?.detail) {
             parts.push(error.detail);
         }
@@ -848,7 +929,7 @@
             parts.push(`TraceId: ${error.traceId}`);
         }
 
-        return parts.filter(Boolean).join(" | ");
+        return parts.filter(Boolean).join("\n");
     }
 
     async function readPayload(response) {

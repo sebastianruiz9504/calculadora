@@ -109,6 +109,19 @@
     </section>
 </div>
 
+<div class="ccb-result-dialog" id="ccbResultDialog" hidden>
+    <div class="ccb-result-dialog__backdrop" data-ccb-result-close></div>
+    <div class="ccb-result-dialog__card" role="alertdialog" aria-modal="true" aria-labelledby="ccbResultDialogTitle" aria-describedby="ccbResultDialogMessage">
+        <div class="ccb-kicker">Resultado</div>
+        <h3 class="ccb-result-dialog__title" id="ccbResultDialogTitle">Operacion completada</h3>
+        <p class="ccb-result-dialog__message" id="ccbResultDialogMessage"></p>
+        <pre class="ccb-result-dialog__detail" id="ccbResultDialogDetail" hidden></pre>
+        <div class="ccb-result-dialog__actions">
+            <button type="button" class="btn btn-primary" id="ccbResultDialogCloseBtn">Entendido</button>
+        </div>
+    </div>
+</div>
+
 <div class="ccb-modal" id="ccbEditorModal" hidden>
     <div class="ccb-modal__backdrop" data-ccb-close></div>
     <div class="ccb-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ccbEditorTitle">

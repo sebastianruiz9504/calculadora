@@ -7,7 +7,8 @@ public enum BillingPeriodKind
     Month = 0,
     Quarter = 1,
     Semester = 2,
-    Year = 3
+    Year = 3,
+    Bimonthly = 4
 }
 
 public static class BillingPeriodKindExtensions
@@ -20,6 +21,7 @@ public static class BillingPeriodKindExtensions
         return value.Trim().ToLowerInvariant() switch
         {
             "month" or "mes" or "mensual" => BillingPeriodKind.Month,
+            "bimonthly" or "bimensual" or "bimestre" => BillingPeriodKind.Bimonthly,
             "quarter" or "trimestre" => BillingPeriodKind.Quarter,
             "semester" or "semestre" => BillingPeriodKind.Semester,
             "year" or "ano" or "año" or "anual" => BillingPeriodKind.Year,
@@ -29,6 +31,7 @@ public static class BillingPeriodKindExtensions
 
     public static string ToKey(this BillingPeriodKind value) => value switch
     {
+        BillingPeriodKind.Bimonthly => "bimonthly",
         BillingPeriodKind.Quarter => "quarter",
         BillingPeriodKind.Semester => "semester",
         BillingPeriodKind.Year => "year",
@@ -37,6 +40,7 @@ public static class BillingPeriodKindExtensions
 
     public static string ToLabel(this BillingPeriodKind value) => value switch
     {
+        BillingPeriodKind.Bimonthly => "Bimensual",
         BillingPeriodKind.Quarter => "Trimestre",
         BillingPeriodKind.Semester => "Semestre",
         BillingPeriodKind.Year => "Anual",

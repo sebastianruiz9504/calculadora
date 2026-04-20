@@ -1899,6 +1899,7 @@ public sealed partial class DataverseService
 
         return periodKind switch
         {
+            BillingPeriodKind.Bimonthly => BuildBimonthlyPeriod(resolvedYear, compareYear, periodValue ?? (resolvedYear == today.Year ? ((today.Month - 1) / 2) + 1 : 1)),
             BillingPeriodKind.Quarter => BuildQuarterPeriod(resolvedYear, compareYear, periodValue ?? (resolvedYear == today.Year ? ((today.Month - 1) / 3) + 1 : 1)),
             BillingPeriodKind.Semester => BuildSemesterPeriod(resolvedYear, compareYear, periodValue ?? (resolvedYear == today.Year ? (today.Month <= 6 ? 1 : 2) : 1)),
             BillingPeriodKind.Year => BuildYearPeriod(resolvedYear, compareYear),
@@ -1934,6 +1935,34 @@ public sealed partial class DataverseService
             TrendGranularity = BillingTrendGranularity.Day,
             GranularityLabel = "Diaria",
             Categories = categories
+        };
+    }
+
+    private static BillingPeriodDefinition BuildBimonthlyPeriod(int year, int compareYear, int bimonthly)
+    {
+        var resolvedBimonthly = Math.Clamp(bimonthly, 1, 6);
+        var startMonth = ((resolvedBimonthly - 1) * 2) + 1;
+        var currentStart = new DateOnly(year, startMonth, 1);
+        var currentEnd = currentStart.AddMonths(2);
+        var compareStart = new DateOnly(compareYear, startMonth, 1);
+        var compareEnd = compareStart.AddMonths(2);
+
+        return new BillingPeriodDefinition
+        {
+            Year = year,
+            CompareYear = compareYear,
+            PeriodKind = BillingPeriodKind.Bimonthly,
+            PeriodValue = resolvedBimonthly,
+            PeriodLabel = $"B{resolvedBimonthly}",
+            DateRangeLabel = BuildDateRangeLabel(currentStart, currentEnd),
+            CompareLabel = $"Vs B{resolvedBimonthly} {compareYear}",
+            CurrentStartInclusive = currentStart,
+            CurrentEndExclusive = currentEnd,
+            CompareStartInclusive = compareStart,
+            CompareEndExclusive = compareEnd,
+            TrendGranularity = BillingTrendGranularity.Month,
+            GranularityLabel = "Mensual",
+            Categories = BuildMonthCategories(currentStart, 2)
         };
     }
 

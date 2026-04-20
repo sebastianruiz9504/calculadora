@@ -283,6 +283,90 @@
     display: none;
 }
 
+.ccb-result-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: none;
+    place-items: center;
+    padding: 1.5rem;
+}
+
+.ccb-result-dialog[hidden] {
+    display: none;
+}
+
+.ccb-result-dialog.is-visible {
+    display: grid;
+}
+
+.ccb-result-dialog__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 24, 45, 0.48);
+    backdrop-filter: blur(3px);
+}
+
+.ccb-result-dialog__card {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 0.85rem;
+    width: min(100%, 34rem);
+    max-height: calc(100vh - 3rem);
+    overflow: auto;
+    padding: 1.25rem;
+    border-radius: 24px;
+    background: #fff;
+    border: 1px solid #d9e3ee;
+    box-shadow: 0 24px 60px rgba(13, 24, 45, 0.24);
+}
+
+.ccb-result-dialog--success .ccb-result-dialog__card {
+    border-color: #bce8ca;
+}
+
+.ccb-result-dialog--error .ccb-result-dialog__card {
+    border-color: #f2b8c0;
+}
+
+.ccb-result-dialog--warning .ccb-result-dialog__card {
+    border-color: #f4d78a;
+}
+
+.ccb-result-dialog__title {
+    margin: 0;
+    color: #14213d;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.ccb-result-dialog__message {
+    margin: 0;
+    color: #4d5d73;
+    line-height: 1.55;
+}
+
+.ccb-result-dialog__detail {
+    margin: 0;
+    padding: 0.85rem 0.95rem;
+    max-height: 12rem;
+    overflow: auto;
+    border-radius: 18px;
+    border: 1px solid #d9e3ee;
+    background: #f8fbfe;
+    color: #334155;
+    font: inherit;
+    font-size: 0.86rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.ccb-result-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
 .ccb-modal__backdrop {
     position: absolute;
     inset: 0;
@@ -438,6 +522,10 @@
     overflow: hidden;
 }
 
+.ccb-result-open {
+    overflow: hidden;
+}
+
 @media (max-width: 1100px) {
     .ccb-shell {
         left: 0;
@@ -512,6 +600,10 @@
     }
 
     .ccb-modal {
+        padding: 0.75rem;
+    }
+
+    .ccb-result-dialog {
         padding: 0.75rem;
     }
 
