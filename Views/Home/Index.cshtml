@@ -6,6 +6,14 @@
     var userEmail = string.IsNullOrWhiteSpace(Model.CurrentUser.Email)
         ? "Sin correo disponible"
         : Model.CurrentUser.Email;
+    var availableModuleGroups = Model.AvailableModules
+        .GroupBy(static module => module.Category)
+        .Select(static group => new
+        {
+            Name = group.Key,
+            Modules = group.ToList()
+        })
+        .ToList();
 }
 
 @section Styles {
@@ -72,15 +80,23 @@
                 </div>
             </div>
 
-            <div class="home-module-grid">
-                @foreach (var module in Model.AvailableModules)
+            <div class="home-module-groups">
+                @foreach (var group in availableModuleGroups)
                 {
-                    <a class="home-module-card" asp-controller="@module.Controller" asp-action="@module.Action" data-category="@module.Category">
-                        <span class="home-module-card__eyebrow">@module.Category</span>
-                        <strong class="home-module-card__title">@module.Label</strong>
-                        <span class="home-module-card__description">@module.Description</span>
-                        <span class="home-module-card__action">Abrir modulo</span>
-                    </a>
+                    <div class="home-module-group">
+                        <h3 class="home-module-group__title">@group.Name</h3>
+                        <div class="home-module-grid">
+                            @foreach (var module in group.Modules)
+                            {
+                                <a class="home-module-card" asp-controller="@module.Controller" asp-action="@module.Action" data-category="@module.Category">
+                                    <span class="home-module-card__eyebrow">@module.Category</span>
+                                    <strong class="home-module-card__title">@module.Label</strong>
+                                    <span class="home-module-card__description">@module.Description</span>
+                                    <span class="home-module-card__action">Abrir modulo</span>
+                                </a>
+                            }
+                        </div>
+                    </div>
                 }
             </div>
         </section>

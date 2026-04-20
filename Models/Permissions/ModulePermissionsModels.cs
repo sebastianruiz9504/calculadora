@@ -30,13 +30,20 @@ public sealed class AppModuleDefinition
     public bool IsNavigable { get; init; } = true;
 }
 
+public sealed class AppModuleNavigationGroup
+{
+    public string Label { get; init; } = "";
+    public IReadOnlyList<AppModuleDefinition> Modules { get; init; } = Array.Empty<AppModuleDefinition>();
+    public bool IsDropdown { get; init; }
+}
+
 public static class AppModuleCatalog
 {
     public static readonly AppModuleDefinition Calculator = new()
     {
         Key = AppModule.Calculator,
         Label = "Calculadora",
-        Category = "Comercial",
+        Category = "Calculadora",
         Description = "Cotiza escenarios, compara lineas de negocio y prepara solicitudes de aprovisionamiento.",
         OptionValue = 645250000,
         Controller = "Calculator"
@@ -46,7 +53,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Renovaciones,
         Label = "Renovaciones",
-        Category = "Comercial",
+        Category = "Gerencia",
         Description = "Actualiza lineas masivas por cliente y ejecuta renovaciones con una sola vista de trabajo.",
         OptionValue = 645250001,
         Controller = "Renovaciones"
@@ -56,7 +63,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Puntajes,
         Label = "Puntajes",
-        Category = "Comercial",
+        Category = "Gerencia",
         Description = "Verifica negocios, recalcula puntajes y consolida cierres mensuales con soporte en Dataverse.",
         OptionValue = 645250002,
         Controller = "Puntajes"
@@ -66,7 +73,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Nomina,
         Label = "Nomina",
-        Category = "Finanzas",
+        Category = "Gerencia",
         Description = "Prepara la liquidacion mensual, revisa novedades y confirma el envio al proceso contable.",
         OptionValue = 645250003,
         Controller = "LiquidacionNominas"
@@ -76,7 +83,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Rh,
         Label = "RH",
-        Category = "Gestion interna",
+        Category = "Admin",
         Description = "Administra empleados, vacaciones e incapacidades desde un espacio centralizado.",
         OptionValue = 645250004,
         Controller = "Rh"
@@ -86,7 +93,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.PortalProveedores,
         Label = "Proveedor",
-        Category = "Proveedores",
+        Category = "Admin",
         Description = "Solicita certificados, consulta retenciones y emite documentos consolidados por periodo.",
         OptionValue = 645250005,
         Controller = "PortalProveedores"
@@ -96,7 +103,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.GestionHumana,
         Label = "Gestion humana",
-        Category = "Gestion interna",
+        Category = "Gestion humana",
         Description = "Permite al colaborador consultar su saldo y registrar sus propias solicitudes de vacaciones.",
         OptionValue = 645250006,
         Controller = "GestionHumana"
@@ -106,7 +113,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Permissions,
         Label = "Permisos",
-        Category = "Administracion",
+        Category = "Ingreso manual",
         Description = "Controla accesos por empleado y actualiza la matriz de modulos directamente en Dataverse.",
         OptionValue = 645250007,
         Controller = "Permissions"
@@ -116,7 +123,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Dashboard,
         Label = "Dashboard",
-        Category = "Analitica",
+        Category = "Dashboard",
         Description = "Consolida facturacion, recaudo, IVA y retenciones en una vista financiera tipo tablero.",
         OptionValue = 645250008,
         Controller = "Dashboard"
@@ -126,7 +133,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Metricas,
         Label = "Metricas",
-        Category = "Analitica",
+        Category = "Gerencia",
         Description = "Consulta puntajes, metas y graficas por vendedor o por equipo en una sola vista.",
         OptionValue = 645250009,
         Controller = "Metricas"
@@ -136,7 +143,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.CuentasCobro,
         Label = "Cuentas de cobro",
-        Category = "Finanzas",
+        Category = "Admin",
         Description = "Carga cuentas de cobro, valida retenciones, adjunta soportes y marca impresiones por periodo.",
         OptionValue = 645250010,
         Controller = "CuentasCobro"
@@ -148,17 +155,48 @@ public static class AppModuleCatalog
         Renovaciones,
         Puntajes,
         Nomina,
+        Metricas,
         Rh,
         PortalProveedores,
+        CuentasCobro,
         GestionHumana,
         Dashboard,
-        Metricas,
-        CuentasCobro,
         Permissions
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
         PermissionModules.Where(static module => module.IsNavigable).ToList();
+
+    public static IReadOnlyList<AppModuleNavigationGroup> TopNavigationGroups { get; } = new[]
+    {
+        new AppModuleNavigationGroup
+        {
+            Label = "Calculadora",
+            Modules = new[] { Calculator }
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Gerencia",
+            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas },
+            IsDropdown = true
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Admin",
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro },
+            IsDropdown = true
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Gestion humana",
+            Modules = new[] { GestionHumana }
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Dashboard",
+            Modules = new[] { Dashboard }
+        }
+    };
 
     public static AppModuleDefinition? Find(AppModule module) =>
         PermissionModules.FirstOrDefault(item => item.Key == module);

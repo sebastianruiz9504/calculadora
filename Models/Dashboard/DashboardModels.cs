@@ -282,6 +282,27 @@ public sealed class TaxesSectionDto
     public string Label { get; set; } = "";
     public string Description { get; set; } = "";
     public IReadOnlyList<BillingKpiDto> Metrics { get; set; } = Array.Empty<BillingKpiDto>();
+    public IReadOnlyList<TaxVerticalSummaryDto> VerticalSummaries { get; set; } = Array.Empty<TaxVerticalSummaryDto>();
+}
+
+public sealed class TaxVerticalSummaryDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string PrimaryLabel { get; set; } = "";
+    public decimal PrimaryValue { get; set; }
+    public decimal PreviousPrimaryValue { get; set; }
+    public decimal? GrowthPercent { get; set; }
+    public string Tone { get; set; } = "neutral";
+    public IReadOnlyList<TaxVerticalComponentDto> Components { get; set; } = Array.Empty<TaxVerticalComponentDto>();
+}
+
+public sealed class TaxVerticalComponentDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public decimal Value { get; set; }
+    public decimal PreviousValue { get; set; }
 }
 
 public sealed class TaxExpenseDetailDto

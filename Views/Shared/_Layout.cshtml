@@ -19,19 +19,35 @@
         }
     }
 
-    var canAccessPortalProveedores = layoutCurrentUser?.HasModule(AppModuleCatalog.PortalProveedores.OptionValue) == true;
-    var canAccessMetricas = layoutCurrentUser?.HasModule(AppModuleCatalog.Metricas.OptionValue) == true;
-    var canAccessDashboard = layoutCurrentUser?.HasModule(AppModuleCatalog.Dashboard.OptionValue) == true;
-    var canAccessNomina = layoutCurrentUser?.HasModule(AppModuleCatalog.Nomina.OptionValue) == true;
-    var canAccessRh = layoutCurrentUser?.HasModule(AppModuleCatalog.Rh.OptionValue) == true;
-    var canAccessGestionHumana = layoutCurrentUser?.HasModule(AppModuleCatalog.GestionHumana.OptionValue) == true;
-    var canAccessCuentasCobro = layoutCurrentUser?.HasModule(AppModuleCatalog.CuentasCobro.OptionValue) == true;
-
-    string GetNavLinkClass(string controller)
+    bool CanAccessModule(AppModuleDefinition module)
     {
-        return currentController.Equals(controller, StringComparison.OrdinalIgnoreCase)
+        return layoutCurrentUser?.HasModule(module.OptionValue) == true;
+    }
+
+    bool IsActiveModule(AppModuleDefinition module)
+    {
+        return currentController.Equals(module.Controller, StringComparison.OrdinalIgnoreCase);
+    }
+
+    string GetNavLinkClass(AppModuleDefinition module)
+    {
+        return IsActiveModule(module)
             ? "app-shell__nav-link is-active"
             : "app-shell__nav-link";
+    }
+
+    string GetNavGroupClass(bool isActive)
+    {
+        return isActive
+            ? "app-shell__nav-link dropdown-toggle is-active"
+            : "app-shell__nav-link dropdown-toggle";
+    }
+
+    string GetDropdownLinkClass(AppModuleDefinition module)
+    {
+        return IsActiveModule(module)
+            ? "dropdown-item app-shell__dropdown-link is-active"
+            : "dropdown-item app-shell__dropdown-link";
     }
 
     string NormalizeUserDisplayName(string? value)
@@ -78,17 +94,15 @@
             ?? principal.FindFirstValue(ClaimTypes.Email));
     }
 
-    var navItems = new[]
-    {
-        new { Controller = "Calculator", Label = "Calculadora", Visible = true },
-        new { Controller = "Metricas", Label = "Metricas", Visible = canAccessMetricas },
-        new { Controller = "Dashboard", Label = "Dashboard", Visible = canAccessDashboard },
-        new { Controller = "LiquidacionNominas", Label = "Nomina", Visible = canAccessNomina },
-        new { Controller = "CuentasCobro", Label = "Cuentas de cobro", Visible = canAccessCuentasCobro },
-        new { Controller = "Rh", Label = "RH", Visible = canAccessRh },
-        new { Controller = "GestionHumana", Label = "Gestion humana", Visible = canAccessGestionHumana },
-        new { Controller = "PortalProveedores", Label = "Proveedores", Visible = canAccessPortalProveedores }
-    };
+    var navGroups = AppModuleCatalog.TopNavigationGroups
+        .Select(group => new
+        {
+            group.Label,
+            group.IsDropdown,
+            Modules = group.Modules.Where(CanAccessModule).ToList()
+        })
+        .Where(group => group.Modules.Count > 0)
+        .ToList();
     var userDisplayName = ResolveUserDisplayName();
 }
 <!DOCTYPE html>
@@ -117,15 +131,30 @@
 
                 <div class="collapse navbar-collapse app-shell__collapse" id="mainNavigation">
                     <ul class="navbar-nav app-shell__nav-list">
-                        @foreach (var item in navItems)
+                        @foreach (var group in navGroups)
                         {
-                            if (!item.Visible)
+                            var isActiveGroup = group.Modules.Any(IsActiveModule);
+                            if (!group.IsDropdown && group.Modules.Count == 1)
                             {
+                                var module = group.Modules[0];
+                                <li class="nav-item app-shell__nav-item">
+                                    <a class="@GetNavLinkClass(module)" asp-controller="@module.Controller" asp-action="@module.Action">@group.Label</a>
+                                </li>
                                 continue;
                             }
 
-                            <li class="nav-item">
-                                <a class="@GetNavLinkClass(item.Controller)" asp-controller="@item.Controller" asp-action="Index">@item.Label</a>
+                            <li class="nav-item dropdown app-shell__nav-item">
+                                <a class="@GetNavGroupClass(isActiveGroup)" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @group.Label
+                                </a>
+                                <ul class="dropdown-menu app-shell__dropdown-menu">
+                                    @foreach (var module in group.Modules)
+                                    {
+                                        <li>
+                                            <a class="@GetDropdownLinkClass(module)" asp-controller="@module.Controller" asp-action="@module.Action">@module.Label</a>
+                                        </li>
+                                    }
+                                </ul>
                             </li>
                         }
                     </ul>

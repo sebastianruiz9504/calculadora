@@ -106,6 +106,9 @@
     const taxesReteFuenteContainer = document.getElementById("taxesReteFuenteContainer");
     const taxesReteIvaContainer = document.getElementById("taxesReteIvaContainer");
     const taxesReteIcaContainer = document.getElementById("taxesReteIcaContainer");
+    const taxesReteFuenteVerticalContainer = document.getElementById("taxesReteFuenteVerticalContainer");
+    const taxesReteIvaVerticalContainer = document.getElementById("taxesReteIvaVerticalContainer");
+    const taxesReteIcaVerticalContainer = document.getElementById("taxesReteIcaVerticalContainer");
     const taxesExpenseBody = document.getElementById("taxesExpenseBody");
     const taxesExpenseResultsCount = document.getElementById("taxesExpenseResultsCount");
 
@@ -2078,12 +2081,57 @@
         }).join("");
     }
 
-    function renderTaxesSection(descriptionElement, container, section, compareYear) {
+    function renderTaxesSection(descriptionElement, container, verticalContainer, section, compareYear) {
         if (descriptionElement) {
             descriptionElement.textContent = section?.description || "";
         }
 
         renderComparativeKpis(container, Array.isArray(section?.metrics) ? section.metrics : [], compareYear);
+        renderTaxVerticalSummaries(verticalContainer, Array.isArray(section?.verticalSummaries) ? section.verticalSummaries : [], compareYear);
+    }
+
+    function renderTaxVerticalSummaries(container, summaries, compareYear) {
+        if (!container) {
+            return;
+        }
+
+        const items = Array.isArray(summaries) ? summaries : [];
+        if (!items.length) {
+            container.innerHTML = '<div class="dashboard-table__empty">No hay valores por vertical para este periodo.</div>';
+            return;
+        }
+
+        container.innerHTML = items.map(item => {
+            const components = Array.isArray(item.components) ? item.components : [];
+            const growthClass = Number(item.growthPercent || 0) > 0
+                ? "is-positive"
+                : Number(item.growthPercent || 0) < 0
+                    ? "is-negative"
+                    : "";
+
+            return `
+                <article class="dashboard-tax-vertical-card dashboard-tax-vertical-card--${escapeHtml(item.tone || "neutral")}">
+                    <div class="dashboard-tax-vertical-card__header">
+                        <span class="dashboard-tax-vertical-card__label">${escapeHtml(item.label)}</span>
+                        <span class="dashboard-growth ${growthClass}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
+                    </div>
+                    <span class="dashboard-tax-vertical-card__primary-label">${escapeHtml(item.primaryLabel || "Total")}</span>
+                    <strong class="dashboard-tax-vertical-card__value">${escapeHtml(formatMetric(item.primaryValue, "currency"))}</strong>
+                    <div class="dashboard-tax-vertical-card__components">
+                        ${components.map(component => `
+                            <div class="dashboard-tax-vertical-card__component">
+                                <span>${escapeHtml(component.label)}</span>
+                                <strong>${escapeHtml(formatMetric(component.value, "currency"))}</strong>
+                            </div>
+                        `).join("")}
+                    </div>
+                    <div class="dashboard-tax-vertical-card__footer">
+                        <span>${escapeHtml(String(compareYear || ""))}</span>
+                        <strong>${escapeHtml(formatMetric(item.previousPrimaryValue, "currency"))}</strong>
+                    </div>
+                </article>
+            `;
+        }).join("");
     }
 
     function renderTaxesExpenseTable(dashboard) {
@@ -2907,9 +2955,9 @@
         try {
             const dashboard = await fetchJson(buildTaxesUrl());
             updateTaxesContext(dashboard);
-            renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, dashboard?.reteFuente, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, dashboard?.reteIva, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, dashboard?.reteIca, dashboard?.compareYear);
+            renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, taxesReteFuenteVerticalContainer, dashboard?.reteFuente, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, taxesReteIvaVerticalContainer, dashboard?.reteIva, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, taxesReteIcaVerticalContainer, dashboard?.reteIca, dashboard?.compareYear);
             renderTaxesExpenseTable(dashboard);
             setStatus(taxesStatusBanner, "", "");
         } catch (error) {

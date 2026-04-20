@@ -142,11 +142,30 @@
     font-size: 15px;
 }
 
+.home-module-groups {
+    display: grid;
+    gap: 24px;
+    margin-top: 22px;
+}
+
+.home-module-group {
+    display: grid;
+    gap: 12px;
+}
+
+.home-module-group__title {
+    margin: 0;
+    color: #10213a;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
 .home-module-grid {
     display: grid;
     gap: 16px;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    margin-top: 22px;
+    margin-top: 0;
 }
 
 .home-module-card {

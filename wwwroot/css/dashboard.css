@@ -572,6 +572,105 @@
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.dashboard-tax-verticals {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid #d7e4f2;
+    border-radius: 22px;
+    background: #f8fbff;
+}
+
+.dashboard-tax-verticals__header,
+.dashboard-tax-vertical-card__header,
+.dashboard-tax-vertical-card__component,
+.dashboard-tax-vertical-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.dashboard-tax-verticals__header {
+    color: var(--dashboard-muted);
+    font-size: 13px;
+}
+
+.dashboard-tax-verticals__header span,
+.dashboard-tax-vertical-card__primary-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.dashboard-tax-verticals__header strong {
+    color: var(--dashboard-ink);
+    font-weight: 600;
+}
+
+.dashboard-tax-vertical-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.dashboard-tax-vertical-card {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--dashboard-line);
+    border-radius: 18px;
+    background: #ffffff;
+}
+
+.dashboard-tax-vertical-card--positive {
+    border-color: #d5ead5;
+}
+
+.dashboard-tax-vertical-card--negative {
+    border-color: #f1d3db;
+}
+
+.dashboard-tax-vertical-card__label {
+    color: var(--dashboard-ink);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.dashboard-tax-vertical-card__primary-label {
+    color: var(--dashboard-muted);
+}
+
+.dashboard-tax-vertical-card__value {
+    color: var(--dashboard-ink);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+}
+
+.dashboard-tax-vertical-card__components {
+    display: grid;
+    gap: 8px;
+    padding: 12px 0;
+    border-top: 1px solid #e4edf7;
+    border-bottom: 1px solid #e4edf7;
+}
+
+.dashboard-tax-vertical-card__component,
+.dashboard-tax-vertical-card__footer {
+    color: var(--dashboard-muted);
+    font-size: 13px;
+}
+
+.dashboard-tax-vertical-card__component strong,
+.dashboard-tax-vertical-card__footer strong {
+    color: var(--dashboard-ink);
+    font-weight: 700;
+    text-align: right;
+}
+
 .dashboard-trend-card,
 .dashboard-retention-card {
     display: grid;
@@ -1550,6 +1649,23 @@
 
     .dashboard-panel__title {
         font-size: 24px;
+    }
+
+    .dashboard-tax-verticals {
+        padding: 14px;
+        border-radius: 18px;
+    }
+
+    .dashboard-tax-verticals__header,
+    .dashboard-tax-vertical-card__component,
+    .dashboard-tax-vertical-card__footer {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .dashboard-tax-vertical-card__value {
+        font-size: 23px;
     }
 
     .dashboard-kpi__value {

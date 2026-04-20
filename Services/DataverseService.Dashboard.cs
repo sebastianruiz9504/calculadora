@@ -411,6 +411,12 @@ public sealed partial class DataverseService
         var compareExpenseReteFuente = SumExpenseCurrency(compareExpenses, static row => row.ReteFuenteValue);
         var currentAutoFuente = CalculateAutoFuente(currentEmission);
         var compareAutoFuente = CalculateAutoFuente(compareEmission);
+        var currentAutoFuenteVerticals = SumBillingCurrencyByVertical(currentEmission, static row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate);
+        var compareAutoFuenteVerticals = SumBillingCurrencyByVertical(compareEmission, static row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate);
+        var currentReteFuentePayable = RoundCurrency(currentAutoFuente + currentExpenseReteFuente);
+        var compareReteFuentePayable = RoundCurrency(compareAutoFuente + compareExpenseReteFuente);
+        var currentReteFuentePayableVerticals = SumTaxVerticalAmounts(currentAutoFuenteVerticals, currentExpenseVerticals);
+        var compareReteFuentePayableVerticals = SumTaxVerticalAmounts(compareAutoFuenteVerticals, compareExpenseVerticals);
 
         var currentGeneratedVat = SumCurrency(currentEmission, static row => row.VatValue);
         var compareGeneratedVat = SumCurrency(compareEmission, static row => row.VatValue);
@@ -418,6 +424,12 @@ public sealed partial class DataverseService
         var compareClientReteIva = SumCurrency(comparePayments, static row => row.RteIvaValue);
         var currentVatPeriod = RoundCurrency(currentGeneratedVat - currentClientReteIva);
         var compareVatPeriod = RoundCurrency(compareGeneratedVat - compareClientReteIva);
+        var currentGeneratedVatVerticals = SumBillingCurrencyByVertical(currentEmission, static row => row.VatValue);
+        var compareGeneratedVatVerticals = SumBillingCurrencyByVertical(compareEmission, static row => row.VatValue);
+        var currentClientReteIvaVerticals = SumBillingCurrencyByVertical(currentPayments, static row => row.RteIvaValue);
+        var compareClientReteIvaVerticals = SumBillingCurrencyByVertical(comparePayments, static row => row.RteIvaValue);
+        var currentVatPeriodVerticals = SubtractTaxVerticalAmounts(currentGeneratedVatVerticals, currentClientReteIvaVerticals);
+        var compareVatPeriodVerticals = SubtractTaxVerticalAmounts(compareGeneratedVatVerticals, compareClientReteIvaVerticals);
 
         var currentIcaPeriodValue = CalculateIcaGenerated(currentEmission);
         var compareIcaPeriodValue = CalculateIcaGenerated(compareEmission);
@@ -425,6 +437,12 @@ public sealed partial class DataverseService
         var compareClientReteIca = SumCurrency(comparePayments, static row => row.ReteIcaValue);
         var currentIcaTotal = RoundCurrency(currentIcaPeriodValue - currentClientReteIca);
         var compareIcaTotal = RoundCurrency(compareIcaPeriodValue - compareClientReteIca);
+        var currentIcaGeneratedVerticals = SumBillingCurrencyByVertical(currentEmission, static row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
+        var compareIcaGeneratedVerticals = SumBillingCurrencyByVertical(compareEmission, static row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
+        var currentClientReteIcaVerticals = SumBillingCurrencyByVertical(currentPayments, static row => row.ReteIcaValue);
+        var compareClientReteIcaVerticals = SumBillingCurrencyByVertical(comparePayments, static row => row.ReteIcaValue);
+        var currentIcaTotalVerticals = SubtractTaxVerticalAmounts(currentIcaGeneratedVerticals, currentClientReteIcaVerticals);
+        var compareIcaTotalVerticals = SubtractTaxVerticalAmounts(compareIcaGeneratedVerticals, compareClientReteIcaVerticals);
 
         return new TaxesDashboardDto
         {
@@ -444,35 +462,52 @@ public sealed partial class DataverseService
             ReteFuente = BuildTaxesSection(
                 "retefuente",
                 "Retefuente",
-                "Cruza lo retenido por clientes, lo practicado en gastos, el reparto por vertical y la autofuente estimada del periodo.",
+                "Prioriza el total a pagar del periodo y separa sus componentes por vertical: autofuente mas retefuente practicada en gastos.",
                 new[]
                 {
-                    BuildBillingKpi("client-rtefte", "Clientes nos retuvieron", "ReteFuente retenida por clientes sobre pagos del periodo.", currentClientReteFuente, compareClientReteFuente, "currency", "", ""),
-                    BuildBillingKpi("expense-rtefte", "Nosotros practicamos", "ReteFuente practicada en gastos pagados durante el periodo.", currentExpenseReteFuente, compareExpenseReteFuente, "currency", "Registros", expenseDetails.Count.ToString("N0", DashboardCulture)),
-                    BuildBillingKpi("expense-rtefte-cloud", "Retefuente Cloud", "Retefuente practicada en gastos clasificados en Cloud.", currentExpenseVerticals.Cloud, compareExpenseVerticals.Cloud, "currency", "", ""),
-                    BuildBillingKpi("expense-rtefte-copiers", "Retefuente Copiers", "Retefuente practicada en gastos clasificados en Copiers.", currentExpenseVerticals.Copiers, compareExpenseVerticals.Copiers, "currency", "", ""),
-                    BuildBillingKpi("autofuente", "Autofuente del periodo", "Formula: (Total factura - IVA) x 0.00414 para la facturacion emitida.", currentAutoFuente, compareAutoFuente, "currency", "", "")
-                }),
+                    BuildBillingKpi("rtefte-payable", "Total a pagar", "Autofuente del periodo mas retefuente practicada en gastos.", currentReteFuentePayable, compareReteFuentePayable, "currency", "", ""),
+                    BuildBillingKpi("autofuente", "Autofuente del periodo", "Formula: (Total factura - IVA) x 0.00414 para la facturacion emitida.", currentAutoFuente, compareAutoFuente, "currency", "", ""),
+                    BuildBillingKpi("expense-rtefte", "Retefuente en gastos", "Retefuente practicada en gastos pagados durante el periodo.", currentExpenseReteFuente, compareExpenseReteFuente, "currency", "Registros", expenseDetails.Count.ToString("N0", DashboardCulture)),
+                    BuildBillingKpi("client-rtefte", "Clientes nos retuvieron", "ReteFuente retenida por clientes sobre pagos del periodo.", currentClientReteFuente, compareClientReteFuente, "currency", "", "")
+                },
+                BuildTaxVerticalSummaries(
+                    "Total a pagar",
+                    currentReteFuentePayableVerticals,
+                    compareReteFuentePayableVerticals,
+                    new TaxVerticalComponentSet("autofuente", "Autofuente", currentAutoFuenteVerticals, compareAutoFuenteVerticals),
+                    new TaxVerticalComponentSet("expense-rtefte", "Retefuente gastos", currentExpenseVerticals, compareExpenseVerticals))),
             ReteIva = BuildTaxesSection(
                 "reteiva",
                 "Rete IVA",
-                "Mide el IVA generado y el descuento por reteIVA que nos practicaron los clientes.",
+                "Mide el IVA del periodo y muestra cuanto queda a pagar por vertical despues de la reteIVA practicada por clientes.",
                 new[]
                 {
+                    BuildBillingKpi("vat-net", "IVA a pagar", "IVA generado menos reteIVA practicada por clientes.", currentVatPeriod, compareVatPeriod, "currency", "", ""),
                     BuildBillingKpi("generated-vat", "IVA generado", "IVA de la facturacion emitida en el periodo.", currentGeneratedVat, compareGeneratedVat, "currency", "", ""),
-                    BuildBillingKpi("client-rteiva", "ReteIVA clientes", "ReteIVA retenida por clientes sobre pagos del periodo.", currentClientReteIva, compareClientReteIva, "currency", "", ""),
-                    BuildBillingKpi("vat-net", "IVA del periodo", "IVA generado menos reteIVA practicada por clientes.", currentVatPeriod, compareVatPeriod, "currency", "", "")
-                }),
+                    BuildBillingKpi("client-rteiva", "ReteIVA clientes", "ReteIVA retenida por clientes sobre pagos del periodo.", currentClientReteIva, compareClientReteIva, "currency", "", "")
+                },
+                BuildTaxVerticalSummaries(
+                    "IVA a pagar",
+                    currentVatPeriodVerticals,
+                    compareVatPeriodVerticals,
+                    new TaxVerticalComponentSet("generated-vat", "IVA generado", currentGeneratedVatVerticals, compareGeneratedVatVerticals),
+                    new TaxVerticalComponentSet("client-rteiva", "ReteIVA clientes", currentClientReteIvaVerticals, compareClientReteIvaVerticals))),
             ReteIca = BuildTaxesSection(
                 "reteica",
                 "Rete ICA",
-                "Calcula el ICA generado del periodo y descuenta lo retenido por clientes.",
+                "Calcula el total del periodo y lo reparte por vertical con ICA generado menos ICA retenido por clientes.",
                 new[]
                 {
+                    BuildBillingKpi("ica-net", "Total del periodo", "ICA generado menos ICA retenido por clientes.", currentIcaTotal, compareIcaTotal, "currency", "", ""),
                     BuildBillingKpi("generated-ica", "ICA del periodo", "Formula: (Total factura - IVA) x 0.0069 para la facturacion emitida.", currentIcaPeriodValue, compareIcaPeriodValue, "currency", "", ""),
-                    BuildBillingKpi("client-reteica", "ICA retenido clientes", "ICA retenido por clientes sobre pagos del periodo.", currentClientReteIca, compareClientReteIca, "currency", "", ""),
-                    BuildBillingKpi("ica-net", "Total del periodo", "ICA generado menos ICA retenido por clientes.", currentIcaTotal, compareIcaTotal, "currency", "", "")
-                }),
+                    BuildBillingKpi("client-reteica", "ICA retenido clientes", "ICA retenido por clientes sobre pagos del periodo.", currentClientReteIca, compareClientReteIca, "currency", "", "")
+                },
+                BuildTaxVerticalSummaries(
+                    "Total del periodo",
+                    currentIcaTotalVerticals,
+                    compareIcaTotalVerticals,
+                    new TaxVerticalComponentSet("generated-ica", "ICA generado", currentIcaGeneratedVerticals, compareIcaGeneratedVerticals),
+                    new TaxVerticalComponentSet("client-reteica", "ICA retenido clientes", currentClientReteIcaVerticals, compareClientReteIcaVerticals))),
             ExpenseDetails = expenseDetails
         };
     }
@@ -1277,16 +1312,84 @@ public sealed partial class DataverseService
         string key,
         string label,
         string description,
-        IReadOnlyList<BillingKpiDto> metrics)
+        IReadOnlyList<BillingKpiDto> metrics,
+        IReadOnlyList<TaxVerticalSummaryDto>? verticalSummaries = null)
     {
         return new TaxesSectionDto
         {
             Key = key,
             Label = label,
             Description = description,
-            Metrics = metrics
+            Metrics = metrics,
+            VerticalSummaries = verticalSummaries ?? Array.Empty<TaxVerticalSummaryDto>()
         };
     }
+
+    private IReadOnlyList<TaxVerticalSummaryDto> BuildTaxVerticalSummaries(
+        string primaryLabel,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) current,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) previous,
+        params TaxVerticalComponentSet[] components)
+    {
+        return new[]
+        {
+            BuildTaxVerticalSummary("cloud", "Cloud", primaryLabel, current.Cloud, previous.Cloud, components),
+            BuildTaxVerticalSummary("copiers", "Copiers", primaryLabel, current.Copiers, previous.Copiers, components)
+        }
+        .Concat(ShouldShowUnassignedTaxVertical(current, previous, components)
+            ? new[] { BuildTaxVerticalSummary("unassigned", "Sin vertical", primaryLabel, current.Unassigned, previous.Unassigned, components) }
+            : Array.Empty<TaxVerticalSummaryDto>())
+        .ToList();
+    }
+
+    private TaxVerticalSummaryDto BuildTaxVerticalSummary(
+        string key,
+        string label,
+        string primaryLabel,
+        decimal currentValue,
+        decimal previousValue,
+        IReadOnlyList<TaxVerticalComponentSet> components)
+    {
+        return new TaxVerticalSummaryDto
+        {
+            Key = key,
+            Label = label,
+            PrimaryLabel = primaryLabel,
+            PrimaryValue = RoundCurrency(currentValue),
+            PreviousPrimaryValue = RoundCurrency(previousValue),
+            GrowthPercent = CalculateGrowthPercent(currentValue, previousValue),
+            Tone = ResolveTrendTone(currentValue, previousValue, lowerIsBetter: false),
+            Components = components
+                .Select(component => new TaxVerticalComponentDto
+                {
+                    Key = component.Key,
+                    Label = component.Label,
+                    Value = GetTaxVerticalAmount(component.Current, key),
+                    PreviousValue = GetTaxVerticalAmount(component.Previous, key)
+                })
+                .ToList()
+        };
+    }
+
+    private static bool ShouldShowUnassignedTaxVertical(
+        (decimal Cloud, decimal Copiers, decimal Unassigned) current,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) previous,
+        IReadOnlyList<TaxVerticalComponentSet> components)
+    {
+        return Math.Abs(current.Unassigned) > 0.01m
+            || Math.Abs(previous.Unassigned) > 0.01m
+            || components.Any(component =>
+                Math.Abs(component.Current.Unassigned) > 0.01m
+                || Math.Abs(component.Previous.Unassigned) > 0.01m);
+    }
+
+    private static decimal GetTaxVerticalAmount((decimal Cloud, decimal Copiers, decimal Unassigned) values, string key) =>
+        key switch
+        {
+            "cloud" => values.Cloud,
+            "copiers" => values.Copiers,
+            _ => values.Unassigned
+        };
 
     private PortfolioKpiDto BuildPortfolioKpi(
         string key,
@@ -1632,10 +1735,11 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private static (decimal Cloud, decimal Copiers) CalculateExpenseRetentionByVertical(IEnumerable<TaxExpenseRow> rows)
+    private static (decimal Cloud, decimal Copiers, decimal Unassigned) CalculateExpenseRetentionByVertical(IEnumerable<TaxExpenseRow> rows)
     {
         decimal cloud = 0m;
         decimal copiers = 0m;
+        decimal unassigned = 0m;
 
         foreach (var row in rows)
         {
@@ -1659,14 +1763,66 @@ public sealed partial class DataverseService
 
             var totalBase = cloudBase + copiersBase;
             if (totalBase <= 0m)
+            {
+                unassigned += row.ReteFuenteValue;
                 continue;
+            }
 
             cloud += row.ReteFuenteValue * (cloudBase / totalBase);
             copiers += row.ReteFuenteValue * (copiersBase / totalBase);
         }
 
-        return (RoundCurrency(cloud), RoundCurrency(copiers));
+        return (RoundCurrency(cloud), RoundCurrency(copiers), RoundCurrency(unassigned));
     }
+
+    private static (decimal Cloud, decimal Copiers, decimal Unassigned) SumBillingCurrencyByVertical(
+        IEnumerable<BillingRecordRow> rows,
+        Func<BillingRecordRow, decimal> selector)
+    {
+        decimal cloud = 0m;
+        decimal copiers = 0m;
+        decimal unassigned = 0m;
+
+        foreach (var row in rows)
+        {
+            var value = selector(row);
+            if (value == 0m)
+                continue;
+
+            switch (row.VerticalOptionValue)
+            {
+                case DashboardVerticalCloudOption:
+                    cloud += value;
+                    break;
+                case DashboardVerticalCopiersOption:
+                    copiers += value;
+                    break;
+                default:
+                    unassigned += value;
+                    break;
+            }
+        }
+
+        return (RoundCurrency(cloud), RoundCurrency(copiers), RoundCurrency(unassigned));
+    }
+
+    private static (decimal Cloud, decimal Copiers, decimal Unassigned) SumTaxVerticalAmounts(
+        (decimal Cloud, decimal Copiers, decimal Unassigned) left,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) right) =>
+        (
+            RoundCurrency(left.Cloud + right.Cloud),
+            RoundCurrency(left.Copiers + right.Copiers),
+            RoundCurrency(left.Unassigned + right.Unassigned)
+        );
+
+    private static (decimal Cloud, decimal Copiers, decimal Unassigned) SubtractTaxVerticalAmounts(
+        (decimal Cloud, decimal Copiers, decimal Unassigned) left,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) right) =>
+        (
+            RoundCurrency(left.Cloud - right.Cloud),
+            RoundCurrency(left.Copiers - right.Copiers),
+            RoundCurrency(left.Unassigned - right.Unassigned)
+        );
 
     private static decimal CalculateAutoFuente(IEnumerable<BillingRecordRow> rows) =>
         SumCurrency(rows, row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate);
@@ -2081,6 +2237,12 @@ public sealed partial class DataverseService
         public decimal CloudValue { get; set; }
         public decimal CopiersValue { get; set; }
     }
+
+    private sealed record TaxVerticalComponentSet(
+        string Key,
+        string Label,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) Current,
+        (decimal Cloud, decimal Copiers, decimal Unassigned) Previous);
 
     private sealed class CopiersBillingRecordRow
     {
