@@ -923,6 +923,15 @@
     font-size: 14px;
 }
 
+.dashboard-table__total td {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    background: #f4f9ff;
+    color: var(--dashboard-ink);
+    font-weight: 700;
+}
+
 .dashboard-copiers-table {
     table-layout: fixed;
 }

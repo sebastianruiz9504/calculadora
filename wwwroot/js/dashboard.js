@@ -103,17 +103,22 @@
     const taxesReteFuenteDescription = document.getElementById("taxesReteFuenteDescription");
     const taxesReteIvaDescription = document.getElementById("taxesReteIvaDescription");
     const taxesReteIcaDescription = document.getElementById("taxesReteIcaDescription");
+    const taxesIncomeTaxDescription = document.getElementById("taxesIncomeTaxDescription");
     const taxesReteFuenteContainer = document.getElementById("taxesReteFuenteContainer");
     const taxesReteIvaContainer = document.getElementById("taxesReteIvaContainer");
     const taxesReteIcaContainer = document.getElementById("taxesReteIcaContainer");
+    const taxesIncomeTaxContainer = document.getElementById("taxesIncomeTaxContainer");
     const taxesReteFuenteCalculationContainer = document.getElementById("taxesReteFuenteCalculationContainer");
     const taxesReteIvaCalculationContainer = document.getElementById("taxesReteIvaCalculationContainer");
     const taxesReteIcaCalculationContainer = document.getElementById("taxesReteIcaCalculationContainer");
+    const taxesIncomeTaxCalculationContainer = document.getElementById("taxesIncomeTaxCalculationContainer");
     const taxesReteFuenteVerticalContainer = document.getElementById("taxesReteFuenteVerticalContainer");
     const taxesReteIvaVerticalContainer = document.getElementById("taxesReteIvaVerticalContainer");
     const taxesReteIcaVerticalContainer = document.getElementById("taxesReteIcaVerticalContainer");
+    const taxesIncomeTaxVerticalContainer = document.getElementById("taxesIncomeTaxVerticalContainer");
     const taxesExpenseBody = document.getElementById("taxesExpenseBody");
     const taxesExpenseResultsCount = document.getElementById("taxesExpenseResultsCount");
+    const taxesRetentionExportButton = document.getElementById("taxesRetentionExportBtn");
 
     const portfolioAsOfLabel = document.getElementById("portfolioAsOfLabel");
     const portfolioFocusLabel = document.getElementById("portfolioFocusLabel");
@@ -148,6 +153,7 @@
     const currentYear = Number(app.dataset.initialYear || new Date().getFullYear());
     const currentPeriod = app.dataset.initialPeriod || "month";
     const currentValue = Number(app.dataset.initialValue || 1);
+    const taxesRetentionsExportUrl = app.dataset.taxesRetentionsExportUrl || "";
 
     const currencyFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -1704,6 +1710,16 @@
         return `${app.dataset.taxesUrl}?${params.toString()}`;
     }
 
+    function buildTaxesRetentionsExportUrl() {
+        const params = new URLSearchParams({
+            year: String(state.year),
+            period: state.period,
+            value: String(state.value)
+        });
+
+        return `${taxesRetentionsExportUrl}?${params.toString()}`;
+    }
+
     function buildPortfolioUrl() {
         return app.dataset.portfolioUrl || "";
     }
@@ -1847,14 +1863,16 @@
             <article class="dashboard-kpi dashboard-kpi--${escapeHtml(kpi.tone || "neutral")}">
                 <div class="dashboard-kpi__header">
                     <span class="dashboard-kpi__label">${escapeHtml(kpi.label)}</span>
-                    <span class="dashboard-kpi__delta">${escapeHtml(formatGrowth(kpi.growthPercent))}</span>
+                    ${kpi.showComparison === false ? "" : `<span class="dashboard-kpi__delta">${escapeHtml(formatGrowth(kpi.growthPercent))}</span>`}
                 </div>
                 <strong class="dashboard-kpi__value">${escapeHtml(formatMetric(kpi.value, kpi.valueFormat))}</strong>
                 <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
-                <div class="dashboard-kpi__footer">
-                    <span>${escapeHtml(String(compareYear || ""))}</span>
-                    <strong>${escapeHtml(formatMetric(kpi.previousValue, kpi.valueFormat))}</strong>
-                </div>
+                ${kpi.showComparison === false ? "" : `
+                    <div class="dashboard-kpi__footer">
+                        <span>${escapeHtml(String(compareYear || ""))}</span>
+                        <strong>${escapeHtml(formatMetric(kpi.previousValue, kpi.valueFormat))}</strong>
+                    </div>
+                `}
                 ${kpi.secondaryLabel || kpi.secondaryValue ? `
                     <div class="dashboard-kpi__secondary">
                         <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
@@ -2093,7 +2111,12 @@
 
     function renderTaxesSection(descriptionElement, container, calculationContainer, verticalContainer, section, compareYear) {
         if (descriptionElement) {
-            descriptionElement.textContent = section?.description || "";
+            const periodText = section?.dateRangeLabel
+                ? `${section.periodLabel || "Periodo"}: ${section.dateRangeLabel}`
+                : "";
+            descriptionElement.textContent = [section?.description || "", periodText]
+                .filter(Boolean)
+                .join(" ");
         }
 
         renderComparativeKpis(container, Array.isArray(section?.metrics) ? section.metrics : [], compareYear);
@@ -2178,7 +2201,7 @@
                 <article class="dashboard-tax-vertical-card dashboard-tax-vertical-card--${escapeHtml(item.tone || "neutral")}">
                     <div class="dashboard-tax-vertical-card__header">
                         <span class="dashboard-tax-vertical-card__label">${escapeHtml(item.label)}</span>
-                        <span class="dashboard-growth ${growthClass}">${escapeHtml(formatGrowth(item.growthPercent))}</span>
+                        ${item.showComparison === false ? "" : `<span class="dashboard-growth ${growthClass}">${escapeHtml(formatGrowth(item.growthPercent))}</span>`}
                     </div>
                     <span class="dashboard-tax-vertical-card__primary-label">${escapeHtml(item.primaryLabel || "Total")}</span>
                     <strong class="dashboard-tax-vertical-card__value">${escapeHtml(formatMetric(item.primaryValue, "currency"))}</strong>
@@ -2190,17 +2213,21 @@
                             </div>
                         `).join("")}
                     </div>
-                    <div class="dashboard-tax-vertical-card__footer">
-                        <span>${escapeHtml(String(compareYear || ""))}</span>
-                        <strong>${escapeHtml(formatMetric(item.previousPrimaryValue, "currency"))}</strong>
-                    </div>
+                    ${item.showComparison === false ? "" : `
+                        <div class="dashboard-tax-vertical-card__footer">
+                            <span>${escapeHtml(String(compareYear || ""))}</span>
+                            <strong>${escapeHtml(formatMetric(item.previousPrimaryValue, "currency"))}</strong>
+                        </div>
+                    `}
                 </article>
             `;
         }).join("");
     }
 
     function renderTaxesExpenseTable(dashboard) {
-        const rows = Array.isArray(dashboard?.expenseDetails) ? dashboard.expenseDetails : [];
+        const rows = Array.isArray(dashboard?.reteFuente?.retentionDetails)
+            ? dashboard.reteFuente.retentionDetails
+            : Array.isArray(dashboard?.expenseDetails) ? dashboard.expenseDetails : [];
         if (taxesExpenseResultsCount) {
             taxesExpenseResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} registros`;
         }
@@ -2209,19 +2236,33 @@
             return;
         }
 
+        const totalPayment = rows.reduce((sum, row) => sum + Number(row.paymentValue || 0), 0);
+        const totalReteFuente = rows.reduce((sum, row) => sum + Number(row.reteFuenteValue || 0), 0);
+        const totalCloud = rows.reduce((sum, row) => sum + Number(row.cloudValue || 0), 0);
+        const totalCopiers = rows.reduce((sum, row) => sum + Number(row.copiersValue || 0), 0);
+
         taxesExpenseBody.innerHTML = rows.length
-            ? rows.map(row => `
+            ? `${rows.map(row => `
                 <tr>
                     <td>${escapeHtml(row.paymentDateDisplay)}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.reteFuenteValue || 0)))}</td>
+                    <td>${escapeHtml(row.personTypeLabel || "Sin clasificar")}</td>
                     <td>${escapeHtml(row.recipientName)}</td>
                     <td>${escapeHtml(row.recipientNit)}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.cloudValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.copiersValue || 0)))}</td>
                 </tr>
-            `).join("")
-            : '<tr><td colspan="7" class="dashboard-table__empty">No hay gastos con retefuente en este periodo.</td></tr>';
+            `).join("")}
+                <tr class="dashboard-table__total">
+                    <td>Total</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalPayment))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalReteFuente))}</td>
+                    <td colspan="3">${escapeHtml(numberFormatter.format(rows.length))} registros</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalCloud))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalCopiers))}</td>
+                </tr>`
+            : '<tr><td colspan="8" class="dashboard-table__empty">No hay retenciones de retefuente para este mes.</td></tr>';
     }
 
     function renderCopiersTable(dashboard) {
@@ -3021,8 +3062,9 @@
             const dashboard = await fetchJson(buildTaxesUrl());
             updateTaxesContext(dashboard);
             renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, taxesReteFuenteCalculationContainer, taxesReteFuenteVerticalContainer, dashboard?.reteFuente, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, taxesReteIvaCalculationContainer, taxesReteIvaVerticalContainer, dashboard?.reteIva, dashboard?.compareYear);
             renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, taxesReteIcaCalculationContainer, taxesReteIcaVerticalContainer, dashboard?.reteIca, dashboard?.compareYear);
+            renderTaxesSection(taxesIncomeTaxDescription, taxesIncomeTaxContainer, taxesIncomeTaxCalculationContainer, taxesIncomeTaxVerticalContainer, dashboard?.incomeTax, dashboard?.compareYear);
+            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, taxesReteIvaCalculationContainer, taxesReteIvaVerticalContainer, dashboard?.reteIva, dashboard?.compareYear);
             renderTaxesExpenseTable(dashboard);
             setStatus(taxesStatusBanner, "", "");
         } catch (error) {
@@ -3249,6 +3291,14 @@
     });
 
     refreshButton?.addEventListener("click", loadActivePeriodTab);
+    taxesRetentionExportButton?.addEventListener("click", () => {
+        if (!taxesRetentionsExportUrl) {
+            setStatus(taxesStatusBanner, "error", "No hay una URL configurada para descargar el detalle.");
+            return;
+        }
+
+        window.location.href = buildTaxesRetentionsExportUrl();
+    });
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
     copiersRefreshButton?.addEventListener("click", loadCopiers);
     copiersEquipmentRefreshButton?.addEventListener("click", () => {

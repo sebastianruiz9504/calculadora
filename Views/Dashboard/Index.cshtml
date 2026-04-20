@@ -20,6 +20,7 @@
      data-copiers-client-search-url="@Url.Action("CopiersClientSearch", "Dashboard")"
      data-copiers-product-search-url="@Url.Action("CopiersProductSearch", "Dashboard")"
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
+     data-taxes-retentions-export-url="@Url.Action("TaxesRetentionsExport", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
      data-pnl-detail-url="@Url.Action("PnlDetail", "Dashboard")"
@@ -98,8 +99,11 @@
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Retefuente</h2>
+                        <h2 class="dashboard-panel__title">Impuesto de Retefuente mensual</h2>
                         <p class="dashboard-panel__description" id="taxesReteFuenteDescription"></p>
+                    </div>
+                    <div class="dashboard-panel__actions">
+                        <button type="button" class="btn btn-outline-primary" id="taxesRetentionExportBtn">Descargar Excel</button>
                     </div>
                 </div>
                 <div class="dashboard-metric-grid" id="taxesReteFuenteContainer"></div>
@@ -121,6 +125,7 @@
                                 <th>Fecha pago</th>
                                 <th class="text-end">Valor pago</th>
                                 <th class="text-end">Retefuente</th>
+                                <th>Tipo persona</th>
                                 <th>Receptor</th>
                                 <th>NIT receptor</th>
                                 <th class="text-end">Cloud</th>
@@ -136,26 +141,7 @@
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Rete IVA</h2>
-                        <p class="dashboard-panel__description" id="taxesReteIvaDescription"></p>
-                    </div>
-                </div>
-                <div class="dashboard-metric-grid" id="taxesReteIvaContainer"></div>
-                <div class="dashboard-tax-calculation-grid" id="taxesReteIvaCalculationContainer"></div>
-                <div class="dashboard-tax-verticals">
-                    <div class="dashboard-tax-verticals__header">
-                        <span>Por vertical</span>
-                        <strong>IVA a pagar del periodo</strong>
-                    </div>
-                    <div class="dashboard-tax-vertical-grid" id="taxesReteIvaVerticalContainer"></div>
-                </div>
-            </article>
-
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Rete ICA</h2>
+                        <h2 class="dashboard-panel__title">Impuesto Rete ICA bimensual</h2>
                         <p class="dashboard-panel__description" id="taxesReteIcaDescription"></p>
                     </div>
                 </div>
@@ -164,9 +150,47 @@
                 <div class="dashboard-tax-verticals">
                     <div class="dashboard-tax-verticals__header">
                         <span>Por vertical</span>
-                        <strong>Total del periodo</strong>
+                        <strong>Total facturado antes de IVA x 0,0069</strong>
                     </div>
                     <div class="dashboard-tax-vertical-grid" id="taxesReteIcaVerticalContainer"></div>
+                </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Impuestos</div>
+                        <h2 class="dashboard-panel__title">Impuesto Declaraci&oacute;n de renta</h2>
+                        <p class="dashboard-panel__description" id="taxesIncomeTaxDescription"></p>
+                    </div>
+                </div>
+                <div class="dashboard-metric-grid" id="taxesIncomeTaxContainer"></div>
+                <div class="dashboard-tax-calculation-grid" id="taxesIncomeTaxCalculationContainer"></div>
+                <div class="dashboard-tax-verticals">
+                    <div class="dashboard-tax-verticals__header">
+                        <span>Por vertical</span>
+                        <strong>Retenciones hechas en pagos de clientes</strong>
+                    </div>
+                    <div class="dashboard-tax-vertical-grid" id="taxesIncomeTaxVerticalContainer"></div>
+                </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Impuestos</div>
+                        <h2 class="dashboard-panel__title">Impuesto IVA cuatrimestral</h2>
+                        <p class="dashboard-panel__description" id="taxesReteIvaDescription"></p>
+                    </div>
+                </div>
+                <div class="dashboard-metric-grid" id="taxesReteIvaContainer"></div>
+                <div class="dashboard-tax-calculation-grid" id="taxesReteIvaCalculationContainer"></div>
+                <div class="dashboard-tax-verticals">
+                    <div class="dashboard-tax-verticals__header">
+                        <span>Por vertical</span>
+                        <strong>Total IVA - reteIVA a favor</strong>
+                    </div>
+                    <div class="dashboard-tax-vertical-grid" id="taxesReteIvaVerticalContainer"></div>
                 </div>
             </article>
         </section>

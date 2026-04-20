@@ -3,6 +3,7 @@ using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 
@@ -253,6 +254,93 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de impuestos.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> TaxesRetentionsExport([FromQuery] int? year, [FromQuery] string? period, [FromQuery] int? value, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(
+                year ?? today.Year,
+                BillingPeriodKindExtensions.ParseOrDefault(period),
+                value,
+                ct);
+
+            var rows = dashboard.ReteFuente.RetentionDetails;
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Retenciones");
+
+            worksheet.Cell(1, 1).Value = "Detalle retenciones retefuente";
+            worksheet.Cell(2, 1).Value = dashboard.ReteFuente.PeriodLabel;
+            worksheet.Cell(2, 2).Value = dashboard.ReteFuente.DateRangeLabel;
+
+            var headers = new[]
+            {
+                "Fecha pago",
+                "Valor pago",
+                "Retefuente",
+                "Tipo persona",
+                "Receptor",
+                "NIT receptor",
+                "Cloud",
+                "Copiers"
+            };
+
+            for (var index = 0; index < headers.Length; index++)
+            {
+                worksheet.Cell(4, index + 1).Value = headers[index];
+            }
+
+            var rowIndex = 5;
+            foreach (var row in rows)
+            {
+                worksheet.Cell(rowIndex, 1).Value = row.PaymentDateDisplay;
+                worksheet.Cell(rowIndex, 2).Value = row.PaymentValue;
+                worksheet.Cell(rowIndex, 3).Value = row.ReteFuenteValue;
+                worksheet.Cell(rowIndex, 4).Value = row.PersonTypeLabel;
+                worksheet.Cell(rowIndex, 5).Value = row.RecipientName;
+                worksheet.Cell(rowIndex, 6).Value = row.RecipientNit;
+                worksheet.Cell(rowIndex, 7).Value = row.CloudValue;
+                worksheet.Cell(rowIndex, 8).Value = row.CopiersValue;
+                rowIndex++;
+            }
+
+            worksheet.Cell(rowIndex, 1).Value = "Total";
+            worksheet.Cell(rowIndex, 2).Value = rows.Sum(static row => row.PaymentValue);
+            worksheet.Cell(rowIndex, 3).Value = rows.Sum(static row => row.ReteFuenteValue);
+            worksheet.Cell(rowIndex, 4).Value = $"{rows.Count:N0} registros";
+            worksheet.Cell(rowIndex, 7).Value = rows.Sum(static row => row.CloudValue);
+            worksheet.Cell(rowIndex, 8).Value = rows.Sum(static row => row.CopiersValue);
+
+            var usedRange = worksheet.Range(1, 1, rowIndex, headers.Length);
+            usedRange.Style.Font.FontName = "Aptos";
+            worksheet.Range(4, 1, 4, headers.Length).Style.Font.Bold = true;
+            worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Font.Bold = true;
+            worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+            worksheet.Range(5, 2, rowIndex, 3).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Range(5, 7, rowIndex, 8).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var fileName = $"retenciones-retefuente-{dashboard.Year}-{dashboard.ReteFuente.PeriodLabel}.xlsx";
+
+            return File(
+                stream.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar el detalle de retenciones.");
         }
     }
 

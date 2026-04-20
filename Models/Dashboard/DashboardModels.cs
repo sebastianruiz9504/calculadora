@@ -277,6 +277,7 @@ public sealed class TaxesDashboardDto
     public TaxesSectionDto ReteFuente { get; set; } = new();
     public TaxesSectionDto ReteIva { get; set; } = new();
     public TaxesSectionDto ReteIca { get; set; } = new();
+    public TaxesSectionDto IncomeTax { get; set; } = new();
     public IReadOnlyList<TaxExpenseDetailDto> ExpenseDetails { get; set; } = Array.Empty<TaxExpenseDetailDto>();
 }
 
@@ -285,9 +286,12 @@ public sealed class TaxesSectionDto
     public string Key { get; set; } = "";
     public string Label { get; set; } = "";
     public string Description { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public string DateRangeLabel { get; set; } = "";
     public IReadOnlyList<BillingKpiDto> Metrics { get; set; } = Array.Empty<BillingKpiDto>();
     public IReadOnlyList<TaxCalculationDetailDto> CalculationDetails { get; set; } = Array.Empty<TaxCalculationDetailDto>();
     public IReadOnlyList<TaxVerticalSummaryDto> VerticalSummaries { get; set; } = Array.Empty<TaxVerticalSummaryDto>();
+    public IReadOnlyList<TaxExpenseDetailDto> RetentionDetails { get; set; } = Array.Empty<TaxExpenseDetailDto>();
 }
 
 public sealed class TaxCalculationDetailDto
@@ -321,6 +325,7 @@ public sealed class TaxVerticalSummaryDto
     public decimal PreviousPrimaryValue { get; set; }
     public decimal? GrowthPercent { get; set; }
     public string Tone { get; set; } = "neutral";
+    public bool ShowComparison { get; set; } = true;
     public IReadOnlyList<TaxVerticalComponentDto> Components { get; set; } = Array.Empty<TaxVerticalComponentDto>();
 }
 
@@ -337,6 +342,7 @@ public sealed class TaxExpenseDetailDto
     public string PaymentDateDisplay { get; set; } = "";
     public decimal PaymentValue { get; set; }
     public decimal ReteFuenteValue { get; set; }
+    public string PersonTypeLabel { get; set; } = "";
     public string RecipientName { get; set; } = "";
     public string RecipientNit { get; set; } = "";
     public decimal CloudValue { get; set; }
@@ -364,6 +370,7 @@ public sealed class BillingKpiDto
     public decimal? GrowthPercent { get; set; }
     public string ValueFormat { get; set; } = "currency";
     public string Tone { get; set; } = "neutral";
+    public bool ShowComparison { get; set; } = true;
     public string SecondaryLabel { get; set; } = "";
     public string SecondaryValue { get; set; } = "";
     public IReadOnlyList<BillingKpiBreakdownDto> Breakdowns { get; set; } = Array.Empty<BillingKpiBreakdownDto>();
