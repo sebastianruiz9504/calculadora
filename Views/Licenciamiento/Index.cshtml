@@ -1,0 +1,200 @@
+@model CotizadorInterno.Web.Models.Licenciamiento.LicenciamientoPageViewModel
+@{
+    ViewData["Title"] = "Licenciamiento";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/licenciamiento.css" asp-append-version="true" />
+}
+
+<div class="lic-shell"
+     id="licenciamientoApp"
+     data-load-url="@Url.Action("Data", "Licenciamiento")"
+     data-preview-url="@Url.Action("Preview", "Licenciamiento")"
+     data-import-url="@Url.Action("Import", "Licenciamiento")"
+     data-adjust-trm-url="@Url.Action("AdjustTrm", "Licenciamiento")"
+     data-update-contract-url="@Url.Action("UpdateContractType", "Licenciamiento")">
+    <section class="lic-hero">
+        <div>
+            <div class="lic-kicker">Gerencia</div>
+            <h1 class="lic-title">Licenciamiento</h1>
+            <p class="lic-subtitle">Consumo Intcomex mensual en cr07a_consumointcomex.</p>
+        </div>
+        <div class="lic-user-pill">
+            <span class="lic-user-pill__label">Usuario</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <div id="licStatus" class="lic-status" role="status" aria-live="polite"></div>
+
+    <section class="lic-panel">
+        <div class="lic-panel__header">
+            <div>
+                <div class="lic-kicker">Dataverse</div>
+                <h2 class="lic-section-title">Consumos cargados</h2>
+            </div>
+            <div class="lic-panel__actions">
+                <span class="lic-counter" id="licSelectedCount">0 seleccionados</span>
+                <button type="button" class="btn btn-outline-secondary" id="licRefreshBtn">Actualizar</button>
+                <button type="button" class="btn btn-outline-secondary" id="licContractBtn">Ajustar tipo de contrato</button>
+                <button type="button" class="btn btn-outline-secondary" id="licTrmBtn">Ajustar TRM</button>
+                <button type="button" class="btn btn-primary" id="licNewBtn">Nuevo ingreso</button>
+            </div>
+        </div>
+
+        <div class="lic-kpis">
+            <div class="lic-kpi">
+                <span>Registros</span>
+                <strong id="licTotalCount">0</strong>
+            </div>
+            <div class="lic-kpi">
+                <span>Total USD</span>
+                <strong id="licTotalUsd">USD 0</strong>
+            </div>
+            <div class="lic-kpi">
+                <span>Total COP</span>
+                <strong id="licTotalCop">$0</strong>
+            </div>
+        </div>
+
+        <div class="lic-table-wrap">
+            <table class="table align-middle lic-table">
+                <thead>
+                    <tr>
+                        <th class="lic-check-cell">
+                            <input class="form-check-input" type="checkbox" id="licSelectAll" aria-label="Seleccionar todos" />
+                        </th>
+                        <th>Cliente</th>
+                        <th>Cuenta</th>
+                        <th>Vendor</th>
+                        <th>Producto</th>
+                        <th>Factura</th>
+                        <th class="text-end">USD</th>
+                        <th class="text-end">TRM</th>
+                        <th class="text-end">COP</th>
+                        <th>Tipo</th>
+                    </tr>
+                </thead>
+                <tbody id="licRowsBody"></tbody>
+            </table>
+        </div>
+        <div class="lic-empty" id="licEmpty" hidden>No hay consumos cargados.</div>
+    </section>
+</div>
+
+<div class="lic-modal" id="licUploadModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="licUploadTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Nuevo ingreso</div>
+                <h2 class="lic-modal__title" id="licUploadTitle">Excel de consumo</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-close>Cerrar</button>
+        </div>
+        <div id="licUploadStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licUploadForm">
+            <label class="lic-field">
+                <span>Archivo</span>
+                <input class="form-control" id="licExcelFile" type="file" accept=".xlsx,.xlsm" />
+            </label>
+
+            <div class="lic-preview-summary" id="licPreviewSummary" hidden>
+                <div>
+                    <span>Filas</span>
+                    <strong id="licPreviewRowsCount">0</strong>
+                </div>
+                <div>
+                    <span>Validas</span>
+                    <strong id="licPreviewValidCount">0</strong>
+                </div>
+                <div>
+                    <span>Total USD</span>
+                    <strong id="licPreviewTotalUsd">USD 0</strong>
+                </div>
+            </div>
+
+            <div class="lic-table-wrap lic-table-wrap--preview" id="licPreviewWrap" hidden>
+                <table class="table align-middle lic-table lic-table--preview">
+                    <thead>
+                        <tr>
+                            <th>Fila</th>
+                            <th>Cliente</th>
+                            <th>Cuenta</th>
+                            <th>Vendor</th>
+                            <th>Producto</th>
+                            <th>Factura</th>
+                            <th class="text-end">USD</th>
+                            <th>Tipo</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="licPreviewBody"></tbody>
+                </table>
+            </div>
+
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-close>Cancelar</button>
+                <button type="submit" class="btn btn-outline-primary" id="licPreviewBtn">Vista previa</button>
+                <button type="button" class="btn btn-primary" id="licImportBtn" disabled>Procesar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licTrmModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-trm-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="licTrmTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">TRM</div>
+                <h2 class="lic-modal__title" id="licTrmTitle">Ajustar periodo</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-trm-close>Cerrar</button>
+        </div>
+        <div id="licTrmStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licTrmForm">
+            <label class="lic-field">
+                <span>Factura</span>
+                <select class="form-select" id="licFacturaSelect"></select>
+            </label>
+            <label class="lic-field">
+                <span>TRM</span>
+                <input class="form-control" id="licTrmInput" type="number" min="0.01" step="0.01" inputmode="decimal" />
+            </label>
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-trm-close>Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="licTrmSaveBtn">Calcular</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licContractModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-contract-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="licContractTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Tipo de contrato</div>
+                <h2 class="lic-modal__title" id="licContractTitle">Actualizar seleccion</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-contract-close>Cerrar</button>
+        </div>
+        <div id="licContractStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licContractForm">
+            <label class="lic-field">
+                <span>Opcion</span>
+                <select class="form-select" id="licContractSelect"></select>
+            </label>
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-contract-close>Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="licContractSaveBtn">Confirmar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/licenciamiento.js" asp-append-version="true"></script>
+}

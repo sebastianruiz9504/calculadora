@@ -17,7 +17,8 @@ public enum AppModule
     Metricas = 10,
     CuentasCobro = 11,
     Copiers = 12,
-    Inventario = 13
+    Inventario = 13,
+    Licenciamiento = 14
 }
 
 public sealed class AppModuleDefinition
@@ -171,6 +172,16 @@ public static class AppModuleCatalog
         Controller = "Inventario"
     };
 
+    public static readonly AppModuleDefinition Licenciamiento = new()
+    {
+        Key = AppModule.Licenciamiento,
+        Label = "Licenciamiento",
+        Category = "Gerencia",
+        Description = "Carga consumos Intcomex, ajusta TRM y administra tipo de contrato por periodo.",
+        OptionValue = 645250013,
+        Controller = "Licenciamiento"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -178,6 +189,7 @@ public static class AppModuleCatalog
         Puntajes,
         Nomina,
         Metricas,
+        Licenciamiento,
         Rh,
         PortalProveedores,
         CuentasCobro,
@@ -201,7 +213,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Gerencia",
-            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas },
+            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas, Licenciamiento },
             IsDropdown = true
         },
         new AppModuleNavigationGroup
