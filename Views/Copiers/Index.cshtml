@@ -17,6 +17,7 @@
      data-equipment-detail-url="@Url.Action("EquipmentDetail", "Copiers")"
      data-equipment-assignment-url="@Url.Action("EquipmentAssignment", "Copiers")"
      data-supplies-url="@Url.Action("Supplies", "Copiers")"
+     data-save-supply-quantity-url="@Url.Action("SaveSupplyQuantity", "Copiers")"
      data-pending-invoices-url="@Url.Action("PendingSupplierInvoices", "Copiers")"
      data-approve-invoice-url="@Url.Action("ApproveSupplierInvoice", "Copiers")"
      data-deliveries-url="@Url.Action("Deliveries", "Copiers")"
@@ -350,6 +351,45 @@
     </div>
 </div>
 
+<div class="copiers-modal" id="copiersSupplyModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="supply"></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="copiersSupplyModalTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Inventario</div>
+                <h2 class="copiers-modal__title" id="copiersSupplyModalTitle">Editar suministro</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="supply">Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersSupplyModalStatus" role="status" aria-live="polite"></div>
+        <form class="copiers-form" id="copiersSupplyForm">
+            <input type="hidden" id="copiersSupplyRecordId" />
+            <div class="copiers-form__grid copiers-form__grid--single">
+                <label class="copiers-field">
+                    <span>Referencia</span>
+                    <input class="form-control" id="copiersSupplyName" type="text" readonly />
+                </label>
+                <label class="copiers-field">
+                    <span>Cantidad</span>
+                    <input class="form-control" id="copiersSupplyQuantity" type="number" min="0" step="1" />
+                </label>
+                <label class="copiers-field">
+                    <span>Ultima compra</span>
+                    <input class="form-control" id="copiersSupplyLastPurchase" type="text" readonly />
+                </label>
+                <label class="copiers-field">
+                    <span>Estado</span>
+                    <input class="form-control" id="copiersSupplyStatusLabel" type="text" readonly />
+                </label>
+            </div>
+            <div class="copiers-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-copiers-close="supply">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersSupplySaveBtn">Guardar cantidad</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="copiers-modal" id="copiersIngresoModal" hidden>
     <div class="copiers-modal__backdrop" data-copiers-close="ingreso"></div>
     <div class="copiers-modal__dialog copiers-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersIngresoTitle">
@@ -406,6 +446,7 @@
         </div>
         <div class="copiers-status" id="copiersDeliveryModalStatus" role="status" aria-live="polite"></div>
         <form class="copiers-form" id="copiersDeliveryForm">
+            <input type="hidden" id="copiersDeliveryRecordId" />
             <input type="hidden" id="copiersDeliveryClientId" />
             <div class="copiers-form__grid">
                 <label class="copiers-field">

@@ -448,6 +448,10 @@
     gap: 16px;
 }
 
+.copiers-form__grid--single {
+    grid-template-columns: 1fr;
+}
+
 .copiers-field {
     display: grid;
     gap: 8px;

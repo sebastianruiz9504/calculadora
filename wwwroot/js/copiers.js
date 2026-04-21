@@ -13,6 +13,7 @@
         equipmentDetail: app.dataset.equipmentDetailUrl || "",
         equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
         supplies: app.dataset.suppliesUrl || "",
+        saveSupplyQuantity: app.dataset.saveSupplyQuantityUrl || "",
         pendingInvoices: app.dataset.pendingInvoicesUrl || "",
         approveInvoice: app.dataset.approveInvoiceUrl || "",
         deliveries: app.dataset.deliveriesUrl || "",
@@ -33,6 +34,7 @@
     const newMaintenanceBtn = document.getElementById("copiersNewMaintenanceBtn");
     const maintenanceModal = document.getElementById("copiersMaintenanceModal");
     const maintenanceForm = document.getElementById("copiersMaintenanceForm");
+    const maintenanceModalTitle = document.getElementById("copiersMaintenanceModalTitle");
     const maintenanceModalStatus = document.getElementById("copiersMaintenanceModalStatus");
     const maintenanceSaveBtn = document.getElementById("copiersMaintenanceSaveBtn");
     const maintenanceRecordIdInput = document.getElementById("copiersMaintenanceRecordId");
@@ -74,6 +76,15 @@
     const suppliesBody = document.getElementById("copiersSuppliesBody");
     const suppliesCount = document.getElementById("copiersSuppliesCount");
     const suppliesEmpty = document.getElementById("copiersSuppliesEmpty");
+    const supplyModal = document.getElementById("copiersSupplyModal");
+    const supplyForm = document.getElementById("copiersSupplyForm");
+    const supplyModalStatus = document.getElementById("copiersSupplyModalStatus");
+    const supplyRecordIdInput = document.getElementById("copiersSupplyRecordId");
+    const supplyNameInput = document.getElementById("copiersSupplyName");
+    const supplyQuantityInput = document.getElementById("copiersSupplyQuantity");
+    const supplyLastPurchaseInput = document.getElementById("copiersSupplyLastPurchase");
+    const supplyStatusLabelInput = document.getElementById("copiersSupplyStatusLabel");
+    const supplySaveBtn = document.getElementById("copiersSupplySaveBtn");
     const newIngresoBtn = document.getElementById("copiersNewIngresoBtn");
     const ingresoModal = document.getElementById("copiersIngresoModal");
     const ingresoStatus = document.getElementById("copiersIngresoStatus");
@@ -90,8 +101,10 @@
     const deliveriesEmpty = document.getElementById("copiersDeliveriesEmpty");
     const deliveryModal = document.getElementById("copiersDeliveryModal");
     const deliveryForm = document.getElementById("copiersDeliveryForm");
+    const deliveryModalTitle = document.getElementById("copiersDeliveryModalTitle");
     const deliveryModalStatus = document.getElementById("copiersDeliveryModalStatus");
     const deliverySaveBtn = document.getElementById("copiersDeliverySaveBtn");
+    const deliveryRecordIdInput = document.getElementById("copiersDeliveryRecordId");
     const deliveryClientIdInput = document.getElementById("copiersDeliveryClientId");
     const deliveryClientNameInput = document.getElementById("copiersDeliveryClientName");
     const deliveryClientOptions = document.getElementById("copiersDeliveryClientOptions");
@@ -172,6 +185,23 @@
         }
     });
 
+    suppliesBody?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const rowElement = target.closest("[data-supply-id]");
+        if (!(rowElement instanceof HTMLElement)) {
+            return;
+        }
+
+        const row = findById(state.supplies?.records, rowElement.dataset.supplyId);
+        if (row) {
+            openSupplyModal(row);
+        }
+    });
+
     newIngresoBtn?.addEventListener("click", openIngresoModal);
     verifyIngresoBtn?.addEventListener("click", openConfirmIngresoModal);
     confirmIngresoBtn?.addEventListener("click", approveSelectedIngreso);
@@ -191,7 +221,24 @@
         renderPendingInvoices();
     });
 
-    newDeliveryBtn?.addEventListener("click", openDeliveryModal);
+    newDeliveryBtn?.addEventListener("click", () => openDeliveryModal());
+
+    deliveriesBody?.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || target.closest("a")) {
+            return;
+        }
+
+        const rowElement = target.closest("[data-delivery-id]");
+        if (!(rowElement instanceof HTMLElement)) {
+            return;
+        }
+
+        const row = findById(state.deliveries?.records, rowElement.dataset.deliveryId);
+        if (row) {
+            await openDeliveryModal(row);
+        }
+    });
 
     equipmentBody?.addEventListener("click", async (event) => {
         const target = event.target;
@@ -217,6 +264,11 @@
         await saveEquipmentAssignment();
     });
 
+    supplyForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveSupplyQuantity();
+    });
+
     deliveryForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveDelivery();
@@ -233,6 +285,8 @@
             closeModal(maintenanceModal);
         } else if (closeTarget === "equipmentDetail") {
             closeModal(equipmentDetailModal);
+        } else if (closeTarget === "supply") {
+            closeModal(supplyModal);
         } else if (closeTarget === "ingreso") {
             closeModal(ingresoModal);
         } else if (closeTarget === "confirmIngreso") {
@@ -247,7 +301,7 @@
             return;
         }
 
-        [confirmIngresoModal, ingresoModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
+        [confirmIngresoModal, ingresoModal, supplyModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
             if (modal && !modal.hidden) {
                 closeModal(modal);
             }
@@ -549,13 +603,49 @@
         suppliesBody.innerHTML = records.map((row) => {
             const exhausted = Number(row.quantity || 0) <= 0 || Number(row.statusValue || 0) === 645250001;
             return `
-                <tr>
+                <tr class="is-selectable" data-supply-id="${escapeHtml(row.recordId)}" tabindex="0">
                     <td data-label="Referencia">${escapeHtml(row.name)}</td>
                     <td data-label="Cantidad" class="text-end">${numberFormatter.format(Number(row.quantity || 0))}</td>
                     <td data-label="Ultima compra">${escapeHtml(row.lastPurchaseDateDisplay || "")}</td>
                     <td data-label="Estado"><span class="copiers-badge ${exhausted ? "is-danger" : "is-good"}">${escapeHtml(row.statusLabel || "")}</span></td>
                 </tr>`;
         }).join("");
+    }
+
+    function openSupplyModal(row) {
+        supplyRecordIdInput.value = row?.recordId || "";
+        supplyNameInput.value = row?.name || "";
+        supplyQuantityInput.value = formatInputNumber(row?.quantity);
+        supplyLastPurchaseInput.value = row?.lastPurchaseDateDisplay || "";
+        supplyStatusLabelInput.value = row?.statusLabel || "";
+        clearStatus(supplyModalStatus);
+        showModal(supplyModal);
+    }
+
+    async function saveSupplyQuantity() {
+        try {
+            setBusy(true);
+            supplySaveBtn.disabled = true;
+            showStatus(supplyModalStatus, "info", "Guardando cantidad...");
+
+            const result = await fetchJson(urls.saveSupplyQuantity, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    recordId: supplyRecordIdInput.value,
+                    quantity: Number(supplyQuantityInput.value || 0)
+                })
+            });
+
+            closeModal(supplyModal);
+            await loadSupplies();
+            showStatus(statusBanner, "success", result.message || "Cantidad actualizada.");
+        } catch (error) {
+            showStatus(supplyModalStatus, "error", getErrorMessage(error));
+        } finally {
+            supplySaveBtn.disabled = false;
+            setBusy(false);
+        }
     }
 
     async function openIngresoModal() {
@@ -654,7 +744,7 @@
             const completed = Number(row.statusValue || 0) === 645250000;
 
             return `
-                <tr>
+                <tr class="is-selectable" data-delivery-id="${escapeHtml(row.recordId)}" tabindex="0">
                     <td data-label="Cliente">${escapeHtml(row.clientName)}</td>
                     <td data-label="Suministro">${escapeHtml(row.supplyName)}</td>
                     <td data-label="Fecha">${escapeHtml(row.deliveryDateDisplay || "")}</td>
@@ -675,6 +765,7 @@
             await loadEquipment();
         }
 
+        maintenanceModalTitle.textContent = row?.recordId ? "Editar mantenimiento" : "Nuevo mantenimiento";
         maintenanceRecordIdInput.value = row?.recordId || "";
         maintenanceTitleInput.value = row?.title || "";
         maintenanceClientIdInput.value = row?.clientId || "";
@@ -776,7 +867,7 @@
         }
     }
 
-    async function openDeliveryModal() {
+    async function openDeliveryModal(row) {
         if (!state.supplies) {
             await loadSupplies();
         }
@@ -785,21 +876,31 @@
             await loadDeliveries();
         }
 
-        populateDeliveryOptions();
-        deliveryClientIdInput.value = "";
-        deliveryClientNameInput.value = "";
-        deliverySupplySelect.value = "";
-        deliveryDateInput.value = todayValue();
-        deliveryQuantityInput.value = "";
-        deliveryStatusSelect.value = "645250000";
+        populateDeliveryOptions(row?.supplyId || "");
+        deliveryModalTitle.textContent = row?.recordId ? "Editar entrega" : "Nueva entrega";
+        deliveryRecordIdInput.value = row?.recordId || "";
+        deliveryClientIdInput.value = row?.clientId || "";
+        deliveryClientNameInput.value = row?.clientName || "";
+        deliverySupplySelect.value = row?.supplyId || "";
+        deliveryDateInput.value = row?.deliveryDateValue || todayValue();
+        deliveryQuantityInput.value = row?.recordId ? formatInputNumber(row.quantityDelivered) : "";
+        deliveryStatusSelect.value = row?.statusValue ? String(row.statusValue) : "645250000";
         deliveryFileInput.value = "";
         clearStatus(deliveryModalStatus);
         showModal(deliveryModal);
     }
 
-    function populateDeliveryOptions() {
+    function populateDeliveryOptions(selectedSupplyId = "") {
         const supplies = Array.isArray(state.supplies?.records) ? state.supplies.records : [];
-        deliverySupplySelect.innerHTML = `<option value="">Selecciona un suministro</option>` + supplies.map((row) => (
+        const deliveryRecords = Array.isArray(state.deliveries?.records) ? state.deliveries.records : [];
+        const selectedDeliverySupply = selectedSupplyId && !supplies.some((row) => row.recordId === selectedSupplyId)
+            ? deliveryRecords.find((row) => row.supplyId === selectedSupplyId)
+            : null;
+        const rows = selectedDeliverySupply
+            ? [{ recordId: selectedDeliverySupply.supplyId, name: selectedDeliverySupply.supplyName, quantity: 0 }, ...supplies]
+            : supplies;
+
+        deliverySupplySelect.innerHTML = `<option value="">Selecciona un suministro</option>` + rows.map((row) => (
             `<option value="${escapeHtml(row.recordId)}">${escapeHtml(row.name)} (${numberFormatter.format(Number(row.quantity || 0))})</option>`
         )).join("");
 
@@ -820,6 +921,7 @@
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    recordId: deliveryRecordIdInput.value,
                     clientId: deliveryClientIdInput.value,
                     clientName: deliveryClientNameInput.value,
                     supplyId: deliverySupplySelect.value,
@@ -981,6 +1083,15 @@
             return moneyFormatter.format(numeric);
         }
         return numberFormatter.format(numeric);
+    }
+
+    function formatInputNumber(value) {
+        if (value === null || value === undefined || value === "") {
+            return "";
+        }
+
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? String(numeric) : "";
     }
 
     function escapeHtml(value) {

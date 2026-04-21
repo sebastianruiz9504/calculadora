@@ -70,6 +70,18 @@ public sealed class CopiersSupplyRowDto
     public string StatusLabel { get; set; } = "";
 }
 
+public sealed class CopiersSupplyQuantityUpdateRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public decimal Quantity { get; set; }
+}
+
+public sealed class CopiersSupplyQuantityUpdateResultDto
+{
+    public string Message { get; set; } = "";
+    public CopiersSupplyRowDto Supply { get; set; } = new();
+}
+
 public sealed class CopiersSupplierInvoiceBoardDto
 {
     public IReadOnlyList<CopiersSupplierInvoiceRowDto> Records { get; set; } = Array.Empty<CopiersSupplierInvoiceRowDto>();
@@ -126,6 +138,7 @@ public sealed class CopiersDeliveryRowDto
 
 public sealed class CopiersDeliverySaveRequestDto
 {
+    public string RecordId { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string SupplyId { get; set; } = "";

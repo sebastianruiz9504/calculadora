@@ -202,6 +202,27 @@ public sealed class CopiersController : Controller
         }
     }
 
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SaveSupplyQuantity([FromBody] CopiersSupplyQuantityUpdateRequestDto? request, CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes seleccionar un suministro para actualizar."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateCopiersSupplyQuantityAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible actualizar la cantidad del suministro.", ex));
+        }
+    }
+
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> PendingSupplierInvoices(CancellationToken ct)

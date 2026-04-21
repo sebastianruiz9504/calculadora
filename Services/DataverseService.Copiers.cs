@@ -265,6 +265,38 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<CopiersSupplyQuantityUpdateResultDto> UpdateCopiersSupplyQuantityAsync(
+        CopiersSupplyQuantityUpdateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveCopiersSupplyMetadataAsync(httpContext.User, ct);
+        var supplyId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
+        var quantity = RoundCurrency(request.Quantity);
+        if (quantity < 0m)
+            throw new InvalidOperationException("La cantidad del suministro no puede ser negativa.");
+
+        await UpdateCopiersSupplyInventoryAsync(
+            metadata,
+            supplyId,
+            quantity,
+            updateLastPurchaseDate: false,
+            httpContext.User,
+            ct);
+
+        var supply = await GetCopiersSupplyByIdAsync(metadata, supplyId, httpContext.User, ct);
+        return new CopiersSupplyQuantityUpdateResultDto
+        {
+            Message = "Cantidad del suministro actualizada correctamente.",
+            Supply = supply
+        };
+    }
+
     public async Task<IReadOnlyList<CopiersLookupItemDto>> GetCopiersSupplyLookupAsync(
         string? query = null,
         int top = 100,
@@ -384,6 +416,23 @@ public sealed partial class DataverseService
 
         var deliveryMetadata = await ResolveCopiersDeliveryMetadataAsync(httpContext.User, ct);
         var supplyMetadata = await ResolveCopiersSupplyMetadataAsync(httpContext.User, ct);
+        var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
+        var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
+        var currentUser = await GetCurrentUserAsync(ct);
+        CopiersDeliveryRowDto? currentDelivery = null;
+        if (!isCreate)
+        {
+            if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+                throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
+
+            currentDelivery = await GetCopiersDeliveryByIdAsync(
+                deliveryMetadata,
+                normalizedRecordId,
+                currentUser.SystemUserId,
+                httpContext.User,
+                ct);
+        }
+
         var deliveryDate = ParseCopiersRequiredDate(request.DeliveryDateValue, "fecha de entrega");
         var quantity = RoundCurrency(request.QuantityDelivered);
         if (quantity <= 0m)
@@ -391,8 +440,31 @@ public sealed partial class DataverseService
 
         var supplyId = NormalizeGuid(request.SupplyId, nameof(request.SupplyId));
         var supply = await GetCopiersSupplyByIdAsync(supplyMetadata, supplyId, httpContext.User, ct);
-        if (supply.Quantity < quantity)
-            throw new InvalidOperationException($"No hay inventario suficiente. Disponible actual: {supply.Quantity.ToString("N2", CopiersCulture)}.");
+        var previousQuantity = currentDelivery is null ? 0m : RoundCurrency(currentDelivery.QuantityDelivered);
+        var previousSupplyId = NormalizeOptionalGuid(currentDelivery?.SupplyId);
+        var sameSupply = !isCreate
+            && string.Equals(previousSupplyId, supplyId, StringComparison.OrdinalIgnoreCase);
+        CopiersSupplyRowDto? previousSupply = null;
+
+        if (isCreate)
+        {
+            if (supply.Quantity < quantity)
+                throw new InvalidOperationException($"No hay inventario suficiente. Disponible actual: {supply.Quantity.ToString("N2", CopiersCulture)}.");
+        }
+        else if (sameSupply)
+        {
+            var additionalQuantity = RoundCurrency(quantity - previousQuantity);
+            if (additionalQuantity > 0m && supply.Quantity < additionalQuantity)
+                throw new InvalidOperationException($"No hay inventario suficiente. Disponible actual: {supply.Quantity.ToString("N2", CopiersCulture)}.");
+        }
+        else
+        {
+            if (supply.Quantity < quantity)
+                throw new InvalidOperationException($"No hay inventario suficiente. Disponible actual: {supply.Quantity.ToString("N2", CopiersCulture)}.");
+
+            if (!string.IsNullOrWhiteSpace(previousSupplyId))
+                previousSupply = await GetCopiersSupplyByIdAsync(supplyMetadata, previousSupplyId, httpContext.User, ct);
+        }
 
         var clientId = NormalizeOptionalGuid(request.ClientId);
         if (string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(request.ClientName))
@@ -429,25 +501,63 @@ public sealed partial class DataverseService
         payload[$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})";
         payload[$"{supplyNavigationProperty}@odata.bind"] = $"/{supplyMetadata.EntitySetName}({supplyId})";
 
+        var relativeUrl = isCreate
+            ? $"/api/data/v9.2/{deliveryMetadata.EntitySetName}"
+            : $"/api/data/v9.2/{deliveryMetadata.EntitySetName}({normalizedRecordId})";
+
         using var response = await SendDataversePayloadWithRepresentationAsync(
-            $"/api/data/v9.2/{deliveryMetadata.EntitySetName}",
-            "POST",
+            relativeUrl,
+            isCreate ? "POST" : "PATCH",
             payload,
             httpContext.User,
             ct);
         var body = await response.Content.ReadAsStringAsync(ct);
-        var recordId = ExtractRhRecordId(response, body, deliveryMetadata.PrimaryIdField);
+        var recordId = isCreate
+            ? ExtractRhRecordId(response, body, deliveryMetadata.PrimaryIdField)
+            : normalizedRecordId;
 
-        var newSupplyQuantity = RoundCurrency(supply.Quantity - quantity);
-        await UpdateCopiersSupplyInventoryAsync(
-            supplyMetadata,
-            supply.RecordId,
-            newSupplyQuantity,
-            updateLastPurchaseDate: false,
-            httpContext.User,
-            ct);
+        if (isCreate)
+        {
+            await UpdateCopiersSupplyInventoryAsync(
+                supplyMetadata,
+                supply.RecordId,
+                RoundCurrency(supply.Quantity - quantity),
+                updateLastPurchaseDate: false,
+                httpContext.User,
+                ct);
+        }
+        else if (sameSupply)
+        {
+            await UpdateCopiersSupplyInventoryAsync(
+                supplyMetadata,
+                supply.RecordId,
+                RoundCurrency(supply.Quantity + previousQuantity - quantity),
+                updateLastPurchaseDate: false,
+                httpContext.User,
+                ct);
+        }
+        else
+        {
+            if (previousSupply is not null)
+            {
+                await UpdateCopiersSupplyInventoryAsync(
+                    supplyMetadata,
+                    previousSupply.RecordId,
+                    RoundCurrency(previousSupply.Quantity + previousQuantity),
+                    updateLastPurchaseDate: false,
+                    httpContext.User,
+                    ct);
+            }
 
-        var currentUser = await GetCurrentUserAsync(ct);
+            await UpdateCopiersSupplyInventoryAsync(
+                supplyMetadata,
+                supply.RecordId,
+                RoundCurrency(supply.Quantity - quantity),
+                updateLastPurchaseDate: false,
+                httpContext.User,
+                ct);
+        }
+
         var delivery = await GetCopiersDeliveryByIdAsync(
             deliveryMetadata,
             recordId,
@@ -458,7 +568,9 @@ public sealed partial class DataverseService
 
         return new CopiersDeliverySaveResultDto
         {
-            Message = "Entrega registrada y descontada del inventario.",
+            Message = isCreate
+                ? "Entrega registrada y descontada del inventario."
+                : "Entrega actualizada e inventario ajustado correctamente.",
             Record = delivery,
             Supply = updatedSupply
         };
