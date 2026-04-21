@@ -995,11 +995,23 @@
 
     async function uploadFile(baseUrl, idParamName, id, file) {
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", file, toAsciiFileName(file?.name || "archivo"));
         return await fetchJson(`${baseUrl}?${encodeURIComponent(idParamName)}=${encodeURIComponent(id)}`, {
             method: "POST",
             body: form
         });
+    }
+
+    function toAsciiFileName(fileName) {
+        const normalized = String(fileName || "archivo")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+        const ascii = normalized
+            .replace(/[^\x20-\x7E]/g, "")
+            .replace(/["\\/:*?<>|]+/g, "-")
+            .trim();
+
+        return ascii || "archivo";
     }
 
     async function fetchJson(url, options) {

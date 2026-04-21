@@ -1272,12 +1272,12 @@ public sealed partial class DataverseService
     {
         var safeFileName = SanitizeRhFileName(fileName, "archivo");
         ValidateCopiersAttachmentUpload(safeFileName, content);
+        var headerFileName = BuildCopiersUploadHeaderFileName(safeFileName);
 
         using var fileContent = new ByteArrayContent(content);
-        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(
-            string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/octet-stream");
 
-        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(recordId, nameof(recordId))})/{fieldName}/$value";
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(recordId, nameof(recordId))})/{fieldName}";
         using var response = await CallRhDataverseResponseAsync(
             relativeUrl,
             "PATCH",
@@ -1286,8 +1286,8 @@ public sealed partial class DataverseService
             fileContent,
             request =>
             {
-                request.Headers.TryAddWithoutValidation("x-ms-file-name", safeFileName);
                 request.Headers.TryAddWithoutValidation("If-Match", "*");
+                request.Headers.TryAddWithoutValidation("x-ms-file-name", headerFileName);
             });
 
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -1343,6 +1343,26 @@ public sealed partial class DataverseService
         var extension = Path.GetExtension(fileName);
         if (!string.IsNullOrWhiteSpace(extension) && !CopiersAllowedAttachmentExtensions.Contains(extension))
             throw new InvalidOperationException("El tipo de archivo no esta permitido para este adjunto.");
+    }
+
+    private static string BuildCopiersUploadHeaderFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return "archivo";
+
+        var normalized = fileName.Normalize(NormalizationForm.FormKD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (character is >= ' ' and <= '~' and not '"' and not '\\')
+                builder.Append(character);
+        }
+
+        var headerFileName = builder.ToString().Trim();
+        return string.IsNullOrWhiteSpace(headerFileName) ? "archivo" : headerFileName;
     }
 
 }
