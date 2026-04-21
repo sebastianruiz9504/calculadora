@@ -17,6 +17,7 @@ namespace CotizadorInterno.Web.Services;
 public interface IDataverseService
 {
     Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string query, int top = 12, CancellationToken ct = default);
+    Task<ProductLookupItem> EnsureCalculatorProductAsync(ProductCreateInput input, CancellationToken ct = default);
     Task<IReadOnlyList<ClientLookupItem>> SearchClientsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<IReadOnlyList<RenewalDateLookupItem>> SearchRenewalDatesByClientAsync(string clientId, int top = 250, CancellationToken ct = default);
     Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default);

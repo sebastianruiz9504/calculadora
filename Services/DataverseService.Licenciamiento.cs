@@ -129,7 +129,7 @@ public sealed partial class DataverseService
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
         var rows = ParseLicensingWorkbook(fileName ?? "consumo.xlsx", content);
         await ResolvePreviewLookupsAsync(metadata, rows, httpContext.User, ct);
-        ApplyPreviewLookupWarnings(rows);
+        ApplyPreviewLookupWarnings(metadata, rows);
 
         var totalRows = rows.Count;
         var validRows = rows.Count(static row => row.IsValid);
@@ -225,8 +225,8 @@ public sealed partial class DataverseService
             var cop = RoundCurrency(usd * request.Trm);
             var payload = new Dictionary<string, object?>
             {
-                [LicensingTrmField] = request.Trm,
-                [LicensingTotalCopField] = cop
+                [LicensingTrmField] = ConvertLicensingPayloadValue(metadata, LicensingTrmField, request.Trm),
+                [LicensingTotalCopField] = ConvertLicensingPayloadValue(metadata, LicensingTotalCopField, cop)
             };
 
             await CallDataverseSendAsync(
@@ -278,7 +278,7 @@ public sealed partial class DataverseService
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
         var payload = new Dictionary<string, object?>
         {
-            [LicensingContractTypeField] = option.Value
+            [LicensingContractTypeField] = ConvertLicensingPayloadValue(metadata, LicensingContractTypeField, option.Value)
         };
 
         foreach (var recordId in recordIds)
@@ -365,11 +365,11 @@ public sealed partial class DataverseService
             ProductFieldIsLookup = productFieldIsLookup,
             AccountNavigationProperty = accountNavigationProperty,
             ProductNavigationProperty = productNavigationProperty,
-            AccountSearchField = ResolveLicensingSearchField(
+            AccountSearchFields = ResolveLicensingSearchFields(
                 accountAttributes,
                 accountMetadata.PrimaryNameField,
                 LicensingAccountSearchFieldCandidates),
-            ProductSearchField = ResolveLicensingSearchField(
+            ProductSearchFields = ResolveLicensingSearchFields(
                 productAttributes,
                 LicensingProductDescriptionLookupField,
                 LicensingProductSearchFieldCandidates)
@@ -432,7 +432,7 @@ public sealed partial class DataverseService
         return fallback;
     }
 
-    private static string ResolveLicensingSearchField(
+    private static IReadOnlyList<string> ResolveLicensingSearchFields(
         IReadOnlyDictionary<string, string> attributeTypes,
         string preferredField,
         IEnumerable<string> candidates)
@@ -445,9 +445,15 @@ public sealed partial class DataverseService
             .ToList();
 
         if (attributeTypes.Count == 0)
-            return orderedCandidates.First();
+            return orderedCandidates;
 
-        return orderedCandidates.FirstOrDefault(attributeTypes.ContainsKey) ?? orderedCandidates.First();
+        var existingCandidates = orderedCandidates
+            .Where(attributeTypes.ContainsKey)
+            .ToList();
+
+        return existingCandidates.Count > 0
+            ? existingCandidates
+            : orderedCandidates;
     }
 
     private static IReadOnlyList<LicenciamientoContractTypeOptionDto> GetLicensingContractTypeOptions() =>
@@ -695,7 +701,7 @@ public sealed partial class DataverseService
             ? await ResolveLicensingLookupMapAsync(
                 rows.Select(static row => row.CompanyAccountId),
                 metadata.AccountMetadata,
-                metadata.AccountSearchField,
+                metadata.AccountSearchFields,
                 metadata.AccountAttributeTypes,
                 user,
                 ct)
@@ -704,7 +710,7 @@ public sealed partial class DataverseService
             ? await ResolveLicensingLookupMapAsync(
                 rows.Select(static row => row.ProductDescription),
                 metadata.ProductMetadata,
-                metadata.ProductSearchField,
+                metadata.ProductSearchFields,
                 metadata.ProductAttributeTypes,
                 user,
                 ct)
@@ -730,22 +736,32 @@ public sealed partial class DataverseService
         }
     }
 
-    private static void ApplyPreviewLookupWarnings(IEnumerable<LicenciamientoPreviewRowDto> rows)
+    private static void ApplyPreviewLookupWarnings(
+        LicensingMetadata metadata,
+        IEnumerable<LicenciamientoPreviewRowDto> rows)
     {
         foreach (var row in rows)
         {
-            if (!string.IsNullOrWhiteSpace(row.CompanyAccountId) && !row.CompanyAccountLookupFound)
+            if (metadata.AccountFieldIsLookup
+                && !string.IsNullOrWhiteSpace(row.CompanyAccountId)
+                && !row.CompanyAccountLookupFound)
+            {
                 row.Warnings.Add("CompanyAccountid no se encontro en el lookup.");
+            }
 
-            if (!string.IsNullOrWhiteSpace(row.ProductDescription) && !row.ProductLookupFound)
+            if (metadata.ProductFieldIsLookup
+                && !string.IsNullOrWhiteSpace(row.ProductDescription)
+                && !row.ProductLookupFound)
+            {
                 row.Warnings.Add("PriceableItem description no se encontro en el lookup.");
+            }
         }
     }
 
     private async Task<Dictionary<string, LicensingLookupResolution>> ResolveLicensingLookupMapAsync(
         IEnumerable<string> rawValues,
         RhEntityMetadata targetMetadata,
-        string searchField,
+        IReadOnlyList<string> searchFields,
         IReadOnlyDictionary<string, string> attributeTypes,
         ClaimsPrincipal user,
         CancellationToken ct)
@@ -759,7 +775,7 @@ public sealed partial class DataverseService
 
         foreach (var value in values)
         {
-            var lookup = await FindLicensingLookupAsync(targetMetadata, searchField, value, attributeTypes, user, ct);
+            var lookup = await FindLicensingLookupAsync(targetMetadata, searchFields, value, attributeTypes, user, ct);
             if (lookup is not null)
                 result[value] = lookup;
         }
@@ -769,49 +785,78 @@ public sealed partial class DataverseService
 
     private async Task<LicensingLookupResolution?> FindLicensingLookupAsync(
         RhEntityMetadata targetMetadata,
+        IReadOnlyList<string> searchFields,
+        string value,
+        IReadOnlyDictionary<string, string> attributeTypes,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        foreach (var searchField in searchFields.Where(static field => !string.IsNullOrWhiteSpace(field)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var lookup = await TryFindLicensingLookupAsync(
+                    targetMetadata,
+                    searchField,
+                    value,
+                    attributeTypes,
+                    user,
+                    ct);
+
+                if (lookup is not null)
+                    return lookup;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible resolver lookup de licenciamiento en {EntitySetName}.{SearchField} para {Value}.",
+                    targetMetadata.EntitySetName,
+                    searchField,
+                    value);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<LicensingLookupResolution?> TryFindLicensingLookupAsync(
+        RhEntityMetadata targetMetadata,
         string searchField,
         string value,
         IReadOnlyDictionary<string, string> attributeTypes,
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        try
-        {
-            attributeTypes.TryGetValue(searchField, out var searchFieldType);
-            var select = string.Join(",",
-                new[] { targetMetadata.PrimaryIdField, targetMetadata.PrimaryNameField, searchField }
-                    .Where(static field => !string.IsNullOrWhiteSpace(field))
-                    .Distinct(StringComparer.OrdinalIgnoreCase));
-            var filter = BuildLicensingLookupFilter(searchField, value, searchFieldType);
-            var relativeUrl = $"/api/data/v9.2/{targetMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
-            var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
-            var item = items.FirstOrDefault();
-            if (item.ValueKind == JsonValueKind.Undefined)
-                return null;
+        attributeTypes.TryGetValue(searchField, out var searchFieldType);
+        var select = string.Join(",",
+            new[] { targetMetadata.PrimaryIdField, targetMetadata.PrimaryNameField, searchField }
+                .Where(static field => !string.IsNullOrWhiteSpace(field))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
 
-            var id = ReadString(item, targetMetadata.PrimaryIdField);
+        foreach (var filter in BuildLicensingLookupFilters(searchField, value, searchFieldType))
+        {
+            var relativeUrl = $"/api/data/v9.2/{targetMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter.Expression)}&$top={filter.Top}";
+            var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            var item = ChooseLicensingLookupItem(items, searchField, value);
+            if (item is null)
+                continue;
+
+            var id = ReadString(item.Value, targetMetadata.PrimaryIdField);
             if (string.IsNullOrWhiteSpace(id))
-                return null;
+                continue;
 
             return new LicensingLookupResolution
             {
                 Id = id,
                 Label = FirstNonEmpty(
-                    ReadString(item, targetMetadata.PrimaryNameField),
-                    ReadString(item, searchField),
+                    ReadString(item.Value, targetMetadata.PrimaryNameField),
+                    ReadString(item.Value, searchField),
                     value)
             };
         }
-        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
-        {
-            _logger.LogWarning(
-                ex,
-                "No fue posible resolver lookup de licenciamiento en {EntitySetName}.{SearchField} para {Value}.",
-                targetMetadata.EntitySetName,
-                searchField,
-                value);
-            return null;
-        }
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildLicensingCreatePayload(
@@ -820,15 +865,15 @@ public sealed partial class DataverseService
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            [LicensingCustomerNameField] = row.NombreCliente,
-            [LicensingVendorField] = row.Vendor,
-            [LicensingDaysField] = row.Days,
-            [LicensingBillingIntervalField] = row.BillingInterval,
-            [LicensingInvoiceDateField] = row.FacturaValue,
-            [LicensingTotalUsdField] = row.ValorTotalUsd,
-            [LicensingUnitUsdField] = row.UnidadUsd,
-            [LicensingQuantityField] = row.Cantidad,
-            [LicensingContractTypeField] = NormalizeLicensingContractTypeValue(row.ContractTypeValue)
+            [LicensingCustomerNameField] = ConvertLicensingPayloadValue(metadata, LicensingCustomerNameField, row.NombreCliente),
+            [LicensingVendorField] = ConvertLicensingPayloadValue(metadata, LicensingVendorField, row.Vendor),
+            [LicensingDaysField] = ConvertLicensingPayloadValue(metadata, LicensingDaysField, row.Days),
+            [LicensingBillingIntervalField] = ConvertLicensingPayloadValue(metadata, LicensingBillingIntervalField, row.BillingInterval),
+            [LicensingInvoiceDateField] = ConvertLicensingPayloadValue(metadata, LicensingInvoiceDateField, row.FacturaValue),
+            [LicensingTotalUsdField] = ConvertLicensingPayloadValue(metadata, LicensingTotalUsdField, row.ValorTotalUsd),
+            [LicensingUnitUsdField] = ConvertLicensingPayloadValue(metadata, LicensingUnitUsdField, row.UnidadUsd),
+            [LicensingQuantityField] = ConvertLicensingPayloadValue(metadata, LicensingQuantityField, row.Cantidad),
+            [LicensingContractTypeField] = ConvertLicensingPayloadValue(metadata, LicensingContractTypeField, NormalizeLicensingContractTypeValue(row.ContractTypeValue))
         };
 
         if (metadata.AccountFieldIsLookup)
@@ -841,7 +886,7 @@ public sealed partial class DataverseService
         }
         else
         {
-            payload[LicensingAccountLookupField] = row.CompanyAccountId;
+            payload[LicensingAccountLookupField] = ConvertLicensingPayloadValue(metadata, LicensingAccountLookupField, row.CompanyAccountId);
         }
 
         if (metadata.ProductFieldIsLookup)
@@ -854,14 +899,17 @@ public sealed partial class DataverseService
         }
         else
         {
-            payload[LicensingProductLookupField] = row.ProductDescription;
+            payload[LicensingProductLookupField] = ConvertLicensingPayloadValue(metadata, LicensingProductLookupField, row.ProductDescription);
         }
 
         if ((!string.Equals(metadata.BaseMetadata.PrimaryNameField, LicensingAccountLookupField, StringComparison.OrdinalIgnoreCase)
                 || !metadata.AccountFieldIsLookup)
             && !payload.ContainsKey(metadata.BaseMetadata.PrimaryNameField))
         {
-            payload[metadata.BaseMetadata.PrimaryNameField] = BuildLicensingPrimaryName(row);
+            payload[metadata.BaseMetadata.PrimaryNameField] = ConvertLicensingPayloadValue(
+                metadata,
+                metadata.BaseMetadata.PrimaryNameField,
+                BuildLicensingPrimaryName(row));
         }
 
         return payload;
@@ -889,6 +937,100 @@ public sealed partial class DataverseService
         return row;
     }
 
+    private static object? ConvertLicensingPayloadValue(
+        LicensingMetadata metadata,
+        string fieldName,
+        object? value)
+    {
+        if (value is null)
+            return null;
+
+        metadata.ConsumptionAttributeTypes.TryGetValue(fieldName, out var attributeType);
+        if (string.IsNullOrWhiteSpace(attributeType))
+            return value;
+
+        if (IsLicensingTextAttribute(attributeType))
+            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+
+        if (IsLicensingIntegerAttribute(attributeType))
+        {
+            if (value is int intValue)
+                return intValue;
+
+            if (value is long longValue)
+                return checked((int)longValue);
+
+            if (value is decimal decimalValue)
+                return (int)Math.Round(decimalValue, MidpointRounding.AwayFromZero);
+
+            if (int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt))
+                return parsedInt;
+
+            if (TryParseLicensingDecimal(Convert.ToString(value, CultureInfo.InvariantCulture), out var parsedDecimal))
+                return (int)Math.Round(parsedDecimal, MidpointRounding.AwayFromZero);
+
+            return value;
+        }
+
+        if (string.Equals(attributeType, "BigInt", StringComparison.OrdinalIgnoreCase))
+        {
+            if (value is long longValue)
+                return longValue;
+
+            if (value is int intValue)
+                return (long)intValue;
+
+            if (long.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedLong))
+                return parsedLong;
+
+            return value;
+        }
+
+        if (IsLicensingDecimalAttribute(attributeType))
+        {
+            if (value is decimal decimalValue)
+                return decimalValue;
+
+            if (value is int intValue)
+                return (decimal)intValue;
+
+            if (value is long longValue)
+                return (decimal)longValue;
+
+            if (TryParseLicensingDecimal(Convert.ToString(value, CultureInfo.InvariantCulture), out var parsedDecimal))
+                return parsedDecimal;
+
+            return value;
+        }
+
+        if (string.Equals(attributeType, "DateTime", StringComparison.OrdinalIgnoreCase))
+        {
+            if (value is DateOnly dateOnly)
+                return dateOnly.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            var raw = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+            if (TryParseDateOnly(raw, out var parsedDate))
+                return parsedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            return raw;
+        }
+
+        if (string.Equals(attributeType, "Boolean", StringComparison.OrdinalIgnoreCase))
+        {
+            if (value is bool boolValue)
+                return boolValue;
+
+            var raw = Convert.ToString(value, CultureInfo.InvariantCulture);
+            if (bool.TryParse(raw, out var parsedBool))
+                return parsedBool;
+
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt))
+                return parsedInt != 0;
+        }
+
+        return value;
+    }
+
     private static int NormalizeLicensingContractTypeValue(int value)
     {
         var option = ResolveLicensingContractTypeOption(value);
@@ -913,26 +1055,111 @@ public sealed partial class DataverseService
 
     private static string BuildLookupValueProperty(string logicalName) => $"_{logicalName}_value";
 
-    private static string BuildLicensingLookupFilter(string searchField, string value, string? attributeType)
+    private static IReadOnlyList<LicensingLookupFilter> BuildLicensingLookupFilters(
+        string searchField,
+        string value,
+        string? attributeType)
     {
+        var filters = new List<LicensingLookupFilter>();
         if (IsLicensingIntegerAttribute(attributeType)
             && long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integerValue))
         {
-            return $"{searchField} eq {integerValue}";
+            filters.Add(new LicensingLookupFilter($"{searchField} eq {integerValue}", 1));
+            return filters;
         }
 
         if (IsLicensingDecimalAttribute(attributeType)
             && TryParseLicensingDecimal(value, out var decimalValue))
         {
-            return $"{searchField} eq {decimalValue.ToString(CultureInfo.InvariantCulture)}";
+            filters.Add(new LicensingLookupFilter($"{searchField} eq {decimalValue.ToString(CultureInfo.InvariantCulture)}", 1));
+            return filters;
         }
 
-        return $"{searchField} eq '{EscapeOdataLiteral(value)}'";
+        filters.Add(new LicensingLookupFilter($"{searchField} eq '{EscapeOdataLiteral(value)}'", 1));
+
+        if (IsLicensingTextAttribute(attributeType))
+        {
+            foreach (var token in BuildLicensingLookupContainsTokens(value))
+            {
+                filters.Add(new LicensingLookupFilter($"contains({searchField},'{EscapeOdataLiteral(token)}')", 10));
+            }
+        }
+
+        return filters
+            .DistinctBy(static item => item.Expression, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static JsonElement? ChooseLicensingLookupItem(
+        IReadOnlyList<JsonElement> items,
+        string searchField,
+        string requestedValue)
+    {
+        if (items.Count == 0)
+            return null;
+
+        var requestedKey = NormalizeLicensingComparable(requestedValue);
+        foreach (var item in items)
+        {
+            if (string.Equals(
+                    NormalizeLicensingComparable(ReadString(item, searchField)),
+                    requestedKey,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return item;
+            }
+        }
+
+        return items[0];
+    }
+
+    private static IEnumerable<string> BuildLicensingLookupContainsTokens(string value)
+    {
+        var normalized = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            yield break;
+
+        yield return normalized;
+
+        foreach (var maxLength in new[] { 120, 80, 50 })
+        {
+            if (normalized.Length <= maxLength)
+                continue;
+
+            var token = normalized[..maxLength].Trim();
+            if (!string.IsNullOrWhiteSpace(token))
+                yield return token;
+        }
+    }
+
+    private static string NormalizeLicensingComparable(string? value)
+    {
+        var text = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+
+        var builder = new StringBuilder(text.Length);
+        var previousWasSpace = false;
+        foreach (var ch in text)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                if (!previousWasSpace)
+                    builder.Append(' ');
+
+                previousWasSpace = true;
+                continue;
+            }
+
+            builder.Append(char.ToUpperInvariant(ch));
+            previousWasSpace = false;
+        }
+
+        return builder.ToString();
     }
 
     private static bool IsLicensingIntegerAttribute(string? attributeType) =>
         string.Equals(attributeType, "Integer", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(attributeType, "BigInt", StringComparison.OrdinalIgnoreCase)
         || string.Equals(attributeType, "Picklist", StringComparison.OrdinalIgnoreCase)
         || string.Equals(attributeType, "State", StringComparison.OrdinalIgnoreCase)
         || string.Equals(attributeType, "Status", StringComparison.OrdinalIgnoreCase);
@@ -941,6 +1168,12 @@ public sealed partial class DataverseService
         string.Equals(attributeType, "Decimal", StringComparison.OrdinalIgnoreCase)
         || string.Equals(attributeType, "Double", StringComparison.OrdinalIgnoreCase)
         || string.Equals(attributeType, "Money", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLicensingTextAttribute(string? attributeType) =>
+        string.IsNullOrWhiteSpace(attributeType)
+        || string.Equals(attributeType, "String", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(attributeType, "Memo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(attributeType, "EntityName", StringComparison.OrdinalIgnoreCase);
 
     private static bool TryResolveLicensingInvoiceDate(string billingInterval, out DateOnly invoiceDate)
     {
@@ -1074,8 +1307,8 @@ public sealed partial class DataverseService
         public bool ProductFieldIsLookup { get; init; }
         public string AccountNavigationProperty { get; init; } = "";
         public string ProductNavigationProperty { get; init; } = "";
-        public string AccountSearchField { get; init; } = "";
-        public string ProductSearchField { get; init; } = "";
+        public IReadOnlyList<string> AccountSearchFields { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> ProductSearchFields { get; init; } = Array.Empty<string>();
     }
 
     private sealed class LicensingLookupResolution
@@ -1083,6 +1316,8 @@ public sealed partial class DataverseService
         public string Id { get; init; } = "";
         public string Label { get; init; } = "";
     }
+
+    private sealed record LicensingLookupFilter(string Expression, int Top);
 
     private sealed class LicensingExcelColumns
     {

@@ -8,3 +8,11 @@ public sealed class ProductLookupItem
     public decimal? SuggestedRetailPrice { get; set; }
     public decimal? Acelerador { get; set; } // interno (no mostrar)
 }
+
+public sealed class ProductCreateInput
+{
+    public string Description { get; set; } = "";
+    public decimal PurchasePrice { get; set; }
+    public decimal SuggestedRetailPrice { get; set; }
+    public decimal Acelerador { get; set; }
+}

@@ -2403,6 +2403,8 @@ public sealed partial class DataverseService
             case "perpetuo":
             case "perpetual":
                 return 645250007;
+            case "hardware":
+                return 645250004;
             default:
                 return 645250004;
         }
@@ -2410,6 +2412,9 @@ public sealed partial class DataverseService
 
     private static string ResolveLineTypeLabel(int lineOptionValue, string? fallback = null)
     {
+        if (string.Equals(NormalizeLookupToken(fallback), "hardware", StringComparison.OrdinalIgnoreCase))
+            return "Hardware";
+
         var label = PuntajesOptionCatalog.LineOptions
             .FirstOrDefault(option => option.Value == lineOptionValue)
             ?.Label;
@@ -2457,6 +2462,9 @@ public sealed partial class DataverseService
 
     private static BusinessType ResolveBusinessTypeForLine(ScoreVerificationLineInput line)
     {
+        if (string.Equals(NormalizeLookupToken(line.LineType), "hardware", StringComparison.OrdinalIgnoreCase))
+            return BusinessType.Hardware;
+
         var lineOptionValue = AllowedLineOptionValues.Contains(line.LineOptionValue)
             ? line.LineOptionValue
             : ResolveLineOptionValue(line.LineType);
@@ -2480,6 +2488,7 @@ public sealed partial class DataverseService
             BusinessType.Azure => 645250002,
             BusinessType.Copiers => 645250003,
             BusinessType.Perpetuo => 645250007,
+            BusinessType.Hardware => 645250004,
             _ => 645250004
         };
 

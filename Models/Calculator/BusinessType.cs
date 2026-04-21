@@ -7,5 +7,6 @@ public enum BusinessType
     Acronis = 2,
     Perpetuo = 3,
     Copiers = 4,
-    Otro = 5
+    Otro = 5,
+    Hardware = 6
 }

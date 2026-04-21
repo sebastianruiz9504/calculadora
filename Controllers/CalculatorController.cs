@@ -226,6 +226,7 @@ public sealed class CalculatorController : Controller
     }
 
     [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SubmitProvisioning([FromBody] ProvisioningRequestInput? input, CancellationToken ct)
     {
         if (input is null)
@@ -238,6 +239,15 @@ public sealed class CalculatorController : Controller
         if (string.IsNullOrWhiteSpace(_calculatorOptions.ProvisioningRequestFlowUrl))
         {
             return BadRequest("Configura la URL del flujo en Calculator:ProvisioningRequestFlowUrl antes de enviar la solicitud.");
+        }
+
+        try
+        {
+            await EnsureHardwareProductsForProvisioningAsync(input, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(BuildDiagnosticMessage(ex));
         }
 
         var payload = BuildProvisioningFlowPayload(input);
@@ -393,6 +403,52 @@ public sealed class CalculatorController : Controller
 
         return null;
     }
+
+    private async Task EnsureHardwareProductsForProvisioningAsync(ProvisioningRequestInput input, CancellationToken ct)
+    {
+        if (input.LineItems is null || input.LineItems.Count == 0)
+            return;
+
+        var cache = new Dictionary<string, ProductLookupItem>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (line, index) in input.LineItems.Select((value, index) => (value, index)))
+        {
+            if (!IsHardwareLine(line.Tipo) || !string.IsNullOrWhiteSpace(line.ProductoId))
+                continue;
+
+            var productName = (line.ProductoNombre ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(productName))
+                throw new InvalidOperationException($"La linea {index + 1} de Hardware no tiene producto.");
+
+            var suggestedRetailPrice = line.VentaUnd > 0m
+                ? line.VentaUnd
+                : line.CostoUnd * (1m + (line.MargenPorcentaje / 100m));
+            var cacheKey = BuildHardwareProductCacheKey(productName, line.CostoUnd, suggestedRetailPrice);
+
+            if (!cache.TryGetValue(cacheKey, out var product))
+            {
+                product = await _dataverse.EnsureCalculatorProductAsync(new ProductCreateInput
+                {
+                    Description = productName,
+                    PurchasePrice = line.CostoUnd,
+                    SuggestedRetailPrice = suggestedRetailPrice,
+                    Acelerador = 0m
+                }, ct);
+                cache[cacheKey] = product;
+            }
+
+            line.ProductoId = product.Id;
+            if (string.IsNullOrWhiteSpace(line.LineId) || line.LineId.StartsWith("line-", StringComparison.OrdinalIgnoreCase))
+                line.LineId = product.Id;
+        }
+    }
+
+    private static string BuildHardwareProductCacheKey(string productName, decimal costUnit, decimal suggestedRetailPrice) =>
+        string.Join(
+            "|",
+            productName.Trim().ToUpperInvariant(),
+            Round2(costUnit).ToString("0.##", CultureInfo.InvariantCulture),
+            Round2(suggestedRetailPrice).ToString("0.##", CultureInfo.InvariantCulture));
 
     private static object BuildProvisioningFlowPayload(ProvisioningRequestInput input)
     {
@@ -598,7 +654,7 @@ public sealed class CalculatorController : Controller
             if (string.IsNullOrWhiteSpace(productDescription))
                 return $"La linea {index + 1} no tiene producto.";
 
-            if (string.IsNullOrWhiteSpace(line.ProductId))
+            if (string.IsNullOrWhiteSpace(line.ProductId) && line.BusinessType != BusinessType.Hardware)
                 return $"La linea {index + 1} debe seleccionar un producto valido de la lista antes de {actionLabel}.";
         }
 
@@ -614,12 +670,15 @@ public sealed class CalculatorController : Controller
             if (string.IsNullOrWhiteSpace(productName))
                 return $"La linea {index + 1} no tiene producto.";
 
-            if (string.IsNullOrWhiteSpace(line.ProductoId))
+            if (string.IsNullOrWhiteSpace(line.ProductoId) && !IsHardwareLine(line.Tipo))
                 return $"La linea {index + 1} debe seleccionar un producto valido de la lista antes de {actionLabel}.";
         }
 
         return null;
     }
+
+    private static bool IsHardwareLine(string? tipo) =>
+        string.Equals((tipo ?? "").Trim(), BusinessType.Hardware.ToString(), StringComparison.OrdinalIgnoreCase);
 
     private static void NormalizeProrationRules(QuoteScenarioInput input)
     {

@@ -496,13 +496,16 @@
 
     const sourceSystem = "pricing-calculator";
     const CROSS_SALE_DEAL_TYPE = 1;
+    const MODERN_WORK_BUSINESS_TYPE = 0;
+    const HARDWARE_BUSINESS_TYPE = 6;
     const businessTypes = [
         { key: 0, name: "ModernWork" },
         { key: 1, name: "Azure" },
         { key: 2, name: "Acronis" },
         { key: 3, name: "Perpetuo" },
         { key: 4, name: "Copiers" },
-        { key: 5, name: "Otro" }
+        { key: 5, name: "Otro" },
+        { key: 6, name: "Hardware" }
     ];
 
     let scenarios = [];
@@ -726,6 +729,14 @@ const showDebugCalcModal = false;
         return Boolean((line?.productId || "").trim());
     }
 
+    function isHardwareLine(line) {
+        return Number(line?.businessType) === HARDWARE_BUSINESS_TYPE;
+    }
+
+    function requiresProductLookup(line) {
+        return !isHardwareLine(line);
+    }
+
     function getScenarioProductSelectionIssues(scenario = getActiveScenario()) {
         if (!scenario || !Array.isArray(scenario.lines)) {
             return [];
@@ -739,7 +750,7 @@ const showDebugCalcModal = false;
                 return;
             }
 
-            if (!hasSelectedProduct(line)) {
+            if (requiresProductLookup(line) && !hasSelectedProduct(line)) {
                 issues.push({ lineNumber: index + 1, reason: "unselected" });
             }
         });
@@ -750,6 +761,16 @@ const showDebugCalcModal = false;
     function buildScenarioProductSelectionMessage(issues) {
         if (!Array.isArray(issues) || !issues.length) {
             return "";
+        }
+
+        const emptyIssues = issues.filter(issue => issue.reason === "empty");
+        if (emptyIssues.length) {
+            const lineNumbers = emptyIssues.map(issue => issue.lineNumber);
+            const lineLabel = lineNumbers.length === 1
+                ? `la linea ${lineNumbers[0]}`
+                : `las lineas ${lineNumbers.join(", ")}`;
+
+            return `Completa el nombre del producto en ${lineLabel} antes de exportar o solicitar aprovisionamiento.`;
         }
 
         const lineNumbers = issues.map(issue => issue.lineNumber);
@@ -941,21 +962,29 @@ const showDebugCalcModal = false;
 
         const rows = s.lines.map((line, idx) => {
             const computed = calcLineComputed(line);
-            const lockCost = Number(line.businessType) === 0;
+            const lockCost = Number(line.businessType) === MODERN_WORK_BUSINESS_TYPE;
             const lockMonths = containsPrepaidOrYear(line.productDescription);
 
             const costDisabled = lockCost ? "disabled" : "";
             const monthsDisabled = lockMonths ? "disabled" : "";
-            const showProductSelectionWarning = Boolean((line.productDescription || "").trim()) && !hasSelectedProduct(line);
+            const typedProductName = Boolean((line.productDescription || "").trim());
+            const showProductSelectionWarning = typedProductName && requiresProductLookup(line) && !hasSelectedProduct(line);
+            const showHardwareCreationHint = typedProductName && isHardwareLine(line) && !hasSelectedProduct(line);
             const helperMessages = [];
 
             if (showProductSelectionWarning) {
                 helperMessages.push('<span class="text-danger fw-semibold">Selecciona un producto valido del listado.</span>');
             }
+            if (showHardwareCreationHint) {
+                helperMessages.push('<span class="text-muted">Hardware: se creara en el catalogo al solicitar aprovisionamiento.</span>');
+            }
 
             const helperMarkup = helperMessages.length
                 ? `<div class="small mt-1">${helperMessages.join(" | ")}</div>`
                 : "";
+            const productPlaceholder = isHardwareLine(line)
+                ? "Escribe o busca hardware..."
+                : "Buscar producto...";
 
             return `
                 <tr data-idx="${idx}">
@@ -963,7 +992,7 @@ const showDebugCalcModal = false;
 
                     <td>
                         <div style="position:relative;">
-                            <textarea class="form-control form-control-sm product-input" rows="3" style="min-height:78px; resize:vertical;" placeholder="Buscar producto..." autocomplete="off">${escapeHtml(line.productDescription)}</textarea>
+                            <textarea class="form-control form-control-sm product-input" rows="3" style="min-height:78px; resize:vertical;" placeholder="${productPlaceholder}" autocomplete="off">${escapeHtml(line.productDescription)}</textarea>
                             <div class="suggestions"></div>
                         </div>
                         ${helperMarkup}
@@ -1386,7 +1415,7 @@ function toDateInputValue(value) {
                 line.productId = "";
                 line.suggestedRetailPrice = 0;
                 line.acelerador = 0;
-                if (Number(line.businessType) === 0) {
+                if (Number(line.businessType) === MODERN_WORK_BUSINESS_TYPE) {
                     line.costUnit = 0;
                 }
                 markScenarioDirty();
@@ -1438,7 +1467,7 @@ function toDateInputValue(value) {
                 line.suggestedRetailPrice = Number(item.suggestedRetailPrice || 0);
                 line.acelerador = Number(item.acelerador || 0);
 
-                if (Number(line.businessType) === 0) {
+                if (Number(line.businessType) === MODERN_WORK_BUSINESS_TYPE) {
                     line.costUnit = Number(item.purchasePrice || 0);
                 } else {
                     line.costUnit = line.costUnit || 0;
@@ -1542,7 +1571,7 @@ function toDateInputValue(value) {
             const months = Number(line.contractMonths || 0);
             if (months <= 0) { alert(`La línea ${i + 1} tiene duración inválida.`); return null; }
 
-            if (requireSelectedProducts && !hasSelectedProduct(line)) {
+            if (requireSelectedProducts && requiresProductLookup(line) && !hasSelectedProduct(line)) {
                 alert(`La linea ${i + 1} debe seleccionar un producto valido de la lista antes de ${actionLabel}.`);
                 return null;
             }

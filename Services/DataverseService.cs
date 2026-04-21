@@ -142,7 +142,13 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardCopiersTotalWithVatField = "cr07a_totalconiva";
     private const string DefaultSalesPerformanceClientCreateLookupLogicalName = "cr07a_clientelookup";
     private const string ClientsEntitySetName = "cr07a_clientes";
+    private const string ProductsEntityLogicalName = "cr07a_precioscloud";
     private const string ProductsEntitySetName = "cr07a_preciosclouds";
+    private const string ProductsIdField = "cr07a_precioscloudid";
+    private const string ProductsDescriptionField = "cr07a_priceableitemdescription";
+    private const string ProductsPurchasePriceField = "cr07a_purchaseprice";
+    private const string ProductsSuggestedRetailPriceField = "cr07a_suggestedretailprice";
+    private const string ProductsAceleradorField = "cr07a_acelerador";
     private const string FormattedValueAnnotationSuffix = "@OData.Community.Display.V1.FormattedValue";
     private static readonly string[] SalesPerformanceClientLookupFieldCandidates =
     {
@@ -623,10 +629,10 @@ public sealed partial class DataverseService : IDataverseService
         if (query.Length < 2)
             return Array.Empty<ProductLookupItem>();
 
-        var safeQuery = query.Replace("'", "''");
-        var select = "cr07a_priceableitemdescription,cr07a_purchaseprice,cr07a_suggestedretailprice,cr07a_acelerador,cr07a_precioscloudid";
-        var filter = $"contains(cr07a_priceableitemdescription,'{safeQuery}')";
-        var relativeUrl = $"/api/data/v9.2/cr07a_preciosclouds?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top={top}";
+        var safeQuery = EscapeOdataLiteral(query);
+        var select = BuildProductSelectClause();
+        var filter = $"contains({ProductsDescriptionField},'{safeQuery}')";
+        var relativeUrl = $"/api/data/v9.2/{ProductsEntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top={top}";
 
         var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
 
@@ -636,18 +642,115 @@ public sealed partial class DataverseService : IDataverseService
         var list = new List<ProductLookupItem>(Math.Min(arr.GetArrayLength(), top));
         foreach (var item in arr.EnumerateArray())
         {
-            list.Add(new ProductLookupItem
-            {
-                Id = item.TryGetProperty("cr07a_precioscloudid", out var idProp) ? (idProp.GetString() ?? "") : "",
-                Description = item.TryGetProperty("cr07a_priceableitemdescription", out var d) ? (d.GetString() ?? "") : "",
-                PurchasePrice = ReadDecimal(item, "cr07a_purchaseprice"),
-                SuggestedRetailPrice = ReadDecimal(item, "cr07a_suggestedretailprice"),
-                Acelerador = ReadDecimal(item, "cr07a_acelerador")
-            });
+            list.Add(ToProductLookupItem(item));
         }
 
         return list;
     }
+
+    public async Task<ProductLookupItem> EnsureCalculatorProductAsync(ProductCreateInput input, CancellationToken ct = default)
+    {
+        if (input is null)
+            throw new ArgumentNullException(nameof(input));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var description = (input.Description ?? "").Trim();
+        if (description.Length < 2)
+            throw new InvalidOperationException("El producto de Hardware debe tener un nombre valido.");
+
+        var existing = await FindProductByExactDescriptionAsync(description, httpContext.User, ct);
+        if (existing is not null)
+            return existing;
+
+        var primaryNameField = await ResolveEntityPrimaryNameFieldAsync(
+            ProductsEntityLogicalName,
+            ProductsDescriptionField,
+            httpContext.User,
+            ct);
+
+        var payload = new Dictionary<string, object?>
+        {
+            [ProductsDescriptionField] = description,
+            [ProductsPurchasePriceField] = RoundCurrency(Math.Max(input.PurchasePrice, 0m)),
+            [ProductsSuggestedRetailPriceField] = RoundCurrency(Math.Max(input.SuggestedRetailPrice, 0m)),
+            [ProductsAceleradorField] = RoundCurrency(Math.Max(input.Acelerador, 0m))
+        };
+
+        if (!payload.ContainsKey(primaryNameField))
+            payload[primaryNameField] = description;
+
+        var relativeUrl = $"/api/data/v9.2/{ProductsEntitySetName}?$select={BuildProductSelectClause()}";
+        using var response = await SendDataversePayloadWithRepresentationAsync(
+            relativeUrl,
+            "POST",
+            payload,
+            httpContext.User,
+            ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            using var doc = JsonDocument.Parse(body);
+            var created = ToProductLookupItem(doc.RootElement);
+            if (!string.IsNullOrWhiteSpace(created.Id))
+                return created;
+        }
+
+        var createdId = ExtractRhRecordId(response, body, ProductsIdField);
+        if (!string.IsNullOrWhiteSpace(createdId))
+        {
+            return new ProductLookupItem
+            {
+                Id = createdId,
+                Description = description,
+                PurchasePrice = RoundCurrency(Math.Max(input.PurchasePrice, 0m)),
+                SuggestedRetailPrice = RoundCurrency(Math.Max(input.SuggestedRetailPrice, 0m)),
+                Acelerador = RoundCurrency(Math.Max(input.Acelerador, 0m))
+            };
+        }
+
+        throw new InvalidOperationException("Dataverse creo el producto de Hardware, pero no devolvio el identificador.");
+    }
+
+    private async Task<ProductLookupItem?> FindProductByExactDescriptionAsync(
+        string description,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var filter = $"{ProductsDescriptionField} eq '{EscapeOdataLiteral(description)}'";
+        var relativeUrl = $"/api/data/v9.2/{ProductsEntitySetName}?$select={BuildProductSelectClause()}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+        if (value.GetArrayLength() == 0)
+            return null;
+
+        var item = ToProductLookupItem(value[0]);
+        return string.IsNullOrWhiteSpace(item.Id) ? null : item;
+    }
+
+    private static string BuildProductSelectClause() =>
+        string.Join(",", new[]
+        {
+            ProductsDescriptionField,
+            ProductsPurchasePriceField,
+            ProductsSuggestedRetailPriceField,
+            ProductsAceleradorField,
+            ProductsIdField
+        });
+
+    private static ProductLookupItem ToProductLookupItem(JsonElement item) =>
+        new()
+        {
+            Id = item.TryGetProperty(ProductsIdField, out var idProp) ? (idProp.GetString() ?? "") : "",
+            Description = item.TryGetProperty(ProductsDescriptionField, out var descriptionProp) ? (descriptionProp.GetString() ?? "") : "",
+            PurchasePrice = ReadDecimal(item, ProductsPurchasePriceField),
+            SuggestedRetailPrice = ReadDecimal(item, ProductsSuggestedRetailPriceField),
+            Acelerador = ReadDecimal(item, ProductsAceleradorField)
+        };
 
     public async Task<IReadOnlyList<ClientLookupItem>> SearchClientsAsync(string query, int top = 12, CancellationToken ct = default)
     {

@@ -14,7 +14,8 @@ public sealed class CalculatorPageViewModel
         new() { Key = (int)BusinessType.Acronis, Name = "Acronis" },
         new() { Key = (int)BusinessType.Perpetuo, Name = "Perpetuo" },
         new() { Key = (int)BusinessType.Copiers, Name = "Copiers" },
-        new() { Key = (int)BusinessType.Otro, Name = "Otro" }
+        new() { Key = (int)BusinessType.Otro, Name = "Otro" },
+        new() { Key = (int)BusinessType.Hardware, Name = "Hardware" }
     };
 }
 
