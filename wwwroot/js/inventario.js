@@ -25,6 +25,12 @@
         minimumFractionDigits: 0,
         maximumFractionDigits: 2
     });
+    const currencyFormatter = new Intl.NumberFormat("es-CO", {
+        style: "currency",
+        currency: "COP",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
 
     const state = {
         busy: false,
@@ -85,6 +91,8 @@
             line.supplyId = target.value;
         } else if (field === "quantity") {
             line.quantity = target.value;
+        } else if (field === "unitValueBeforeVat") {
+            line.unitValueBeforeVat = target.value;
         }
     });
 
@@ -121,6 +129,7 @@
                     <td>${escapeHtml(row.invoiceNumber)}</td>
                     <td>${escapeHtml(row.supplyName)}</td>
                     <td class="text-end">${numberFormatter.format(Number(row.quantity || 0))}</td>
+                    <td class="text-end">${currencyFormatter.format(Number(row.unitValueBeforeVat || 0))}</td>
                     <td><span class="copiers-badge ${approved ? "is-good" : "is-warning"}">${escapeHtml(row.approvedLabel || (approved ? "Si" : "No"))}</span></td>
                 </tr>`;
         }).join("");
@@ -143,7 +152,8 @@
         state.lines.push({
             localId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random()}`,
             supplyId: "",
-            quantity: ""
+            quantity: "",
+            unitValueBeforeVat: ""
         });
         renderLines();
     }
@@ -166,6 +176,10 @@
                     <span>Cantidad</span>
                     <input class="form-control" data-line-field="quantity" type="number" min="1" step="1" value="${escapeHtml(line.quantity)}" />
                 </label>
+                <label class="copiers-field">
+                    <span>Valor unitario antes IVA</span>
+                    <input class="form-control" data-line-field="unitValueBeforeVat" type="number" min="0.01" step="0.01" inputmode="decimal" value="${escapeHtml(line.unitValueBeforeVat)}" />
+                </label>
                 <button type="button" class="copiers-icon-btn" data-remove-line="${escapeHtml(line.localId)}" title="Eliminar linea" aria-label="Eliminar linea">×</button>
             </div>
         `).join("");
@@ -181,7 +195,8 @@
                 invoiceNumber: invoiceNumberInput.value,
                 lines: state.lines.map((line) => ({
                     supplyId: line.supplyId,
-                    quantity: Number(line.quantity || 0)
+                    quantity: Number(line.quantity || 0),
+                    unitValueBeforeVat: Number(line.unitValueBeforeVat || 0)
                 }))
             };
 

@@ -30,6 +30,7 @@ public sealed partial class DataverseService
     private const string CopiersSupplierInvoiceNumberField = "cr07a_name";
     private const string CopiersSupplierInvoiceSupplyField = "cr07a_suministro";
     private const string CopiersSupplierInvoiceQuantityField = "cr07a_cantidad";
+    private const string CopiersSupplierInvoiceUnitValueBeforeVatField = "cr07a_valorunitarioantesdeiva";
     private const string CopiersSupplierInvoiceApprovedField = "cr07a_aprobadoeingresado";
     private const int CopiersSupplierInvoiceApprovedNo = 0;
     private const int CopiersSupplierInvoiceApprovedYes = 1;
@@ -580,11 +581,16 @@ public sealed partial class DataverseService
             if (quantity <= 0m)
                 throw new InvalidOperationException("Todas las cantidades deben ser mayores a cero.");
 
+            var unitValueBeforeVat = RoundCurrency(line.UnitValueBeforeVat);
+            if (unitValueBeforeVat <= 0m)
+                throw new InvalidOperationException("Todos los valores unitarios deben ser mayores a cero.");
+
             _ = await GetCopiersSupplyByIdAsync(supplyMetadata, supplyId, httpContext.User, ct);
             var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
                 [CopiersSupplierInvoiceNumberField] = invoiceNumber,
                 [CopiersSupplierInvoiceQuantityField] = quantity,
+                [CopiersSupplierInvoiceUnitValueBeforeVatField] = unitValueBeforeVat,
                 [CopiersSupplierInvoiceApprovedField] = CopiersSupplierInvoiceApprovedNo,
                 [$"{supplyNavigationProperty}@odata.bind"] = $"/{supplyMetadata.EntitySetName}({supplyId})"
             };
@@ -923,6 +929,7 @@ public sealed partial class DataverseService
                 CopiersSupplierInvoiceNumberField,
                 BuildDashboardLookupValuePropertyName(CopiersSupplierInvoiceSupplyField),
                 CopiersSupplierInvoiceQuantityField,
+                CopiersSupplierInvoiceUnitValueBeforeVatField,
                 CopiersSupplierInvoiceApprovedField
             }
             .Where(static field => !string.IsNullOrWhiteSpace(field))
@@ -952,6 +959,7 @@ public sealed partial class DataverseService
                 "suministro",
                 "Suministro sin nombre"),
             Quantity = RoundCurrency(ReadDecimal(item, CopiersSupplierInvoiceQuantityField) ?? 0m),
+            UnitValueBeforeVat = RoundCurrency(ReadDecimal(item, CopiersSupplierInvoiceUnitValueBeforeVatField) ?? 0m),
             ApprovedValue = approvedValue,
             ApprovedLabel = FirstNonEmpty(
                 ReadString(item, $"{CopiersSupplierInvoiceApprovedField}{FormattedValueAnnotationSuffix}"),

@@ -1,103 +1,124 @@
 :root {
-    --copiers-ink: #172033;
-    --copiers-muted: #657184;
-    --copiers-line: #d7dee8;
+    --copiers-ink: #10223a;
+    --copiers-muted: #5f7088;
+    --copiers-line: #d9e3ee;
     --copiers-panel: #ffffff;
-    --copiers-soft: #f6f8fb;
+    --copiers-soft: #f7fbff;
     --copiers-brand: #0f6cbd;
-    --copiers-brand-soft: #e7f2fb;
-    --copiers-good: #137333;
-    --copiers-good-soft: #e7f4ec;
-    --copiers-danger: #b42318;
-    --copiers-danger-soft: #fcebea;
+    --copiers-brand-deep: #0a5aa1;
+    --copiers-brand-soft: rgba(15, 108, 189, .12);
+    --copiers-good: #107c10;
+    --copiers-good-soft: #edf8ed;
+    --copiers-danger: #c4314b;
+    --copiers-danger-soft: #fdebee;
     --copiers-warning: #946200;
-    --copiers-warning-soft: #fff4d6;
+    --copiers-warning-soft: #fff6d9;
+    --copiers-shadow: 0 24px 54px rgba(15, 23, 42, .08);
 }
 
 .copiers-shell {
     display: grid;
-    gap: 18px;
+    gap: 20px;
+}
+
+.copiers-hero,
+.copiers-tabs,
+.copiers-panel,
+.copiers-subpanel,
+.copiers-status,
+.copiers-kpi {
+    background: var(--copiers-panel);
+    border: 1px solid var(--copiers-line);
+    border-radius: 28px;
+    box-shadow: var(--copiers-shadow);
 }
 
 .copiers-hero {
     display: flex;
-    justify-content: space-between;
-    gap: 20px;
     align-items: flex-start;
-    padding: 22px;
-    background: #ffffff;
-    border: 1px solid var(--copiers-line);
-    border-radius: 8px;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 28px;
+    background:
+        radial-gradient(circle at top right, rgba(15, 108, 189, .16), transparent 36%),
+        linear-gradient(135deg, #ffffff 0%, #f4f9ff 100%);
 }
 
 .copiers-kicker,
 .copiers-user-pill__label,
 .copiers-counter,
-.copiers-field > span {
+.copiers-field > span,
+.copiers-search span,
+.copiers-detail-card span {
     color: var(--copiers-muted);
     font-size: 12px;
-    font-weight: 700;
-    letter-spacing: .06em;
+    font-weight: 600;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
 .copiers-title {
-    margin: 6px 0;
+    margin: 6px 0 0;
     color: var(--copiers-ink);
-    font-size: 2.3rem;
-    font-weight: 700;
+    font-size: 2.35rem;
+    font-weight: 600;
+    letter-spacing: 0;
 }
 
-.copiers-subtitle {
-    max-width: 780px;
-    margin: 0;
-    color: var(--copiers-muted);
+.copiers-subtitle,
+.copiers-modal__text {
+    max-width: 860px;
+    margin: 10px 0 0;
+    color: #516279;
+    font-size: 14px;
+    line-height: 1.6;
 }
 
 .copiers-user-pill {
     display: grid;
-    gap: 4px;
+    gap: 6px;
     max-width: 360px;
-    padding: 12px 14px;
-    background: var(--copiers-soft);
-    border: 1px solid var(--copiers-line);
-    border-radius: 8px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, .7);
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 20px;
     color: var(--copiers-ink);
     overflow-wrap: anywhere;
 }
 
 .copiers-tabs {
     display: flex;
-    gap: 8px;
     flex-wrap: wrap;
-    padding: 8px;
-    background: #ffffff;
-    border: 1px solid var(--copiers-line);
-    border-radius: 8px;
+    gap: 10px;
+    padding: 10px;
 }
 
 .copiers-tab {
-    border: 0;
-    border-radius: 6px;
-    padding: 10px 14px;
+    border: none;
+    border-radius: 16px;
+    padding: 12px 18px;
     background: transparent;
     color: var(--copiers-muted);
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
 }
 
 .copiers-tab.is-active {
     background: var(--copiers-brand);
     color: #ffffff;
+    box-shadow: 0 10px 22px rgba(15, 108, 189, .18);
 }
 
 .copiers-panel,
 .copiers-subpanel {
     display: grid;
-    gap: 16px;
-    padding: 18px;
-    background: var(--copiers-panel);
-    border: 1px solid var(--copiers-line);
-    border-radius: 8px;
+    gap: 18px;
+    padding: 22px;
+}
+
+.copiers-subpanel {
+    background: linear-gradient(180deg, #ffffff 0%, var(--copiers-soft) 100%);
 }
 
 .copiers-panel[hidden],
@@ -111,74 +132,113 @@
 .copiers-modal__header,
 .copiers-modal__footer {
     display: flex;
-    gap: 12px;
-    align-items: center;
+    gap: 14px;
+    align-items: flex-start;
     justify-content: space-between;
     flex-wrap: wrap;
 }
 
-.copiers-panel__actions {
+.copiers-panel__actions,
+.copiers-modal__footer {
+    align-items: center;
     justify-content: flex-end;
 }
 
 .copiers-section-title,
 .copiers-subpanel h3,
-.copiers-modal__title {
+.copiers-modal__title,
+.copiers-detail-section h3 {
     margin: 0;
     color: var(--copiers-ink);
-    font-weight: 700;
+    font-weight: 600;
+    letter-spacing: 0;
 }
 
-.copiers-section-title {
-    font-size: 1.35rem;
+.copiers-section-title,
+.copiers-modal__title {
+    margin-top: 6px;
+    font-size: 28px;
 }
 
 .copiers-subpanel h3,
-.copiers-modal__title {
-    font-size: 1.1rem;
+.copiers-detail-section h3 {
+    font-size: 22px;
 }
 
 .copiers-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 16px;
+    gap: 18px;
 }
 
 .copiers-kpis {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    gap: 14px;
 }
 
 .copiers-kpi {
     display: grid;
-    gap: 4px;
-    padding: 14px;
-    background: var(--copiers-soft);
-    border: 1px solid var(--copiers-line);
-    border-radius: 8px;
+    gap: 8px;
+    padding: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, var(--copiers-soft) 100%);
 }
 
 .copiers-kpi span {
     color: var(--copiers-muted);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
 .copiers-kpi strong {
     color: var(--copiers-ink);
-    font-size: 1.3rem;
+    font-size: 1.55rem;
+    font-weight: 600;
+}
+
+.copiers-kpi small {
+    color: var(--copiers-muted);
+    font-size: 13px;
+}
+
+.copiers-search {
+    display: grid;
+    gap: 8px;
+    min-width: 260px;
+}
+
+.copiers-search .form-control,
+.copiers-field .form-control,
+.copiers-field .form-select {
+    min-height: 44px;
+    border-color: #c8d6e6;
+    border-radius: 16px;
+    color: var(--copiers-ink);
+    box-shadow: none;
+}
+
+.copiers-search .form-control:focus,
+.copiers-field .form-control:focus,
+.copiers-field .form-select:focus {
+    border-color: var(--copiers-brand);
+    box-shadow: 0 0 0 .18rem rgba(15, 108, 189, .14);
 }
 
 .copiers-table-wrap {
     overflow: auto;
     border: 1px solid var(--copiers-line);
-    border-radius: 8px;
+    border-radius: 20px;
+    background: #ffffff;
 }
 
 .copiers-table-wrap--compact {
     max-height: 340px;
+}
+
+.copiers-table-wrap--tall {
+    max-height: 430px;
 }
 
 .copiers-table {
@@ -190,15 +250,27 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: #f9fbfd;
+    padding-top: 14px;
+    padding-bottom: 14px;
+    background: #f8fbff;
     color: var(--copiers-muted);
     font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
     text-transform: uppercase;
     white-space: nowrap;
 }
 
+.copiers-table tbody tr {
+    transition: background-color .16s ease;
+}
+
 .copiers-table tbody tr.is-selectable {
     cursor: pointer;
+}
+
+.copiers-table tbody tr.is-selectable:hover {
+    background: rgba(15, 108, 189, .06);
 }
 
 .copiers-table tbody tr.is-selected {
@@ -217,13 +289,13 @@
 .copiers-badge {
     display: inline-flex;
     align-items: center;
-    min-height: 26px;
-    padding: 4px 8px;
+    min-height: 28px;
+    padding: 5px 10px;
     border-radius: 999px;
     background: var(--copiers-brand-soft);
-    color: var(--copiers-brand);
+    color: var(--copiers-brand-deep);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .copiers-badge.is-good {
@@ -243,10 +315,7 @@
 
 .copiers-status {
     display: none;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--copiers-line);
-    background: var(--copiers-soft);
+    padding: 14px 16px;
     color: var(--copiers-ink);
 }
 
@@ -255,7 +324,7 @@
 }
 
 .copiers-status.is-error {
-    border-color: #f0b7b1;
+    border-color: #f2b8c2;
     background: var(--copiers-danger-soft);
     color: var(--copiers-danger);
 }
@@ -272,12 +341,19 @@
     color: var(--copiers-warning);
 }
 
+.copiers-status.is-info {
+    border-color: #bed7ee;
+    background: #edf6ff;
+    color: var(--copiers-brand-deep);
+}
+
 .copiers-empty {
-    padding: 16px;
+    padding: 18px;
     border: 1px dashed var(--copiers-line);
-    border-radius: 8px;
+    border-radius: 20px;
     color: var(--copiers-muted);
     text-align: center;
+    background: #fbfdff;
 }
 
 .copiers-modal {
@@ -292,34 +368,31 @@
 .copiers-modal__backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(15, 23, 42, .45);
+    background: rgba(15, 23, 42, .46);
+    backdrop-filter: blur(4px);
 }
 
 .copiers-modal__dialog {
     position: relative;
     z-index: 1;
     display: grid;
-    gap: 14px;
-    width: min(860px, 100%);
+    gap: 16px;
+    width: min(920px, 100%);
     max-height: calc(100vh - 48px);
     overflow: auto;
-    padding: 20px;
+    padding: 24px;
     background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 22px 55px rgba(15, 23, 42, .24);
+    border: 1px solid var(--copiers-line);
+    border-radius: 28px;
+    box-shadow: 0 28px 60px rgba(15, 23, 42, .18);
 }
 
 .copiers-modal__dialog--wide {
-    width: min(1040px, 100%);
+    width: min(1320px, 100%);
 }
 
 .copiers-modal__dialog--small {
     width: min(480px, 100%);
-}
-
-.copiers-modal__text {
-    margin: 0;
-    color: var(--copiers-muted);
 }
 
 .copiers-modal__spacer {
@@ -328,18 +401,18 @@
 
 .copiers-form {
     display: grid;
-    gap: 16px;
+    gap: 18px;
 }
 
 .copiers-form__grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
+    gap: 16px;
 }
 
 .copiers-field {
     display: grid;
-    gap: 6px;
+    gap: 8px;
 }
 
 .copiers-field--span-2 {
@@ -352,49 +425,95 @@
 
 .copiers-link {
     color: var(--copiers-brand);
-    font-weight: 700;
+    font-weight: 600;
     text-decoration: none;
 }
 
-.copiers-link:hover {
+.copiers-link:hover,
+.copiers-link:focus-visible {
+    color: var(--copiers-brand-deep);
     text-decoration: underline;
 }
 
 .copiers-lines {
     display: grid;
-    gap: 10px;
+    gap: 12px;
 }
 
 .copiers-line-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 150px 44px;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) 150px 190px 44px;
+    gap: 12px;
     align-items: end;
-    padding: 12px;
-    border: 1px solid var(--copiers-line);
-    border-radius: 8px;
-    background: var(--copiers-soft);
+    padding: 16px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 20px;
+    background: #fbfdff;
 }
 
 .copiers-icon-btn {
-    width: 44px;
-    height: 38px;
     display: inline-grid;
     place-items: center;
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--copiers-line);
-    border-radius: 6px;
+    border-radius: 14px;
     background: #ffffff;
     color: var(--copiers-danger);
-    font-weight: 800;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.copiers-detail-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.copiers-detail-card {
+    display: grid;
+    gap: 8px;
+    padding: 16px 18px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 20px;
+    background: #f8fbff;
+}
+
+.copiers-detail-card--wide {
+    grid-column: span 4;
+}
+
+.copiers-detail-card strong {
+    color: var(--copiers-ink);
+    font-size: 16px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.copiers-detail-section {
+    display: grid;
+    gap: 16px;
+    padding: 20px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 24px;
+    background: #fbfdff;
+}
+
+@media (max-width: 1100px) {
+    .copiers-line-row {
+        grid-template-columns: minmax(0, 1fr) 150px 44px;
+    }
 }
 
 @media (max-width: 920px) {
     .copiers-grid,
     .copiers-kpis,
-    .copiers-form__grid {
+    .copiers-form__grid,
+    .copiers-detail-summary {
         grid-template-columns: 1fr;
     }
 
+    .copiers-detail-card--wide,
     .copiers-field--span-2 {
         grid-column: auto;
     }
@@ -412,9 +531,24 @@
 
     .copiers-modal__dialog {
         max-height: calc(100vh - 24px);
+        padding: 18px;
+        border-radius: 22px;
     }
 
     .copiers-line-row {
         grid-template-columns: 1fr;
+    }
+
+    .copiers-search {
+        min-width: 100%;
+    }
+
+    .copiers-title {
+        font-size: 2rem;
+    }
+
+    .copiers-section-title,
+    .copiers-modal__title {
+        font-size: 24px;
     }
 }

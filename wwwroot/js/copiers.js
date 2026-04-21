@@ -10,6 +10,8 @@
         uploadMaintenance: app.dataset.uploadMaintenanceUrl || "",
         downloadMaintenance: app.dataset.downloadMaintenanceUrl || "",
         equipment: app.dataset.equipmentUrl || "",
+        equipmentDetail: app.dataset.equipmentDetailUrl || "",
+        equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
         supplies: app.dataset.suppliesUrl || "",
         pendingInvoices: app.dataset.pendingInvoicesUrl || "",
         approveInvoice: app.dataset.approveInvoiceUrl || "",
@@ -35,7 +37,6 @@
     const maintenanceSaveBtn = document.getElementById("copiersMaintenanceSaveBtn");
     const maintenanceRecordIdInput = document.getElementById("copiersMaintenanceRecordId");
     const maintenanceTitleInput = document.getElementById("copiersMaintenanceTitle");
-    const maintenanceInternalIdInput = document.getElementById("copiersMaintenanceInternalId");
     const maintenanceEquipmentSelect = document.getElementById("copiersMaintenanceEquipment");
     const maintenanceClientIdInput = document.getElementById("copiersMaintenanceClientId");
     const maintenanceClientNameInput = document.getElementById("copiersMaintenanceClientName");
@@ -51,6 +52,23 @@
     const equipmentClientsBody = document.getElementById("copiersEquipmentClientsBody");
     const equipmentStockBody = document.getElementById("copiersEquipmentStockBody");
     const equipmentBody = document.getElementById("copiersEquipmentBody");
+    const equipmentSerialSearch = document.getElementById("copiersEquipmentSerialSearch");
+    const equipmentDetailModal = document.getElementById("copiersEquipmentDetailModal");
+    const equipmentDetailStatus = document.getElementById("copiersEquipmentDetailStatus");
+    const equipmentDetailTitle = document.getElementById("copiersEquipmentDetailTitle");
+    const equipmentDetailSubtitle = document.getElementById("copiersEquipmentDetailSubtitle");
+    const equipmentAssignmentForm = document.getElementById("copiersEquipmentAssignmentForm");
+    const equipmentRecordIdInput = document.getElementById("copiersEquipmentRecordId");
+    const equipmentClientIdInput = document.getElementById("copiersEquipmentClientId");
+    const equipmentClientNameInput = document.getElementById("copiersEquipmentClientName");
+    const equipmentClientOptions = document.getElementById("copiersEquipmentClientOptions");
+    const equipmentSaveBtn = document.getElementById("copiersEquipmentSaveBtn");
+    const equipmentDetailSerial = document.getElementById("copiersEquipmentDetailSerial");
+    const equipmentDetailCurrentClient = document.getElementById("copiersEquipmentDetailCurrentClient");
+    const equipmentDetailCategory = document.getElementById("copiersEquipmentDetailCategory");
+    const equipmentDetailReference = document.getElementById("copiersEquipmentDetailReference");
+    const equipmentDetailObservations = document.getElementById("copiersEquipmentDetailObservations");
+    const equipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
 
     const suppliesRefreshBtn = document.getElementById("copiersSuppliesRefreshBtn");
     const suppliesBody = document.getElementById("copiersSuppliesBody");
@@ -99,6 +117,10 @@
         busy: false,
         maintenance: null,
         equipment: null,
+        equipmentSerialSearch: "",
+        equipmentDetail: null,
+        equipmentClientSuggestions: [],
+        equipmentAssignmentSaving: false,
         supplies: null,
         pendingInvoices: [],
         deliveries: null,
@@ -119,6 +141,11 @@
     equipmentRefreshBtn?.addEventListener("click", () => loadEquipment());
     suppliesRefreshBtn?.addEventListener("click", () => loadSupplies());
     deliveriesRefreshBtn?.addEventListener("click", () => loadDeliveries());
+
+    equipmentSerialSearch?.addEventListener("input", () => {
+        state.equipmentSerialSearch = equipmentSerialSearch.value || "";
+        renderEquipment();
+    });
 
     newMaintenanceBtn?.addEventListener("click", async () => {
         await openMaintenanceModal();
@@ -166,9 +193,28 @@
 
     newDeliveryBtn?.addEventListener("click", openDeliveryModal);
 
+    equipmentBody?.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || target.closest("a")) {
+            return;
+        }
+
+        const rowElement = target.closest("[data-equipment-id]");
+        if (!(rowElement instanceof HTMLElement)) {
+            return;
+        }
+
+        await loadEquipmentDetail(rowElement.dataset.equipmentId || "");
+    });
+
     maintenanceForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveMaintenance();
+    });
+
+    equipmentAssignmentForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveEquipmentAssignment();
     });
 
     deliveryForm?.addEventListener("submit", async (event) => {
@@ -185,6 +231,8 @@
         const closeTarget = target.getAttribute("data-copiers-close");
         if (closeTarget === "maintenance") {
             closeModal(maintenanceModal);
+        } else if (closeTarget === "equipmentDetail") {
+            closeModal(equipmentDetailModal);
         } else if (closeTarget === "ingreso") {
             closeModal(ingresoModal);
         } else if (closeTarget === "confirmIngreso") {
@@ -199,7 +247,7 @@
             return;
         }
 
-        [confirmIngresoModal, ingresoModal, maintenanceModal, deliveryModal].forEach((modal) => {
+        [confirmIngresoModal, ingresoModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
             if (modal && !modal.hidden) {
                 closeModal(modal);
             }
@@ -209,10 +257,21 @@
     maintenanceClientNameInput?.addEventListener("input", debounce(async () => {
         maintenanceClientIdInput.value = "";
         await updateClientSuggestions(maintenanceClientNameInput.value, clientOptions, "maintenance");
+        updateMaintenanceEquipmentOptions();
     }, 250));
 
     maintenanceClientNameInput?.addEventListener("change", () => {
         syncClientSelection(maintenanceClientNameInput, maintenanceClientIdInput, state.maintenanceClientSuggestions);
+        updateMaintenanceEquipmentOptions();
+    });
+
+    equipmentClientNameInput?.addEventListener("input", debounce(async () => {
+        equipmentClientIdInput.value = "";
+        await updateClientSuggestions(equipmentClientNameInput.value, equipmentClientOptions, "equipment");
+    }, 250));
+
+    equipmentClientNameInput?.addEventListener("change", () => {
+        syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
     });
 
     deliveryClientNameInput?.addEventListener("input", debounce(async () => {
@@ -305,9 +364,15 @@
         const kpis = Array.isArray(dashboard.kpis) ? dashboard.kpis : [];
         const clientRows = Array.isArray(dashboard.clientSummaries) ? dashboard.clientSummaries : [];
         const stockRows = Array.isArray(dashboard.stockRows) ? dashboard.stockRows : [];
-        const equipmentRows = Array.isArray(dashboard.equipmentRows) ? dashboard.equipmentRows : [];
+        const allEquipmentRows = Array.isArray(dashboard.equipmentRows) ? dashboard.equipmentRows : [];
+        const serialFilter = normalizeText(state.equipmentSerialSearch);
+        const equipmentRows = serialFilter
+            ? allEquipmentRows.filter((row) => normalizeText(row.serial).includes(serialFilter))
+            : allEquipmentRows;
 
-        equipmentCount.textContent = `${equipmentRows.length} equipo${equipmentRows.length === 1 ? "" : "s"}`;
+        equipmentCount.textContent = serialFilter
+            ? `${equipmentRows.length} de ${allEquipmentRows.length} equipos`
+            : `${allEquipmentRows.length} equipo${allEquipmentRows.length === 1 ? "" : "s"}`;
         equipmentKpis.innerHTML = kpis.map((kpi) => `
             <article class="copiers-kpi">
                 <span>${escapeHtml(kpi.label)}</span>
@@ -329,15 +394,138 @@
                 <td>${escapeHtml(row.reference || "")}</td>
             </tr>`).join("");
 
-        equipmentBody.innerHTML = equipmentRows.map((row) => `
-            <tr>
+        equipmentBody.innerHTML = equipmentRows.length ? equipmentRows.map((row) => `
+            <tr class="is-selectable" data-equipment-id="${escapeHtml(row.recordId || "")}" tabindex="0">
                 <td>${escapeHtml(row.serial)}</td>
-                <td>${escapeHtml(row.clientName)}</td>
+                <td>${row.inStock ? '<span class="copiers-badge is-warning">Stock</span>' : escapeHtml(row.clientName || "Sin cliente")}</td>
                 <td>${escapeHtml(row.categoryLabel || "")}</td>
                 <td>${escapeHtml(row.reference || "")}</td>
+                <td>${escapeHtml(row.observations || "")}</td>
                 <td class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
                 <td>${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
-            </tr>`).join("");
+            </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+    }
+
+    function renderEquipmentDetailLoading(row) {
+        resetEquipmentDetail();
+        showModal(equipmentDetailModal);
+        equipmentDetailTitle.textContent = row?.serial ? `Equipo ${row.serial}` : "Detalle del equipo";
+        equipmentDetailSubtitle.textContent = "Cargando informacion del equipo y sus mantenimientos...";
+        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="8" class="text-center copiers-muted">Cargando historial del equipo...</td></tr>`;
+        showStatus(equipmentDetailStatus, "info", "Consultando detalle del equipo...");
+    }
+
+    async function loadEquipmentDetail(recordId) {
+        if (!recordId) {
+            return;
+        }
+
+        const row = findById(state.equipment?.equipmentRows, recordId);
+        renderEquipmentDetailLoading(row);
+
+        try {
+            const detail = await fetchJson(`${urls.equipmentDetail}?equipmentId=${encodeURIComponent(recordId)}`);
+            fillEquipmentDetail(detail);
+            clearStatus(equipmentDetailStatus);
+        } catch (error) {
+            showStatus(equipmentDetailStatus, "error", getErrorMessage(error));
+        }
+    }
+
+    function fillEquipmentDetail(detail) {
+        const equipment = detail?.equipment || {};
+        state.equipmentDetail = detail || null;
+        equipmentRecordIdInput.value = equipment.recordId || "";
+        equipmentClientIdInput.value = equipment.clientId || "";
+        equipmentClientNameInput.value = equipment.inStock ? "" : (equipment.clientName || "");
+
+        equipmentDetailTitle.textContent = equipment.serial ? `Equipo ${equipment.serial}` : "Detalle del equipo";
+        equipmentDetailSubtitle.textContent = equipment.inStock
+            ? "Este equipo esta en stock. Asignale un cliente para dejarlo operativo."
+            : "Revisa la informacion del equipo y actualiza solo el cliente asignado.";
+        equipmentDetailSerial.textContent = equipment.serial || "Sin serial";
+        equipmentDetailCurrentClient.textContent = equipment.inStock ? "Stock" : (equipment.clientName || "Sin cliente");
+        equipmentDetailCategory.textContent = equipment.categoryLabel || "Sin categoria";
+        equipmentDetailReference.textContent = equipment.reference || "Sin referencia";
+        equipmentDetailObservations.textContent = equipment.observations || "Sin observaciones";
+        renderEquipmentMaintenanceTable(detail?.maintenanceRows);
+    }
+
+    function resetEquipmentDetail() {
+        state.equipmentDetail = null;
+        equipmentRecordIdInput.value = "";
+        equipmentClientIdInput.value = "";
+        equipmentClientNameInput.value = "";
+        equipmentDetailTitle.textContent = "Detalle del equipo";
+        equipmentDetailSubtitle.textContent = "Consulta el equipo, reasigna el cliente y revisa sus mantenimientos.";
+        equipmentDetailSerial.textContent = "-";
+        equipmentDetailCurrentClient.textContent = "-";
+        equipmentDetailCategory.textContent = "-";
+        equipmentDetailReference.textContent = "-";
+        equipmentDetailObservations.textContent = "-";
+        clearStatus(equipmentDetailStatus);
+        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="8" class="text-center copiers-muted">Selecciona un equipo para ver sus mantenimientos.</td></tr>`;
+    }
+
+    function renderEquipmentMaintenanceTable(rows) {
+        const items = Array.isArray(rows) ? rows : [];
+        equipmentMaintenanceBody.innerHTML = items.length ? items.map((row) => {
+            const attachment = row.hasAttachment
+                ? `<a class="copiers-link" href="${buildDownloadUrl(urls.downloadMaintenance, "maintenanceId", row.recordId)}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
+                : `<span class="copiers-muted">Sin adjunto</span>`;
+
+            return `
+                <tr>
+                    <td>${escapeHtml(row.dateDisplay || "")}</td>
+                    <td>${escapeHtml(row.title || "")}</td>
+                    <td>${escapeHtml(row.maintenanceTypeLabel || "")}</td>
+                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td>${escapeHtml(row.technicianName || "")}</td>
+                    <td>${escapeHtml(row.description || "")}</td>
+                    <td>${escapeHtml(row.internalId || "")}</td>
+                    <td>${attachment}</td>
+                </tr>`;
+        }).join("") : `<tr><td colspan="8" class="text-center copiers-muted">Este equipo no tiene mantenimientos registrados.</td></tr>`;
+    }
+
+    async function saveEquipmentAssignment() {
+        if (state.equipmentAssignmentSaving) {
+            return;
+        }
+
+        try {
+            syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
+            const clientName = (equipmentClientNameInput.value || "").trim();
+            if (!clientName) {
+                throw new Error("Debes seleccionar el cliente al que quedara asignado el equipo.");
+            }
+
+            state.equipmentAssignmentSaving = true;
+            equipmentSaveBtn.disabled = true;
+            showStatus(equipmentDetailStatus, "info", "Guardando reasignacion...");
+            const payload = {
+                recordId: equipmentRecordIdInput.value,
+                clientId: equipmentClientIdInput.value,
+                clientName,
+                moveToStock: false
+            };
+
+            const result = await fetchJson(urls.equipmentAssignment, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            await loadEquipment();
+            const detail = await fetchJson(`${urls.equipmentDetail}?equipmentId=${encodeURIComponent(result.recordId || payload.recordId)}`);
+            fillEquipmentDetail(detail);
+            showStatus(equipmentDetailStatus, "success", result.message || "Equipo actualizado correctamente.");
+        } catch (error) {
+            showStatus(equipmentDetailStatus, "error", getErrorMessage(error));
+        } finally {
+            state.equipmentAssignmentSaving = false;
+            equipmentSaveBtn.disabled = false;
+        }
     }
 
     async function loadSupplies() {
@@ -487,13 +675,11 @@
             await loadEquipment();
         }
 
-        populateMaintenanceOptions();
         maintenanceRecordIdInput.value = row?.recordId || "";
         maintenanceTitleInput.value = row?.title || "";
-        maintenanceInternalIdInput.value = row?.internalId || "";
-        maintenanceEquipmentSelect.value = row?.equipmentId || "";
         maintenanceClientIdInput.value = row?.clientId || "";
         maintenanceClientNameInput.value = row?.clientName || "";
+        populateMaintenanceOptions(row?.equipmentId || "");
         maintenanceDateInput.value = row?.dateValue || todayValue();
         maintenanceTypeSelect.value = row?.maintenanceTypeValue || "";
         maintenanceDescriptionInput.value = row?.description || "";
@@ -502,17 +688,52 @@
         showModal(maintenanceModal);
     }
 
-    function populateMaintenanceOptions() {
-        const equipmentRows = Array.isArray(state.equipment?.equipmentRows) ? state.equipment.equipmentRows : [];
-        maintenanceEquipmentSelect.innerHTML = `<option value="">Selecciona un equipo</option>` + equipmentRows.map((row) => {
-            const label = `${row.serial || "Equipo"}${row.clientName ? " - " + row.clientName : ""}`;
-            return `<option value="${escapeHtml(row.recordId)}">${escapeHtml(label)}</option>`;
-        }).join("");
-
+    function populateMaintenanceOptions(selectedEquipmentId = "") {
         const typeOptions = Array.isArray(state.maintenance?.typeOptions) ? state.maintenance.typeOptions : [];
         maintenanceTypeSelect.innerHTML = `<option value="">Sin tipo</option>` + typeOptions.map((option) => (
             `<option value="${option.value}">${escapeHtml(option.label)}</option>`
         )).join("");
+
+        updateMaintenanceEquipmentOptions(selectedEquipmentId);
+    }
+
+    function updateMaintenanceEquipmentOptions(selectedEquipmentId = "") {
+        if (!maintenanceEquipmentSelect) {
+            return;
+        }
+
+        const allEquipmentRows = Array.isArray(state.equipment?.equipmentRows) ? state.equipment.equipmentRows : [];
+        const clientId = maintenanceClientIdInput.value || "";
+        const clientName = normalizeText(maintenanceClientNameInput.value);
+        let rows = allEquipmentRows.filter((row) => {
+            if (clientId) {
+                return (row.clientId || "") === clientId;
+            }
+
+            if (clientName) {
+                return normalizeText(row.clientName) === clientName;
+            }
+
+            return false;
+        });
+
+        if (selectedEquipmentId && !rows.some((row) => row.recordId === selectedEquipmentId)) {
+            const selected = findById(allEquipmentRows, selectedEquipmentId);
+            if (selected) {
+                rows = [selected, ...rows];
+            }
+        }
+
+        const placeholder = clientId || clientName
+            ? "Selecciona un equipo"
+            : "Selecciona primero un cliente";
+        maintenanceEquipmentSelect.disabled = !(clientId || clientName);
+        maintenanceEquipmentSelect.innerHTML = `<option value="">${placeholder}</option>` + rows.map((row) => {
+            const label = `${row.serial || "Equipo"}${row.reference ? " - " + row.reference : ""}`;
+            return `<option value="${escapeHtml(row.recordId)}">${escapeHtml(label)}</option>`;
+        }).join("");
+
+        maintenanceEquipmentSelect.value = selectedEquipmentId || "";
     }
 
     async function saveMaintenance() {
@@ -524,7 +745,7 @@
             const payload = {
                 recordId: maintenanceRecordIdInput.value,
                 title: maintenanceTitleInput.value,
-                internalId: maintenanceInternalIdInput.value,
+                internalId: "",
                 equipmentId: maintenanceEquipmentSelect.value,
                 clientId: maintenanceClientIdInput.value,
                 clientName: maintenanceClientNameInput.value,
@@ -629,6 +850,13 @@
         const query = (term || "").trim();
         if (query.length < 2) {
             datalist.innerHTML = "";
+            if (target === "delivery") {
+                state.deliveryClientSuggestions = [];
+            } else if (target === "equipment") {
+                state.equipmentClientSuggestions = [];
+            } else {
+                state.maintenanceClientSuggestions = [];
+            }
             return;
         }
 
@@ -636,6 +864,8 @@
             const suggestions = await fetchJson(`${urls.clientSearch}?q=${encodeURIComponent(query)}`);
             if (target === "delivery") {
                 state.deliveryClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
+            } else if (target === "equipment") {
+                state.equipmentClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             } else {
                 state.maintenanceClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             }
@@ -645,6 +875,13 @@
             )).join("");
         } catch {
             datalist.innerHTML = "";
+            if (target === "delivery") {
+                state.deliveryClientSuggestions = [];
+            } else if (target === "equipment") {
+                state.equipmentClientSuggestions = [];
+            } else {
+                state.maintenanceClientSuggestions = [];
+            }
         }
     }
 

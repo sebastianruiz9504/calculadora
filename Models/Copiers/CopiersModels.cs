@@ -83,6 +83,7 @@ public sealed class CopiersSupplierInvoiceRowDto
     public string SupplyId { get; set; } = "";
     public string SupplyName { get; set; } = "";
     public decimal Quantity { get; set; }
+    public decimal UnitValueBeforeVat { get; set; }
     public int ApprovedValue { get; set; }
     public string ApprovedLabel { get; set; } = "";
 }
@@ -150,6 +151,7 @@ public sealed class CopiersSupplierInvoiceLineInputDto
 {
     public string SupplyId { get; set; } = "";
     public decimal Quantity { get; set; }
+    public decimal UnitValueBeforeVat { get; set; }
 }
 
 public sealed class CopiersSupplierInvoiceBatchCreateResultDto
@@ -157,4 +159,3 @@ public sealed class CopiersSupplierInvoiceBatchCreateResultDto
     public string Message { get; set; } = "";
     public IReadOnlyList<CopiersSupplierInvoiceRowDto> Records { get; set; } = Array.Empty<CopiersSupplierInvoiceRowDto>();
 }
-

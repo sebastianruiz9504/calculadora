@@ -1,6 +1,7 @@
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Copiers;
+using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -141,6 +142,45 @@ public sealed class CopiersController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar los equipos.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> EquipmentDetail([FromQuery] string equipmentId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.GetCopiersEquipmentDetailAsync(equipmentId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el detalle del equipo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> EquipmentAssignment([FromBody] CopiersEquipmentAssignmentRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar el equipo a reasignar."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveCopiersEquipmentAssignmentAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible actualizar la asignacion del equipo.", ex));
         }
     }
 
