@@ -999,22 +999,29 @@
 }
 
 .dashboard-client-invoices-table {
-    min-width: 640px;
+    min-width: 900px;
 }
 
 .dashboard-client-invoices-table thead th:nth-child(1),
 .dashboard-client-invoices-table tbody td:nth-child(1) {
-    width: 34%;
+    width: 26%;
 }
 
 .dashboard-client-invoices-table thead th:nth-child(2),
 .dashboard-client-invoices-table tbody td:nth-child(2) {
-    width: 28%;
+    width: 20%;
 }
 
 .dashboard-client-invoices-table thead th:nth-child(3),
 .dashboard-client-invoices-table tbody td:nth-child(3) {
-    width: 38%;
+    width: 18%;
+}
+
+.dashboard-client-invoices-table thead th:nth-child(4),
+.dashboard-client-invoices-table tbody td:nth-child(4),
+.dashboard-client-invoices-table thead th:nth-child(5),
+.dashboard-client-invoices-table tbody td:nth-child(5) {
+    width: 18%;
 }
 
 .dashboard-equipment-table,
@@ -1672,6 +1679,10 @@
 .dashboard-badge.is-success {
     background: #edf8ed;
     color: var(--dashboard-good);
+}
+
+.dashboard-badge--overdue {
+    border: 1px solid #f3c7cf;
 }
 
 @media (max-width: 991px) {

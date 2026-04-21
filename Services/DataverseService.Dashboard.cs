@@ -139,6 +139,7 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(normalizedClientId))
             throw new InvalidOperationException("No encontramos un cliente valido para consultar sus facturas emitidas.");
 
+        var today = GetBogotaToday();
         var invoices = await GetBillingRecordsByClientAsync(metadata, normalizedClientId, httpContext.User, ct);
         var resolvedClientName = FirstNonEmpty(
             invoices.Select(static row => row.ClientName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
@@ -151,16 +152,27 @@ public sealed partial class DataverseService
             ClientName = resolvedClientName,
             HasData = invoices.Count > 0,
             RecordsCount = invoices.Count,
-            EmptyStateTitle = "No encontramos facturas emitidas para este cliente.",
-            EmptyStateMessage = "Cuando existan registros emitidos en cr07a_facturacion para este cliente los veras aqui.",
+            EmptyStateTitle = "No encontramos facturas Copiers para este cliente.",
+            EmptyStateMessage = "Cuando existan registros emitidos en cr07a_facturacion con vertical Copiers para este cliente los veras aqui.",
             Invoices = invoices
-                .Select(row => new CopiersClientInvoiceRowDto
+                .Select(row =>
                 {
-                    RecordId = row.RecordId,
-                    InvoiceNumber = row.InvoiceNumber,
-                    TotalInvoice = row.TotalInvoice,
-                    EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
-                    EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha"
+                    var isPaymentOverdue = IsCopiersClientInvoicePaymentOverdue(row, today);
+
+                    return new CopiersClientInvoiceRowDto
+                    {
+                        RecordId = row.RecordId,
+                        InvoiceNumber = row.InvoiceNumber,
+                        TotalInvoice = row.TotalInvoice,
+                        EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                        EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",
+                        PaymentDateValue = row.PaymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                        PaymentDateDisplay = isPaymentOverdue
+                            ? "Vencida"
+                            : row.PaymentDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",
+                        PaymentValue = row.PaymentValue,
+                        IsPaymentOverdue = isPaymentOverdue
+                    };
                 })
                 .ToList()
         };
@@ -906,7 +918,11 @@ public sealed partial class DataverseService
             _dashboardBillingClientField,
             BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
             _dashboardBillingEmissionDateField,
-            _dashboardBillingTotalField
+            _dashboardBillingVerticalField,
+            _dashboardBillingDueDateField,
+            _dashboardBillingTotalField,
+            _dashboardBillingPaymentDateField,
+            _dashboardBillingPaymentValueField
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
         .Distinct(StringComparer.OrdinalIgnoreCase));
@@ -918,13 +934,29 @@ public sealed partial class DataverseService
 
         return items
             .Select(item => ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
-            .Where(static item => item is not null && item.EmissionDate is not null)
+            .Where(static item => item is not null
+                && item.EmissionDate is not null
+                && IsDashboardCopiersVertical(item))
             .Cast<BillingRecordRow>()
             .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .OrderByDescending(static item => item.EmissionDate)
             .ThenBy(static item => item.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static bool IsDashboardCopiersVertical(BillingRecordRow row)
+    {
+        return row.VerticalOptionValue == DashboardVerticalCopiersOption
+            || row.VerticalLabel.Contains("Copiers", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCopiersClientInvoicePaymentOverdue(BillingRecordRow row, DateOnly today)
+    {
+        if (row.DueDate is null || row.PaymentValue > 0m)
+            return false;
+
+        return today.DayNumber - row.DueDate.Value.DayNumber > 30;
     }
 
     private async Task<Dictionary<string, object>> BuildCopiersSavePayloadAsync(

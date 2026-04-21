@@ -163,6 +163,10 @@ public sealed class CopiersClientInvoiceRowDto
     public decimal TotalInvoice { get; set; }
     public string EmissionDateValue { get; set; } = "";
     public string EmissionDateDisplay { get; set; } = "";
+    public string PaymentDateValue { get; set; } = "";
+    public string PaymentDateDisplay { get; set; } = "";
+    public decimal PaymentValue { get; set; }
+    public bool IsPaymentOverdue { get; set; }
 }
 
 public sealed class CopiersEquipmentDashboardDto
