@@ -19,6 +19,15 @@
 .copiers-shell {
     display: grid;
     gap: 20px;
+    width: 100%;
+    min-width: 0;
+}
+
+.copiers-shell > *,
+.copiers-panel > *,
+.copiers-subpanel > *,
+.copiers-modal__dialog > * {
+    min-width: 0;
 }
 
 .copiers-hero,
@@ -94,6 +103,7 @@
 }
 
 .copiers-tab {
+    min-height: 44px;
     border: none;
     border-radius: 16px;
     padding: 12px 18px;
@@ -142,6 +152,16 @@
 .copiers-modal__footer {
     align-items: center;
     justify-content: flex-end;
+}
+
+.copiers-panel__header > div:first-child,
+.copiers-modal__header > div:first-child {
+    min-width: 0;
+}
+
+.copiers-panel__actions .btn,
+.copiers-modal__footer .btn {
+    min-height: 44px;
 }
 
 .copiers-section-title,
@@ -231,6 +251,9 @@
     border: 1px solid var(--copiers-line);
     border-radius: 20px;
     background: #ffffff;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 .copiers-table-wrap--compact {
@@ -244,6 +267,20 @@
 .copiers-table {
     margin: 0;
     min-width: 760px;
+}
+
+.copiers-table--maintenance,
+.copiers-table--equipment,
+.copiers-table--deliveries,
+.copiers-table--equipment-maintenance {
+    min-width: 940px;
+}
+
+.copiers-table--pending-invoices,
+.copiers-table--equipment-clients,
+.copiers-table--equipment-stock,
+.copiers-table--supplies {
+    min-width: 640px;
 }
 
 .copiers-table thead th {
@@ -280,6 +317,7 @@
 .copiers-table td {
     color: var(--copiers-ink);
     vertical-align: middle;
+    overflow-wrap: anywhere;
 }
 
 .copiers-muted {
@@ -521,9 +559,80 @@
     .copiers-hero {
         display: grid;
     }
+
+    .copiers-user-pill {
+        max-width: none;
+        width: 100%;
+    }
+
+    .copiers-panel__header,
+    .copiers-subpanel__header {
+        align-items: stretch;
+    }
+
+    .copiers-panel__actions {
+        width: 100%;
+    }
+
+    .copiers-panel__actions .copiers-counter {
+        margin-right: auto;
+    }
 }
 
 @media (max-width: 640px) {
+    .copiers-shell {
+        gap: 14px;
+    }
+
+    .copiers-hero,
+    .copiers-tabs,
+    .copiers-panel,
+    .copiers-subpanel,
+    .copiers-status,
+    .copiers-kpi {
+        border-radius: 20px;
+    }
+
+    .copiers-hero,
+    .copiers-panel,
+    .copiers-subpanel {
+        padding: 18px;
+    }
+
+    .copiers-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .copiers-tab {
+        width: 100%;
+        padding: 11px 10px;
+        font-size: 13px;
+        line-height: 1.18;
+        text-align: center;
+        white-space: normal;
+    }
+
+    .copiers-panel__header,
+    .copiers-subpanel__header,
+    .copiers-panel__actions,
+    .copiers-modal__header,
+    .copiers-modal__footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .copiers-panel__actions .btn,
+    .copiers-modal__footer .btn {
+        width: 100%;
+    }
+
+    .copiers-counter {
+        width: 100%;
+    }
+
     .copiers-modal {
         padding: 12px;
         place-items: stretch;
@@ -550,5 +659,93 @@
     .copiers-section-title,
     .copiers-modal__title {
         font-size: 24px;
+    }
+
+    .copiers-table-wrap {
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .copiers-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .copiers-table thead {
+        display: none;
+    }
+
+    .copiers-table tbody,
+    .copiers-table tr,
+    .copiers-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .copiers-table tbody {
+        display: grid;
+        gap: 12px;
+    }
+
+    .copiers-table tbody tr {
+        padding: 14px;
+        border: 1px solid var(--copiers-line);
+        border-radius: 18px;
+        background: #ffffff;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .06);
+    }
+
+    .copiers-table tbody tr.is-selectable:hover,
+    .copiers-table tbody tr.is-selected {
+        background: #f3f9ff;
+    }
+
+    .copiers-table td {
+        display: grid;
+        grid-template-columns: minmax(7rem, 42%) minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        padding: 8px 0;
+        border: 0;
+        text-align: left !important;
+    }
+
+    .copiers-table td + td {
+        border-top: 1px solid #eef3f8;
+    }
+
+    .copiers-table td::before {
+        content: attr(data-label);
+        color: var(--copiers-muted);
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.25;
+        text-transform: uppercase;
+    }
+
+    .copiers-table td[colspan] {
+        display: block;
+        padding: 16px 10px;
+        text-align: center !important;
+    }
+
+    .copiers-table td[colspan]::before {
+        content: none;
+    }
+}
+
+@media (max-width: 420px) {
+    .copiers-tabs {
+        grid-template-columns: 1fr;
+    }
+
+    .copiers-table td {
+        grid-template-columns: 1fr;
+        gap: 4px;
     }
 }

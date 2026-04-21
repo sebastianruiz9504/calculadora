@@ -334,13 +334,13 @@
 
             return `
                 <tr class="is-selectable" data-record-id="${escapeHtml(row.recordId)}" tabindex="0">
-                    <td>${escapeHtml(row.equipmentSerial || "Sin equipo")}</td>
-                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
-                    <td>${escapeHtml(row.dateDisplay || "")}</td>
-                    <td><span class="copiers-badge">${escapeHtml(row.maintenanceTypeLabel || "Sin tipo")}</span></td>
-                    <td>${escapeHtml(row.technicianName || "")}</td>
-                    <td>${attachment}</td>
-                    <td>${escapeHtml(row.description || "")}</td>
+                    <td data-label="Equipo">${escapeHtml(row.equipmentSerial || "Sin equipo")}</td>
+                    <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
+                    <td data-label="Tipo"><span class="copiers-badge">${escapeHtml(row.maintenanceTypeLabel || "Sin tipo")}</span></td>
+                    <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
+                    <td data-label="Reporte">${attachment}</td>
+                    <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
                 </tr>`;
         }).join("");
     }
@@ -382,27 +382,27 @@
 
         equipmentClientsBody.innerHTML = clientRows.map((row) => `
             <tr>
-                <td>${escapeHtml(row.clientName)}</td>
-                <td class="text-end">${numberFormatter.format(Number(row.equipmentCount || 0))}</td>
-                <td>${escapeHtml(row.categoryBreakdown || "")}</td>
+                <td data-label="Cliente">${escapeHtml(row.clientName)}</td>
+                <td data-label="Equipos" class="text-end">${numberFormatter.format(Number(row.equipmentCount || 0))}</td>
+                <td data-label="Categorias">${escapeHtml(row.categoryBreakdown || "")}</td>
             </tr>`).join("");
 
         equipmentStockBody.innerHTML = stockRows.map((row) => `
             <tr>
-                <td>${escapeHtml(row.serial)}</td>
-                <td>${escapeHtml(row.categoryLabel || "")}</td>
-                <td>${escapeHtml(row.reference || "")}</td>
+                <td data-label="Serial">${escapeHtml(row.serial)}</td>
+                <td data-label="Categoria">${escapeHtml(row.categoryLabel || "")}</td>
+                <td data-label="Referencia">${escapeHtml(row.reference || "")}</td>
             </tr>`).join("");
 
         equipmentBody.innerHTML = equipmentRows.length ? equipmentRows.map((row) => `
             <tr class="is-selectable" data-equipment-id="${escapeHtml(row.recordId || "")}" tabindex="0">
-                <td>${escapeHtml(row.serial)}</td>
-                <td>${row.inStock ? '<span class="copiers-badge is-warning">Stock</span>' : escapeHtml(row.clientName || "Sin cliente")}</td>
-                <td>${escapeHtml(row.categoryLabel || "")}</td>
-                <td>${escapeHtml(row.reference || "")}</td>
-                <td>${escapeHtml(row.observations || "")}</td>
-                <td class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
-                <td>${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
+                <td data-label="Serial">${escapeHtml(row.serial)}</td>
+                <td data-label="Cliente">${row.inStock ? '<span class="copiers-badge is-warning">Stock</span>' : escapeHtml(row.clientName || "Sin cliente")}</td>
+                <td data-label="Categoria">${escapeHtml(row.categoryLabel || "")}</td>
+                <td data-label="Referencia">${escapeHtml(row.reference || "")}</td>
+                <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
+                <td data-label="Mantenimientos" class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
+                <td data-label="Ultimo mantenimiento">${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
             </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
     }
 
@@ -476,14 +476,14 @@
 
             return `
                 <tr>
-                    <td>${escapeHtml(row.dateDisplay || "")}</td>
-                    <td>${escapeHtml(row.title || "")}</td>
-                    <td>${escapeHtml(row.maintenanceTypeLabel || "")}</td>
-                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
-                    <td>${escapeHtml(row.technicianName || "")}</td>
-                    <td>${escapeHtml(row.description || "")}</td>
-                    <td>${escapeHtml(row.internalId || "")}</td>
-                    <td>${attachment}</td>
+                    <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
+                    <td data-label="Titulo">${escapeHtml(row.title || "")}</td>
+                    <td data-label="Tipo">${escapeHtml(row.maintenanceTypeLabel || "")}</td>
+                    <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
+                    <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
+                    <td data-label="ID">${escapeHtml(row.internalId || "")}</td>
+                    <td data-label="Adjunto">${attachment}</td>
                 </tr>`;
         }).join("") : `<tr><td colspan="8" class="text-center copiers-muted">Este equipo no tiene mantenimientos registrados.</td></tr>`;
     }
@@ -550,10 +550,10 @@
             const exhausted = Number(row.quantity || 0) <= 0 || Number(row.statusValue || 0) === 645250001;
             return `
                 <tr>
-                    <td>${escapeHtml(row.name)}</td>
-                    <td class="text-end">${numberFormatter.format(Number(row.quantity || 0))}</td>
-                    <td>${escapeHtml(row.lastPurchaseDateDisplay || "")}</td>
-                    <td><span class="copiers-badge ${exhausted ? "is-danger" : "is-good"}">${escapeHtml(row.statusLabel || "")}</span></td>
+                    <td data-label="Referencia">${escapeHtml(row.name)}</td>
+                    <td data-label="Cantidad" class="text-end">${numberFormatter.format(Number(row.quantity || 0))}</td>
+                    <td data-label="Ultima compra">${escapeHtml(row.lastPurchaseDateDisplay || "")}</td>
+                    <td data-label="Estado"><span class="copiers-badge ${exhausted ? "is-danger" : "is-good"}">${escapeHtml(row.statusLabel || "")}</span></td>
                 </tr>`;
         }).join("");
     }
@@ -581,10 +581,10 @@
             const selected = row.recordId === state.selectedPendingInvoiceId;
             return `
                 <tr class="is-selectable ${selected ? "is-selected" : ""}" data-invoice-id="${escapeHtml(row.recordId)}">
-                    <td>${escapeHtml(row.invoiceNumber)}</td>
-                    <td>${escapeHtml(row.supplyName)}</td>
-                    <td class="text-end">${numberFormatter.format(Number(row.quantity || 0))}</td>
-                    <td><span class="copiers-badge is-warning">${escapeHtml(row.approvedLabel || "No")}</span></td>
+                    <td data-label="Factura">${escapeHtml(row.invoiceNumber)}</td>
+                    <td data-label="Suministro">${escapeHtml(row.supplyName)}</td>
+                    <td data-label="Cantidad" class="text-end">${numberFormatter.format(Number(row.quantity || 0))}</td>
+                    <td data-label="Estado"><span class="copiers-badge is-warning">${escapeHtml(row.approvedLabel || "No")}</span></td>
                 </tr>`;
         }).join("");
 
@@ -655,13 +655,13 @@
 
             return `
                 <tr>
-                    <td>${escapeHtml(row.clientName)}</td>
-                    <td>${escapeHtml(row.supplyName)}</td>
-                    <td>${escapeHtml(row.deliveryDateDisplay || "")}</td>
-                    <td class="text-end">${numberFormatter.format(Number(row.quantityDelivered || 0))}</td>
-                    <td><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.statusLabel || "")}</span></td>
-                    <td>${attachment}</td>
-                    <td>${escapeHtml(row.ownerName || "")}</td>
+                    <td data-label="Cliente">${escapeHtml(row.clientName)}</td>
+                    <td data-label="Suministro">${escapeHtml(row.supplyName)}</td>
+                    <td data-label="Fecha">${escapeHtml(row.deliveryDateDisplay || "")}</td>
+                    <td data-label="Cantidad" class="text-end">${numberFormatter.format(Number(row.quantityDelivered || 0))}</td>
+                    <td data-label="Estado"><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.statusLabel || "")}</span></td>
+                    <td data-label="Comprobante">${attachment}</td>
+                    <td data-label="Owner">${escapeHtml(row.ownerName || "")}</td>
                 </tr>`;
         }).join("");
     }
