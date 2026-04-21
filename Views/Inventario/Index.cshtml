@@ -1,0 +1,88 @@
+@model CotizadorInterno.Web.Models.Copiers.CopiersInventoryPageViewModel
+@{
+    ViewData["Title"] = "Inventario";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/copiers.css" asp-append-version="true" />
+}
+
+<div class="copiers-shell copiers-shell--admin"
+     id="copiersAdminInventoryApp"
+     data-load-url="@Url.Action("Data", "Inventario")"
+     data-create-url="@Url.Action("Create", "Inventario")">
+    <section class="copiers-hero">
+        <div>
+            <div class="copiers-kicker">Admin</div>
+            <h1 class="copiers-title">Inventario</h1>
+            <p class="copiers-subtitle">Registro de facturas de proveedor copiers por lineas de suministro.</p>
+        </div>
+        <div class="copiers-user-pill">
+            <span class="copiers-user-pill__label">Usuario</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <div id="copiersAdminStatus" class="copiers-status" role="status" aria-live="polite"></div>
+
+    <section class="copiers-panel is-active">
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Facturas proveedor</div>
+                <h2 class="copiers-section-title">cr07a_facturasproveedorescopiers</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersAdminCount">0 registros</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersAdminRefreshBtn">Actualizar</button>
+                <button type="button" class="btn btn-primary" id="copiersAdminNewBtn">Nuevo registro</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table">
+                <thead>
+                    <tr>
+                        <th>Numero de factura</th>
+                        <th>Suministro</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Aprobado e ingresado</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersAdminRowsBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersAdminEmpty" hidden>No hay facturas proveedor registradas.</div>
+    </section>
+</div>
+
+<div class="copiers-modal" id="copiersAdminModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-admin-close></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersAdminModalTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Nuevo registro</div>
+                <h2 class="copiers-modal__title" id="copiersAdminModalTitle">Factura de proveedor</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-admin-close>Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersAdminModalStatus" role="status" aria-live="polite"></div>
+        <form class="copiers-form" id="copiersAdminForm">
+            <label class="copiers-field">
+                <span>Numero de factura</span>
+                <input class="form-control" id="copiersAdminInvoiceNumber" type="text" />
+            </label>
+
+            <div class="copiers-lines" id="copiersAdminLines"></div>
+
+            <div class="copiers-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" id="copiersAdminAddLineBtn">Agregar linea</button>
+                <span class="copiers-modal__spacer"></span>
+                <button type="button" class="btn btn-outline-secondary" data-copiers-admin-close>Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersAdminSaveBtn">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/inventario.js" asp-append-version="true"></script>
+}

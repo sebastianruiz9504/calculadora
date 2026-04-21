@@ -1,0 +1,358 @@
+@model CotizadorInterno.Web.Models.Copiers.CopiersPageViewModel
+@{
+    ViewData["Title"] = "Copiers";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/copiers.css" asp-append-version="true" />
+}
+
+<div class="copiers-shell"
+     id="copiersApp"
+     data-maintenance-url="@Url.Action("Maintenance", "Copiers")"
+     data-save-maintenance-url="@Url.Action("SaveMaintenance", "Copiers")"
+     data-upload-maintenance-url="@Url.Action("UploadMaintenanceAttachment", "Copiers")"
+     data-download-maintenance-url="@Url.Action("DownloadMaintenanceAttachment", "Copiers")"
+     data-equipment-url="@Url.Action("Equipment", "Copiers")"
+     data-supplies-url="@Url.Action("Supplies", "Copiers")"
+     data-pending-invoices-url="@Url.Action("PendingSupplierInvoices", "Copiers")"
+     data-approve-invoice-url="@Url.Action("ApproveSupplierInvoice", "Copiers")"
+     data-deliveries-url="@Url.Action("Deliveries", "Copiers")"
+     data-save-delivery-url="@Url.Action("SaveDelivery", "Copiers")"
+     data-upload-delivery-url="@Url.Action("UploadDeliveryAttachment", "Copiers")"
+     data-download-delivery-url="@Url.Action("DownloadDeliveryAttachment", "Copiers")"
+     data-client-search-url="@Url.Action("ClientSearch", "Copiers")">
+    <section class="copiers-hero">
+        <div>
+            <div class="copiers-kicker">Operacion</div>
+            <h1 class="copiers-title">Copiers</h1>
+            <p class="copiers-subtitle">Mantenimientos, equipos, inventario de suministros y entregas en una sola vista operativa.</p>
+        </div>
+        <div class="copiers-user-pill">
+            <span class="copiers-user-pill__label">Usuario</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <div id="copiersStatus" class="copiers-status" role="status" aria-live="polite"></div>
+
+    <nav class="copiers-tabs" aria-label="Submodulos Copiers">
+        <button type="button" class="copiers-tab is-active" data-copiers-tab="maintenance">Mantenimientos</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="equipment">Equipos</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="supplies">Inventario suministros</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="deliveries">Entregas</button>
+    </nav>
+
+    <section class="copiers-panel is-active" data-copiers-panel="maintenance">
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Mis mantenimientos</div>
+                <h2 class="copiers-section-title">Mantenimientos asignados</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersMaintenanceCount">0 registros</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersMaintenanceRefreshBtn">Actualizar</button>
+                <button type="button" class="btn btn-primary" id="copiersNewMaintenanceBtn">Nuevo mantenimiento</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table">
+                <thead>
+                    <tr>
+                        <th>Equipo</th>
+                        <th>Cliente</th>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Tecnico</th>
+                        <th>Reporte</th>
+                        <th>Descripcion</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersMaintenanceBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersMaintenanceEmpty" hidden>No hay mantenimientos propios para mostrar.</div>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="equipment" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Equipos</div>
+                <h2 class="copiers-section-title">Equipos por cliente y stock</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersEquipmentCount">0 equipos</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersEquipmentRefreshBtn">Actualizar</button>
+            </div>
+        </div>
+        <div class="copiers-kpis" id="copiersEquipmentKpis"></div>
+        <div class="copiers-grid">
+            <section class="copiers-subpanel">
+                <div class="copiers-subpanel__header">
+                    <h3>Clientes</h3>
+                </div>
+                <div class="copiers-table-wrap copiers-table-wrap--compact">
+                    <table class="table align-middle copiers-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th class="text-end">Equipos</th>
+                                <th>Categorias</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersEquipmentClientsBody"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="copiers-subpanel">
+                <div class="copiers-subpanel__header">
+                    <h3>Stock</h3>
+                </div>
+                <div class="copiers-table-wrap copiers-table-wrap--compact">
+                    <table class="table align-middle copiers-table">
+                        <thead>
+                            <tr>
+                                <th>Serial</th>
+                                <th>Categoria</th>
+                                <th>Referencia</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersEquipmentStockBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+        <section class="copiers-subpanel">
+            <div class="copiers-subpanel__header">
+                <h3>Inventario operativo</h3>
+            </div>
+            <div class="copiers-table-wrap">
+                <table class="table align-middle copiers-table">
+                    <thead>
+                        <tr>
+                            <th>Serial</th>
+                            <th>Cliente</th>
+                            <th>Categoria</th>
+                            <th>Referencia</th>
+                            <th class="text-end">Mantenimientos</th>
+                            <th>Ultimo mantenimiento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="copiersEquipmentBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="supplies" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Inventario suministros</div>
+                <h2 class="copiers-section-title">Suministros disponibles</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersSuppliesCount">0 suministros</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersSuppliesRefreshBtn">Actualizar</button>
+                <button type="button" class="btn btn-primary" id="copiersNewIngresoBtn">Nuevo ingreso</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table">
+                <thead>
+                    <tr>
+                        <th>Referencia</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Ultima compra</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersSuppliesBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersSuppliesEmpty" hidden>No hay suministros registrados.</div>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="deliveries" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Mis entregas</div>
+                <h2 class="copiers-section-title">Entregas registradas</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersDeliveriesCount">0 entregas</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersDeliveriesRefreshBtn">Actualizar</button>
+                <button type="button" class="btn btn-primary" id="copiersNewDeliveryBtn">Nueva entrega</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Suministro</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Estado</th>
+                        <th>Comprobante</th>
+                        <th>Owner</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersDeliveriesBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersDeliveriesEmpty" hidden>No hay entregas propias para mostrar.</div>
+    </section>
+</div>
+
+<div class="copiers-modal" id="copiersMaintenanceModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="maintenance"></div>
+    <div class="copiers-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="copiersMaintenanceModalTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Formulario</div>
+                <h2 class="copiers-modal__title" id="copiersMaintenanceModalTitle">Nuevo mantenimiento</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="maintenance">Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersMaintenanceModalStatus" role="status" aria-live="polite"></div>
+        <form class="copiers-form" id="copiersMaintenanceForm">
+            <input type="hidden" id="copiersMaintenanceRecordId" />
+            <input type="hidden" id="copiersMaintenanceClientId" />
+            <div class="copiers-form__grid">
+                <label class="copiers-field">
+                    <span>Titulo</span>
+                    <input class="form-control" id="copiersMaintenanceTitle" type="text" />
+                </label>
+                <label class="copiers-field">
+                    <span>ID interno</span>
+                    <input class="form-control" id="copiersMaintenanceInternalId" type="text" />
+                </label>
+                <label class="copiers-field">
+                    <span>Equipo</span>
+                    <select class="form-select" id="copiersMaintenanceEquipment"></select>
+                </label>
+                <label class="copiers-field">
+                    <span>Cliente</span>
+                    <input class="form-control" id="copiersMaintenanceClientName" list="copiersClientOptions" autocomplete="off" />
+                    <datalist id="copiersClientOptions"></datalist>
+                </label>
+                <label class="copiers-field">
+                    <span>Fecha</span>
+                    <input class="form-control" id="copiersMaintenanceDate" type="date" />
+                </label>
+                <label class="copiers-field">
+                    <span>Tipo</span>
+                    <select class="form-select" id="copiersMaintenanceType"></select>
+                </label>
+                <label class="copiers-field copiers-field--span-2">
+                    <span>Descripcion</span>
+                    <textarea class="form-control" id="copiersMaintenanceDescription" rows="4"></textarea>
+                </label>
+                <label class="copiers-field copiers-field--span-2">
+                    <span>Reporte adjunto</span>
+                    <input class="form-control" id="copiersMaintenanceFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                </label>
+            </div>
+            <div class="copiers-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-copiers-close="maintenance">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersMaintenanceSaveBtn">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="copiers-modal" id="copiersIngresoModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="ingreso"></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersIngresoTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Nuevo ingreso</div>
+                <h2 class="copiers-modal__title" id="copiersIngresoTitle">Ingresos pendientes</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="ingreso">Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersIngresoStatus" role="status" aria-live="polite"></div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table">
+                <thead>
+                    <tr>
+                        <th>Factura</th>
+                        <th>Suministro</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersPendingInvoicesBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-modal__footer">
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="ingreso">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="copiersVerifyIngresoBtn" disabled>Verificar ingreso</button>
+        </div>
+    </div>
+</div>
+
+<div class="copiers-modal" id="copiersConfirmIngresoModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="confirmIngreso"></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--small" role="alertdialog" aria-modal="true" aria-labelledby="copiersConfirmIngresoTitle">
+        <div class="copiers-kicker">Confirmacion</div>
+        <h2 class="copiers-modal__title" id="copiersConfirmIngresoTitle">Esta seguro de aprobar el ingreso?</h2>
+        <p class="copiers-modal__text" id="copiersConfirmIngresoText"></p>
+        <div class="copiers-modal__footer">
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="confirmIngreso">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="copiersConfirmIngresoBtn">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div class="copiers-modal" id="copiersDeliveryModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="delivery"></div>
+    <div class="copiers-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="copiersDeliveryModalTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Formulario</div>
+                <h2 class="copiers-modal__title" id="copiersDeliveryModalTitle">Nueva entrega</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="delivery">Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersDeliveryModalStatus" role="status" aria-live="polite"></div>
+        <form class="copiers-form" id="copiersDeliveryForm">
+            <input type="hidden" id="copiersDeliveryClientId" />
+            <div class="copiers-form__grid">
+                <label class="copiers-field">
+                    <span>Cliente</span>
+                    <input class="form-control" id="copiersDeliveryClientName" list="copiersDeliveryClientOptions" autocomplete="off" />
+                    <datalist id="copiersDeliveryClientOptions"></datalist>
+                </label>
+                <label class="copiers-field">
+                    <span>Suministro</span>
+                    <select class="form-select" id="copiersDeliverySupply"></select>
+                </label>
+                <label class="copiers-field">
+                    <span>Fecha</span>
+                    <input class="form-control" id="copiersDeliveryDate" type="date" />
+                </label>
+                <label class="copiers-field">
+                    <span>Cantidad entregada</span>
+                    <input class="form-control" id="copiersDeliveryQuantity" type="number" min="1" step="1" />
+                </label>
+                <label class="copiers-field">
+                    <span>Estado</span>
+                    <select class="form-select" id="copiersDeliveryStatus"></select>
+                </label>
+                <label class="copiers-field">
+                    <span>Comprobante</span>
+                    <input class="form-control" id="copiersDeliveryFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                </label>
+            </div>
+            <div class="copiers-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-copiers-close="delivery">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersDeliverySaveBtn">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/copiers.js" asp-append-version="true"></script>
+}

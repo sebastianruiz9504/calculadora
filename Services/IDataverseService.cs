@@ -1,6 +1,7 @@
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models.CuentasCobro;
+using CotizadorInterno.Web.Models.Copiers;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
@@ -51,6 +52,19 @@ public interface IDataverseService
     Task<CopiersEquipmentDetailDto> GetCopiersEquipmentDetailAsync(string equipmentId, CancellationToken ct = default);
     Task<CopiersEquipmentAssignmentResultDto> SaveCopiersEquipmentAssignmentAsync(CopiersEquipmentAssignmentRequestDto request, CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadCopiersMaintenanceAttachmentAsync(string maintenanceId, CancellationToken ct = default);
+    Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default);
+    Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> SaveCopiersMaintenanceAsync(CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveRequestDto request, CancellationToken ct = default);
+    Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> UploadCopiersMaintenanceAttachmentAsync(string maintenanceId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<CopiersSupplyInventoryDto> GetCopiersSupplyInventoryAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<CopiersLookupItemDto>> GetCopiersSupplyLookupAsync(string? query = null, int top = 100, CancellationToken ct = default);
+    Task<CopiersSupplierInvoiceBoardDto> GetCopiersPendingSupplierInvoicesAsync(CancellationToken ct = default);
+    Task<CopiersApproveSupplierInvoiceResultDto> ApproveCopiersSupplierInvoiceAsync(string invoiceId, CancellationToken ct = default);
+    Task<CopiersDeliveryBoardDto> GetCopiersDeliveriesAsync(CancellationToken ct = default);
+    Task<CopiersDeliverySaveResultDto> SaveCopiersDeliveryAsync(CopiersDeliverySaveRequestDto request, CancellationToken ct = default);
+    Task<CopiersDeliverySaveResultDto> UploadCopiersDeliveryAttachmentAsync(string deliveryId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<RhFileDownloadResult?> DownloadCopiersDeliveryAttachmentAsync(string deliveryId, CancellationToken ct = default);
+    Task<CopiersSupplierInvoiceBoardDto> GetCopiersSupplierInvoicesAsync(CancellationToken ct = default);
+    Task<CopiersSupplierInvoiceBatchCreateResultDto> CreateCopiersSupplierInvoicesAsync(CopiersSupplierInvoiceBatchCreateRequestDto request, CancellationToken ct = default);
     Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(DateOnly startDate, DateOnly endDate, string? searchTerm = null, CancellationToken ct = default);
     Task<SupplierCertificateSummaryDto> GetSupplierCertificateSummaryAsync(SupplierCertificateQuery query, CancellationToken ct = default);
     Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default);

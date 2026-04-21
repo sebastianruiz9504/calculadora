@@ -1,0 +1,420 @@
+:root {
+    --copiers-ink: #172033;
+    --copiers-muted: #657184;
+    --copiers-line: #d7dee8;
+    --copiers-panel: #ffffff;
+    --copiers-soft: #f6f8fb;
+    --copiers-brand: #0f6cbd;
+    --copiers-brand-soft: #e7f2fb;
+    --copiers-good: #137333;
+    --copiers-good-soft: #e7f4ec;
+    --copiers-danger: #b42318;
+    --copiers-danger-soft: #fcebea;
+    --copiers-warning: #946200;
+    --copiers-warning-soft: #fff4d6;
+}
+
+.copiers-shell {
+    display: grid;
+    gap: 18px;
+}
+
+.copiers-hero {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: flex-start;
+    padding: 22px;
+    background: #ffffff;
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+}
+
+.copiers-kicker,
+.copiers-user-pill__label,
+.copiers-counter,
+.copiers-field > span {
+    color: var(--copiers-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.copiers-title {
+    margin: 6px 0;
+    color: var(--copiers-ink);
+    font-size: 2.3rem;
+    font-weight: 700;
+}
+
+.copiers-subtitle {
+    max-width: 780px;
+    margin: 0;
+    color: var(--copiers-muted);
+}
+
+.copiers-user-pill {
+    display: grid;
+    gap: 4px;
+    max-width: 360px;
+    padding: 12px 14px;
+    background: var(--copiers-soft);
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+    color: var(--copiers-ink);
+    overflow-wrap: anywhere;
+}
+
+.copiers-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px;
+    background: #ffffff;
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+}
+
+.copiers-tab {
+    border: 0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    background: transparent;
+    color: var(--copiers-muted);
+    font-weight: 700;
+}
+
+.copiers-tab.is-active {
+    background: var(--copiers-brand);
+    color: #ffffff;
+}
+
+.copiers-panel,
+.copiers-subpanel {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    background: var(--copiers-panel);
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+}
+
+.copiers-panel[hidden],
+.copiers-modal[hidden] {
+    display: none;
+}
+
+.copiers-panel__header,
+.copiers-subpanel__header,
+.copiers-panel__actions,
+.copiers-modal__header,
+.copiers-modal__footer {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.copiers-panel__actions {
+    justify-content: flex-end;
+}
+
+.copiers-section-title,
+.copiers-subpanel h3,
+.copiers-modal__title {
+    margin: 0;
+    color: var(--copiers-ink);
+    font-weight: 700;
+}
+
+.copiers-section-title {
+    font-size: 1.35rem;
+}
+
+.copiers-subpanel h3,
+.copiers-modal__title {
+    font-size: 1.1rem;
+}
+
+.copiers-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+.copiers-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.copiers-kpi {
+    display: grid;
+    gap: 4px;
+    padding: 14px;
+    background: var(--copiers-soft);
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+}
+
+.copiers-kpi span {
+    color: var(--copiers-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.copiers-kpi strong {
+    color: var(--copiers-ink);
+    font-size: 1.3rem;
+}
+
+.copiers-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+}
+
+.copiers-table-wrap--compact {
+    max-height: 340px;
+}
+
+.copiers-table {
+    margin: 0;
+    min-width: 760px;
+}
+
+.copiers-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f9fbfd;
+    color: var(--copiers-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.copiers-table tbody tr.is-selectable {
+    cursor: pointer;
+}
+
+.copiers-table tbody tr.is-selected {
+    background: var(--copiers-brand-soft);
+}
+
+.copiers-table td {
+    color: var(--copiers-ink);
+    vertical-align: middle;
+}
+
+.copiers-muted {
+    color: var(--copiers-muted);
+}
+
+.copiers-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--copiers-brand-soft);
+    color: var(--copiers-brand);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.copiers-badge.is-good {
+    background: var(--copiers-good-soft);
+    color: var(--copiers-good);
+}
+
+.copiers-badge.is-danger {
+    background: var(--copiers-danger-soft);
+    color: var(--copiers-danger);
+}
+
+.copiers-badge.is-warning {
+    background: var(--copiers-warning-soft);
+    color: var(--copiers-warning);
+}
+
+.copiers-status {
+    display: none;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--copiers-line);
+    background: var(--copiers-soft);
+    color: var(--copiers-ink);
+}
+
+.copiers-status.is-visible {
+    display: block;
+}
+
+.copiers-status.is-error {
+    border-color: #f0b7b1;
+    background: var(--copiers-danger-soft);
+    color: var(--copiers-danger);
+}
+
+.copiers-status.is-success {
+    border-color: #bfe1ca;
+    background: var(--copiers-good-soft);
+    color: var(--copiers-good);
+}
+
+.copiers-status.is-warning {
+    border-color: #f1d78c;
+    background: var(--copiers-warning-soft);
+    color: var(--copiers-warning);
+}
+
+.copiers-empty {
+    padding: 16px;
+    border: 1px dashed var(--copiers-line);
+    border-radius: 8px;
+    color: var(--copiers-muted);
+    text-align: center;
+}
+
+.copiers-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.copiers-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, .45);
+}
+
+.copiers-modal__dialog {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 14px;
+    width: min(860px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow: auto;
+    padding: 20px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 22px 55px rgba(15, 23, 42, .24);
+}
+
+.copiers-modal__dialog--wide {
+    width: min(1040px, 100%);
+}
+
+.copiers-modal__dialog--small {
+    width: min(480px, 100%);
+}
+
+.copiers-modal__text {
+    margin: 0;
+    color: var(--copiers-muted);
+}
+
+.copiers-modal__spacer {
+    flex: 1 1 auto;
+}
+
+.copiers-form {
+    display: grid;
+    gap: 16px;
+}
+
+.copiers-form__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.copiers-field {
+    display: grid;
+    gap: 6px;
+}
+
+.copiers-field--span-2 {
+    grid-column: 1 / -1;
+}
+
+.copiers-field textarea {
+    resize: vertical;
+}
+
+.copiers-link {
+    color: var(--copiers-brand);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.copiers-link:hover {
+    text-decoration: underline;
+}
+
+.copiers-lines {
+    display: grid;
+    gap: 10px;
+}
+
+.copiers-line-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px 44px;
+    gap: 10px;
+    align-items: end;
+    padding: 12px;
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+    background: var(--copiers-soft);
+}
+
+.copiers-icon-btn {
+    width: 44px;
+    height: 38px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--copiers-line);
+    border-radius: 6px;
+    background: #ffffff;
+    color: var(--copiers-danger);
+    font-weight: 800;
+}
+
+@media (max-width: 920px) {
+    .copiers-grid,
+    .copiers-kpis,
+    .copiers-form__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .copiers-field--span-2 {
+        grid-column: auto;
+    }
+
+    .copiers-hero {
+        display: grid;
+    }
+}
+
+@media (max-width: 640px) {
+    .copiers-modal {
+        padding: 12px;
+        place-items: stretch;
+    }
+
+    .copiers-modal__dialog {
+        max-height: calc(100vh - 24px);
+    }
+
+    .copiers-line-row {
+        grid-template-columns: 1fr;
+    }
+}

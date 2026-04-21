@@ -15,7 +15,9 @@ public enum AppModule
     Permissions = 8,
     Dashboard = 9,
     Metricas = 10,
-    CuentasCobro = 11
+    CuentasCobro = 11,
+    Copiers = 12,
+    Inventario = 13
 }
 
 public sealed class AppModuleDefinition
@@ -149,6 +151,26 @@ public static class AppModuleCatalog
         Controller = "CuentasCobro"
     };
 
+    public static readonly AppModuleDefinition Copiers = new()
+    {
+        Key = AppModule.Copiers,
+        Label = "Copiers",
+        Category = "Copiers",
+        Description = "Administra mantenimientos, equipos, suministros y entregas del inventario operativo.",
+        OptionValue = 645250011,
+        Controller = "Copiers"
+    };
+
+    public static readonly AppModuleDefinition Inventario = new()
+    {
+        Key = AppModule.Inventario,
+        Label = "Inventario",
+        Category = "Admin",
+        Description = "Registra facturas de proveedor por lineas para alimentar los ingresos de suministros copiers.",
+        OptionValue = 645250012,
+        Controller = "Inventario"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -159,7 +181,9 @@ public static class AppModuleCatalog
         Rh,
         PortalProveedores,
         CuentasCobro,
+        Inventario,
         GestionHumana,
+        Copiers,
         Dashboard,
         Permissions
     };
@@ -183,13 +207,18 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Admin",
-            Modules = new[] { Rh, PortalProveedores, CuentasCobro },
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario },
             IsDropdown = true
         },
         new AppModuleNavigationGroup
         {
             Label = "Gestion humana",
             Modules = new[] { GestionHumana }
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Copiers",
+            Modules = new[] { Copiers }
         },
         new AppModuleNavigationGroup
         {
