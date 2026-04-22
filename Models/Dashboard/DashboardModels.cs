@@ -169,6 +169,47 @@ public sealed class CopiersClientInvoiceRowDto
     public bool IsPaymentOverdue { get; set; }
 }
 
+public sealed class BillingClientReportDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public IReadOnlyList<BillingClientReportInvoiceDto> Invoices { get; set; } = Array.Empty<BillingClientReportInvoiceDto>();
+}
+
+public sealed class BillingClientReportInvoiceDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string CompanyTaxId { get; set; } = "";
+    public decimal VatPercent { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal TotalInvoice { get; set; }
+    public string PublicUrl { get; set; } = "";
+    public string EmissionDateValue { get; set; } = "";
+    public string EmissionDateDisplay { get; set; } = "";
+    public string VerticalLabel { get; set; } = "";
+    public string ContractTypeLabel { get; set; } = "";
+}
+
+public sealed class BillingClientReportExportRequestDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public IReadOnlyList<BillingClientReportExportItemDto> Items { get; set; } = Array.Empty<BillingClientReportExportItemDto>();
+}
+
+public sealed class BillingClientReportExportItemDto
+{
+    public string RecordId { get; set; } = "";
+    public decimal? ExportAmount { get; set; }
+}
+
 public sealed class CopiersEquipmentDashboardDto
 {
     public string AsOfDateLabel { get; set; } = "";

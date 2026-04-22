@@ -10,6 +10,8 @@
 <div class="dashboard-shell"
      id="billingDashboardApp"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
+     data-billing-client-report-url="@Url.Action("BillingClientReport", "Dashboard")"
+     data-billing-client-report-export-url="@Url.Action("BillingClientReportExport", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
      data-copiers-client-invoices-url="@Url.Action("CopiersClientInvoices", "Dashboard")"
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
@@ -87,6 +89,82 @@
                     </div>
                 </div>
                 <div class="dashboard-trends" id="billingTrendsContainer"></div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Reportes</div>
+                        <h2 class="dashboard-panel__title">Exportar facturas por cliente</h2>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <input type="hidden" id="billingReportClientIdInput" />
+                        <label class="dashboard-search" for="billingReportClientSearch">
+                            <span class="dashboard-search__label">Cliente</span>
+                            <input type="search"
+                                   id="billingReportClientSearch"
+                                   class="form-control dashboard-search__input"
+                                   list="billingReportClientOptions"
+                                   autocomplete="off"
+                                   placeholder="Buscar cliente..." />
+                            <datalist id="billingReportClientOptions"></datalist>
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary" id="billingReportLoadBtn">Consultar</button>
+                        <button type="button" class="btn btn-primary" id="billingReportExportBtn" disabled>Exportar Excel</button>
+                    </div>
+                </div>
+
+                <div id="billingReportStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+                <div class="dashboard-report-summary">
+                    <div class="dashboard-report-summary__item">
+                        <span>Facturas</span>
+                        <strong id="billingReportResultsCount">0</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>Seleccionadas</span>
+                        <strong id="billingReportSelectedCount">0</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>Total reporte</span>
+                        <strong id="billingReportSelectedTotal">$0</strong>
+                    </div>
+                </div>
+
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table dashboard-billing-report-table">
+                        <thead>
+                            <tr>
+                                <th>Sel.</th>
+                                <th>Factura</th>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>NIT empresa</th>
+                                <th class="text-end">% IVA</th>
+                                <th class="text-end">IVA valor</th>
+                                <th class="text-end">Total factura</th>
+                                <th class="text-end">Valor reporte</th>
+                                <th>URL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="billingReportBody">
+                            <tr>
+                                <td colspan="10" class="dashboard-table__empty">Busca un cliente para ver sus facturas.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="dashboard-invoice-preview" id="billingReportPreview" hidden>
+                    <div class="dashboard-invoice-preview__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Vista previa</div>
+                            <strong id="billingReportPreviewTitle">Factura</strong>
+                        </div>
+                        <a href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary" id="billingReportPreviewLink">Abrir factura</a>
+                    </div>
+                    <iframe id="billingReportPreviewFrame" title="Vista previa factura"></iframe>
+                </div>
             </article>
         </section>
     </div>

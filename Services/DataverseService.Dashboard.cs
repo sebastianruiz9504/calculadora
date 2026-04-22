@@ -140,7 +140,7 @@ public sealed partial class DataverseService
             throw new InvalidOperationException("No encontramos un cliente valido para consultar sus facturas emitidas.");
 
         var today = GetBogotaToday();
-        var invoices = await GetBillingRecordsByClientAsync(metadata, normalizedClientId, httpContext.User, ct);
+        var invoices = await GetBillingRecordsByClientAsync(metadata, normalizedClientId, httpContext.User, ct, copiersOnly: true);
         var resolvedClientName = FirstNonEmpty(
             invoices.Select(static row => row.ClientName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
             clientName?.Trim(),
@@ -175,6 +175,49 @@ public sealed partial class DataverseService
                     };
                 })
                 .ToList()
+        };
+    }
+
+    public async Task<BillingClientReportDto> GetBillingClientReportAsync(
+        string clientId,
+        string? clientName = null,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var normalizedClientId = NormalizeOptionalGuid(clientId);
+        if (string.IsNullOrWhiteSpace(normalizedClientId) && !string.IsNullOrWhiteSpace(clientName))
+        {
+            normalizedClientId = await ResolveCopiersClientIdAsync(clientName.Trim(), ct);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedClientId))
+            throw new InvalidOperationException("Selecciona un cliente valido para consultar sus facturas.");
+
+        var invoices = await GetBillingRecordsByClientAsync(metadata, normalizedClientId, httpContext.User, ct, copiersOnly: false);
+        var resolvedClientName = FirstNonEmpty(
+            invoices.Select(static row => row.ClientName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+            clientName?.Trim(),
+            "Cliente");
+
+        return new BillingClientReportDto
+        {
+            ClientId = normalizedClientId,
+            ClientName = resolvedClientName,
+            HasData = invoices.Count > 0,
+            RecordsCount = invoices.Count,
+            EmptyStateTitle = "No encontramos facturas para este cliente.",
+            EmptyStateMessage = "Cuando existan registros en cr07a_facturacion para el cliente seleccionado apareceran aqui.",
+            Invoices = BuildBillingClientReportInvoices(invoices)
         };
     }
 
@@ -851,11 +894,36 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private static IReadOnlyList<BillingClientReportInvoiceDto> BuildBillingClientReportInvoices(IReadOnlyList<BillingRecordRow> rows)
+    {
+        return rows
+            .OrderByDescending(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(static row => new BillingClientReportInvoiceDto
+            {
+                RecordId = row.RecordId,
+                InvoiceNumber = row.InvoiceNumber,
+                ClientId = row.ClientId,
+                ClientName = row.ClientName,
+                CompanyTaxId = row.CompanyTaxId,
+                VatPercent = row.VatPercent,
+                VatValue = row.VatValue,
+                TotalInvoice = row.TotalInvoice,
+                PublicUrl = row.PublicUrl,
+                EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",
+                VerticalLabel = row.VerticalLabel,
+                ContractTypeLabel = row.ContractTypeLabel
+            })
+            .ToList();
+    }
+
     private async Task<List<BillingRecordRow>> GetBillingRecordsByClientAsync(
         RhEntityMetadata metadata,
         string clientId,
         ClaimsPrincipal user,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool copiersOnly)
     {
         var normalizedClientId = NormalizeGuid(clientId, nameof(clientId));
         var lookupFieldCandidates = new[]
@@ -878,7 +946,7 @@ public sealed partial class DataverseService
         {
             try
             {
-                var rows = await GetBillingRecordsByClientCoreAsync(metadata, normalizedClientId, lookupField, user, ct);
+                var rows = await GetBillingRecordsByClientCoreAsync(metadata, normalizedClientId, lookupField, user, ct, copiersOnly);
                 if (rows.Count > 0)
                     return rows;
 
@@ -908,7 +976,8 @@ public sealed partial class DataverseService
         string clientId,
         string lookupField,
         ClaimsPrincipal user,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool copiersOnly)
     {
         var select = string.Join(",", new[]
         {
@@ -919,25 +988,32 @@ public sealed partial class DataverseService
             BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
             _dashboardBillingEmissionDateField,
             _dashboardBillingVerticalField,
+            _dashboardBillingContractTypeField,
+            _dashboardBillingCompanyTaxIdField,
             _dashboardBillingDueDateField,
             _dashboardBillingTotalField,
+            _dashboardBillingVatPercentField,
+            _dashboardBillingVatField,
+            _dashboardBillingPublicUrlField,
             _dashboardBillingPaymentDateField,
             _dashboardBillingPaymentValueField
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
         .Distinct(StringComparer.OrdinalIgnoreCase));
 
-        var filter = $"{lookupField} eq {clientId} and {_dashboardBillingEmissionDateField} ne null";
+        var filter = copiersOnly
+            ? $"{lookupField} eq {clientId} and {_dashboardBillingEmissionDateField} ne null"
+            : $"{lookupField} eq {clientId}";
         var orderBy = Uri.EscapeDataString($"{_dashboardBillingEmissionDateField} desc");
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         return items
             .Select(item => ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
-            .Where(static item => item is not null
-                && item.EmissionDate is not null
-                && IsDashboardCopiersVertical(item))
+            .Where(item => item is not null
+                && (!copiersOnly || item.EmissionDate is not null))
             .Cast<BillingRecordRow>()
+            .Where(item => !copiersOnly || IsDashboardCopiersVertical(item))
             .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .OrderByDescending(static item => item.EmissionDate)
@@ -1264,7 +1340,9 @@ public sealed partial class DataverseService
             _dashboardBillingDueDateField,
             _dashboardBillingEmissionDateField,
             _dashboardBillingTotalField,
+            _dashboardBillingVatPercentField,
             _dashboardBillingVatField,
+            _dashboardBillingPublicUrlField,
             _dashboardBillingPaymentDateField,
             _dashboardBillingPaymentValueField,
             _dashboardBillingReteIcaField,
@@ -1298,6 +1376,18 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(recordId))
             return null;
 
+        var clientLookupProperty = DetectLookupValueProperty(
+            item,
+            new[]
+            {
+                BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
+                "_cr07a_clientenit_value",
+                "_cr07a_clientenitid_value",
+                "_cr07a_cliente_value",
+                "_cr07a_clienteid_value",
+                "_cr07a_clientelookup_value"
+            },
+            "cliente");
         var verticalOption = ReadInt(item, _dashboardBillingVerticalField);
         var contractTypeOption = ReadInt(item, _dashboardBillingContractTypeField);
 
@@ -1309,6 +1399,7 @@ public sealed partial class DataverseService
                 ReadString(item, _dashboardBillingInvoiceNumberField),
                 ReadString(item, primaryNameField),
                 recordId),
+            ClientId = ReadString(item, clientLookupProperty).Trim(),
             CompanyTaxId = ReadString(item, _dashboardBillingCompanyTaxIdField).Trim(),
             ClientName = ReadDashboardClientName(item),
             VerticalOptionValue = verticalOption,
@@ -1325,7 +1416,9 @@ public sealed partial class DataverseService
             EmissionDate = ReadDateOnly(item, _dashboardBillingEmissionDateField),
             PaymentDate = ReadDateOnly(item, _dashboardBillingPaymentDateField),
             TotalInvoice = RoundCurrency(ReadDecimal(item, _dashboardBillingTotalField) ?? 0m),
+            VatPercent = RoundCurrency(ReadDecimal(item, _dashboardBillingVatPercentField) ?? 0m),
             VatValue = RoundCurrency(ReadDecimal(item, _dashboardBillingVatField) ?? 0m),
+            PublicUrl = ReadString(item, _dashboardBillingPublicUrlField).Trim(),
             PaymentValue = RoundCurrency(ReadDecimal(item, _dashboardBillingPaymentValueField) ?? 0m),
             ReteIcaValue = RoundCurrency(ReadDecimal(item, _dashboardBillingReteIcaField) ?? 0m),
             RteIvaValue = RoundCurrency(ReadDecimal(item, _dashboardBillingRteIvaField) ?? 0m),
@@ -2551,6 +2644,7 @@ public sealed partial class DataverseService
     {
         public string RecordId { get; set; } = "";
         public string InvoiceNumber { get; set; } = "";
+        public string ClientId { get; set; } = "";
         public string CompanyTaxId { get; set; } = "";
         public string ClientName { get; set; } = "";
         public string VerticalLabel { get; set; } = "";
@@ -2561,7 +2655,9 @@ public sealed partial class DataverseService
         public DateOnly? EmissionDate { get; set; }
         public DateOnly? PaymentDate { get; set; }
         public decimal TotalInvoice { get; set; }
+        public decimal VatPercent { get; set; }
         public decimal VatValue { get; set; }
+        public string PublicUrl { get; set; } = "";
         public decimal PaymentValue { get; set; }
         public decimal ReteIcaValue { get; set; }
         public decimal RteIvaValue { get; set; }

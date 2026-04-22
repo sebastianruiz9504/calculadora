@@ -21,6 +21,20 @@
 
     const billingKpisContainer = document.getElementById("billingKpisContainer");
     const trendsContainer = document.getElementById("billingTrendsContainer");
+    const billingReportClientSearch = document.getElementById("billingReportClientSearch");
+    const billingReportClientIdInput = document.getElementById("billingReportClientIdInput");
+    const billingReportClientOptions = document.getElementById("billingReportClientOptions");
+    const billingReportLoadButton = document.getElementById("billingReportLoadBtn");
+    const billingReportExportButton = document.getElementById("billingReportExportBtn");
+    const billingReportStatus = document.getElementById("billingReportStatus");
+    const billingReportResultsCount = document.getElementById("billingReportResultsCount");
+    const billingReportSelectedCount = document.getElementById("billingReportSelectedCount");
+    const billingReportSelectedTotal = document.getElementById("billingReportSelectedTotal");
+    const billingReportBody = document.getElementById("billingReportBody");
+    const billingReportPreview = document.getElementById("billingReportPreview");
+    const billingReportPreviewTitle = document.getElementById("billingReportPreviewTitle");
+    const billingReportPreviewLink = document.getElementById("billingReportPreviewLink");
+    const billingReportPreviewFrame = document.getElementById("billingReportPreviewFrame");
 
     const copiersRefreshButton = document.getElementById("copiersRefreshBtn");
     const copiersStatusBanner = document.getElementById("copiersStatusBanner");
@@ -154,6 +168,7 @@
     const currentPeriod = app.dataset.initialPeriod || "month";
     const currentValue = Number(app.dataset.initialValue || 1);
     const taxesRetentionsExportUrl = app.dataset.taxesRetentionsExportUrl || "";
+    const billingClientReportExportUrl = app.dataset.billingClientReportExportUrl || "";
 
     const currencyFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -179,6 +194,10 @@
         period: currentPeriod,
         value: currentValue,
         billingDashboard: null,
+        billingReportDetail: null,
+        billingReportLoading: false,
+        billingReportExporting: false,
+        billingReportClientSuggestions: [],
         copiersDashboard: null,
         copiersEquipmentDashboard: null,
         taxesDashboard: null,
@@ -297,6 +316,28 @@
                 element.disabled = loading;
             }
         });
+    }
+
+    function setBillingReportLoading(loading) {
+        state.billingReportLoading = loading;
+        [billingReportClientSearch, billingReportLoadButton].forEach(element => {
+            if (element) {
+                element.disabled = loading || state.billingReportExporting;
+            }
+        });
+
+        syncBillingReportSelectionSummary();
+    }
+
+    function setBillingReportExporting(exporting) {
+        state.billingReportExporting = exporting;
+        [billingReportClientSearch, billingReportLoadButton].forEach(element => {
+            if (element) {
+                element.disabled = exporting || state.billingReportLoading;
+            }
+        });
+
+        syncBillingReportSelectionSummary();
     }
 
     function setPortfolioLoading(loading) {
@@ -1725,6 +1766,20 @@
         return `${app.dataset.taxesUrl}?${params.toString()}`;
     }
 
+    function buildBillingClientReportUrl(clientId, clientName) {
+        const baseUrl = app.dataset.billingClientReportUrl || "";
+        const params = new URLSearchParams({
+            clientId: clientId || "",
+            clientName: clientName || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
+    function buildBillingClientReportExportUrl() {
+        return billingClientReportExportUrl || "";
+    }
+
     function buildTaxesRetentionsExportUrl() {
         const params = new URLSearchParams({
             year: String(state.year),
@@ -1844,6 +1899,252 @@
         }
 
         return response.json();
+    }
+
+    function resetBillingReportPreview() {
+        if (billingReportPreview) {
+            billingReportPreview.hidden = true;
+        }
+
+        if (billingReportPreviewFrame) {
+            billingReportPreviewFrame.removeAttribute("src");
+        }
+
+        if (billingReportPreviewLink) {
+            billingReportPreviewLink.href = "#";
+        }
+    }
+
+    function isHttpUrl(value) {
+        return /^https?:\/\//i.test((value || "").trim());
+    }
+
+    function openBillingReportPreview(row) {
+        const publicUrl = (row?.publicUrl || "").trim();
+        if (!isHttpUrl(publicUrl) || !billingReportPreview) {
+            resetBillingReportPreview();
+            return;
+        }
+
+        billingReportPreview.hidden = false;
+
+        if (billingReportPreviewTitle) {
+            billingReportPreviewTitle.textContent = row?.invoiceNumber
+                ? `Factura ${row.invoiceNumber}`
+                : "Factura";
+        }
+
+        if (billingReportPreviewLink) {
+            billingReportPreviewLink.href = publicUrl;
+        }
+
+        if (billingReportPreviewFrame) {
+            billingReportPreviewFrame.src = publicUrl;
+        }
+    }
+
+    function renderBillingReportTable(detail) {
+        state.billingReportDetail = detail || null;
+        resetBillingReportPreview();
+
+        const rows = Array.isArray(detail?.invoices) ? detail.invoices : [];
+        if (billingReportResultsCount) {
+            billingReportResultsCount.textContent = numberFormatter.format(Number(detail?.recordsCount || rows.length || 0));
+        }
+
+        if (!billingReportBody) {
+            return;
+        }
+
+        if (!rows.length) {
+            billingReportBody.innerHTML = `<tr><td colspan="10" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas para este cliente.")}</td></tr>`;
+            syncBillingReportSelectionSummary();
+            return;
+        }
+
+        billingReportBody.innerHTML = rows.map(row => {
+            const totalInvoice = Number(row.totalInvoice || 0);
+            const publicUrl = (row.publicUrl || "").trim();
+            const hasUrl = isHttpUrl(publicUrl);
+            return `
+                <tr data-billing-report-row-id="${escapeHtml(row.recordId || "")}">
+                    <td>
+                        <input type="checkbox"
+                               class="form-check-input"
+                               data-billing-report-select
+                               data-record-id="${escapeHtml(row.recordId || "")}"
+                               data-total="${escapeHtml(formatEditableDecimalValue(totalInvoice))}" />
+                    </td>
+                    <td>${escapeHtml(row.invoiceNumber || "-")}</td>
+                    <td>${escapeHtml(row.emissionDateDisplay || "Sin fecha")}</td>
+                    <td>${escapeHtml(row.clientName || detail?.clientName || "Cliente")}</td>
+                    <td>${escapeHtml(row.companyTaxId || "-")}</td>
+                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.vatPercent || 0)))}%</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.vatValue || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalInvoice))}</td>
+                    <td class="text-end">
+                        <input type="number"
+                               min="0"
+                               max="${escapeHtml(formatEditableDecimalValue(totalInvoice))}"
+                               step="0.01"
+                               class="form-control dashboard-report-amount-input"
+                               value="${escapeHtml(formatEditableDecimalValue(totalInvoice))}"
+                               data-billing-report-amount
+                               data-total="${escapeHtml(formatEditableDecimalValue(totalInvoice))}"
+                               disabled />
+                    </td>
+                    <td>
+                        ${hasUrl
+                            ? `<div class="dashboard-report-url-actions">
+                                <a href="${escapeHtml(publicUrl)}" target="_blank" rel="noopener noreferrer" class="dashboard-link-btn">Abrir</a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-billing-report-preview="${escapeHtml(row.recordId || "")}">Vista</button>
+                            </div>`
+                            : '<span class="dashboard-muted-text">Sin URL</span>'}
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
+        syncBillingReportSelectionSummary();
+    }
+
+    function syncBillingReportSelectionSummary() {
+        const selected = billingReportBody
+            ? Array.from(billingReportBody.querySelectorAll("[data-billing-report-select]:checked"))
+            : [];
+        let total = 0;
+
+        selected.forEach(checkbox => {
+            const row = checkbox.closest("tr");
+            const amountInput = row?.querySelector("[data-billing-report-amount]");
+            const amount = parseEditableDecimalValue(amountInput?.value);
+            if (Number.isFinite(amount)) {
+                total += amount;
+            }
+        });
+
+        if (billingReportSelectedCount) {
+            billingReportSelectedCount.textContent = numberFormatter.format(selected.length);
+        }
+
+        if (billingReportSelectedTotal) {
+            billingReportSelectedTotal.textContent = currencyFormatter.format(total);
+        }
+
+        if (billingReportExportButton) {
+            billingReportExportButton.disabled = state.billingReportLoading
+                || state.billingReportExporting
+                || selected.length === 0
+                || !buildBillingClientReportExportUrl();
+        }
+    }
+
+    function getBillingReportInvoiceById(recordId) {
+        const rows = Array.isArray(state.billingReportDetail?.invoices)
+            ? state.billingReportDetail.invoices
+            : [];
+
+        return rows.find(row => (row?.recordId || "") === recordId) || null;
+    }
+
+    function buildBillingReportExportPayload() {
+        const selected = billingReportBody
+            ? Array.from(billingReportBody.querySelectorAll("[data-billing-report-select]:checked"))
+            : [];
+
+        if (!selected.length) {
+            throw new Error("Selecciona al menos una factura para exportar.");
+        }
+
+        const items = selected.map(checkbox => {
+            const recordId = checkbox.dataset.recordId || "";
+            const row = checkbox.closest("tr");
+            const amountInput = row?.querySelector("[data-billing-report-amount]");
+            const total = parseEditableDecimalValue(amountInput?.dataset.total);
+            const amount = parseEditableDecimalValue(amountInput?.value);
+
+            if (!Number.isFinite(amount) || amount < 0) {
+                throw new Error("El valor a reportar debe ser numerico y no puede ser negativo.");
+            }
+
+            if (Number.isFinite(total) && amount > total) {
+                throw new Error("El valor a reportar no puede superar el total de la factura.");
+            }
+
+            return {
+                recordId,
+                exportAmount: amount
+            };
+        });
+
+        return {
+            clientId: state.billingReportDetail?.clientId || billingReportClientIdInput?.value || "",
+            clientName: state.billingReportDetail?.clientName || billingReportClientSearch?.value || "",
+            items
+        };
+    }
+
+    function resolveDownloadFileName(contentDisposition) {
+        const header = contentDisposition || "";
+        const encodedMatch = /filename\*=UTF-8''([^;]+)/i.exec(header);
+        if (encodedMatch?.[1]) {
+            return decodeURIComponent(encodedMatch[1].replace(/"/g, ""));
+        }
+
+        const regularMatch = /filename="?([^";]+)"?/i.exec(header);
+        return regularMatch?.[1] || "";
+    }
+
+    async function exportBillingReport() {
+        const url = buildBillingClientReportExportUrl();
+        if (!url) {
+            setStatus(billingReportStatus, "error", "No hay una URL configurada para exportar el reporte.");
+            return;
+        }
+
+        let payload;
+        try {
+            payload = buildBillingReportExportPayload();
+        } catch (error) {
+            setStatus(billingReportStatus, "error", error instanceof Error ? error.message : "Revisa las facturas seleccionadas.");
+            return;
+        }
+
+        setBillingReportExporting(true);
+        setStatus(billingReportStatus, "info", "Preparando Excel...");
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || "No fue posible exportar el reporte.");
+            }
+
+            const blob = await response.blob();
+            const fileName = resolveDownloadFileName(response.headers.get("content-disposition"))
+                || "reporte-facturas-cliente.xlsx";
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            setStatus(billingReportStatus, "success", "Excel generado correctamente.");
+        } catch (error) {
+            setStatus(billingReportStatus, "error", error instanceof Error ? error.message : "No fue posible exportar el reporte.");
+        } finally {
+            setBillingReportExporting(false);
+        }
     }
 
     function renderComparativeKpis(container, kpis, compareYear) {
@@ -3052,6 +3353,34 @@
         loadBilling();
     }
 
+    async function loadBillingReportInvoices() {
+        const clientId = billingReportClientIdInput?.value || "";
+        const clientName = (billingReportClientSearch?.value || "").trim();
+        if (!clientId && !clientName) {
+            setStatus(billingReportStatus, "error", "Busca un cliente para consultar sus facturas.");
+            return;
+        }
+
+        setBillingReportLoading(true);
+        setStatus(billingReportStatus, "info", "Consultando facturas del cliente...");
+
+        try {
+            const detail = await fetchJson(buildBillingClientReportUrl(clientId, clientName));
+            renderBillingReportTable(detail);
+            setStatus(billingReportStatus, detail?.hasData ? "" : "info", detail?.hasData ? "" : (detail?.emptyStateMessage || "No encontramos facturas para este cliente."));
+        } catch (error) {
+            state.billingReportDetail = null;
+            resetBillingReportPreview();
+            if (billingReportBody) {
+                billingReportBody.innerHTML = '<tr><td colspan="10" class="dashboard-table__empty">No pudimos consultar las facturas del cliente.</td></tr>';
+            }
+            syncBillingReportSelectionSummary();
+            setStatus(billingReportStatus, "error", error instanceof Error ? error.message : "No fue posible cargar las facturas del cliente.");
+        } finally {
+            setBillingReportLoading(false);
+        }
+    }
+
     async function loadBilling() {
         setPeriodLoading(true);
         setStatus(billingStatusBanner, "info", "Actualizando tablero de facturacion...");
@@ -3306,6 +3635,56 @@
     });
 
     refreshButton?.addEventListener("click", loadActivePeriodTab);
+    billingReportLoadButton?.addEventListener("click", loadBillingReportInvoices);
+    billingReportExportButton?.addEventListener("click", exportBillingReport);
+    billingReportClientSearch?.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            loadBillingReportInvoices();
+        }
+    });
+    billingReportClientSearch?.addEventListener("input", () => {
+        state.billingReportDetail = null;
+        resetBillingReportPreview();
+        if (billingReportResultsCount) {
+            billingReportResultsCount.textContent = "0";
+        }
+        if (billingReportBody) {
+            billingReportBody.innerHTML = '<tr><td colspan="10" class="dashboard-table__empty">Busca un cliente para ver sus facturas.</td></tr>';
+        }
+        syncBillingReportSelectionSummary();
+    });
+    billingReportBody?.addEventListener("change", event => {
+        const checkbox = event.target.closest("[data-billing-report-select]");
+        if (!checkbox) {
+            return;
+        }
+
+        const row = checkbox.closest("tr");
+        const amountInput = row?.querySelector("[data-billing-report-amount]");
+        if (amountInput) {
+            amountInput.disabled = !checkbox.checked;
+            if (checkbox.checked && !amountInput.value) {
+                amountInput.value = amountInput.dataset.total || "0.00";
+            }
+        }
+
+        syncBillingReportSelectionSummary();
+    });
+    billingReportBody?.addEventListener("input", event => {
+        if (event.target.closest("[data-billing-report-amount]")) {
+            syncBillingReportSelectionSummary();
+        }
+    });
+    billingReportBody?.addEventListener("click", event => {
+        const previewButton = event.target.closest("[data-billing-report-preview]");
+        if (!previewButton) {
+            return;
+        }
+
+        const invoice = getBillingReportInvoiceById(previewButton.dataset.billingReportPreview || "");
+        openBillingReportPreview(invoice);
+    });
     taxesRetentionExportButton?.addEventListener("click", () => {
         if (!taxesRetentionsExportUrl) {
             setStatus(taxesStatusBanner, "error", "No hay una URL configurada para descargar el detalle.");
@@ -3501,6 +3880,7 @@
     periodFilter && (periodFilter.value = state.period);
     portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
+    wireCopiersLookupInput(billingReportClientSearch, billingReportClientIdInput, billingReportClientOptions, "billingReportClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
     wireCopiersLookupInput(copiersEquipmentClientNameInput, copiersEquipmentClientIdInput, copiersEquipmentClientOptions, "copiersEquipmentClientSuggestions", "name", buildCopiersClientSearchUrl);
@@ -3508,6 +3888,7 @@
     buildPnlMonthOptions(12);
     buildCopiersMaintenanceFilterOptions();
     renderCopiersMaintenanceTable();
+    syncBillingReportSelectionSummary();
     syncPeriodScopeVisibility();
     syncCopiersSubtabVisibility();
     loadBilling();

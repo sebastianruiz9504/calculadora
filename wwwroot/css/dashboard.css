@@ -1002,6 +1002,117 @@
     min-width: 900px;
 }
 
+.dashboard-report-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.dashboard-report-summary__item {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 14px 16px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 8px;
+    background: #f8fbff;
+}
+
+.dashboard-report-summary__item span {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.dashboard-report-summary__item strong {
+    color: var(--dashboard-ink);
+    font-size: 20px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-billing-report-table {
+    min-width: 1280px;
+}
+
+.dashboard-billing-report-table thead th,
+.dashboard-billing-report-table tbody td {
+    white-space: normal;
+}
+
+.dashboard-billing-report-table thead th:nth-child(1),
+.dashboard-billing-report-table tbody td:nth-child(1) {
+    width: 56px;
+    text-align: center;
+}
+
+.dashboard-billing-report-table thead th:nth-child(2),
+.dashboard-billing-report-table tbody td:nth-child(2) {
+    width: 12%;
+}
+
+.dashboard-billing-report-table thead th:nth-child(4),
+.dashboard-billing-report-table tbody td:nth-child(4) {
+    width: 18%;
+}
+
+.dashboard-billing-report-table thead th:nth-child(9),
+.dashboard-billing-report-table tbody td:nth-child(9) {
+    width: 150px;
+}
+
+.dashboard-report-amount-input {
+    min-width: 130px;
+    min-height: 38px;
+    border-radius: 12px;
+    text-align: right;
+}
+
+.dashboard-report-url-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.dashboard-invoice-preview {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 8px;
+    background: #fbfdff;
+}
+
+.dashboard-invoice-preview[hidden] {
+    display: none;
+}
+
+.dashboard-invoice-preview__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.dashboard-invoice-preview__header strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--dashboard-ink);
+    font-size: 18px;
+}
+
+.dashboard-invoice-preview iframe {
+    width: 100%;
+    min-height: 520px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
 .dashboard-client-invoices-table thead th:nth-child(1),
 .dashboard-client-invoices-table tbody td:nth-child(1) {
     width: 26%;
@@ -1732,6 +1843,7 @@
 
     .dashboard-grid--copiers-equipment,
     .dashboard-equipment-detail__summary,
+    .dashboard-report-summary,
     .dashboard-equipment-detail__assignment-grid {
         grid-template-columns: 1fr;
     }
@@ -1852,6 +1964,14 @@
 
     .dashboard-copiers-table {
         min-width: 980px;
+    }
+
+    .dashboard-billing-report-table {
+        min-width: 1180px;
+    }
+
+    .dashboard-invoice-preview iframe {
+        min-height: 420px;
     }
 
     .dashboard-equipment-table,

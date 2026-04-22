@@ -120,7 +120,9 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardBillingDueDateField = "cr07a_fechavencimiento";
     private const string DefaultDashboardBillingDueDateFieldKind = "date-only";
     private const string DefaultDashboardBillingTotalField = "cr07a_totalfactura";
+    private const string DefaultDashboardBillingVatPercentField = "cr07a_iva";
     private const string DefaultDashboardBillingVatField = "cr07a_ivavalor";
+    private const string DefaultDashboardBillingPublicUrlField = "cr07a_publicurl";
     private const string DefaultDashboardBillingPaymentDateField = "cr07a_fechadepago";
     private const string DefaultDashboardBillingPaymentDateFieldKind = "date-only";
     private const string DefaultDashboardBillingPaymentValueField = "cr07a_valorpago";
@@ -253,7 +255,9 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardBillingDueDateField;
     private readonly string _dashboardBillingDueDateFieldKind;
     private readonly string _dashboardBillingTotalField;
+    private readonly string _dashboardBillingVatPercentField;
     private readonly string _dashboardBillingVatField;
+    private readonly string _dashboardBillingPublicUrlField;
     private readonly string _dashboardBillingPaymentDateField;
     private readonly string _dashboardBillingPaymentDateFieldKind;
     private readonly string _dashboardBillingPaymentValueField;
@@ -463,8 +467,12 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardBillingDueDateFieldKind;
         _dashboardBillingTotalField = configuration["Dashboard:BillingTotalField"]
             ?? DefaultDashboardBillingTotalField;
+        _dashboardBillingVatPercentField = configuration["Dashboard:BillingVatPercentField"]
+            ?? DefaultDashboardBillingVatPercentField;
         _dashboardBillingVatField = configuration["Dashboard:BillingVatField"]
             ?? DefaultDashboardBillingVatField;
+        _dashboardBillingPublicUrlField = configuration["Dashboard:BillingPublicUrlField"]
+            ?? DefaultDashboardBillingPublicUrlField;
         _dashboardBillingPaymentDateField = configuration["Dashboard:BillingPaymentDateField"]
             ?? DefaultDashboardBillingPaymentDateField;
         _dashboardBillingPaymentDateFieldKind = configuration["Dashboard:BillingPaymentDateFieldKind"]

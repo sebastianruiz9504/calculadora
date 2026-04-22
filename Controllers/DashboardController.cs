@@ -63,6 +63,156 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingClientReport([FromQuery] string clientId, [FromQuery] string? clientName, CancellationToken ct)
+    {
+        try
+        {
+            var detail = await _dataverse.GetBillingClientReportAsync(clientId, clientName, ct);
+            return Json(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar las facturas del cliente.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingClientReportExport([FromBody] BillingClientReportExportRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            if (request is null || request.Items is null || request.Items.Count == 0)
+                return BadRequest("Selecciona al menos una factura para exportar.");
+
+            var detail = await _dataverse.GetBillingClientReportAsync(request.ClientId, request.ClientName, ct);
+            var requestedItems = request.Items
+                .Where(static item => !string.IsNullOrWhiteSpace(item.RecordId))
+                .GroupBy(static item => item.RecordId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+            var selectedInvoices = detail.Invoices
+                .Where(invoice => requestedItems.ContainsKey(invoice.RecordId))
+                .ToList();
+
+            if (selectedInvoices.Count == 0)
+                return BadRequest("No encontramos las facturas seleccionadas para este cliente.");
+
+            var exportRows = new List<(BillingClientReportInvoiceDto Invoice, decimal ExportAmount, decimal Fraction)>();
+            foreach (var invoice in selectedInvoices)
+            {
+                var requested = requestedItems[invoice.RecordId];
+                var exportAmount = Math.Round(requested.ExportAmount ?? invoice.TotalInvoice, 2, MidpointRounding.AwayFromZero);
+
+                if (exportAmount < 0m || exportAmount > invoice.TotalInvoice)
+                {
+                    return BadRequest($"El valor a exportar de la factura {invoice.InvoiceNumber} debe estar entre 0 y el total de la factura.");
+                }
+
+                var fraction = invoice.TotalInvoice == 0m
+                    ? 0m
+                    : Math.Round(exportAmount / invoice.TotalInvoice, 4, MidpointRounding.AwayFromZero);
+                exportRows.Add((invoice, exportAmount, fraction));
+            }
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Facturas cliente");
+            var totalExported = exportRows.Sum(static row => row.ExportAmount);
+
+            worksheet.Cell(1, 1).Value = "Reporte de facturas por cliente";
+            worksheet.Cell(2, 1).Value = "Cliente";
+            worksheet.Cell(2, 2).Value = detail.ClientName;
+            worksheet.Cell(3, 1).Value = "Facturas seleccionadas";
+            worksheet.Cell(3, 2).Value = exportRows.Count;
+            worksheet.Cell(4, 1).Value = "Total reportado";
+            worksheet.Cell(4, 2).Value = totalExported;
+
+            var headers = new[]
+            {
+                "Factura",
+                "Cliente",
+                "NIT empresa",
+                "% IVA",
+                "Valor IVA",
+                "Total factura",
+                "Valor reportado",
+                "Fraccion",
+                "Fecha emision",
+                "Vertical",
+                "Contrato",
+                "URL factura"
+            };
+
+            for (var index = 0; index < headers.Length; index++)
+            {
+                worksheet.Cell(6, index + 1).Value = headers[index];
+            }
+
+            var rowIndex = 7;
+            foreach (var row in exportRows)
+            {
+                worksheet.Cell(rowIndex, 1).Value = row.Invoice.InvoiceNumber;
+                worksheet.Cell(rowIndex, 2).Value = row.Invoice.ClientName;
+                worksheet.Cell(rowIndex, 3).Value = row.Invoice.CompanyTaxId;
+                worksheet.Cell(rowIndex, 4).Value = row.Invoice.VatPercent;
+                worksheet.Cell(rowIndex, 5).Value = row.Invoice.VatValue;
+                worksheet.Cell(rowIndex, 6).Value = row.Invoice.TotalInvoice;
+                worksheet.Cell(rowIndex, 7).Value = row.ExportAmount;
+                worksheet.Cell(rowIndex, 8).Value = row.Fraction;
+                worksheet.Cell(rowIndex, 9).Value = row.Invoice.EmissionDateDisplay;
+                worksheet.Cell(rowIndex, 10).Value = row.Invoice.VerticalLabel;
+                worksheet.Cell(rowIndex, 11).Value = row.Invoice.ContractTypeLabel;
+                worksheet.Cell(rowIndex, 12).Value = row.Invoice.PublicUrl;
+
+                if (Uri.TryCreate(row.Invoice.PublicUrl, UriKind.Absolute, out _))
+                {
+                    worksheet.Cell(rowIndex, 12).SetHyperlink(new XLHyperlink(row.Invoice.PublicUrl));
+                }
+
+                rowIndex++;
+            }
+
+            worksheet.Cell(rowIndex, 1).Value = "Total";
+            worksheet.Cell(rowIndex, 2).Value = $"{exportRows.Count:N0} facturas";
+            worksheet.Cell(rowIndex, 6).Value = exportRows.Sum(static row => row.Invoice.TotalInvoice);
+            worksheet.Cell(rowIndex, 7).Value = totalExported;
+
+            var usedRange = worksheet.Range(1, 1, rowIndex, headers.Length);
+            usedRange.Style.Font.FontName = "Aptos";
+            worksheet.Range(1, 1, 1, headers.Length).Merge().Style.Font.Bold = true;
+            worksheet.Range(6, 1, 6, headers.Length).Style.Font.Bold = true;
+            worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Font.Bold = true;
+            worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+            worksheet.Range(4, 2, 4, 2).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Range(7, 5, rowIndex, 7).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Range(7, 8, rowIndex, 8).Style.NumberFormat.Format = "0.00%";
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var fileName = $"reporte-facturas-{BuildSafeFileName(detail.ClientName)}-{ResolveBogotaToday():yyyyMMdd}.xlsx";
+
+            return File(
+                stream.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible exportar el reporte de facturas.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Portfolio(CancellationToken ct)
     {
         try
@@ -440,5 +590,19 @@ public sealed class DashboardController : Controller
         }
 
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
+    }
+
+    private static string BuildSafeFileName(string? value)
+    {
+        var cleaned = string.Join("-", (value ?? "cliente")
+            .Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        cleaned = cleaned
+            .Replace(" ", "-", StringComparison.OrdinalIgnoreCase)
+            .Trim('-');
+
+        return string.IsNullOrWhiteSpace(cleaned)
+            ? "cliente"
+            : cleaned.ToLowerInvariant();
     }
 }
