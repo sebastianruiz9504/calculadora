@@ -191,6 +191,10 @@
     gap: 18px;
 }
 
+.copiers-grid--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .copiers-kpis {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -277,11 +281,14 @@
 }
 
 .copiers-table--equipment-inventory {
-    min-width: 1480px;
+    min-width: 900px;
+}
+
+.copiers-table--equipment-clients {
+    min-width: 1180px;
 }
 
 .copiers-table--pending-invoices,
-.copiers-table--equipment-clients,
 .copiers-table--equipment-stock,
 .copiers-table--supplies {
     min-width: 640px;
@@ -430,7 +437,11 @@
 }
 
 .copiers-modal__dialog--wide {
-    width: min(1320px, 100%);
+    width: min(1480px, calc(100vw - 48px));
+}
+
+.copiers-modal__dialog--wide .copiers-form__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .copiers-modal__dialog--small {
@@ -606,6 +617,7 @@
     .copiers-grid,
     .copiers-kpis,
     .copiers-location-grid,
+    .copiers-modal__dialog--wide .copiers-form__grid,
     .copiers-form__grid,
     .copiers-detail-summary {
         grid-template-columns: 1fr;

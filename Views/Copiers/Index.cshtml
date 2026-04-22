@@ -17,6 +17,8 @@
      data-equipment-detail-url="@Url.Action("EquipmentDetail", "Copiers")"
      data-equipment-inventory-url="@Url.Action("EquipmentInventory", "Copiers")"
      data-equipment-assignment-url="@Url.Action("EquipmentAssignment", "Copiers")"
+     data-save-equipment-url="@Url.Action("SaveEquipment", "Copiers")"
+     data-save-equipment-client-url="@Url.Action("SaveEquipmentClient", "Copiers")"
      data-supplies-url="@Url.Action("Supplies", "Copiers")"
      data-save-supply-quantity-url="@Url.Action("SaveSupplyQuantity", "Copiers")"
      data-pending-invoices-url="@Url.Action("PendingSupplierInvoices", "Copiers")"
@@ -96,7 +98,7 @@
             </div>
         </div>
         <div class="copiers-kpis" id="copiersEquipmentKpis"></div>
-        <div class="copiers-grid">
+        <div class="copiers-grid copiers-grid--single">
             <section class="copiers-subpanel">
                 <div class="copiers-subpanel__header">
                     <h3>Clientes</h3>
@@ -106,6 +108,10 @@
                         <thead>
                             <tr>
                                 <th>Cliente</th>
+                                <th>Persona a cargo</th>
+                                <th>Correo</th>
+                                <th>Telefono</th>
+                                <th>Direccion</th>
                                 <th class="text-end">Equipos</th>
                                 <th>Categorias</th>
                             </tr>
@@ -143,10 +149,11 @@
                             <th>Serial</th>
                             <th>Cliente</th>
                             <th>Categoria</th>
+                            <th>Modelo</th>
+                            <th>Area</th>
+                            <th>Sede</th>
                             <th>Referencia</th>
                             <th>Observaciones</th>
-                            <th class="text-end">Mantenimientos</th>
-                            <th>Ultimo mantenimiento</th>
                         </tr>
                     </thead>
                     <tbody id="copiersEquipmentBody"></tbody>
@@ -181,18 +188,12 @@
                 <thead>
                     <tr>
                         <th>No.</th>
-                        <th>Tipo</th>
-                        <th>Marca</th>
                         <th>Modelo</th>
                         <th>Serial de maquina</th>
                         <th>Empresa</th>
                         <th>Area</th>
                         <th>Sede</th>
-                        <th>Direccion</th>
-                        <th>Mapa</th>
                         <th>Observaciones</th>
-                        <th class="text-end">Mantenimientos</th>
-                        <th>Ultimo mantenimiento</th>
                     </tr>
                 </thead>
                 <tbody id="copiersInventoryBody"></tbody>
@@ -268,7 +269,7 @@
             <div>
                 <div class="copiers-kicker">Equipos</div>
                 <h2 class="copiers-modal__title" id="copiersEquipmentDetailTitle">Detalle del equipo</h2>
-                <p class="copiers-modal__text" id="copiersEquipmentDetailSubtitle">Consulta el equipo, reasigna el cliente y revisa sus mantenimientos.</p>
+                <p class="copiers-modal__text" id="copiersEquipmentDetailSubtitle">Edita la informacion operativa del equipo seleccionado.</p>
             </div>
             <button type="button" class="btn btn-outline-secondary" data-copiers-close="equipmentDetail">Cerrar</button>
         </div>
@@ -279,72 +280,108 @@
             <input type="hidden" id="copiersEquipmentRecordId" />
             <input type="hidden" id="copiersEquipmentClientId" />
 
-            <section class="copiers-detail-summary">
-                <div class="copiers-detail-card">
-                    <span>Serial</span>
-                    <strong id="copiersEquipmentDetailSerial">-</strong>
-                </div>
-                <div class="copiers-detail-card">
-                    <span>Cliente actual</span>
-                    <strong id="copiersEquipmentDetailCurrentClient">-</strong>
-                </div>
-                <div class="copiers-detail-card">
-                    <span>Categoria</span>
-                    <strong id="copiersEquipmentDetailCategory">-</strong>
-                </div>
-                <div class="copiers-detail-card">
-                    <span>Referencia</span>
-                    <strong id="copiersEquipmentDetailReference">-</strong>
-                </div>
-                <div class="copiers-detail-card copiers-detail-card--wide">
-                    <span>Observaciones</span>
-                    <strong id="copiersEquipmentDetailObservations">-</strong>
-                </div>
-            </section>
-
             <section class="copiers-detail-section">
                 <div>
-                    <div class="copiers-kicker">Asignacion</div>
-                    <h3>Cliente asignado</h3>
+                    <div class="copiers-kicker">Formulario</div>
+                    <h3>Datos del equipo</h3>
                 </div>
                 <div class="copiers-form__grid">
+                    <label class="copiers-field">
+                        <span>Serial</span>
+                        <input class="form-control" id="copiersEquipmentSerial" autocomplete="off" required />
+                    </label>
                     <label class="copiers-field copiers-field--span-2">
                         <span>Cliente</span>
                         <input class="form-control" id="copiersEquipmentClientName" list="copiersEquipmentClientOptions" autocomplete="off" placeholder="Buscar cliente..." />
                         <datalist id="copiersEquipmentClientOptions"></datalist>
                     </label>
+                    <label class="copiers-field">
+                        <span>Tipo</span>
+                        <select class="form-select" id="copiersEquipmentCategory"></select>
+                    </label>
+                    <label class="copiers-field">
+                        <span>Modelo</span>
+                        <input class="form-control" id="copiersEquipmentModel" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Area</span>
+                        <input class="form-control" id="copiersEquipmentArea" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Sede</span>
+                        <input class="form-control" id="copiersEquipmentSite" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Referencia</span>
+                        <input class="form-control" id="copiersEquipmentReference" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Mantenimientos</span>
+                        <input class="form-control" id="copiersEquipmentMaintenanceCount" readonly />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Ultimo mantenimiento</span>
+                        <input class="form-control" id="copiersEquipmentLastMaintenance" readonly />
+                    </label>
+                    <label class="copiers-field copiers-field--span-2">
+                        <span>Observaciones</span>
+                        <textarea class="form-control" id="copiersEquipmentObservations" rows="3"></textarea>
+                    </label>
                 </div>
                 <div class="copiers-modal__footer">
                     <button type="button" class="btn btn-outline-secondary" data-copiers-close="equipmentDetail">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="copiersEquipmentSaveBtn">Guardar reasignacion</button>
+                    <button type="submit" class="btn btn-primary" id="copiersEquipmentSaveBtn">Guardar equipo</button>
                 </div>
             </section>
         </form>
+    </div>
+</div>
 
-        <section class="copiers-detail-section">
+<div class="copiers-modal" id="copiersClientDetailModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="clientDetail"></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersClientDetailTitle">
+        <div class="copiers-modal__header">
             <div>
-                <div class="copiers-kicker">Mantenimientos</div>
-                <h3>Historial del equipo</h3>
+                <div class="copiers-kicker">Clientes</div>
+                <h2 class="copiers-modal__title" id="copiersClientDetailTitle">Detalle del cliente</h2>
+                <p class="copiers-modal__text">Edita la informacion visible en la tabla de clientes.</p>
             </div>
-            <div class="copiers-table-wrap copiers-table-wrap--tall">
-                <table class="table align-middle copiers-table copiers-table--equipment-maintenance">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Titulo</th>
-                            <th>Tipo</th>
-                            <th>Estado</th>
-                            <th>Cliente</th>
-                            <th>Tecnico</th>
-                            <th>Descripcion</th>
-                            <th>ID</th>
-                            <th>Adjunto</th>
-                        </tr>
-                    </thead>
-                    <tbody id="copiersEquipmentMaintenanceBody"></tbody>
-                </table>
-            </div>
-        </section>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="clientDetail">Cerrar</button>
+        </div>
+
+        <div class="copiers-status" id="copiersClientDetailStatus" role="status" aria-live="polite"></div>
+
+        <form id="copiersClientDetailForm" class="copiers-form">
+            <input type="hidden" id="copiersClientDetailId" />
+            <section class="copiers-detail-section">
+                <div class="copiers-form__grid">
+                    <label class="copiers-field copiers-field--span-2">
+                        <span>Cliente</span>
+                        <input class="form-control" id="copiersClientDetailName" autocomplete="off" required />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Persona a cargo</span>
+                        <input class="form-control" id="copiersClientDetailContact" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Correo</span>
+                        <input class="form-control" id="copiersClientDetailEmail" type="email" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field">
+                        <span>Telefono</span>
+                        <input class="form-control" id="copiersClientDetailPhone" autocomplete="off" />
+                    </label>
+                    <label class="copiers-field copiers-field--span-2">
+                        <span>Direccion</span>
+                        <input class="form-control" id="copiersClientDetailAddress" autocomplete="off" />
+                    </label>
+                </div>
+                <div class="copiers-modal__footer">
+                    <button type="button" class="btn btn-outline-secondary" data-copiers-close="clientDetail">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="copiersClientDetailSaveBtn">Guardar cliente</button>
+                </div>
+            </section>
+        </form>
     </div>
 </div>
 

@@ -182,6 +182,7 @@ public sealed class CopiersEquipmentDashboardDto
     public IReadOnlyList<CopiersEquipmentRowDto> EquipmentRows { get; set; } = Array.Empty<CopiersEquipmentRowDto>();
     public IReadOnlyList<CopiersEquipmentRowDto> StockRows { get; set; } = Array.Empty<CopiersEquipmentRowDto>();
     public IReadOnlyList<CopiersMaintenanceRowDto> MaintenanceRows { get; set; } = Array.Empty<CopiersMaintenanceRowDto>();
+    public IReadOnlyList<CopiersEquipmentOptionDto> CategoryOptions { get; set; } = Array.Empty<CopiersEquipmentOptionDto>();
     public CopiersMaintenanceChartDto MaintenanceChart { get; set; } = new();
 }
 
@@ -189,6 +190,10 @@ public sealed class CopiersEquipmentClientSummaryDto
 {
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string ContactName { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Address { get; set; } = "";
     public int EquipmentCount { get; set; }
     public string CategoryBreakdown { get; set; } = "";
 }
@@ -202,9 +207,13 @@ public sealed class CopiersEquipmentRowDto
     public int? CategoryValue { get; set; }
     public string CategoryLabel { get; set; } = "";
     public string Reference { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string Area { get; set; } = "";
+    public string Site { get; set; } = "";
     public string Observations { get; set; } = "";
     public bool InStock { get; set; }
     public int MaintenanceCount { get; set; }
+    public string LastMaintenanceDateValue { get; set; } = "";
     public string LastMaintenanceDateDisplay { get; set; } = "";
 }
 
@@ -212,6 +221,13 @@ public sealed class CopiersEquipmentDetailDto
 {
     public CopiersEquipmentRowDto Equipment { get; set; } = new();
     public IReadOnlyList<CopiersMaintenanceRowDto> MaintenanceRows { get; set; } = Array.Empty<CopiersMaintenanceRowDto>();
+    public IReadOnlyList<CopiersEquipmentOptionDto> CategoryOptions { get; set; } = Array.Empty<CopiersEquipmentOptionDto>();
+}
+
+public sealed class CopiersEquipmentOptionDto
+{
+    public int Value { get; set; }
+    public string Label { get; set; } = "";
 }
 
 public sealed class CopiersMaintenanceRowDto
@@ -249,6 +265,44 @@ public sealed class CopiersEquipmentAssignmentResultDto
     public string RecordId { get; set; } = "";
     public string Message { get; set; } = "";
     public CopiersEquipmentRowDto Equipment { get; set; } = new();
+}
+
+public sealed class CopiersEquipmentSaveRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public string Serial { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public int? CategoryValue { get; set; }
+    public string Reference { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string Area { get; set; } = "";
+    public string Site { get; set; } = "";
+    public string Observations { get; set; } = "";
+}
+
+public sealed class CopiersEquipmentSaveResultDto
+{
+    public string RecordId { get; set; } = "";
+    public string Message { get; set; } = "";
+    public CopiersEquipmentRowDto Equipment { get; set; } = new();
+}
+
+public sealed class CopiersEquipmentClientSaveRequestDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ContactName { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Address { get; set; } = "";
+}
+
+public sealed class CopiersEquipmentClientSaveResultDto
+{
+    public string ClientId { get; set; } = "";
+    public string Message { get; set; } = "";
+    public CopiersEquipmentClientSummaryDto Client { get; set; } = new();
 }
 
 public sealed class CopiersMaintenanceChartDto

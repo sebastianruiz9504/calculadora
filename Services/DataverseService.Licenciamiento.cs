@@ -44,10 +44,7 @@ public sealed partial class DataverseService
     private static readonly CultureInfo LicensingCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly string[] LicensingAccountSearchFieldCandidates =
     {
-        "cr07a_name",
-        "cr07a_accountidicp",
-        "cr07a_accountid",
-        "cr07a_companyaccountid"
+        "cr07a_name"
     };
     private static readonly string[] LicensingProductSearchFieldCandidates =
     {
@@ -365,10 +362,9 @@ public sealed partial class DataverseService
             ProductFieldIsLookup = productFieldIsLookup,
             AccountNavigationProperty = accountNavigationProperty,
             ProductNavigationProperty = productNavigationProperty,
-            AccountSearchFields = ResolveLicensingSearchFields(
-                accountAttributes,
-                accountMetadata.PrimaryNameField,
-                LicensingAccountSearchFieldCandidates),
+            AccountSearchFields = ResolveExplicitLicensingSearchFields(
+                LicensingAccountSearchFieldCandidates,
+                accountMetadata.PrimaryNameField),
             ProductSearchFields = ResolveLicensingSearchFields(
                 productAttributes,
                 LicensingProductDescriptionLookupField,
@@ -454,6 +450,28 @@ public sealed partial class DataverseService
         return existingCandidates.Count > 0
             ? existingCandidates
             : orderedCandidates;
+    }
+
+    private static IReadOnlyList<string> ResolveExplicitLicensingSearchFields(params object?[] candidateGroups)
+    {
+        var fields = new List<string>();
+        foreach (var group in candidateGroups)
+        {
+            switch (group)
+            {
+                case string value when !string.IsNullOrWhiteSpace(value):
+                    fields.Add(value.Trim());
+                    break;
+                case IEnumerable<string> values:
+                    fields.AddRange(values.Where(static value => !string.IsNullOrWhiteSpace(value)).Select(static value => value.Trim()));
+                    break;
+            }
+        }
+
+        return fields
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static IReadOnlyList<LicenciamientoContractTypeOptionDto> GetLicensingContractTypeOptions() =>
@@ -746,7 +764,7 @@ public sealed partial class DataverseService
                 && !string.IsNullOrWhiteSpace(row.CompanyAccountId)
                 && !row.CompanyAccountLookupFound)
             {
-                row.Warnings.Add("CompanyAccountid no se encontro en el lookup.");
+                row.Warnings.Add($"CompanyAccountid no se encontro en {LicensingAccountLookupTargetLogicalName}.{LicensingAccountLookupTargetFallbackPrimaryNameField}.");
             }
 
             if (metadata.ProductFieldIsLookup

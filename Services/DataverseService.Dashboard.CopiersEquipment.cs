@@ -28,6 +28,12 @@ public sealed partial class DataverseService
     private const string DashboardEquipmentAddressField = "cr07a_direccion";
     private const string DashboardEquipmentMapHtmlField = "cr07a_htmlmapa";
     private const string DashboardEquipmentMapUrlField = "cr07a_mapa";
+    private const string CopiersClientIdField = "cr07a_clienteid";
+    private const string CopiersClientNameField = "cr07a_nombre";
+    private const string CopiersClientContactNameField = "cr07a_nombrepersonaacargo";
+    private const string CopiersClientEmailField = "cr07a_correoelectronico";
+    private const string CopiersClientPhoneField = "cr07a_telefono";
+    private const string CopiersClientAddressField = "cr07a_direccion";
 
     private const string DashboardMaintenanceTableLogicalName = "cr07a_mantenimiento";
     private const string DashboardMaintenanceTableSetName = "cr07a_mantenimientos";
@@ -126,6 +132,10 @@ public sealed partial class DataverseService
 
         var equipmentRows = await GetEquipmentRecordsAsync(equipmentMetadata, httpContext.User, ct);
         var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct);
+        var clientsById = await GetCopiersClientContactRowsAsync(
+            equipmentRows.Select(static row => row.ClientId),
+            httpContext.User,
+            ct);
 
         return new CopiersEquipmentDashboardDto
         {
@@ -136,12 +146,13 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos equipos registrados.",
             EmptyStateMessage = "Cuando Dataverse tenga filas en cr07a_equipo las veras aqui.",
             Kpis = BuildEquipmentKpis(equipmentRows, maintenanceRows),
-            ClientSummaries = BuildEquipmentClientSummaries(equipmentRows),
+            ClientSummaries = BuildEquipmentClientSummaries(equipmentRows, clientsById),
             EquipmentRows = BuildEquipmentRows(equipmentRows, maintenanceRows),
             StockRows = BuildEquipmentRows(
                 equipmentRows.Where(static row => row.InStock).ToList(),
                 maintenanceRows),
             MaintenanceRows = BuildMaintenanceRows(maintenanceRows),
+            CategoryOptions = BuildEquipmentCategoryOptions(),
             MaintenanceChart = BuildMaintenanceChart(maintenanceRows, today)
         };
     }
@@ -174,7 +185,8 @@ public sealed partial class DataverseService
         return new CopiersEquipmentDetailDto
         {
             Equipment = BuildEquipmentRows(new[] { equipment }, maintenanceRows).First(),
-            MaintenanceRows = BuildMaintenanceRows(maintenanceRows)
+            MaintenanceRows = BuildMaintenanceRows(maintenanceRows),
+            CategoryOptions = BuildEquipmentCategoryOptions()
         };
     }
 
@@ -319,6 +331,141 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<CopiersEquipmentSaveResultDto> SaveCopiersEquipmentAsync(
+        CopiersEquipmentSaveRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var normalizedRecordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
+        var current = await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("No encontramos el equipo que quieres actualizar.");
+        var serial = (request.Serial ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(serial))
+            throw new InvalidOperationException("Debes indicar el serial del equipo.");
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [metadata.PrimaryNameField] = serial,
+            [DashboardEquipmentCategoryField] = request.CategoryValue,
+            [DashboardEquipmentReferenceField] = (request.Reference ?? "").Trim(),
+            [DashboardEquipmentModelField] = (request.Model ?? "").Trim(),
+            [DashboardEquipmentAreaField] = (request.Area ?? "").Trim(),
+            [DashboardEquipmentSiteField] = (request.Site ?? "").Trim(),
+            [DashboardEquipmentObservationsField] = (request.Observations ?? "").Trim()
+        };
+        payload[DashboardEquipmentSerialField] = serial;
+
+        var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentClientField,
+            DashboardEquipmentClientField,
+            httpContext.User,
+            ct);
+        var requestedClientId = NormalizeOptionalGuid(request.ClientId);
+        var clientName = (request.ClientName ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(requestedClientId) && string.IsNullOrWhiteSpace(clientName))
+        {
+            payload[$"{navigationProperty}@odata.bind"] = null;
+        }
+        else
+        {
+            var resolvedClientId = !string.IsNullOrWhiteSpace(requestedClientId)
+                ? requestedClientId
+                : string.Equals(
+                    NormalizeCopiersComparableValue(clientName),
+                    NormalizeCopiersComparableValue(current.ClientName),
+                    StringComparison.Ordinal)
+                    ? NormalizeOptionalGuid(current.ClientId)
+                    : await ResolveCopiersClientIdAsync(clientName, ct);
+
+            if (string.IsNullOrWhiteSpace(resolvedClientId))
+                throw new InvalidOperationException("No encontramos un cliente valido para el valor digitado. Selecciona una opcion sugerida.");
+
+            payload[$"{navigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({resolvedClientId})";
+        }
+
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})";
+        await CallDataverseSendAsync(relativeUrl, "PATCH", payload, httpContext.User, ct);
+
+        var updated = await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("El equipo se actualizo pero no pudimos refrescar su informacion.");
+        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardMaintenanceTableLogicalName,
+            DashboardMaintenanceTableSetName,
+            DashboardMaintenanceIdField,
+            DashboardMaintenancePrimaryNameField,
+            httpContext.User,
+            ct);
+        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedRecordId);
+
+        return new CopiersEquipmentSaveResultDto
+        {
+            RecordId = normalizedRecordId,
+            Message = "Equipo actualizado correctamente.",
+            Equipment = BuildEquipmentRows(new[] { updated }, maintenanceRows).First()
+        };
+    }
+
+    public async Task<CopiersEquipmentClientSaveResultDto> SaveCopiersEquipmentClientAsync(
+        CopiersEquipmentClientSaveRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var normalizedClientId = NormalizeGuid(request.ClientId, nameof(request.ClientId));
+        var clientName = (request.ClientName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(clientName))
+            throw new InvalidOperationException("Debes indicar el nombre del cliente.");
+
+        var payload = new Dictionary<string, object?>
+        {
+            [CopiersClientNameField] = clientName,
+            [CopiersClientContactNameField] = (request.ContactName ?? "").Trim(),
+            [CopiersClientEmailField] = (request.Email ?? "").Trim(),
+            [CopiersClientPhoneField] = (request.Phone ?? "").Trim(),
+            [CopiersClientAddressField] = (request.Address ?? "").Trim()
+        };
+
+        var relativeUrl = $"/api/data/v9.2/{ClientsEntitySetName}({normalizedClientId})";
+        await CallDataverseSendAsync(relativeUrl, "PATCH", payload, httpContext.User, ct);
+
+        var clientsById = await GetCopiersClientContactRowsAsync(new[] { normalizedClientId }, httpContext.User, ct);
+        clientsById.TryGetValue(normalizedClientId, out var client);
+
+        return new CopiersEquipmentClientSaveResultDto
+        {
+            ClientId = normalizedClientId,
+            Message = "Cliente actualizado correctamente.",
+            Client = new CopiersEquipmentClientSummaryDto
+            {
+                ClientId = normalizedClientId,
+                ClientName = client?.ClientName ?? clientName,
+                ContactName = client?.ContactName ?? (request.ContactName ?? "").Trim(),
+                Email = client?.Email ?? (request.Email ?? "").Trim(),
+                Phone = client?.Phone ?? (request.Phone ?? "").Trim(),
+                Address = client?.Address ?? (request.Address ?? "").Trim()
+            }
+        };
+    }
+
     public async Task<RhFileDownloadResult?> DownloadCopiersMaintenanceAttachmentAsync(
         string maintenanceId,
         CancellationToken ct = default)
@@ -393,6 +540,67 @@ public sealed partial class DataverseService
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         using var doc = JsonDocument.Parse(json);
         return ParseEquipmentRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
+    }
+
+    private async Task<IReadOnlyDictionary<string, CopiersClientContactRow>> GetCopiersClientContactRowsAsync(
+        IEnumerable<string> clientIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedIds = clientIds
+            .Select(NormalizeOptionalGuid)
+            .Where(static id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedIds.Count == 0)
+            return new Dictionary<string, CopiersClientContactRow>(StringComparer.OrdinalIgnoreCase);
+
+        var select = string.Join(",", new[]
+        {
+            CopiersClientIdField,
+            CopiersClientNameField,
+            CopiersClientContactNameField,
+            CopiersClientEmailField,
+            CopiersClientPhoneField,
+            CopiersClientAddressField
+        });
+        var result = new Dictionary<string, CopiersClientContactRow>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var clientId in normalizedIds)
+        {
+            try
+            {
+                var relativeUrl = $"/api/data/v9.2/{ClientsEntitySetName}({clientId})?$select={select}";
+                var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+                using var doc = JsonDocument.Parse(json);
+                var row = ParseCopiersClientContactRow(doc.RootElement);
+                if (!string.IsNullOrWhiteSpace(row.ClientId))
+                    result[row.ClientId] = row;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible consultar los datos de contacto del cliente {ClientId}.",
+                    clientId);
+            }
+        }
+
+        return result;
+    }
+
+    private static CopiersClientContactRow ParseCopiersClientContactRow(JsonElement item)
+    {
+        return new CopiersClientContactRow
+        {
+            ClientId = NormalizeOptionalGuid(ReadString(item, CopiersClientIdField)),
+            ClientName = ReadString(item, CopiersClientNameField).Trim(),
+            ContactName = ReadString(item, CopiersClientContactNameField).Trim(),
+            Email = ReadString(item, CopiersClientEmailField).Trim(),
+            Phone = ReadString(item, CopiersClientPhoneField).Trim(),
+            Address = ReadString(item, CopiersClientAddressField).Trim()
+        };
     }
 
     private async Task<HashSet<string>> GetCopiersEquipmentAttributeNamesAsync(ClaimsPrincipal user, CancellationToken ct)
@@ -539,9 +747,9 @@ public sealed partial class DataverseService
             ClientName = equipment.ClientName,
             Type = equipment.CategoryLabel,
             Brand = ReadString(item, fieldMap.Get("brand")).Trim(),
-            Model = FirstNonEmpty(ReadString(item, fieldMap.Get("model")).Trim(), equipment.Reference),
-            Area = ReadString(item, fieldMap.Get("area")).Trim(),
-            Site = ReadString(item, fieldMap.Get("site")).Trim(),
+            Model = FirstNonEmpty(ReadString(item, fieldMap.Get("model")).Trim(), equipment.Model, equipment.Reference),
+            Area = FirstNonEmpty(ReadString(item, fieldMap.Get("area")).Trim(), equipment.Area),
+            Site = FirstNonEmpty(ReadString(item, fieldMap.Get("site")).Trim(), equipment.Site),
             Address = ReadString(item, fieldMap.Get("address")).Trim(),
             MapUrl = mapUrl,
             MapEmbedUrl = rawMapEmbed,
@@ -559,6 +767,9 @@ public sealed partial class DataverseService
             BuildDashboardLookupValuePropertyName(DashboardEquipmentClientField),
             DashboardEquipmentCategoryField,
             DashboardEquipmentReferenceField,
+            DashboardEquipmentModelField,
+            DashboardEquipmentAreaField,
+            DashboardEquipmentSiteField,
             DashboardEquipmentObservationsField
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
@@ -604,6 +815,9 @@ public sealed partial class DataverseService
                 DashboardEquipmentCategoryLabels,
                 "Sin categoria"),
             Reference = ReadString(item, DashboardEquipmentReferenceField).Trim(),
+            Model = ReadString(item, DashboardEquipmentModelField).Trim(),
+            Area = ReadString(item, DashboardEquipmentAreaField).Trim(),
+            Site = ReadString(item, DashboardEquipmentSiteField).Trim(),
             Observations = ReadString(item, DashboardEquipmentObservationsField).Trim(),
             InStock = inStock
         };
@@ -861,8 +1075,21 @@ public sealed partial class DataverseService
         };
     }
 
+    private static IReadOnlyList<CopiersEquipmentOptionDto> BuildEquipmentCategoryOptions()
+    {
+        return DashboardEquipmentCategoryLabels
+            .OrderBy(item => item.Key)
+            .Select(item => new CopiersEquipmentOptionDto
+            {
+                Value = item.Key,
+                Label = item.Value
+            })
+            .ToList();
+    }
+
     private IReadOnlyList<CopiersEquipmentClientSummaryDto> BuildEquipmentClientSummaries(
-        IReadOnlyList<CopiersEquipmentRecordRow> equipmentRows)
+        IReadOnlyList<CopiersEquipmentRecordRow> equipmentRows,
+        IReadOnlyDictionary<string, CopiersClientContactRow> clientsById)
     {
         return equipmentRows
             .Where(row => !row.InStock)
@@ -877,11 +1104,16 @@ public sealed partial class DataverseService
                     .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
                     .Select(item => $"{item.Key}: {item.Count().ToString("N0", DashboardCulture)}")
                     .ToList();
+                clientsById.TryGetValue(first.ClientId, out var client);
 
                 return new CopiersEquipmentClientSummaryDto
                 {
                     ClientId = first.ClientId,
-                    ClientName = first.ClientName,
+                    ClientName = FirstNonEmpty(client?.ClientName, first.ClientName),
+                    ContactName = client?.ContactName ?? "",
+                    Email = client?.Email ?? "",
+                    Phone = client?.Phone ?? "",
+                    Address = client?.Address ?? "",
                     EquipmentCount = items.Count,
                     CategoryBreakdown = string.Join(" · ", categoryBreakdown)
                 };
@@ -920,9 +1152,13 @@ public sealed partial class DataverseService
                     CategoryValue = row.CategoryValue,
                     CategoryLabel = row.CategoryLabel,
                     Reference = row.Reference,
+                    Model = row.Model,
+                    Area = row.Area,
+                    Site = row.Site,
                     Observations = row.Observations,
                     InStock = row.InStock,
                     MaintenanceCount = equipmentMaintenance?.Count ?? 0,
+                    LastMaintenanceDateValue = latestMaintenance?.DateValue ?? "",
                     LastMaintenanceDateDisplay = latestMaintenance?.DateDisplay ?? "Sin mantenimientos"
                 };
             })
@@ -1277,8 +1513,21 @@ public sealed partial class DataverseService
         public int? CategoryValue { get; init; }
         public string CategoryLabel { get; init; } = "";
         public string Reference { get; init; } = "";
+        public string Model { get; init; } = "";
+        public string Area { get; init; } = "";
+        public string Site { get; init; } = "";
         public string Observations { get; init; } = "";
         public bool InStock { get; init; }
+    }
+
+    private sealed class CopiersClientContactRow
+    {
+        public string ClientId { get; init; } = "";
+        public string ClientName { get; init; } = "";
+        public string ContactName { get; init; } = "";
+        public string Email { get; init; } = "";
+        public string Phone { get; init; } = "";
+        public string Address { get; init; } = "";
     }
 
     private sealed class CopiersMaintenanceRecordRow

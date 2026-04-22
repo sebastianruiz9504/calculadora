@@ -13,6 +13,8 @@
         equipmentDetail: app.dataset.equipmentDetailUrl || "",
         equipmentInventory: app.dataset.equipmentInventoryUrl || "",
         equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
+        saveEquipment: app.dataset.saveEquipmentUrl || "",
+        saveEquipmentClient: app.dataset.saveEquipmentClientUrl || "",
         supplies: app.dataset.suppliesUrl || "",
         saveSupplyQuantity: app.dataset.saveSupplyQuantityUrl || "",
         pendingInvoices: app.dataset.pendingInvoicesUrl || "",
@@ -67,12 +69,25 @@
     const equipmentClientNameInput = document.getElementById("copiersEquipmentClientName");
     const equipmentClientOptions = document.getElementById("copiersEquipmentClientOptions");
     const equipmentSaveBtn = document.getElementById("copiersEquipmentSaveBtn");
-    const equipmentDetailSerial = document.getElementById("copiersEquipmentDetailSerial");
-    const equipmentDetailCurrentClient = document.getElementById("copiersEquipmentDetailCurrentClient");
-    const equipmentDetailCategory = document.getElementById("copiersEquipmentDetailCategory");
-    const equipmentDetailReference = document.getElementById("copiersEquipmentDetailReference");
-    const equipmentDetailObservations = document.getElementById("copiersEquipmentDetailObservations");
-    const equipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
+    const equipmentSerialInput = document.getElementById("copiersEquipmentSerial");
+    const equipmentCategorySelect = document.getElementById("copiersEquipmentCategory");
+    const equipmentModelInput = document.getElementById("copiersEquipmentModel");
+    const equipmentAreaInput = document.getElementById("copiersEquipmentArea");
+    const equipmentSiteInput = document.getElementById("copiersEquipmentSite");
+    const equipmentReferenceInput = document.getElementById("copiersEquipmentReference");
+    const equipmentMaintenanceCountInput = document.getElementById("copiersEquipmentMaintenanceCount");
+    const equipmentLastMaintenanceInput = document.getElementById("copiersEquipmentLastMaintenance");
+    const equipmentObservationsInput = document.getElementById("copiersEquipmentObservations");
+    const clientDetailModal = document.getElementById("copiersClientDetailModal");
+    const clientDetailForm = document.getElementById("copiersClientDetailForm");
+    const clientDetailStatus = document.getElementById("copiersClientDetailStatus");
+    const clientDetailIdInput = document.getElementById("copiersClientDetailId");
+    const clientDetailNameInput = document.getElementById("copiersClientDetailName");
+    const clientDetailContactInput = document.getElementById("copiersClientDetailContact");
+    const clientDetailEmailInput = document.getElementById("copiersClientDetailEmail");
+    const clientDetailPhoneInput = document.getElementById("copiersClientDetailPhone");
+    const clientDetailAddressInput = document.getElementById("copiersClientDetailAddress");
+    const clientDetailSaveBtn = document.getElementById("copiersClientDetailSaveBtn");
 
     const inventoryClientNameInput = document.getElementById("copiersInventoryClientName");
     const inventoryClientIdInput = document.getElementById("copiersInventoryClientId");
@@ -148,6 +163,8 @@
         equipmentDetail: null,
         equipmentClientSuggestions: [],
         equipmentAssignmentSaving: false,
+        clientDetail: null,
+        clientSaving: false,
         equipmentInventory: null,
         equipmentInventoryClientSuggestions: [],
         supplies: null,
@@ -279,6 +296,37 @@
         await loadEquipmentDetail(rowElement.dataset.equipmentId || "");
     });
 
+    equipmentClientsBody?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || target.closest("a")) {
+            return;
+        }
+
+        const rowElement = target.closest("[data-client-id]");
+        if (!(rowElement instanceof HTMLElement)) {
+            return;
+        }
+
+        const row = findClientSummary(rowElement.dataset.clientId || "");
+        if (row) {
+            openClientDetail(row);
+        }
+    });
+
+    inventoryBody?.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || target.closest("a")) {
+            return;
+        }
+
+        const rowElement = target.closest("[data-equipment-id]");
+        if (!(rowElement instanceof HTMLElement)) {
+            return;
+        }
+
+        await loadEquipmentDetail(rowElement.dataset.equipmentId || "");
+    });
+
     maintenanceForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveMaintenance();
@@ -287,6 +335,11 @@
     equipmentAssignmentForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveEquipmentAssignment();
+    });
+
+    clientDetailForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveEquipmentClient();
     });
 
     supplyForm?.addEventListener("submit", async (event) => {
@@ -310,6 +363,8 @@
             closeModal(maintenanceModal);
         } else if (closeTarget === "equipmentDetail") {
             closeModal(equipmentDetailModal);
+        } else if (closeTarget === "clientDetail") {
+            closeModal(clientDetailModal);
         } else if (closeTarget === "supply") {
             closeModal(supplyModal);
         } else if (closeTarget === "ingreso") {
@@ -326,7 +381,7 @@
             return;
         }
 
-        [confirmIngresoModal, ingresoModal, supplyModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
+        [confirmIngresoModal, ingresoModal, supplyModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
             if (modal && !modal.hidden) {
                 closeModal(modal);
             }
@@ -481,8 +536,12 @@
             </article>`).join("");
 
         equipmentClientsBody.innerHTML = clientRows.map((row) => `
-            <tr>
+            <tr class="is-selectable" data-client-id="${escapeHtml(row.clientId || "")}" tabindex="0">
                 <td data-label="Cliente">${escapeHtml(row.clientName)}</td>
+                <td data-label="Persona a cargo">${escapeHtml(row.contactName || "")}</td>
+                <td data-label="Correo">${escapeHtml(row.email || "")}</td>
+                <td data-label="Telefono">${escapeHtml(row.phone || "")}</td>
+                <td data-label="Direccion">${escapeHtml(row.address || "")}</td>
                 <td data-label="Equipos" class="text-end">${numberFormatter.format(Number(row.equipmentCount || 0))}</td>
                 <td data-label="Categorias">${escapeHtml(row.categoryBreakdown || "")}</td>
             </tr>`).join("");
@@ -499,11 +558,12 @@
                 <td data-label="Serial">${escapeHtml(row.serial)}</td>
                 <td data-label="Cliente">${row.inStock ? '<span class="copiers-badge is-warning">Stock</span>' : escapeHtml(row.clientName || "Sin cliente")}</td>
                 <td data-label="Categoria">${escapeHtml(row.categoryLabel || "")}</td>
+                <td data-label="Modelo">${escapeHtml(row.model || "")}</td>
+                <td data-label="Area">${escapeHtml(row.area || "")}</td>
+                <td data-label="Sede">${escapeHtml(row.site || "")}</td>
                 <td data-label="Referencia">${escapeHtml(row.reference || "")}</td>
                 <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
-                <td data-label="Mantenimientos" class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
-                <td data-label="Ultimo mantenimiento">${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
-            </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+            </tr>`).join("") : `<tr><td colspan="8" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
     }
 
     async function loadEquipmentInventory() {
@@ -594,21 +654,15 @@
         }).join("");
 
         inventoryBody.innerHTML = records.length ? records.map((row) => `
-            <tr>
+            <tr class="is-selectable" data-equipment-id="${escapeHtml(row.recordId || "")}" tabindex="0">
                 <td data-label="No.">${numberFormatter.format(Number(row.lineNumber || 0))}</td>
-                <td data-label="Tipo">${escapeHtml(row.type || "")}</td>
-                <td data-label="Marca">${escapeHtml(row.brand || "")}</td>
                 <td data-label="Modelo">${escapeHtml(row.model || "")}</td>
                 <td data-label="Serial de maquina">${escapeHtml(row.serial || "")}</td>
                 <td data-label="Empresa">${escapeHtml(row.company || "")}</td>
                 <td data-label="Area">${escapeHtml(row.area || "")}</td>
                 <td data-label="Sede">${escapeHtml(row.site || "")}</td>
-                <td data-label="Direccion">${escapeHtml(row.address || "")}</td>
-                <td data-label="Mapa">${renderMapLink(row.mapUrl || row.mapEmbedUrl, "Abrir")}</td>
                 <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
-                <td data-label="Mantenimientos" class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
-                <td data-label="Ultimo mantenimiento">${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
-            </tr>`).join("") : `<tr><td colspan="13" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+            </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
     }
 
     function clearEquipmentInventory() {
@@ -626,8 +680,7 @@
         resetEquipmentDetail();
         showModal(equipmentDetailModal);
         equipmentDetailTitle.textContent = row?.serial ? `Equipo ${row.serial}` : "Detalle del equipo";
-        equipmentDetailSubtitle.textContent = "Cargando informacion del equipo y sus mantenimientos...";
-        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Cargando historial del equipo...</td></tr>`;
+        equipmentDetailSubtitle.textContent = "Cargando informacion del equipo...";
         showStatus(equipmentDetailStatus, "info", "Consultando detalle del equipo...");
     }
 
@@ -636,7 +689,9 @@
             return;
         }
 
-        const row = findById(state.equipment?.equipmentRows, recordId);
+        const row = findById(state.equipment?.equipmentRows, recordId)
+            || findById(state.equipment?.stockRows, recordId)
+            || findById(state.equipmentInventory?.records, recordId);
         renderEquipmentDetailLoading(row);
 
         try {
@@ -654,17 +709,20 @@
         equipmentRecordIdInput.value = equipment.recordId || "";
         equipmentClientIdInput.value = equipment.clientId || "";
         equipmentClientNameInput.value = equipment.inStock ? "" : (equipment.clientName || "");
+        equipmentSerialInput.value = equipment.serial || "";
+        equipmentModelInput.value = equipment.model || "";
+        equipmentAreaInput.value = equipment.area || "";
+        equipmentSiteInput.value = equipment.site || "";
+        equipmentReferenceInput.value = equipment.reference || "";
+        equipmentObservationsInput.value = equipment.observations || "";
+        equipmentMaintenanceCountInput.value = numberFormatter.format(Number(equipment.maintenanceCount || 0));
+        equipmentLastMaintenanceInput.value = equipment.lastMaintenanceDateDisplay || "";
+        populateEquipmentCategoryOptions(equipment.categoryValue, detail?.categoryOptions || state.equipment?.categoryOptions);
 
         equipmentDetailTitle.textContent = equipment.serial ? `Equipo ${equipment.serial}` : "Detalle del equipo";
         equipmentDetailSubtitle.textContent = equipment.inStock
-            ? "Este equipo esta en stock. Asignale un cliente para dejarlo operativo."
-            : "Revisa la informacion del equipo y actualiza solo el cliente asignado.";
-        equipmentDetailSerial.textContent = equipment.serial || "Sin serial";
-        equipmentDetailCurrentClient.textContent = equipment.inStock ? "Stock" : (equipment.clientName || "Sin cliente");
-        equipmentDetailCategory.textContent = equipment.categoryLabel || "Sin categoria";
-        equipmentDetailReference.textContent = equipment.reference || "Sin referencia";
-        equipmentDetailObservations.textContent = equipment.observations || "Sin observaciones";
-        renderEquipmentMaintenanceTable(detail?.maintenanceRows);
+            ? "Este equipo esta en stock. Puedes asignarle un cliente y completar sus datos."
+            : "Edita los datos visibles de la tabla y los campos de seguimiento.";
     }
 
     function resetEquipmentDetail() {
@@ -672,39 +730,27 @@
         equipmentRecordIdInput.value = "";
         equipmentClientIdInput.value = "";
         equipmentClientNameInput.value = "";
+        equipmentSerialInput.value = "";
+        equipmentModelInput.value = "";
+        equipmentAreaInput.value = "";
+        equipmentSiteInput.value = "";
+        equipmentReferenceInput.value = "";
+        equipmentObservationsInput.value = "";
+        equipmentMaintenanceCountInput.value = "";
+        equipmentLastMaintenanceInput.value = "";
+        equipmentCategorySelect.innerHTML = "";
         equipmentDetailTitle.textContent = "Detalle del equipo";
-        equipmentDetailSubtitle.textContent = "Consulta el equipo, reasigna el cliente y revisa sus mantenimientos.";
-        equipmentDetailSerial.textContent = "-";
-        equipmentDetailCurrentClient.textContent = "-";
-        equipmentDetailCategory.textContent = "-";
-        equipmentDetailReference.textContent = "-";
-        equipmentDetailObservations.textContent = "-";
+        equipmentDetailSubtitle.textContent = "Edita la informacion operativa del equipo seleccionado.";
         clearStatus(equipmentDetailStatus);
-        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Selecciona un equipo para ver sus mantenimientos.</td></tr>`;
     }
 
-    function renderEquipmentMaintenanceTable(rows) {
-        const items = Array.isArray(rows) ? rows : [];
-        equipmentMaintenanceBody.innerHTML = items.length ? items.map((row) => {
-            const attachment = row.hasAttachment
-                ? `<a class="copiers-link" href="${buildDownloadUrl(urls.downloadMaintenance, "maintenanceId", row.recordId)}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
-                : `<span class="copiers-muted">Sin adjunto</span>`;
-            const statusValue = Number(row.maintenanceStatusValue || maintenanceStatusPending);
-            const completed = statusValue === maintenanceStatusCompleted;
-
-            return `
-                <tr>
-                    <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
-                    <td data-label="Titulo">${escapeHtml(row.title || "")}</td>
-                    <td data-label="Tipo">${escapeHtml(row.maintenanceTypeLabel || "")}</td>
-                    <td data-label="Estado"><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.maintenanceStatusLabel || "Pendiente")}</span></td>
-                    <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
-                    <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
-                    <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
-                    <td data-label="ID">${escapeHtml(row.internalId || "")}</td>
-                    <td data-label="Adjunto">${attachment}</td>
-                </tr>`;
-        }).join("") : `<tr><td colspan="9" class="text-center copiers-muted">Este equipo no tiene mantenimientos registrados.</td></tr>`;
+    function populateEquipmentCategoryOptions(selectedValue, options) {
+        const items = Array.isArray(options) ? options : [];
+        const selected = selectedValue === null || selectedValue === undefined ? "" : String(selectedValue);
+        equipmentCategorySelect.innerHTML = `<option value="">Sin tipo</option>` + items.map((option) => {
+            const value = String(option.value ?? "");
+            return `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(option.label || value)}</option>`;
+        }).join("");
     }
 
     async function saveEquipmentAssignment() {
@@ -715,27 +761,37 @@
         try {
             syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
             const clientName = (equipmentClientNameInput.value || "").trim();
-            if (!clientName) {
-                throw new Error("Debes seleccionar el cliente al que quedara asignado el equipo.");
+            const serial = (equipmentSerialInput.value || "").trim();
+            if (!serial) {
+                throw new Error("Debes indicar el serial del equipo.");
             }
 
             state.equipmentAssignmentSaving = true;
             equipmentSaveBtn.disabled = true;
-            showStatus(equipmentDetailStatus, "info", "Guardando reasignacion...");
+            showStatus(equipmentDetailStatus, "info", "Guardando equipo...");
             const payload = {
                 recordId: equipmentRecordIdInput.value,
+                serial,
                 clientId: equipmentClientIdInput.value,
                 clientName,
-                moveToStock: false
+                categoryValue: parseNullableInt(equipmentCategorySelect.value),
+                reference: equipmentReferenceInput.value || "",
+                model: equipmentModelInput.value || "",
+                area: equipmentAreaInput.value || "",
+                site: equipmentSiteInput.value || "",
+                observations: equipmentObservationsInput.value || ""
             };
 
-            const result = await fetchJson(urls.equipmentAssignment, {
+            const result = await fetchJson(urls.saveEquipment || urls.equipmentAssignment, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
 
             await loadEquipment();
+            if (state.equipmentInventory) {
+                await loadEquipmentInventory();
+            }
             const detail = await fetchJson(`${urls.equipmentDetail}?equipmentId=${encodeURIComponent(result.recordId || payload.recordId)}`);
             fillEquipmentDetail(detail);
             showStatus(equipmentDetailStatus, "success", result.message || "Equipo actualizado correctamente.");
@@ -744,6 +800,72 @@
         } finally {
             state.equipmentAssignmentSaving = false;
             equipmentSaveBtn.disabled = false;
+        }
+    }
+
+    function findClientSummary(clientId) {
+        const normalizedId = (clientId || "").toLowerCase();
+        return (state.equipment?.clientSummaries || []).find((row) => (row.clientId || "").toLowerCase() === normalizedId);
+    }
+
+    function openClientDetail(row) {
+        state.clientDetail = row || null;
+        clientDetailIdInput.value = row?.clientId || "";
+        clientDetailNameInput.value = row?.clientName || "";
+        clientDetailContactInput.value = row?.contactName || "";
+        clientDetailEmailInput.value = row?.email || "";
+        clientDetailPhoneInput.value = row?.phone || "";
+        clientDetailAddressInput.value = row?.address || "";
+        clearStatus(clientDetailStatus);
+        showModal(clientDetailModal);
+    }
+
+    async function saveEquipmentClient() {
+        if (state.clientSaving) {
+            return;
+        }
+
+        const clientId = clientDetailIdInput.value || "";
+        const clientName = (clientDetailNameInput.value || "").trim();
+        if (!clientId || !clientName) {
+            showStatus(clientDetailStatus, "error", "Debes indicar el nombre del cliente.");
+            return;
+        }
+
+        try {
+            state.clientSaving = true;
+            clientDetailSaveBtn.disabled = true;
+            showStatus(clientDetailStatus, "info", "Guardando cliente...");
+            const payload = {
+                clientId,
+                clientName,
+                contactName: clientDetailContactInput.value || "",
+                email: clientDetailEmailInput.value || "",
+                phone: clientDetailPhoneInput.value || "",
+                address: clientDetailAddressInput.value || ""
+            };
+
+            const result = await fetchJson(urls.saveEquipmentClient, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if ((inventoryClientIdInput.value || "").toLowerCase() === clientId.toLowerCase()) {
+                inventoryClientNameInput.value = clientName;
+            }
+
+            await loadEquipment();
+            if (state.equipmentInventory) {
+                await loadEquipmentInventory();
+            }
+
+            showStatus(clientDetailStatus, "success", result.message || "Cliente actualizado correctamente.");
+        } catch (error) {
+            showStatus(clientDetailStatus, "error", getErrorMessage(error));
+        } finally {
+            state.clientSaving = false;
+            clientDetailSaveBtn.disabled = false;
         }
     }
 
@@ -1342,6 +1464,15 @@
 
         const numeric = Number(value);
         return Number.isFinite(numeric) ? String(numeric) : "";
+    }
+
+    function parseNullableInt(value) {
+        if (value === null || value === undefined || value === "") {
+            return null;
+        }
+
+        const numeric = Number(value);
+        return Number.isInteger(numeric) ? numeric : null;
     }
 
     function escapeHtml(value) {
