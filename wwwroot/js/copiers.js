@@ -326,6 +326,28 @@
         await loadEquipmentDetail(rowElement.dataset.equipmentId || "");
     });
 
+    inventoryLocations?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const cardElement = target.closest("[data-inventory-client-id]");
+        if (!(cardElement instanceof HTMLElement)) {
+            return;
+        }
+
+        const inventory = state.equipmentInventory || {};
+        openClientDetail({
+            clientId: inventory.clientId || cardElement.dataset.inventoryClientId || "",
+            clientName: inventory.clientName || inventoryClientNameInput.value || "",
+            contactName: inventory.clientContactName || "",
+            email: inventory.clientEmail || "",
+            phone: inventory.clientPhone || "",
+            address: inventory.clientAddress || ""
+        });
+    });
+
     maintenanceForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveMaintenance();
@@ -635,7 +657,7 @@
             </article>`).join("");
 
         inventoryLocations.innerHTML = inventory ? `
-            <article class="copiers-location-card copiers-location-card--client">
+            <article class="copiers-location-card copiers-location-card--client is-selectable" data-inventory-client-id="${escapeHtml(inventory.clientId || "")}" tabindex="0">
                 <div>
                     <span>Cliente</span>
                     <strong>${escapeHtml(inventory.clientName || "Sin cliente")}</strong>

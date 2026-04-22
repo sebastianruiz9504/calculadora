@@ -537,6 +537,15 @@
     background: linear-gradient(180deg, #ffffff 0%, var(--copiers-soft) 100%);
 }
 
+.copiers-location-card.is-selectable {
+    cursor: pointer;
+}
+
+.copiers-location-card.is-selectable:hover {
+    border-color: rgba(15, 108, 189, .35);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+}
+
 .copiers-location-card--client {
     grid-column: 1 / -1;
     grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr);
