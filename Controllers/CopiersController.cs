@@ -163,6 +163,24 @@ public sealed class CopiersController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> EquipmentInventory([FromQuery] string? clientId, [FromQuery] string? clientName, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.GetCopiersEquipmentInventoryAsync(clientId, clientName, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el inventario de equipos.", ex));
+        }
+    }
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> EquipmentAssignment([FromBody] CopiersEquipmentAssignmentRequestDto? request, CancellationToken ct)

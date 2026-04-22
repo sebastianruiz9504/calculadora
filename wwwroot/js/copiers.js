@@ -11,6 +11,7 @@
         downloadMaintenance: app.dataset.downloadMaintenanceUrl || "",
         equipment: app.dataset.equipmentUrl || "",
         equipmentDetail: app.dataset.equipmentDetailUrl || "",
+        equipmentInventory: app.dataset.equipmentInventoryUrl || "",
         equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
         supplies: app.dataset.suppliesUrl || "",
         saveSupplyQuantity: app.dataset.saveSupplyQuantityUrl || "",
@@ -72,6 +73,18 @@
     const equipmentDetailReference = document.getElementById("copiersEquipmentDetailReference");
     const equipmentDetailObservations = document.getElementById("copiersEquipmentDetailObservations");
     const equipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
+
+    const inventoryClientNameInput = document.getElementById("copiersInventoryClientName");
+    const inventoryClientIdInput = document.getElementById("copiersInventoryClientId");
+    const inventoryClientOptions = document.getElementById("copiersInventoryClientOptions");
+    const inventoryLoadBtn = document.getElementById("copiersInventoryLoadBtn");
+    const inventoryClearBtn = document.getElementById("copiersInventoryClearBtn");
+    const inventoryCount = document.getElementById("copiersInventoryCount");
+    const inventoryMissing = document.getElementById("copiersInventoryMissing");
+    const inventoryKpis = document.getElementById("copiersInventoryKpis");
+    const inventoryLocations = document.getElementById("copiersInventoryLocations");
+    const inventoryBody = document.getElementById("copiersInventoryBody");
+    const inventoryEmpty = document.getElementById("copiersInventoryEmpty");
 
     const suppliesRefreshBtn = document.getElementById("copiersSuppliesRefreshBtn");
     const suppliesBody = document.getElementById("copiersSuppliesBody");
@@ -135,6 +148,8 @@
         equipmentDetail: null,
         equipmentClientSuggestions: [],
         equipmentAssignmentSaving: false,
+        equipmentInventory: null,
+        equipmentInventoryClientSuggestions: [],
         supplies: null,
         pendingInvoices: [],
         deliveries: null,
@@ -160,6 +175,8 @@
 
     maintenanceRefreshBtn?.addEventListener("click", () => loadMaintenance());
     equipmentRefreshBtn?.addEventListener("click", () => loadEquipment());
+    inventoryLoadBtn?.addEventListener("click", () => loadEquipmentInventory());
+    inventoryClearBtn?.addEventListener("click", clearEquipmentInventory);
     suppliesRefreshBtn?.addEventListener("click", () => loadSupplies());
     deliveriesRefreshBtn?.addEventListener("click", () => loadDeliveries());
 
@@ -336,6 +353,22 @@
         syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
     });
 
+    inventoryClientNameInput?.addEventListener("input", debounce(async () => {
+        inventoryClientIdInput.value = "";
+        await updateClientSuggestions(inventoryClientNameInput.value, inventoryClientOptions, "equipmentInventory");
+    }, 250));
+
+    inventoryClientNameInput?.addEventListener("change", () => {
+        syncClientSelection(inventoryClientNameInput, inventoryClientIdInput, state.equipmentInventoryClientSuggestions);
+    });
+
+    inventoryClientNameInput?.addEventListener("keydown", async (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            await loadEquipmentInventory();
+        }
+    });
+
     deliveryClientNameInput?.addEventListener("input", debounce(async () => {
         deliveryClientIdInput.value = "";
         await updateClientSuggestions(deliveryClientNameInput.value, deliveryClientOptions, "delivery");
@@ -352,6 +385,8 @@
             await loadMaintenance();
         } else if (tab === "equipment" && !state.equipment) {
             await loadEquipment();
+        } else if (tab === "equipmentInventory" && !state.equipmentInventory) {
+            renderEquipmentInventory();
         } else if (tab === "supplies" && !state.supplies) {
             await loadSupplies();
         } else if (tab === "deliveries" && !state.deliveries) {
@@ -469,6 +504,122 @@
                 <td data-label="Mantenimientos" class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
                 <td data-label="Ultimo mantenimiento">${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
             </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+    }
+
+    async function loadEquipmentInventory() {
+        try {
+            syncClientSelection(inventoryClientNameInput, inventoryClientIdInput, state.equipmentInventoryClientSuggestions);
+            const clientId = inventoryClientIdInput.value || "";
+            const clientName = (inventoryClientNameInput.value || "").trim();
+            if (!clientId && !clientName) {
+                showStatus(statusBanner, "warning", "Selecciona un cliente para consultar el inventario de equipos.");
+                renderEquipmentInventory();
+                return;
+            }
+
+            setBusy(true);
+            inventoryLoadBtn.disabled = true;
+            showStatus(statusBanner, "info", "Cargando inventario de equipos...");
+            const params = new URLSearchParams();
+            if (clientId) {
+                params.set("clientId", clientId);
+            }
+            if (clientName) {
+                params.set("clientName", clientName);
+            }
+
+            state.equipmentInventory = await fetchJson(`${urls.equipmentInventory}?${params.toString()}`);
+            renderEquipmentInventory();
+
+            const missing = Array.isArray(state.equipmentInventory?.missingColumns)
+                ? state.equipmentInventory.missingColumns
+                : [];
+            if (missing.length) {
+                showStatus(statusBanner, "warning", buildMissingColumnsText(missing));
+            } else {
+                clearStatus(statusBanner);
+            }
+        } catch (error) {
+            showStatus(statusBanner, "error", getErrorMessage(error));
+        } finally {
+            inventoryLoadBtn.disabled = false;
+            setBusy(false);
+        }
+    }
+
+    function renderEquipmentInventory() {
+        const inventory = state.equipmentInventory || null;
+        const records = Array.isArray(inventory?.records) ? inventory.records : [];
+        const kpis = Array.isArray(inventory?.kpis) ? inventory.kpis : [];
+        const locations = Array.isArray(inventory?.locations) ? inventory.locations : [];
+        const missing = Array.isArray(inventory?.missingColumns) ? inventory.missingColumns : [];
+
+        inventoryCount.textContent = `${records.length} equipo${records.length === 1 ? "" : "s"}`;
+        inventoryEmpty.hidden = Boolean(inventory) && records.length > 0;
+        inventoryEmpty.textContent = inventory
+            ? "No hay equipos registrados para este cliente."
+            : "Selecciona un cliente para consultar sus equipos.";
+
+        inventoryMissing.innerHTML = missing.length
+            ? escapeHtml(buildMissingColumnsText(missing))
+            : "";
+        inventoryMissing.className = missing.length
+            ? "copiers-status is-visible is-warning"
+            : "copiers-status";
+
+        inventoryKpis.innerHTML = kpis.map((kpi) => `
+            <article class="copiers-kpi">
+                <span>${escapeHtml(kpi.label)}</span>
+                <strong>${numberFormatter.format(Number(kpi.value || 0))}</strong>
+                <small>${escapeHtml(kpi.secondaryLabel || "")}: ${escapeHtml(kpi.secondaryValue || "")}</small>
+            </article>`).join("");
+
+        inventoryLocations.innerHTML = locations.map((location) => {
+            const areas = Array.isArray(location.areas) && location.areas.length
+                ? location.areas.join(" · ")
+                : "Sin area";
+            const mapFrame = renderMapFrame(location.mapEmbedUrl);
+            const mapLink = renderMapLink(location.mapUrl || location.mapEmbedUrl, "Abrir mapa");
+
+            return `
+                <article class="copiers-location-card">
+                    <div>
+                        <span>${numberFormatter.format(Number(location.equipmentCount || 0))} equipo${Number(location.equipmentCount || 0) === 1 ? "" : "s"}</span>
+                        <strong>${escapeHtml(location.site || "Sin sede")}</strong>
+                        <p>${escapeHtml(location.address || "Sin direccion")}</p>
+                        <small>${escapeHtml(areas)}</small>
+                    </div>
+                    ${mapFrame || mapLink}
+                </article>`;
+        }).join("");
+
+        inventoryBody.innerHTML = records.length ? records.map((row) => `
+            <tr>
+                <td data-label="No.">${numberFormatter.format(Number(row.lineNumber || 0))}</td>
+                <td data-label="Tipo">${escapeHtml(row.type || "")}</td>
+                <td data-label="Marca">${escapeHtml(row.brand || "")}</td>
+                <td data-label="Modelo">${escapeHtml(row.model || "")}</td>
+                <td data-label="Serial de maquina">${escapeHtml(row.serial || "")}</td>
+                <td data-label="Empresa">${escapeHtml(row.company || "")}</td>
+                <td data-label="Area">${escapeHtml(row.area || "")}</td>
+                <td data-label="Sede">${escapeHtml(row.site || "")}</td>
+                <td data-label="Direccion">${escapeHtml(row.address || "")}</td>
+                <td data-label="Mapa">${renderMapLink(row.mapUrl || row.mapEmbedUrl, "Abrir")}</td>
+                <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
+                <td data-label="Mantenimientos" class="text-end">${numberFormatter.format(Number(row.maintenanceCount || 0))}</td>
+                <td data-label="Ultimo mantenimiento">${escapeHtml(row.lastMaintenanceDateDisplay || "")}</td>
+            </tr>`).join("") : `<tr><td colspan="13" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+    }
+
+    function clearEquipmentInventory() {
+        state.equipmentInventory = null;
+        state.equipmentInventoryClientSuggestions = [];
+        inventoryClientNameInput.value = "";
+        inventoryClientIdInput.value = "";
+        inventoryClientOptions.innerHTML = "";
+        renderEquipmentInventory();
+        clearStatus(inventoryMissing);
+        clearStatus(statusBanner);
     }
 
     function renderEquipmentDetailLoading(row) {
@@ -977,6 +1128,8 @@
             datalist.innerHTML = "";
             if (target === "delivery") {
                 state.deliveryClientSuggestions = [];
+            } else if (target === "equipmentInventory") {
+                state.equipmentInventoryClientSuggestions = [];
             } else if (target === "equipment") {
                 state.equipmentClientSuggestions = [];
             } else {
@@ -989,6 +1142,8 @@
             const suggestions = await fetchJson(`${urls.clientSearch}?q=${encodeURIComponent(query)}`);
             if (target === "delivery") {
                 state.deliveryClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
+            } else if (target === "equipmentInventory") {
+                state.equipmentInventoryClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             } else if (target === "equipment") {
                 state.equipmentClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             } else {
@@ -1002,6 +1157,8 @@
             datalist.innerHTML = "";
             if (target === "delivery") {
                 state.deliveryClientSuggestions = [];
+            } else if (target === "equipmentInventory") {
+                state.equipmentInventoryClientSuggestions = [];
             } else if (target === "equipment") {
                 state.equipmentClientSuggestions = [];
             } else {
@@ -1014,6 +1171,64 @@
         const value = normalizeText(input.value);
         const match = (suggestions || []).find((item) => normalizeText(item.name) === value);
         hiddenInput.value = match?.id || hiddenInput.value || "";
+    }
+
+    function buildMissingColumnsText(missingColumns) {
+        const columns = (missingColumns || [])
+            .map((column) => `${column.label || "Columna"} (${column.logicalName || ""})`)
+            .join(", ");
+        return columns
+            ? `Faltan columnas en Dataverse para completar el inventario: ${columns}.`
+            : "";
+    }
+
+    function renderMapLink(url, label) {
+        if (!isSafeMapUrl(url)) {
+            return `<span class="copiers-muted">Sin mapa</span>`;
+        }
+
+        return `<a class="copiers-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label || "Abrir mapa")}</a>`;
+    }
+
+    function renderMapFrame(url) {
+        if (!isTrustedMapEmbedUrl(url)) {
+            return "";
+        }
+
+        return `<iframe class="copiers-map-frame" src="${escapeHtml(url)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`;
+    }
+
+    function isTrustedMapEmbedUrl(url) {
+        if (!isSafeMapUrl(url)) {
+            return false;
+        }
+
+        try {
+            const parsed = new URL(url);
+            return parsed.hostname.toLowerCase().endsWith("google.com")
+                && parsed.pathname.toLowerCase().startsWith("/maps/embed");
+        } catch {
+            return false;
+        }
+    }
+
+    function isSafeMapUrl(url) {
+        if (!url) {
+            return false;
+        }
+
+        try {
+            const parsed = new URL(url);
+            const host = parsed.hostname.toLowerCase();
+            const isGoogleHost = host === "maps.app.goo.gl"
+                || host === "google.com"
+                || host.endsWith(".google.com")
+                || host === "google.com.co"
+                || host.endsWith(".google.com.co");
+            return (parsed.protocol === "https:" || parsed.protocol === "http:") && isGoogleHost;
+        } catch {
+            return false;
+        }
     }
 
     async function uploadFile(baseUrl, idParamName, id, file) {

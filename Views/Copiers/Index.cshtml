@@ -15,6 +15,7 @@
      data-download-maintenance-url="@Url.Action("DownloadMaintenanceAttachment", "Copiers")"
      data-equipment-url="@Url.Action("Equipment", "Copiers")"
      data-equipment-detail-url="@Url.Action("EquipmentDetail", "Copiers")"
+     data-equipment-inventory-url="@Url.Action("EquipmentInventory", "Copiers")"
      data-equipment-assignment-url="@Url.Action("EquipmentAssignment", "Copiers")"
      data-supplies-url="@Url.Action("Supplies", "Copiers")"
      data-save-supply-quantity-url="@Url.Action("SaveSupplyQuantity", "Copiers")"
@@ -42,6 +43,7 @@
     <nav class="copiers-tabs" aria-label="Submodulos Copiers">
         <button type="button" class="copiers-tab is-active" data-copiers-tab="maintenance">Mantenimientos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="equipment">Equipos</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="equipmentInventory">Inventario equipos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="supplies">Inventario suministros</button>
         <button type="button" class="copiers-tab" data-copiers-tab="deliveries">Entregas</button>
     </nav>
@@ -151,6 +153,52 @@
                 </table>
             </div>
         </section>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="equipmentInventory" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Inventario equipos</div>
+                <h2 class="copiers-section-title">Inventario por cliente</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <label class="copiers-search" for="copiersInventoryClientName">
+                    <span>Cliente</span>
+                    <input class="form-control" id="copiersInventoryClientName" list="copiersInventoryClientOptions" autocomplete="off" placeholder="Buscar cliente..." />
+                    <datalist id="copiersInventoryClientOptions"></datalist>
+                </label>
+                <input type="hidden" id="copiersInventoryClientId" />
+                <span class="copiers-counter" id="copiersInventoryCount">0 equipos</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersInventoryClearBtn">Limpiar</button>
+                <button type="button" class="btn btn-primary" id="copiersInventoryLoadBtn">Consultar</button>
+            </div>
+        </div>
+        <div class="copiers-status" id="copiersInventoryMissing" role="status" aria-live="polite"></div>
+        <div class="copiers-kpis" id="copiersInventoryKpis"></div>
+        <div class="copiers-location-grid" id="copiersInventoryLocations"></div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table copiers-table--equipment-inventory">
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>Tipo</th>
+                        <th>Marca</th>
+                        <th>Modelo</th>
+                        <th>Serial de maquina</th>
+                        <th>Empresa</th>
+                        <th>Area</th>
+                        <th>Sede</th>
+                        <th>Direccion</th>
+                        <th>Mapa</th>
+                        <th>Observaciones</th>
+                        <th class="text-end">Mantenimientos</th>
+                        <th>Ultimo mantenimiento</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersInventoryBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersInventoryEmpty">Selecciona un cliente para consultar sus equipos.</div>
     </section>
 
     <section class="copiers-panel" data-copiers-panel="supplies" hidden>

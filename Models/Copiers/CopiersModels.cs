@@ -174,3 +174,61 @@ public sealed class CopiersSupplierInvoiceBatchCreateResultDto
     public string Message { get; set; } = "";
     public IReadOnlyList<CopiersSupplierInvoiceRowDto> Records { get; set; } = Array.Empty<CopiersSupplierInvoiceRowDto>();
 }
+
+public sealed class CopiersEquipmentInventoryDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string AsOfDateLabel { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public IReadOnlyList<CopiersEquipmentInventoryMetricDto> Kpis { get; set; } = Array.Empty<CopiersEquipmentInventoryMetricDto>();
+    public IReadOnlyList<CopiersEquipmentInventoryLocationDto> Locations { get; set; } = Array.Empty<CopiersEquipmentInventoryLocationDto>();
+    public IReadOnlyList<CopiersEquipmentInventoryRowDto> Records { get; set; } = Array.Empty<CopiersEquipmentInventoryRowDto>();
+    public IReadOnlyList<CopiersEquipmentInventoryMissingColumnDto> MissingColumns { get; set; } = Array.Empty<CopiersEquipmentInventoryMissingColumnDto>();
+}
+
+public sealed class CopiersEquipmentInventoryMetricDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public decimal Value { get; set; }
+    public string SecondaryLabel { get; set; } = "";
+    public string SecondaryValue { get; set; } = "";
+}
+
+public sealed class CopiersEquipmentInventoryLocationDto
+{
+    public string Key { get; set; } = "";
+    public string Site { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string MapUrl { get; set; } = "";
+    public string MapEmbedUrl { get; set; } = "";
+    public int EquipmentCount { get; set; }
+    public IReadOnlyList<string> Areas { get; set; } = Array.Empty<string>();
+}
+
+public sealed class CopiersEquipmentInventoryRowDto
+{
+    public int LineNumber { get; set; }
+    public string RecordId { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string Brand { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string Serial { get; set; } = "";
+    public string Company { get; set; } = "";
+    public string Area { get; set; } = "";
+    public string Site { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string MapUrl { get; set; } = "";
+    public string MapEmbedUrl { get; set; } = "";
+    public string Observations { get; set; } = "";
+    public int MaintenanceCount { get; set; }
+    public string LastMaintenanceDateDisplay { get; set; } = "";
+}
+
+public sealed class CopiersEquipmentInventoryMissingColumnDto
+{
+    public string Label { get; set; } = "";
+    public string LogicalName { get; set; } = "";
+}

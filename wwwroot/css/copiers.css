@@ -276,6 +276,10 @@
     min-width: 1040px;
 }
 
+.copiers-table--equipment-inventory {
+    min-width: 1480px;
+}
+
 .copiers-table--pending-invoices,
 .copiers-table--equipment-clients,
 .copiers-table--equipment-stock,
@@ -506,6 +510,57 @@
     font-weight: 700;
 }
 
+.copiers-location-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.copiers-location-card {
+    display: grid;
+    gap: 12px;
+    min-height: 180px;
+    padding: 16px;
+    border: 1px solid var(--copiers-line);
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, var(--copiers-soft) 100%);
+}
+
+.copiers-location-card span,
+.copiers-location-card small {
+    color: var(--copiers-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.copiers-location-card strong {
+    display: block;
+    margin-top: 6px;
+    color: var(--copiers-ink);
+    font-size: 18px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.copiers-location-card p {
+    margin: 6px 0 8px;
+    color: #516279;
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.copiers-map-frame {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 160px;
+    border: 0;
+    border-radius: 16px;
+    background: #eef4fa;
+}
+
 .copiers-detail-summary {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -550,6 +605,7 @@
 @media (max-width: 920px) {
     .copiers-grid,
     .copiers-kpis,
+    .copiers-location-grid,
     .copiers-form__grid,
     .copiers-detail-summary {
         grid-template-columns: 1fr;
