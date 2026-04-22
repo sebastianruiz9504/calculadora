@@ -32,6 +32,7 @@ public sealed class CopiersMaintenanceBoardDto
 {
     public IReadOnlyList<CopiersMaintenanceRowDto> Records { get; set; } = Array.Empty<CopiersMaintenanceRowDto>();
     public IReadOnlyList<CopiersOptionDto> TypeOptions { get; set; } = Array.Empty<CopiersOptionDto>();
+    public IReadOnlyList<CopiersOptionDto> StatusOptions { get; set; } = Array.Empty<CopiersOptionDto>();
 }
 
 public sealed class CopiersMaintenanceSaveRequestDto
@@ -45,6 +46,7 @@ public sealed class CopiersMaintenanceSaveRequestDto
     public string DateValue { get; set; } = "";
     public string Description { get; set; } = "";
     public int? MaintenanceTypeValue { get; set; }
+    public int? MaintenanceStatusValue { get; set; }
 }
 
 public sealed class CopiersMaintenanceSaveResultDto

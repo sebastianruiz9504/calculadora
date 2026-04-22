@@ -230,6 +230,8 @@ public sealed class CopiersMaintenanceRowDto
     public string AttachmentFileName { get; set; } = "";
     public int? MaintenanceTypeValue { get; set; }
     public string MaintenanceTypeLabel { get; set; } = "";
+    public int? MaintenanceStatusValue { get; set; }
+    public string MaintenanceStatusLabel { get; set; } = "";
     public string TechnicianId { get; set; } = "";
     public string TechnicianName { get; set; } = "";
 }

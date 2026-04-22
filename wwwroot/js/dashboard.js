@@ -170,6 +170,8 @@
     const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     const weekdayLabels = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
     const copiersMaintenancePageSize = 100;
+    const copiersMaintenanceStatusCompleted = 645250000;
+    const copiersMaintenanceStatusPending = 645250001;
 
     const state = {
         activeTab: "billing",
@@ -653,7 +655,7 @@
         }
 
         if (copiersEquipmentMaintenanceBody) {
-            copiersEquipmentMaintenanceBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">Selecciona un equipo para ver su historial de mantenimientos.</td></tr>';
+            copiersEquipmentMaintenanceBody.innerHTML = '<tr><td colspan="9" class="dashboard-table__empty">Selecciona un equipo para ver su historial de mantenimientos.</td></tr>';
         }
     }
 
@@ -679,6 +681,7 @@
                     <td>${escapeHtml(row.dateDisplay || "-")}</td>
                     <td>${escapeHtml(row.title || "-")}</td>
                     <td>${escapeHtml(row.maintenanceTypeLabel || "-")}</td>
+                    <td>${renderCopiersMaintenanceStatusBadge(row)}</td>
                     <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td>${escapeHtml(row.technicianName || "Sin tecnico")}</td>
                     <td>${escapeHtml(row.description || "Sin descripcion")}</td>
@@ -692,7 +695,7 @@
                     </td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="8" class="dashboard-table__empty">Este equipo todavia no tiene mantenimientos registrados.</td></tr>';
+            : '<tr><td colspan="9" class="dashboard-table__empty">Este equipo todavia no tiene mantenimientos registrados.</td></tr>';
     }
 
     function renderCopiersMaintenanceKpis(dashboard) {
@@ -762,6 +765,13 @@
         return label
             ? `<span class="dashboard-pill dashboard-pill--soft">${escapeHtml(label)}</span>`
             : '<span class="dashboard-muted-text">Sin tipo</span>';
+    }
+
+    function renderCopiersMaintenanceStatusBadge(row) {
+        const value = Number(row?.maintenanceStatusValue || copiersMaintenanceStatusPending);
+        const label = (row?.maintenanceStatusLabel || "").trim() || "Pendiente";
+        const completed = value === copiersMaintenanceStatusCompleted;
+        return `<span class="dashboard-badge ${completed ? "is-success" : "is-warning"}">${escapeHtml(label)}</span>`;
     }
 
     function renderCopiersMaintenanceDetailCell(row) {
@@ -1006,11 +1016,12 @@
                     <td>${escapeHtml(row.equipmentSerial || "Sin equipo")}</td>
                     <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td>${escapeHtml(row.technicianName || "Sin owner")}</td>
+                    <td>${renderCopiersMaintenanceStatusBadge(row)}</td>
                     <td>${renderCopiersMaintenanceDetailCell(row)}</td>
                     <td class="text-center">${renderCopiersMaintenanceAttachmentCell(row)}</td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="6" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay mantenimientos para los filtros seleccionados.</td></tr>';
 
         renderCopiersMaintenancePagination(pagination);
     }
@@ -3169,7 +3180,7 @@
         }
 
         if (copiersEquipmentMaintenanceBody) {
-            copiersEquipmentMaintenanceBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">Cargando historial del equipo...</td></tr>';
+            copiersEquipmentMaintenanceBody.innerHTML = '<tr><td colspan="9" class="dashboard-table__empty">Cargando historial del equipo...</td></tr>';
         }
 
         setStatus(copiersEquipmentDetailStatus, "info", "Consultando detalle del equipo...");

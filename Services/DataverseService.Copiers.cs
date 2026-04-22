@@ -90,6 +90,10 @@ public sealed partial class DataverseService
             TypeOptions = DashboardMaintenanceTypeLabels
                 .Select(item => new CopiersOptionDto { Value = item.Key, Label = item.Value })
                 .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            StatusOptions = DashboardMaintenanceStatusLabels
+                .Select(item => new CopiersOptionDto { Value = item.Key, Label = item.Value })
+                .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
                 .ToList()
         };
     }
@@ -150,7 +154,8 @@ public sealed partial class DataverseService
             [DashboardMaintenanceDateField] = maintenanceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             [DashboardMaintenanceDescriptionField] = request.Description?.Trim(),
             [DashboardMaintenanceExternalIdField] = string.IsNullOrWhiteSpace(request.InternalId) ? null : request.InternalId.Trim(),
-            [DashboardMaintenanceTypeField] = NormalizeCopiersMaintenanceType(request.MaintenanceTypeValue)
+            [DashboardMaintenanceTypeField] = NormalizeCopiersMaintenanceType(request.MaintenanceTypeValue),
+            [DashboardMaintenanceStatusField] = NormalizeCopiersMaintenanceStatus(request.MaintenanceStatusValue)
         };
 
         if (!string.IsNullOrWhiteSpace(metadata.PrimaryNameField)
@@ -836,6 +841,17 @@ public sealed partial class DataverseService
 
         if (!DashboardMaintenanceTypeLabels.ContainsKey(value.Value))
             throw new InvalidOperationException("El tipo de mantenimiento seleccionado no es valido.");
+
+        return value.Value;
+    }
+
+    private static int NormalizeCopiersMaintenanceStatus(int? value)
+    {
+        if (!value.HasValue)
+            return DashboardMaintenanceStatusPending;
+
+        if (!DashboardMaintenanceStatusLabels.ContainsKey(value.Value))
+            throw new InvalidOperationException("El estado de mantenimiento seleccionado no es valido.");
 
         return value.Value;
     }

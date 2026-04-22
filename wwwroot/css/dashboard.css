@@ -1113,35 +1113,40 @@
 
 .dashboard-equipment-maintenance-table thead th:nth-child(1),
 .dashboard-equipment-maintenance-table tbody td:nth-child(1) {
-    width: 10%;
+    width: 8%;
 }
 
 .dashboard-equipment-maintenance-table thead th:nth-child(2),
 .dashboard-equipment-maintenance-table tbody td:nth-child(2) {
-    width: 18%;
+    width: 15%;
 }
 
 .dashboard-equipment-maintenance-table thead th:nth-child(3),
-.dashboard-equipment-maintenance-table tbody td:nth-child(3),
-.dashboard-equipment-maintenance-table thead th:nth-child(4),
-.dashboard-equipment-maintenance-table tbody td:nth-child(4),
-.dashboard-equipment-maintenance-table thead th:nth-child(5),
-.dashboard-equipment-maintenance-table tbody td:nth-child(5) {
-    width: 12%;
+.dashboard-equipment-maintenance-table tbody td:nth-child(3) {
+    width: 10%;
 }
 
+.dashboard-equipment-maintenance-table thead th:nth-child(4),
+.dashboard-equipment-maintenance-table tbody td:nth-child(4) {
+    width: 10%;
+}
+
+.dashboard-equipment-maintenance-table thead th:nth-child(5),
+.dashboard-equipment-maintenance-table tbody td:nth-child(5),
 .dashboard-equipment-maintenance-table thead th:nth-child(6),
 .dashboard-equipment-maintenance-table tbody td:nth-child(6) {
-    width: 22%;
+    width: 12%;
 }
 
 .dashboard-equipment-maintenance-table thead th:nth-child(7),
 .dashboard-equipment-maintenance-table tbody td:nth-child(7) {
-    width: 8%;
+    width: 20%;
 }
 
 .dashboard-equipment-maintenance-table thead th:nth-child(8),
-.dashboard-equipment-maintenance-table tbody td:nth-child(8) {
+.dashboard-equipment-maintenance-table tbody td:nth-child(8),
+.dashboard-equipment-maintenance-table thead th:nth-child(9),
+.dashboard-equipment-maintenance-table tbody td:nth-child(9) {
     width: 6%;
 }
 
@@ -1152,31 +1157,36 @@
 
 .dashboard-copiers-maintenance-table thead th:nth-child(1),
 .dashboard-copiers-maintenance-table tbody td:nth-child(1) {
-    width: 10%;
+    width: 9%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(2),
 .dashboard-copiers-maintenance-table tbody td:nth-child(2) {
-    width: 12%;
+    width: 11%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(3),
 .dashboard-copiers-maintenance-table tbody td:nth-child(3) {
-    width: 18%;
+    width: 16%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(4),
 .dashboard-copiers-maintenance-table tbody td:nth-child(4) {
-    width: 15%;
+    width: 13%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(5),
 .dashboard-copiers-maintenance-table tbody td:nth-child(5) {
-    width: 39%;
+    width: 10%;
 }
 
 .dashboard-copiers-maintenance-table thead th:nth-child(6),
 .dashboard-copiers-maintenance-table tbody td:nth-child(6) {
+    width: 35%;
+}
+
+.dashboard-copiers-maintenance-table thead th:nth-child(7),
+.dashboard-copiers-maintenance-table tbody td:nth-child(7) {
     width: 6%;
     text-align: center;
 }
@@ -1681,6 +1691,11 @@
     color: var(--dashboard-good);
 }
 
+.dashboard-badge.is-warning {
+    background: #fff6d9;
+    color: #946200;
+}
+
 .dashboard-badge--overdue {
     border: 1px solid #f3c7cf;
 }
@@ -1842,7 +1857,7 @@
     .dashboard-equipment-table,
     .dashboard-equipment-maintenance-table,
     .dashboard-copiers-maintenance-table {
-        min-width: 760px;
+        min-width: 860px;
     }
 
     .dashboard-maintenance-chart__svg {

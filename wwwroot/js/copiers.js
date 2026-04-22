@@ -45,6 +45,7 @@
     const clientOptions = document.getElementById("copiersClientOptions");
     const maintenanceDateInput = document.getElementById("copiersMaintenanceDate");
     const maintenanceTypeSelect = document.getElementById("copiersMaintenanceType");
+    const maintenanceStatusSelect = document.getElementById("copiersMaintenanceStatus");
     const maintenanceDescriptionInput = document.getElementById("copiersMaintenanceDescription");
     const maintenanceFileInput = document.getElementById("copiersMaintenanceFile");
 
@@ -141,6 +142,13 @@
         maintenanceClientSuggestions: [],
         deliveryClientSuggestions: []
     };
+
+    const maintenanceStatusPending = 645250001;
+    const maintenanceStatusCompleted = 645250000;
+    const fallbackMaintenanceStatusOptions = [
+        { value: maintenanceStatusCompleted, label: "Completado" },
+        { value: maintenanceStatusPending, label: "Pendiente" }
+    ];
 
     tabButtons.forEach((button) => {
         button.addEventListener("click", async () => {
@@ -385,6 +393,8 @@
             const attachment = row.hasAttachment
                 ? `<a class="copiers-link" href="${buildDownloadUrl(urls.downloadMaintenance, "maintenanceId", row.recordId)}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
                 : `<span class="copiers-muted">Sin adjunto</span>`;
+            const statusValue = Number(row.maintenanceStatusValue || maintenanceStatusPending);
+            const completed = statusValue === maintenanceStatusCompleted;
 
             return `
                 <tr class="is-selectable" data-record-id="${escapeHtml(row.recordId)}" tabindex="0">
@@ -392,6 +402,7 @@
                     <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
                     <td data-label="Tipo"><span class="copiers-badge">${escapeHtml(row.maintenanceTypeLabel || "Sin tipo")}</span></td>
+                    <td data-label="Estado"><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.maintenanceStatusLabel || "Pendiente")}</span></td>
                     <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
                     <td data-label="Reporte">${attachment}</td>
                     <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
@@ -465,7 +476,7 @@
         showModal(equipmentDetailModal);
         equipmentDetailTitle.textContent = row?.serial ? `Equipo ${row.serial}` : "Detalle del equipo";
         equipmentDetailSubtitle.textContent = "Cargando informacion del equipo y sus mantenimientos...";
-        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="8" class="text-center copiers-muted">Cargando historial del equipo...</td></tr>`;
+        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Cargando historial del equipo...</td></tr>`;
         showStatus(equipmentDetailStatus, "info", "Consultando detalle del equipo...");
     }
 
@@ -518,7 +529,7 @@
         equipmentDetailReference.textContent = "-";
         equipmentDetailObservations.textContent = "-";
         clearStatus(equipmentDetailStatus);
-        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="8" class="text-center copiers-muted">Selecciona un equipo para ver sus mantenimientos.</td></tr>`;
+        equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Selecciona un equipo para ver sus mantenimientos.</td></tr>`;
     }
 
     function renderEquipmentMaintenanceTable(rows) {
@@ -527,19 +538,22 @@
             const attachment = row.hasAttachment
                 ? `<a class="copiers-link" href="${buildDownloadUrl(urls.downloadMaintenance, "maintenanceId", row.recordId)}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
                 : `<span class="copiers-muted">Sin adjunto</span>`;
+            const statusValue = Number(row.maintenanceStatusValue || maintenanceStatusPending);
+            const completed = statusValue === maintenanceStatusCompleted;
 
             return `
                 <tr>
                     <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
                     <td data-label="Titulo">${escapeHtml(row.title || "")}</td>
                     <td data-label="Tipo">${escapeHtml(row.maintenanceTypeLabel || "")}</td>
+                    <td data-label="Estado"><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.maintenanceStatusLabel || "Pendiente")}</span></td>
                     <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
                     <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
                     <td data-label="ID">${escapeHtml(row.internalId || "")}</td>
                     <td data-label="Adjunto">${attachment}</td>
                 </tr>`;
-        }).join("") : `<tr><td colspan="8" class="text-center copiers-muted">Este equipo no tiene mantenimientos registrados.</td></tr>`;
+        }).join("") : `<tr><td colspan="9" class="text-center copiers-muted">Este equipo no tiene mantenimientos registrados.</td></tr>`;
     }
 
     async function saveEquipmentAssignment() {
@@ -773,6 +787,7 @@
         populateMaintenanceOptions(row?.equipmentId || "");
         maintenanceDateInput.value = row?.dateValue || todayValue();
         maintenanceTypeSelect.value = row?.maintenanceTypeValue || "";
+        maintenanceStatusSelect.value = row?.maintenanceStatusValue ? String(row.maintenanceStatusValue) : String(maintenanceStatusPending);
         maintenanceDescriptionInput.value = row?.description || "";
         maintenanceFileInput.value = "";
         clearStatus(maintenanceModalStatus);
@@ -782,6 +797,13 @@
     function populateMaintenanceOptions(selectedEquipmentId = "") {
         const typeOptions = Array.isArray(state.maintenance?.typeOptions) ? state.maintenance.typeOptions : [];
         maintenanceTypeSelect.innerHTML = `<option value="">Sin tipo</option>` + typeOptions.map((option) => (
+            `<option value="${option.value}">${escapeHtml(option.label)}</option>`
+        )).join("");
+
+        const statusOptions = Array.isArray(state.maintenance?.statusOptions) && state.maintenance.statusOptions.length
+            ? state.maintenance.statusOptions
+            : fallbackMaintenanceStatusOptions;
+        maintenanceStatusSelect.innerHTML = statusOptions.map((option) => (
             `<option value="${option.value}">${escapeHtml(option.label)}</option>`
         )).join("");
 
@@ -842,7 +864,8 @@
                 clientName: maintenanceClientNameInput.value,
                 dateValue: maintenanceDateInput.value,
                 description: maintenanceDescriptionInput.value,
-                maintenanceTypeValue: maintenanceTypeSelect.value ? Number(maintenanceTypeSelect.value) : null
+                maintenanceTypeValue: maintenanceTypeSelect.value ? Number(maintenanceTypeSelect.value) : null,
+                maintenanceStatusValue: maintenanceStatusSelect.value ? Number(maintenanceStatusSelect.value) : maintenanceStatusPending
             };
             let result = await fetchJson(urls.saveMaintenance, {
                 method: "POST",

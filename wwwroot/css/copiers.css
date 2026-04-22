@@ -273,7 +273,7 @@
 .copiers-table--equipment,
 .copiers-table--deliveries,
 .copiers-table--equipment-maintenance {
-    min-width: 940px;
+    min-width: 1040px;
 }
 
 .copiers-table--pending-invoices,

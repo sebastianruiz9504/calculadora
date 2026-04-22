@@ -31,7 +31,10 @@ public sealed partial class DataverseService
     private const string DashboardMaintenanceAttachmentField = "cr07a_actadeentregadeservicio";
     private const string DashboardMaintenanceExternalIdField = "cr07a_id";
     private const string DashboardMaintenanceTypeField = "cr07a_tipodemantenimiento";
+    private const string DashboardMaintenanceStatusField = "cr07a_estadodelmantenimiento";
     private const string DashboardMaintenanceOwnerField = "ownerid";
+    private const int DashboardMaintenanceStatusCompleted = 645250000;
+    private const int DashboardMaintenanceStatusPending = 645250001;
 
     private static readonly IReadOnlyDictionary<int, string> DashboardEquipmentCategoryLabels =
         new Dictionary<int, string>
@@ -48,6 +51,13 @@ public sealed partial class DataverseService
         {
             [645250000] = "Correctivo",
             [645250001] = "Preventivo"
+        };
+
+    private static readonly IReadOnlyDictionary<int, string> DashboardMaintenanceStatusLabels =
+        new Dictionary<int, string>
+        {
+            [DashboardMaintenanceStatusCompleted] = "Completado",
+            [DashboardMaintenanceStatusPending] = "Pendiente"
         };
 
     public async Task<CopiersEquipmentDashboardDto> GetCopiersEquipmentDashboardAsync(CancellationToken ct = default)
@@ -411,6 +421,7 @@ public sealed partial class DataverseService
             DashboardMaintenanceAttachmentField,
             DashboardMaintenanceExternalIdField,
             DashboardMaintenanceTypeField,
+            DashboardMaintenanceStatusField,
             BuildDashboardLookupValuePropertyName(DashboardMaintenanceOwnerField)
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
@@ -450,6 +461,12 @@ public sealed partial class DataverseService
         var typeValue = item.TryGetProperty(DashboardMaintenanceTypeField, out _)
             ? ReadIntFlexible(item, DashboardMaintenanceTypeField)
             : 0;
+        var statusValue = item.TryGetProperty(DashboardMaintenanceStatusField, out _)
+            ? ReadIntFlexible(item, DashboardMaintenanceStatusField)
+            : DashboardMaintenanceStatusPending;
+        var normalizedStatusValue = DashboardMaintenanceStatusLabels.ContainsKey(statusValue)
+            ? statusValue
+            : DashboardMaintenanceStatusPending;
         var attachmentToken = ReadString(item, DashboardMaintenanceAttachmentField).Trim();
         var ownerLookupProperty = DetectLookupValueProperty(
             item,
@@ -492,6 +509,13 @@ public sealed partial class DataverseService
                 typeValue,
                 DashboardMaintenanceTypeLabels,
                 "Sin tipo"),
+            MaintenanceStatusValue = normalizedStatusValue,
+            MaintenanceStatusLabel = ResolveDashboardOptionLabel(
+                item,
+                DashboardMaintenanceStatusField,
+                normalizedStatusValue,
+                DashboardMaintenanceStatusLabels,
+                "Pendiente"),
             TechnicianId = ReadString(item, ownerLookupProperty).Trim(),
             TechnicianName = FirstNonEmpty(
                 ReadLookupFormattedValue(item, ownerLookupProperty),
@@ -672,6 +696,8 @@ public sealed partial class DataverseService
                 AttachmentFileName = item.AttachmentFileName,
                 MaintenanceTypeValue = item.MaintenanceTypeValue,
                 MaintenanceTypeLabel = item.MaintenanceTypeLabel,
+                MaintenanceStatusValue = item.MaintenanceStatusValue,
+                MaintenanceStatusLabel = item.MaintenanceStatusLabel,
                 TechnicianId = item.TechnicianId,
                 TechnicianName = item.TechnicianName
             })
@@ -788,6 +814,8 @@ public sealed partial class DataverseService
         public string AttachmentFileName { get; init; } = "";
         public int? MaintenanceTypeValue { get; init; }
         public string MaintenanceTypeLabel { get; init; } = "";
+        public int? MaintenanceStatusValue { get; init; }
+        public string MaintenanceStatusLabel { get; init; } = "";
         public string TechnicianId { get; init; } = "";
         public string TechnicianName { get; init; } = "";
     }
