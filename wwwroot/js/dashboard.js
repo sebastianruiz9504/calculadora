@@ -27,6 +27,8 @@
     const billingReportLoadButton = document.getElementById("billingReportLoadBtn");
     const billingReportExportButton = document.getElementById("billingReportExportBtn");
     const billingReportStatus = document.getElementById("billingReportStatus");
+    const billingReportClientReference = document.getElementById("billingReportClientReference");
+    const billingReportNitReference = document.getElementById("billingReportNitReference");
     const billingReportResultsCount = document.getElementById("billingReportResultsCount");
     const billingReportSelectedCount = document.getElementById("billingReportSelectedCount");
     const billingReportSelectedTotal = document.getElementById("billingReportSelectedTotal");
@@ -1915,6 +1917,16 @@
         }
     }
 
+    function resetBillingReportReference() {
+        if (billingReportClientReference) {
+            billingReportClientReference.textContent = "-";
+        }
+
+        if (billingReportNitReference) {
+            billingReportNitReference.textContent = "-";
+        }
+    }
+
     function isHttpUrl(value) {
         return /^https?:\/\//i.test((value || "").trim());
     }
@@ -1948,6 +1960,17 @@
         resetBillingReportPreview();
 
         const rows = Array.isArray(detail?.invoices) ? detail.invoices : [];
+        const clientName = detail?.clientName || rows.find(row => row?.clientName)?.clientName || "";
+        const companyTaxId = rows.find(row => (row?.companyTaxId || "").trim())?.companyTaxId || "";
+
+        if (billingReportClientReference) {
+            billingReportClientReference.textContent = clientName || "-";
+        }
+
+        if (billingReportNitReference) {
+            billingReportNitReference.textContent = companyTaxId || "-";
+        }
+
         if (billingReportResultsCount) {
             billingReportResultsCount.textContent = numberFormatter.format(Number(detail?.recordsCount || rows.length || 0));
         }
@@ -1957,7 +1980,7 @@
         }
 
         if (!rows.length) {
-            billingReportBody.innerHTML = `<tr><td colspan="10" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas para este cliente.")}</td></tr>`;
+            billingReportBody.innerHTML = `<tr><td colspan="8" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas para este cliente.")}</td></tr>`;
             syncBillingReportSelectionSummary();
             return;
         }
@@ -1977,8 +2000,6 @@
                     </td>
                     <td>${escapeHtml(row.invoiceNumber || "-")}</td>
                     <td>${escapeHtml(row.emissionDateDisplay || "Sin fecha")}</td>
-                    <td>${escapeHtml(row.clientName || detail?.clientName || "Cliente")}</td>
-                    <td>${escapeHtml(row.companyTaxId || "-")}</td>
                     <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.vatPercent || 0)))}%</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.vatValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(totalInvoice))}</td>
@@ -3372,8 +3393,9 @@
             state.billingReportDetail = null;
             resetBillingReportPreview();
             if (billingReportBody) {
-                billingReportBody.innerHTML = '<tr><td colspan="10" class="dashboard-table__empty">No pudimos consultar las facturas del cliente.</td></tr>';
+                billingReportBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">No pudimos consultar las facturas del cliente.</td></tr>';
             }
+            resetBillingReportReference();
             syncBillingReportSelectionSummary();
             setStatus(billingReportStatus, "error", error instanceof Error ? error.message : "No fue posible cargar las facturas del cliente.");
         } finally {
@@ -3650,8 +3672,9 @@
             billingReportResultsCount.textContent = "0";
         }
         if (billingReportBody) {
-            billingReportBody.innerHTML = '<tr><td colspan="10" class="dashboard-table__empty">Busca un cliente para ver sus facturas.</td></tr>';
+            billingReportBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">Busca un cliente para ver sus facturas.</td></tr>';
         }
+        resetBillingReportReference();
         syncBillingReportSelectionSummary();
     });
     billingReportBody?.addEventListener("change", event => {
@@ -3888,6 +3911,7 @@
     buildPnlMonthOptions(12);
     buildCopiersMaintenanceFilterOptions();
     renderCopiersMaintenanceTable();
+    resetBillingReportReference();
     syncBillingReportSelectionSummary();
     syncPeriodScopeVisibility();
     syncCopiersSubtabVisibility();

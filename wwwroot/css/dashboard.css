@@ -1004,7 +1004,7 @@
 
 .dashboard-report-summary {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 12px;
 }
 
@@ -1034,7 +1034,7 @@
 }
 
 .dashboard-billing-report-table {
-    min-width: 1280px;
+    min-width: 1040px;
 }
 
 .dashboard-billing-report-table thead th,
@@ -1050,16 +1050,11 @@
 
 .dashboard-billing-report-table thead th:nth-child(2),
 .dashboard-billing-report-table tbody td:nth-child(2) {
-    width: 12%;
+    width: 16%;
 }
 
-.dashboard-billing-report-table thead th:nth-child(4),
-.dashboard-billing-report-table tbody td:nth-child(4) {
-    width: 18%;
-}
-
-.dashboard-billing-report-table thead th:nth-child(9),
-.dashboard-billing-report-table tbody td:nth-child(9) {
+.dashboard-billing-report-table thead th:nth-child(7),
+.dashboard-billing-report-table tbody td:nth-child(7) {
     width: 150px;
 }
 
@@ -1967,7 +1962,7 @@
     }
 
     .dashboard-billing-report-table {
-        min-width: 1180px;
+        min-width: 980px;
     }
 
     .dashboard-invoice-preview iframe {
