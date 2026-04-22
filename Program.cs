@@ -25,6 +25,19 @@ builder.Services.AddDownstreamApi("Dataverse", options =>
 });
 builder.Services.AddScoped<CotizadorInterno.Web.Services.Calculator.IQuoteCalculator, CotizadorInterno.Web.Services.Calculator.QuoteCalculator>();
 builder.Services.AddHttpClient();
+builder.Services.Configure<SiigoOptions>(builder.Configuration.GetSection("Siigo"));
+builder.Services.AddHttpClient<ISiigoService, SiigoService>((serviceProvider, client) =>
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var baseUrl = configuration["Siigo:BaseUrl"] ?? SiigoOptions.DefaultBaseUrl;
+    if (!baseUrl.EndsWith('/'))
+    {
+        baseUrl += "/";
+    }
+
+    client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromSeconds(90);
+});
 
 // ✅ Login obligatorio para toda la app
 builder.Services.AddControllersWithViews(options =>

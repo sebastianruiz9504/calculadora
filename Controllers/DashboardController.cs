@@ -14,10 +14,12 @@ public sealed class DashboardController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private readonly IDataverseService _dataverse;
+    private readonly ISiigoService _siigo;
 
-    public DashboardController(IDataverseService dataverse)
+    public DashboardController(IDataverseService dataverse, ISiigoService siigo)
     {
         _dataverse = dataverse;
+        _siigo = siigo;
     }
 
     [HttpGet]
@@ -208,6 +210,71 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible exportar el reporte de facturas.");
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> SiigoCustomerSearch([FromQuery] string q, CancellationToken ct)
+    {
+        try
+        {
+            var items = await _siigo.SearchCustomersAsync(q, top: 12, ct);
+            return Json(items);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible buscar clientes en Siigo.");
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> SiigoInvoices(
+        [FromQuery] string? customerId,
+        [FromQuery] string? customerQuery,
+        [FromQuery] DateOnly? startDate,
+        [FromQuery] DateOnly? endDate,
+        CancellationToken ct)
+    {
+        try
+        {
+            if (startDate is null || endDate is null)
+                return BadRequest("Selecciona la fecha inicial y final para consultar Siigo.");
+
+            var detail = await _siigo.GetInvoicesAsync(customerId, customerQuery, startDate.Value, endDate.Value, ct);
+            return Json(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible consultar facturas en Siigo.");
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> SiigoInvoicesDownload([FromBody] SiigoInvoiceDownloadRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            if (request is null || request.Invoices is null || request.Invoices.Count == 0)
+                return BadRequest("Selecciona al menos una factura para descargar.");
+
+            var download = await _siigo.DownloadInvoicePdfsAsync(request.Invoices, ct);
+            return File(download.Content, download.ContentType, download.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar las facturas desde Siigo.");
         }
     }
 

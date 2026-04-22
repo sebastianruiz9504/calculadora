@@ -524,6 +524,10 @@
     gap: 8px;
 }
 
+.dashboard-search--date {
+    min-width: 170px;
+}
+
 .dashboard-search__label {
     color: var(--dashboard-muted);
     font-size: 12px;
@@ -1037,13 +1041,21 @@
     min-width: 1040px;
 }
 
+.dashboard-siigo-table {
+    min-width: 980px;
+}
+
 .dashboard-billing-report-table thead th,
-.dashboard-billing-report-table tbody td {
+.dashboard-billing-report-table tbody td,
+.dashboard-siigo-table thead th,
+.dashboard-siigo-table tbody td {
     white-space: normal;
 }
 
 .dashboard-billing-report-table thead th:nth-child(1),
-.dashboard-billing-report-table tbody td:nth-child(1) {
+.dashboard-billing-report-table tbody td:nth-child(1),
+.dashboard-siigo-table thead th:nth-child(1),
+.dashboard-siigo-table tbody td:nth-child(1) {
     width: 56px;
     text-align: center;
 }

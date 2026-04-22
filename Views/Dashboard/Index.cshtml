@@ -12,6 +12,9 @@
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-billing-client-report-url="@Url.Action("BillingClientReport", "Dashboard")"
      data-billing-client-report-export-url="@Url.Action("BillingClientReportExport", "Dashboard")"
+     data-siigo-customer-search-url="@Url.Action("SiigoCustomerSearch", "Dashboard")"
+     data-siigo-invoices-url="@Url.Action("SiigoInvoices", "Dashboard")"
+     data-siigo-invoices-download-url="@Url.Action("SiigoInvoicesDownload", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
      data-copiers-client-invoices-url="@Url.Action("CopiersClientInvoices", "Dashboard")"
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
@@ -170,6 +173,91 @@
                         <a href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary" id="billingReportPreviewLink">Abrir factura</a>
                     </div>
                     <iframe id="billingReportPreviewFrame" title="Vista previa factura"></iframe>
+                </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Siigo API</div>
+                        <h2 class="dashboard-panel__title">Descargar facturas desde Siigo</h2>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <input type="hidden" id="siigoCustomerIdInput" />
+                        <label class="dashboard-search" for="siigoCustomerSearch">
+                            <span class="dashboard-search__label">Cliente</span>
+                            <input type="search"
+                                   id="siigoCustomerSearch"
+                                   class="form-control dashboard-search__input"
+                                   list="siigoCustomerOptions"
+                                   autocomplete="off"
+                                   placeholder="Nombre o NIT..." />
+                            <datalist id="siigoCustomerOptions"></datalist>
+                        </label>
+                        <label class="dashboard-search dashboard-search--date" for="siigoStartDateInput">
+                            <span class="dashboard-search__label">Desde</span>
+                            <input type="date" id="siigoStartDateInput" class="form-control dashboard-search__input" />
+                        </label>
+                        <label class="dashboard-search dashboard-search--date" for="siigoEndDateInput">
+                            <span class="dashboard-search__label">Hasta</span>
+                            <input type="date" id="siigoEndDateInput" class="form-control dashboard-search__input" />
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary" id="siigoUseActivePeriodBtn">Periodo activo</button>
+                        <button type="button" class="btn btn-outline-secondary" id="siigoInvoicesLoadBtn">Consultar</button>
+                        <button type="button" class="btn btn-primary" id="siigoInvoicesDownloadBtn" disabled>Descargar PDFs</button>
+                    </div>
+                </div>
+
+                <div id="siigoInvoicesStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+                <div class="dashboard-report-summary">
+                    <div class="dashboard-report-summary__item">
+                        <span>Cliente</span>
+                        <strong id="siigoCustomerReference">-</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>NIT</span>
+                        <strong id="siigoNitReference">-</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>Periodo</span>
+                        <strong id="siigoPeriodReference">-</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>Facturas</span>
+                        <strong id="siigoInvoicesResultsCount">0</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>Seleccionadas</span>
+                        <strong id="siigoInvoicesSelectedCount">0</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item">
+                        <span>Total</span>
+                        <strong id="siigoInvoicesTotalAmount">$0</strong>
+                    </div>
+                </div>
+
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table dashboard-siigo-table">
+                        <thead>
+                            <tr>
+                                <th>
+                                    <input type="checkbox" class="form-check-input" id="siigoInvoicesSelectAll" aria-label="Seleccionar facturas Siigo" />
+                                </th>
+                                <th>Factura</th>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>Estado</th>
+                                <th class="text-end">Total</th>
+                                <th class="text-end">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="siigoInvoicesBody">
+                            <tr>
+                                <td colspan="7" class="dashboard-table__empty">Busca un cliente y consulta sus facturas de Siigo.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </article>
         </section>

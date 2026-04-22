@@ -37,6 +37,23 @@
     const billingReportPreviewTitle = document.getElementById("billingReportPreviewTitle");
     const billingReportPreviewLink = document.getElementById("billingReportPreviewLink");
     const billingReportPreviewFrame = document.getElementById("billingReportPreviewFrame");
+    const siigoCustomerSearch = document.getElementById("siigoCustomerSearch");
+    const siigoCustomerIdInput = document.getElementById("siigoCustomerIdInput");
+    const siigoCustomerOptions = document.getElementById("siigoCustomerOptions");
+    const siigoStartDateInput = document.getElementById("siigoStartDateInput");
+    const siigoEndDateInput = document.getElementById("siigoEndDateInput");
+    const siigoUseActivePeriodButton = document.getElementById("siigoUseActivePeriodBtn");
+    const siigoInvoicesLoadButton = document.getElementById("siigoInvoicesLoadBtn");
+    const siigoInvoicesDownloadButton = document.getElementById("siigoInvoicesDownloadBtn");
+    const siigoInvoicesStatus = document.getElementById("siigoInvoicesStatus");
+    const siigoCustomerReference = document.getElementById("siigoCustomerReference");
+    const siigoNitReference = document.getElementById("siigoNitReference");
+    const siigoPeriodReference = document.getElementById("siigoPeriodReference");
+    const siigoInvoicesResultsCount = document.getElementById("siigoInvoicesResultsCount");
+    const siigoInvoicesSelectedCount = document.getElementById("siigoInvoicesSelectedCount");
+    const siigoInvoicesTotalAmount = document.getElementById("siigoInvoicesTotalAmount");
+    const siigoInvoicesSelectAll = document.getElementById("siigoInvoicesSelectAll");
+    const siigoInvoicesBody = document.getElementById("siigoInvoicesBody");
 
     const copiersRefreshButton = document.getElementById("copiersRefreshBtn");
     const copiersStatusBanner = document.getElementById("copiersStatusBanner");
@@ -200,6 +217,10 @@
         billingReportLoading: false,
         billingReportExporting: false,
         billingReportClientSuggestions: [],
+        siigoInvoicesDetail: null,
+        siigoInvoicesLoading: false,
+        siigoInvoicesDownloading: false,
+        siigoCustomerSuggestions: [],
         copiersDashboard: null,
         copiersEquipmentDashboard: null,
         taxesDashboard: null,
@@ -340,6 +361,28 @@
         });
 
         syncBillingReportSelectionSummary();
+    }
+
+    function setSiigoInvoicesLoading(loading) {
+        state.siigoInvoicesLoading = loading;
+        [siigoCustomerSearch, siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
+            if (element) {
+                element.disabled = loading || state.siigoInvoicesDownloading;
+            }
+        });
+
+        syncSiigoInvoicesSelectionSummary();
+    }
+
+    function setSiigoInvoicesDownloading(downloading) {
+        state.siigoInvoicesDownloading = downloading;
+        [siigoCustomerSearch, siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
+            if (element) {
+                element.disabled = downloading || state.siigoInvoicesLoading;
+            }
+        });
+
+        syncSiigoInvoicesSelectionSummary();
     }
 
     function setPortfolioLoading(loading) {
@@ -1705,6 +1748,63 @@
         }
     }
 
+    function formatLocalDateValue(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    function getActivePeriodDateRange() {
+        const year = Number(state.year || currentYear);
+        const value = Math.max(Number(state.value || 1), 1);
+        let startMonth = 0;
+        let endMonth = 0;
+
+        switch (state.period) {
+            case "bimonthly":
+                startMonth = Math.min((value - 1) * 2, 10);
+                endMonth = startMonth + 1;
+                break;
+            case "quarter":
+                startMonth = Math.min((value - 1) * 3, 9);
+                endMonth = startMonth + 2;
+                break;
+            case "semester":
+                startMonth = value <= 1 ? 0 : 6;
+                endMonth = startMonth + 5;
+                break;
+            case "year":
+                startMonth = 0;
+                endMonth = 11;
+                break;
+            default:
+                startMonth = Math.min(Math.max(value - 1, 0), 11);
+                endMonth = startMonth;
+                break;
+        }
+
+        return {
+            start: formatLocalDateValue(new Date(year, startMonth, 1)),
+            end: formatLocalDateValue(new Date(year, endMonth + 1, 0))
+        };
+    }
+
+    function syncSiigoDateRangeWithActivePeriod() {
+        const range = getActivePeriodDateRange();
+        if (siigoStartDateInput) {
+            siigoStartDateInput.value = range.start;
+        }
+
+        if (siigoEndDateInput) {
+            siigoEndDateInput.value = range.end;
+        }
+
+        if (siigoPeriodReference) {
+            siigoPeriodReference.textContent = `${range.start} - ${range.end}`;
+        }
+    }
+
     function buildValueOptions() {
         if (!valueFilter) {
             return;
@@ -1780,6 +1880,27 @@
 
     function buildBillingClientReportExportUrl() {
         return billingClientReportExportUrl || "";
+    }
+
+    function buildSiigoCustomerSearchUrl(query) {
+        const baseUrl = app.dataset.siigoCustomerSearchUrl || "";
+        return `${baseUrl}?q=${encodeURIComponent(query || "")}`;
+    }
+
+    function buildSiigoInvoicesUrl() {
+        const baseUrl = app.dataset.siigoInvoicesUrl || "";
+        const params = new URLSearchParams({
+            customerId: siigoCustomerIdInput?.value || "",
+            customerQuery: siigoCustomerSearch?.value || "",
+            startDate: siigoStartDateInput?.value || "",
+            endDate: siigoEndDateInput?.value || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
+    function buildSiigoInvoicesDownloadUrl() {
+        return app.dataset.siigoInvoicesDownloadUrl || "";
     }
 
     function buildTaxesRetentionsExportUrl() {
@@ -2165,6 +2286,198 @@
             setStatus(billingReportStatus, "error", error instanceof Error ? error.message : "No fue posible exportar el reporte.");
         } finally {
             setBillingReportExporting(false);
+        }
+    }
+
+    function resetSiigoInvoicesTable(message) {
+        state.siigoInvoicesDetail = null;
+        if (siigoCustomerReference) {
+            siigoCustomerReference.textContent = "-";
+        }
+
+        if (siigoNitReference) {
+            siigoNitReference.textContent = "-";
+        }
+
+        if (siigoInvoicesResultsCount) {
+            siigoInvoicesResultsCount.textContent = "0";
+        }
+
+        if (siigoInvoicesTotalAmount) {
+            siigoInvoicesTotalAmount.textContent = currencyFormatter.format(0);
+        }
+
+        if (siigoInvoicesSelectAll) {
+            siigoInvoicesSelectAll.checked = false;
+            siigoInvoicesSelectAll.indeterminate = false;
+        }
+
+        if (siigoInvoicesBody) {
+            siigoInvoicesBody.innerHTML = `<tr><td colspan="7" class="dashboard-table__empty">${escapeHtml(message || "Busca un cliente y consulta sus facturas de Siigo.")}</td></tr>`;
+        }
+
+        syncSiigoInvoicesSelectionSummary();
+    }
+
+    function renderSiigoInvoicesTable(detail) {
+        state.siigoInvoicesDetail = detail || null;
+        const rows = Array.isArray(detail?.invoices) ? detail.invoices : [];
+
+        if (siigoCustomerReference) {
+            siigoCustomerReference.textContent = detail?.customerDisplayName || "-";
+        }
+
+        if (siigoNitReference) {
+            siigoNitReference.textContent = detail?.customerIdentification || "-";
+        }
+
+        if (siigoPeriodReference) {
+            siigoPeriodReference.textContent = detail?.periodLabel || "-";
+        }
+
+        if (siigoInvoicesResultsCount) {
+            siigoInvoicesResultsCount.textContent = numberFormatter.format(Number(detail?.recordsCount || rows.length || 0));
+        }
+
+        if (siigoInvoicesTotalAmount) {
+            siigoInvoicesTotalAmount.textContent = currencyFormatter.format(Number(detail?.totalAmount || 0));
+        }
+
+        if (siigoInvoicesSelectAll) {
+            siigoInvoicesSelectAll.checked = false;
+            siigoInvoicesSelectAll.indeterminate = false;
+        }
+
+        if (!siigoInvoicesBody) {
+            return;
+        }
+
+        if (!rows.length) {
+            siigoInvoicesBody.innerHTML = `<tr><td colspan="7" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas en Siigo.")}</td></tr>`;
+            syncSiigoInvoicesSelectionSummary();
+            return;
+        }
+
+        siigoInvoicesBody.innerHTML = rows.map(row => {
+            const status = row.annulled
+                ? "Anulada"
+                : (row.stampStatus || "Sin estado");
+            const statusClass = row.annulled
+                ? "dashboard-badge"
+                : "dashboard-badge is-success";
+
+            return `
+                <tr data-siigo-invoice-id="${escapeHtml(row.id || "")}">
+                    <td>
+                        <input type="checkbox"
+                               class="form-check-input"
+                               data-siigo-invoice-select
+                               data-id="${escapeHtml(row.id || "")}"
+                               data-name="${escapeHtml(row.name || "")}"
+                               data-total="${escapeHtml(formatEditableDecimalValue(Number(row.total || 0)))}" />
+                    </td>
+                    <td>${escapeHtml(row.name || row.prefix || "-")}</td>
+                    <td>${escapeHtml(row.dateDisplay || row.dateValue || "Sin fecha")}</td>
+                    <td>${escapeHtml(row.customerIdentification || detail?.customerIdentification || "-")}</td>
+                    <td><span class="${statusClass}">${escapeHtml(status)}</span></td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.total || 0)))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.balance || 0)))}</td>
+                </tr>
+            `;
+        }).join("");
+
+        syncSiigoInvoicesSelectionSummary();
+    }
+
+    function syncSiigoInvoicesSelectionSummary() {
+        const checkboxes = siigoInvoicesBody
+            ? Array.from(siigoInvoicesBody.querySelectorAll("[data-siigo-invoice-select]"))
+            : [];
+        const selected = checkboxes.filter(checkbox => checkbox.checked);
+
+        if (siigoInvoicesSelectedCount) {
+            siigoInvoicesSelectedCount.textContent = numberFormatter.format(selected.length);
+        }
+
+        if (siigoInvoicesSelectAll) {
+            siigoInvoicesSelectAll.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+            siigoInvoicesSelectAll.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+        }
+
+        if (siigoInvoicesDownloadButton) {
+            siigoInvoicesDownloadButton.disabled = state.siigoInvoicesLoading
+                || state.siigoInvoicesDownloading
+                || selected.length === 0
+                || !buildSiigoInvoicesDownloadUrl();
+        }
+    }
+
+    function buildSiigoInvoicesDownloadPayload() {
+        const selected = siigoInvoicesBody
+            ? Array.from(siigoInvoicesBody.querySelectorAll("[data-siigo-invoice-select]:checked"))
+            : [];
+
+        if (!selected.length) {
+            throw new Error("Selecciona al menos una factura de Siigo para descargar.");
+        }
+
+        return {
+            invoices: selected.map(checkbox => ({
+                id: checkbox.dataset.id || "",
+                name: checkbox.dataset.name || ""
+            }))
+        };
+    }
+
+    async function downloadSiigoInvoices() {
+        const url = buildSiigoInvoicesDownloadUrl();
+        if (!url) {
+            setStatus(siigoInvoicesStatus, "error", "No hay una URL configurada para descargar facturas desde Siigo.");
+            return;
+        }
+
+        let payload;
+        try {
+            payload = buildSiigoInvoicesDownloadPayload();
+        } catch (error) {
+            setStatus(siigoInvoicesStatus, "error", error instanceof Error ? error.message : "Selecciona las facturas de Siigo.");
+            return;
+        }
+
+        setSiigoInvoicesDownloading(true);
+        setStatus(siigoInvoicesStatus, "info", "Preparando descarga desde Siigo...");
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    Accept: "application/pdf, application/zip, application/octet-stream",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || "No fue posible descargar las facturas desde Siigo.");
+            }
+
+            const blob = await response.blob();
+            const fileName = resolveDownloadFileName(response.headers.get("content-disposition"))
+                || "facturas-siigo.zip";
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            setStatus(siigoInvoicesStatus, "success", "Descarga generada correctamente.");
+        } catch (error) {
+            setStatus(siigoInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible descargar las facturas desde Siigo.");
+        } finally {
+            setSiigoInvoicesDownloading(false);
         }
     }
 
@@ -3403,6 +3716,42 @@
         }
     }
 
+    async function loadSiigoInvoices() {
+        const customerId = siigoCustomerIdInput?.value || "";
+        const customerQuery = (siigoCustomerSearch?.value || "").trim();
+        const startDate = siigoStartDateInput?.value || "";
+        const endDate = siigoEndDateInput?.value || "";
+
+        if (!customerId && !customerQuery) {
+            setStatus(siigoInvoicesStatus, "error", "Busca un cliente de Siigo para consultar sus facturas.");
+            return;
+        }
+
+        if (!startDate || !endDate) {
+            setStatus(siigoInvoicesStatus, "error", "Selecciona la fecha inicial y final.");
+            return;
+        }
+
+        if (startDate > endDate) {
+            setStatus(siigoInvoicesStatus, "error", "La fecha inicial no puede ser mayor que la fecha final.");
+            return;
+        }
+
+        setSiigoInvoicesLoading(true);
+        setStatus(siigoInvoicesStatus, "info", "Consultando facturas en Siigo...");
+
+        try {
+            const detail = await fetchJson(buildSiigoInvoicesUrl());
+            renderSiigoInvoicesTable(detail);
+            setStatus(siigoInvoicesStatus, detail?.hasData ? "" : "info", detail?.hasData ? "" : (detail?.emptyStateMessage || "No encontramos facturas en Siigo para este periodo."));
+        } catch (error) {
+            resetSiigoInvoicesTable("No pudimos consultar las facturas de Siigo.");
+            setStatus(siigoInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible consultar facturas en Siigo.");
+        } finally {
+            setSiigoInvoicesLoading(false);
+        }
+    }
+
     async function loadBilling() {
         setPeriodLoading(true);
         setStatus(billingStatusBanner, "info", "Actualizando tablero de facturacion...");
@@ -3641,6 +3990,8 @@
         state.year = Number(yearFilter.value || currentYear);
         state.value = getDefaultValue(state.period, state.year);
         buildValueOptions();
+        syncSiigoDateRangeWithActivePeriod();
+        resetSiigoInvoicesTable("Consulta Siigo para el nuevo periodo activo.");
         loadActivePeriodTab();
     });
 
@@ -3648,11 +3999,15 @@
         state.period = periodFilter.value || "month";
         state.value = getDefaultValue(state.period, state.year);
         buildValueOptions();
+        syncSiigoDateRangeWithActivePeriod();
+        resetSiigoInvoicesTable("Consulta Siigo para el nuevo periodo activo.");
         loadActivePeriodTab();
     });
 
     valueFilter?.addEventListener("change", () => {
         state.value = Number(valueFilter.value || 1);
+        syncSiigoDateRangeWithActivePeriod();
+        resetSiigoInvoicesTable("Consulta Siigo para el nuevo periodo activo.");
         loadActivePeriodTab();
     });
 
@@ -3707,6 +4062,46 @@
 
         const invoice = getBillingReportInvoiceById(previewButton.dataset.billingReportPreview || "");
         openBillingReportPreview(invoice);
+    });
+    siigoUseActivePeriodButton?.addEventListener("click", () => {
+        syncSiigoDateRangeWithActivePeriod();
+        resetSiigoInvoicesTable("Consulta Siigo para el periodo activo.");
+        setStatus(siigoInvoicesStatus, "", "");
+    });
+    siigoInvoicesLoadButton?.addEventListener("click", loadSiigoInvoices);
+    siigoInvoicesDownloadButton?.addEventListener("click", downloadSiigoInvoices);
+    siigoCustomerSearch?.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            loadSiigoInvoices();
+        }
+    });
+    siigoCustomerSearch?.addEventListener("input", () => {
+        resetSiigoInvoicesTable("Busca un cliente y consulta sus facturas de Siigo.");
+        setStatus(siigoInvoicesStatus, "", "");
+    });
+    [siigoStartDateInput, siigoEndDateInput].forEach(input => {
+        input?.addEventListener("change", () => {
+            if (siigoPeriodReference) {
+                const startDate = siigoStartDateInput?.value || "";
+                const endDate = siigoEndDateInput?.value || "";
+                siigoPeriodReference.textContent = startDate && endDate ? `${startDate} - ${endDate}` : "-";
+            }
+            resetSiigoInvoicesTable("Consulta Siigo para el nuevo rango de fechas.");
+            setStatus(siigoInvoicesStatus, "", "");
+        });
+    });
+    siigoInvoicesSelectAll?.addEventListener("change", () => {
+        const checked = Boolean(siigoInvoicesSelectAll.checked);
+        siigoInvoicesBody?.querySelectorAll("[data-siigo-invoice-select]").forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+        syncSiigoInvoicesSelectionSummary();
+    });
+    siigoInvoicesBody?.addEventListener("change", event => {
+        if (event.target.closest("[data-siigo-invoice-select]")) {
+            syncSiigoInvoicesSelectionSummary();
+        }
     });
     taxesRetentionExportButton?.addEventListener("click", () => {
         if (!taxesRetentionsExportUrl) {
@@ -3904,10 +4299,12 @@
     portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
     wireCopiersLookupInput(billingReportClientSearch, billingReportClientIdInput, billingReportClientOptions, "billingReportClientSuggestions", "name", buildCopiersClientSearchUrl);
+    wireCopiersLookupInput(siigoCustomerSearch, siigoCustomerIdInput, siigoCustomerOptions, "siigoCustomerSuggestions", "displayName", buildSiigoCustomerSearchUrl);
     wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
     wireCopiersLookupInput(copiersEquipmentClientNameInput, copiersEquipmentClientIdInput, copiersEquipmentClientOptions, "copiersEquipmentClientSuggestions", "name", buildCopiersClientSearchUrl);
     buildValueOptions();
+    syncSiigoDateRangeWithActivePeriod();
     buildPnlMonthOptions(12);
     buildCopiersMaintenanceFilterOptions();
     renderCopiersMaintenanceTable();
