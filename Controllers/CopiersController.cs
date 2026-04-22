@@ -417,9 +417,9 @@ public sealed class CopiersController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> ClientSearch([FromQuery] string q, CancellationToken ct)
+    public async Task<IActionResult> ClientSearch([FromQuery] string q, [FromQuery] int top = 5000, CancellationToken ct = default)
     {
-        return Ok(await _dataverse.SearchClientsAsync(q, top: 12, ct: ct));
+        return Ok(await _dataverse.SearchClientsAsync(q, top: top, ct: ct));
     }
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct) =>

@@ -207,7 +207,6 @@ public sealed class CopiersEquipmentRowDto
     public int? CategoryValue { get; set; }
     public string CategoryLabel { get; set; } = "";
     public string Reference { get; set; } = "";
-    public string Model { get; set; } = "";
     public string Area { get; set; } = "";
     public string Site { get; set; } = "";
     public string Observations { get; set; } = "";
@@ -275,7 +274,6 @@ public sealed class CopiersEquipmentSaveRequestDto
     public string ClientName { get; set; } = "";
     public int? CategoryValue { get; set; }
     public string Reference { get; set; } = "";
-    public string Model { get; set; } = "";
     public string Area { get; set; } = "";
     public string Site { get; set; } = "";
     public string Observations { get; set; } = "";

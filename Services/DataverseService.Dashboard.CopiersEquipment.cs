@@ -22,7 +22,6 @@ public sealed partial class DataverseService
     private const string DashboardEquipmentReferenceField = "cr07a_referencia";
     private const string DashboardEquipmentObservationsField = "cr07a_observaciones";
     private const string DashboardEquipmentBrandField = "cr07a_marca";
-    private const string DashboardEquipmentModelField = "cr07a_modelo";
     private const string DashboardEquipmentAreaField = "cr07a_area";
     private const string DashboardEquipmentSiteField = "cr07a_sede";
     private const string DashboardEquipmentAddressField = "cr07a_direccion";
@@ -83,10 +82,6 @@ public sealed partial class DataverseService
                 "brand",
                 "Marca",
                 new[] { DashboardEquipmentBrandField }),
-            new CopiersEquipmentInventoryOptionalColumnDefinition(
-                "model",
-                "Modelo",
-                new[] { DashboardEquipmentModelField }),
             new CopiersEquipmentInventoryOptionalColumnDefinition(
                 "area",
                 "Area",
@@ -224,6 +219,8 @@ public sealed partial class DataverseService
 
         var attributeNames = await GetCopiersEquipmentAttributeNamesAsync(httpContext.User, ct);
         var fieldMap = BuildCopiersEquipmentInventoryFieldMap(attributeNames);
+        var clientsById = await GetCopiersClientContactRowsAsync(new[] { normalizedClientId }, httpContext.User, ct);
+        clientsById.TryGetValue(normalizedClientId, out var clientContact);
         var equipmentRows = await GetEquipmentInventoryRecordsAsync(
             equipmentMetadata,
             fieldMap,
@@ -232,8 +229,17 @@ public sealed partial class DataverseService
             ct);
         var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct);
         var records = BuildEquipmentInventoryRows(equipmentRows, maintenanceRows);
+        foreach (var record in records)
+        {
+            record.ClientContactName = clientContact?.ContactName ?? "";
+            record.ClientEmail = clientContact?.Email ?? "";
+            record.ClientPhone = clientContact?.Phone ?? "";
+            record.ClientAddress = clientContact?.Address ?? "";
+        }
+
         var resolvedClientName = FirstNonEmpty(
             requestedClientName,
+            clientContact?.ClientName,
             records.Select(static row => row.Company).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
             "Cliente");
 
@@ -241,6 +247,10 @@ public sealed partial class DataverseService
         {
             ClientId = normalizedClientId,
             ClientName = resolvedClientName,
+            ClientContactName = clientContact?.ContactName ?? "",
+            ClientEmail = clientContact?.Email ?? "",
+            ClientPhone = clientContact?.Phone ?? "",
+            ClientAddress = clientContact?.Address ?? "",
             AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
             HasData = records.Count > 0,
             RecordsCount = records.Count,
@@ -361,7 +371,6 @@ public sealed partial class DataverseService
             [metadata.PrimaryNameField] = serial,
             [DashboardEquipmentCategoryField] = request.CategoryValue,
             [DashboardEquipmentReferenceField] = (request.Reference ?? "").Trim(),
-            [DashboardEquipmentModelField] = (request.Model ?? "").Trim(),
             [DashboardEquipmentAreaField] = (request.Area ?? "").Trim(),
             [DashboardEquipmentSiteField] = (request.Site ?? "").Trim(),
             [DashboardEquipmentObservationsField] = (request.Observations ?? "").Trim()
@@ -660,14 +669,11 @@ public sealed partial class DataverseService
                 continue;
             }
 
-            if (!string.Equals(definition.Key, "model", StringComparison.OrdinalIgnoreCase))
+            missing.Add(new CopiersEquipmentInventoryMissingColumnDto
             {
-                missing.Add(new CopiersEquipmentInventoryMissingColumnDto
-                {
-                    Label = definition.Label,
-                    LogicalName = definition.CandidateLogicalNames.FirstOrDefault() ?? ""
-                });
-            }
+                Label = definition.Label,
+                LogicalName = definition.CandidateLogicalNames.FirstOrDefault() ?? ""
+            });
         }
 
         return new CopiersEquipmentInventoryFieldMap(fields, missing);
@@ -707,7 +713,6 @@ public sealed partial class DataverseService
             DashboardEquipmentReferenceField,
             DashboardEquipmentObservationsField,
             fieldMap.Get("brand"),
-            fieldMap.Get("model"),
             fieldMap.Get("area"),
             fieldMap.Get("site"),
             fieldMap.Get("address"),
@@ -747,7 +752,6 @@ public sealed partial class DataverseService
             ClientName = equipment.ClientName,
             Type = equipment.CategoryLabel,
             Brand = ReadString(item, fieldMap.Get("brand")).Trim(),
-            Model = FirstNonEmpty(ReadString(item, fieldMap.Get("model")).Trim(), equipment.Model, equipment.Reference),
             Area = FirstNonEmpty(ReadString(item, fieldMap.Get("area")).Trim(), equipment.Area),
             Site = FirstNonEmpty(ReadString(item, fieldMap.Get("site")).Trim(), equipment.Site),
             Address = ReadString(item, fieldMap.Get("address")).Trim(),
@@ -767,7 +771,6 @@ public sealed partial class DataverseService
             BuildDashboardLookupValuePropertyName(DashboardEquipmentClientField),
             DashboardEquipmentCategoryField,
             DashboardEquipmentReferenceField,
-            DashboardEquipmentModelField,
             DashboardEquipmentAreaField,
             DashboardEquipmentSiteField,
             DashboardEquipmentObservationsField
@@ -815,7 +818,6 @@ public sealed partial class DataverseService
                 DashboardEquipmentCategoryLabels,
                 "Sin categoria"),
             Reference = ReadString(item, DashboardEquipmentReferenceField).Trim(),
-            Model = ReadString(item, DashboardEquipmentModelField).Trim(),
             Area = ReadString(item, DashboardEquipmentAreaField).Trim(),
             Site = ReadString(item, DashboardEquipmentSiteField).Trim(),
             Observations = ReadString(item, DashboardEquipmentObservationsField).Trim(),
@@ -1152,7 +1154,6 @@ public sealed partial class DataverseService
                     CategoryValue = row.CategoryValue,
                     CategoryLabel = row.CategoryLabel,
                     Reference = row.Reference,
-                    Model = row.Model,
                     Area = row.Area,
                     Site = row.Site,
                     Observations = row.Observations,
@@ -1200,7 +1201,6 @@ public sealed partial class DataverseService
                     RecordId = row.RecordId,
                     Type = row.Type,
                     Brand = row.Brand,
-                    Model = row.Model,
                     Serial = row.Serial,
                     Company = row.ClientName,
                     Area = row.Area,
@@ -1495,7 +1495,6 @@ public sealed partial class DataverseService
         public string ClientName { get; init; } = "";
         public string Type { get; init; } = "";
         public string Brand { get; init; } = "";
-        public string Model { get; init; } = "";
         public string Area { get; init; } = "";
         public string Site { get; init; } = "";
         public string Address { get; init; } = "";
@@ -1513,7 +1512,6 @@ public sealed partial class DataverseService
         public int? CategoryValue { get; init; }
         public string CategoryLabel { get; init; } = "";
         public string Reference { get; init; } = "";
-        public string Model { get; init; } = "";
         public string Area { get; init; } = "";
         public string Site { get; init; } = "";
         public string Observations { get; init; } = "";

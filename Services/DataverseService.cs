@@ -758,13 +758,14 @@ public sealed partial class DataverseService : IDataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         query = (query ?? "").Trim();
-        if (query.Length < 2)
-            return Array.Empty<ClientLookupItem>();
+        top = Math.Clamp(top, 1, 5000);
 
         var safeQuery = query.Replace("'", "''");
         var select = "cr07a_clienteid,cr07a_nombre";
-        var filter = $"contains(cr07a_nombre,'{safeQuery}')";
-        var relativeUrl = $"/api/data/v9.2/cr07a_clientes?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top={top}";
+        var filter = string.IsNullOrWhiteSpace(safeQuery)
+            ? ""
+            : $"&$filter={Uri.EscapeDataString($"contains(cr07a_nombre,'{safeQuery}')")}";
+        var relativeUrl = $"/api/data/v9.2/cr07a_clientes?$select={select}{filter}&$orderby=cr07a_nombre asc&$top={top}";
 
         var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
 

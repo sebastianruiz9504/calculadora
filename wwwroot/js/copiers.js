@@ -71,7 +71,6 @@
     const equipmentSaveBtn = document.getElementById("copiersEquipmentSaveBtn");
     const equipmentSerialInput = document.getElementById("copiersEquipmentSerial");
     const equipmentCategorySelect = document.getElementById("copiersEquipmentCategory");
-    const equipmentModelInput = document.getElementById("copiersEquipmentModel");
     const equipmentAreaInput = document.getElementById("copiersEquipmentArea");
     const equipmentSiteInput = document.getElementById("copiersEquipmentSite");
     const equipmentReferenceInput = document.getElementById("copiersEquipmentReference");
@@ -394,6 +393,10 @@
         updateMaintenanceEquipmentOptions();
     }, 250));
 
+    maintenanceClientNameInput?.addEventListener("focus", () => {
+        updateClientSuggestions(maintenanceClientNameInput.value, clientOptions, "maintenance");
+    });
+
     maintenanceClientNameInput?.addEventListener("change", () => {
         syncClientSelection(maintenanceClientNameInput, maintenanceClientIdInput, state.maintenanceClientSuggestions);
         updateMaintenanceEquipmentOptions();
@@ -404,6 +407,10 @@
         await updateClientSuggestions(equipmentClientNameInput.value, equipmentClientOptions, "equipment");
     }, 250));
 
+    equipmentClientNameInput?.addEventListener("focus", () => {
+        updateClientSuggestions(equipmentClientNameInput.value, equipmentClientOptions, "equipment");
+    });
+
     equipmentClientNameInput?.addEventListener("change", () => {
         syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
     });
@@ -412,6 +419,10 @@
         inventoryClientIdInput.value = "";
         await updateClientSuggestions(inventoryClientNameInput.value, inventoryClientOptions, "equipmentInventory");
     }, 250));
+
+    inventoryClientNameInput?.addEventListener("focus", () => {
+        updateClientSuggestions(inventoryClientNameInput.value, inventoryClientOptions, "equipmentInventory");
+    });
 
     inventoryClientNameInput?.addEventListener("change", () => {
         syncClientSelection(inventoryClientNameInput, inventoryClientIdInput, state.equipmentInventoryClientSuggestions);
@@ -428,6 +439,10 @@
         deliveryClientIdInput.value = "";
         await updateClientSuggestions(deliveryClientNameInput.value, deliveryClientOptions, "delivery");
     }, 250));
+
+    deliveryClientNameInput?.addEventListener("focus", () => {
+        updateClientSuggestions(deliveryClientNameInput.value, deliveryClientOptions, "delivery");
+    });
 
     deliveryClientNameInput?.addEventListener("change", () => {
         syncClientSelection(deliveryClientNameInput, deliveryClientIdInput, state.deliveryClientSuggestions);
@@ -558,12 +573,11 @@
                 <td data-label="Serial">${escapeHtml(row.serial)}</td>
                 <td data-label="Cliente">${row.inStock ? '<span class="copiers-badge is-warning">Stock</span>' : escapeHtml(row.clientName || "Sin cliente")}</td>
                 <td data-label="Categoria">${escapeHtml(row.categoryLabel || "")}</td>
-                <td data-label="Modelo">${escapeHtml(row.model || "")}</td>
                 <td data-label="Area">${escapeHtml(row.area || "")}</td>
                 <td data-label="Sede">${escapeHtml(row.site || "")}</td>
                 <td data-label="Referencia">${escapeHtml(row.reference || "")}</td>
                 <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
-            </tr>`).join("") : `<tr><td colspan="8" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+            </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
     }
 
     async function loadEquipmentInventory() {
@@ -611,7 +625,6 @@
         const inventory = state.equipmentInventory || null;
         const records = Array.isArray(inventory?.records) ? inventory.records : [];
         const kpis = Array.isArray(inventory?.kpis) ? inventory.kpis : [];
-        const locations = Array.isArray(inventory?.locations) ? inventory.locations : [];
         const missing = Array.isArray(inventory?.missingColumns) ? inventory.missingColumns : [];
 
         inventoryCount.textContent = `${records.length} equipo${records.length === 1 ? "" : "s"}`;
@@ -634,35 +647,27 @@
                 <small>${escapeHtml(kpi.secondaryLabel || "")}: ${escapeHtml(kpi.secondaryValue || "")}</small>
             </article>`).join("");
 
-        inventoryLocations.innerHTML = locations.map((location) => {
-            const areas = Array.isArray(location.areas) && location.areas.length
-                ? location.areas.join(" · ")
-                : "Sin area";
-            const mapFrame = renderMapFrame(location.mapEmbedUrl);
-            const mapLink = renderMapLink(location.mapUrl || location.mapEmbedUrl, "Abrir mapa");
-
-            return `
-                <article class="copiers-location-card">
-                    <div>
-                        <span>${numberFormatter.format(Number(location.equipmentCount || 0))} equipo${Number(location.equipmentCount || 0) === 1 ? "" : "s"}</span>
-                        <strong>${escapeHtml(location.site || "Sin sede")}</strong>
-                        <p>${escapeHtml(location.address || "Sin direccion")}</p>
-                        <small>${escapeHtml(areas)}</small>
-                    </div>
-                    ${mapFrame || mapLink}
-                </article>`;
-        }).join("");
+        inventoryLocations.innerHTML = inventory ? `
+            <article class="copiers-location-card copiers-location-card--client">
+                <div>
+                    <span>Cliente</span>
+                    <strong>${escapeHtml(inventory.clientName || "Sin cliente")}</strong>
+                    <p>${escapeHtml(inventory.clientContactName || "Sin persona a cargo")}</p>
+                    <small>${escapeHtml(inventory.clientEmail || "Sin correo")}</small>
+                    <small>${escapeHtml(inventory.clientPhone || "Sin telefono")}</small>
+                    <small>${escapeHtml(inventory.clientAddress || "Sin direccion")}</small>
+                </div>
+            </article>` : "";
 
         inventoryBody.innerHTML = records.length ? records.map((row) => `
             <tr class="is-selectable" data-equipment-id="${escapeHtml(row.recordId || "")}" tabindex="0">
                 <td data-label="No.">${numberFormatter.format(Number(row.lineNumber || 0))}</td>
-                <td data-label="Modelo">${escapeHtml(row.model || "")}</td>
                 <td data-label="Serial de maquina">${escapeHtml(row.serial || "")}</td>
                 <td data-label="Empresa">${escapeHtml(row.company || "")}</td>
                 <td data-label="Area">${escapeHtml(row.area || "")}</td>
                 <td data-label="Sede">${escapeHtml(row.site || "")}</td>
                 <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
-            </tr>`).join("") : `<tr><td colspan="7" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+            </tr>`).join("") : `<tr><td colspan="6" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
     }
 
     function clearEquipmentInventory() {
@@ -710,7 +715,6 @@
         equipmentClientIdInput.value = equipment.clientId || "";
         equipmentClientNameInput.value = equipment.inStock ? "" : (equipment.clientName || "");
         equipmentSerialInput.value = equipment.serial || "";
-        equipmentModelInput.value = equipment.model || "";
         equipmentAreaInput.value = equipment.area || "";
         equipmentSiteInput.value = equipment.site || "";
         equipmentReferenceInput.value = equipment.reference || "";
@@ -731,7 +735,6 @@
         equipmentClientIdInput.value = "";
         equipmentClientNameInput.value = "";
         equipmentSerialInput.value = "";
-        equipmentModelInput.value = "";
         equipmentAreaInput.value = "";
         equipmentSiteInput.value = "";
         equipmentReferenceInput.value = "";
@@ -776,7 +779,6 @@
                 clientName,
                 categoryValue: parseNullableInt(equipmentCategorySelect.value),
                 reference: equipmentReferenceInput.value || "",
-                model: equipmentModelInput.value || "",
                 area: equipmentAreaInput.value || "",
                 site: equipmentSiteInput.value || "",
                 observations: equipmentObservationsInput.value || ""
@@ -1246,22 +1248,9 @@
 
     async function updateClientSuggestions(term, datalist, target) {
         const query = (term || "").trim();
-        if (query.length < 2) {
-            datalist.innerHTML = "";
-            if (target === "delivery") {
-                state.deliveryClientSuggestions = [];
-            } else if (target === "equipmentInventory") {
-                state.equipmentInventoryClientSuggestions = [];
-            } else if (target === "equipment") {
-                state.equipmentClientSuggestions = [];
-            } else {
-                state.maintenanceClientSuggestions = [];
-            }
-            return;
-        }
 
         try {
-            const suggestions = await fetchJson(`${urls.clientSearch}?q=${encodeURIComponent(query)}`);
+            const suggestions = await fetchJson(`${urls.clientSearch}?q=${encodeURIComponent(query)}&top=5000`);
             if (target === "delivery") {
                 state.deliveryClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             } else if (target === "equipmentInventory") {

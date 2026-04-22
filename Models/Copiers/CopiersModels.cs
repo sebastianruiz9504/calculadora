@@ -179,6 +179,10 @@ public sealed class CopiersEquipmentInventoryDto
 {
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string ClientContactName { get; set; } = "";
+    public string ClientEmail { get; set; } = "";
+    public string ClientPhone { get; set; } = "";
+    public string ClientAddress { get; set; } = "";
     public string AsOfDateLabel { get; set; } = "";
     public bool HasData { get; set; }
     public int RecordsCount { get; set; }
@@ -214,9 +218,12 @@ public sealed class CopiersEquipmentInventoryRowDto
     public string RecordId { get; set; } = "";
     public string Type { get; set; } = "";
     public string Brand { get; set; } = "";
-    public string Model { get; set; } = "";
     public string Serial { get; set; } = "";
     public string Company { get; set; } = "";
+    public string ClientContactName { get; set; } = "";
+    public string ClientEmail { get; set; } = "";
+    public string ClientPhone { get; set; } = "";
+    public string ClientAddress { get; set; } = "";
     public string Area { get; set; } = "";
     public string Site { get; set; } = "";
     public string Address { get; set; } = "";
