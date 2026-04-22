@@ -185,13 +185,15 @@
                     <div class="dashboard-panel__actions dashboard-panel__actions--table">
                         <input type="hidden" id="siigoCustomerIdInput" />
                         <label class="dashboard-search" for="siigoCustomerSearch">
-                            <span class="dashboard-search__label">Cliente</span>
+                            <span class="dashboard-search__label">NIT cliente</span>
                             <input type="search"
                                    id="siigoCustomerSearch"
                                    class="form-control dashboard-search__input"
                                    list="siigoCustomerOptions"
                                    autocomplete="off"
-                                   placeholder="Nombre o NIT..." />
+                                   inputmode="numeric"
+                                   pattern="[0-9.\-\s]*"
+                                   placeholder="NIT sin puntos ni guion..." />
                             <datalist id="siigoCustomerOptions"></datalist>
                         </label>
                         <label class="dashboard-search dashboard-search--date" for="siigoStartDateInput">
@@ -246,7 +248,7 @@
                                 </th>
                                 <th>Factura</th>
                                 <th>Fecha</th>
-                                <th>Cliente</th>
+                                <th>NIT</th>
                                 <th>Estado</th>
                                 <th class="text-end">Total</th>
                                 <th class="text-end">Saldo</th>

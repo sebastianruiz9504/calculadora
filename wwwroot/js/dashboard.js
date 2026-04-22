@@ -1884,14 +1884,14 @@
 
     function buildSiigoCustomerSearchUrl(query) {
         const baseUrl = app.dataset.siigoCustomerSearchUrl || "";
-        return `${baseUrl}?q=${encodeURIComponent(query || "")}`;
+        return `${baseUrl}?q=${encodeURIComponent(normalizeNitValue(query || ""))}`;
     }
 
     function buildSiigoInvoicesUrl() {
         const baseUrl = app.dataset.siigoInvoicesUrl || "";
         const params = new URLSearchParams({
             customerId: siigoCustomerIdInput?.value || "",
-            customerQuery: siigoCustomerSearch?.value || "",
+            customerQuery: normalizeNitValue(siigoCustomerSearch?.value || ""),
             startDate: siigoStartDateInput?.value || "",
             endDate: siigoEndDateInput?.value || ""
         });
@@ -1901,6 +1901,10 @@
 
     function buildSiigoInvoicesDownloadUrl() {
         return app.dataset.siigoInvoicesDownloadUrl || "";
+    }
+
+    function normalizeNitValue(value) {
+        return (value || "").toString().replace(/\D/g, "");
     }
 
     function buildTaxesRetentionsExportUrl() {
@@ -3718,12 +3722,12 @@
 
     async function loadSiigoInvoices() {
         const customerId = siigoCustomerIdInput?.value || "";
-        const customerQuery = (siigoCustomerSearch?.value || "").trim();
+        const customerQuery = normalizeNitValue(siigoCustomerSearch?.value || "");
         const startDate = siigoStartDateInput?.value || "";
         const endDate = siigoEndDateInput?.value || "";
 
         if (!customerId && !customerQuery) {
-            setStatus(siigoInvoicesStatus, "error", "Busca un cliente de Siigo para consultar sus facturas.");
+            setStatus(siigoInvoicesStatus, "error", "Ingresa el NIT del cliente para consultar sus facturas.");
             return;
         }
 
@@ -4299,7 +4303,7 @@
     portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
     wireCopiersLookupInput(billingReportClientSearch, billingReportClientIdInput, billingReportClientOptions, "billingReportClientSuggestions", "name", buildCopiersClientSearchUrl);
-    wireCopiersLookupInput(siigoCustomerSearch, siigoCustomerIdInput, siigoCustomerOptions, "siigoCustomerSuggestions", "displayName", buildSiigoCustomerSearchUrl);
+    wireCopiersLookupInput(siigoCustomerSearch, siigoCustomerIdInput, siigoCustomerOptions, "siigoCustomerSuggestions", "identification", buildSiigoCustomerSearchUrl);
     wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
     wireCopiersLookupInput(copiersEquipmentClientNameInput, copiersEquipmentClientIdInput, copiersEquipmentClientOptions, "copiersEquipmentClientSuggestions", "name", buildCopiersClientSearchUrl);

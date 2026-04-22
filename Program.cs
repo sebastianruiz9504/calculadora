@@ -6,6 +6,7 @@ using Microsoft.Identity.Web.UI;
 using CotizadorInterno.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddUserSecrets(typeof(Program).Assembly, optional: true);
 var dataverseBaseUrl = builder.Configuration["Dataverse:BaseUrl"]
     ?? throw new InvalidOperationException("Dataverse:BaseUrl missing in configuration.");
 var dataverseScope = $"{dataverseBaseUrl}/user_impersonation";

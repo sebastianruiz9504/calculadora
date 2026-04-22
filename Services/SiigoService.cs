@@ -43,7 +43,6 @@ public sealed class SiigoService : ISiigoService
             return Array.Empty<SiigoCustomerLookupItemDto>();
 
         var requestedTop = Math.Clamp(top, 1, 50);
-        var normalizedSearch = NormalizeSearch(search);
         var digits = ExtractDigits(search);
         var results = new Dictionary<string, SiigoCustomerLookupItemDto>(StringComparer.OrdinalIgnoreCase);
 
@@ -64,32 +63,6 @@ public sealed class SiigoService : ISiigoService
             AddCustomerResults(results, exactPage.Results.Select(MapCustomer), requestedTop);
             if (results.Count >= requestedTop)
                 return results.Values.Take(requestedTop).ToList();
-        }
-
-        var maxPages = Math.Clamp(_options.MaxCustomerSearchPages, 1, 25);
-        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
-
-        for (var page = 1; page <= maxPages && results.Count < requestedTop; page++)
-        {
-            var listPage = await GetPagedAsync<SiigoCustomerApiDto>(
-                "v1/customers",
-                new[]
-                {
-                    Pair("active", "true"),
-                    Pair("type", "Customer"),
-                    Pair("page", page.ToString(CultureInfo.InvariantCulture)),
-                    Pair("page_size", pageSize.ToString(CultureInfo.InvariantCulture))
-                },
-                ct);
-
-            var matches = listPage.Results
-                .Select(MapCustomer)
-                .Where(customer => CustomerMatches(customer, normalizedSearch, digits));
-
-            AddCustomerResults(results, matches, requestedTop);
-
-            if (ShouldStopPaging(listPage.Pagination, page, pageSize, listPage.Results.Count))
-                break;
         }
 
         return results.Values.Take(requestedTop).ToList();
@@ -231,18 +204,20 @@ public sealed class SiigoService : ISiigoService
 
         var query = (customerQuery ?? "").Trim();
         if (string.IsNullOrWhiteSpace(query))
-            throw new InvalidOperationException("Busca y selecciona un cliente de Siigo.");
+            throw new InvalidOperationException("Ingresa el NIT del cliente para consultar Siigo.");
+
+        if (ExtractDigits(query).Length < 3)
+            throw new InvalidOperationException("Ingresa el NIT del cliente, sin depender del nombre.");
 
         var suggestions = await SearchCustomersAsync(query, top: 5, ct);
         if (suggestions.Count == 0)
-            throw new InvalidOperationException("No encontramos clientes en Siigo con ese criterio.");
+            throw new InvalidOperationException("No encontramos clientes en Siigo con ese NIT.");
 
-        var normalizedQuery = NormalizeSearch(query);
         var digits = ExtractDigits(query);
         var exact = suggestions.FirstOrDefault(customer =>
-            string.Equals(NormalizeSearch(customer.DisplayName), normalizedQuery, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(NormalizeSearch(customer.Name), normalizedQuery, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(customer.Identification, digits, StringComparison.OrdinalIgnoreCase));
+            string.Equals(customer.Identification, digits, StringComparison.OrdinalIgnoreCase)
+            || BuildIdentificationCandidates(digits).Any(candidate =>
+                string.Equals(customer.Identification, candidate, StringComparison.OrdinalIgnoreCase)));
 
         if (exact is not null)
             return exact;
@@ -250,7 +225,7 @@ public sealed class SiigoService : ISiigoService
         if (suggestions.Count == 1)
             return suggestions[0];
 
-        throw new InvalidOperationException("Selecciona una coincidencia exacta del cliente antes de consultar facturas.");
+        throw new InvalidOperationException("Selecciona una coincidencia exacta del NIT antes de consultar facturas.");
     }
 
     private async Task<SiigoPagedResponse<T>> GetPagedAsync<T>(
@@ -510,17 +485,6 @@ public sealed class SiigoService : ISiigoService
         }
     }
 
-    private static bool CustomerMatches(SiigoCustomerLookupItemDto customer, string normalizedSearch, string digits)
-    {
-        if (!string.IsNullOrWhiteSpace(digits)
-            && customer.Identification.Contains(digits, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return NormalizeSearch(customer.DisplayName).Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
-            || NormalizeSearch(customer.Name).Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
-            || NormalizeSearch(customer.CommercialName).Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase);
-    }
-
     private static IReadOnlyList<string> BuildIdentificationCandidates(string digits)
     {
         if (digits.Length < 3)
@@ -565,23 +529,6 @@ public sealed class SiigoService : ISiigoService
 
     private static string FormatSiigoDate(DateOnly value) =>
         value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    private static string NormalizeSearch(string? value)
-    {
-        var trimmed = (value ?? "").Trim();
-        if (trimmed.Length == 0)
-            return "";
-
-        var normalized = trimmed.Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(normalized.Length);
-        foreach (var character in normalized)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
-                builder.Append(char.ToLowerInvariant(character));
-        }
-
-        return builder.ToString().Normalize(NormalizationForm.FormC);
-    }
 
     private static string ExtractDigits(string? value) =>
         new((value ?? "").Where(char.IsDigit).ToArray());
