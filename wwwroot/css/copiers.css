@@ -537,6 +537,12 @@
     background: linear-gradient(180deg, #ffffff 0%, var(--copiers-soft) 100%);
 }
 
+.copiers-location-card--client {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr);
+    align-items: stretch;
+}
+
 .copiers-location-card span,
 .copiers-location-card small {
     color: var(--copiers-muted);
@@ -617,6 +623,7 @@
     .copiers-grid,
     .copiers-kpis,
     .copiers-location-grid,
+    .copiers-location-card--client,
     .copiers-modal__dialog--wide .copiers-form__grid,
     .copiers-form__grid,
     .copiers-detail-summary {

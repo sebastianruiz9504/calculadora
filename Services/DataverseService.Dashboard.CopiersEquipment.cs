@@ -79,10 +79,6 @@ public sealed partial class DataverseService
         new[]
         {
             new CopiersEquipmentInventoryOptionalColumnDefinition(
-                "brand",
-                "Marca",
-                new[] { DashboardEquipmentBrandField }),
-            new CopiersEquipmentInventoryOptionalColumnDefinition(
                 "area",
                 "Area",
                 new[] { DashboardEquipmentAreaField }),
@@ -90,18 +86,6 @@ public sealed partial class DataverseService
                 "site",
                 "Sede",
                 new[] { DashboardEquipmentSiteField }),
-            new CopiersEquipmentInventoryOptionalColumnDefinition(
-                "address",
-                "Direccion",
-                new[] { DashboardEquipmentAddressField }),
-            new CopiersEquipmentInventoryOptionalColumnDefinition(
-                "mapHtml",
-                "Html mapa",
-                new[] { DashboardEquipmentMapHtmlField, "cr07a_html_mapa" }),
-            new CopiersEquipmentInventoryOptionalColumnDefinition(
-                "mapUrl",
-                "Mapa",
-                new[] { DashboardEquipmentMapUrlField, "cr07a_urlmapa", "cr07a_maps" })
         };
 
     public async Task<CopiersEquipmentDashboardDto> GetCopiersEquipmentDashboardAsync(CancellationToken ct = default)
@@ -657,7 +641,6 @@ public sealed partial class DataverseService
         HashSet<string> attributeNames)
     {
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var missing = new List<CopiersEquipmentInventoryMissingColumnDto>();
 
         foreach (var definition in DashboardEquipmentInventoryOptionalColumns)
         {
@@ -668,15 +651,9 @@ public sealed partial class DataverseService
                 fields[definition.Key] = logicalName;
                 continue;
             }
-
-            missing.Add(new CopiersEquipmentInventoryMissingColumnDto
-            {
-                Label = definition.Label,
-                LogicalName = definition.CandidateLogicalNames.FirstOrDefault() ?? ""
-            });
         }
 
-        return new CopiersEquipmentInventoryFieldMap(fields, missing);
+        return new CopiersEquipmentInventoryFieldMap(fields, Array.Empty<CopiersEquipmentInventoryMissingColumnDto>());
     }
 
     private async Task<List<CopiersEquipmentInventoryRecordRow>> GetEquipmentInventoryRecordsAsync(
@@ -712,12 +689,8 @@ public sealed partial class DataverseService
             DashboardEquipmentCategoryField,
             DashboardEquipmentReferenceField,
             DashboardEquipmentObservationsField,
-            fieldMap.Get("brand"),
             fieldMap.Get("area"),
-            fieldMap.Get("site"),
-            fieldMap.Get("address"),
-            fieldMap.Get("mapHtml"),
-            fieldMap.Get("mapUrl")
+            fieldMap.Get("site")
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
         .Distinct(StringComparer.OrdinalIgnoreCase));
@@ -740,10 +713,6 @@ public sealed partial class DataverseService
         if (equipment is null)
             return null;
 
-        var rawMapEmbed = ExtractCopiersMapEmbedUrl(ReadString(item, fieldMap.Get("mapHtml")));
-        var rawMapUrl = NormalizeCopiersMapUrl(ReadString(item, fieldMap.Get("mapUrl")));
-        var mapUrl = FirstNonEmpty(rawMapUrl, rawMapEmbed);
-
         return new CopiersEquipmentInventoryRecordRow
         {
             RecordId = equipment.RecordId,
@@ -751,12 +720,8 @@ public sealed partial class DataverseService
             ClientId = equipment.ClientId,
             ClientName = equipment.ClientName,
             Type = equipment.CategoryLabel,
-            Brand = ReadString(item, fieldMap.Get("brand")).Trim(),
             Area = FirstNonEmpty(ReadString(item, fieldMap.Get("area")).Trim(), equipment.Area),
             Site = FirstNonEmpty(ReadString(item, fieldMap.Get("site")).Trim(), equipment.Site),
-            Address = ReadString(item, fieldMap.Get("address")).Trim(),
-            MapUrl = mapUrl,
-            MapEmbedUrl = rawMapEmbed,
             Observations = equipment.Observations
         };
     }
@@ -1221,10 +1186,6 @@ public sealed partial class DataverseService
     {
         var siteCount = CountDistinctInventoryValues(records.Select(static row => row.Site));
         var areaCount = CountDistinctInventoryValues(records.Select(static row => row.Area));
-        var addressCount = CountDistinctInventoryValues(records.Select(static row => row.Address));
-        var mappedCount = records.Count(row =>
-            !string.IsNullOrWhiteSpace(row.MapUrl)
-            || !string.IsNullOrWhiteSpace(row.MapEmbedUrl));
 
         return new[]
         {
@@ -1241,16 +1202,16 @@ public sealed partial class DataverseService
                 Key = "sites",
                 Label = "Sedes",
                 Value = siteCount,
-                SecondaryLabel = "Direcciones",
-                SecondaryValue = addressCount.ToString("N0", DashboardCulture)
+                SecondaryLabel = "Areas",
+                SecondaryValue = areaCount.ToString("N0", DashboardCulture)
             },
             new CopiersEquipmentInventoryMetricDto
             {
                 Key = "areas",
                 Label = "Areas",
                 Value = areaCount,
-                SecondaryLabel = "Con mapa",
-                SecondaryValue = mappedCount.ToString("N0", DashboardCulture)
+                SecondaryLabel = "Sedes",
+                SecondaryValue = siteCount.ToString("N0", DashboardCulture)
             },
             new CopiersEquipmentInventoryMetricDto
             {

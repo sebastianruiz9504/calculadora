@@ -605,14 +605,7 @@
             state.equipmentInventory = await fetchJson(`${urls.equipmentInventory}?${params.toString()}`);
             renderEquipmentInventory();
 
-            const missing = Array.isArray(state.equipmentInventory?.missingColumns)
-                ? state.equipmentInventory.missingColumns
-                : [];
-            if (missing.length) {
-                showStatus(statusBanner, "warning", buildMissingColumnsText(missing));
-            } else {
-                clearStatus(statusBanner);
-            }
+            clearStatus(statusBanner);
         } catch (error) {
             showStatus(statusBanner, "error", getErrorMessage(error));
         } finally {
@@ -625,7 +618,6 @@
         const inventory = state.equipmentInventory || null;
         const records = Array.isArray(inventory?.records) ? inventory.records : [];
         const kpis = Array.isArray(inventory?.kpis) ? inventory.kpis : [];
-        const missing = Array.isArray(inventory?.missingColumns) ? inventory.missingColumns : [];
 
         inventoryCount.textContent = `${records.length} equipo${records.length === 1 ? "" : "s"}`;
         inventoryEmpty.hidden = Boolean(inventory) && records.length > 0;
@@ -633,12 +625,7 @@
             ? "No hay equipos registrados para este cliente."
             : "Selecciona un cliente para consultar sus equipos.";
 
-        inventoryMissing.innerHTML = missing.length
-            ? escapeHtml(buildMissingColumnsText(missing))
-            : "";
-        inventoryMissing.className = missing.length
-            ? "copiers-status is-visible is-warning"
-            : "copiers-status";
+        clearStatus(inventoryMissing);
 
         inventoryKpis.innerHTML = kpis.map((kpi) => `
             <article class="copiers-kpi">
@@ -657,6 +644,7 @@
                     <small>${escapeHtml(inventory.clientPhone || "Sin telefono")}</small>
                     <small>${escapeHtml(inventory.clientAddress || "Sin direccion")}</small>
                 </div>
+                ${renderAddressMapFrame(inventory.clientAddress)}
             </article>` : "";
 
         inventoryBody.innerHTML = records.length ? records.map((row) => `
@@ -1291,6 +1279,16 @@
         return columns
             ? `Faltan columnas en Dataverse para completar el inventario: ${columns}.`
             : "";
+    }
+
+    function renderAddressMapFrame(address) {
+        const value = (address || "").trim();
+        if (!value) {
+            return "";
+        }
+
+        const url = `https://www.google.com/maps?q=${encodeURIComponent(value)}&output=embed`;
+        return `<iframe class="copiers-map-frame" src="${escapeHtml(url)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`;
     }
 
     function renderMapLink(url, label) {
