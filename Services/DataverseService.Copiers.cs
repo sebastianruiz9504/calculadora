@@ -34,6 +34,8 @@ public sealed partial class DataverseService
     private const string CopiersSupplierInvoiceApprovedField = "cr07a_aprobadoeingresado";
     private const int CopiersSupplierInvoiceApprovedNo = 0;
     private const int CopiersSupplierInvoiceApprovedYes = 1;
+    private const bool CopiersSupplierInvoiceApprovedNoPayload = false;
+    private const bool CopiersSupplierInvoiceApprovedYesPayload = true;
 
     private const string CopiersDeliveryLogicalName = "cr07a_entrega";
     private const string CopiersDeliveryFallbackEntitySetName = "cr07a_entregas";
@@ -376,7 +378,7 @@ public sealed partial class DataverseService
             "PATCH",
             new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
-                [CopiersSupplierInvoiceApprovedField] = CopiersSupplierInvoiceApprovedYes
+                [CopiersSupplierInvoiceApprovedField] = CopiersSupplierInvoiceApprovedYesPayload
             },
             httpContext.User,
             ct);
@@ -708,7 +710,7 @@ public sealed partial class DataverseService
                 [CopiersSupplierInvoiceNumberField] = invoiceNumber,
                 [CopiersSupplierInvoiceQuantityField] = quantity,
                 [CopiersSupplierInvoiceUnitValueBeforeVatField] = unitValueBeforeVat,
-                [CopiersSupplierInvoiceApprovedField] = CopiersSupplierInvoiceApprovedNo,
+                [CopiersSupplierInvoiceApprovedField] = CopiersSupplierInvoiceApprovedNoPayload,
                 [$"{supplyNavigationProperty}@odata.bind"] = $"/{supplyMetadata.EntitySetName}({supplyId})"
             };
             if (!string.IsNullOrWhiteSpace(invoiceMetadata.PrimaryNameField)
