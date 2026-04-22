@@ -220,6 +220,7 @@ public sealed class CopiersEquipmentDetailDto
 {
     public CopiersEquipmentRowDto Equipment { get; set; } = new();
     public IReadOnlyList<CopiersMaintenanceRowDto> MaintenanceRows { get; set; } = Array.Empty<CopiersMaintenanceRowDto>();
+    public IReadOnlyList<CopiersEquipmentMovementRowDto> MovementRows { get; set; } = Array.Empty<CopiersEquipmentMovementRowDto>();
     public IReadOnlyList<CopiersEquipmentOptionDto> CategoryOptions { get; set; } = Array.Empty<CopiersEquipmentOptionDto>();
 }
 
@@ -284,6 +285,35 @@ public sealed class CopiersEquipmentSaveResultDto
     public string RecordId { get; set; } = "";
     public string Message { get; set; } = "";
     public CopiersEquipmentRowDto Equipment { get; set; } = new();
+}
+
+public sealed class CopiersEquipmentMovementSaveRequestDto
+{
+    public string EquipmentId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string DateValue { get; set; } = "";
+    public string Reason { get; set; } = "";
+}
+
+public sealed class CopiersEquipmentMovementSaveResultDto
+{
+    public string RecordId { get; set; } = "";
+    public string Message { get; set; } = "";
+    public CopiersEquipmentRowDto Equipment { get; set; } = new();
+    public IReadOnlyList<CopiersEquipmentMovementRowDto> MovementRows { get; set; } = Array.Empty<CopiersEquipmentMovementRowDto>();
+}
+
+public sealed class CopiersEquipmentMovementRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string EquipmentId { get; set; } = "";
+    public string EquipmentSerial { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string DateValue { get; set; } = "";
+    public string DateDisplay { get; set; } = "";
+    public string Reason { get; set; } = "";
 }
 
 public sealed class CopiersEquipmentClientSaveRequestDto

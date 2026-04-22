@@ -225,6 +225,27 @@ public sealed class CopiersController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> RegisterEquipmentMovement([FromBody] CopiersEquipmentMovementSaveRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar los datos del movimiento."));
+
+        try
+        {
+            return Ok(await _dataverse.RegisterCopiersEquipmentMovementAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar el movimiento del equipo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SaveEquipmentClient([FromBody] CopiersEquipmentClientSaveRequestDto? request, CancellationToken ct)
     {
         if (request is null)

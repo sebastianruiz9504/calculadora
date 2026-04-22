@@ -55,6 +55,7 @@ public interface IDataverseService
     Task<CopiersEquipmentInventoryDto> GetCopiersEquipmentInventoryAsync(string? clientId, string? clientName, CancellationToken ct = default);
     Task<CopiersEquipmentAssignmentResultDto> SaveCopiersEquipmentAssignmentAsync(CopiersEquipmentAssignmentRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentSaveResultDto> SaveCopiersEquipmentAsync(CopiersEquipmentSaveRequestDto request, CancellationToken ct = default);
+    Task<CopiersEquipmentMovementSaveResultDto> RegisterCopiersEquipmentMovementAsync(CopiersEquipmentMovementSaveRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentClientSaveResultDto> SaveCopiersEquipmentClientAsync(CopiersEquipmentClientSaveRequestDto request, CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadCopiersMaintenanceAttachmentAsync(string maintenanceId, CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default);

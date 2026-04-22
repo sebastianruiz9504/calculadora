@@ -14,6 +14,7 @@
         equipmentInventory: app.dataset.equipmentInventoryUrl || "",
         equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
         saveEquipment: app.dataset.saveEquipmentUrl || "",
+        registerEquipmentMovement: app.dataset.registerEquipmentMovementUrl || "",
         saveEquipmentClient: app.dataset.saveEquipmentClientUrl || "",
         supplies: app.dataset.suppliesUrl || "",
         saveSupplyQuantity: app.dataset.saveSupplyQuantityUrl || "",
@@ -77,6 +78,21 @@
     const equipmentMaintenanceCountInput = document.getElementById("copiersEquipmentMaintenanceCount");
     const equipmentLastMaintenanceInput = document.getElementById("copiersEquipmentLastMaintenance");
     const equipmentObservationsInput = document.getElementById("copiersEquipmentObservations");
+    const equipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
+    const equipmentMovementsBody = document.getElementById("copiersEquipmentMovementsBody");
+    const registerMovementBtn = document.getElementById("copiersRegisterMovementBtn");
+    const equipmentMovementModal = document.getElementById("copiersEquipmentMovementModal");
+    const equipmentMovementForm = document.getElementById("copiersEquipmentMovementForm");
+    const equipmentMovementTitle = document.getElementById("copiersEquipmentMovementTitle");
+    const equipmentMovementSubtitle = document.getElementById("copiersEquipmentMovementSubtitle");
+    const equipmentMovementStatus = document.getElementById("copiersEquipmentMovementStatus");
+    const movementEquipmentIdInput = document.getElementById("copiersMovementEquipmentId");
+    const movementClientIdInput = document.getElementById("copiersMovementClientId");
+    const movementClientNameInput = document.getElementById("copiersMovementClientName");
+    const movementClientOptions = document.getElementById("copiersMovementClientOptions");
+    const movementDateInput = document.getElementById("copiersMovementDate");
+    const movementReasonInput = document.getElementById("copiersMovementReason");
+    const movementSaveBtn = document.getElementById("copiersMovementSaveBtn");
     const clientDetailModal = document.getElementById("copiersClientDetailModal");
     const clientDetailForm = document.getElementById("copiersClientDetailForm");
     const clientDetailStatus = document.getElementById("copiersClientDetailStatus");
@@ -162,6 +178,8 @@
         equipmentDetail: null,
         equipmentClientSuggestions: [],
         equipmentAssignmentSaving: false,
+        movementClientSuggestions: [],
+        movementSaving: false,
         clientDetail: null,
         clientSaving: false,
         equipmentInventory: null,
@@ -246,6 +264,7 @@
     newIngresoBtn?.addEventListener("click", openIngresoModal);
     verifyIngresoBtn?.addEventListener("click", openConfirmIngresoModal);
     confirmIngresoBtn?.addEventListener("click", approveSelectedIngreso);
+    registerMovementBtn?.addEventListener("click", openEquipmentMovementModal);
 
     pendingInvoicesBody?.addEventListener("click", (event) => {
         const target = event.target;
@@ -358,6 +377,11 @@
         await saveEquipmentAssignment();
     });
 
+    equipmentMovementForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveEquipmentMovement();
+    });
+
     clientDetailForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveEquipmentClient();
@@ -384,6 +408,8 @@
             closeModal(maintenanceModal);
         } else if (closeTarget === "equipmentDetail") {
             closeModal(equipmentDetailModal);
+        } else if (closeTarget === "equipmentMovement") {
+            closeModal(equipmentMovementModal);
         } else if (closeTarget === "clientDetail") {
             closeModal(clientDetailModal);
         } else if (closeTarget === "supply") {
@@ -402,7 +428,7 @@
             return;
         }
 
-        [confirmIngresoModal, ingresoModal, supplyModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
+        [confirmIngresoModal, ingresoModal, supplyModal, equipmentMovementModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
             if (modal && !modal.hidden) {
                 closeModal(modal);
             }
@@ -424,17 +450,17 @@
         updateMaintenanceEquipmentOptions();
     });
 
-    equipmentClientNameInput?.addEventListener("input", debounce(async () => {
-        equipmentClientIdInput.value = "";
-        await updateClientSuggestions(equipmentClientNameInput.value, equipmentClientOptions, "equipment");
+    movementClientNameInput?.addEventListener("input", debounce(async () => {
+        movementClientIdInput.value = "";
+        await updateClientSuggestions(movementClientNameInput.value, movementClientOptions, "movement");
     }, 250));
 
-    equipmentClientNameInput?.addEventListener("focus", () => {
-        updateClientSuggestions(equipmentClientNameInput.value, equipmentClientOptions, "equipment");
+    movementClientNameInput?.addEventListener("focus", () => {
+        updateClientSuggestions(movementClientNameInput.value, movementClientOptions, "movement");
     });
 
-    equipmentClientNameInput?.addEventListener("change", () => {
-        syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
+    movementClientNameInput?.addEventListener("change", () => {
+        syncClientSelection(movementClientNameInput, movementClientIdInput, state.movementClientSuggestions);
     });
 
     inventoryClientNameInput?.addEventListener("input", debounce(async () => {
@@ -695,7 +721,13 @@
         resetEquipmentDetail();
         showModal(equipmentDetailModal);
         equipmentDetailTitle.textContent = row?.serial ? `Equipo ${row.serial}` : "Detalle del equipo";
-        equipmentDetailSubtitle.textContent = "Cargando informacion del equipo...";
+        equipmentDetailSubtitle.textContent = "Cargando informacion e historiales del equipo...";
+        if (equipmentMaintenanceBody) {
+            equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Cargando historial del equipo...</td></tr>`;
+        }
+        if (equipmentMovementsBody) {
+            equipmentMovementsBody.innerHTML = `<tr><td colspan="3" class="text-center copiers-muted">Cargando movimientos del equipo...</td></tr>`;
+        }
         showStatus(equipmentDetailStatus, "info", "Consultando detalle del equipo...");
     }
 
@@ -723,7 +755,7 @@
         state.equipmentDetail = detail || null;
         equipmentRecordIdInput.value = equipment.recordId || "";
         equipmentClientIdInput.value = equipment.clientId || "";
-        equipmentClientNameInput.value = equipment.inStock ? "" : (equipment.clientName || "");
+        equipmentClientNameInput.value = equipment.inStock ? "Stock" : (equipment.clientName || "");
         equipmentSerialInput.value = equipment.serial || "";
         equipmentAreaInput.value = equipment.area || "";
         equipmentSiteInput.value = equipment.site || "";
@@ -735,8 +767,10 @@
 
         equipmentDetailTitle.textContent = equipment.serial ? `Equipo ${equipment.serial}` : "Detalle del equipo";
         equipmentDetailSubtitle.textContent = equipment.inStock
-            ? "Este equipo esta en stock. Puedes asignarle un cliente y completar sus datos."
-            : "Edita los datos visibles de la tabla y los campos de seguimiento.";
+            ? "Este equipo esta en stock. Usa Registrar movimiento para asignarlo a un cliente."
+            : "Edita los datos visibles de la tabla y consulta sus movimientos.";
+        renderEquipmentMaintenanceTable(detail?.maintenanceRows);
+        renderEquipmentMovementsTable(detail?.movementRows);
     }
 
     function resetEquipmentDetail() {
@@ -755,6 +789,54 @@
         equipmentDetailTitle.textContent = "Detalle del equipo";
         equipmentDetailSubtitle.textContent = "Edita la informacion operativa del equipo seleccionado.";
         clearStatus(equipmentDetailStatus);
+        if (equipmentMaintenanceBody) {
+            equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Selecciona un equipo para ver sus mantenimientos.</td></tr>`;
+        }
+        if (equipmentMovementsBody) {
+            equipmentMovementsBody.innerHTML = `<tr><td colspan="3" class="text-center copiers-muted">Selecciona un equipo para ver sus movimientos.</td></tr>`;
+        }
+    }
+
+    function renderEquipmentMaintenanceTable(rows) {
+        if (!equipmentMaintenanceBody) {
+            return;
+        }
+
+        const items = Array.isArray(rows) ? rows : [];
+        equipmentMaintenanceBody.innerHTML = items.length ? items.map((row) => {
+            const attachment = row.hasAttachment
+                ? `<a class="copiers-link" href="${buildDownloadUrl(urls.downloadMaintenance, "maintenanceId", row.recordId)}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
+                : `<span class="copiers-muted">Sin adjunto</span>`;
+            const statusValue = Number(row.maintenanceStatusValue || maintenanceStatusPending);
+            const completed = statusValue === maintenanceStatusCompleted;
+
+            return `
+                <tr>
+                    <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
+                    <td data-label="Titulo">${escapeHtml(row.title || "")}</td>
+                    <td data-label="Tipo">${escapeHtml(row.maintenanceTypeLabel || "")}</td>
+                    <td data-label="Estado"><span class="copiers-badge ${completed ? "is-good" : "is-warning"}">${escapeHtml(row.maintenanceStatusLabel || "Pendiente")}</span></td>
+                    <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td data-label="Tecnico">${escapeHtml(row.technicianName || "")}</td>
+                    <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
+                    <td data-label="ID">${escapeHtml(row.internalId || "")}</td>
+                    <td data-label="Adjunto">${attachment}</td>
+                </tr>`;
+        }).join("") : `<tr><td colspan="9" class="text-center copiers-muted">Este equipo no tiene mantenimientos registrados.</td></tr>`;
+    }
+
+    function renderEquipmentMovementsTable(rows) {
+        if (!equipmentMovementsBody) {
+            return;
+        }
+
+        const items = Array.isArray(rows) ? rows : [];
+        equipmentMovementsBody.innerHTML = items.length ? items.map((row) => `
+            <tr>
+                <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
+                <td data-label="Cliente nuevo">${escapeHtml(row.clientName || "Sin cliente")}</td>
+                <td data-label="Motivo">${escapeHtml(row.reason || "")}</td>
+            </tr>`).join("") : `<tr><td colspan="3" class="text-center copiers-muted">Este equipo no tiene movimientos registrados.</td></tr>`;
     }
 
     function populateEquipmentCategoryOptions(selectedValue, options) {
@@ -766,14 +848,93 @@
         }).join("");
     }
 
+    function openEquipmentMovementModal() {
+        const equipment = state.equipmentDetail?.equipment || {};
+        const equipmentId = equipment.recordId || equipmentRecordIdInput.value || "";
+        if (!equipmentId) {
+            showStatus(equipmentDetailStatus, "error", "Selecciona un equipo antes de registrar un movimiento.");
+            return;
+        }
+
+        movementEquipmentIdInput.value = equipmentId;
+        movementClientIdInput.value = "";
+        movementClientNameInput.value = "";
+        movementClientOptions.innerHTML = "";
+        movementDateInput.value = todayValue();
+        movementReasonInput.value = "";
+        state.movementClientSuggestions = [];
+        equipmentMovementTitle.textContent = "Registrar movimiento";
+        equipmentMovementSubtitle.textContent = equipment.serial
+            ? `Registra el cambio de cliente para el equipo ${equipment.serial}.`
+            : "Registra el cambio de cliente del equipo seleccionado.";
+        clearStatus(equipmentMovementStatus);
+        showModal(equipmentMovementModal);
+        movementClientNameInput.focus();
+    }
+
+    async function saveEquipmentMovement() {
+        if (state.movementSaving) {
+            return;
+        }
+
+        try {
+            syncClientSelection(movementClientNameInput, movementClientIdInput, state.movementClientSuggestions);
+            const equipmentId = movementEquipmentIdInput.value || equipmentRecordIdInput.value || "";
+            const clientName = (movementClientNameInput.value || "").trim();
+            const reason = (movementReasonInput.value || "").trim();
+            if (!equipmentId) {
+                throw new Error("Selecciona un equipo para registrar el movimiento.");
+            }
+            if (!clientName || !movementClientIdInput.value) {
+                throw new Error("Selecciona un cliente nuevo valido de la lista.");
+            }
+            if (!movementDateInput.value) {
+                throw new Error("Debes indicar la fecha de movimiento.");
+            }
+            if (!reason) {
+                throw new Error("Debes indicar el motivo del movimiento.");
+            }
+
+            state.movementSaving = true;
+            movementSaveBtn.disabled = true;
+            showStatus(equipmentMovementStatus, "info", "Registrando movimiento...");
+            const payload = {
+                equipmentId,
+                clientId: movementClientIdInput.value,
+                clientName,
+                dateValue: movementDateInput.value,
+                reason
+            };
+
+            const result = await fetchJson(urls.registerEquipmentMovement, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            await loadEquipment();
+            if (state.equipmentInventory) {
+                await loadEquipmentInventory();
+            }
+
+            const detail = await fetchJson(`${urls.equipmentDetail}?equipmentId=${encodeURIComponent(equipmentId)}`);
+            fillEquipmentDetail(detail);
+            closeModal(equipmentMovementModal);
+            showStatus(equipmentDetailStatus, "success", result.message || "Movimiento registrado correctamente.");
+        } catch (error) {
+            showStatus(equipmentMovementStatus, "error", getErrorMessage(error));
+        } finally {
+            state.movementSaving = false;
+            movementSaveBtn.disabled = false;
+        }
+    }
+
     async function saveEquipmentAssignment() {
         if (state.equipmentAssignmentSaving) {
             return;
         }
 
         try {
-            syncClientSelection(equipmentClientNameInput, equipmentClientIdInput, state.equipmentClientSuggestions);
-            const clientName = (equipmentClientNameInput.value || "").trim();
             const serial = (equipmentSerialInput.value || "").trim();
             if (!serial) {
                 throw new Error("Debes indicar el serial del equipo.");
@@ -785,8 +946,6 @@
             const payload = {
                 recordId: equipmentRecordIdInput.value,
                 serial,
-                clientId: equipmentClientIdInput.value,
-                clientName,
                 categoryValue: parseNullableInt(equipmentCategorySelect.value),
                 reference: equipmentReferenceInput.value || "",
                 area: equipmentAreaInput.value || "",
@@ -1263,6 +1422,8 @@
             const suggestions = await fetchJson(`${urls.clientSearch}?q=${encodeURIComponent(query)}&top=5000`);
             if (target === "delivery") {
                 state.deliveryClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
+            } else if (target === "movement") {
+                state.movementClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             } else if (target === "equipmentInventory") {
                 state.equipmentInventoryClientSuggestions = Array.isArray(suggestions) ? suggestions : [];
             } else if (target === "equipment") {
@@ -1278,6 +1439,8 @@
             datalist.innerHTML = "";
             if (target === "delivery") {
                 state.deliveryClientSuggestions = [];
+            } else if (target === "movement") {
+                state.movementClientSuggestions = [];
             } else if (target === "equipmentInventory") {
                 state.equipmentInventoryClientSuggestions = [];
             } else if (target === "equipment") {

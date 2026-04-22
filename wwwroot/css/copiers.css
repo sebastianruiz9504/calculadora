@@ -280,6 +280,10 @@
     min-width: 1040px;
 }
 
+.copiers-table--equipment-movements {
+    min-width: 720px;
+}
+
 .copiers-table--equipment-inventory {
     min-width: 900px;
 }
@@ -472,6 +476,18 @@
     gap: 8px;
 }
 
+.copiers-inline-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.copiers-inline-control .btn {
+    min-height: 44px;
+    white-space: nowrap;
+}
+
 .copiers-field--span-2 {
     grid-column: 1 / -1;
 }
@@ -635,6 +651,7 @@
     .copiers-location-card--client,
     .copiers-modal__dialog--wide .copiers-form__grid,
     .copiers-form__grid,
+    .copiers-inline-control,
     .copiers-detail-summary {
         grid-template-columns: 1fr;
     }

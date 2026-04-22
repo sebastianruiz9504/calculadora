@@ -33,6 +33,14 @@ public sealed partial class DataverseService
     private const string CopiersClientEmailField = "cr07a_correoelectronico";
     private const string CopiersClientPhoneField = "cr07a_telefono";
     private const string CopiersClientAddressField = "cr07a_direccion";
+    private const string DashboardEquipmentMovementTableLogicalName = "cr07a_movimientosequipos";
+    private const string DashboardEquipmentMovementTableSetName = "cr07a_movimientosequiposes";
+    private const string DashboardEquipmentMovementIdField = "cr07a_movimientosequiposid";
+    private const string DashboardEquipmentMovementPrimaryNameField = "cr07a_name";
+    private const string DashboardEquipmentMovementEquipmentField = "cr07a_equipo";
+    private const string DashboardEquipmentMovementClientField = "cr07a_cliente";
+    private const string DashboardEquipmentMovementDateField = "cr07a_fecha";
+    private const string DashboardEquipmentMovementReasonField = "cr07a_motivo";
 
     private const string DashboardMaintenanceTableLogicalName = "cr07a_mantenimiento";
     private const string DashboardMaintenanceTableSetName = "cr07a_mantenimientos";
@@ -155,16 +163,25 @@ public sealed partial class DataverseService
             DashboardMaintenancePrimaryNameField,
             httpContext.User,
             ct);
+        var movementMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentMovementTableLogicalName,
+            DashboardEquipmentMovementTableSetName,
+            DashboardEquipmentMovementIdField,
+            DashboardEquipmentMovementPrimaryNameField,
+            httpContext.User,
+            ct);
 
         var normalizedEquipmentId = NormalizeGuid(equipmentId, nameof(equipmentId));
         var equipment = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
             ?? throw new InvalidOperationException("No encontramos el equipo seleccionado.");
         var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedEquipmentId);
+        var movementRows = await GetEquipmentMovementRecordsAsync(movementMetadata, httpContext.User, ct, normalizedEquipmentId);
 
         return new CopiersEquipmentDetailDto
         {
             Equipment = BuildEquipmentRows(new[] { equipment }, maintenanceRows).First(),
             MaintenanceRows = BuildMaintenanceRows(maintenanceRows),
+            MovementRows = BuildEquipmentMovementRows(movementRows),
             CategoryOptions = BuildEquipmentCategoryOptions()
         };
     }
@@ -344,8 +361,9 @@ public sealed partial class DataverseService
             ct);
 
         var normalizedRecordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
-        var current = await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct)
-            ?? throw new InvalidOperationException("No encontramos el equipo que quieres actualizar.");
+        if (await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct) is null)
+            throw new InvalidOperationException("No encontramos el equipo que quieres actualizar.");
+
         var serial = (request.Serial ?? "").Trim();
         if (string.IsNullOrWhiteSpace(serial))
             throw new InvalidOperationException("Debes indicar el serial del equipo.");
@@ -360,36 +378,6 @@ public sealed partial class DataverseService
             [DashboardEquipmentObservationsField] = (request.Observations ?? "").Trim()
         };
         payload[DashboardEquipmentSerialField] = serial;
-
-        var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
-            DashboardEquipmentTableLogicalName,
-            DashboardEquipmentClientField,
-            DashboardEquipmentClientField,
-            httpContext.User,
-            ct);
-        var requestedClientId = NormalizeOptionalGuid(request.ClientId);
-        var clientName = (request.ClientName ?? "").Trim();
-
-        if (string.IsNullOrWhiteSpace(requestedClientId) && string.IsNullOrWhiteSpace(clientName))
-        {
-            payload[$"{navigationProperty}@odata.bind"] = null;
-        }
-        else
-        {
-            var resolvedClientId = !string.IsNullOrWhiteSpace(requestedClientId)
-                ? requestedClientId
-                : string.Equals(
-                    NormalizeCopiersComparableValue(clientName),
-                    NormalizeCopiersComparableValue(current.ClientName),
-                    StringComparison.Ordinal)
-                    ? NormalizeOptionalGuid(current.ClientId)
-                    : await ResolveCopiersClientIdAsync(clientName, ct);
-
-            if (string.IsNullOrWhiteSpace(resolvedClientId))
-                throw new InvalidOperationException("No encontramos un cliente valido para el valor digitado. Selecciona una opcion sugerida.");
-
-            payload[$"{navigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({resolvedClientId})";
-        }
 
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})";
         await CallDataverseSendAsync(relativeUrl, "PATCH", payload, httpContext.User, ct);
@@ -410,6 +398,102 @@ public sealed partial class DataverseService
             RecordId = normalizedRecordId,
             Message = "Equipo actualizado correctamente.",
             Equipment = BuildEquipmentRows(new[] { updated }, maintenanceRows).First()
+        };
+    }
+
+    public async Task<CopiersEquipmentMovementSaveResultDto> RegisterCopiersEquipmentMovementAsync(
+        CopiersEquipmentMovementSaveRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var equipmentMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            httpContext.User,
+            ct);
+        var movementMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentMovementTableLogicalName,
+            DashboardEquipmentMovementTableSetName,
+            DashboardEquipmentMovementIdField,
+            DashboardEquipmentMovementPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var normalizedEquipmentId = NormalizeGuid(request.EquipmentId, nameof(request.EquipmentId));
+        var current = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("No encontramos el equipo para registrar el movimiento.");
+
+        var clientName = (request.ClientName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(clientName))
+            throw new InvalidOperationException("Debes indicar el cliente nuevo del movimiento.");
+
+        var requestedClientId = NormalizeOptionalGuid(request.ClientId);
+        var resolvedClientId = !string.IsNullOrWhiteSpace(requestedClientId)
+            ? requestedClientId
+            : await ResolveCopiersClientIdAsync(clientName, ct);
+        if (string.IsNullOrWhiteSpace(resolvedClientId))
+            throw new InvalidOperationException("No encontramos un cliente valido para el movimiento. Selecciona una opcion sugerida.");
+
+        var reason = (request.Reason ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("Debes indicar el motivo del movimiento.");
+
+        if (!TryParseDateOnly(request.DateValue, out var movementDate))
+            throw new InvalidOperationException("Debes indicar una fecha de movimiento valida.");
+
+        var movementRecordId = await CreateCopiersEquipmentMovementAsync(
+            movementMetadata,
+            equipmentMetadata,
+            current,
+            normalizedEquipmentId,
+            resolvedClientId,
+            clientName,
+            movementDate,
+            reason,
+            httpContext.User,
+            ct);
+
+        var equipmentClientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentClientField,
+            DashboardEquipmentClientField,
+            httpContext.User,
+            ct);
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{equipmentMetadata.EntitySetName}({normalizedEquipmentId})",
+            "PATCH",
+            new Dictionary<string, object?>
+            {
+                [$"{equipmentClientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({resolvedClientId})"
+            },
+            httpContext.User,
+            ct);
+
+        var updated = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("El movimiento se registro pero no pudimos refrescar la informacion del equipo.");
+        var maintenanceMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardMaintenanceTableLogicalName,
+            DashboardMaintenanceTableSetName,
+            DashboardMaintenanceIdField,
+            DashboardMaintenancePrimaryNameField,
+            httpContext.User,
+            ct);
+        var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct, normalizedEquipmentId);
+        var movementRows = await GetEquipmentMovementRecordsAsync(movementMetadata, httpContext.User, ct, normalizedEquipmentId);
+
+        return new CopiersEquipmentMovementSaveResultDto
+        {
+            RecordId = movementRecordId,
+            Message = "Movimiento registrado y equipo reasignado correctamente.",
+            Equipment = BuildEquipmentRows(new[] { updated }, maintenanceRows).First(),
+            MovementRows = BuildEquipmentMovementRows(movementRows)
         };
     }
 
@@ -533,6 +617,252 @@ public sealed partial class DataverseService
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         using var doc = JsonDocument.Parse(json);
         return ParseEquipmentRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
+    }
+
+    private async Task<string> CreateCopiersEquipmentMovementAsync(
+        RhEntityMetadata movementMetadata,
+        RhEntityMetadata equipmentMetadata,
+        CopiersEquipmentRecordRow equipment,
+        string equipmentId,
+        string clientId,
+        string clientName,
+        DateOnly movementDate,
+        string reason,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            DashboardEquipmentMovementTableLogicalName,
+            DashboardEquipmentMovementClientField,
+            DashboardEquipmentMovementClientField,
+            user,
+            ct);
+        var equipmentLookupCandidates = await ResolveCopiersEquipmentMovementEquipmentLookupFieldCandidatesAsync(user, ct);
+        InvalidOperationException? lastLookupException = null;
+
+        foreach (var equipmentLookupField in equipmentLookupCandidates)
+        {
+            try
+            {
+                var equipmentNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                    DashboardEquipmentMovementTableLogicalName,
+                    equipmentLookupField,
+                    equipmentLookupField,
+                    user,
+                    ct);
+                var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [DashboardEquipmentMovementDateField] = movementDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    [DashboardEquipmentMovementReasonField] = reason,
+                    [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})",
+                    [$"{equipmentNavigationProperty}@odata.bind"] = $"/{equipmentMetadata.EntitySetName}({equipmentId})"
+                };
+
+                if (!string.IsNullOrWhiteSpace(movementMetadata.PrimaryNameField)
+                    && !string.Equals(movementMetadata.PrimaryNameField, movementMetadata.PrimaryIdField, StringComparison.OrdinalIgnoreCase))
+                {
+                    payload[movementMetadata.PrimaryNameField] = BuildCopiersEquipmentMovementName(equipment, clientName, movementDate);
+                }
+
+                var body = await CallDataverseSendAsync(
+                    $"/api/data/v9.2/{movementMetadata.EntitySetName}",
+                    "POST",
+                    payload,
+                    user,
+                    ct);
+                var createdId = TryReadCreatedDataverseId(body, movementMetadata.PrimaryIdField);
+                return createdId;
+            }
+            catch (InvalidOperationException ex) when (ShouldRetryCopiersEquipmentMovementLookupQuery(ex, equipmentLookupField))
+            {
+                lastLookupException = ex;
+                _logger.LogWarning(
+                    ex,
+                    "Fallo el registro de movimiento usando el lookup de equipo {LookupField}. Se intentara otra variante.",
+                    equipmentLookupField);
+            }
+        }
+
+        if (lastLookupException is not null)
+            throw lastLookupException;
+
+        throw new InvalidOperationException("No fue posible resolver el lookup del equipo para registrar el movimiento.");
+    }
+
+    private async Task<List<CopiersEquipmentMovementRecordRow>> GetEquipmentMovementRecordsAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        string? equipmentId = null)
+    {
+        var equipmentLookupFieldCandidates = await ResolveCopiersEquipmentMovementEquipmentLookupFieldCandidatesAsync(user, ct);
+        InvalidOperationException? lastLookupException = null;
+
+        foreach (var equipmentLookupField in equipmentLookupFieldCandidates)
+        {
+            try
+            {
+                return await GetEquipmentMovementRecordsCoreAsync(metadata, user, ct, equipmentId, equipmentLookupField);
+            }
+            catch (InvalidOperationException ex) when (ShouldRetryCopiersEquipmentMovementLookupQuery(ex, equipmentLookupField))
+            {
+                lastLookupException = ex;
+                _logger.LogWarning(
+                    ex,
+                    "Fallo la consulta de movimientos usando el lookup de equipo {LookupField}. Se intentara otra variante.",
+                    equipmentLookupField);
+            }
+        }
+
+        if (lastLookupException is not null)
+            throw lastLookupException;
+
+        return await GetEquipmentMovementRecordsCoreAsync(
+            metadata,
+            user,
+            ct,
+            equipmentId,
+            DashboardEquipmentMovementEquipmentField);
+    }
+
+    private async Task<List<CopiersEquipmentMovementRecordRow>> GetEquipmentMovementRecordsCoreAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        string? equipmentId,
+        string equipmentLookupField)
+    {
+        var relativeUrl =
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={BuildEquipmentMovementSelectClause(metadata, equipmentLookupField)}" +
+            $"{BuildEquipmentMovementFilterQuery(equipmentId, equipmentLookupField)}" +
+            $"&$orderby={DashboardEquipmentMovementDateField} desc";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(item => ParseEquipmentMovementRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField, equipmentLookupField))
+            .Where(item => item is not null)
+            .Cast<CopiersEquipmentMovementRecordRow>()
+            .ToList();
+    }
+
+    private string BuildEquipmentMovementSelectClause(RhEntityMetadata metadata, string equipmentLookupField)
+    {
+        return string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            BuildDashboardLookupValuePropertyName(equipmentLookupField),
+            BuildDashboardLookupValuePropertyName(DashboardEquipmentMovementClientField),
+            DashboardEquipmentMovementDateField,
+            DashboardEquipmentMovementReasonField
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static string BuildEquipmentMovementFilterQuery(string? equipmentId, string equipmentLookupField)
+    {
+        var normalizedEquipmentId = NormalizeOptionalGuid(equipmentId);
+        if (string.IsNullOrWhiteSpace(normalizedEquipmentId))
+            return "";
+
+        var lookupValueProperty = BuildDashboardLookupValuePropertyName(equipmentLookupField);
+        var filter = $"{lookupValueProperty} eq {normalizedEquipmentId}";
+        return $"&$filter={Uri.EscapeDataString(filter)}";
+    }
+
+    private CopiersEquipmentMovementRecordRow? ParseEquipmentMovementRecord(
+        JsonElement item,
+        string primaryIdField,
+        string primaryNameField,
+        string equipmentLookupField)
+    {
+        var recordId = FirstNonEmpty(
+            ReadString(item, primaryIdField),
+            ReadString(item, DashboardEquipmentMovementIdField),
+            ReadString(item, primaryNameField));
+        if (string.IsNullOrWhiteSpace(recordId))
+            return null;
+
+        var date = ReadDateOnly(item, DashboardEquipmentMovementDateField);
+        var rawDate = ReadString(item, DashboardEquipmentMovementDateField);
+
+        return new CopiersEquipmentMovementRecordRow
+        {
+            RecordId = recordId.Trim(),
+            EquipmentId = ReadCopiersLookupId(item, equipmentLookupField, "equipo"),
+            EquipmentSerial = ReadCopiersFieldDisplayValue(
+                item,
+                equipmentLookupField,
+                "equipo",
+                "Equipo sin nombre"),
+            ClientId = ReadCopiersLookupId(item, DashboardEquipmentMovementClientField, "cliente"),
+            ClientName = ReadCopiersFieldDisplayValue(
+                item,
+                DashboardEquipmentMovementClientField,
+                "cliente",
+                "Cliente sin nombre"),
+            MovementDate = date,
+            DateValue = date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? rawDate,
+            DateDisplay = date?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? rawDate,
+            Reason = ReadString(item, DashboardEquipmentMovementReasonField).Trim()
+        };
+    }
+
+    private async Task<IReadOnlyList<string>> ResolveCopiersEquipmentMovementEquipmentLookupFieldCandidatesAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            DashboardEquipmentMovementTableLogicalName,
+            DashboardEquipmentMovementEquipmentField,
+            DashboardEquipmentMovementEquipmentField,
+            user,
+            ct);
+
+        return BuildLookupLogicalNameCandidates(
+                DashboardEquipmentMovementEquipmentField,
+                "cr07a_iddeequipo",
+                "cr07a_idequipo",
+                navigationProperty)
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Select(candidate => candidate!.Trim())
+            .ToList();
+    }
+
+    private bool ShouldRetryCopiersEquipmentMovementLookupQuery(InvalidOperationException exception, string equipmentLookupField)
+    {
+        var lookupValueProperty = BuildDashboardLookupValuePropertyName(equipmentLookupField);
+        return exception.Message.Contains(equipmentLookupField, StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains(lookupValueProperty, StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildCopiersEquipmentMovementName(
+        CopiersEquipmentRecordRow equipment,
+        string clientName,
+        DateOnly movementDate)
+    {
+        var serial = FirstNonEmpty(equipment.Serial, "Equipo");
+        var dateLabel = movementDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        return $"Movimiento {serial} - {clientName} - {dateLabel}";
+    }
+
+    private static string TryReadCreatedDataverseId(string body, string primaryIdField)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return "";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return FirstNonEmpty(ReadString(doc.RootElement, primaryIdField), ReadString(doc.RootElement, "id"));
+        }
+        catch (JsonException)
+        {
+            return "";
+        }
     }
 
     private async Task<IReadOnlyDictionary<string, CopiersClientContactRow>> GetCopiersClientContactRowsAsync(
@@ -1315,6 +1645,26 @@ public sealed partial class DataverseService
         return !requireEmbed || uri.AbsolutePath.StartsWith("/maps/embed", StringComparison.OrdinalIgnoreCase);
     }
 
+    private IReadOnlyList<CopiersEquipmentMovementRowDto> BuildEquipmentMovementRows(
+        IReadOnlyList<CopiersEquipmentMovementRecordRow> movementRows)
+    {
+        return movementRows
+            .OrderByDescending(item => item.MovementDate ?? DateOnly.MinValue)
+            .ThenBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
+            .Select(item => new CopiersEquipmentMovementRowDto
+            {
+                RecordId = item.RecordId,
+                EquipmentId = item.EquipmentId,
+                EquipmentSerial = item.EquipmentSerial,
+                ClientId = item.ClientId,
+                ClientName = item.ClientName,
+                DateValue = item.DateValue,
+                DateDisplay = item.DateDisplay,
+                Reason = item.Reason
+            })
+            .ToList();
+    }
+
     private IReadOnlyList<CopiersMaintenanceRowDto> BuildMaintenanceRows(
         IReadOnlyList<CopiersMaintenanceRecordRow> maintenanceRows)
     {
@@ -1487,6 +1837,19 @@ public sealed partial class DataverseService
         public string Email { get; init; } = "";
         public string Phone { get; init; } = "";
         public string Address { get; init; } = "";
+    }
+
+    private sealed class CopiersEquipmentMovementRecordRow
+    {
+        public string RecordId { get; init; } = "";
+        public string EquipmentId { get; init; } = "";
+        public string EquipmentSerial { get; init; } = "";
+        public string ClientId { get; init; } = "";
+        public string ClientName { get; init; } = "";
+        public DateOnly? MovementDate { get; init; }
+        public string DateValue { get; init; } = "";
+        public string DateDisplay { get; init; } = "";
+        public string Reason { get; init; } = "";
     }
 
     private sealed class CopiersMaintenanceRecordRow
