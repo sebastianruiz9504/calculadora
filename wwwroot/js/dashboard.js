@@ -40,6 +40,8 @@
     const siigoCustomerSelect = document.getElementById("siigoCustomerSelect");
     const siigoCustomerIdInput = document.getElementById("siigoCustomerIdInput");
     const siigoCustomersLoadButton = document.getElementById("siigoCustomersLoadBtn");
+    const siigoCustomerNitSearch = document.getElementById("siigoCustomerNitSearch");
+    const siigoCustomerNitSearchButton = document.getElementById("siigoCustomerNitSearchBtn");
     const siigoStartDateInput = document.getElementById("siigoStartDateInput");
     const siigoEndDateInput = document.getElementById("siigoEndDateInput");
     const siigoUseActivePeriodButton = document.getElementById("siigoUseActivePeriodBtn");
@@ -228,6 +230,7 @@
         siigoInvoicesDownloading: false,
         siigoCustomers: [],
         siigoCustomersLoading: false,
+        siigoCustomerNitSearching: false,
         copiersDashboard: null,
         copiersEquipmentDashboard: null,
         taxesDashboard: null,
@@ -411,8 +414,13 @@
         syncSiigoCustomerControls();
     }
 
+    function setSiigoCustomerNitSearching(searching) {
+        state.siigoCustomerNitSearching = searching;
+        syncSiigoCustomerControls();
+    }
+
     function syncSiigoCustomerControls() {
-        const busy = state.siigoCustomersLoading || state.siigoInvoicesLoading || state.siigoInvoicesDownloading;
+        const busy = state.siigoCustomersLoading || state.siigoCustomerNitSearching || state.siigoInvoicesLoading || state.siigoInvoicesDownloading;
         const hasCustomers = Array.isArray(state.siigoCustomers) && state.siigoCustomers.length > 0;
 
         if (siigoCustomerSelect) {
@@ -426,6 +434,15 @@
                 : hasCustomers
                     ? "Actualizar clientes"
                     : "Consultar clientes";
+        }
+
+        if (siigoCustomerNitSearch) {
+            siigoCustomerNitSearch.disabled = busy;
+        }
+
+        if (siigoCustomerNitSearchButton) {
+            siigoCustomerNitSearchButton.disabled = busy;
+            siigoCustomerNitSearchButton.textContent = state.siigoCustomerNitSearching ? "Buscando..." : "Buscar NIT";
         }
     }
 
@@ -1936,6 +1953,11 @@
         return app.dataset.siigoCustomersUrl || "";
     }
 
+    function buildSiigoCustomerSearchUrl(query) {
+        const baseUrl = app.dataset.siigoCustomerSearchUrl || "";
+        return `${baseUrl}?q=${encodeURIComponent(normalizeNitValue(query || ""))}`;
+    }
+
     function buildSiigoInvoicesUrl() {
         const baseUrl = app.dataset.siigoInvoicesUrl || "";
         const selectedCustomer = getSelectedSiigoCustomer();
@@ -1965,6 +1987,35 @@
 
         return state.siigoCustomers.find(customer =>
             String(customer?.id || "") === selectedId) || null;
+    }
+
+    function buildSiigoCustomerKey(customer) {
+        return (customer?.id || `${customer?.identification || ""}:${customer?.branchOffice || 0}:${customer?.type || ""}`).toString();
+    }
+
+    function upsertSiigoCustomers(items) {
+        const incoming = Array.isArray(items) ? items : [];
+        const byKey = new Map();
+
+        state.siigoCustomers.forEach(customer => {
+            const key = buildSiigoCustomerKey(customer);
+            if (key) {
+                byKey.set(key, customer);
+            }
+        });
+
+        incoming.forEach(customer => {
+            const key = buildSiigoCustomerKey(customer);
+            if (key) {
+                byKey.set(key, customer);
+            }
+        });
+
+        state.siigoCustomers = Array.from(byKey.values())
+            .sort((left, right) => buildSiigoCustomerOptionLabel(left).localeCompare(
+                buildSiigoCustomerOptionLabel(right),
+                "es",
+                { numeric: true, sensitivity: "base" }));
     }
 
     function buildSiigoCustomerOptionLabel(customer) {
@@ -4428,6 +4479,48 @@
         }
     }
 
+    async function searchSiigoCustomerByNit() {
+        const query = normalizeNitValue(siigoCustomerNitSearch?.value || "");
+        if (query.length < 3) {
+            setStatus(siigoInvoicesStatus, "error", "Ingresa al menos 3 digitos del NIT para buscar en Siigo.");
+            return;
+        }
+
+        const url = buildSiigoCustomerSearchUrl(query);
+        if (!url) {
+            setStatus(siigoInvoicesStatus, "error", "No hay una URL configurada para buscar clientes por NIT en Siigo.");
+            return;
+        }
+
+        setSiigoCustomerNitSearching(true);
+        setStatus(siigoInvoicesStatus, "info", `Buscando NIT ${query} en Siigo...`);
+
+        try {
+            const items = await fetchJson(url);
+            const customers = Array.isArray(items) ? items : [];
+            if (!customers.length) {
+                setStatus(siigoInvoicesStatus, "error", `Siigo no devolvio terceros para el NIT ${query}.`);
+                return;
+            }
+
+            upsertSiigoCustomers(customers);
+            renderSiigoCustomerSelect();
+
+            const selected = customers[0];
+            if (siigoCustomerSelect) {
+                siigoCustomerSelect.value = selected?.id || "";
+            }
+
+            syncSiigoCustomerSelection();
+            resetSiigoInvoicesTable("Consulta Siigo para el cliente encontrado.");
+            setStatus(siigoInvoicesStatus, "success", `Cliente encontrado y agregado al dropdown: ${buildSiigoCustomerOptionLabel(selected)}.`);
+        } catch (error) {
+            setStatus(siigoInvoicesStatus, "error", formatSiigoUiError(`buscar el NIT ${query} en Siigo`, error, url));
+        } finally {
+            setSiigoCustomerNitSearching(false);
+        }
+    }
+
     async function loadSiigoInvoices() {
         const customerId = siigoCustomerSelect?.value || siigoCustomerIdInput?.value || "";
         const startDate = siigoStartDateInput?.value || "";
@@ -4781,6 +4874,13 @@
     });
     siigoInvoicesLoadButton?.addEventListener("click", loadSiigoInvoices);
     siigoCustomersLoadButton?.addEventListener("click", loadSiigoCustomers);
+    siigoCustomerNitSearchButton?.addEventListener("click", searchSiigoCustomerByNit);
+    siigoCustomerNitSearch?.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            searchSiigoCustomerByNit();
+        }
+    });
     siigoInvoicesDownloadButton?.addEventListener("click", downloadSiigoInvoices);
     siigoCustomerSelect?.addEventListener("change", () => {
         syncSiigoCustomerSelection();

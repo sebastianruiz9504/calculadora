@@ -528,6 +528,10 @@
     min-width: 170px;
 }
 
+.dashboard-search--nit {
+    min-width: 190px;
+}
+
 .dashboard-search--customer {
     min-width: 360px;
 }

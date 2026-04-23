@@ -69,13 +69,7 @@ public sealed class SiigoService : ISiigoService
             }
         }
 
-        return results.Values
-            .OrderBy(static customer => ResolveCustomerTypeOrder(customer.Type))
-            .ThenBy(static customer => customer.Active ? 0 : 1)
-            .ThenBy(static customer => string.IsNullOrWhiteSpace(customer.DisplayName) ? customer.Identification : customer.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static customer => customer.Identification, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static customer => customer.BranchOffice)
-            .ToList();
+        return SortCustomers(results.Values).ToList();
     }
 
     public async Task<IReadOnlyList<SiigoCustomerLookupItemDto>> SearchCustomersAsync(string query, int top = 12, CancellationToken ct = default)
@@ -87,27 +81,35 @@ public sealed class SiigoService : ISiigoService
         var requestedTop = Math.Clamp(top, 1, 50);
         var digits = ExtractDigits(search);
         var results = new Dictionary<string, SiigoCustomerLookupItemDto>(StringComparer.OrdinalIgnoreCase);
+        var customerTypes = new[] { "Customer", "Supplier", "Other" };
+        var activeStates = new[] { true, false };
 
         foreach (var identification in BuildIdentificationCandidates(digits))
         {
-            var exactPage = await GetPagedAsync<SiigoCustomerApiDto>(
-                "v1/customers",
-                new[]
+            foreach (var customerType in customerTypes)
+            {
+                foreach (var active in activeStates)
                 {
-                    Pair("identification", identification),
-                    Pair("active", "true"),
-                    Pair("type", "Customer"),
-                    Pair("page", "1"),
-                    Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
-                },
-                ct);
+                    var exactPage = await GetPagedAsync<SiigoCustomerApiDto>(
+                        "v1/customers",
+                        new[]
+                        {
+                            Pair("identification", identification),
+                            Pair("active", active ? "true" : "false"),
+                            Pair("type", customerType),
+                            Pair("page", "1"),
+                            Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
+                        },
+                        ct);
 
-            AddCustomerResults(results, exactPage.Results.Select(MapCustomer), requestedTop);
-            if (results.Count >= requestedTop)
-                return results.Values.Take(requestedTop).ToList();
+                    AddCustomerResults(results, exactPage.Results.Select(MapCustomer), requestedTop);
+                    if (results.Count >= requestedTop)
+                        return SortCustomers(results.Values).Take(requestedTop).ToList();
+                }
+            }
         }
 
-        return results.Values.Take(requestedTop).ToList();
+        return SortCustomers(results.Values).Take(requestedTop).ToList();
     }
 
     public async Task<SiigoInvoiceSearchResultDto> GetInvoicesAsync(
@@ -495,6 +497,14 @@ public sealed class SiigoService : ISiigoService
             "Other" => 2,
             _ => 3
         };
+
+    private static IOrderedEnumerable<SiigoCustomerLookupItemDto> SortCustomers(IEnumerable<SiigoCustomerLookupItemDto> customers) =>
+        customers
+            .OrderBy(static customer => ResolveCustomerTypeOrder(customer.Type))
+            .ThenBy(static customer => customer.Active ? 0 : 1)
+            .ThenBy(static customer => string.IsNullOrWhiteSpace(customer.DisplayName) ? customer.Identification : customer.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static customer => customer.Identification, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static customer => customer.BranchOffice);
 
     private static SiigoInvoiceRowDto MapInvoice(SiigoInvoiceApiDto invoice)
     {

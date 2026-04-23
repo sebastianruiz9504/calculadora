@@ -13,6 +13,7 @@
      data-billing-client-report-url="@Url.Action("BillingClientReport", "Dashboard")"
      data-billing-client-report-export-url="@Url.Action("BillingClientReportExport", "Dashboard")"
      data-siigo-customers-url="@Url.Action("SiigoCustomers", "Dashboard")"
+     data-siigo-customer-search-url="@Url.Action("SiigoCustomerSearch", "Dashboard")"
      data-siigo-invoices-url="@Url.Action("SiigoInvoices", "Dashboard")"
      data-siigo-invoices-download-url="@Url.Action("SiigoInvoicesDownload", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
@@ -191,6 +192,17 @@
                             </select>
                         </label>
                         <button type="button" class="btn btn-outline-secondary" id="siigoCustomersLoadBtn">Consultar clientes</button>
+                        <label class="dashboard-search dashboard-search--nit" for="siigoCustomerNitSearch">
+                            <span class="dashboard-search__label">Buscar NIT</span>
+                            <input type="search"
+                                   id="siigoCustomerNitSearch"
+                                   class="form-control dashboard-search__input"
+                                   autocomplete="off"
+                                   inputmode="numeric"
+                                   pattern="[0-9.\-\s]*"
+                                   placeholder="Ej. 900300358" />
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary" id="siigoCustomerNitSearchBtn">Buscar NIT</button>
                         <label class="dashboard-search dashboard-search--date" for="siigoStartDateInput">
                             <span class="dashboard-search__label">Desde</span>
                             <input type="date" id="siigoStartDateInput" class="form-control dashboard-search__input" />
