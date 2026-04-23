@@ -239,6 +239,80 @@
     white-space: normal;
 }
 
+.lic-lookup {
+    position: relative;
+    display: grid;
+    gap: 6px;
+}
+
+.lic-lookup-input {
+    min-width: 240px;
+}
+
+.lic-lookup-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 4;
+    display: none;
+    max-height: 230px;
+    overflow: auto;
+    padding: 6px;
+    border: 1px solid var(--lic-line);
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, .16);
+}
+
+.lic-lookup-menu.is-open {
+    display: grid;
+    gap: 4px;
+}
+
+.lic-lookup-option {
+    display: grid;
+    gap: 2px;
+    width: 100%;
+    padding: 8px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--lic-ink);
+    text-align: left;
+}
+
+.lic-lookup-option:hover,
+.lic-lookup-option:focus {
+    background: var(--lic-brand-soft);
+    outline: 0;
+}
+
+.lic-lookup-option span,
+.lic-lookup-option small,
+.lic-lookup-empty,
+.lic-lookup-note {
+    overflow-wrap: anywhere;
+}
+
+.lic-lookup-option span {
+    font-weight: 650;
+}
+
+.lic-lookup-option small,
+.lic-lookup-empty {
+    color: var(--lic-muted);
+    font-size: 12px;
+}
+
+.lic-lookup-empty {
+    padding: 8px 9px;
+}
+
+.lic-lookup-note.is-warning {
+    color: var(--lic-warning);
+}
+
 .lic-status {
     display: none;
     padding: 13px 15px;

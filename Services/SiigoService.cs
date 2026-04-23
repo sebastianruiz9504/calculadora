@@ -36,6 +36,37 @@ public sealed class SiigoService : ISiigoService
         _logger = logger;
     }
 
+    public async Task<IReadOnlyList<SiigoCustomerLookupItemDto>> GetCustomersAsync(CancellationToken ct = default)
+    {
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxCustomerPages, 1, 200);
+        var results = new Dictionary<string, SiigoCustomerLookupItemDto>(StringComparer.OrdinalIgnoreCase);
+
+        for (var page = 1; page <= maxPages; page++)
+        {
+            var response = await GetPagedAsync<SiigoCustomerApiDto>(
+                "v1/customers",
+                new[]
+                {
+                    Pair("type", "Customer"),
+                    Pair("page", page.ToString(CultureInfo.InvariantCulture)),
+                    Pair("page_size", pageSize.ToString(CultureInfo.InvariantCulture))
+                },
+                ct);
+
+            AddCustomerResults(results, response.Results.Select(MapCustomer), int.MaxValue);
+
+            if (ShouldStopPaging(response.Pagination, page, pageSize, response.Results.Count))
+                break;
+        }
+
+        return results.Values
+            .OrderBy(static customer => string.IsNullOrWhiteSpace(customer.DisplayName) ? customer.Identification : customer.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static customer => customer.Identification, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static customer => customer.BranchOffice)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<SiigoCustomerLookupItemDto>> SearchCustomersAsync(string query, int top = 12, CancellationToken ct = default)
     {
         var search = (query ?? "").Trim();

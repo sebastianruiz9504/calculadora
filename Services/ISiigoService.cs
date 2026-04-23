@@ -4,6 +4,8 @@ namespace CotizadorInterno.Web.Services;
 
 public interface ISiigoService
 {
+    Task<IReadOnlyList<SiigoCustomerLookupItemDto>> GetCustomersAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<SiigoCustomerLookupItemDto>> SearchCustomersAsync(string query, int top = 12, CancellationToken ct = default);
 
     Task<SiigoInvoiceSearchResultDto> GetInvoicesAsync(

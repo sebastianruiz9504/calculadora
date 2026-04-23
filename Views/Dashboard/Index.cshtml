@@ -12,7 +12,7 @@
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-billing-client-report-url="@Url.Action("BillingClientReport", "Dashboard")"
      data-billing-client-report-export-url="@Url.Action("BillingClientReportExport", "Dashboard")"
-     data-siigo-customer-search-url="@Url.Action("SiigoCustomerSearch", "Dashboard")"
+     data-siigo-customers-url="@Url.Action("SiigoCustomers", "Dashboard")"
      data-siigo-invoices-url="@Url.Action("SiigoInvoices", "Dashboard")"
      data-siigo-invoices-download-url="@Url.Action("SiigoInvoicesDownload", "Dashboard")"
      data-copiers-url="@Url.Action("Copiers", "Dashboard")"
@@ -184,18 +184,13 @@
                     </div>
                     <div class="dashboard-panel__actions dashboard-panel__actions--table">
                         <input type="hidden" id="siigoCustomerIdInput" />
-                        <label class="dashboard-search" for="siigoCustomerSearch">
-                            <span class="dashboard-search__label">NIT cliente</span>
-                            <input type="search"
-                                   id="siigoCustomerSearch"
-                                   class="form-control dashboard-search__input"
-                                   list="siigoCustomerOptions"
-                                   autocomplete="off"
-                                   inputmode="numeric"
-                                   pattern="[0-9.\-\s]*"
-                                   placeholder="NIT sin puntos ni guion..." />
-                            <datalist id="siigoCustomerOptions"></datalist>
+                        <label class="dashboard-search dashboard-search--customer" for="siigoCustomerSelect">
+                            <span class="dashboard-search__label">Cliente Siigo</span>
+                            <select id="siigoCustomerSelect" class="form-select dashboard-search__input" disabled>
+                                <option value="">Consulta clientes en Siigo...</option>
+                            </select>
                         </label>
+                        <button type="button" class="btn btn-outline-secondary" id="siigoCustomersLoadBtn">Consultar clientes</button>
                         <label class="dashboard-search dashboard-search--date" for="siigoStartDateInput">
                             <span class="dashboard-search__label">Desde</span>
                             <input type="date" id="siigoStartDateInput" class="form-control dashboard-search__input" />
@@ -593,32 +588,48 @@
                                    class="form-control dashboard-search__input"
                                    placeholder="Buscar cliente..." />
                         </label>
-                        <label class="dashboard-filter dashboard-filter--compact" for="portfolioSortFilter">
-                            <span class="dashboard-filter__label">Ordenar por</span>
-                            <select id="portfolioSortFilter" class="form-select dashboard-select dashboard-select--compact">
-                                <option value="age">Mayor antiguedad</option>
-                                <option value="value">Mayor valor</option>
-                            </select>
-                        </label>
+                        <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="portfolioOverdueClearFiltersBtn">Limpiar filtros</button>
                     </div>
                 </div>
                 <div class="dashboard-table-meta">
                     <span id="portfolioResultsCount">Mostrando 0 registros</span>
                 </div>
                 <div class="dashboard-table-wrap dashboard-table-wrap--tall">
-                    <table class="table dashboard-table">
+                    <table class="table dashboard-table dashboard-excel-table" id="portfolioOverdueTable">
                         <thead>
-                            <tr>
-                                <th>Factura</th>
-                                <th>Cliente</th>
-                                <th>Vertical</th>
-                                <th>Contrato</th>
-                                <th>Vencimiento</th>
-                                <th>Dias vencida</th>
-                                <th class="text-end">Valor</th>
-                            </tr>
+                            <tr id="portfolioOverdueHead"></tr>
                         </thead>
                         <tbody id="portfolioUnpaidBody"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Facturacion</div>
+                        <h2 class="dashboard-panel__title">Todas las facturas</h2>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <label class="dashboard-search" for="portfolioInvoicesSearch">
+                            <span class="dashboard-search__label">Buscar</span>
+                            <input type="search"
+                                   id="portfolioInvoicesSearch"
+                                   class="form-control dashboard-search__input"
+                                   placeholder="Factura, cliente, NIT..." />
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="portfolioInvoicesClearFiltersBtn">Limpiar filtros</button>
+                    </div>
+                </div>
+                <div class="dashboard-table-meta">
+                    <span id="portfolioInvoicesResultsCount">Mostrando 0 registros</span>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table dashboard-excel-table dashboard-portfolio-invoices-table" id="portfolioInvoicesTable">
+                        <thead>
+                            <tr id="portfolioInvoicesHead"></tr>
+                        </thead>
+                        <tbody id="portfolioInvoicesBody"></tbody>
                     </table>
                 </div>
             </article>

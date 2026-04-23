@@ -214,6 +214,26 @@ public sealed class DashboardController : Controller
     }
 
     [HttpGet]
+    public async Task<IActionResult> SiigoCustomers(CancellationToken ct)
+    {
+        try
+        {
+            var items = await _siigo.GetCustomersAsync(ct);
+            return Json(items);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest($"No fue posible cargar el listado de clientes desde Siigo. Detalle: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                $"No fue posible cargar el listado de clientes desde Siigo. Detalle tecnico: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    [HttpGet]
     public async Task<IActionResult> SiigoCustomerSearch([FromQuery] string q, CancellationToken ct)
     {
         try

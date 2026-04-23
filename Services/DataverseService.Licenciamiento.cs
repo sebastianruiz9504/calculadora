@@ -44,6 +44,10 @@ public sealed partial class DataverseService
     private static readonly CultureInfo LicensingCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly string[] LicensingAccountSearchFieldCandidates =
     {
+        "cr07a_accountid",
+        "cr07a_accountidicp",
+        "cr07a_companyaccountid",
+        "cr07a_idcuenta",
         "cr07a_name"
     };
     private static readonly string[] LicensingProductSearchFieldCandidates =
@@ -145,6 +149,29 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoProductsAsync(
+        string query,
+        int top = 12,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        query = (query ?? "").Trim();
+        if (query.Length < 2)
+            return Array.Empty<LicenciamientoLookupItemDto>();
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        return await SearchLicensingLookupOptionsAsync(
+            metadata.ProductMetadata,
+            metadata.ProductSearchFields,
+            metadata.ProductAttributeTypes,
+            query,
+            Math.Clamp(top, 1, 25),
+            httpContext.User,
+            ct);
+    }
+
     public async Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(
         LicenciamientoImportRequestDto request,
         CancellationToken ct = default)
@@ -164,10 +191,19 @@ public sealed partial class DataverseService
             throw new InvalidOperationException($"La vista previa tiene {invalidRows.Count} fila(s) con errores. Corrige el Excel y vuelve a cargarlo.");
 
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var normalizedRows = rows
+            .Select(NormalizeLicensingImportRow)
+            .ToList();
+        var rowsToCreate = normalizedRows
+            .Where(row => !ShouldSkipLicensingImportRow(metadata, row))
+            .ToList();
+        if (rowsToCreate.Count == 0)
+            throw new InvalidOperationException("No hay filas con lookup de producto para procesar. Selecciona al menos un producto valido en la vista previa.");
+
         var created = 0;
-        foreach (var row in rows)
+        foreach (var row in rowsToCreate)
         {
-            var payload = BuildLicensingCreatePayload(metadata, NormalizeLicensingImportRow(row));
+            var payload = BuildLicensingCreatePayload(metadata, row);
             await CallDataverseSendAsync(
                 $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}",
                 "POST",
@@ -181,9 +217,7 @@ public sealed partial class DataverseService
         {
             CreatedCount = created,
             SkippedCount = rows.Count - created,
-            Message = created == 1
-                ? "Se cargo 1 fila en Dataverse."
-                : $"Se cargaron {created} filas en Dataverse."
+            Message = BuildLicensingImportMessage(created, rows.Count - created)
         };
     }
 
@@ -362,7 +396,8 @@ public sealed partial class DataverseService
             ProductFieldIsLookup = productFieldIsLookup,
             AccountNavigationProperty = accountNavigationProperty,
             ProductNavigationProperty = productNavigationProperty,
-            AccountSearchFields = ResolveExplicitLicensingSearchFields(
+            AccountSearchFields = ResolveLicensingSearchFields(
+                accountAttributes,
                 LicensingAccountSearchFieldCandidates,
                 accountMetadata.PrimaryNameField),
             ProductSearchFields = ResolveLicensingSearchFields(
@@ -433,12 +468,16 @@ public sealed partial class DataverseService
         string preferredField,
         IEnumerable<string> candidates)
     {
-        var orderedCandidates = new[] { preferredField }
-            .Concat(candidates)
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Select(static value => value.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return ResolveLicensingSearchFields(
+            attributeTypes,
+            new[] { preferredField }.Concat(candidates ?? Array.Empty<string>()));
+    }
+
+    private static IReadOnlyList<string> ResolveLicensingSearchFields(
+        IReadOnlyDictionary<string, string> attributeTypes,
+        params object?[] candidateGroups)
+    {
+        var orderedCandidates = ResolveExplicitLicensingSearchFields(candidateGroups);
 
         if (attributeTypes.Count == 0)
             return orderedCandidates;
@@ -715,7 +754,13 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var accountMap = metadata.AccountFieldIsLookup
+        foreach (var row in rows)
+        {
+            row.CompanyAccountLookupRequired = metadata.AccountFieldIsLookup;
+            row.ProductLookupRequired = metadata.ProductFieldIsLookup;
+        }
+
+        var accountLookupResult = metadata.AccountFieldIsLookup
             ? await ResolveLicensingLookupMapAsync(
                 rows.Select(static row => row.CompanyAccountId),
                 metadata.AccountMetadata,
@@ -723,8 +768,8 @@ public sealed partial class DataverseService
                 metadata.AccountAttributeTypes,
                 user,
                 ct)
-            : new Dictionary<string, LicensingLookupResolution>(StringComparer.OrdinalIgnoreCase);
-        var productMap = metadata.ProductFieldIsLookup
+            : LicensingLookupMapResult.Empty;
+        var productLookupResult = metadata.ProductFieldIsLookup
             ? await ResolveLicensingLookupMapAsync(
                 rows.Select(static row => row.ProductDescription),
                 metadata.ProductMetadata,
@@ -732,24 +777,38 @@ public sealed partial class DataverseService
                 metadata.ProductAttributeTypes,
                 user,
                 ct)
-            : new Dictionary<string, LicensingLookupResolution>(StringComparer.OrdinalIgnoreCase);
+            : LicensingLookupMapResult.Empty;
 
         foreach (var row in rows)
         {
+            var accountKey = NormalizeLicensingLookupKey(row.CompanyAccountId);
             if (metadata.AccountFieldIsLookup
-                && accountMap.TryGetValue(NormalizeLicensingLookupKey(row.CompanyAccountId), out var account))
+                && accountLookupResult.Items.TryGetValue(accountKey, out var account))
             {
                 row.CompanyAccountLookupId = account.Id;
                 row.CompanyAccountLookupLabel = account.Label;
                 row.CompanyAccountLookupFound = true;
             }
+            else if (metadata.AccountFieldIsLookup
+                && !string.IsNullOrWhiteSpace(accountKey)
+                && accountLookupResult.FailureReasons.TryGetValue(accountKey, out var accountFailureReason))
+            {
+                row.CompanyAccountLookupFailureReason = accountFailureReason;
+            }
 
+            var productKey = NormalizeLicensingLookupKey(row.ProductDescription);
             if (metadata.ProductFieldIsLookup
-                && productMap.TryGetValue(NormalizeLicensingLookupKey(row.ProductDescription), out var product))
+                && productLookupResult.Items.TryGetValue(productKey, out var product))
             {
                 row.ProductLookupId = product.Id;
                 row.ProductLookupLabel = product.Label;
                 row.ProductLookupFound = true;
+            }
+            else if (metadata.ProductFieldIsLookup
+                && !string.IsNullOrWhiteSpace(productKey)
+                && productLookupResult.FailureReasons.TryGetValue(productKey, out var productFailureReason))
+            {
+                row.ProductLookupFailureReason = productFailureReason;
             }
         }
     }
@@ -764,19 +823,24 @@ public sealed partial class DataverseService
                 && !string.IsNullOrWhiteSpace(row.CompanyAccountId)
                 && !row.CompanyAccountLookupFound)
             {
-                row.Warnings.Add($"CompanyAccountid no se encontro en {LicensingAccountLookupTargetLogicalName}.{LicensingAccountLookupTargetFallbackPrimaryNameField}.");
+                row.Warnings.Add(FirstNonEmpty(
+                    row.CompanyAccountLookupFailureReason,
+                    $"CompanyAccountid no se encontro en {LicensingAccountLookupTargetLogicalName}.{LicensingAccountLookupTargetFallbackPrimaryNameField}."));
             }
 
             if (metadata.ProductFieldIsLookup
                 && !string.IsNullOrWhiteSpace(row.ProductDescription)
                 && !row.ProductLookupFound)
             {
-                row.Warnings.Add("PriceableItem description no se encontro en el lookup.");
+                var reason = FirstNonEmpty(
+                    row.ProductLookupFailureReason,
+                    "PriceableItem description no se encontro en el lookup.");
+                row.Warnings.Add($"{reason} Selecciona un producto en la vista previa o esta fila se omitira al procesar.");
             }
         }
     }
 
-    private async Task<Dictionary<string, LicensingLookupResolution>> ResolveLicensingLookupMapAsync(
+    private async Task<LicensingLookupMapResult> ResolveLicensingLookupMapAsync(
         IEnumerable<string> rawValues,
         RhEntityMetadata targetMetadata,
         IReadOnlyList<string> searchFields,
@@ -785,6 +849,7 @@ public sealed partial class DataverseService
         CancellationToken ct)
     {
         var result = new Dictionary<string, LicensingLookupResolution>(StringComparer.OrdinalIgnoreCase);
+        var failureReasons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var values = rawValues
             .Select(NormalizeLicensingLookupKey)
             .Where(static value => !string.IsNullOrWhiteSpace(value))
@@ -793,15 +858,25 @@ public sealed partial class DataverseService
 
         foreach (var value in values)
         {
-            var lookup = await FindLicensingLookupAsync(targetMetadata, searchFields, value, attributeTypes, user, ct);
-            if (lookup is not null)
-                result[value] = lookup;
+            var lookupResult = await FindLicensingLookupAsync(targetMetadata, searchFields, value, attributeTypes, user, ct);
+            if (lookupResult.Lookup is not null)
+            {
+                result[value] = lookupResult.Lookup;
+            }
+            else
+            {
+                failureReasons[value] = lookupResult.FailureReason;
+            }
         }
 
-        return result;
+        return new LicensingLookupMapResult
+        {
+            Items = result,
+            FailureReasons = failureReasons
+        };
     }
 
-    private async Task<LicensingLookupResolution?> FindLicensingLookupAsync(
+    private async Task<LicensingLookupSearchResult> FindLicensingLookupAsync(
         RhEntityMetadata targetMetadata,
         IReadOnlyList<string> searchFields,
         string value,
@@ -809,8 +884,11 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
+        var attemptedFields = new List<string>();
+        var errors = new List<string>();
         foreach (var searchField in searchFields.Where(static field => !string.IsNullOrWhiteSpace(field)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
+            attemptedFields.Add(searchField);
             try
             {
                 var lookup = await TryFindLicensingLookupAsync(
@@ -822,10 +900,16 @@ public sealed partial class DataverseService
                     ct);
 
                 if (lookup is not null)
-                    return lookup;
+                {
+                    return new LicensingLookupSearchResult
+                    {
+                        Lookup = lookup
+                    };
+                }
             }
             catch (Exception ex) when (ex is InvalidOperationException or JsonException)
             {
+                errors.Add($"{searchField}: {ex.Message}");
                 _logger.LogWarning(
                     ex,
                     "No fue posible resolver lookup de licenciamiento en {EntitySetName}.{SearchField} para {Value}.",
@@ -835,7 +919,10 @@ public sealed partial class DataverseService
             }
         }
 
-        return null;
+        return new LicensingLookupSearchResult
+        {
+            FailureReason = BuildLicensingLookupFailureReason(targetMetadata, attemptedFields, value, attributeTypes, errors)
+        };
     }
 
     private async Task<LicensingLookupResolution?> TryFindLicensingLookupAsync(
@@ -875,6 +962,76 @@ public sealed partial class DataverseService
         }
 
         return null;
+    }
+
+    private async Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicensingLookupOptionsAsync(
+        RhEntityMetadata targetMetadata,
+        IReadOnlyList<string> searchFields,
+        IReadOnlyDictionary<string, string> attributeTypes,
+        string query,
+        int top,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var results = new List<LicenciamientoLookupItemDto>();
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var searchField in searchFields.Where(static field => !string.IsNullOrWhiteSpace(field)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (results.Count >= top)
+                break;
+
+            attributeTypes.TryGetValue(searchField, out var searchFieldType);
+            var select = string.Join(",",
+                new[] { targetMetadata.PrimaryIdField, targetMetadata.PrimaryNameField, searchField }
+                    .Where(static field => !string.IsNullOrWhiteSpace(field))
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
+            var filter = BuildLicensingLookupSearchExpression(searchField, query, searchFieldType);
+            if (string.IsNullOrWhiteSpace(filter))
+                continue;
+
+            var remaining = Math.Max(top - results.Count, 1);
+            var relativeUrl = $"/api/data/v9.2/{targetMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top={remaining}";
+            IReadOnlyList<JsonElement> items;
+            try
+            {
+                items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible buscar opciones de licenciamiento en {EntitySetName}.{SearchField} para {Query}.",
+                    targetMetadata.EntitySetName,
+                    searchField,
+                    query);
+                continue;
+            }
+
+            foreach (var item in items)
+            {
+                var id = ReadString(item, targetMetadata.PrimaryIdField).Trim();
+                if (string.IsNullOrWhiteSpace(id) || !seenIds.Add(id))
+                    continue;
+
+                var matchedValue = ReadString(item, searchField).Trim();
+                results.Add(new LicenciamientoLookupItemDto
+                {
+                    Id = id,
+                    Label = FirstNonEmpty(
+                        ReadString(item, targetMetadata.PrimaryNameField).Trim(),
+                        matchedValue,
+                        query),
+                    SearchField = searchField,
+                    MatchedValue = matchedValue
+                });
+
+                if (results.Count >= top)
+                    break;
+            }
+        }
+
+        return results;
     }
 
     private static Dictionary<string, object?> BuildLicensingCreatePayload(
@@ -933,16 +1090,37 @@ public sealed partial class DataverseService
         return payload;
     }
 
+    private static bool ShouldSkipLicensingImportRow(LicensingMetadata metadata, LicenciamientoPreviewRowDto row) =>
+        metadata.ProductFieldIsLookup && string.IsNullOrWhiteSpace(row.ProductLookupId);
+
+    private static string BuildLicensingImportMessage(int created, int skipped)
+    {
+        var createdMessage = created == 1
+            ? "Se cargo 1 fila en Dataverse."
+            : $"Se cargaron {created} filas en Dataverse.";
+
+        if (skipped <= 0)
+            return createdMessage;
+
+        var skippedMessage = skipped == 1
+            ? "Se omitio 1 fila sin lookup de producto."
+            : $"Se omitieron {skipped} filas sin lookup de producto.";
+
+        return $"{createdMessage} {skippedMessage}";
+    }
+
     private static LicenciamientoPreviewRowDto NormalizeLicensingImportRow(LicenciamientoPreviewRowDto row)
     {
         row.CompanyAccountId = (row.CompanyAccountId ?? "").Trim();
         row.CompanyAccountLookupId = NormalizeOptionalGuid(row.CompanyAccountLookupId);
         row.CompanyAccountLookupLabel = (row.CompanyAccountLookupLabel ?? "").Trim();
+        row.CompanyAccountLookupFailureReason = (row.CompanyAccountLookupFailureReason ?? "").Trim();
         row.NombreCliente = (row.NombreCliente ?? "").Trim();
         row.Vendor = (row.Vendor ?? "").Trim();
         row.ProductDescription = (row.ProductDescription ?? "").Trim();
         row.ProductLookupId = NormalizeOptionalGuid(row.ProductLookupId);
         row.ProductLookupLabel = (row.ProductLookupLabel ?? "").Trim();
+        row.ProductLookupFailureReason = (row.ProductLookupFailureReason ?? "").Trim();
         row.BillingInterval = (row.BillingInterval ?? "").Trim();
         row.FacturaValue = (row.FacturaValue ?? "").Trim();
         row.FacturaDisplay = (row.FacturaDisplay ?? "").Trim();
@@ -1106,6 +1284,53 @@ public sealed partial class DataverseService
         return filters
             .DistinctBy(static item => item.Expression, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static string BuildLicensingLookupSearchExpression(
+        string searchField,
+        string value,
+        string? attributeType)
+    {
+        if (IsLicensingIntegerAttribute(attributeType)
+            && long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integerValue))
+        {
+            return $"{searchField} eq {integerValue}";
+        }
+
+        if (IsLicensingDecimalAttribute(attributeType)
+            && TryParseLicensingDecimal(value, out var decimalValue))
+        {
+            return $"{searchField} eq {decimalValue.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        if (!IsLicensingTextAttribute(attributeType))
+            return "";
+
+        return $"contains({searchField},'{EscapeOdataLiteral(value)}')";
+    }
+
+    private static string BuildLicensingLookupFailureReason(
+        RhEntityMetadata targetMetadata,
+        IReadOnlyList<string> attemptedFields,
+        string value,
+        IReadOnlyDictionary<string, string> attributeTypes,
+        IReadOnlyList<string> errors)
+    {
+        var tableName = FirstNonEmpty(targetMetadata.LogicalName, targetMetadata.EntitySetName, "la tabla de lookup");
+        if (attemptedFields.Count == 0)
+            return $"No hay campos configurados para buscar \"{value}\" en {tableName}.";
+
+        var fieldList = string.Join(", ", attemptedFields.Select(field =>
+        {
+            attributeTypes.TryGetValue(field, out var attributeType);
+            return string.IsNullOrWhiteSpace(attributeType) ? field : $"{field} ({attributeType})";
+        }));
+        var reason = $"No se encontraron registros en {tableName} para \"{value}\". Se busco en: {fieldList}.";
+
+        if (errors.Count == 0)
+            return reason;
+
+        return $"{reason} Errores de consulta: {string.Join(" | ", errors.Take(3))}.";
     }
 
     private static JsonElement? ChooseLicensingLookupItem(
@@ -1333,6 +1558,20 @@ public sealed partial class DataverseService
     {
         public string Id { get; init; } = "";
         public string Label { get; init; } = "";
+    }
+
+    private sealed class LicensingLookupMapResult
+    {
+        public static LicensingLookupMapResult Empty { get; } = new();
+
+        public Dictionary<string, LicensingLookupResolution> Items { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> FailureReasons { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class LicensingLookupSearchResult
+    {
+        public LicensingLookupResolution? Lookup { get; init; }
+        public string FailureReason { get; init; } = "";
     }
 
     private sealed record LicensingLookupFilter(string Expression, int Top);

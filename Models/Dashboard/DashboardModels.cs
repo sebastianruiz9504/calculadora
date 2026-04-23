@@ -91,6 +91,7 @@ public sealed class PortfolioDashboardDto
     public string EmptyStateMessage { get; set; } = "";
     public IReadOnlyList<PortfolioKpiDto> Kpis { get; set; } = Array.Empty<PortfolioKpiDto>();
     public IReadOnlyList<BillingUnpaidInvoiceDto> OverdueInvoices { get; set; } = Array.Empty<BillingUnpaidInvoiceDto>();
+    public IReadOnlyList<BillingInvoiceRowDto> Invoices { get; set; } = Array.Empty<BillingInvoiceRowDto>();
 }
 
 public sealed class CopiersDashboardDto
@@ -580,6 +581,35 @@ public sealed class BillingUnpaidInvoiceDto
     public string DueDateDisplay { get; set; } = "";
     public decimal TotalInvoice { get; set; }
     public int AgeDays { get; set; }
+}
+
+public sealed class BillingInvoiceRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string CompanyTaxId { get; set; } = "";
+    public string VerticalLabel { get; set; } = "";
+    public string ContractTypeLabel { get; set; } = "";
+    public string EmissionDateValue { get; set; } = "";
+    public string EmissionDateDisplay { get; set; } = "";
+    public string DueDateValue { get; set; } = "";
+    public string DueDateDisplay { get; set; } = "";
+    public string PaymentDateValue { get; set; } = "";
+    public string PaymentDateDisplay { get; set; } = "";
+    public decimal TotalInvoice { get; set; }
+    public decimal VatPercent { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal PaymentValue { get; set; }
+    public decimal ReteIcaValue { get; set; }
+    public decimal RteIvaValue { get; set; }
+    public decimal RteFteValue { get; set; }
+    public decimal RetentionsTotal { get; set; }
+    public decimal DifferenceValue { get; set; }
+    public string PaymentStatusLabel { get; set; } = "";
+    public int AgeDays { get; set; }
+    public string PublicUrl { get; set; } = "";
 }
 
 public sealed class BillingDifferenceInvoiceDto

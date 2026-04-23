@@ -88,6 +88,7 @@ public interface IDataverseService
     Task<CuentaCobroRowDto> GetCuentaCobroByIdAsync(string recordId, CancellationToken ct = default);
     Task<LicenciamientoBoardDto> GetLicenciamientoBoardAsync(CancellationToken ct = default);
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
+    Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoProductsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(LicenciamientoImportRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoAdjustTrmResultDto> AdjustLicenciamientoTrmAsync(LicenciamientoAdjustTrmRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoUpdateContractTypeResultDto> UpdateLicenciamientoContractTypeAsync(LicenciamientoUpdateContractTypeRequestDto request, CancellationToken ct = default);

@@ -37,9 +37,9 @@
     const billingReportPreviewTitle = document.getElementById("billingReportPreviewTitle");
     const billingReportPreviewLink = document.getElementById("billingReportPreviewLink");
     const billingReportPreviewFrame = document.getElementById("billingReportPreviewFrame");
-    const siigoCustomerSearch = document.getElementById("siigoCustomerSearch");
+    const siigoCustomerSelect = document.getElementById("siigoCustomerSelect");
     const siigoCustomerIdInput = document.getElementById("siigoCustomerIdInput");
-    const siigoCustomerOptions = document.getElementById("siigoCustomerOptions");
+    const siigoCustomersLoadButton = document.getElementById("siigoCustomersLoadBtn");
     const siigoStartDateInput = document.getElementById("siigoStartDateInput");
     const siigoEndDateInput = document.getElementById("siigoEndDateInput");
     const siigoUseActivePeriodButton = document.getElementById("siigoUseActivePeriodBtn");
@@ -156,10 +156,16 @@
     const portfolioAsOfLabel = document.getElementById("portfolioAsOfLabel");
     const portfolioFocusLabel = document.getElementById("portfolioFocusLabel");
     const portfolioClientSearch = document.getElementById("portfolioClientSearch");
-    const portfolioSortFilter = document.getElementById("portfolioSortFilter");
+    const portfolioOverdueClearFiltersButton = document.getElementById("portfolioOverdueClearFiltersBtn");
     const portfolioResultsCount = document.getElementById("portfolioResultsCount");
     const portfolioKpisContainer = document.getElementById("portfolioKpisContainer");
+    const portfolioOverdueHead = document.getElementById("portfolioOverdueHead");
     const portfolioUnpaidBody = document.getElementById("portfolioUnpaidBody");
+    const portfolioInvoicesSearch = document.getElementById("portfolioInvoicesSearch");
+    const portfolioInvoicesClearFiltersButton = document.getElementById("portfolioInvoicesClearFiltersBtn");
+    const portfolioInvoicesResultsCount = document.getElementById("portfolioInvoicesResultsCount");
+    const portfolioInvoicesHead = document.getElementById("portfolioInvoicesHead");
+    const portfolioInvoicesBody = document.getElementById("portfolioInvoicesBody");
 
     const pnlYearFilter = document.getElementById("pnlYearFilter");
     const pnlMonthFilter = document.getElementById("pnlMonthFilter");
@@ -220,7 +226,8 @@
         siigoInvoicesDetail: null,
         siigoInvoicesLoading: false,
         siigoInvoicesDownloading: false,
-        siigoCustomerSuggestions: [],
+        siigoCustomers: [],
+        siigoCustomersLoading: false,
         copiersDashboard: null,
         copiersEquipmentDashboard: null,
         taxesDashboard: null,
@@ -247,7 +254,19 @@
         copiersMaintenanceOwner: "all",
         copiersMaintenancePage: 1,
         portfolioSearchTerm: "",
-        portfolioSort: "age",
+        portfolioInvoicesSearchTerm: "",
+        portfolioGrids: {
+            overdue: {
+                sortKey: "ageDays",
+                sortDirection: "desc",
+                filters: {}
+            },
+            invoices: {
+                sortKey: "emissionDateValue",
+                sortDirection: "desc",
+                filters: {}
+            }
+        },
         pnlYear: currentYear,
         pnlMonth: new Date().getMonth() + 1,
         pnlVertical: "all",
@@ -365,29 +384,60 @@
 
     function setSiigoInvoicesLoading(loading) {
         state.siigoInvoicesLoading = loading;
-        [siigoCustomerSearch, siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
+        [siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
             if (element) {
                 element.disabled = loading || state.siigoInvoicesDownloading;
             }
         });
 
+        syncSiigoCustomerControls();
         syncSiigoInvoicesSelectionSummary();
     }
 
     function setSiigoInvoicesDownloading(downloading) {
         state.siigoInvoicesDownloading = downloading;
-        [siigoCustomerSearch, siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
+        [siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
             if (element) {
                 element.disabled = downloading || state.siigoInvoicesLoading;
             }
         });
 
+        syncSiigoCustomerControls();
         syncSiigoInvoicesSelectionSummary();
+    }
+
+    function setSiigoCustomersLoading(loading) {
+        state.siigoCustomersLoading = loading;
+        syncSiigoCustomerControls();
+    }
+
+    function syncSiigoCustomerControls() {
+        const busy = state.siigoCustomersLoading || state.siigoInvoicesLoading || state.siigoInvoicesDownloading;
+        const hasCustomers = Array.isArray(state.siigoCustomers) && state.siigoCustomers.length > 0;
+
+        if (siigoCustomerSelect) {
+            siigoCustomerSelect.disabled = busy || !hasCustomers;
+        }
+
+        if (siigoCustomersLoadButton) {
+            siigoCustomersLoadButton.disabled = busy;
+            siigoCustomersLoadButton.textContent = state.siigoCustomersLoading
+                ? "Cargando clientes..."
+                : hasCustomers
+                    ? "Actualizar clientes"
+                    : "Consultar clientes";
+        }
     }
 
     function setPortfolioLoading(loading) {
         state.portfolioLoading = loading;
-        [portfolioRefreshButton, portfolioClientSearch, portfolioSortFilter].forEach(element => {
+        [
+            portfolioRefreshButton,
+            portfolioClientSearch,
+            portfolioInvoicesSearch,
+            portfolioOverdueClearFiltersButton,
+            portfolioInvoicesClearFiltersButton
+        ].forEach(element => {
             if (element) {
                 element.disabled = loading;
             }
@@ -1882,16 +1932,16 @@
         return billingClientReportExportUrl || "";
     }
 
-    function buildSiigoCustomerSearchUrl(query) {
-        const baseUrl = app.dataset.siigoCustomerSearchUrl || "";
-        return `${baseUrl}?q=${encodeURIComponent(normalizeNitValue(query || ""))}`;
+    function buildSiigoCustomersUrl() {
+        return app.dataset.siigoCustomersUrl || "";
     }
 
     function buildSiigoInvoicesUrl() {
         const baseUrl = app.dataset.siigoInvoicesUrl || "";
+        const selectedCustomer = getSelectedSiigoCustomer();
         const params = new URLSearchParams({
-            customerId: siigoCustomerIdInput?.value || "",
-            customerQuery: normalizeNitValue(siigoCustomerSearch?.value || ""),
+            customerId: siigoCustomerSelect?.value || siigoCustomerIdInput?.value || "",
+            customerQuery: selectedCustomer?.identification || "",
             startDate: siigoStartDateInput?.value || "",
             endDate: siigoEndDateInput?.value || ""
         });
@@ -1905,6 +1955,96 @@
 
     function normalizeNitValue(value) {
         return (value || "").toString().replace(/\D/g, "");
+    }
+
+    function getSelectedSiigoCustomer() {
+        const selectedId = siigoCustomerSelect?.value || siigoCustomerIdInput?.value || "";
+        if (!selectedId) {
+            return null;
+        }
+
+        return state.siigoCustomers.find(customer =>
+            String(customer?.id || "") === selectedId) || null;
+    }
+
+    function buildSiigoCustomerOptionLabel(customer) {
+        const name = customer?.commercialName || customer?.name || customer?.displayName || "Cliente sin nombre";
+        const nit = customer?.identification ? `NIT ${customer.identification}` : "NIT sin dato";
+        const branch = Number(customer?.branchOffice || 0) > 0 ? `Sucursal ${customer.branchOffice}` : "";
+        const status = customer?.active === false ? "Inactivo" : "";
+
+        return [name, nit, branch, status]
+            .filter(Boolean)
+            .join(" - ");
+    }
+
+    function renderSiigoCustomerSelect(message) {
+        if (!siigoCustomerSelect) {
+            return;
+        }
+
+        const previousId = siigoCustomerSelect.value || siigoCustomerIdInput?.value || "";
+        const customers = Array.isArray(state.siigoCustomers) ? state.siigoCustomers : [];
+        if (!customers.length) {
+            siigoCustomerSelect.innerHTML = `<option value="">${escapeHtml(message || "Consulta clientes en Siigo...")}</option>`;
+            siigoCustomerSelect.value = "";
+            if (siigoCustomerIdInput) {
+                siigoCustomerIdInput.value = "";
+            }
+            syncSiigoCustomerControls();
+            return;
+        }
+
+        siigoCustomerSelect.innerHTML = [
+            '<option value="">Selecciona un cliente...</option>',
+            ...customers.map(customer => `<option value="${escapeHtml(customer?.id || "")}">${escapeHtml(buildSiigoCustomerOptionLabel(customer))}</option>`)
+        ].join("");
+
+        const nextId = customers.some(customer => String(customer?.id || "") === previousId)
+            ? previousId
+            : "";
+        siigoCustomerSelect.value = nextId;
+        if (siigoCustomerIdInput) {
+            siigoCustomerIdInput.value = nextId;
+        }
+
+        syncSiigoCustomerControls();
+    }
+
+    function syncSiigoCustomerSelection() {
+        const selectedCustomer = getSelectedSiigoCustomer();
+
+        if (siigoCustomerIdInput) {
+            siigoCustomerIdInput.value = selectedCustomer?.id || "";
+        }
+
+        if (siigoCustomerReference) {
+            siigoCustomerReference.textContent = selectedCustomer?.displayName || selectedCustomer?.name || "-";
+        }
+
+        if (siigoNitReference) {
+            siigoNitReference.textContent = selectedCustomer?.identification || "-";
+        }
+    }
+
+    function formatSiigoUiError(action, error, url) {
+        const message = error instanceof Error
+            ? error.message
+            : "No fue posible completar la solicitud.";
+        const status = error?.status
+            ? `HTTP ${error.status}${error.statusText ? ` ${error.statusText}` : ""}. `
+            : "";
+        let route = "";
+
+        if (url) {
+            try {
+                route = ` Ruta: ${new URL(url, window.location.origin).pathname}.`;
+            } catch {
+                route = "";
+            }
+        }
+
+        return `Error al ${action}. ${status}Detalle: ${message}.${route}`;
     }
 
     function buildTaxesRetentionsExportUrl() {
@@ -2017,7 +2157,11 @@
                 }
             }
 
-            throw new Error(message || "No fue posible completar la solicitud.");
+            const error = new Error(message || "No fue posible completar la solicitud.");
+            error.status = response.status;
+            error.statusText = response.statusText || "";
+            error.url = response.url || url;
+            throw error;
         }
 
         if (!contentType.includes("application/json")) {
@@ -2295,12 +2439,13 @@
 
     function resetSiigoInvoicesTable(message) {
         state.siigoInvoicesDetail = null;
+        const selectedCustomer = getSelectedSiigoCustomer();
         if (siigoCustomerReference) {
-            siigoCustomerReference.textContent = "-";
+            siigoCustomerReference.textContent = selectedCustomer?.displayName || selectedCustomer?.name || "-";
         }
 
         if (siigoNitReference) {
-            siigoNitReference.textContent = "-";
+            siigoNitReference.textContent = selectedCustomer?.identification || "-";
         }
 
         if (siigoInvoicesResultsCount) {
@@ -3371,68 +3516,571 @@
         });
     }
 
-    function getFilteredPortfolioRows() {
-        const rows = Array.isArray(state.portfolioDashboard?.overdueInvoices)
-            ? [...state.portfolioDashboard.overdueInvoices]
-            : [];
-        const searchTerm = normalizeText(state.portfolioSearchTerm);
-
-        const filteredRows = !searchTerm
-            ? rows
-            : rows.filter(row => normalizeText(row.clientName).includes(searchTerm));
-
-        filteredRows.sort((left, right) => {
-            if (state.portfolioSort === "value") {
-                const valueDiff = Number(right.totalInvoice || 0) - Number(left.totalInvoice || 0);
-                if (valueDiff !== 0) {
-                    return valueDiff;
-                }
-
-                return Number(right.ageDays || 0) - Number(left.ageDays || 0);
-            }
-
-            const ageDiff = Number(right.ageDays || 0) - Number(left.ageDays || 0);
-            if (ageDiff !== 0) {
-                return ageDiff;
-            }
-
-            return Number(right.totalInvoice || 0) - Number(left.totalInvoice || 0);
-        });
-
-        return filteredRows;
+    function parsePortfolioDisplayDate(value) {
+        const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((value || "").trim());
+        return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
     }
 
-    function renderOverdueTable(rows, tbody) {
-        if (!tbody) {
+    function renderPortfolioCurrency(value) {
+        return escapeHtml(currencyFormatter.format(Number(value || 0)));
+    }
+
+    function renderPortfolioNumber(value) {
+        return escapeHtml(numberFormatter.format(Number(value || 0)));
+    }
+
+    function renderPortfolioPercent(value) {
+        return `${renderPortfolioNumber(value)}%`;
+    }
+
+    function renderPortfolioText(value) {
+        const text = (value ?? "").toString().trim();
+        return escapeHtml(text || "-");
+    }
+
+    function renderPortfolioStatusBadge(row) {
+        const status = (row.paymentStatusLabel || "").trim() || "Sin estado";
+        const tone = status === "Con pago"
+            ? "is-success"
+            : status === "Pendiente"
+                ? "is-warning"
+                : "";
+
+        return `<span class="dashboard-badge ${tone}">${escapeHtml(status)}</span>`;
+    }
+
+    const portfolioOverdueColumns = [
+        { key: "invoiceNumber", label: "Factura" },
+        { key: "clientName", label: "Cliente" },
+        { key: "verticalLabel", label: "Vertical" },
+        { key: "contractTypeLabel", label: "Contrato" },
+        {
+            key: "dueDateDisplay",
+            label: "Vencimiento",
+            type: "date",
+            sortValue: row => parsePortfolioDisplayDate(row.dueDateDisplay)
+        },
+        {
+            key: "ageDays",
+            label: "Dias vencida",
+            type: "number",
+            align: "end",
+            displayValue: row => `${numberFormatter.format(Number(row.ageDays || 0))} dias`,
+            render: row => `<span class="dashboard-badge">${escapeHtml(numberFormatter.format(Number(row.ageDays || 0)))} dias</span>`
+        },
+        {
+            key: "totalInvoice",
+            label: "Valor",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.totalInvoice || 0)),
+            render: row => renderPortfolioCurrency(row.totalInvoice)
+        }
+    ];
+
+    const portfolioInvoiceColumns = [
+        { key: "recordId", label: "ID registro" },
+        { key: "invoiceNumber", label: "Factura" },
+        { key: "clientName", label: "Cliente" },
+        { key: "clientId", label: "ID cliente" },
+        { key: "companyTaxId", label: "NIT empresa" },
+        { key: "verticalLabel", label: "Vertical" },
+        { key: "contractTypeLabel", label: "Contrato" },
+        {
+            key: "emissionDateValue",
+            label: "Emision",
+            type: "date",
+            displayValue: row => row.emissionDateDisplay || "Sin fecha",
+            sortValue: row => row.emissionDateValue || ""
+        },
+        {
+            key: "dueDateValue",
+            label: "Vencimiento",
+            type: "date",
+            displayValue: row => row.dueDateDisplay || "Sin fecha",
+            sortValue: row => row.dueDateValue || ""
+        },
+        {
+            key: "paymentDateValue",
+            label: "Pago",
+            type: "date",
+            displayValue: row => row.paymentDateDisplay || "Sin pago",
+            sortValue: row => row.paymentDateValue || ""
+        },
+        {
+            key: "paymentStatusLabel",
+            label: "Estado",
+            render: renderPortfolioStatusBadge
+        },
+        {
+            key: "ageDays",
+            label: "Dias vencida",
+            type: "number",
+            align: "end",
+            displayValue: row => `${numberFormatter.format(Number(row.ageDays || 0))} dias`,
+            render: row => `${renderPortfolioNumber(row.ageDays)} dias`
+        },
+        {
+            key: "totalInvoice",
+            label: "Total factura",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.totalInvoice || 0)),
+            render: row => renderPortfolioCurrency(row.totalInvoice)
+        },
+        {
+            key: "vatPercent",
+            label: "IVA %",
+            type: "number",
+            align: "end",
+            displayValue: row => `${numberFormatter.format(Number(row.vatPercent || 0))}%`,
+            render: row => renderPortfolioPercent(row.vatPercent)
+        },
+        {
+            key: "vatValue",
+            label: "IVA valor",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.vatValue || 0)),
+            render: row => renderPortfolioCurrency(row.vatValue)
+        },
+        {
+            key: "paymentValue",
+            label: "Valor pago",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.paymentValue || 0)),
+            render: row => renderPortfolioCurrency(row.paymentValue)
+        },
+        {
+            key: "reteIcaValue",
+            label: "ReteICA",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.reteIcaValue || 0)),
+            render: row => renderPortfolioCurrency(row.reteIcaValue)
+        },
+        {
+            key: "rteIvaValue",
+            label: "RteIVA",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.rteIvaValue || 0)),
+            render: row => renderPortfolioCurrency(row.rteIvaValue)
+        },
+        {
+            key: "rteFteValue",
+            label: "RteFte",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.rteFteValue || 0)),
+            render: row => renderPortfolioCurrency(row.rteFteValue)
+        },
+        {
+            key: "retentionsTotal",
+            label: "Retenciones",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.retentionsTotal || 0)),
+            render: row => renderPortfolioCurrency(row.retentionsTotal)
+        },
+        {
+            key: "differenceValue",
+            label: "Diferencia",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.differenceValue || 0)),
+            render: row => renderPortfolioCurrency(row.differenceValue)
+        },
+        {
+            key: "publicUrl",
+            label: "URL factura",
+            displayValue: row => row.publicUrl ? "Con URL" : "Sin URL",
+            sortValue: row => row.publicUrl || "",
+            render: row => row.publicUrl
+                ? `<a href="${escapeHtml(row.publicUrl)}" target="_blank" rel="noopener noreferrer" class="dashboard-table-link">Abrir</a>`
+                : "-"
+        }
+    ];
+
+    function getPortfolioGridConfig(tableKey) {
+        if (tableKey === "invoices") {
+            return {
+                key: "invoices",
+                columns: portfolioInvoiceColumns,
+                rows: Array.isArray(state.portfolioDashboard?.invoices) ? state.portfolioDashboard.invoices : [],
+                head: portfolioInvoicesHead,
+                body: portfolioInvoicesBody,
+                counter: portfolioInvoicesResultsCount,
+                searchTerm: state.portfolioInvoicesSearchTerm,
+                emptyMessage: "No hay facturas registradas en facturacion."
+            };
+        }
+
+        return {
+            key: "overdue",
+            columns: portfolioOverdueColumns,
+            rows: Array.isArray(state.portfolioDashboard?.overdueInvoices) ? state.portfolioDashboard.overdueInvoices : [],
+            head: portfolioOverdueHead,
+            body: portfolioUnpaidBody,
+            counter: portfolioResultsCount,
+            searchTerm: state.portfolioSearchTerm,
+            emptyMessage: "No hay facturas vencidas sin pago en este momento."
+        };
+    }
+
+    function getPortfolioGridState(tableKey) {
+        if (!state.portfolioGrids[tableKey]) {
+            state.portfolioGrids[tableKey] = {
+                sortKey: "",
+                sortDirection: "asc",
+                filters: {}
+            };
+        }
+
+        return state.portfolioGrids[tableKey];
+    }
+
+    function getPortfolioColumnDisplay(row, column) {
+        if (typeof column.displayValue === "function") {
+            return (column.displayValue(row) ?? "").toString();
+        }
+
+        return (row?.[column.key] ?? "").toString().trim() || "-";
+    }
+
+    function getPortfolioColumnSortValue(row, column) {
+        if (typeof column.sortValue === "function") {
+            return column.sortValue(row);
+        }
+
+        return row?.[column.key] ?? "";
+    }
+
+    function getPortfolioColumnCell(row, column) {
+        if (typeof column.render === "function") {
+            return column.render(row);
+        }
+
+        return renderPortfolioText(getPortfolioColumnDisplay(row, column));
+    }
+
+    function isPortfolioColumnFiltered(tableKey, columnKey) {
+        const filter = getPortfolioGridState(tableKey).filters[columnKey];
+        return Boolean(filter && (((filter.query || "").trim()) || Array.isArray(filter.selected)));
+    }
+
+    function rowMatchesPortfolioFilters(row, config) {
+        const gridState = getPortfolioGridState(config.key);
+        const globalTerm = normalizeText(config.searchTerm);
+
+        if (globalTerm) {
+            const rowSearchText = normalizeText(config.columns
+                .map(column => getPortfolioColumnDisplay(row, column))
+                .join(" "));
+            if (!rowSearchText.includes(globalTerm)) {
+                return false;
+            }
+        }
+
+        return config.columns.every(column => {
+            const filter = gridState.filters[column.key];
+            if (!filter) {
+                return true;
+            }
+
+            const displayValue = getPortfolioColumnDisplay(row, column);
+            if ((filter.query || "").trim() && !normalizeText(displayValue).includes(normalizeText(filter.query))) {
+                return false;
+            }
+
+            if (Array.isArray(filter.selected) && !filter.selected.includes(displayValue)) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    function comparePortfolioValues(left, right, column) {
+        const leftIsEmpty = left === null || left === undefined || left === "";
+        const rightIsEmpty = right === null || right === undefined || right === "";
+        if (leftIsEmpty && rightIsEmpty) {
+            return 0;
+        }
+
+        if (leftIsEmpty) {
+            return 1;
+        }
+
+        if (rightIsEmpty) {
+            return -1;
+        }
+
+        if (column?.type === "number") {
+            return Number(left || 0) - Number(right || 0);
+        }
+
+        return left.toString().localeCompare(right.toString(), "es", { numeric: true, sensitivity: "base" });
+    }
+
+    function getFilteredPortfolioGridRows(tableKey) {
+        const config = getPortfolioGridConfig(tableKey);
+        const gridState = getPortfolioGridState(tableKey);
+        const sortColumn = config.columns.find(column => column.key === gridState.sortKey) || config.columns[0];
+        const sortDirection = gridState.sortDirection === "desc" ? -1 : 1;
+
+        return config.rows
+            .filter(row => rowMatchesPortfolioFilters(row, config))
+            .sort((left, right) => {
+                const comparison = comparePortfolioValues(
+                    getPortfolioColumnSortValue(left, sortColumn),
+                    getPortfolioColumnSortValue(right, sortColumn),
+                    sortColumn);
+
+                if (comparison !== 0) {
+                    return comparison * sortDirection;
+                }
+
+                return (left.invoiceNumber || "").localeCompare(right.invoiceNumber || "", "es", { numeric: true, sensitivity: "base" });
+            });
+    }
+
+    function renderPortfolioGridHeader(tableKey) {
+        const config = getPortfolioGridConfig(tableKey);
+        const gridState = getPortfolioGridState(tableKey);
+        if (!config.head) {
             return;
         }
 
-        tbody.innerHTML = rows.length
-            ? rows.map(row => `
+        config.head.innerHTML = config.columns.map(column => {
+            const isSorted = gridState.sortKey === column.key;
+            const sortLabel = isSorted ? (gridState.sortDirection === "desc" ? "Desc" : "Asc") : "";
+            const thClass = column.align === "end" ? "text-end" : "";
+            const buttonClass = isPortfolioColumnFiltered(tableKey, column.key)
+                ? "dashboard-column-filter__button is-filtered"
+                : "dashboard-column-filter__button";
+
+            return `
+                <th class="${thClass}">
+                    <div class="dashboard-column-filter">
+                        <button type="button"
+                                class="${buttonClass}"
+                                data-portfolio-grid="${escapeHtml(tableKey)}"
+                                data-portfolio-column="${escapeHtml(column.key)}"
+                                aria-expanded="false"
+                                title="Ordenar y filtrar ${escapeHtml(column.label)}">
+                            <span>${escapeHtml(column.label)}</span>
+                            <span class="dashboard-column-filter__state">${escapeHtml(sortLabel)}</span>
+                            <span class="dashboard-column-filter__glyph">v</span>
+                        </button>
+                    </div>
+                </th>
+            `;
+        }).join("");
+    }
+
+    function renderPortfolioGrid(tableKey) {
+        const config = getPortfolioGridConfig(tableKey);
+        const filteredRows = getFilteredPortfolioGridRows(tableKey);
+
+        renderPortfolioGridHeader(tableKey);
+
+        if (config.counter) {
+            config.counter.textContent = `Mostrando ${numberFormatter.format(filteredRows.length)} de ${numberFormatter.format(config.rows.length)} registros`;
+        }
+
+        if (!config.body) {
+            return;
+        }
+
+        config.body.innerHTML = filteredRows.length
+            ? filteredRows.map(row => `
                 <tr>
-                    <td>${escapeHtml(row.invoiceNumber)}</td>
-                    <td>${escapeHtml(row.clientName)}</td>
-                    <td>${escapeHtml(row.verticalLabel)}</td>
-                    <td>${escapeHtml(row.contractTypeLabel)}</td>
-                    <td>${escapeHtml(row.dueDateDisplay)}</td>
-                    <td><span class="dashboard-badge is-danger">${escapeHtml(numberFormatter.format(Number(row.ageDays || 0)))} dias</span></td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalInvoice || 0)))}</td>
+                    ${config.columns.map(column => `
+                        <td class="${column.align === "end" ? "text-end" : ""}">
+                            ${getPortfolioColumnCell(row, column)}
+                        </td>
+                    `).join("")}
                 </tr>
             `).join("")
-            : '<tr><td colspan="7" class="dashboard-table__empty">No hay facturas vencidas sin pago en este momento.</td></tr>';
+            : `<tr><td colspan="${config.columns.length}" class="dashboard-table__empty">${escapeHtml(config.emptyMessage)}</td></tr>`;
+    }
+
+    function buildPortfolioColumnFilterValues(tableKey, columnKey) {
+        const config = getPortfolioGridConfig(tableKey);
+        const column = config.columns.find(item => item.key === columnKey);
+        const counts = new Map();
+
+        if (!column) {
+            return [];
+        }
+
+        config.rows.forEach(row => {
+            const displayValue = getPortfolioColumnDisplay(row, column);
+            counts.set(displayValue, (counts.get(displayValue) || 0) + 1);
+        });
+
+        return Array.from(counts.entries())
+            .map(([value, count]) => ({ value, count }))
+            .sort((left, right) => left.value.localeCompare(right.value, "es", { numeric: true, sensitivity: "base" }));
+    }
+
+    function closePortfolioColumnMenu() {
+        document.querySelectorAll(".dashboard-column-menu").forEach(menu => menu.remove());
+        document.querySelectorAll("[data-portfolio-column][aria-expanded='true']").forEach(button => {
+            button.setAttribute("aria-expanded", "false");
+        });
+    }
+
+    function openPortfolioColumnMenu(tableKey, columnKey, anchorButton) {
+        const config = getPortfolioGridConfig(tableKey);
+        const column = config.columns.find(item => item.key === columnKey);
+        const container = anchorButton?.closest(".dashboard-column-filter");
+        if (!column || !container) {
+            return;
+        }
+
+        const existingOpen = anchorButton.getAttribute("aria-expanded") === "true";
+        closePortfolioColumnMenu();
+        if (existingOpen) {
+            return;
+        }
+
+        const gridState = getPortfolioGridState(tableKey);
+        const filter = gridState.filters[columnKey] || {};
+        const values = buildPortfolioColumnFilterValues(tableKey, columnKey);
+        const selected = Array.isArray(filter.selected) ? new Set(filter.selected) : null;
+        const isNumeric = column.type === "number";
+        const sortAscLabel = isNumeric ? "Menor a mayor" : "A-Z";
+        const sortDescLabel = isNumeric ? "Mayor a menor" : "Z-A";
+        const valueOptions = values.length
+            ? values.map(item => `
+                <label class="dashboard-column-menu__option">
+                    <input type="checkbox"
+                           data-portfolio-menu-value
+                           value="${escapeHtml(item.value)}"
+                           ${!selected || selected.has(item.value) ? "checked" : ""} />
+                    <span>${escapeHtml(item.value)}</span>
+                    <small>${escapeHtml(numberFormatter.format(item.count))}</small>
+                </label>
+            `).join("")
+            : '<div class="dashboard-column-menu__empty">Sin valores</div>';
+
+        const menu = document.createElement("div");
+        menu.className = "dashboard-column-menu";
+        menu.dataset.portfolioMenuTable = tableKey;
+        menu.dataset.portfolioMenuColumn = columnKey;
+        menu.innerHTML = `
+            <div class="dashboard-column-menu__sort">
+                <button type="button" data-portfolio-menu-action="sort-asc">${escapeHtml(sortAscLabel)}</button>
+                <button type="button" data-portfolio-menu-action="sort-desc">${escapeHtml(sortDescLabel)}</button>
+            </div>
+            <label class="dashboard-column-menu__search">
+                <span>Buscar</span>
+                <input type="search" value="${escapeHtml(filter.query || "")}" data-portfolio-menu-query />
+            </label>
+            <div class="dashboard-column-menu__quick">
+                <button type="button" data-portfolio-menu-action="select-all">Todo</button>
+                <button type="button" data-portfolio-menu-action="select-none">Nada</button>
+            </div>
+            <div class="dashboard-column-menu__values">
+                ${valueOptions}
+            </div>
+            <div class="dashboard-column-menu__footer">
+                <button type="button" data-portfolio-menu-action="clear">Limpiar</button>
+                <button type="button" data-portfolio-menu-action="apply" class="dashboard-column-menu__apply">Aplicar</button>
+            </div>
+        `;
+
+        container.appendChild(menu);
+        anchorButton.setAttribute("aria-expanded", "true");
+        menu.querySelector("[data-portfolio-menu-query]")?.focus({ preventScroll: true });
+    }
+
+    function setPortfolioColumnFilter(tableKey, columnKey, filter) {
+        const gridState = getPortfolioGridState(tableKey);
+        const hasQuery = Boolean((filter.query || "").trim());
+        const hasSelectedFilter = Array.isArray(filter.selected);
+
+        if (!hasQuery && !hasSelectedFilter) {
+            delete gridState.filters[columnKey];
+            return;
+        }
+
+        gridState.filters[columnKey] = filter;
+    }
+
+    function handlePortfolioColumnMenuAction(actionButton) {
+        const menu = actionButton.closest(".dashboard-column-menu");
+        if (!menu) {
+            return;
+        }
+
+        const tableKey = menu.dataset.portfolioMenuTable || "overdue";
+        const columnKey = menu.dataset.portfolioMenuColumn || "";
+        const gridState = getPortfolioGridState(tableKey);
+        const action = actionButton.dataset.portfolioMenuAction || "";
+
+        if (action === "sort-asc" || action === "sort-desc") {
+            gridState.sortKey = columnKey;
+            gridState.sortDirection = action === "sort-desc" ? "desc" : "asc";
+            closePortfolioColumnMenu();
+            renderPortfolioTable();
+            return;
+        }
+
+        if (action === "select-all" || action === "select-none") {
+            menu.querySelectorAll("[data-portfolio-menu-value]").forEach(input => {
+                input.checked = action === "select-all";
+            });
+            return;
+        }
+
+        if (action === "clear") {
+            delete gridState.filters[columnKey];
+            closePortfolioColumnMenu();
+            renderPortfolioTable();
+            return;
+        }
+
+        if (action === "apply") {
+            const query = (menu.querySelector("[data-portfolio-menu-query]")?.value || "").trim();
+            const inputs = Array.from(menu.querySelectorAll("[data-portfolio-menu-value]"));
+            const checkedValues = inputs
+                .filter(input => input.checked)
+                .map(input => input.value);
+            const selected = inputs.length > 0 && checkedValues.length !== inputs.length
+                ? checkedValues
+                : null;
+
+            setPortfolioColumnFilter(tableKey, columnKey, { query, selected });
+            closePortfolioColumnMenu();
+            renderPortfolioTable();
+        }
+    }
+
+    function resetPortfolioGrid(tableKey) {
+        const gridState = getPortfolioGridState(tableKey);
+        gridState.filters = {};
+        gridState.sortKey = tableKey === "invoices" ? "emissionDateValue" : "ageDays";
+        gridState.sortDirection = "desc";
+
+        if (tableKey === "invoices") {
+            state.portfolioInvoicesSearchTerm = "";
+            portfolioInvoicesSearch && (portfolioInvoicesSearch.value = "");
+        } else {
+            state.portfolioSearchTerm = "";
+            portfolioClientSearch && (portfolioClientSearch.value = "");
+        }
+
+        closePortfolioColumnMenu();
+        renderPortfolioTable();
     }
 
     function renderPortfolioTable() {
-        const allRows = Array.isArray(state.portfolioDashboard?.overdueInvoices)
-            ? state.portfolioDashboard.overdueInvoices
-            : [];
-        const filteredRows = getFilteredPortfolioRows();
-
-        if (portfolioResultsCount) {
-            portfolioResultsCount.textContent = `Mostrando ${numberFormatter.format(filteredRows.length)} de ${numberFormatter.format(allRows.length)} registros`;
-        }
-
-        renderOverdueTable(filteredRows, portfolioUnpaidBody);
+        renderPortfolioGrid("overdue");
+        renderPortfolioGrid("invoices");
     }
 
     function updateHeroForBilling(dashboard) {
@@ -3720,14 +4368,48 @@
         }
     }
 
+    async function loadSiigoCustomers() {
+        const url = buildSiigoCustomersUrl();
+        if (!url) {
+            setStatus(siigoInvoicesStatus, "error", "No hay una URL configurada para cargar clientes desde Siigo.");
+            return;
+        }
+
+        setSiigoCustomersLoading(true);
+        setStatus(siigoInvoicesStatus, "info", "Cargando clientes desde Siigo...");
+        resetSiigoInvoicesTable("Cargando clientes desde Siigo.");
+        renderSiigoCustomerSelect("Cargando clientes...");
+
+        try {
+            const items = await fetchJson(url);
+            state.siigoCustomers = Array.isArray(items) ? items : [];
+            renderSiigoCustomerSelect(state.siigoCustomers.length ? "" : "Siigo no devolvio clientes.");
+
+            if (state.siigoCustomers.length === 0) {
+                setStatus(siigoInvoicesStatus, "error", "Siigo respondio correctamente, pero no devolvio clientes para mostrar.");
+                resetSiigoInvoicesTable("Siigo no devolvio clientes para seleccionar.");
+                return;
+            }
+
+            setStatus(siigoInvoicesStatus, "success", `Clientes cargados desde Siigo: ${numberFormatter.format(state.siigoCustomers.length)}.`);
+            resetSiigoInvoicesTable("Selecciona un cliente y consulta sus facturas de Siigo.");
+        } catch (error) {
+            state.siigoCustomers = [];
+            renderSiigoCustomerSelect("No se pudieron cargar clientes.");
+            resetSiigoInvoicesTable("Fallo la carga de clientes desde Siigo. Revisa el error de arriba.");
+            setStatus(siigoInvoicesStatus, "error", formatSiigoUiError("cargar clientes desde Siigo", error, url));
+        } finally {
+            setSiigoCustomersLoading(false);
+        }
+    }
+
     async function loadSiigoInvoices() {
-        const customerId = siigoCustomerIdInput?.value || "";
-        const customerQuery = normalizeNitValue(siigoCustomerSearch?.value || "");
+        const customerId = siigoCustomerSelect?.value || siigoCustomerIdInput?.value || "";
         const startDate = siigoStartDateInput?.value || "";
         const endDate = siigoEndDateInput?.value || "";
 
-        if (!customerId && !customerQuery) {
-            setStatus(siigoInvoicesStatus, "error", "Ingresa el NIT del cliente para consultar sus facturas.");
+        if (!customerId) {
+            setStatus(siigoInvoicesStatus, "error", "Selecciona un cliente de Siigo antes de consultar facturas.");
             return;
         }
 
@@ -3750,7 +4432,7 @@
             setStatus(siigoInvoicesStatus, detail?.hasData ? "" : "info", detail?.hasData ? "" : (detail?.emptyStateMessage || "No encontramos facturas en Siigo para este periodo."));
         } catch (error) {
             resetSiigoInvoicesTable("No pudimos consultar las facturas de Siigo.");
-            setStatus(siigoInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible consultar facturas en Siigo.");
+            setStatus(siigoInvoicesStatus, "error", formatSiigoUiError("consultar facturas en Siigo", error, buildSiigoInvoicesUrl()));
         } finally {
             setSiigoInvoicesLoading(false);
         }
@@ -4073,15 +4755,11 @@
         setStatus(siigoInvoicesStatus, "", "");
     });
     siigoInvoicesLoadButton?.addEventListener("click", loadSiigoInvoices);
+    siigoCustomersLoadButton?.addEventListener("click", loadSiigoCustomers);
     siigoInvoicesDownloadButton?.addEventListener("click", downloadSiigoInvoices);
-    siigoCustomerSearch?.addEventListener("keydown", event => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            loadSiigoInvoices();
-        }
-    });
-    siigoCustomerSearch?.addEventListener("input", () => {
-        resetSiigoInvoicesTable("Busca un cliente y consulta sus facturas de Siigo.");
+    siigoCustomerSelect?.addEventListener("change", () => {
+        syncSiigoCustomerSelection();
+        resetSiigoInvoicesTable("Consulta Siigo para el cliente seleccionado.");
         setStatus(siigoInvoicesStatus, "", "");
     });
     [siigoStartDateInput, siigoEndDateInput].forEach(input => {
@@ -4131,9 +4809,38 @@
         state.portfolioSearchTerm = portfolioClientSearch.value || "";
         renderPortfolioTable();
     });
-    portfolioSortFilter?.addEventListener("change", () => {
-        state.portfolioSort = portfolioSortFilter.value || "age";
+    portfolioInvoicesSearch?.addEventListener("input", () => {
+        state.portfolioInvoicesSearchTerm = portfolioInvoicesSearch.value || "";
         renderPortfolioTable();
+    });
+    portfolioOverdueClearFiltersButton?.addEventListener("click", () => resetPortfolioGrid("overdue"));
+    portfolioInvoicesClearFiltersButton?.addEventListener("click", () => resetPortfolioGrid("invoices"));
+    document.addEventListener("click", event => {
+        const columnButton = event.target.closest("[data-portfolio-column]");
+        if (columnButton) {
+            event.preventDefault();
+            openPortfolioColumnMenu(
+                columnButton.dataset.portfolioGrid || "overdue",
+                columnButton.dataset.portfolioColumn || "",
+                columnButton);
+            return;
+        }
+
+        const menuActionButton = event.target.closest("[data-portfolio-menu-action]");
+        if (menuActionButton) {
+            event.preventDefault();
+            handlePortfolioColumnMenuAction(menuActionButton);
+            return;
+        }
+
+        if (!event.target.closest(".dashboard-column-menu")) {
+            closePortfolioColumnMenu();
+        }
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+            closePortfolioColumnMenu();
+        }
     });
     pnlYearFilter?.addEventListener("change", () => {
         closePnlDetailModal();
@@ -4300,14 +5007,13 @@
     buildYearOptions();
     buildPnlYearOptions();
     periodFilter && (periodFilter.value = state.period);
-    portfolioSortFilter && (portfolioSortFilter.value = state.portfolioSort);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
     wireCopiersLookupInput(billingReportClientSearch, billingReportClientIdInput, billingReportClientOptions, "billingReportClientSuggestions", "name", buildCopiersClientSearchUrl);
-    wireCopiersLookupInput(siigoCustomerSearch, siigoCustomerIdInput, siigoCustomerOptions, "siigoCustomerSuggestions", "identification", buildSiigoCustomerSearchUrl);
     wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
     wireCopiersLookupInput(copiersEquipmentClientNameInput, copiersEquipmentClientIdInput, copiersEquipmentClientOptions, "copiersEquipmentClientSuggestions", "name", buildCopiersClientSearchUrl);
     buildValueOptions();
+    renderSiigoCustomerSelect();
     syncSiigoDateRangeWithActivePeriod();
     buildPnlMonthOptions(12);
     buildCopiersMaintenanceFilterOptions();

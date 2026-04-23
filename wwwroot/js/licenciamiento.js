@@ -6,6 +6,7 @@
 
     const loadUrl = app.dataset.loadUrl || "";
     const previewUrl = app.dataset.previewUrl || "";
+    const productSearchUrl = app.dataset.productSearchUrl || "";
     const importUrl = app.dataset.importUrl || "";
     const adjustTrmUrl = app.dataset.adjustTrmUrl || "";
     const updateContractUrl = app.dataset.updateContractUrl || "";
@@ -71,7 +72,10 @@
         board: null,
         selectedIds: new Set(),
         previewRows: [],
-        contractTypeOptions: []
+        contractTypeOptions: [],
+        productLookupTimers: new Map(),
+        productLookupRequests: new Map(),
+        productLookupRequestSeq: 0
     };
 
     refreshBtn?.addEventListener("click", loadBoard);
@@ -128,10 +132,40 @@
         }
     });
 
+    document.addEventListener("input", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || !target.matches("[data-preview-product-search]")) {
+            return;
+        }
+
+        handlePreviewProductInput(target);
+    });
+
+    document.addEventListener("focusin", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || !target.matches("[data-preview-product-search]")) {
+            return;
+        }
+
+        if (target.value.trim().length >= 2) {
+            openPreviewProductMenu(target);
+        }
+    });
+
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
             return;
+        }
+
+        const productOption = target.closest("[data-preview-product-option]");
+        if (productOption instanceof HTMLElement) {
+            selectPreviewProductOption(productOption);
+            return;
+        }
+
+        if (!target.closest(".lic-lookup")) {
+            closeProductLookupMenus();
         }
 
         if (target.hasAttribute("data-lic-close")) {
@@ -303,12 +337,10 @@
         previewRowsCount.textContent = numberFormatter.format(Number(result?.totalRows || rows.length || 0));
         previewValidCount.textContent = numberFormatter.format(Number(result?.validRows || rows.filter((row) => row.isValid).length || 0));
         previewTotalUsd.textContent = usdFormatter.format(Number(result?.totalUsd || rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)));
-        importBtn.disabled = rows.length === 0 || rows.some((row) => !row.isValid);
+        updatePreviewImportState();
 
         previewBody.innerHTML = rows.map((row, index) => {
-            const messages = []
-                .concat(Array.isArray(row.errors) ? row.errors : [])
-                .concat(Array.isArray(row.warnings) ? row.warnings : []);
+            const messages = getPreviewMessages(row);
             const badgeClass = row.isValid
                 ? (messages.length > 0 ? "is-warning" : "is-good")
                 : "is-danger";
@@ -317,17 +349,16 @@
                 : messages.join(" | ");
 
             return `
-                <tr>
+                <tr data-preview-index="${index}">
                     <td data-label="Fila">${numberFormatter.format(Number(row.sourceRowNumber || 0))}</td>
                     <td data-label="Cliente">${escapeHtml(row.nombreCliente)}</td>
                     <td data-label="Cuenta">
                         <div>${escapeHtml(row.companyAccountId || "Sin cuenta")}</div>
-                        ${row.companyAccountLookupFound ? "<small class=\"lic-muted\">Lookup encontrado</small>" : "<small class=\"lic-muted\">Sin lookup</small>"}
+                        ${renderLookupHelper(row.companyAccountLookupFound, row.companyAccountLookupRequired, row.companyAccountLookupLabel, row.companyAccountLookupFailureReason)}
                     </td>
                     <td data-label="Vendor">${escapeHtml(row.vendor)}</td>
                     <td data-label="Producto">
-                        <div>${escapeHtml(row.productDescription)}</div>
-                        ${row.productLookupFound ? "<small class=\"lic-muted\">Lookup encontrado</small>" : "<small class=\"lic-muted\">Sin lookup</small>"}
+                        ${renderPreviewProductCell(row, index)}
                     </td>
                     <td data-label="Factura">${escapeHtml(row.facturaDisplay || row.facturaValue)}</td>
                     <td class="text-end" data-label="USD">${usdFormatter.format(Number(row.valorTotalUsd || 0))}</td>
@@ -336,14 +367,282 @@
                             ${renderContractOptions(row.contractTypeValue)}
                         </select>
                     </td>
-                    <td data-label="Estado"><span class="lic-badge ${badgeClass}">${escapeHtml(statusText || "Error")}</span></td>
+                    <td data-label="Estado"><span class="lic-badge ${badgeClass}" data-preview-status="${index}">${escapeHtml(statusText || "Error")}</span></td>
                 </tr>`;
         }).join("");
+    }
+
+    function renderPreviewProductCell(row, index) {
+        if (!row.productLookupRequired) {
+            return `
+                <div>${escapeHtml(row.productDescription)}</div>
+                <small class="lic-muted">Producto de texto</small>`;
+        }
+
+        const value = row.productLookupLabel || row.productDescription || "";
+        const helperClass = row.productLookupId ? "lic-muted" : "lic-lookup-note is-warning";
+        const helperText = row.productLookupId
+            ? `Lookup encontrado${row.productLookupLabel ? ": " + row.productLookupLabel : ""}`
+            : (row.productLookupFailureReason || "Sin lookup de producto. Esta fila se omitira al procesar si no seleccionas uno.");
+
+        return `
+            <div class="lic-lookup">
+                <input class="form-control form-control-sm lic-lookup-input"
+                       type="search"
+                       value="${escapeHtml(value)}"
+                       placeholder="Buscar producto..."
+                       autocomplete="off"
+                       data-preview-product-search="${index}" />
+                <div class="lic-lookup-menu" data-preview-product-menu="${index}"></div>
+            </div>
+            <small class="${helperClass}" data-preview-product-helper="${index}">${escapeHtml(helperText)}</small>`;
+    }
+
+    function renderLookupHelper(found, required, label, failureReason) {
+        if (!required) {
+            return "<small class=\"lic-muted\">No requiere lookup</small>";
+        }
+
+        if (found) {
+            const suffix = label ? `: ${escapeHtml(label)}` : "";
+            return `<small class="lic-muted">Lookup encontrado${suffix}</small>`;
+        }
+
+        return `<small class="lic-lookup-note is-warning">${escapeHtml(failureReason || "Sin lookup")}</small>`;
+    }
+
+    function getPreviewMessages(row) {
+        const messages = []
+            .concat(Array.isArray(row.errors) ? row.errors : [])
+            .concat(Array.isArray(row.warnings) ? row.warnings : []);
+
+        if (shouldSkipPreviewRow(row)) {
+            messages.push(row.productLookupFailureReason || "Se omitira al procesar porque no tiene lookup de producto.");
+        }
+
+        return Array.from(new Set(messages.filter(Boolean)));
+    }
+
+    function shouldSkipPreviewRow(row) {
+        return Boolean(row?.productLookupRequired && !(row.productLookupId || "").trim());
+    }
+
+    function getImportablePreviewRows() {
+        return state.previewRows.filter((row) => row.isValid && !shouldSkipPreviewRow(row));
+    }
+
+    function updatePreviewImportState() {
+        if (!importBtn) {
+            return;
+        }
+
+        importBtn.disabled = state.previewRows.length === 0
+            || state.previewRows.some((row) => !row.isValid)
+            || getImportablePreviewRows().length === 0;
+    }
+
+    function refreshPreviewRowDecorations(index) {
+        const row = state.previewRows[index];
+        if (!row) {
+            return;
+        }
+
+        const helper = previewBody.querySelector(`[data-preview-product-helper="${index}"]`);
+        if (helper) {
+            helper.className = row.productLookupId ? "lic-muted" : "lic-lookup-note is-warning";
+            helper.textContent = row.productLookupId
+                ? `Lookup encontrado${row.productLookupLabel ? ": " + row.productLookupLabel : ""}`
+                : (row.productLookupFailureReason || "Sin lookup de producto. Esta fila se omitira al procesar si no seleccionas uno.");
+        }
+
+        const status = previewBody.querySelector(`[data-preview-status="${index}"]`);
+        if (status) {
+            const messages = getPreviewMessages(row);
+            status.className = `lic-badge ${row.isValid ? (messages.length > 0 ? "is-warning" : "is-good") : "is-danger"}`;
+            status.textContent = row.isValid
+                ? (messages.length > 0 ? messages.join(" | ") : "Lista")
+                : (messages.join(" | ") || "Error");
+        }
+
+        updatePreviewImportState();
+    }
+
+    function handlePreviewProductInput(input) {
+        const index = Number.parseInt(input.getAttribute("data-preview-product-search") || "-1", 10);
+        const row = state.previewRows[index];
+        if (!row) {
+            return;
+        }
+
+        const query = input.value.trim();
+        row.productDescription = query;
+        row.productLookupId = "";
+        row.productLookupLabel = "";
+        row.productLookupFound = false;
+        row.productLookupFailureReason = query.length < 2
+            ? "Escribe al menos 2 caracteres para buscar en cr07a_precioscloud."
+            : "";
+        removeProductLookupWarnings(row);
+        refreshPreviewRowDecorations(index);
+
+        if (query.length < 2 || !productSearchUrl) {
+            hideProductLookupMenu(index);
+            return;
+        }
+
+        schedulePreviewProductSearch(index, query, 280);
+    }
+
+    function openPreviewProductMenu(input) {
+        const index = Number.parseInt(input.getAttribute("data-preview-product-search") || "-1", 10);
+        const query = input.value.trim();
+        if (index < 0 || query.length < 2 || !productSearchUrl) {
+            return;
+        }
+
+        schedulePreviewProductSearch(index, query, 0);
+    }
+
+    function schedulePreviewProductSearch(index, query, delay) {
+        const previousTimer = state.productLookupTimers.get(index);
+        if (previousTimer) {
+            window.clearTimeout(previousTimer);
+        }
+
+        const timer = window.setTimeout(() => searchPreviewProduct(index, query), delay);
+        state.productLookupTimers.set(index, timer);
+    }
+
+    async function searchPreviewProduct(index, query) {
+        const menu = getProductLookupMenu(index);
+        if (!menu) {
+            return;
+        }
+
+        const requestId = ++state.productLookupRequestSeq;
+        state.productLookupRequests.set(index, requestId);
+        menu.innerHTML = "<div class=\"lic-lookup-empty\">Buscando...</div>";
+        menu.classList.add("is-open");
+
+        try {
+            const items = await fetchJson(buildProductSearchUrl(query));
+            if (state.productLookupRequests.get(index) !== requestId) {
+                return;
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                const row = state.previewRows[index];
+                if (row) {
+                    row.productLookupFailureReason = `No se encontraron productos en cr07a_precioscloud para "${query}".`;
+                    refreshPreviewRowDecorations(index);
+                }
+
+                menu.innerHTML = "<div class=\"lic-lookup-empty\">Sin resultados</div>";
+                menu.classList.add("is-open");
+                return;
+            }
+
+            menu.innerHTML = items.map((item) => `
+                <button type="button"
+                        class="lic-lookup-option"
+                        data-preview-product-option
+                        data-preview-index="${index}"
+                        data-id="${escapeHtml(item.id || "")}"
+                        data-label="${escapeHtml(item.label || "")}">
+                    <span>${escapeHtml(item.label || "Producto sin nombre")}</span>
+                    <small>${escapeHtml(item.matchedValue || item.searchField || "")}</small>
+                </button>
+            `).join("");
+            menu.classList.add("is-open");
+        } catch (error) {
+            if (state.productLookupRequests.get(index) !== requestId) {
+                return;
+            }
+
+            const row = state.previewRows[index];
+            if (row) {
+                row.productLookupFailureReason = getErrorMessage(error);
+                refreshPreviewRowDecorations(index);
+            }
+
+            menu.innerHTML = "<div class=\"lic-lookup-empty\">No se pudo buscar</div>";
+            menu.classList.add("is-open");
+        }
+    }
+
+    function selectPreviewProductOption(option) {
+        const index = Number.parseInt(option.getAttribute("data-preview-index") || "-1", 10);
+        const row = state.previewRows[index];
+        if (!row) {
+            return;
+        }
+
+        row.productLookupId = option.getAttribute("data-id") || "";
+        row.productLookupLabel = option.getAttribute("data-label") || "";
+        row.productDescription = row.productLookupLabel || row.productDescription;
+        row.productLookupFound = Boolean(row.productLookupId);
+        row.productLookupFailureReason = "";
+        removeProductLookupWarnings(row);
+
+        const input = previewBody.querySelector(`[data-preview-product-search="${index}"]`);
+        if (input instanceof HTMLInputElement) {
+            input.value = row.productLookupLabel || row.productDescription;
+        }
+
+        hideProductLookupMenu(index);
+        refreshPreviewRowDecorations(index);
+    }
+
+    function removeProductLookupWarnings(row) {
+        if (!Array.isArray(row.warnings)) {
+            row.warnings = [];
+            return;
+        }
+
+        row.warnings = row.warnings.filter((message) => {
+            const text = (message || "").toString().toLowerCase();
+            return !text.includes("priceableitem")
+                && !text.includes("lookup de producto")
+                && !text.includes("cr07a_precioscloud")
+                && !text.includes("producto en la vista previa");
+        });
+    }
+
+    function buildProductSearchUrl(query) {
+        const separator = productSearchUrl.includes("?") ? "&" : "?";
+        return `${productSearchUrl}${separator}q=${encodeURIComponent(query)}&top=8`;
+    }
+
+    function getProductLookupMenu(index) {
+        return previewBody.querySelector(`[data-preview-product-menu="${index}"]`);
+    }
+
+    function hideProductLookupMenu(index) {
+        const menu = getProductLookupMenu(index);
+        if (!menu) {
+            return;
+        }
+
+        menu.classList.remove("is-open");
+        menu.innerHTML = "";
+    }
+
+    function closeProductLookupMenus() {
+        previewBody.querySelectorAll(".lic-lookup-menu.is-open").forEach((menu) => {
+            menu.classList.remove("is-open");
+            menu.innerHTML = "";
+        });
     }
 
     async function importPreviewRows() {
         if (state.previewRows.length === 0 || state.previewRows.some((row) => !row.isValid)) {
             showStatus(uploadStatus, "warning", "La vista previa tiene filas pendientes.");
+            return;
+        }
+
+        const importableRows = getImportablePreviewRows();
+        if (importableRows.length === 0) {
+            showStatus(uploadStatus, "warning", "Selecciona al menos un producto con lookup antes de procesar.");
             return;
         }
 
@@ -363,7 +662,7 @@
         } catch (error) {
             showStatus(uploadStatus, "error", getErrorMessage(error));
         } finally {
-            importBtn.disabled = state.previewRows.length === 0 || state.previewRows.some((row) => !row.isValid);
+            updatePreviewImportState();
             setBusy(false);
         }
     }

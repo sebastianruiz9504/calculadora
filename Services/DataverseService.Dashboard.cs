@@ -81,7 +81,8 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos facturas pendientes de pago.",
             EmptyStateMessage = "Cuando existan facturas sin pago o vencidas las veras aqui.",
             Kpis = BuildPortfolioKpis(unpaidInvoices, overdueInvoices),
-            OverdueInvoices = BuildUnpaidInvoices(overdueInvoices, today)
+            OverdueInvoices = BuildUnpaidInvoices(overdueInvoices, today),
+            Invoices = BuildBillingInvoiceRows(portfolioCandidates, today)
         };
     }
 
@@ -2230,6 +2231,49 @@ public sealed partial class DataverseService
             })
             .OrderByDescending(static record => record.AgeDays)
             .ThenByDescending(static record => record.TotalInvoice)
+            .ToList();
+    }
+
+    private IReadOnlyList<BillingInvoiceRowDto> BuildBillingInvoiceRows(
+        IReadOnlyList<BillingRecordRow> rows,
+        DateOnly today)
+    {
+        return rows
+            .Select(record =>
+            {
+                var isOverdue = record.IsOverdue(today);
+
+                return new BillingInvoiceRowDto
+                {
+                    RecordId = record.RecordId,
+                    InvoiceNumber = record.InvoiceNumber,
+                    ClientId = record.ClientId,
+                    ClientName = record.ClientName,
+                    CompanyTaxId = record.CompanyTaxId,
+                    VerticalLabel = record.VerticalLabel,
+                    ContractTypeLabel = record.ContractTypeLabel,
+                    EmissionDateValue = record.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    EmissionDateDisplay = record.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    DueDateValue = record.DueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    DueDateDisplay = record.DueDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    PaymentDateValue = record.PaymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    PaymentDateDisplay = record.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin pago",
+                    TotalInvoice = record.TotalInvoice,
+                    VatPercent = record.VatPercent,
+                    VatValue = record.VatValue,
+                    PaymentValue = record.PaymentValue,
+                    ReteIcaValue = record.ReteIcaValue,
+                    RteIvaValue = record.RteIvaValue,
+                    RteFteValue = record.RteFteValue,
+                    RetentionsTotal = record.RetentionsTotal,
+                    DifferenceValue = record.DifferenceValue,
+                    PaymentStatusLabel = record.HasPayment ? "Con pago" : isOverdue ? "Vencida" : "Pendiente",
+                    AgeDays = record.GetOverdueDays(today),
+                    PublicUrl = record.PublicUrl
+                };
+            })
+            .OrderByDescending(static row => row.EmissionDateValue)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

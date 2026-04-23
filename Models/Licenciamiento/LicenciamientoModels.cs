@@ -72,12 +72,16 @@ public sealed class LicenciamientoPreviewRowDto
     public string CompanyAccountLookupId { get; set; } = "";
     public string CompanyAccountLookupLabel { get; set; } = "";
     public bool CompanyAccountLookupFound { get; set; }
+    public bool CompanyAccountLookupRequired { get; set; }
+    public string CompanyAccountLookupFailureReason { get; set; } = "";
     public string NombreCliente { get; set; } = "";
     public string Vendor { get; set; } = "";
     public string ProductDescription { get; set; } = "";
     public string ProductLookupId { get; set; } = "";
     public string ProductLookupLabel { get; set; } = "";
     public bool ProductLookupFound { get; set; }
+    public bool ProductLookupRequired { get; set; }
+    public string ProductLookupFailureReason { get; set; } = "";
     public int Days { get; set; }
     public string BillingInterval { get; set; } = "";
     public string FacturaValue { get; set; } = "";
@@ -102,6 +106,14 @@ public sealed class LicenciamientoImportResultDto
     public string Message { get; set; } = "";
     public int CreatedCount { get; set; }
     public int SkippedCount { get; set; }
+}
+
+public sealed class LicenciamientoLookupItemDto
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string SearchField { get; set; } = "";
+    public string MatchedValue { get; set; } = "";
 }
 
 public sealed class LicenciamientoAdjustTrmRequestDto
