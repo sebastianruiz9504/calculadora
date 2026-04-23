@@ -33,9 +33,19 @@
     const previewSummary = document.getElementById("licPreviewSummary");
     const previewRowsCount = document.getElementById("licPreviewRowsCount");
     const previewValidCount = document.getElementById("licPreviewValidCount");
+    const previewHiddenCount = document.getElementById("licPreviewHiddenCount");
     const previewTotalUsd = document.getElementById("licPreviewTotalUsd");
     const previewWrap = document.getElementById("licPreviewWrap");
+    const previewAccountSection = document.getElementById("licPreviewAccountSection");
+    const previewAccountCount = document.getElementById("licPreviewAccountCount");
+    const previewAccountBody = document.getElementById("licPreviewAccountBody");
+    const previewProductSection = document.getElementById("licPreviewProductSection");
+    const previewProductCount = document.getElementById("licPreviewProductCount");
     const previewBody = document.getElementById("licPreviewBody");
+    const previewDataSection = document.getElementById("licPreviewDataSection");
+    const previewDataCount = document.getElementById("licPreviewDataCount");
+    const previewDataBody = document.getElementById("licPreviewDataBody");
+    const previewClean = document.getElementById("licPreviewClean");
 
     const trmModal = document.getElementById("licTrmModal");
     const trmStatus = document.getElementById("licTrmStatus");
@@ -72,6 +82,7 @@
         board: null,
         selectedIds: new Set(),
         previewRows: [],
+        previewResult: null,
         contractTypeOptions: [],
         productLookupTimers: new Map(),
         productLookupRequests: new Map(),
@@ -281,6 +292,7 @@
 
     function openUploadModal() {
         state.previewRows = [];
+        state.previewResult = null;
         if (fileInput) {
             fileInput.value = "";
         }
@@ -315,13 +327,16 @@
             });
 
             state.previewRows = Array.isArray(result.rows) ? result.rows : [];
+            state.previewResult = result;
             state.contractTypeOptions = Array.isArray(result.contractTypeOptions)
                 ? result.contractTypeOptions
                 : state.contractTypeOptions;
             renderPreview(result);
-            showStatus(uploadStatus, state.previewRows.some((row) => !row.isValid) ? "warning" : "success", result.message || "Vista previa lista.");
+            const hasPreviewIssues = state.previewRows.some((row) => !row.isValid || hasAccountLookupIssue(row) || shouldSkipPreviewRow(row));
+            showStatus(uploadStatus, hasPreviewIssues ? "warning" : "success", result.message || "Vista previa lista.");
         } catch (error) {
             state.previewRows = [];
+            state.previewResult = null;
             renderPreview();
             showStatus(uploadStatus, "error", getErrorMessage(error));
         } finally {
@@ -332,14 +347,51 @@
 
     function renderPreview(result) {
         const rows = state.previewRows;
+        const summary = result || state.previewResult || {};
+        const accountGroups = buildAccountIssueGroups(rows);
+        const productRows = getProductIssueRows(rows);
+        const dataRows = getDataIssueRows(rows);
+        const hiddenRows = rows.filter((row) => isPreviewRowReadyToHide(row)).length;
+
         previewSummary.hidden = rows.length === 0;
         previewWrap.hidden = rows.length === 0;
-        previewRowsCount.textContent = numberFormatter.format(Number(result?.totalRows || rows.length || 0));
-        previewValidCount.textContent = numberFormatter.format(Number(result?.validRows || rows.filter((row) => row.isValid).length || 0));
-        previewTotalUsd.textContent = usdFormatter.format(Number(result?.totalUsd || rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)));
+        previewRowsCount.textContent = numberFormatter.format(Number(summary?.totalRows || rows.length || 0));
+        previewValidCount.textContent = numberFormatter.format(Number(summary?.validRows || rows.filter((row) => row.isValid).length || 0));
+        previewHiddenCount.textContent = numberFormatter.format(hiddenRows);
+        previewTotalUsd.textContent = usdFormatter.format(Number(summary?.totalUsd || rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)));
         updatePreviewImportState();
 
-        previewBody.innerHTML = rows.map((row, index) => {
+        if (previewAccountSection) {
+            previewAccountSection.hidden = accountGroups.length === 0;
+        }
+
+        if (previewAccountCount) {
+            previewAccountCount.textContent = `${numberFormatter.format(accountGroups.length)} grupo${accountGroups.length === 1 ? "" : "s"}`;
+        }
+
+        if (previewAccountBody) {
+            previewAccountBody.innerHTML = accountGroups.map((group) => `
+                <tr>
+                    <td data-label="Account ID">
+                        <div>${escapeHtml(group.accountId || "Sin cuenta")}</div>
+                        <small class="lic-muted">${numberFormatter.format(group.count)} fila${group.count === 1 ? "" : "s"}</small>
+                    </td>
+                    <td data-label="Filas">${escapeHtml(group.sourceRows.join(", "))}</td>
+                    <td data-label="Clientes">${escapeHtml(group.clients.join(", ") || "Sin cliente")}</td>
+                    <td data-label="Motivo"><span class="lic-lookup-note is-warning">${escapeHtml(group.reason || "Sin lookup")}</span></td>
+                </tr>
+            `).join("");
+        }
+
+        if (previewProductSection) {
+            previewProductSection.hidden = productRows.length === 0;
+        }
+
+        if (previewProductCount) {
+            previewProductCount.textContent = `${numberFormatter.format(productRows.length)} fila${productRows.length === 1 ? "" : "s"}`;
+        }
+
+        previewBody.innerHTML = productRows.map(({ row, index }) => {
             const messages = getPreviewMessages(row);
             const badgeClass = row.isValid
                 ? (messages.length > 0 ? "is-warning" : "is-good")
@@ -370,6 +422,98 @@
                     <td data-label="Estado"><span class="lic-badge ${badgeClass}" data-preview-status="${index}">${escapeHtml(statusText || "Error")}</span></td>
                 </tr>`;
         }).join("");
+
+        if (previewDataSection) {
+            previewDataSection.hidden = dataRows.length === 0;
+        }
+
+        if (previewDataCount) {
+            previewDataCount.textContent = `${numberFormatter.format(dataRows.length)} fila${dataRows.length === 1 ? "" : "s"}`;
+        }
+
+        if (previewDataBody) {
+            previewDataBody.innerHTML = dataRows.map(({ row }) => {
+                const messages = getPreviewMessages(row);
+                return `
+                    <tr>
+                        <td data-label="Fila">${numberFormatter.format(Number(row.sourceRowNumber || 0))}</td>
+                        <td data-label="Cliente">${escapeHtml(row.nombreCliente)}</td>
+                        <td data-label="Cuenta">${escapeHtml(row.companyAccountId || "Sin cuenta")}</td>
+                        <td data-label="Producto">${escapeHtml(row.productDescription || "Sin producto")}</td>
+                        <td data-label="Estado"><span class="lic-badge is-danger">${escapeHtml(messages.join(" | ") || "Error")}</span></td>
+                    </tr>`;
+            }).join("");
+        }
+
+        if (previewClean) {
+            previewClean.hidden = rows.length === 0 || accountGroups.length > 0 || productRows.length > 0 || dataRows.length > 0;
+        }
+    }
+
+    function buildAccountIssueGroups(rows) {
+        const groups = new Map();
+        rows.forEach((row) => {
+            if (!hasAccountLookupIssue(row)) {
+                return;
+            }
+
+            const key = normalizeLookupGroupKey(row.companyAccountId);
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    accountId: (row.companyAccountId || "").trim(),
+                    count: 0,
+                    sourceRows: [],
+                    clients: [],
+                    reason: row.companyAccountLookupFailureReason || ""
+                });
+            }
+
+            const group = groups.get(key);
+            group.count += 1;
+            if (row.sourceRowNumber) {
+                group.sourceRows.push(numberFormatter.format(Number(row.sourceRowNumber)));
+            }
+
+            const client = (row.nombreCliente || "").trim();
+            if (client && !group.clients.some((value) => value.toLowerCase() === client.toLowerCase())) {
+                group.clients.push(client);
+            }
+
+            if (!group.reason && row.companyAccountLookupFailureReason) {
+                group.reason = row.companyAccountLookupFailureReason;
+            }
+        });
+
+        return Array.from(groups.values())
+            .sort((left, right) => left.accountId.localeCompare(right.accountId, "es", { sensitivity: "base" }));
+    }
+
+    function getProductIssueRows(rows) {
+        return rows
+            .map((row, index) => ({ row, index }))
+            .filter((item) => shouldSkipPreviewRow(item.row));
+    }
+
+    function getDataIssueRows(rows) {
+        return rows
+            .map((row, index) => ({ row, index }))
+            .filter((item) => !item.row?.isValid && !shouldSkipPreviewRow(item.row));
+    }
+
+    function isPreviewRowReadyToHide(row) {
+        return Boolean(row?.isValid)
+            && !hasAccountLookupIssue(row)
+            && !shouldSkipPreviewRow(row);
+    }
+
+    function hasAccountLookupIssue(row) {
+        return Boolean(row?.companyAccountLookupRequired)
+            && !(row.companyAccountLookupId || "").trim()
+            && !row.companyAccountLookupFound;
+    }
+
+    function normalizeLookupGroupKey(value) {
+        return (value || "").trim().toLowerCase() || "__empty__";
     }
 
     function renderPreviewProductCell(row, index) {
@@ -590,7 +734,7 @@
         }
 
         hideProductLookupMenu(index);
-        refreshPreviewRowDecorations(index);
+        renderPreview();
     }
 
     function removeProductLookupWarnings(row) {

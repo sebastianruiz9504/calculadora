@@ -111,28 +111,83 @@
                     <strong id="licPreviewValidCount">0</strong>
                 </div>
                 <div>
+                    <span>Listas ocultas</span>
+                    <strong id="licPreviewHiddenCount">0</strong>
+                </div>
+                <div>
                     <span>Total USD</span>
                     <strong id="licPreviewTotalUsd">USD 0</strong>
                 </div>
             </div>
 
-            <div class="lic-table-wrap lic-table-wrap--preview" id="licPreviewWrap" hidden>
-                <table class="table align-middle lic-table lic-table--preview">
-                    <thead>
-                        <tr>
-                            <th>Fila</th>
-                            <th>Cliente</th>
-                            <th>Cuenta</th>
-                            <th>Vendor</th>
-                            <th>Producto</th>
-                            <th>Factura</th>
-                            <th class="text-end">USD</th>
-                            <th>Tipo</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="licPreviewBody"></tbody>
-                </table>
+            <div class="lic-preview-workspace" id="licPreviewWrap" hidden>
+                <section class="lic-preview-section" id="licPreviewAccountSection" hidden>
+                    <div class="lic-preview-section__header">
+                        <h3>Account ID sin lookup</h3>
+                        <span class="lic-counter" id="licPreviewAccountCount">0 grupos</span>
+                    </div>
+                    <div class="lic-table-wrap lic-table-wrap--compact">
+                        <table class="table align-middle lic-table lic-table--account-issues">
+                            <thead>
+                                <tr>
+                                    <th>Account ID</th>
+                                    <th>Filas</th>
+                                    <th>Clientes</th>
+                                    <th>Motivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="licPreviewAccountBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="lic-preview-section" id="licPreviewProductSection" hidden>
+                    <div class="lic-preview-section__header">
+                        <h3>Producto sin lookup</h3>
+                        <span class="lic-counter" id="licPreviewProductCount">0 filas</span>
+                    </div>
+                    <div class="lic-table-wrap lic-table-wrap--preview">
+                        <table class="table align-middle lic-table lic-table--preview">
+                            <thead>
+                                <tr>
+                                    <th>Fila</th>
+                                    <th>Cliente</th>
+                                    <th>Cuenta</th>
+                                    <th>Vendor</th>
+                                    <th>Producto</th>
+                                    <th>Factura</th>
+                                    <th class="text-end">USD</th>
+                                    <th>Tipo</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="licPreviewBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="lic-preview-section" id="licPreviewDataSection" hidden>
+                    <div class="lic-preview-section__header">
+                        <h3>Errores de datos</h3>
+                        <span class="lic-counter" id="licPreviewDataCount">0 filas</span>
+                    </div>
+                    <div class="lic-table-wrap lic-table-wrap--compact">
+                        <table class="table align-middle lic-table lic-table--data-issues">
+                            <thead>
+                                <tr>
+                                    <th>Fila</th>
+                                    <th>Cliente</th>
+                                    <th>Cuenta</th>
+                                    <th>Producto</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="licPreviewDataBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <div class="lic-empty" id="licPreviewClean" hidden>Todos los lookup estan resueltos.</div>
             </div>
 
             <div class="lic-modal__footer">
