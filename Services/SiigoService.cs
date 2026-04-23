@@ -86,6 +86,35 @@ public sealed class SiigoService : ISiigoService
 
         foreach (var identification in BuildIdentificationCandidates(digits))
         {
+            var unfilteredPage = await GetPagedAsync<SiigoCustomerApiDto>(
+                "v1/customers",
+                new[]
+                {
+                    Pair("identification", identification),
+                    Pair("page", "1"),
+                    Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
+                },
+                ct);
+
+            AddCustomerResults(results, unfilteredPage.Results.Select(MapCustomer), requestedTop);
+            if (results.Count >= requestedTop)
+                return SortCustomers(results.Values).Take(requestedTop).ToList();
+
+            var inactivePage = await GetPagedAsync<SiigoCustomerApiDto>(
+                "v1/customers",
+                new[]
+                {
+                    Pair("identification", identification),
+                    Pair("active", "false"),
+                    Pair("page", "1"),
+                    Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
+                },
+                ct);
+
+            AddCustomerResults(results, inactivePage.Results.Select(MapCustomer), requestedTop);
+            if (results.Count >= requestedTop)
+                return SortCustomers(results.Values).Take(requestedTop).ToList();
+
             foreach (var customerType in customerTypes)
             {
                 foreach (var active in activeStates)
@@ -250,14 +279,25 @@ public sealed class SiigoService : ISiigoService
         if (string.IsNullOrWhiteSpace(query))
             throw new InvalidOperationException("Ingresa el NIT del cliente para consultar Siigo.");
 
-        if (ExtractDigits(query).Length < 3)
+        var digits = ExtractDigits(query);
+        if (digits.Length < 3)
             throw new InvalidOperationException("Ingresa el NIT del cliente, sin depender del nombre.");
 
         var suggestions = await SearchCustomersAsync(query, top: 5, ct);
         if (suggestions.Count == 0)
-            throw new InvalidOperationException("No encontramos clientes en Siigo con ese NIT.");
+        {
+            return new SiigoCustomerLookupItemDto
+            {
+                Id = "",
+                DisplayName = $"NIT {digits}",
+                Name = $"NIT {digits}",
+                Identification = digits,
+                Type = "Direct",
+                BranchOffice = 0,
+                Active = true
+            };
+        }
 
-        var digits = ExtractDigits(query);
         var exact = suggestions.FirstOrDefault(customer =>
             string.Equals(customer.Identification, digits, StringComparison.OrdinalIgnoreCase)
             || BuildIdentificationCandidates(digits).Any(candidate =>
@@ -555,6 +595,14 @@ public sealed class SiigoService : ISiigoService
         var candidates = new List<string> { digits };
         if (digits.Length > 6)
             candidates.Add(digits[..^1]);
+
+        if (digits.Length is >= 7 and <= 10)
+        {
+            for (var checkDigit = 0; checkDigit <= 9; checkDigit++)
+            {
+                candidates.Add($"{digits}{checkDigit}");
+            }
+        }
 
         return candidates
             .Where(static value => !string.IsNullOrWhiteSpace(value))

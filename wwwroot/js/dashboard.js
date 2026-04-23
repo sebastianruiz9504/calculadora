@@ -1961,8 +1961,10 @@
     function buildSiigoInvoicesUrl() {
         const baseUrl = app.dataset.siigoInvoicesUrl || "";
         const selectedCustomer = getSelectedSiigoCustomer();
+        const selectedId = siigoCustomerSelect?.value || siigoCustomerIdInput?.value || "";
+        const isDirectLookup = Boolean(selectedCustomer?.directLookup) || selectedId.startsWith("nit:");
         const params = new URLSearchParams({
-            customerId: siigoCustomerSelect?.value || siigoCustomerIdInput?.value || "",
+            customerId: isDirectLookup ? "" : selectedId,
             customerQuery: selectedCustomer?.identification || "",
             startDate: siigoStartDateInput?.value || "",
             endDate: siigoEndDateInput?.value || ""
@@ -4499,7 +4501,28 @@
             const items = await fetchJson(url);
             const customers = Array.isArray(items) ? items : [];
             if (!customers.length) {
-                setStatus(siigoInvoicesStatus, "error", `Siigo no devolvio terceros para el NIT ${query}.`);
+                const directCustomer = {
+                    id: `nit:${query}`,
+                    displayName: `NIT ${query} (consulta directa)`,
+                    name: `NIT ${query}`,
+                    commercialName: "",
+                    identification: query,
+                    type: "Consulta directa",
+                    branchOffice: 0,
+                    active: true,
+                    directLookup: true
+                };
+
+                upsertSiigoCustomers([directCustomer]);
+                renderSiigoCustomerSelect();
+
+                if (siigoCustomerSelect) {
+                    siigoCustomerSelect.value = directCustomer.id;
+                }
+
+                syncSiigoCustomerSelection();
+                resetSiigoInvoicesTable("Consulta facturas directamente por este NIT.");
+                setStatus(siigoInvoicesStatus, "info", `Siigo no devolvio terceros para el NIT ${query}, pero lo deje seleccionado para consultar facturas directamente por identificacion.`);
                 return;
             }
 
