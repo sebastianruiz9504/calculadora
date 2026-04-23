@@ -14,7 +14,7 @@ public sealed partial class DataverseService
     private const string LicensingConsumptionFallbackEntitySetName = "cr07a_consumointcomexes";
     private const string LicensingConsumptionFallbackIdField = "cr07a_consumointcomexid";
     private const string LicensingConsumptionFallbackPrimaryNameField = "cr07a_name";
-    private const string LicensingAccountLookupField = "cr07a_name";
+    private const string LicensingAccountLookupField = "cr07a_accountid";
     private const string LicensingAccountLookupTargetLogicalName = "cr07a_accountidicp";
     private const string LicensingAccountLookupTargetFallbackEntitySetName = "cr07a_accountidicps";
     private const string LicensingAccountLookupTargetFallbackIdField = "cr07a_accountidicpid";
