@@ -1971,11 +1971,36 @@
         const name = customer?.commercialName || customer?.name || customer?.displayName || "Cliente sin nombre";
         const nit = customer?.identification ? `NIT ${customer.identification}` : "NIT sin dato";
         const branch = Number(customer?.branchOffice || 0) > 0 ? `Sucursal ${customer.branchOffice}` : "";
+        const typeValue = (customer?.type || "").toString().trim();
+        const type = typeValue ? `Tipo ${typeValue}` : "";
         const status = customer?.active === false ? "Inactivo" : "";
 
-        return [name, nit, branch, status]
+        return [name, nit, branch, type, status]
             .filter(Boolean)
             .join(" - ");
+    }
+
+    function buildSiigoCustomersSummary(customers) {
+        const items = Array.isArray(customers) ? customers : [];
+        const counts = items.reduce((summary, customer) => {
+            const type = (customer?.type || "Sin tipo").toString().trim() || "Sin tipo";
+            summary.byType[type] = (summary.byType[type] || 0) + 1;
+            if (customer?.active === false) {
+                summary.inactive += 1;
+            }
+
+            return summary;
+        }, { byType: {}, inactive: 0 });
+
+        const typeSummary = Object.entries(counts.byType)
+            .sort(([left], [right]) => left.localeCompare(right, "es", { sensitivity: "base" }))
+            .map(([type, count]) => `${type}: ${numberFormatter.format(count)}`)
+            .join(", ");
+        const inactiveSummary = counts.inactive > 0
+            ? `, inactivos: ${numberFormatter.format(counts.inactive)}`
+            : "";
+
+        return `${numberFormatter.format(items.length)} (${typeSummary || "sin desglose"}${inactiveSummary})`;
     }
 
     function renderSiigoCustomerSelect(message) {
@@ -4391,7 +4416,7 @@
                 return;
             }
 
-            setStatus(siigoInvoicesStatus, "success", `Clientes cargados desde Siigo: ${numberFormatter.format(state.siigoCustomers.length)}.`);
+            setStatus(siigoInvoicesStatus, "success", `Terceros cargados desde Siigo: ${buildSiigoCustomersSummary(state.siigoCustomers)}.`);
             resetSiigoInvoicesTable("Selecciona un cliente y consulta sus facturas de Siigo.");
         } catch (error) {
             state.siigoCustomers = [];

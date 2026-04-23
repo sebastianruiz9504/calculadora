@@ -41,27 +41,38 @@ public sealed class SiigoService : ISiigoService
         var pageSize = Math.Clamp(_options.PageSize, 25, 100);
         var maxPages = Math.Clamp(_options.MaxCustomerPages, 1, 200);
         var results = new Dictionary<string, SiigoCustomerLookupItemDto>(StringComparer.OrdinalIgnoreCase);
+        var customerTypes = new[] { "Customer", "Supplier", "Other" };
+        var activeStates = new[] { true, false };
 
-        for (var page = 1; page <= maxPages; page++)
+        foreach (var customerType in customerTypes)
         {
-            var response = await GetPagedAsync<SiigoCustomerApiDto>(
-                "v1/customers",
-                new[]
+            foreach (var active in activeStates)
+            {
+                for (var page = 1; page <= maxPages; page++)
                 {
-                    Pair("type", "Customer"),
-                    Pair("page", page.ToString(CultureInfo.InvariantCulture)),
-                    Pair("page_size", pageSize.ToString(CultureInfo.InvariantCulture))
-                },
-                ct);
+                    var response = await GetPagedAsync<SiigoCustomerApiDto>(
+                        "v1/customers",
+                        new[]
+                        {
+                            Pair("type", customerType),
+                            Pair("active", active ? "true" : "false"),
+                            Pair("page", page.ToString(CultureInfo.InvariantCulture)),
+                            Pair("page_size", pageSize.ToString(CultureInfo.InvariantCulture))
+                        },
+                        ct);
 
-            AddCustomerResults(results, response.Results.Select(MapCustomer), int.MaxValue);
+                    AddCustomerResults(results, response.Results.Select(MapCustomer), int.MaxValue);
 
-            if (ShouldStopPaging(response.Pagination, page, pageSize, response.Results.Count))
-                break;
+                    if (ShouldStopPaging(response.Pagination, page, pageSize, response.Results.Count))
+                        break;
+                }
+            }
         }
 
         return results.Values
-            .OrderBy(static customer => string.IsNullOrWhiteSpace(customer.DisplayName) ? customer.Identification : customer.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static customer => ResolveCustomerTypeOrder(customer.Type))
+            .ThenBy(static customer => customer.Active ? 0 : 1)
+            .ThenBy(static customer => string.IsNullOrWhiteSpace(customer.DisplayName) ? customer.Identification : customer.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static customer => customer.Identification, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static customer => customer.BranchOffice)
             .ToList();
@@ -470,10 +481,20 @@ public sealed class SiigoService : ISiigoService
             Name = name,
             CommercialName = commercialName,
             Identification = identification,
+            Type = customer.Type?.Trim() ?? "",
             BranchOffice = customer.BranchOffice,
             Active = customer.Active
         };
     }
+
+    private static int ResolveCustomerTypeOrder(string? type) =>
+        (type ?? "").Trim() switch
+        {
+            "Customer" => 0,
+            "Supplier" => 1,
+            "Other" => 2,
+            _ => 3
+        };
 
     private static SiigoInvoiceRowDto MapInvoice(SiigoInvoiceApiDto invoice)
     {
@@ -649,6 +670,9 @@ public sealed class SiigoService : ISiigoService
     {
         [JsonPropertyName("id")]
         public string Id { get; set; } = "";
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "";
 
         [JsonPropertyName("name")]
         public JsonElement Name { get; set; }

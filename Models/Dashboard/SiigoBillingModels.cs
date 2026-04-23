@@ -7,6 +7,7 @@ public sealed class SiigoCustomerLookupItemDto
     public string Name { get; set; } = "";
     public string CommercialName { get; set; } = "";
     public string Identification { get; set; } = "";
+    public string Type { get; set; } = "";
     public int BranchOffice { get; set; }
     public bool Active { get; set; }
 }
