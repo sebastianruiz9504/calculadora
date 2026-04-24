@@ -40,6 +40,7 @@ public sealed partial class DataverseService
     private const string LicensingProductLookupTargetFallbackPrimaryNameField = "cr07a_priceableitemdescription";
     private const string LicensingProductDescriptionLookupField = "cr07a_priceableitemdescription";
     private const string LicensingModifiedOnField = "modifiedon";
+    private const string LicensingManualBreakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
 
     private static readonly CultureInfo LicensingCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly string[] LicensingAccountSearchFieldCandidates =
@@ -133,7 +134,7 @@ public sealed partial class DataverseService
         ApplyPreviewLookupWarnings(metadata, rows);
 
         var totalRows = rows.Count;
-        var validRows = rows.Count(static row => row.IsValid);
+        var validRows = rows.Count(static row => row.IsValid && !row.RequiresBreakdown);
         return new LicenciamientoPreviewResultDto
         {
             FileName = Path.GetFileName(fileName ?? "consumo.xlsx"),
@@ -147,6 +148,29 @@ public sealed partial class DataverseService
                 ? "No se encontraron filas para importar."
                 : $"Vista previa lista: {validRows} de {totalRows} fila(s) validas."
         };
+    }
+
+    public async Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoAccountsAsync(
+        string query,
+        int top = 12,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        query = (query ?? "").Trim();
+        if (query.Length < 2)
+            return Array.Empty<LicenciamientoLookupItemDto>();
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        return await SearchLicensingLookupOptionsAsync(
+            metadata.AccountMetadata,
+            metadata.AccountSearchFields,
+            metadata.AccountAttributeTypes,
+            query,
+            Math.Clamp(top, 1, 25),
+            httpContext.User,
+            ct);
     }
 
     public async Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoProductsAsync(
@@ -186,14 +210,23 @@ public sealed partial class DataverseService
         if (rows.Count == 0)
             throw new InvalidOperationException("No hay filas para procesar.");
 
-        var invalidRows = rows.Where(static row => !row.IsValid || row.Errors.Count > 0).ToList();
+        var normalizedRows = rows
+            .Select(NormalizeLicensingImportRow)
+            .ToList();
+        var pendingBreakdownRows = normalizedRows
+            .Count(static row => row.RequiresBreakdown && !row.BreakdownGenerated);
+        if (pendingBreakdownRows > 0)
+            throw new InvalidOperationException(pendingBreakdownRows == 1
+                ? "Hay 1 fila de cargo manual pendiente por desglosar."
+                : $"Hay {pendingBreakdownRows} filas de cargo manual pendientes por desglosar.");
+
+        var invalidRows = normalizedRows
+            .Where(static row => !row.IsValid || row.Errors.Count > 0)
+            .ToList();
         if (invalidRows.Count > 0)
             throw new InvalidOperationException($"La vista previa tiene {invalidRows.Count} fila(s) con errores. Corrige el Excel y vuelve a cargarlo.");
 
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
-        var normalizedRows = rows
-            .Select(NormalizeLicensingImportRow)
-            .ToList();
         var rowsToCreate = normalizedRows
             .Where(row => !ShouldSkipLicensingImportRow(metadata, row))
             .ToList();
@@ -727,6 +760,7 @@ public sealed partial class DataverseService
         if (!TryReadLicensingExcelDecimal(row.Cell(columns.Quantity), out var quantity))
             result.Errors.Add("UDRC Value no es un numero valido.");
         result.Cantidad = RoundCurrency(quantity);
+        result.RequiresBreakdown = IsLicensingBreakdownProduct(result.ProductDescription);
 
         if (string.IsNullOrWhiteSpace(result.BillingInterval)
             || !TryResolveLicensingInvoiceDate(result.BillingInterval, out var invoiceDate))
@@ -836,6 +870,11 @@ public sealed partial class DataverseService
                     row.ProductLookupFailureReason,
                     "PriceableItem description no se encontro en el lookup.");
                 row.Warnings.Add($"{reason} Selecciona un producto en la vista previa o esta fila se omitira al procesar.");
+            }
+
+            if (row.RequiresBreakdown && !row.BreakdownGenerated)
+            {
+                row.Warnings.Add("Este producto requiere desglose antes de procesar.");
             }
         }
     }
@@ -1111,6 +1150,8 @@ public sealed partial class DataverseService
 
     private static LicenciamientoPreviewRowDto NormalizeLicensingImportRow(LicenciamientoPreviewRowDto row)
     {
+        row.Warnings ??= new List<string>();
+        row.Errors ??= new List<string>();
         row.CompanyAccountId = (row.CompanyAccountId ?? "").Trim();
         row.CompanyAccountLookupId = NormalizeOptionalGuid(row.CompanyAccountLookupId);
         row.CompanyAccountLookupLabel = (row.CompanyAccountLookupLabel ?? "").Trim();
@@ -1126,6 +1167,7 @@ public sealed partial class DataverseService
         row.FacturaDisplay = (row.FacturaDisplay ?? "").Trim();
         row.ContractTypeValue = NormalizeLicensingContractTypeValue(row.ContractTypeValue);
         row.ContractTypeLabel = ResolveLicensingContractTypeLabel(row.ContractTypeValue);
+        row.RequiresBreakdown = row.RequiresBreakdown && !row.BreakdownGenerated;
 
         if (!TryParseDateOnly(row.FacturaValue, out _))
             throw new InvalidOperationException($"La fila {row.SourceRowNumber} no tiene una fecha de factura valida.");
@@ -1235,6 +1277,12 @@ public sealed partial class DataverseService
 
         return option.Value;
     }
+
+    private static bool IsLicensingBreakdownProduct(string? productDescription) =>
+        string.Equals(
+            (productDescription ?? "").Trim(),
+            LicensingManualBreakdownProductName,
+            StringComparison.OrdinalIgnoreCase);
 
     private static string BuildLicensingPrimaryName(LicenciamientoPreviewRowDto row)
     {

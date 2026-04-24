@@ -6,10 +6,12 @@
 
     const loadUrl = app.dataset.loadUrl || "";
     const previewUrl = app.dataset.previewUrl || "";
+    const accountSearchUrl = app.dataset.accountSearchUrl || "";
     const productSearchUrl = app.dataset.productSearchUrl || "";
     const importUrl = app.dataset.importUrl || "";
     const adjustTrmUrl = app.dataset.adjustTrmUrl || "";
     const updateContractUrl = app.dataset.updateContractUrl || "";
+    const breakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
 
     const statusBanner = document.getElementById("licStatus");
     const refreshBtn = document.getElementById("licRefreshBtn");
@@ -46,6 +48,15 @@
     const previewDataCount = document.getElementById("licPreviewDataCount");
     const previewDataBody = document.getElementById("licPreviewDataBody");
     const previewClean = document.getElementById("licPreviewClean");
+
+    const breakdownModal = document.getElementById("licBreakdownModal");
+    const breakdownStatus = document.getElementById("licBreakdownStatus");
+    const breakdownProduct = document.getElementById("licBreakdownProduct");
+    const breakdownOriginalTotal = document.getElementById("licBreakdownOriginalTotal");
+    const breakdownRemaining = document.getElementById("licBreakdownRemaining");
+    const breakdownBody = document.getElementById("licBreakdownBody");
+    const breakdownAddRowBtn = document.getElementById("licBreakdownAddRowBtn");
+    const breakdownSaveBtn = document.getElementById("licBreakdownSaveBtn");
 
     const trmModal = document.getElementById("licTrmModal");
     const trmStatus = document.getElementById("licTrmStatus");
@@ -86,7 +97,13 @@
         contractTypeOptions: [],
         productLookupTimers: new Map(),
         productLookupRequests: new Map(),
-        productLookupRequestSeq: 0
+        productLookupRequestSeq: 0,
+        breakdownSourceIndex: -1,
+        breakdownDraftRows: [],
+        breakdownDraftSeq: 0,
+        breakdownLookupTimers: new Map(),
+        breakdownLookupRequests: new Map(),
+        breakdownLookupRequestSeq: 0
     };
 
     refreshBtn?.addEventListener("click", loadBoard);
@@ -95,6 +112,11 @@
     contractBtn?.addEventListener("click", openContractModal);
     selectAll?.addEventListener("change", toggleSelectAll);
     importBtn?.addEventListener("click", importPreviewRows);
+    breakdownAddRowBtn?.addEventListener("click", () => {
+        addBreakdownDraftRow();
+        renderBreakdownModal();
+    });
+    breakdownSaveBtn?.addEventListener("click", saveBreakdownRows);
 
     uploadForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -145,21 +167,48 @@
 
     document.addEventListener("input", (event) => {
         const target = event.target;
-        if (!(target instanceof HTMLInputElement) || !target.matches("[data-preview-product-search]")) {
+        if (!(target instanceof HTMLInputElement)) {
             return;
         }
 
-        handlePreviewProductInput(target);
+        if (target.matches("[data-preview-product-search]")) {
+            handlePreviewProductInput(target);
+            return;
+        }
+
+        if (target.matches("[data-breakdown-client-search]")) {
+            handleBreakdownLookupInput(target, "client");
+            return;
+        }
+
+        if (target.matches("[data-breakdown-product-search]")) {
+            handleBreakdownLookupInput(target, "product");
+            return;
+        }
+
+        if (target.matches("[data-breakdown-value]")) {
+            handleBreakdownValueInput(target);
+        }
     });
 
     document.addEventListener("focusin", (event) => {
         const target = event.target;
-        if (!(target instanceof HTMLInputElement) || !target.matches("[data-preview-product-search]")) {
+        if (!(target instanceof HTMLInputElement)) {
             return;
         }
 
-        if (target.value.trim().length >= 2) {
+        if (target.matches("[data-preview-product-search]") && target.value.trim().length >= 2) {
             openPreviewProductMenu(target);
+            return;
+        }
+
+        if (target.matches("[data-breakdown-client-search]") && target.value.trim().length >= 2) {
+            openBreakdownLookupMenu(target, "client");
+            return;
+        }
+
+        if (target.matches("[data-breakdown-product-search]") && target.value.trim().length >= 2) {
+            openBreakdownLookupMenu(target, "product");
         }
     });
 
@@ -175,16 +224,36 @@
             return;
         }
 
+        const breakdownClientOption = target.closest("[data-breakdown-client-option]");
+        if (breakdownClientOption instanceof HTMLElement) {
+            selectBreakdownLookupOption(breakdownClientOption, "client");
+            return;
+        }
+
+        const breakdownProductOption = target.closest("[data-breakdown-product-option]");
+        if (breakdownProductOption instanceof HTMLElement) {
+            selectBreakdownLookupOption(breakdownProductOption, "product");
+            return;
+        }
+
         if (!target.closest(".lic-lookup")) {
             closeProductLookupMenus();
+            closeBreakdownLookupMenus();
         }
 
         if (target.hasAttribute("data-lic-close")) {
             closeUploadModal();
+        } else if (target.hasAttribute("data-lic-breakdown-close")) {
+            closeBreakdownModal();
         } else if (target.hasAttribute("data-lic-trm-close")) {
             closeTrmModal();
         } else if (target.hasAttribute("data-lic-contract-close")) {
             closeContractModal();
+        } else if (target.hasAttribute("data-preview-breakdown")) {
+            openBreakdownModal(Number.parseInt(target.getAttribute("data-preview-breakdown") || "-1", 10));
+        } else if (target.hasAttribute("data-breakdown-remove")) {
+            removeBreakdownDraftRow(target.getAttribute("data-breakdown-remove") || "");
+            return;
         }
     });
 
@@ -193,7 +262,9 @@
             return;
         }
 
-        if (uploadModal && !uploadModal.hidden) {
+        if (breakdownModal && !breakdownModal.hidden) {
+            closeBreakdownModal();
+        } else if (uploadModal && !uploadModal.hidden) {
             closeUploadModal();
         } else if (trmModal && !trmModal.hidden) {
             closeTrmModal();
@@ -293,6 +364,7 @@
     function openUploadModal() {
         state.previewRows = [];
         state.previewResult = null;
+        resetBreakdownState();
         if (fileInput) {
             fileInput.value = "";
         }
@@ -303,6 +375,7 @@
     }
 
     function closeUploadModal() {
+        closeBreakdownModal({ preserveStatus: false });
         uploadModal.hidden = true;
     }
 
@@ -332,11 +405,12 @@
                 ? result.contractTypeOptions
                 : state.contractTypeOptions;
             renderPreview(result);
-            const hasPreviewIssues = state.previewRows.some((row) => !row.isValid || hasAccountLookupIssue(row) || shouldSkipPreviewRow(row));
+            const hasPreviewIssues = state.previewRows.some((row) => !row.isValid || hasAccountLookupIssue(row) || shouldSkipPreviewRow(row) || requiresBreakdown(row));
             showStatus(uploadStatus, hasPreviewIssues ? "warning" : "success", result.message || "Vista previa lista.");
         } catch (error) {
             state.previewRows = [];
             state.previewResult = null;
+            resetBreakdownState();
             renderPreview();
             showStatus(uploadStatus, "error", getErrorMessage(error));
         } finally {
@@ -348,6 +422,7 @@
     function renderPreview(result) {
         const rows = state.previewRows;
         const summary = result || state.previewResult || {};
+        const useServerSummary = Boolean(result);
         const accountGroups = buildAccountIssueGroups(rows);
         const productRows = getProductIssueRows(rows);
         const dataRows = getDataIssueRows(rows);
@@ -355,10 +430,10 @@
 
         previewSummary.hidden = rows.length === 0;
         previewWrap.hidden = rows.length === 0;
-        previewRowsCount.textContent = numberFormatter.format(Number(summary?.totalRows || rows.length || 0));
-        previewValidCount.textContent = numberFormatter.format(Number(summary?.validRows || rows.filter((row) => row.isValid).length || 0));
+        previewRowsCount.textContent = numberFormatter.format(Number(useServerSummary ? (summary?.totalRows || rows.length || 0) : rows.length || 0));
+        previewValidCount.textContent = numberFormatter.format(Number(useServerSummary ? (summary?.validRows || rows.filter((row) => row.isValid && !requiresBreakdown(row)).length || 0) : rows.filter((row) => row.isValid && !requiresBreakdown(row)).length || 0));
         previewHiddenCount.textContent = numberFormatter.format(hiddenRows);
-        previewTotalUsd.textContent = usdFormatter.format(Number(summary?.totalUsd || rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)));
+        previewTotalUsd.textContent = usdFormatter.format(Number(useServerSummary ? (summary?.totalUsd || rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)) : rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)));
         updatePreviewImportState();
 
         if (previewAccountSection) {
@@ -399,6 +474,9 @@
             const statusText = row.isValid
                 ? (messages.length > 0 ? messages.join(" | ") : "Lista")
                 : messages.join(" | ");
+            const actions = requiresBreakdown(row)
+                ? `<button type="button" class="btn btn-outline-primary btn-sm" data-preview-breakdown="${index}">Desglosar</button>`
+                : "<span class=\"lic-muted\">Resuelve el lookup</span>";
 
             return `
                 <tr data-preview-index="${index}">
@@ -420,6 +498,7 @@
                         </select>
                     </td>
                     <td data-label="Estado"><span class="lic-badge ${badgeClass}" data-preview-status="${index}">${escapeHtml(statusText || "Error")}</span></td>
+                    <td data-label="Acciones">${actions}</td>
                 </tr>`;
         }).join("");
 
@@ -491,7 +570,7 @@
     function getProductIssueRows(rows) {
         return rows
             .map((row, index) => ({ row, index }))
-            .filter((item) => shouldSkipPreviewRow(item.row));
+            .filter((item) => shouldSkipPreviewRow(item.row) || requiresBreakdown(item.row));
     }
 
     function getDataIssueRows(rows) {
@@ -503,7 +582,8 @@
     function isPreviewRowReadyToHide(row) {
         return Boolean(row?.isValid)
             && !hasAccountLookupIssue(row)
-            && !shouldSkipPreviewRow(row);
+            && !shouldSkipPreviewRow(row)
+            && !requiresBreakdown(row);
     }
 
     function hasAccountLookupIssue(row) {
@@ -517,6 +597,12 @@
     }
 
     function renderPreviewProductCell(row, index) {
+        if (requiresBreakdown(row)) {
+            return `
+                <div>${escapeHtml(row.productDescription || row.productLookupLabel || "Sin producto")}</div>
+                <small class="lic-lookup-note is-warning">Este cargo debe desglosarse antes de procesar.</small>`;
+        }
+
         if (!row.productLookupRequired) {
             return `
                 <div>${escapeHtml(row.productDescription)}</div>
@@ -560,6 +646,10 @@
             .concat(Array.isArray(row.errors) ? row.errors : [])
             .concat(Array.isArray(row.warnings) ? row.warnings : []);
 
+        if (requiresBreakdown(row)) {
+            messages.push(`Desglosa ${usdFormatter.format(Number(row.valorTotalUsd || 0))} en clientes y productos antes de procesar.`);
+        }
+
         if (shouldSkipPreviewRow(row)) {
             messages.push(row.productLookupFailureReason || "Se omitira al procesar porque no tiene lookup de producto.");
         }
@@ -571,8 +661,24 @@
         return Boolean(row?.productLookupRequired && !(row.productLookupId || "").trim());
     }
 
+    function requiresBreakdown(row) {
+        if (!row) {
+            return false;
+        }
+
+        if (row.breakdownGenerated) {
+            return false;
+        }
+
+        if (row.requiresBreakdown === true) {
+            return true;
+        }
+
+        return normalizeBreakdownProduct(row.productDescription || row.productLookupLabel || "") === normalizeBreakdownProduct(breakdownProductName);
+    }
+
     function getImportablePreviewRows() {
-        return state.previewRows.filter((row) => row.isValid && !shouldSkipPreviewRow(row));
+        return state.previewRows.filter((row) => row.isValid && !shouldSkipPreviewRow(row) && !requiresBreakdown(row));
     }
 
     function updatePreviewImportState() {
@@ -582,12 +688,18 @@
 
         importBtn.disabled = state.previewRows.length === 0
             || state.previewRows.some((row) => !row.isValid)
+            || state.previewRows.some((row) => requiresBreakdown(row))
             || getImportablePreviewRows().length === 0;
     }
 
     function refreshPreviewRowDecorations(index) {
         const row = state.previewRows[index];
         if (!row) {
+            return;
+        }
+
+        if (requiresBreakdown(row)) {
+            updatePreviewImportState();
             return;
         }
 
@@ -753,8 +865,21 @@
     }
 
     function buildProductSearchUrl(query) {
+        if (!productSearchUrl) {
+            return "";
+        }
+
         const separator = productSearchUrl.includes("?") ? "&" : "?";
         return `${productSearchUrl}${separator}q=${encodeURIComponent(query)}&top=8`;
+    }
+
+    function buildAccountSearchUrl(query) {
+        if (!accountSearchUrl) {
+            return "";
+        }
+
+        const separator = accountSearchUrl.includes("?") ? "&" : "?";
+        return `${accountSearchUrl}${separator}q=${encodeURIComponent(query)}&top=8`;
     }
 
     function getProductLookupMenu(index) {
@@ -778,9 +903,507 @@
         });
     }
 
+    function resetBreakdownState() {
+        state.breakdownLookupTimers.forEach((timerId) => window.clearTimeout(timerId));
+        state.breakdownLookupTimers.clear();
+        state.breakdownLookupRequests.clear();
+        state.breakdownSourceIndex = -1;
+        state.breakdownDraftRows = [];
+        clearStatus(breakdownStatus);
+        if (breakdownBody) {
+            breakdownBody.innerHTML = "";
+        }
+        if (breakdownProduct) {
+            breakdownProduct.textContent = "-";
+        }
+        if (breakdownOriginalTotal) {
+            breakdownOriginalTotal.textContent = usdFormatter.format(0);
+        }
+        if (breakdownRemaining) {
+            breakdownRemaining.textContent = usdFormatter.format(0);
+            breakdownRemaining.className = "lic-breakdown-total";
+        }
+    }
+
+    function openBreakdownModal(index) {
+        const sourceRow = state.previewRows[index];
+        if (!sourceRow || !requiresBreakdown(sourceRow)) {
+            return;
+        }
+
+        const shouldReuseDraft = state.breakdownSourceIndex === index && state.breakdownDraftRows.length > 0;
+        if (!shouldReuseDraft) {
+            resetBreakdownState();
+            state.breakdownSourceIndex = index;
+            state.breakdownDraftRows = [createBreakdownDraftRow(Number(sourceRow.valorTotalUsd || 0))];
+        }
+
+        clearStatus(breakdownStatus);
+        renderBreakdownModal();
+        breakdownModal.hidden = false;
+        const firstInput = breakdownBody?.querySelector("[data-breakdown-client-search]");
+        if (firstInput instanceof HTMLInputElement) {
+            firstInput.focus();
+        }
+    }
+
+    function closeBreakdownModal(options) {
+        const preserveDraft = options?.preserveDraft ?? true;
+        const preserveStatus = options?.preserveStatus ?? true;
+        if (breakdownModal) {
+            breakdownModal.hidden = true;
+        }
+        closeBreakdownLookupMenus();
+        if (!preserveStatus) {
+            clearStatus(breakdownStatus);
+        }
+        if (!preserveDraft) {
+            resetBreakdownState();
+        }
+    }
+
+    function renderBreakdownModal() {
+        const sourceRow = getBreakdownOriginalRow();
+        if (!sourceRow) {
+            closeBreakdownModal({ preserveDraft: false, preserveStatus: false });
+            return;
+        }
+
+        if (breakdownProduct) {
+            breakdownProduct.textContent = sourceRow.productDescription || sourceRow.productLookupLabel || "Sin producto";
+        }
+
+        if (breakdownOriginalTotal) {
+            breakdownOriginalTotal.textContent = usdFormatter.format(Number(sourceRow.valorTotalUsd || 0));
+        }
+
+        if (breakdownBody) {
+            breakdownBody.innerHTML = state.breakdownDraftRows.length === 0
+                ? `
+                    <tr>
+                        <td colspan="4" class="lic-breakdown-empty">Agrega al menos una fila para repartir el valor.</td>
+                    </tr>`
+                : state.breakdownDraftRows.map((draft) => `
+                    <tr data-breakdown-id="${escapeHtml(draft.id)}">
+                        <td data-label="Cliente">
+                            ${renderBreakdownLookupControl(draft, "client")}
+                        </td>
+                        <td data-label="Producto">
+                            ${renderBreakdownLookupControl(draft, "product")}
+                        </td>
+                        <td class="text-end" data-label="Valor USD">
+                            <input class="form-control form-control-sm"
+                                   type="number"
+                                   min="0"
+                                   step="0.01"
+                                   inputmode="decimal"
+                                   value="${escapeHtml(formatBreakdownInputValue(draft.value))}"
+                                   data-breakdown-value
+                                   data-breakdown-id="${escapeHtml(draft.id)}" />
+                        </td>
+                        <td data-label="Accion">
+                            <button type="button" class="btn btn-outline-danger btn-sm" data-breakdown-remove="${escapeHtml(draft.id)}">Quitar</button>
+                        </td>
+                    </tr>
+                `).join("");
+        }
+
+        refreshBreakdownModalState();
+    }
+
+    function renderBreakdownLookupControl(draft, kind) {
+        const fieldLabel = kind === "client" ? "cliente" : "producto";
+        const queryValue = kind === "client"
+            ? (draft.clientLabel || draft.clientQuery || "")
+            : (draft.productLabel || draft.productQuery || "");
+        const helperClass = getBreakdownLookupSelectedValue(draft, kind)
+            ? "lic-muted"
+            : "lic-lookup-note is-warning";
+        const helperText = getBreakdownLookupHelperText(draft, kind);
+
+        return `
+            <div class="lic-lookup">
+                <input class="form-control form-control-sm lic-lookup-input"
+                       type="search"
+                       value="${escapeHtml(queryValue)}"
+                       placeholder="Buscar ${escapeHtml(fieldLabel)}..."
+                       autocomplete="off"
+                       data-breakdown-${kind}-search
+                       data-breakdown-id="${escapeHtml(draft.id)}" />
+                <div class="lic-lookup-menu" data-breakdown-${kind}-menu="${escapeHtml(draft.id)}"></div>
+            </div>
+            <small class="${helperClass}" data-breakdown-${kind}-helper="${escapeHtml(draft.id)}">${escapeHtml(helperText)}</small>`;
+    }
+
+    function refreshBreakdownModalState() {
+        const remaining = getBreakdownRemainingValue();
+        if (breakdownRemaining) {
+            breakdownRemaining.textContent = usdFormatter.format(remaining);
+            breakdownRemaining.className = `lic-breakdown-total ${Math.abs(remaining) < 0.005 ? "is-zero" : "is-warning"}`;
+        }
+
+        if (breakdownSaveBtn) {
+            breakdownSaveBtn.disabled = getBreakdownValidationMessage() !== "";
+        }
+    }
+
+    function addBreakdownDraftRow(initialValue) {
+        state.breakdownDraftRows.push(createBreakdownDraftRow(initialValue));
+    }
+
+    function removeBreakdownDraftRow(draftId) {
+        state.breakdownDraftRows = state.breakdownDraftRows.filter((draft) => draft.id !== draftId);
+        renderBreakdownModal();
+    }
+
+    function createBreakdownDraftRow(initialValue) {
+        state.breakdownDraftSeq += 1;
+        return {
+            id: `draft-${state.breakdownDraftSeq}`,
+            clientLookupId: "",
+            clientLabel: "",
+            clientQuery: "",
+            clientMatchedValue: "",
+            clientFailureReason: "",
+            companyAccountId: "",
+            productLookupId: "",
+            productLabel: "",
+            productQuery: "",
+            productMatchedValue: "",
+            productFailureReason: "",
+            value: roundCurrency(Number(initialValue || 0))
+        };
+    }
+
+    function handleBreakdownValueInput(input) {
+        const draft = getBreakdownDraftRow(input.getAttribute("data-breakdown-id") || "");
+        if (!draft) {
+            return;
+        }
+
+        const parsed = Number.parseFloat(input.value || "0");
+        draft.value = Number.isFinite(parsed) ? roundCurrency(Math.max(parsed, 0)) : 0;
+        refreshBreakdownModalState();
+    }
+
+    function handleBreakdownLookupInput(input, kind) {
+        const draft = getBreakdownDraftRow(input.getAttribute("data-breakdown-id") || "");
+        if (!draft) {
+            return;
+        }
+
+        const query = input.value.trim();
+        if (kind === "client") {
+            draft.clientLookupId = "";
+            draft.clientLabel = "";
+            draft.clientQuery = query;
+            draft.clientMatchedValue = "";
+            draft.clientFailureReason = query.length < 2
+                ? "Escribe al menos 2 caracteres para buscar el cliente."
+                : "";
+            draft.companyAccountId = "";
+        } else {
+            draft.productLookupId = "";
+            draft.productLabel = "";
+            draft.productQuery = query;
+            draft.productMatchedValue = "";
+            draft.productFailureReason = query.length < 2
+                ? "Escribe al menos 2 caracteres para buscar el producto."
+                : "";
+        }
+
+        refreshBreakdownLookupHelper(draft.id, kind);
+        refreshBreakdownModalState();
+
+        if (query.length < 2) {
+            hideBreakdownLookupMenu(draft.id, kind);
+            return;
+        }
+
+        scheduleBreakdownLookupSearch(draft.id, kind, query, 280);
+    }
+
+    function openBreakdownLookupMenu(input, kind) {
+        const draftId = input.getAttribute("data-breakdown-id") || "";
+        const query = input.value.trim();
+        if (!draftId || query.length < 2) {
+            return;
+        }
+
+        scheduleBreakdownLookupSearch(draftId, kind, query, 0);
+    }
+
+    function scheduleBreakdownLookupSearch(draftId, kind, query, delay) {
+        const key = `${kind}:${draftId}`;
+        const previousTimer = state.breakdownLookupTimers.get(key);
+        if (previousTimer) {
+            window.clearTimeout(previousTimer);
+        }
+
+        const timer = window.setTimeout(() => searchBreakdownLookup(draftId, kind, query), delay);
+        state.breakdownLookupTimers.set(key, timer);
+    }
+
+    async function searchBreakdownLookup(draftId, kind, query) {
+        const menu = getBreakdownLookupMenu(draftId, kind);
+        const draft = getBreakdownDraftRow(draftId);
+        if (!menu || !draft) {
+            return;
+        }
+
+        const url = kind === "client"
+            ? buildAccountSearchUrl(query)
+            : buildProductSearchUrl(query);
+        if (!url) {
+            return;
+        }
+
+        const requestKey = `${kind}:${draftId}`;
+        const requestId = ++state.breakdownLookupRequestSeq;
+        state.breakdownLookupRequests.set(requestKey, requestId);
+        menu.innerHTML = "<div class=\"lic-lookup-empty\">Buscando...</div>";
+        menu.classList.add("is-open");
+
+        try {
+            const items = await fetchJson(url);
+            if (state.breakdownLookupRequests.get(requestKey) !== requestId) {
+                return;
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                setBreakdownLookupFailure(draft, kind, `No se encontraron ${kind === "client" ? "clientes" : "productos"} para "${query}".`);
+                menu.innerHTML = "<div class=\"lic-lookup-empty\">Sin resultados</div>";
+                menu.classList.add("is-open");
+                return;
+            }
+
+            menu.innerHTML = items.map((item) => `
+                <button type="button"
+                        class="lic-lookup-option"
+                        data-breakdown-${kind}-option
+                        data-breakdown-id="${escapeHtml(draftId)}"
+                        data-id="${escapeHtml(item.id || "")}"
+                        data-label="${escapeHtml(item.label || "")}"
+                        data-matched-value="${escapeHtml(item.matchedValue || "")}">
+                    <span>${escapeHtml(item.label || (kind === "client" ? "Cliente sin nombre" : "Producto sin nombre"))}</span>
+                    <small>${escapeHtml(item.matchedValue || item.searchField || "")}</small>
+                </button>
+            `).join("");
+            menu.classList.add("is-open");
+        } catch (error) {
+            if (state.breakdownLookupRequests.get(requestKey) !== requestId) {
+                return;
+            }
+
+            setBreakdownLookupFailure(draft, kind, getErrorMessage(error));
+            menu.innerHTML = "<div class=\"lic-lookup-empty\">No se pudo buscar</div>";
+            menu.classList.add("is-open");
+        }
+    }
+
+    function selectBreakdownLookupOption(option, kind) {
+        const draft = getBreakdownDraftRow(option.getAttribute("data-breakdown-id") || "");
+        if (!draft) {
+            return;
+        }
+
+        const selectedId = option.getAttribute("data-id") || "";
+        const selectedLabel = option.getAttribute("data-label") || "";
+        const matchedValue = option.getAttribute("data-matched-value") || "";
+        if (kind === "client") {
+            draft.clientLookupId = selectedId;
+            draft.clientLabel = selectedLabel;
+            draft.clientQuery = selectedLabel;
+            draft.clientMatchedValue = matchedValue;
+            draft.clientFailureReason = "";
+            draft.companyAccountId = matchedValue || selectedLabel;
+        } else {
+            draft.productLookupId = selectedId;
+            draft.productLabel = selectedLabel;
+            draft.productQuery = selectedLabel;
+            draft.productMatchedValue = matchedValue;
+            draft.productFailureReason = "";
+        }
+
+        const input = breakdownBody?.querySelector(`[data-breakdown-${kind}-search][data-breakdown-id="${draft.id}"]`);
+        if (input instanceof HTMLInputElement) {
+            input.value = selectedLabel;
+        }
+
+        refreshBreakdownLookupHelper(draft.id, kind);
+        refreshBreakdownModalState();
+        hideBreakdownLookupMenu(draft.id, kind);
+    }
+
+    function setBreakdownLookupFailure(draft, kind, message) {
+        if (kind === "client") {
+            draft.clientFailureReason = message;
+        } else {
+            draft.productFailureReason = message;
+        }
+
+        refreshBreakdownLookupHelper(draft.id, kind);
+        refreshBreakdownModalState();
+    }
+
+    function refreshBreakdownLookupHelper(draftId, kind) {
+        const draft = getBreakdownDraftRow(draftId);
+        if (!draft) {
+            return;
+        }
+
+        const helper = breakdownBody?.querySelector(`[data-breakdown-${kind}-helper="${draftId}"]`);
+        if (!helper) {
+            return;
+        }
+
+        helper.className = getBreakdownLookupSelectedValue(draft, kind)
+            ? "lic-muted"
+            : "lic-lookup-note is-warning";
+        helper.textContent = getBreakdownLookupHelperText(draft, kind);
+    }
+
+    function getBreakdownLookupHelperText(draft, kind) {
+        const hasSelection = Boolean(getBreakdownLookupSelectedValue(draft, kind));
+        if (hasSelection) {
+            return `Lookup encontrado: ${kind === "client" ? draft.clientLabel : draft.productLabel}`;
+        }
+
+        const failureReason = kind === "client" ? draft.clientFailureReason : draft.productFailureReason;
+        if (failureReason) {
+            return failureReason;
+        }
+
+        return kind === "client"
+            ? "Busca y selecciona un cliente."
+            : "Busca y selecciona un producto.";
+    }
+
+    function getBreakdownLookupSelectedValue(draft, kind) {
+        return kind === "client" ? draft.clientLookupId : draft.productLookupId;
+    }
+
+    function getBreakdownDraftRow(draftId) {
+        return state.breakdownDraftRows.find((draft) => draft.id === draftId);
+    }
+
+    function getBreakdownLookupMenu(draftId, kind) {
+        return breakdownBody?.querySelector(`[data-breakdown-${kind}-menu="${draftId}"]`) || null;
+    }
+
+    function hideBreakdownLookupMenu(draftId, kind) {
+        const menu = getBreakdownLookupMenu(draftId, kind);
+        if (!menu) {
+            return;
+        }
+
+        menu.classList.remove("is-open");
+        menu.innerHTML = "";
+    }
+
+    function closeBreakdownLookupMenus() {
+        breakdownBody?.querySelectorAll(".lic-lookup-menu.is-open").forEach((menu) => {
+            menu.classList.remove("is-open");
+            menu.innerHTML = "";
+        });
+    }
+
+    function getBreakdownOriginalRow() {
+        return state.breakdownSourceIndex >= 0 ? state.previewRows[state.breakdownSourceIndex] : null;
+    }
+
+    function getBreakdownAssignedTotal() {
+        return roundCurrency(state.breakdownDraftRows.reduce((sum, draft) => sum + Number(draft.value || 0), 0));
+    }
+
+    function getBreakdownRemainingValue() {
+        const sourceRow = getBreakdownOriginalRow();
+        const total = Number(sourceRow?.valorTotalUsd || 0);
+        return roundCurrency(total - getBreakdownAssignedTotal());
+    }
+
+    function getBreakdownValidationMessage() {
+        const sourceRow = getBreakdownOriginalRow();
+        if (!sourceRow) {
+            return "No encontramos la fila original para desglosar.";
+        }
+
+        if (state.breakdownDraftRows.length === 0) {
+            return "Agrega al menos una fila en el desglose.";
+        }
+
+        for (const draft of state.breakdownDraftRows) {
+            if (!draft.clientLookupId) {
+                return "Cada fila del desglose debe tener un cliente seleccionado.";
+            }
+
+            if (!draft.productLookupId) {
+                return "Cada fila del desglose debe tener un producto seleccionado.";
+            }
+
+            if (!Number.isFinite(Number(draft.value)) || Number(draft.value) <= 0) {
+                return "Cada fila del desglose debe tener un valor mayor a cero.";
+            }
+        }
+
+        if (Math.abs(getBreakdownRemainingValue()) >= 0.005) {
+            return "El saldo del desglose debe quedar en 0.";
+        }
+
+        return "";
+    }
+
+    function saveBreakdownRows() {
+        const sourceRow = getBreakdownOriginalRow();
+        const validationMessage = getBreakdownValidationMessage();
+        if (!sourceRow || validationMessage) {
+            showStatus(breakdownStatus, "warning", validationMessage || "No encontramos la fila original para desglosar.");
+            return;
+        }
+
+        const replacementRows = state.breakdownDraftRows.map((draft) => buildBreakdownPreviewRow(sourceRow, draft));
+        state.previewRows.splice(state.breakdownSourceIndex, 1, ...replacementRows);
+        closeBreakdownModal({ preserveDraft: false, preserveStatus: false });
+        renderPreview();
+        showStatus(uploadStatus, "success", `Se reemplazo la fila original por ${replacementRows.length} fila(s) de desglose.`);
+    }
+
+    function buildBreakdownPreviewRow(sourceRow, draft) {
+        const amount = roundCurrency(Number(draft.value || 0));
+        const clientLabel = draft.clientLabel || draft.clientMatchedValue || sourceRow.nombreCliente || "";
+        const productLabel = draft.productLabel || draft.productMatchedValue || sourceRow.productDescription || "";
+        return {
+            ...sourceRow,
+            companyAccountId: draft.companyAccountId || draft.clientMatchedValue || clientLabel,
+            companyAccountLookupId: draft.clientLookupId,
+            companyAccountLookupLabel: clientLabel,
+            companyAccountLookupFound: Boolean(draft.clientLookupId),
+            companyAccountLookupFailureReason: "",
+            nombreCliente: clientLabel,
+            productDescription: productLabel,
+            productLookupId: draft.productLookupId,
+            productLookupLabel: productLabel,
+            productLookupFound: Boolean(draft.productLookupId),
+            productLookupFailureReason: "",
+            valorTotalUsd: amount,
+            unidadUsd: amount,
+            cantidad: 1,
+            requiresBreakdown: false,
+            breakdownGenerated: true,
+            isValid: true,
+            warnings: [],
+            errors: []
+        };
+    }
+
     async function importPreviewRows() {
         if (state.previewRows.length === 0 || state.previewRows.some((row) => !row.isValid)) {
             showStatus(uploadStatus, "warning", "La vista previa tiene filas pendientes.");
+            return;
+        }
+
+        if (state.previewRows.some((row) => requiresBreakdown(row))) {
+            showStatus(uploadStatus, "warning", "Debes desglosar todas las filas de cargo manual antes de procesar.");
             return;
         }
 
@@ -995,6 +1618,30 @@
 
         element.textContent = "";
         element.className = "lic-status";
+    }
+
+    function formatBreakdownInputValue(value) {
+        if (!Number.isFinite(Number(value))) {
+            return "";
+        }
+
+        return Number(value).toFixed(2);
+    }
+
+    function normalizeBreakdownProduct(value) {
+        return (value || "")
+            .toString()
+            .trim()
+            .toLowerCase();
+    }
+
+    function roundCurrency(value) {
+        const amount = Number(value || 0);
+        if (!Number.isFinite(amount)) {
+            return 0;
+        }
+
+        return Math.round(amount * 100) / 100;
     }
 
     function escapeHtml(value) {

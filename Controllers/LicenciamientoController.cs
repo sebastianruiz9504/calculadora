@@ -76,6 +76,24 @@ public sealed class LicenciamientoController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AccountLookupSearch([FromQuery] string q, [FromQuery] int top = 12, CancellationToken ct = default)
+    {
+        try
+        {
+            return Json(await _dataverse.SearchLicenciamientoAccountsAsync(q, top, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar clientes de licenciamiento.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> ProductLookupSearch([FromQuery] string q, [FromQuery] int top = 12, CancellationToken ct = default)
     {
         try

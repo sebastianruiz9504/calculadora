@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
 }
 
 <div class="dashboard-shell"
@@ -43,6 +44,7 @@
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Copiers</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="support-cloud">Soporte cloud</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
@@ -270,6 +272,254 @@
                 </div>
             </article>
         </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="support-cloud" hidden>
+        <div class="support-cloud-dashboard"
+             id="dashboardSupportCloudApp"
+             data-load-url="@Url.Action("SupportCloud", "Dashboard")"
+             data-client-search-url="@Url.Action("SupportCloudClientSearch", "Dashboard")"
+             data-save-url="@Url.Action("SupportCloudTicket", "Dashboard")"
+             data-upload-url="@Url.Action("SupportCloudUploadFile", "Dashboard")"
+             data-download-url="@Url.Action("SupportCloudDownloadFile", "Dashboard")"
+             data-initial-start-date="@Model.InitialSupportStartDate"
+             data-initial-end-date="@Model.InitialSupportEndDate"
+             data-current-user-name="@(!string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.DisplayName : Model.CurrentUser.Email)"
+             data-show-charts="true">
+            <section class="support-cloud-card">
+                <div class="support-cloud-toolbar">
+                    <div class="support-cloud-toolbar__filters">
+                        <label class="support-cloud-field">
+                            <span class="support-cloud-field__label">Desde</span>
+                            <input type="date" class="form-control" data-sc-start-date />
+                        </label>
+                        <label class="support-cloud-field">
+                            <span class="support-cloud-field__label">Hasta</span>
+                            <input type="date" class="form-control" data-sc-end-date />
+                        </label>
+                    </div>
+                    <div class="support-cloud-toolbar__actions">
+                        <div class="support-cloud-toolbar__summary">
+                            <span class="support-cloud-toolbar__summary-label">Rango activo</span>
+                            <strong data-sc-range-label>@Model.InitialSupportStartDate - @Model.InitialSupportEndDate</strong>
+                        </div>
+                        <div class="support-cloud-toolbar__buttons">
+                            <button type="button" class="btn btn-outline-secondary" data-sc-refresh>Actualizar</button>
+                            <button type="button" class="btn btn-primary" data-sc-new-ticket>Nuevo ticket</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="support-cloud-status" data-sc-status role="status" aria-live="polite"></div>
+
+            <section class="support-cloud-summary">
+                <article class="support-cloud-summary__card">
+                    <span class="support-cloud-summary__label">Total tickets</span>
+                    <strong class="support-cloud-summary__value" data-sc-total-tickets>0</strong>
+                </article>
+                <article class="support-cloud-summary__card">
+                    <span class="support-cloud-summary__label">Horas tomadas</span>
+                    <strong class="support-cloud-summary__value" data-sc-total-hours>0</strong>
+                </article>
+                <article class="support-cloud-summary__card">
+                    <span class="support-cloud-summary__label">Creadores activos</span>
+                    <strong class="support-cloud-summary__value" data-sc-total-creators>0</strong>
+                </article>
+                <article class="support-cloud-summary__card">
+                    <span class="support-cloud-summary__label">Clientes impactados</span>
+                    <strong class="support-cloud-summary__value" data-sc-total-clients>0</strong>
+                </article>
+            </section>
+
+            <section class="support-cloud-card">
+                <div class="support-cloud-section-header">
+                    <div>
+                        <div class="support-cloud-kicker">Gerencial</div>
+                        <h2 class="support-cloud-section-title">Total por creador</h2>
+                        <p class="support-cloud-section-subtitle">
+                            Distribuci&oacute;n de tickets y horas por usuario creador.
+                        </p>
+                    </div>
+                </div>
+                <div class="support-cloud-creators" data-sc-creators></div>
+            </section>
+
+            <section class="support-cloud-chart-grid" data-sc-charts-section>
+                <article class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Distribuci&oacute;n</div>
+                            <h2 class="support-cloud-section-title">Tickets por tipo</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-breakdown" data-sc-chart="type"></div>
+                </article>
+
+                <article class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Distribuci&oacute;n</div>
+                            <h2 class="support-cloud-section-title">Tickets por m&eacute;todo</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-breakdown" data-sc-chart="method"></div>
+                </article>
+
+                <article class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Distribuci&oacute;n</div>
+                            <h2 class="support-cloud-section-title">Tickets por categor&iacute;a</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-breakdown" data-sc-chart="category"></div>
+                </article>
+            </section>
+
+            <section class="support-cloud-card">
+                <div class="support-cloud-section-header">
+                    <div>
+                        <div class="support-cloud-kicker">Tabla</div>
+                        <h2 class="support-cloud-section-title">Tickets registrados</h2>
+                        <p class="support-cloud-section-subtitle">
+                            Vista completa de todos los tickets dentro del rango consultado.
+                        </p>
+                    </div>
+                    <div class="support-cloud-counter" data-sc-records-count>0 tickets</div>
+                </div>
+
+                <div class="support-cloud-table-wrap">
+                    <table class="table align-middle support-cloud-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Titulo</th>
+                                <th>Descripcion</th>
+                                <th>Estado</th>
+                                <th>Tipo</th>
+                                <th>Cliente</th>
+                                <th>Categoria</th>
+                                <th>Creador</th>
+                                <th class="text-end">Horas</th>
+                                <th>Metodo</th>
+                                <th>Solucion</th>
+                                <th>Adjunto</th>
+                            </tr>
+                        </thead>
+                        <tbody data-sc-rows></tbody>
+                    </table>
+                </div>
+
+                <div class="support-cloud-empty" data-sc-empty hidden>
+                    No hay tickets de soporte cloud en el rango seleccionado.
+                </div>
+            </section>
+
+            <div class="support-cloud-modal" data-sc-modal hidden>
+                <div class="support-cloud-modal__backdrop" data-sc-close-modal></div>
+                <div class="support-cloud-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="dashboardSupportCloudModalTitle">
+                    <div class="support-cloud-modal__header">
+                        <div>
+                            <div class="support-cloud-kicker">Formulario</div>
+                            <h2 class="support-cloud-modal__title" id="dashboardSupportCloudModalTitle" data-sc-modal-title>Ticket de soporte cloud</h2>
+                            <p class="support-cloud-modal__subtitle" data-sc-modal-subtitle>Completa todos los campos del ticket.</p>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary" data-sc-close-modal>Cerrar</button>
+                    </div>
+
+                    <div class="support-cloud-status" data-sc-modal-status role="status" aria-live="polite"></div>
+
+                    <form class="support-cloud-form" data-sc-form>
+                        <input type="hidden" data-sc-record-id />
+                        <input type="hidden" data-sc-client-id />
+
+                        <div class="support-cloud-form__grid">
+                            <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Titulo del ticket</span>
+                                <input type="text" class="form-control" data-sc-field="title" />
+                            </label>
+
+                            <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Descripcion</span>
+                                <textarea class="form-control support-cloud-form__textarea" rows="4" data-sc-field="description"></textarea>
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Fecha de creacion</span>
+                                <input type="date" class="form-control" data-sc-field="creationDate" />
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Estado</span>
+                                <select class="form-select" data-sc-field="state"></select>
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Tipo</span>
+                                <select class="form-select" data-sc-field="type"></select>
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Categoria</span>
+                                <select class="form-select" data-sc-field="category"></select>
+                            </label>
+
+                            <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Cliente</span>
+                                <input type="text" class="form-control" list="supportCloudClientOptionsDashboard" autocomplete="off" data-sc-field="clientName" />
+                                <datalist id="supportCloudClientOptionsDashboard" data-sc-client-options></datalist>
+                                <span class="support-cloud-form__hint">Escribe al menos 2 caracteres y selecciona una coincidencia.</span>
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Creador</span>
+                                <input type="text" class="form-control support-cloud-form__readonly" data-sc-field="creatorName" readonly />
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Horas tomadas</span>
+                                <input type="number" min="0" step="0.01" class="form-control" data-sc-field="hoursTaken" />
+                            </label>
+
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Metodo</span>
+                                <select class="form-select" data-sc-field="method"></select>
+                            </label>
+
+                            <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Solucion</span>
+                                <textarea class="form-control support-cloud-form__textarea" rows="4" data-sc-field="solution"></textarea>
+                            </label>
+
+                            <div class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Adjunto</span>
+                                <div class="support-cloud-file-card">
+                                    <div>
+                                        <div class="support-cloud-file-card__title" data-sc-attachment-name>Sin adjunto cargado</div>
+                                        <div class="support-cloud-file-card__hint" data-sc-attachment-hint>
+                                            Guarda el ticket y adjunta el soporte en PDF, imagen o Word.
+                                        </div>
+                                    </div>
+                                    <div class="support-cloud-file-card__actions">
+                                        <a class="support-cloud-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-sc-download-link>Descargar</a>
+                                        <input type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" data-sc-attachment-input />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="support-cloud-modal__footer">
+                            <div class="support-cloud-modal__meta" data-sc-modal-meta>Nuevo ticket</div>
+                            <div class="support-cloud-modal__actions">
+                                <button type="button" class="btn btn-outline-secondary" data-sc-close-modal>Cancelar</button>
+                                <button type="submit" class="btn btn-primary" data-sc-save-ticket>Guardar</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="dashboard-tab-panel" data-dashboard-panel="taxes" hidden>
@@ -976,4 +1226,5 @@
 
 @section Scripts {
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
+    <script src="~/js/support-cloud.js" asp-append-version="true"></script>
 }

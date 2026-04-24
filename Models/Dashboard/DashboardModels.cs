@@ -54,6 +54,8 @@ public sealed class DashboardPageViewModel
     public int InitialYear { get; set; }
     public BillingPeriodKind InitialPeriodKind { get; set; } = BillingPeriodKind.Month;
     public int InitialPeriodValue { get; set; } = 1;
+    public string InitialSupportStartDate { get; set; } = "";
+    public string InitialSupportEndDate { get; set; } = "";
 }
 
 public sealed class BillingDashboardDto

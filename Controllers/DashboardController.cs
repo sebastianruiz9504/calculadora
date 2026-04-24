@@ -2,6 +2,7 @@ using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Permissions;
+using CotizadorInterno.Web.Models.SoporteCloud;
 using CotizadorInterno.Web.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
@@ -32,7 +33,9 @@ public sealed class DashboardController : Controller
             CurrentUser = await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo(),
             InitialYear = today.Year,
             InitialPeriodKind = BillingPeriodKind.Month,
-            InitialPeriodValue = today.Month
+            InitialPeriodValue = today.Month,
+            InitialSupportStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
+            InitialSupportEndDate = today.ToString("yyyy-MM-dd")
         };
 
         return View(model);
@@ -466,6 +469,108 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar el adjunto del mantenimiento.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SupportCloud([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate, CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetSoporteCloudBoardAsync(startDate, endDate, ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de soporte cloud.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SupportCloudClientSearch([FromQuery] string q, CancellationToken ct)
+    {
+        var items = await _dataverse.SearchClientsAsync(q, top: 12, ct: ct);
+        return Json(items);
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SupportCloudTicket([FromBody] SoporteCloudSaveRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _dataverse.SaveSoporteCloudTicketAsync(request, ct);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar el ticket de soporte cloud.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [RequestSizeLimit(134217728)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 134217728)]
+    public async Task<IActionResult> SupportCloudUploadFile(string recordId, IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length <= 0)
+            return BadRequest("Debes seleccionar un archivo valido.");
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ct);
+
+            var result = await _dataverse.UploadSoporteCloudAttachmentAsync(
+                recordId,
+                file.FileName,
+                file.ContentType,
+                buffer.ToArray(),
+                ct);
+
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el adjunto del ticket.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SupportCloudDownloadFile(string recordId, CancellationToken ct)
+    {
+        try
+        {
+            var file = await _dataverse.DownloadSoporteCloudAttachmentAsync(recordId, ct);
+            if (file is null || file.Content.Length == 0)
+                return NotFound();
+
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar el adjunto del ticket.");
         }
     }
 

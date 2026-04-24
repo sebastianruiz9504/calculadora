@@ -12,6 +12,7 @@ using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Models.Renovaciones;
+using CotizadorInterno.Web.Models.SoporteCloud;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -89,10 +90,15 @@ public interface IDataverseService
     Task<CuentaCobroRowDto> GetCuentaCobroByIdAsync(string recordId, CancellationToken ct = default);
     Task<LicenciamientoBoardDto> GetLicenciamientoBoardAsync(CancellationToken ct = default);
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
+    Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoAccountsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoProductsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(LicenciamientoImportRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoAdjustTrmResultDto> AdjustLicenciamientoTrmAsync(LicenciamientoAdjustTrmRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoUpdateContractTypeResultDto> UpdateLicenciamientoContractTypeAsync(LicenciamientoUpdateContractTypeRequestDto request, CancellationToken ct = default);
     Task<HardwareCsvPreviewResultDto> PreviewHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<HardwareProvisionResultDto> ProvisionHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
+    Task<SoporteCloudBoardDto> GetSoporteCloudBoardAsync(DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default);
+    Task<SoporteCloudSaveResultDto> SaveSoporteCloudTicketAsync(SoporteCloudSaveRequest request, CancellationToken ct = default);
+    Task<SoporteCloudFileUploadResultDto> UploadSoporteCloudAttachmentAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<SoporteCloudFileDownloadResult?> DownloadSoporteCloudAttachmentAsync(string recordId, CancellationToken ct = default);
 }

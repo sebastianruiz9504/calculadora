@@ -1,0 +1,912 @@
+(function () {
+    const roots = Array.from(document.querySelectorAll("#soporteCloudApp, #dashboardSupportCloudApp"));
+    if (!roots.length) {
+        return;
+    }
+
+    const currencyFormatter = new Intl.NumberFormat("es-CO", {
+        style: "currency",
+        currency: "COP",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+
+    const numberFormatter = new Intl.NumberFormat("es-CO", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+    });
+
+    roots.forEach(initializeSupportCloudWorkspace);
+
+    function initializeSupportCloudWorkspace(root) {
+        const config = {
+            showCharts: String(root.dataset.showCharts || "").toLowerCase() === "true",
+            loadUrl: root.dataset.loadUrl || "",
+            clientSearchUrl: root.dataset.clientSearchUrl || "",
+            saveUrl: root.dataset.saveUrl || "",
+            uploadUrl: root.dataset.uploadUrl || "",
+            downloadUrl: root.dataset.downloadUrl || "",
+            currentUserName: root.dataset.currentUserName || "Usuario actual"
+        };
+
+        const elements = {
+            status: root.querySelector("[data-sc-status]"),
+            startDate: root.querySelector("[data-sc-start-date]"),
+            endDate: root.querySelector("[data-sc-end-date]"),
+            rangeLabel: root.querySelector("[data-sc-range-label]"),
+            refresh: root.querySelector("[data-sc-refresh]"),
+            newTicket: root.querySelector("[data-sc-new-ticket]"),
+            totalTickets: root.querySelector("[data-sc-total-tickets]"),
+            totalHours: root.querySelector("[data-sc-total-hours]"),
+            totalCreators: root.querySelector("[data-sc-total-creators]"),
+            totalClients: root.querySelector("[data-sc-total-clients]"),
+            creators: root.querySelector("[data-sc-creators]"),
+            recordsCount: root.querySelector("[data-sc-records-count]"),
+            rows: root.querySelector("[data-sc-rows]"),
+            empty: root.querySelector("[data-sc-empty]"),
+            chartsSection: root.querySelector("[data-sc-charts-section]"),
+            typeChart: root.querySelector('[data-sc-chart="type"]'),
+            methodChart: root.querySelector('[data-sc-chart="method"]'),
+            categoryChart: root.querySelector('[data-sc-chart="category"]'),
+            modal: root.querySelector("[data-sc-modal]"),
+            modalStatus: root.querySelector("[data-sc-modal-status]"),
+            modalTitle: root.querySelector("[data-sc-modal-title]"),
+            modalSubtitle: root.querySelector("[data-sc-modal-subtitle]"),
+            modalMeta: root.querySelector("[data-sc-modal-meta]"),
+            form: root.querySelector("[data-sc-form]"),
+            closeModalButtons: Array.from(root.querySelectorAll("[data-sc-close-modal]")),
+            recordId: root.querySelector("[data-sc-record-id]"),
+            clientId: root.querySelector("[data-sc-client-id]"),
+            clientOptions: root.querySelector("[data-sc-client-options]"),
+            attachmentInput: root.querySelector("[data-sc-attachment-input]"),
+            attachmentName: root.querySelector("[data-sc-attachment-name]"),
+            attachmentHint: root.querySelector("[data-sc-attachment-hint]"),
+            downloadLink: root.querySelector("[data-sc-download-link]"),
+            fields: {
+                title: root.querySelector('[data-sc-field="title"]'),
+                description: root.querySelector('[data-sc-field="description"]'),
+                creationDate: root.querySelector('[data-sc-field="creationDate"]'),
+                state: root.querySelector('[data-sc-field="state"]'),
+                type: root.querySelector('[data-sc-field="type"]'),
+                clientName: root.querySelector('[data-sc-field="clientName"]'),
+                category: root.querySelector('[data-sc-field="category"]'),
+                creatorName: root.querySelector('[data-sc-field="creatorName"]'),
+                hoursTaken: root.querySelector('[data-sc-field="hoursTaken"]'),
+                method: root.querySelector('[data-sc-field="method"]'),
+                solution: root.querySelector('[data-sc-field="solution"]')
+            }
+        };
+
+        const state = {
+            board: null,
+            records: [],
+            clientSuggestions: [],
+            busy: false,
+            saving: false,
+            loaded: false,
+            lookupTimer: 0,
+            lookupSequence: 0,
+            draft: null,
+            pendingFile: null
+        };
+
+        elements.startDate && (elements.startDate.value = root.dataset.initialStartDate || "");
+        elements.endDate && (elements.endDate.value = root.dataset.initialEndDate || "");
+        if (elements.rangeLabel) {
+            elements.rangeLabel.textContent = buildRangeLabel(
+                elements.startDate?.value || "",
+                elements.endDate?.value || "");
+        }
+
+        if (elements.chartsSection) {
+            elements.chartsSection.hidden = !config.showCharts;
+        }
+
+        elements.refresh?.addEventListener("click", () => {
+            loadBoard();
+        });
+
+        elements.newTicket?.addEventListener("click", () => {
+            openModal();
+        });
+
+        [elements.startDate, elements.endDate].forEach(input => {
+            input?.addEventListener("change", () => {
+                if (elements.rangeLabel) {
+                    elements.rangeLabel.textContent = buildRangeLabel(
+                        elements.startDate?.value || "",
+                        elements.endDate?.value || "");
+                }
+                loadBoard();
+            });
+        });
+
+        elements.rows?.addEventListener("click", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            if (target.closest("a")) {
+                return;
+            }
+
+            const row = resolveRowFromEvent(target);
+            if (!row) {
+                return;
+            }
+
+            openModal(row.recordId);
+        });
+
+        elements.rows?.addEventListener("keydown", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            if (event.key !== "Enter" && event.key !== " ") {
+                return;
+            }
+
+            const row = resolveRowFromEvent(target);
+            if (!row) {
+                return;
+            }
+
+            event.preventDefault();
+            openModal(row.recordId);
+        });
+
+        elements.closeModalButtons.forEach(button => {
+            button.addEventListener("click", () => {
+                closeModal();
+            });
+        });
+
+        elements.modal?.addEventListener("click", event => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.hasAttribute("data-sc-close-modal")) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener("keydown", event => {
+            if (event.key === "Escape" && elements.modal && !elements.modal.hidden) {
+                closeModal();
+            }
+        });
+
+        elements.attachmentInput?.addEventListener("change", () => {
+            state.pendingFile = elements.attachmentInput?.files?.[0] || null;
+            renderAttachmentState();
+        });
+
+        elements.fields.clientName?.addEventListener("input", () => {
+            elements.clientId && (elements.clientId.value = "");
+            const query = (elements.fields.clientName.value || "").trim();
+            window.clearTimeout(state.lookupTimer);
+
+            if (query.length < 2) {
+                state.clientSuggestions = [];
+                renderClientSuggestions();
+                return;
+            }
+
+            const currentSequence = ++state.lookupSequence;
+            state.lookupTimer = window.setTimeout(async () => {
+                try {
+                    const items = await fetchJson(buildClientSearchUrl(query));
+                    if (currentSequence !== state.lookupSequence) {
+                        return;
+                    }
+
+                    state.clientSuggestions = Array.isArray(items) ? items : [];
+                    renderClientSuggestions();
+                    syncClientSelection();
+                } catch {
+                    if (currentSequence !== state.lookupSequence) {
+                        return;
+                    }
+
+                    state.clientSuggestions = [];
+                    renderClientSuggestions();
+                }
+            }, 220);
+        });
+
+        elements.fields.clientName?.addEventListener("change", syncClientSelection);
+        elements.fields.clientName?.addEventListener("blur", syncClientSelection);
+
+        elements.form?.addEventListener("submit", async event => {
+            event.preventDefault();
+            await saveTicket();
+        });
+
+        const dashboardTabButton = document.querySelector('[data-dashboard-tab="support-cloud"]');
+        if (root.id === "dashboardSupportCloudApp") {
+            dashboardTabButton?.addEventListener("click", () => {
+                if (!state.loaded) {
+                    loadBoard();
+                }
+            });
+
+            if (dashboardTabButton?.classList.contains("is-active")) {
+                loadBoard();
+            }
+        } else {
+            loadBoard();
+        }
+
+        function resolveRowFromEvent(target) {
+            const rowElement = target.closest("tr[data-sc-record-id]");
+            if (!(rowElement instanceof HTMLTableRowElement)) {
+                return null;
+            }
+
+            const recordId = rowElement.dataset.scRecordId || "";
+            return state.records.find(item => item.recordId === recordId) || null;
+        }
+
+        function buildClientSearchUrl(query) {
+            const url = new URL(config.clientSearchUrl, window.location.origin);
+            url.searchParams.set("q", query);
+            return `${url.pathname}${url.search}`;
+        }
+
+        function buildLoadUrl() {
+            const url = new URL(config.loadUrl, window.location.origin);
+            if (elements.startDate?.value) {
+                url.searchParams.set("startDate", elements.startDate.value);
+            }
+            if (elements.endDate?.value) {
+                url.searchParams.set("endDate", elements.endDate.value);
+            }
+            return `${url.pathname}${url.search}`;
+        }
+
+        function buildDownloadUrl(recordId) {
+            const url = new URL(config.downloadUrl, window.location.origin);
+            url.searchParams.set("recordId", recordId);
+            return `${url.pathname}${url.search}`;
+        }
+
+        async function loadBoard(options = {}) {
+            const force = Boolean(options.force);
+            if ((state.busy && !force) || !config.loadUrl) {
+                return;
+            }
+
+            setBusy(true);
+            setStatus(elements.status, "info", "Cargando tickets de soporte cloud...");
+
+            try {
+                const board = await fetchJson(buildLoadUrl());
+                state.board = board;
+                state.records = Array.isArray(board?.records) ? board.records.map(hydrateRecord) : [];
+                state.loaded = true;
+
+                syncRangeInputs(board);
+                renderSummary();
+                renderCreators();
+                renderCharts();
+                renderTable();
+                setStatus(elements.status, state.records.length ? "success" : "info", board?.message || "");
+            } catch (error) {
+                setStatus(elements.status, "error", buildErrorMessage(error));
+            } finally {
+                setBusy(false);
+            }
+        }
+
+        function syncRangeInputs(board) {
+            if (elements.startDate && board?.startDateValue) {
+                elements.startDate.value = board.startDateValue;
+            }
+            if (elements.endDate && board?.endDateValue) {
+                elements.endDate.value = board.endDateValue;
+            }
+            if (elements.rangeLabel) {
+                elements.rangeLabel.textContent = board?.dateRangeLabel
+                    || buildRangeLabel(elements.startDate?.value || "", elements.endDate?.value || "");
+            }
+        }
+
+        function renderSummary() {
+            if (elements.totalTickets) {
+                elements.totalTickets.textContent = numberFormatter.format(Number(state.board?.totalTickets || 0));
+            }
+            if (elements.totalHours) {
+                elements.totalHours.textContent = numberFormatter.format(Number(state.board?.totalHours || 0));
+            }
+            if (elements.totalCreators) {
+                elements.totalCreators.textContent = numberFormatter.format(Number(state.board?.totalCreators || 0));
+            }
+            if (elements.totalClients) {
+                elements.totalClients.textContent = numberFormatter.format(Number(state.board?.totalClients || 0));
+            }
+        }
+
+        function renderCreators() {
+            if (!elements.creators) {
+                return;
+            }
+
+            const items = Array.isArray(state.board?.creatorSummaries) ? state.board.creatorSummaries : [];
+            if (!items.length) {
+                elements.creators.innerHTML = '<div class="support-cloud-placeholder">No hay creadores para el rango seleccionado.</div>';
+                return;
+            }
+
+            elements.creators.innerHTML = items.map(item => `
+                <article class="support-cloud-creator-card">
+                    <span class="support-cloud-creator-card__label">${escapeHtml(item.creatorName || "Sin creador")}</span>
+                    <strong class="support-cloud-creator-card__value">${escapeHtml(numberFormatter.format(Number(item.totalTickets || 0)))}</strong>
+                    <span class="support-cloud-creator-card__meta">${escapeHtml(numberFormatter.format(Number(item.totalHours || 0)))} horas</span>
+                </article>
+            `).join("");
+        }
+
+        function renderCharts() {
+            if (!config.showCharts) {
+                return;
+            }
+
+            renderBreakdown(elements.typeChart, state.board?.typeBreakdowns, "No hay datos por tipo.");
+            renderBreakdown(elements.methodChart, state.board?.methodBreakdowns, "No hay datos por metodo.");
+            renderBreakdown(elements.categoryChart, state.board?.categoryBreakdowns, "No hay datos por categoria.");
+        }
+
+        function renderBreakdown(container, items, emptyMessage) {
+            if (!container) {
+                return;
+            }
+
+            const rows = Array.isArray(items) ? items : [];
+            if (!rows.length) {
+                container.innerHTML = `<div class="support-cloud-placeholder">${escapeHtml(emptyMessage)}</div>`;
+                return;
+            }
+
+            const maxTickets = Math.max(1, ...rows.map(item => Number(item.totalTickets || 0)));
+            container.innerHTML = rows.map(item => {
+                const width = Math.max(6, Math.round((Number(item.totalTickets || 0) / maxTickets) * 100));
+                return `
+                    <div class="support-cloud-breakdown__row">
+                        <div class="support-cloud-breakdown__head">
+                            <span class="support-cloud-breakdown__label">${escapeHtml(item.label || "Sin dato")}</span>
+                            <span class="support-cloud-breakdown__value">${escapeHtml(numberFormatter.format(Number(item.totalTickets || 0)))} ticket(s) · ${escapeHtml(numberFormatter.format(Number(item.totalHours || 0)))} h</span>
+                        </div>
+                        <div class="support-cloud-breakdown__track">
+                            <span class="support-cloud-breakdown__fill" style="width:${width}%"></span>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderTable() {
+            if (!elements.rows) {
+                return;
+            }
+
+            const rows = state.records;
+            if (elements.recordsCount) {
+                elements.recordsCount.textContent = `${numberFormatter.format(rows.length)} ticket(s)`;
+            }
+
+            if (elements.empty) {
+                elements.empty.hidden = rows.length > 0;
+            }
+
+            if (!rows.length) {
+                elements.rows.innerHTML = `
+                    <tr>
+                        <td colspan="12" class="support-cloud-table__empty">No encontramos tickets para este rango.</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            elements.rows.innerHTML = rows.map(row => `
+                <tr tabindex="0" class="support-cloud-table__row" data-sc-record-id="${escapeHtml(row.recordId || "")}">
+                    <td>${escapeHtml(row.creationDateDisplay || "-")}</td>
+                    <td>${escapeHtml(row.title || "-")}</td>
+                    <td>${escapeHtml(row.description || "-")}</td>
+                    <td>${renderPill(row.stateLabel || "Sin estado")}</td>
+                    <td>${escapeHtml(row.typeLabel || "-")}</td>
+                    <td>${escapeHtml(row.clientName || "-")}</td>
+                    <td>${escapeHtml(row.categoryLabel || "-")}</td>
+                    <td>${escapeHtml(row.creatorName || "-")}</td>
+                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.hoursTaken || 0)))}</td>
+                    <td>${escapeHtml(row.methodLabel || "-")}</td>
+                    <td>${escapeHtml(row.solution || "-")}</td>
+                    <td>
+                        ${row.hasAttachment
+                            ? `<a class="support-cloud-table__link" href="${escapeHtml(buildDownloadUrl(row.recordId || ""))}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
+                            : '<span class="support-cloud-table__muted">Sin adjunto</span>'}
+                    </td>
+                </tr>
+            `).join("");
+        }
+
+        function openModal(recordId) {
+            const source = recordId
+                ? state.records.find(item => item.recordId === recordId)
+                : null;
+
+            state.draft = source ? { ...source } : createEmptyDraft();
+            state.pendingFile = null;
+            resetAttachmentInput();
+            renderModal();
+
+            if (elements.modal) {
+                elements.modal.hidden = false;
+            }
+
+            document.body.classList.add("support-cloud-modal-open");
+        }
+
+        function closeModal() {
+            if (state.saving) {
+                return;
+            }
+
+            state.draft = null;
+            state.pendingFile = null;
+            resetAttachmentInput();
+            clearStatus(elements.modalStatus);
+
+            if (elements.modal) {
+                elements.modal.hidden = true;
+            }
+
+            document.body.classList.remove("support-cloud-modal-open");
+        }
+
+        function createEmptyDraft() {
+            return {
+                recordId: "",
+                title: "",
+                description: "",
+                creationDateValue: elements.endDate?.value || new Date().toISOString().slice(0, 10),
+                creationDateDisplay: "",
+                stateValue: "",
+                stateLabel: "",
+                typeValue: "",
+                typeLabel: "",
+                clientId: "",
+                clientName: "",
+                categoryValue: "",
+                categoryLabel: "",
+                creatorId: "",
+                creatorName: config.currentUserName,
+                hoursTaken: 0,
+                methodValue: "",
+                methodLabel: "",
+                solution: "",
+                hasAttachment: false,
+                attachmentFileName: "",
+                modifiedOnDisplay: ""
+            };
+        }
+
+        function renderModal() {
+            if (!state.draft) {
+                return;
+            }
+
+            const isNew = !state.draft.recordId;
+            if (elements.modalTitle) {
+                elements.modalTitle.textContent = isNew ? "Nuevo ticket de soporte cloud" : "Editar ticket de soporte cloud";
+            }
+            if (elements.modalSubtitle) {
+                elements.modalSubtitle.textContent = isNew
+                    ? "Completa los campos y guarda el ticket."
+                    : "Actualiza el formulario completo del ticket seleccionado.";
+            }
+            if (elements.modalMeta) {
+                elements.modalMeta.textContent = isNew
+                    ? `Rango activo: ${elements.rangeLabel?.textContent || "-"}`
+                    : `Actualizado: ${state.draft.modifiedOnDisplay || "Sin fecha"}`;
+            }
+
+            if (elements.recordId) {
+                elements.recordId.value = state.draft.recordId || "";
+            }
+            if (elements.clientId) {
+                elements.clientId.value = state.draft.clientId || "";
+            }
+
+            setFieldValue(elements.fields.title, state.draft.title);
+            setFieldValue(elements.fields.description, state.draft.description);
+            setFieldValue(elements.fields.creationDate, state.draft.creationDateValue);
+            setFieldValue(elements.fields.clientName, state.draft.clientName);
+            setFieldValue(elements.fields.creatorName, state.draft.creatorName || config.currentUserName);
+            setFieldValue(elements.fields.hoursTaken, formatInputNumber(state.draft.hoursTaken));
+            setFieldValue(elements.fields.solution, state.draft.solution);
+
+            populateSelect(elements.fields.state, state.board?.stateOptions, state.draft.stateValue);
+            populateSelect(elements.fields.type, state.board?.typeOptions, state.draft.typeValue);
+            populateSelect(elements.fields.category, state.board?.categoryOptions, state.draft.categoryValue);
+            populateSelect(elements.fields.method, state.board?.methodOptions, state.draft.methodValue);
+
+            renderAttachmentState();
+            clearStatus(elements.modalStatus);
+        }
+
+        function populateSelect(select, options, selectedValue) {
+            if (!(select instanceof HTMLSelectElement)) {
+                return;
+            }
+
+            const items = Array.isArray(options) ? options : [];
+            const selected = selectedValue === null || selectedValue === undefined ? "" : String(selectedValue);
+            select.innerHTML = `
+                <option value="">Selecciona una opcion...</option>
+                ${items.map(item => `
+                    <option value="${escapeHtml(item.value)}" ${String(item.value) === selected ? "selected" : ""}>${escapeHtml(item.label || "")}</option>
+                `).join("")}
+            `;
+        }
+
+        function renderAttachmentState() {
+            if (!elements.attachmentName || !elements.attachmentHint || !elements.downloadLink || !state.draft) {
+                return;
+            }
+
+            const pendingFile = state.pendingFile;
+            const hasAttachment = Boolean(state.draft.recordId && state.draft.hasAttachment);
+
+            elements.attachmentName.textContent = pendingFile
+                ? pendingFile.name
+                : hasAttachment
+                    ? state.draft.attachmentFileName || "Adjunto cargado"
+                    : "Sin adjunto cargado";
+
+            elements.attachmentHint.textContent = pendingFile
+                ? "El archivo se subira junto con el guardado del ticket."
+                : hasAttachment
+                    ? "Ya existe un adjunto asociado a este ticket."
+                    : "Guarda el ticket y adjunta el soporte en PDF, imagen o Word.";
+
+            elements.downloadLink.href = hasAttachment ? buildDownloadUrl(state.draft.recordId || "") : "#";
+            elements.downloadLink.classList.toggle("is-disabled", !hasAttachment);
+        }
+
+        async function saveTicket() {
+            if (state.saving || !state.draft) {
+                return;
+            }
+
+            let payload;
+            let savedRecord = null;
+            const hadPendingFile = Boolean(state.pendingFile);
+            try {
+                payload = buildPayload();
+            } catch (error) {
+                setStatus(elements.modalStatus, "error", error instanceof Error ? error.message : "Revisa los datos del ticket.");
+                return;
+            }
+
+            state.saving = true;
+            setBusy(true);
+            setStatus(elements.modalStatus, "info", payload.recordId ? "Guardando ticket..." : "Creando ticket...");
+
+            try {
+                const result = await fetchJson(config.saveUrl, {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+
+                savedRecord = hydrateRecord(result?.record);
+                state.draft = { ...savedRecord };
+                if (state.pendingFile && savedRecord.recordId) {
+                    setStatus(elements.modalStatus, "info", "Ticket guardado. Subiendo adjunto...");
+                    savedRecord = await uploadPendingAttachment(savedRecord.recordId);
+                    state.draft = { ...savedRecord };
+                }
+
+                closeModal();
+                setBusy(false);
+                await loadBoard({ force: true });
+                setStatus(
+                    elements.status,
+                    "success",
+                    hadPendingFile
+                        ? "Ticket y adjunto guardados correctamente."
+                        : (result?.message || "Ticket guardado correctamente."));
+            } catch (error) {
+                if (savedRecord?.recordId) {
+                    renderModal();
+                }
+                setStatus(elements.modalStatus, "error", buildErrorMessage(error));
+            } finally {
+                state.saving = false;
+                if (state.busy) {
+                    setBusy(false);
+                }
+            }
+        }
+
+        async function uploadPendingAttachment(recordId) {
+            const formData = new FormData();
+            formData.append("recordId", recordId);
+            formData.append("file", state.pendingFile);
+
+            const result = await fetchJson(config.uploadUrl, {
+                method: "POST",
+                body: formData
+            });
+
+            return hydrateRecord(result?.record);
+        }
+
+        function buildPayload() {
+            const title = (elements.fields.title?.value || "").trim();
+            const description = (elements.fields.description?.value || "").trim();
+            const creationDateValue = elements.fields.creationDate?.value || "";
+            const stateValue = elements.fields.state?.value || "";
+            const typeValue = elements.fields.type?.value || "";
+            const clientId = elements.clientId?.value || "";
+            const clientName = (elements.fields.clientName?.value || "").trim();
+            const categoryValue = elements.fields.category?.value || "";
+            const hoursTaken = parseDecimal(elements.fields.hoursTaken?.value || "0");
+            const methodValue = elements.fields.method?.value || "";
+            const solution = (elements.fields.solution?.value || "").trim();
+
+            if (!title) {
+                throw new Error("Debes diligenciar el titulo del ticket.");
+            }
+            if (!description) {
+                throw new Error("Debes diligenciar la descripcion del ticket.");
+            }
+            if (!creationDateValue) {
+                throw new Error("Debes diligenciar la fecha de creacion.");
+            }
+            if (!stateValue) {
+                throw new Error("Debes seleccionar un estado.");
+            }
+            if (!typeValue) {
+                throw new Error("Debes seleccionar un tipo.");
+            }
+            if (!clientId && !clientName) {
+                throw new Error("Debes seleccionar un cliente.");
+            }
+            if (!categoryValue) {
+                throw new Error("Debes seleccionar una categoria.");
+            }
+            if (!methodValue) {
+                throw new Error("Debes seleccionar un metodo.");
+            }
+            if (hoursTaken < 0) {
+                throw new Error("Las horas tomadas no pueden ser negativas.");
+            }
+
+            return {
+                recordId: elements.recordId?.value || "",
+                title,
+                description,
+                creationDateValue,
+                stateValue: Number(stateValue),
+                typeValue: Number(typeValue),
+                clientId,
+                clientName,
+                categoryValue: Number(categoryValue),
+                hoursTaken,
+                methodValue: Number(methodValue),
+                solution
+            };
+        }
+
+        function hydrateRecord(record) {
+            return {
+                recordId: record?.recordId || "",
+                title: record?.title || "",
+                description: record?.description || "",
+                creationDateValue: record?.creationDateValue || "",
+                creationDateDisplay: record?.creationDateDisplay || "",
+                stateValue: record?.stateValue ?? "",
+                stateLabel: record?.stateLabel || "",
+                typeValue: record?.typeValue ?? "",
+                typeLabel: record?.typeLabel || "",
+                clientId: record?.clientId || "",
+                clientName: record?.clientName || "",
+                categoryValue: record?.categoryValue ?? "",
+                categoryLabel: record?.categoryLabel || "",
+                creatorId: record?.creatorId || "",
+                creatorName: record?.creatorName || config.currentUserName,
+                hoursTaken: Number(record?.hoursTaken || 0),
+                methodValue: record?.methodValue ?? "",
+                methodLabel: record?.methodLabel || "",
+                solution: record?.solution || "",
+                hasAttachment: Boolean(record?.hasAttachment),
+                attachmentFileName: record?.attachmentFileName || "",
+                modifiedOnDisplay: record?.modifiedOnDisplay || ""
+            };
+        }
+
+        function renderClientSuggestions() {
+            if (!elements.clientOptions) {
+                return;
+            }
+
+            elements.clientOptions.innerHTML = state.clientSuggestions.map(item => `
+                <option value="${escapeHtml(item.name || "")}" data-id="${escapeHtml(item.id || "")}"></option>
+            `).join("");
+        }
+
+        function syncClientSelection() {
+            const inputValue = normalizeText(elements.fields.clientName?.value || "");
+            const selectedItem = state.clientSuggestions.find(item => normalizeText(item.name || "") === inputValue);
+            if (elements.clientId) {
+                elements.clientId.value = selectedItem?.id || "";
+            }
+        }
+
+        function setBusy(isBusy) {
+            state.busy = isBusy;
+
+            [
+                elements.startDate,
+                elements.endDate,
+                elements.refresh,
+                elements.newTicket
+            ].forEach(element => {
+                if (element) {
+                    element.disabled = isBusy;
+                }
+            });
+
+            [
+                elements.fields.title,
+                elements.fields.description,
+                elements.fields.creationDate,
+                elements.fields.state,
+                elements.fields.type,
+                elements.fields.clientName,
+                elements.fields.category,
+                elements.fields.hoursTaken,
+                elements.fields.method,
+                elements.fields.solution,
+                elements.attachmentInput
+            ].forEach(element => {
+                if (element) {
+                    element.disabled = isBusy;
+                }
+            });
+
+            elements.closeModalButtons.forEach(button => {
+                button.disabled = isBusy;
+            });
+        }
+    }
+
+    async function fetchJson(url, options = {}) {
+        const isFormData = options.body instanceof FormData;
+        const headers = {
+            Accept: "application/json",
+            ...(options.headers || {})
+        };
+
+        if (!isFormData && options.body && !headers["Content-Type"]) {
+            headers["Content-Type"] = "application/json";
+        }
+
+        const response = await fetch(url, {
+            method: options.method || "GET",
+            headers: isFormData ? { Accept: headers.Accept } : headers,
+            body: options.body
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok) {
+            const rawBody = await response.text();
+            let message = rawBody;
+
+            if (contentType.includes("application/json")) {
+                try {
+                    const payload = rawBody ? JSON.parse(rawBody) : null;
+                    message = typeof payload === "string"
+                        ? payload
+                        : payload?.message || payload?.detail || payload?.title || rawBody;
+                } catch {
+                    message = rawBody;
+                }
+            }
+
+            throw new Error(message || "No fue posible completar la solicitud.");
+        }
+
+        if (!contentType.includes("application/json")) {
+            const message = await response.text();
+            throw new Error(message || "La respuesta del servidor no fue valida.");
+        }
+
+        return response.json();
+    }
+
+    function setStatus(target, type, message) {
+        if (!target) {
+            return;
+        }
+
+        if (!message) {
+            clearStatus(target);
+            return;
+        }
+
+        target.className = `support-cloud-status is-visible is-${type}`;
+        target.textContent = message;
+    }
+
+    function clearStatus(target) {
+        if (!target) {
+            return;
+        }
+
+        target.className = "support-cloud-status";
+        target.textContent = "";
+    }
+
+    function buildErrorMessage(error) {
+        return error instanceof Error
+            ? error.message
+            : "Ocurrio un error inesperado.";
+    }
+
+    function setFieldValue(element, value) {
+        if (!element) {
+            return;
+        }
+
+        element.value = value ?? "";
+    }
+
+    function formatInputNumber(value) {
+        return Number(value || 0).toFixed(2);
+    }
+
+    function parseDecimal(value) {
+        const parsed = Number.parseFloat(String(value || "").replace(",", "."));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function buildRangeLabel(startDate, endDate) {
+        if (!startDate && !endDate) {
+            return "Sin rango";
+        }
+
+        return [startDate || "-", endDate || "-"].join(" - ");
+    }
+
+    function renderPill(text) {
+        return `<span class="support-cloud-pill">${escapeHtml(text || "-")}</span>`;
+    }
+
+    function normalizeText(value) {
+        return (value ?? "")
+            .toString()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+    }
+
+    function resetAttachmentInput() {
+        roots.forEach(root => {
+            root.querySelectorAll("[data-sc-attachment-input]").forEach(input => {
+                input.value = "";
+            });
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+})();

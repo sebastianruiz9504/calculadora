@@ -91,6 +91,8 @@ public sealed class LicenciamientoPreviewRowDto
     public decimal Cantidad { get; set; }
     public int ContractTypeValue { get; set; }
     public string ContractTypeLabel { get; set; } = "";
+    public bool RequiresBreakdown { get; set; }
+    public bool BreakdownGenerated { get; set; }
     public bool IsValid { get; set; } = true;
     public List<string> Warnings { get; set; } = new();
     public List<string> Errors { get; set; } = new();

@@ -4279,7 +4279,10 @@
 
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
-            dashboardPeriodScope.hidden = state.activeTab === "portfolio" || state.activeTab === "copiers" || state.activeTab === "pnl";
+            dashboardPeriodScope.hidden = state.activeTab === "portfolio"
+                || state.activeTab === "copiers"
+                || state.activeTab === "pnl"
+                || state.activeTab === "support-cloud";
         }
     }
 
@@ -4389,6 +4392,10 @@
             } else {
                 loadPortfolio();
             }
+            return;
+        }
+
+        if (tabKey === "support-cloud") {
             return;
         }
 

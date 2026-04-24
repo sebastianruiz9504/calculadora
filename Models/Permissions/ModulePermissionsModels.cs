@@ -19,7 +19,8 @@ public enum AppModule
     Copiers = 12,
     Inventario = 13,
     Licenciamiento = 14,
-    Hardware = 15
+    Hardware = 15,
+    SoporteCloud = 16
 }
 
 public sealed class AppModuleDefinition
@@ -194,6 +195,16 @@ public static class AppModuleCatalog
         Controller = "Hardware"
     };
 
+    public static readonly AppModuleDefinition SoporteCloud = new()
+    {
+        Key = AppModule.SoporteCloud,
+        Label = "Soporte cloud",
+        Category = "Dashboard",
+        Description = "Gestiona tickets de soporte cloud, su clasificacion, cliente, horas y adjuntos.",
+        OptionValue = 645250008,
+        Controller = "SoporteCloud"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -214,7 +225,10 @@ public static class AppModuleCatalog
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
-        PermissionModules.Where(static module => module.IsNavigable).ToList();
+        PermissionModules
+            .Concat(new[] { SoporteCloud })
+            .Where(static module => module.IsNavigable)
+            .ToList();
 
     public static IReadOnlyList<AppModuleNavigationGroup> TopNavigationGroups { get; } = new[]
     {
@@ -248,12 +262,12 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Dashboard",
-            Modules = new[] { Dashboard }
+            Modules = new[] { Dashboard, SoporteCloud }
         }
     };
 
     public static AppModuleDefinition? Find(AppModule module) =>
-        PermissionModules.FirstOrDefault(item => item.Key == module);
+        NavigationModules.FirstOrDefault(item => item.Key == module);
 
     public static AppModuleDefinition? FindByController(string? controller) =>
         NavigationModules.FirstOrDefault(item =>

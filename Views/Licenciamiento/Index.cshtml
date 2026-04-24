@@ -11,6 +11,7 @@
      id="licenciamientoApp"
      data-load-url="@Url.Action("Data", "Licenciamiento")"
      data-preview-url="@Url.Action("Preview", "Licenciamiento")"
+     data-account-search-url="@Url.Action("AccountLookupSearch", "Licenciamiento")"
      data-product-search-url="@Url.Action("ProductLookupSearch", "Licenciamiento")"
      data-import-url="@Url.Action("Import", "Licenciamiento")"
      data-adjust-trm-url="@Url.Action("AdjustTrm", "Licenciamiento")"
@@ -143,7 +144,7 @@
 
                 <section class="lic-preview-section" id="licPreviewProductSection" hidden>
                     <div class="lic-preview-section__header">
-                        <h3>Producto sin lookup</h3>
+                        <h3>Producto pendiente</h3>
                         <span class="lic-counter" id="licPreviewProductCount">0 filas</span>
                     </div>
                     <div class="lic-table-wrap lic-table-wrap--preview">
@@ -159,6 +160,7 @@
                                     <th class="text-end">USD</th>
                                     <th>Tipo</th>
                                     <th>Estado</th>
+                                    <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="licPreviewBody"></tbody>
@@ -196,6 +198,55 @@
                 <button type="button" class="btn btn-primary" id="licImportBtn" disabled>Procesar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licBreakdownModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-breakdown-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--breakdown" role="dialog" aria-modal="true" aria-labelledby="licBreakdownTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Desglose</div>
+                <h2 class="lic-modal__title" id="licBreakdownTitle">Distribuir cargo manual</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-breakdown-close>Cerrar</button>
+        </div>
+        <div id="licBreakdownStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <div class="lic-breakdown-summary">
+            <div>
+                <span>Producto original</span>
+                <strong id="licBreakdownProduct">-</strong>
+            </div>
+            <div>
+                <span>Total original</span>
+                <strong id="licBreakdownOriginalTotal">USD 0</strong>
+            </div>
+            <div>
+                <span>Saldo pendiente</span>
+                <strong id="licBreakdownRemaining" class="lic-breakdown-total">USD 0</strong>
+            </div>
+        </div>
+        <div class="lic-breakdown-toolbar">
+            <div class="lic-muted">Cada fila debe seleccionar cliente, producto y valor. El saldo debe quedar exactamente en 0.</div>
+            <button type="button" class="btn btn-outline-primary" id="licBreakdownAddRowBtn">Agregar fila</button>
+        </div>
+        <div class="lic-table-wrap lic-table-wrap--preview">
+            <table class="table align-middle lic-table lic-table--breakdown">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Producto</th>
+                        <th class="text-end">Valor USD</th>
+                        <th>Accion</th>
+                    </tr>
+                </thead>
+                <tbody id="licBreakdownBody"></tbody>
+            </table>
+        </div>
+        <div class="lic-modal__footer">
+            <button type="button" class="btn btn-outline-secondary" data-lic-breakdown-close>Cancelar</button>
+            <button type="button" class="btn btn-primary" id="licBreakdownSaveBtn">Guardar desglose</button>
+        </div>
     </div>
 </div>
 
