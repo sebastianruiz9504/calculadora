@@ -115,30 +115,31 @@ public sealed partial class DataverseService
             tableCreated = true;
         }
 
-        var existingAttributeTypes = await LoadHardwareAttributeTypesAsync(user, ct);
+        var existingAttributes = await LoadHardwareAttributesAsync(user, ct);
         var createdColumns = new List<string>();
         var existingColumns = new List<string>();
 
         foreach (var column in document.Columns.Concat(HardwareSystemColumns))
         {
-            if (existingAttributeTypes.ContainsKey(column.LogicalName))
+            var matchedAttribute = FindMatchingHardwareAttribute(existingAttributes, column);
+            if (matchedAttribute is not null)
             {
-                existingColumns.Add(column.LogicalName);
+                column.ResolvedLogicalName = matchedAttribute.LogicalName;
+                existingColumns.Add(matchedAttribute.LogicalName);
                 continue;
             }
 
             await CreateHardwareAttributeAsync(column, user, ct);
-            existingAttributeTypes[column.LogicalName] = column.Kind.ToString();
             createdColumns.Add(column.LogicalName);
         }
 
         if (tableCreated || createdColumns.Count > 0)
         {
             await PublishHardwareEntityAsync(user, ct);
-            await Task.Delay(TimeSpan.FromMilliseconds(1500), ct);
         }
 
         var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
+        await ResolveHardwareColumnLogicalNamesAsync(document.Columns.Concat(HardwareSystemColumns).ToList(), user, ct);
         var importedCount = 0;
         var skippedDuplicates = 0;
 
@@ -297,23 +298,23 @@ public sealed partial class DataverseService
         return metadata;
     }
 
-    private async Task<Dictionary<string, string>> LoadHardwareAttributeTypesAsync(
+    private async Task<List<HardwareAttributeMetadata>> LoadHardwareAttributesAsync(
         ClaimsPrincipal user,
         CancellationToken ct)
     {
         var relativeUrl =
             $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(HardwareTableLogicalName)}')" +
-            "?$select=LogicalName&$expand=Attributes($select=LogicalName,AttributeType)";
+            "?$select=LogicalName&$expand=Attributes($select=LogicalName,SchemaName,AttributeType)";
         using var response = await CallRhDataverseResponseAsync(relativeUrl, "GET", user, ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return new List<HardwareAttributeMetadata>();
 
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
 
         using var doc = JsonDocument.Parse(body);
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<HardwareAttributeMetadata>();
         if (!doc.RootElement.TryGetProperty("Attributes", out var attributes)
             || attributes.ValueKind != JsonValueKind.Array)
         {
@@ -326,10 +327,80 @@ public sealed partial class DataverseService
             if (string.IsNullOrWhiteSpace(logicalName))
                 continue;
 
-            result[logicalName] = ReadString(attribute, "AttributeType").Trim();
+            result.Add(new HardwareAttributeMetadata
+            {
+                LogicalName = logicalName,
+                SchemaName = ReadString(attribute, "SchemaName").Trim(),
+                AttributeType = ReadString(attribute, "AttributeType").Trim()
+            });
         }
 
         return result;
+    }
+
+    private async Task ResolveHardwareColumnLogicalNamesAsync(
+        IReadOnlyList<HardwareManagedColumnDefinition> columns,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        const int maxAttempts = 8;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var existingAttributes = await LoadHardwareAttributesAsync(user, ct);
+            var unresolvedColumns = new List<HardwareManagedColumnDefinition>();
+
+            foreach (var column in columns)
+            {
+                var matchedAttribute = FindMatchingHardwareAttribute(existingAttributes, column);
+                if (matchedAttribute is null)
+                {
+                    unresolvedColumns.Add(column);
+                    continue;
+                }
+
+                column.ResolvedLogicalName = matchedAttribute.LogicalName;
+            }
+
+            if (unresolvedColumns.Count == 0)
+                return;
+
+            if (attempt < maxAttempts)
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+
+        var pendingColumns = columns
+            .Where(column => string.IsNullOrWhiteSpace(column.ResolvedLogicalName))
+            .Select(column => column.LogicalName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        throw new InvalidOperationException(
+            $"Dataverse aun no expone estas columnas para importar: {string.Join(", ", pendingColumns)}. Intenta de nuevo en unos segundos.");
+    }
+
+    private static HardwareAttributeMetadata? FindMatchingHardwareAttribute(
+        IEnumerable<HardwareAttributeMetadata> attributes,
+        HardwareManagedColumnDefinition column)
+    {
+        var candidates = attributes.ToList();
+        var exactLogical = candidates.FirstOrDefault(attribute =>
+            string.Equals(attribute.LogicalName, column.LogicalName, StringComparison.OrdinalIgnoreCase));
+        if (exactLogical is not null)
+            return exactLogical;
+
+        var exactSchema = candidates.FirstOrDefault(attribute =>
+            !string.IsNullOrWhiteSpace(attribute.SchemaName)
+            && string.Equals(attribute.SchemaName, column.SchemaName, StringComparison.OrdinalIgnoreCase));
+        if (exactSchema is not null)
+            return exactSchema;
+
+        var normalizedTarget = NormalizeHardwareAttributeAlias(column.LogicalName);
+        var normalizedSchema = NormalizeHardwareAttributeAlias(column.SchemaName);
+        return candidates.FirstOrDefault(attribute =>
+            NormalizeHardwareAttributeAlias(attribute.LogicalName) == normalizedTarget
+            || NormalizeHardwareAttributeAlias(attribute.SchemaName) == normalizedTarget
+            || NormalizeHardwareAttributeAlias(attribute.LogicalName) == normalizedSchema
+            || NormalizeHardwareAttributeAlias(attribute.SchemaName) == normalizedSchema);
     }
 
     private async Task CreateHardwareEntityAsync(ClaimsPrincipal user, CancellationToken ct)
@@ -610,7 +681,7 @@ public sealed partial class DataverseService
             if (convertedValue is null)
                 continue;
 
-            payload[column.LogicalName] = convertedValue;
+            payload[FirstNonEmpty(column.ResolvedLogicalName, column.LogicalName)] = convertedValue;
         }
 
         return payload;
@@ -981,12 +1052,22 @@ public sealed partial class DataverseService
         var baseName = logicalName.StartsWith("cr07a_", StringComparison.OrdinalIgnoreCase)
             ? logicalName["cr07a_".Length..]
             : logicalName;
-        var pascal = string.Concat(
+        var pascal = string.Join(
+            "_",
             baseName
                 .Split('_', StringSplitOptions.RemoveEmptyEntries)
                 .Select(segment => char.ToUpperInvariant(segment[0]) + segment[1..]));
         var schemaName = $"cr07a_{pascal}";
         return schemaName.Length <= 50 ? schemaName : schemaName[..50];
+    }
+
+    private static string NormalizeHardwareAttributeAlias(string? value)
+    {
+        return string.Join(
+            "",
+            (value ?? string.Empty)
+                .Where(char.IsLetterOrDigit))
+            .ToLowerInvariant();
     }
 
     private static int DetermineHardwareMaxLength(
@@ -1215,11 +1296,19 @@ public sealed partial class DataverseService
         public string DisplayLabel { get; init; } = "";
         public string LogicalName { get; init; } = "";
         public string SchemaName { get; init; } = "";
+        public string ResolvedLogicalName { get; set; } = "";
         public HardwareAttributeKind Kind { get; init; }
         public string ExampleValue { get; init; } = "";
         public int MaxLength { get; init; }
         public int Precision { get; init; } = 4;
         public bool IsSystemColumn { get; init; }
+    }
+
+    private sealed class HardwareAttributeMetadata
+    {
+        public string LogicalName { get; init; } = "";
+        public string SchemaName { get; init; } = "";
+        public string AttributeType { get; init; } = "";
     }
 
     private enum HardwareAttributeKind
