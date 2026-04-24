@@ -18,7 +18,8 @@ public enum AppModule
     CuentasCobro = 11,
     Copiers = 12,
     Inventario = 13,
-    Licenciamiento = 14
+    Licenciamiento = 14,
+    Hardware = 15
 }
 
 public sealed class AppModuleDefinition
@@ -182,6 +183,17 @@ public static class AppModuleCatalog
         Controller = "Licenciamiento"
     };
 
+
+    public static readonly AppModuleDefinition Hardware = new()
+    {
+        Key = AppModule.Hardware,
+        Label = "Hardware",
+        Category = "Admin",
+        Description = "Prepara esquemas de importacion CSV y administra la carga base de hardware en Dataverse.",
+        OptionValue = 645250014,
+        Controller = "Hardware"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -194,6 +206,7 @@ public static class AppModuleCatalog
         PortalProveedores,
         CuentasCobro,
         Inventario,
+        Hardware,
         GestionHumana,
         Copiers,
         Dashboard,
@@ -219,7 +232,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Admin",
-            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario },
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario, Hardware },
             IsDropdown = true
         },
         new AppModuleNavigationGroup

@@ -3,6 +3,7 @@ using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models.CuentasCobro;
 using CotizadorInterno.Web.Models.Copiers;
 using CotizadorInterno.Web.Models.Dashboard;
+using CotizadorInterno.Web.Models.Hardware;
 using CotizadorInterno.Web.Models.Licenciamiento;
 using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
@@ -92,4 +93,6 @@ public interface IDataverseService
     Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(LicenciamientoImportRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoAdjustTrmResultDto> AdjustLicenciamientoTrmAsync(LicenciamientoAdjustTrmRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoUpdateContractTypeResultDto> UpdateLicenciamientoContractTypeAsync(LicenciamientoUpdateContractTypeRequestDto request, CancellationToken ct = default);
+    Task<HardwareCsvPreviewResultDto> PreviewHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
+    Task<HardwareProvisionResultDto> ProvisionHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
 }

@@ -1,0 +1,79 @@
+@model CotizadorInterno.Web.Models.Hardware.HardwarePageViewModel
+@{
+    ViewData["Title"] = "Hardware";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+}
+
+<div class="card shadow-sm border-0 mt-4"
+     id="hardwareImportApp"
+     data-preview-url="@Url.Action("Preview", "Hardware")"
+     data-provision-url="@Url.Action("Provision", "Hardware")">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+                <div class="text-uppercase text-muted small">Admin</div>
+                <h1 class="h3 mb-1">Modulo Hardware</h1>
+                <p class="text-muted mb-0">Carga el CSV para crear la tabla base y alimentar Dataverse desde este modulo.</p>
+            </div>
+            <div class="badge bg-light text-dark border px-3 py-2">
+                Usuario: @Model.CurrentUser.Email
+            </div>
+        </div>
+
+        <div class="alert alert-info" role="alert">
+            Este flujo toma el CSV, detecta el separador correcto, propone columnas compatibles con Dataverse y luego crea o reutiliza la tabla <code>@Model.TableLogicalName</code>.
+        </div>
+
+        <div class="row g-3 align-items-end">
+            <div class="col-lg-6">
+                <label class="form-label" for="hardwareCsvFile">Archivo CSV</label>
+                <input class="form-control" type="file" id="hardwareCsvFile" accept=".csv,text/csv" />
+            </div>
+            <div class="col-md-3 d-grid">
+                <button type="button" class="btn btn-primary" id="hardwareAnalyzeBtn">Analizar CSV</button>
+            </div>
+            <div class="col-md-3 d-grid">
+                <button type="button" class="btn btn-success" id="hardwareProvisionBtn" disabled>Crear tabla e importar</button>
+            </div>
+        </div>
+
+        <div class="mt-4" id="hardwareStatus" role="status" aria-live="polite"></div>
+
+        <div class="mt-4" id="hardwareSummary" hidden>
+            <h2 class="h5">Resumen de estructura</h2>
+            <ul class="mb-0" id="hardwareSummaryList"></ul>
+        </div>
+
+        <div class="mt-4" id="hardwareColumnsWrap" hidden>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h2 class="h5 mb-0">Columnas sugeridas para Dataverse</h2>
+                <small class="text-muted" id="hardwareSystemColumnsNote"></small>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>CSV original</th>
+                            <th>Nombre Dataverse</th>
+                            <th>Tipo inferido</th>
+                            <th>Ejemplo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hardwareColumnsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="mt-4" id="hardwareProvisionWrap" hidden>
+            <h2 class="h5">Resultado de la carga</h2>
+            <ul class="mb-0" id="hardwareProvisionList"></ul>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/hardware.js" asp-append-version="true"></script>
+}
