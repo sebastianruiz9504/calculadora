@@ -1,0 +1,356 @@
+@model CotizadorInterno.Web.Models.Hardware.HardwareWorkspaceViewModel
+
+<div class="hardware-shell @(Model.ShowHero ? "" : "hardware-shell--embedded")"
+     id="@Model.RootId"
+     data-hw-root
+     data-preview-url="@Model.PreviewUrl"
+     data-provision-url="@Model.ProvisionUrl"
+     data-board-url="@Model.BoardUrl"
+     data-save-url="@Model.SaveUrl"
+     data-upload-url="@Model.UploadUrl"
+     data-download-url="@Model.DownloadUrl"
+     data-invoice-search-url="@Model.InvoiceSearchUrl">
+    @if (Model.ShowHero)
+    {
+        <section class="hardware-hero">
+            <div>
+                <div class="hardware-kicker">@Model.HeroKicker</div>
+                <h1 class="hardware-title">@Model.HeroTitle</h1>
+                <p class="hardware-subtitle">@Model.HeroSubtitle</p>
+            </div>
+            <div class="hardware-user-pill">
+                <span class="hardware-user-pill__label">@Model.AccessLabel</span>
+                <span>@Model.CurrentUserLabel</span>
+            </div>
+        </section>
+    }
+
+    <div class="hardware-status" data-hw-status role="status" aria-live="polite"></div>
+
+    @if (Model.ShowHero && !string.IsNullOrWhiteSpace(Model.PreviewUrl) && !string.IsNullOrWhiteSpace(Model.ProvisionUrl))
+    {
+        <section class="hardware-card">
+            <div class="hardware-section-header">
+                <div>
+                    <div class="hardware-kicker">Importación</div>
+                    <h2 class="hardware-section-title">Carga base del módulo</h2>
+                    <p class="hardware-section-subtitle">
+                        Mantuvimos la carga CSV para crear o reforzar la tabla base de Hardware sin perder el flujo por etapas.
+                    </p>
+                </div>
+            </div>
+
+            <div class="hardware-import-grid">
+                <label class="hardware-field hardware-field--span-2">
+                    <span class="hardware-field__label">Archivo CSV</span>
+                    <input class="form-control" type="file" id="hardwareCsvFile-@Model.RootId" accept=".csv,text/csv" data-hw-csv-file />
+                </label>
+                <div class="hardware-actions">
+                    <button type="button" class="btn btn-outline-secondary" data-hw-analyze-csv>Analizar CSV</button>
+                    <button type="button" class="btn btn-primary" data-hw-provision-csv disabled>Crear tabla e importar</button>
+                </div>
+            </div>
+
+            <div class="hardware-inline-status" data-hw-import-status role="status" aria-live="polite"></div>
+
+            <div class="hardware-import-panels">
+                <section class="hardware-import-panel" data-hw-summary hidden>
+                    <h3 class="hardware-import-panel__title">Resumen de estructura</h3>
+                    <ul class="hardware-list" data-hw-summary-list></ul>
+                </section>
+
+                <section class="hardware-import-panel" data-hw-columns-wrap hidden>
+                    <div class="hardware-import-panel__head">
+                        <h3 class="hardware-import-panel__title">Columnas sugeridas</h3>
+                        <small class="text-muted" data-hw-system-columns-note></small>
+                    </div>
+                    <div class="hardware-mini-table-wrap">
+                        <table class="table align-middle hardware-mini-table">
+                            <thead>
+                                <tr>
+                                    <th>CSV original</th>
+                                    <th>Nombre Dataverse</th>
+                                    <th>Tipo</th>
+                                    <th>Ejemplo</th>
+                                </tr>
+                            </thead>
+                            <tbody data-hw-columns-body></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="hardware-import-panel" data-hw-provision-wrap hidden>
+                    <h3 class="hardware-import-panel__title">Resultado de la carga</h3>
+                    <ul class="hardware-list" data-hw-provision-list></ul>
+                </section>
+            </div>
+        </section>
+    }
+
+    <section class="hardware-card">
+        <div class="hardware-toolbar">
+            <div class="hardware-toolbar__filters">
+                <label class="hardware-field">
+                    <span class="hardware-field__label">Filtrar por estado</span>
+                    <select class="form-select" data-hw-state-filter>
+                        <option value="">Todos los estados</option>
+                    </select>
+                </label>
+            </div>
+            <div class="hardware-toolbar__actions">
+                <div class="hardware-toolbar__summary">
+                    <span class="hardware-toolbar__summary-label">Vista activa</span>
+                    <strong data-hw-filter-label>Todos los estados</strong>
+                </div>
+                <div class="hardware-actions">
+                    <button type="button" class="btn btn-primary" data-hw-selected-action disabled>Gestionar selección</button>
+                    <button type="button" class="btn btn-outline-secondary" data-hw-refresh>Actualizar</button>
+                </div>
+                <div class="hardware-selection-summary" data-hw-selection-summary>Selecciona una o varias filas del mismo estado.</div>
+            </div>
+        </div>
+
+        <div class="hardware-inline-status" data-hw-board-status role="status" aria-live="polite"></div>
+        <div class="hardware-warning-list" data-hw-warnings hidden></div>
+
+        <div class="hardware-summary">
+            <article class="hardware-summary__card">
+                <span class="hardware-summary__label">Registros</span>
+                <strong class="hardware-summary__value" data-hw-total-records>0</strong>
+            </article>
+            <article class="hardware-summary__card">
+                <span class="hardware-summary__label">Venta visible</span>
+                <strong class="hardware-summary__value" data-hw-total-sales>$0</strong>
+            </article>
+            <article class="hardware-summary__card">
+                <span class="hardware-summary__label">Acciones pendientes</span>
+                <strong class="hardware-summary__value" data-hw-pending-actions>0</strong>
+            </article>
+            <article class="hardware-summary__card">
+                <span class="hardware-summary__label">Cerrados</span>
+                <strong class="hardware-summary__value" data-hw-closed-count>0</strong>
+            </article>
+        </div>
+
+        <div class="hardware-state-grid" data-hw-state-summary></div>
+
+        <div class="hardware-table-wrap">
+            <table class="table align-middle hardware-table">
+                <thead>
+                    <tr>
+                        <th class="hardware-table__select-col">
+                            <input type="checkbox" class="form-check-input" data-hw-select-all aria-label="Seleccionar todas las filas visibles" />
+                        </th>
+                        <th>Hardware</th>
+                        <th>Cliente</th>
+                        <th>No orden</th>
+                        <th class="text-end">Cantidad</th>
+                        <th class="text-end">Venta unidad</th>
+                        <th class="text-end">Total línea</th>
+                        <th class="hardware-table__state-col">Estado</th>
+                        <th class="hardware-table__action-col">Botón</th>
+                    </tr>
+                </thead>
+                <tbody data-hw-rows>
+                    <tr>
+                        <td colspan="9" class="hardware-table__empty">Cargando tabla...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="hardware-modal" data-hw-modal hidden>
+        <div class="hardware-modal__backdrop" data-hw-close-modal></div>
+        <div class="hardware-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="hardwareModalTitle-@Model.RootId">
+            <div class="hardware-modal__header">
+                <div>
+                    <div class="hardware-kicker">Etapa</div>
+                    <h2 class="hardware-modal__title" id="hardwareModalTitle-@Model.RootId" data-hw-modal-title>Gestión de hardware</h2>
+                    <p class="hardware-modal__subtitle" data-hw-modal-subtitle>Completa la etapa seleccionada.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-hw-close-modal>Cerrar</button>
+            </div>
+
+            <div class="hardware-status hardware-status--modal" data-hw-modal-status role="status" aria-live="polite"></div>
+
+            <form class="hardware-form" data-hw-form>
+                <input type="hidden" data-hw-record-id />
+                <input type="hidden" data-hw-action-key />
+
+                <div class="hardware-form__summary">
+                    <div>
+                        <div class="hardware-form__summary-title" data-hw-record-name>Hardware</div>
+                        <div class="hardware-form__summary-meta" data-hw-record-meta>Cliente</div>
+                    </div>
+                    <div class="hardware-pill" data-hw-record-state>Pendiente</div>
+                </div>
+
+                <div class="hardware-form__grid">
+                    <section class="hardware-stage-panel" data-hw-stage-panel="register-documentation" hidden>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Registrar documentación</h3>
+                            <p>Completa la documentación base antes de autorizar el pago al proveedor.</p>
+                        </div>
+                        <div class="hardware-form__grid hardware-form__grid--nested">
+                            <label class="hardware-field">
+                                <span class="hardware-field__label">cr07a_noorden</span>
+                                <input type="text" class="form-control" data-hw-field="purchaseOrderNumber" />
+                            </label>
+                            <label class="hardware-field">
+                                <span class="hardware-field__label">cr07a_valorflete</span>
+                                <input type="number" min="0" step="0.01" class="form-control" data-hw-field="freightValue" />
+                            </label>
+                        </div>
+                        <div class="hardware-stage-table-wrap">
+                            <table class="table align-middle hardware-stage-table">
+                                <thead>
+                                    <tr>
+                                        <th>Hardware</th>
+                                        <th class="text-end">Cant.</th>
+                                        <th class="text-end">Venta unidad</th>
+                                        <th>Fecha ODC</th>
+                                        <th>Costo Unt Proveedor antes de IVA</th>
+                                        <th>Proveedor</th>
+                                        <th>Adjuntar ODC</th>
+                                        <th>Adjuntar Proforma</th>
+                                    </tr>
+                                </thead>
+                                <tbody data-hw-documentation-rows></tbody>
+                            </table>
+                        </div>
+                        <div class="hardware-form__grid hardware-form__grid--nested hardware-legacy-documentation" hidden>
+                            <label class="hardware-field">
+                                <span class="hardware-field__label">Fecha ODC</span>
+                                <input type="date" class="form-control" data-hw-field="odcDate" />
+                            </label>
+                            <label class="hardware-field">
+                                <span class="hardware-field__label">Costo Unt Proveedor antes de IVA</span>
+                                <input type="number" min="0" step="0.01" class="form-control" data-hw-field="supplierUnitCost" />
+                            </label>
+                            <label class="hardware-field hardware-field--span-2">
+                                <span class="hardware-field__label">Proveedor</span>
+                                <input type="text" class="form-control" data-hw-field="provider" />
+                            </label>
+                            <div class="hardware-file-card hardware-field--span-2" data-hw-file-card="cr07a_ordendecompra">
+                                <div>
+                                    <div class="hardware-file-card__title">Adjuntar ODC</div>
+                                    <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_ordendecompra">Carga la orden de compra correspondiente.</div>
+                                </div>
+                                <div class="hardware-file-card__actions">
+                                    <a class="hardware-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-hw-download-link="cr07a_ordendecompra">Descargar</a>
+                                    <div class="hardware-file-card__name" data-hw-file-name="cr07a_ordendecompra">Sin archivo</div>
+                                    <input type="file" class="form-control" data-hw-file-input="cr07a_ordendecompra" />
+                                </div>
+                            </div>
+                            <div class="hardware-file-card hardware-field--span-2" data-hw-file-card="cr07a_adjuntarproforma">
+                                <div>
+                                    <div class="hardware-file-card__title">Adjuntar Proforma</div>
+                                    <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_adjuntarproforma">Carga la proforma del proveedor.</div>
+                                </div>
+                                <div class="hardware-file-card__actions">
+                                    <a class="hardware-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-hw-download-link="cr07a_adjuntarproforma">Descargar</a>
+                                    <div class="hardware-file-card__name" data-hw-file-name="cr07a_adjuntarproforma">Sin archivo</div>
+                                    <input type="file" class="form-control" data-hw-file-input="cr07a_adjuntarproforma" />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="hardware-stage-panel" data-hw-stage-panel="register-supplier-payment" hidden>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Registrar pago a proveedor</h3>
+                            <p>Adjunta el soporte del pago realizado y registra su fecha.</p>
+                        </div>
+                        <div class="hardware-form__grid hardware-form__grid--nested">
+                            <label class="hardware-field">
+                                <span class="hardware-field__label">Fecha de pago a proveedor</span>
+                                <input type="date" class="form-control" data-hw-field="supplierPaymentDate" />
+                            </label>
+                            <div class="hardware-file-card hardware-field--span-2" data-hw-file-card="cr07a_pagoaproveedor">
+                                <div>
+                                    <div class="hardware-file-card__title">Adjuntar pago a proveedor</div>
+                                    <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_pagoaproveedor">Carga el soporte del pago al proveedor.</div>
+                                </div>
+                                <div class="hardware-file-card__actions">
+                                    <a class="hardware-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-hw-download-link="cr07a_pagoaproveedor">Descargar</a>
+                                    <div class="hardware-file-card__name" data-hw-file-name="cr07a_pagoaproveedor">Sin archivo</div>
+                                    <input type="file" class="form-control" data-hw-file-input="cr07a_pagoaproveedor" />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="hardware-stage-panel" data-hw-stage-panel="register-received" hidden>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Registrar recibido</h3>
+                            <p>Esta acción confirma el recibido por comercial y mueve el hardware a tránsito.</p>
+                        </div>
+                        <div class="hardware-note-card">
+                            <strong>Confirmación requerida</strong>
+                            <p>Al guardar, se registrará la aprobación de recibido por comercial.</p>
+                        </div>
+                    </section>
+
+                    <section class="hardware-stage-panel" data-hw-stage-panel="register-client-received" hidden>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Registrar recibido cliente</h3>
+                            <p>Adjunta el acta de entrega y registra su fecha para dejar el hardware listo para facturación.</p>
+                        </div>
+                        <div class="hardware-form__grid hardware-form__grid--nested">
+                            <label class="hardware-field">
+                                <span class="hardware-field__label">Fecha acta de entrega</span>
+                                <input type="date" class="form-control" data-hw-field="deliveryRecordDate" />
+                            </label>
+                            <div class="hardware-file-card hardware-field--span-2" data-hw-file-card="cr07a_actadeentrega">
+                                <div>
+                                    <div class="hardware-file-card__title">Adjuntar acta de entrega</div>
+                                    <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_actadeentrega">Carga el acta firmada de entrega.</div>
+                                </div>
+                                <div class="hardware-file-card__actions">
+                                    <a class="hardware-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-hw-download-link="cr07a_actadeentrega">Descargar</a>
+                                    <div class="hardware-file-card__name" data-hw-file-name="cr07a_actadeentrega">Sin archivo</div>
+                                    <input type="file" class="form-control" data-hw-file-input="cr07a_actadeentrega" />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="hardware-stage-panel" data-hw-stage-panel="register-invoice" hidden>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Registrar factura</h3>
+                            <p>Busca una coincidencia exacta de la tabla Facturación y guarda el texto de la factura en Hardware.</p>
+                        </div>
+                        <div class="hardware-form__grid hardware-form__grid--nested">
+                            <label class="hardware-field hardware-field--span-2">
+                                <span class="hardware-field__label">Número de factura</span>
+                                <input type="text" class="form-control" list="hardwareInvoiceOptions-@Model.RootId" autocomplete="off" data-hw-field="invoiceNumber" />
+                                <datalist id="hardwareInvoiceOptions-@Model.RootId" data-hw-invoice-options></datalist>
+                                <span class="hardware-field__hint">Escribe al menos 2 caracteres y selecciona una coincidencia exacta.</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="hardware-stage-panel" data-hw-stage-panel="register-client-payment" hidden>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Registrar pago cliente</h3>
+                            <p>Esta acción consulta la factura en Facturación y cerrará el registro si <code>cr07a_valorpago</code> es mayor a 0.</p>
+                        </div>
+                        <div class="hardware-note-card">
+                            <strong>Validación automática</strong>
+                            <p>Si la factura aún no tiene valor pago, el hardware se mantendrá en espera de pago.</p>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="hardware-modal__footer">
+                    <div class="hardware-modal__meta" data-hw-modal-meta>Sin cambios</div>
+                    <div class="hardware-actions">
+                        <button type="button" class="btn btn-outline-secondary" data-hw-close-modal>Cancelar</button>
+                        <button type="submit" class="btn btn-primary" data-hw-save-stage>Guardar etapa</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -261,7 +261,8 @@
 }
 
 .hardware-mini-table-wrap,
-.hardware-table-wrap {
+.hardware-table-wrap,
+.hardware-stage-table-wrap {
     overflow: auto;
     border: 1px solid var(--hardware-line);
     border-radius: 10px;
@@ -269,12 +270,14 @@
 }
 
 .hardware-mini-table,
-.hardware-table {
+.hardware-table,
+.hardware-stage-table {
     margin: 0;
 }
 
 .hardware-mini-table thead th,
-.hardware-table thead th {
+.hardware-table thead th,
+.hardware-stage-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
@@ -308,6 +311,13 @@
 .hardware-toolbar__summary {
     display: grid;
     gap: 4px;
+}
+
+.hardware-selection-summary {
+    width: 100%;
+    color: var(--hardware-muted);
+    font-size: 13px;
+    text-align: right;
 }
 
 .hardware-toolbar__summary strong {
@@ -362,19 +372,34 @@
 
 .hardware-table {
     width: 100%;
-    min-width: 1080px;
+    min-width: 1240px;
     table-layout: fixed;
 }
 
-.hardware-table td {
+.hardware-stage-table {
+    width: 100%;
+    min-width: 1280px;
+    table-layout: fixed;
+}
+
+.hardware-table td,
+.hardware-stage-table td {
     padding: 14px 12px;
     color: var(--hardware-ink);
     vertical-align: top;
     border-color: #edf2f7;
 }
 
+.hardware-stage-table td {
+    padding: 10px;
+}
+
 .hardware-table tbody tr {
     border-left: 4px solid transparent;
+}
+
+.hardware-table__select-col {
+    width: 52px;
 }
 
 .hardware-table__row.is-documentation {
@@ -410,6 +435,32 @@
 .hardware-table__row.is-closed {
     background: linear-gradient(90deg, rgba(232, 248, 242, .85) 0%, rgba(255, 255, 255, 0) 18%);
     border-left-color: #209466;
+}
+
+.hardware-table__group {
+    box-shadow: inset 0 -1px 0 #dbe4ec;
+}
+
+.hardware-table__row--child {
+    background: #fbfdff;
+}
+
+.hardware-table__row--child td:first-child {
+    padding-left: 24px;
+}
+
+.hardware-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-right: 8px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--hardware-brand);
+    font-weight: 700;
 }
 
 .hardware-table__title {
@@ -530,7 +581,7 @@
     z-index: 1;
     display: grid;
     gap: 16px;
-    width: min(980px, 100%);
+    width: min(1280px, 100%);
     max-height: calc(100vh - 48px);
     overflow: auto;
     padding: 22px;
@@ -563,6 +614,7 @@
 .hardware-stage-panel {
     display: grid;
     gap: 14px;
+    grid-column: 1 / -1;
     padding: 16px;
     border: 1px solid var(--hardware-line);
     border-radius: 10px;
@@ -597,6 +649,16 @@
     color: var(--hardware-muted);
     pointer-events: none;
     text-decoration: none;
+}
+
+.hardware-doc-file {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+}
+
+.hardware-doc-file .form-control {
+    min-width: 170px;
 }
 
 body.hardware-modal-open {

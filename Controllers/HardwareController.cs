@@ -12,7 +12,7 @@ namespace CotizadorInterno.Web.Controllers;
 public sealed class HardwareController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
-    private const long MaxUploadBytes = 52_428_800;
+    private const long MaxUploadBytes = 128 * 1024 * 1024;
     private readonly IDataverseService _dataverse;
     private readonly IProvisioningRequestStore _provisioningRequestStore;
 
@@ -26,11 +26,20 @@ public sealed class HardwareController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        return View(new HardwarePageViewModel
+        var currentUser = await GetCurrentUserAsync(ct);
+        return View(new HardwareWorkspaceViewModel
         {
-            CurrentUser = await GetCurrentUserAsync(ct),
-            TableLogicalName = "cr07a_hardware",
-            TableDisplayName = "Hardware"
+            RootId = "hardwareApp",
+            CurrentUserLabel = !string.IsNullOrWhiteSpace(currentUser.DisplayName)
+                ? currentUser.DisplayName
+                : currentUser.Email,
+            PreviewUrl = Url.Action(nameof(Preview), "Hardware") ?? "",
+            ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
+            BoardUrl = Url.Action(nameof(Board), "Hardware") ?? "",
+            SaveUrl = Url.Action(nameof(SaveStage), "Hardware") ?? "",
+            UploadUrl = Url.Action(nameof(UploadFile), "Hardware") ?? "",
+            DownloadUrl = Url.Action(nameof(DownloadFile), "Hardware") ?? "",
+            InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? ""
         });
     }
 
@@ -141,24 +150,6 @@ public sealed class HardwareController : Controller
         }
     }
 
-    [HttpGet]
-    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> InvoiceSearch([FromQuery] string q, CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _dataverse.SearchHardwareInvoicesAsync(q, 12, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar facturas para Hardware.", ex));
-        }
-    }
-
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SaveStage([FromBody] HardwareStageSaveRequest? request, CancellationToken ct)
@@ -232,6 +223,24 @@ public sealed class HardwareController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el adjunto de Hardware.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> InvoiceSearch([FromQuery(Name = "q")] string query, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.SearchHardwareInvoicesAsync(query, 12, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar facturas para Hardware.", ex));
         }
     }
 

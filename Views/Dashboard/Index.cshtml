@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/hardware.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
 }
 
@@ -44,6 +45,7 @@
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Copiers</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="hardware">Hardware</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="support-cloud">Soporte cloud</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
@@ -272,6 +274,22 @@
                 </div>
             </article>
         </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="hardware" hidden>
+        @await Html.PartialAsync(
+            "_HardwareWorkspace",
+            new CotizadorInterno.Web.Models.Hardware.HardwareWorkspaceViewModel
+            {
+                RootId = "dashboardHardwareApp",
+                CurrentUserLabel = !string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.DisplayName : Model.CurrentUser.Email,
+                BoardUrl = Url.Action("Board", "Hardware") ?? "",
+                SaveUrl = Url.Action("SaveStage", "Hardware") ?? "",
+                UploadUrl = Url.Action("UploadFile", "Hardware") ?? "",
+                DownloadUrl = Url.Action("DownloadFile", "Hardware") ?? "",
+                InvoiceSearchUrl = Url.Action("InvoiceSearch", "Hardware") ?? "",
+                ShowHero = false
+            })
     </div>
 
     <div class="dashboard-tab-panel" data-dashboard-panel="support-cloud" hidden>
@@ -1222,5 +1240,6 @@
 
 @section Scripts {
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
+    <script src="~/js/hardware.js" asp-append-version="true"></script>
     <script src="~/js/support-cloud.js" asp-append-version="true"></script>
 }

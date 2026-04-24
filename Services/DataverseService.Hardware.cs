@@ -26,9 +26,15 @@ public sealed partial class DataverseService
     private const string HardwareQuantityLogicalName = "cr07a_cant";
     private const string HardwareSaleUnitLogicalName = "cr07a_ventaunidad";
     private const string HardwareTotalSaleLogicalName = "cr07a_precioventa";
+    private const string HardwareUtilityLogicalName = "cr07a_utilidad";
+    private const string HardwareMarginValueLogicalName = "cr07a_valormargen";
     private const string HardwareClientLookupLogicalName = "cr07a_cliente";
     private const string HardwareStateLogicalName = "cr07a_estado";
+    private const string HardwareOwnerLogicalName = "ownerid";
     private const string HardwareSupplierUnitCostLogicalName = "cr07a_costountproveedor";
+    private const string HardwareSupplierTotalLogicalName = "cr07a_totalesproveedor";
+    private const string HardwareFreightValueLogicalName = "cr07a_valorflete";
+    private const string HardwarePurchaseOrderNumberLogicalName = "cr07a_noorden";
     private const string HardwareSupplierLogicalName = "cr07a_proveedor";
     private const string HardwareOdcDateLogicalName = "cr07a_fechaodc";
     private const string HardwareSupplierPaymentDateLogicalName = "cr07a_fechapagoaproveedor";
@@ -199,6 +205,25 @@ public sealed partial class DataverseService
         },
         new HardwareManagedColumnDefinition
         {
+            DisplayLabel = "Utilidad",
+            SourceHeader = "Utilidad",
+            LogicalName = HardwareUtilityLogicalName,
+            SchemaName = "cr07a_Utilidad",
+            Kind = HardwareAttributeKind.Money,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "Valor margen",
+            SourceHeader = "Valor margen",
+            LogicalName = HardwareMarginValueLogicalName,
+            SchemaName = "cr07a_ValorMargen",
+            Kind = HardwareAttributeKind.Decimal,
+            Precision = 2,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
             DisplayLabel = "Estado",
             SourceHeader = "Estado",
             LogicalName = HardwareStateLogicalName,
@@ -222,6 +247,34 @@ public sealed partial class DataverseService
             LogicalName = HardwareSupplierUnitCostLogicalName,
             SchemaName = "cr07a_CostoUntProveedor",
             Kind = HardwareAttributeKind.Money,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "Totales proveedor",
+            SourceHeader = "Totales proveedor",
+            LogicalName = HardwareSupplierTotalLogicalName,
+            SchemaName = "cr07a_TotalesProveedor",
+            Kind = HardwareAttributeKind.Money,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "Valor flete",
+            SourceHeader = "Valor flete",
+            LogicalName = HardwareFreightValueLogicalName,
+            SchemaName = "cr07a_ValorFlete",
+            Kind = HardwareAttributeKind.Money,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "No orden",
+            SourceHeader = "No orden",
+            LogicalName = HardwarePurchaseOrderNumberLogicalName,
+            SchemaName = "cr07a_NoOrden",
+            Kind = HardwareAttributeKind.String,
+            MaxLength = 100,
             IsSystemColumn = false
         },
         new HardwareManagedColumnDefinition
@@ -471,6 +524,10 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var user = httpContext.User;
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
+
         var metadata = await TryResolveHardwareEntityMetadataAsync(user, ct);
         if (metadata is null)
         {
@@ -483,15 +540,22 @@ public sealed partial class DataverseService
 
         await AutoClosePaidHardwareRecordsAsync(user, ct);
 
+        await EnsureHardwareWorkflowSchemaAsync(user, ct);
+        metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         var selectFields = BuildHardwareBoardSelectFields(metadata, attributes);
+        var ownerFilter =
+            $"{BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName)} eq {NormalizeGuid(currentUser.SystemUserId, nameof(currentUser.SystemUserId))}";
         var relativeUrl =
-            $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields.Distinct(StringComparer.OrdinalIgnoreCase))}&$orderby={HardwareModifiedOnLogicalName} desc,createdon desc&$top=250";
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields.Distinct(StringComparer.OrdinalIgnoreCase))}" +
+            $"&$filter={Uri.EscapeDataString(ownerFilter)}" +
+            $"&$orderby={HardwareModifiedOnLogicalName} desc,createdon desc&$top=250";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         var rows = items
             .Select(item => BuildHardwareBoardRowDto(metadata, attributes, item))
             .Where(row => row is not null)
             .Select(row => row!)
+            .Where(row => IsHardwareRecordOwnedByCurrentUser(row, currentUser))
             .ToList();
 
         var filteredRows = stateValue.HasValue && stateValue.Value > 0
@@ -525,73 +589,155 @@ public sealed partial class DataverseService
         await EnsureProvisioningHardwareSchemaAsync(user, ct);
 
         var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
-        var normalizedRecordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
-        var current = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
-        var currentState = NormalizeHardwareStateValue(current.StateValue);
+        var normalizedRecordIds = ResolveHardwareStageRecordIds(request);
+        var currentRecords = new List<HardwareBoardRowDto>(normalizedRecordIds.Count);
+        foreach (var recordId in normalizedRecordIds)
+            currentRecords.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
+
         var normalizedActionKey = NormalizeHardwareCell(request.ActionKey).ToLowerInvariant();
-        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var currentStates = currentRecords
+            .Select(record => NormalizeHardwareStateValue(record.StateValue))
+            .Distinct()
+            .ToList();
+        if (currentStates.Count != 1)
+            throw new InvalidOperationException("Todas las filas seleccionadas deben estar en el mismo estado para avanzar.");
+
+        var currentState = currentStates[0];
         var message = "";
+        var payloadsByRecordId = new Dictionary<string, Dictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
 
         switch (normalizedActionKey)
         {
             case "register-documentation":
-                EnsureHardwareActionState(currentState, HardwareStateWaitingDocumentation, current.StateLabel);
-                EnsureHardwareFilePresent(current, HardwareOrderPurchaseFileLogicalName, "Adjuntar ODC");
-                EnsureHardwareFilePresent(current, HardwareProformaFileLogicalName, "Adjuntar proforma");
-                payload[HardwareOdcDateLogicalName] = ParseHardwareStageDate(request.OdcDateValue, "Fecha ODC");
-                payload[HardwareSupplierUnitCostLogicalName] = ParseHardwareStageCurrency(request.SupplierUnitCost, "Costo Unt Proveedor antes de IVA");
-                payload[HardwareSupplierLogicalName] = RequireHardwareText(request.Provider, "Proveedor");
-                payload[HardwareStateLogicalName] = HardwareStateOkForSupplierPayment;
-                message = "Documentación registrada. El hardware pasó a Ok para pago a proveedor.";
+                EnsureHardwareActionState(currentState, HardwareStateWaitingDocumentation, currentRecords[0].StateLabel);
+                var purchaseOrderNumber = RequireHardwareText(request.PurchaseOrderNumber, "No orden");
+                var freightSplits = SplitHardwareFreight(ParseHardwareStageNonNegativeCurrency(request.FreightValue, "Valor flete"), currentRecords.Count);
+                var documentationRows = ResolveHardwareDocumentationRows(request, currentRecords);
+
+                for (var index = 0; index < currentRecords.Count; index++)
+                {
+                    var current = currentRecords[index];
+                    EnsureHardwareFilePresent(current, HardwareOrderPurchaseFileLogicalName, "Adjuntar ODC");
+                    EnsureHardwareFilePresent(current, HardwareProformaFileLogicalName, "Adjuntar proforma");
+
+                    var row = documentationRows[NormalizeGuid(current.RecordId, nameof(current.RecordId))];
+                    var supplierUnitCost = ParseHardwareStageCurrency(row.SupplierUnitCost, "Costo Unt Proveedor antes de IVA");
+                    var supplierTotal = RoundCurrency(Math.Max(current.Quantity, 0) * supplierUnitCost);
+                    var priceSale = RoundCurrency(Math.Max(current.Quantity, 0) * current.SaleUnit);
+                    var freightValue = freightSplits[index];
+                    var utility = RoundCurrency(priceSale - (supplierTotal + freightValue));
+                    var marginValue = CalculateHardwareMarginValue(priceSale, utility);
+
+                    payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [HardwarePurchaseOrderNumberLogicalName] = purchaseOrderNumber,
+                        [HardwareFreightValueLogicalName] = freightValue,
+                        [HardwareOdcDateLogicalName] = ParseHardwareStageDate(row.OdcDateValue, "Fecha ODC"),
+                        [HardwareSupplierUnitCostLogicalName] = supplierUnitCost,
+                        [HardwareSupplierTotalLogicalName] = supplierTotal,
+                        [HardwareTotalSaleLogicalName] = priceSale,
+                        [HardwareUtilityLogicalName] = utility,
+                        [HardwareMarginValueLogicalName] = marginValue,
+                        [HardwareSupplierLogicalName] = RequireHardwareText(row.Provider, "Proveedor"),
+                        [HardwareStateLogicalName] = HardwareStateOkForSupplierPayment
+                    };
+                }
+
+                message = currentRecords.Count == 1
+                    ? "Documentación registrada. El hardware pasó a Ok para pago a proveedor."
+                    : $"Documentación registrada en {currentRecords.Count} fila(s). El hardware pasó a Ok para pago a proveedor.";
                 break;
 
             case "register-supplier-payment":
-                EnsureHardwareActionState(currentState, HardwareStateOkForSupplierPayment, current.StateLabel);
-                EnsureHardwareFilePresent(current, HardwareSupplierPaymentFileLogicalName, "Adjuntar pago a proveedor");
-                payload[HardwareSupplierPaymentDateLogicalName] = ParseHardwareStageDate(request.SupplierPaymentDateValue, "Fecha de pago a proveedor");
-                payload[HardwareStateLogicalName] = HardwareStatePaidToSupplier;
-                message = "Pago a proveedor registrado. El hardware pasó a Pagada a proveedor.";
+                EnsureHardwareActionState(currentState, HardwareStateOkForSupplierPayment, currentRecords[0].StateLabel);
+                foreach (var current in currentRecords)
+                {
+                    EnsureHardwareFilePresent(current, HardwareSupplierPaymentFileLogicalName, "Adjuntar pago a proveedor");
+                    payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [HardwareSupplierPaymentDateLogicalName] = ParseHardwareStageDate(request.SupplierPaymentDateValue, "Fecha de pago a proveedor"),
+                        [HardwareStateLogicalName] = HardwareStatePaidToSupplier
+                    };
+                }
+
+                message = currentRecords.Count == 1
+                    ? "Pago a proveedor registrado. El hardware pasó a Pagada a proveedor."
+                    : $"Pago a proveedor registrado en {currentRecords.Count} fila(s). El hardware pasó a Pagada a proveedor.";
                 break;
 
             case "register-received":
-                EnsureHardwareActionState(currentState, HardwareStatePaidToSupplier, current.StateLabel);
-                payload[HardwareStateLogicalName] = HardwareStateInTransit;
-                message = "Recibido aprobado por comercial. El hardware pasó a En tránsito a oficina o cliente.";
+                EnsureHardwareActionState(currentState, HardwareStatePaidToSupplier, currentRecords[0].StateLabel);
+                foreach (var current in currentRecords)
+                {
+                    payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [HardwareStateLogicalName] = HardwareStateInTransit
+                    };
+                }
+
+                message = currentRecords.Count == 1
+                    ? "Recibido aprobado por comercial. El hardware pasó a En tránsito a oficina o cliente."
+                    : $"Recibido aprobado por comercial en {currentRecords.Count} fila(s). El hardware pasó a En tránsito a oficina o cliente.";
                 break;
 
             case "register-client-received":
-                EnsureHardwareActionState(currentState, HardwareStateInTransit, current.StateLabel);
-                EnsureHardwareFilePresent(current, HardwareDeliveryRecordFileLogicalName, "Adjuntar acta de entrega");
-                payload[HardwareDeliveryRecordDateLogicalName] = ParseHardwareStageDate(request.DeliveryRecordDateValue, "Fecha acta de entrega");
-                payload[HardwareStateLogicalName] = HardwareStateDeliveredAwaitingBilling;
-                message = "Recibido cliente registrado. El hardware pasó a Entregado en espera de facturación.";
+                EnsureHardwareActionState(currentState, HardwareStateInTransit, currentRecords[0].StateLabel);
+                foreach (var current in currentRecords)
+                {
+                    EnsureHardwareFilePresent(current, HardwareDeliveryRecordFileLogicalName, "Adjuntar acta de entrega");
+                    payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [HardwareDeliveryRecordDateLogicalName] = ParseHardwareStageDate(request.DeliveryRecordDateValue, "Fecha acta de entrega"),
+                        [HardwareStateLogicalName] = HardwareStateDeliveredAwaitingBilling
+                    };
+                }
+
+                message = currentRecords.Count == 1
+                    ? "Recibido cliente registrado. El hardware pasó a Entregado en espera de facturación."
+                    : $"Recibido cliente registrado en {currentRecords.Count} fila(s). El hardware pasó a Entregado en espera de facturación.";
                 break;
 
             case "register-invoice":
-                EnsureHardwareActionState(currentState, HardwareStateDeliveredAwaitingBilling, current.StateLabel);
+                EnsureHardwareActionState(currentState, HardwareStateDeliveredAwaitingBilling, currentRecords[0].StateLabel);
                 var invoiceNumber = await ResolveHardwareInvoiceNumberAsync(request.InvoiceNumber, user, ct);
-                payload[HardwareInvoiceNumberLogicalName] = invoiceNumber;
-                payload[HardwareStateLogicalName] = HardwareStateBilledAwaitingPayment;
-                message = "Factura registrada. El hardware pasó a Facturado en espera de pago.";
+                foreach (var current in currentRecords)
+                {
+                    payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [HardwareInvoiceNumberLogicalName] = invoiceNumber,
+                        [HardwareStateLogicalName] = HardwareStateBilledAwaitingPayment
+                    };
+                }
+
+                message = currentRecords.Count == 1
+                    ? "Factura registrada. El hardware pasó a Facturado en espera de pago."
+                    : $"Factura registrada en {currentRecords.Count} fila(s). El hardware pasó a Facturado en espera de pago.";
                 break;
 
             case "register-client-payment":
-                EnsureHardwareActionState(currentState, HardwareStateBilledAwaitingPayment, current.StateLabel);
-                var activeInvoiceNumber = FirstNonEmpty(request.InvoiceNumber, current.InvoiceNumber);
-                if (string.IsNullOrWhiteSpace(activeInvoiceNumber))
-                    throw new InvalidOperationException("El hardware no tiene número de factura para validar el pago del cliente.");
+                EnsureHardwareActionState(currentState, HardwareStateBilledAwaitingPayment, currentRecords[0].StateLabel);
+                foreach (var current in currentRecords)
+                {
+                    var activeInvoiceNumber = FirstNonEmpty(request.InvoiceNumber, current.InvoiceNumber);
+                    if (string.IsNullOrWhiteSpace(activeInvoiceNumber))
+                        throw new InvalidOperationException("El hardware no tiene número de factura para validar el pago del cliente.");
 
-                var hasPayment = await HardwareInvoiceHasPaymentAsync(activeInvoiceNumber, user, ct);
-                if (hasPayment)
-                {
-                    payload[HardwareInvoiceNumberLogicalName] = activeInvoiceNumber.Trim();
-                    payload[HardwareStateLogicalName] = HardwareStateClosed;
-                    message = "Se confirmó el pago del cliente en Facturación. El hardware quedó cerrado.";
+                    var hasPayment = await HardwareInvoiceHasPaymentAsync(activeInvoiceNumber, user, ct);
+                    if (hasPayment)
+                    {
+                        payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            [HardwareInvoiceNumberLogicalName] = activeInvoiceNumber.Trim(),
+                            [HardwareStateLogicalName] = HardwareStateClosed
+                        };
+                    }
                 }
-                else
-                {
-                    message = "La factura aún no registra valor pago en Facturación. El hardware sigue en espera de pago.";
-                }
+
+                message = payloadsByRecordId.Count > 0
+                    ? currentRecords.Count == 1
+                        ? "Se confirmó el pago del cliente en Facturación. El hardware quedó cerrado."
+                        : $"Se confirmó el pago del cliente en Facturación para {payloadsByRecordId.Count} fila(s). El hardware quedó cerrado."
+                    : "La factura aún no registra valor pago en Facturación. El hardware sigue en espera de pago.";
 
                 break;
 
@@ -599,28 +745,43 @@ public sealed partial class DataverseService
                 throw new InvalidOperationException("La acción seleccionada no es válida para Hardware.");
         }
 
-        if (payload.Count > 0)
+        foreach (var item in payloadsByRecordId)
         {
-            using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
-            using var response = await CallRhDataverseResponseAsync(
-                $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})",
-                "PATCH",
-                user,
-                ct,
-                content,
-                AddRhReturnRepresentationHeaders);
-
-            var body = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+            if (item.Value.Count > 0)
+                await PatchHardwareRecordAsync(metadata.EntitySetName, item.Key, item.Value, user, ct);
         }
 
-        var record = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+        var updatedRecords = new List<HardwareBoardRowDto>(normalizedRecordIds.Count);
+        foreach (var recordId in normalizedRecordIds)
+            updatedRecords.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
+
         return new HardwareSaveResultDto
         {
             Message = message,
-            Record = record
+            Record = updatedRecords.FirstOrDefault() ?? new HardwareBoardRowDto(),
+            Records = updatedRecords
         };
+    }
+
+    private async Task PatchHardwareRecordAsync(
+        string entitySetName,
+        string recordId,
+        IReadOnlyDictionary<string, object?> payload,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        using var response = await CallRhDataverseResponseAsync(
+            $"/api/data/v9.2/{entitySetName}({NormalizeGuid(recordId, nameof(recordId))})",
+            "PATCH",
+            user,
+            ct,
+            content,
+            AddRhReturnRepresentationHeaders);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
     }
 
     public async Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(
@@ -1496,8 +1657,13 @@ public sealed partial class DataverseService
                      HardwareQuantityLogicalName,
                      HardwareSaleUnitLogicalName,
                      HardwareTotalSaleLogicalName,
+                     HardwareUtilityLogicalName,
+                     HardwareMarginValueLogicalName,
                      HardwareStateLogicalName,
                      HardwareSupplierUnitCostLogicalName,
+                     HardwareSupplierTotalLogicalName,
+                     HardwareFreightValueLogicalName,
+                     HardwarePurchaseOrderNumberLogicalName,
                      HardwareSupplierLogicalName,
                      HardwareOdcDateLogicalName,
                      HardwareSupplierPaymentDateLogicalName,
@@ -1511,6 +1677,8 @@ public sealed partial class DataverseService
 
         if (HasHardwareAttribute(attributes, HardwareClientLookupLogicalName))
             selectFields.Add(HardwareClientLookupFieldCandidates[0]);
+
+        selectFields.Add(BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName));
 
         AddHardwareFileSelectField(selectFields, attributes, HardwareOrderPurchaseFileLogicalName, HardwareOrderPurchaseFileNameLogicalName);
         AddHardwareFileSelectField(selectFields, attributes, HardwareProformaFileLogicalName, HardwareProformaFileNameLogicalName);
@@ -1551,6 +1719,7 @@ public sealed partial class DataverseService
         var clientLookupProperty = HasHardwareAttribute(attributes, HardwareClientLookupLogicalName)
             ? DetectLookupValueProperty(item, HardwareClientLookupFieldCandidates, "cliente")
             : null;
+        var ownerLookupProperty = BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName);
         var stateValue = NormalizeHardwareStateValue(ReadIntFlexible(item, HardwareStateLogicalName));
         var state = ResolveHardwareStateOption(stateValue);
         var modifiedOn = ReadDateOnly(item, HardwareModifiedOnLogicalName);
@@ -1559,6 +1728,8 @@ public sealed partial class DataverseService
         {
             RecordId = recordId,
             Name = FirstNonEmpty(ReadString(item, primaryNameField).Trim(), "Sin nombre"),
+            OwnerId = ReadString(item, ownerLookupProperty).Trim(),
+            OwnerName = FirstNonEmpty(ReadLookupFormattedValue(item, ownerLookupProperty), "Sin owner"),
             ClientId = ReadString(item, clientLookupProperty).Trim(),
             ClientName = FirstNonEmpty(
                 ReadLookupFormattedValue(item, clientLookupProperty),
@@ -1575,7 +1746,12 @@ public sealed partial class DataverseService
             HasAction = state.HasAction,
             Provider = ReadString(item, HardwareSupplierLogicalName).Trim(),
             InvoiceNumber = ReadString(item, HardwareInvoiceNumberLogicalName).Trim(),
+            PurchaseOrderNumber = ReadString(item, HardwarePurchaseOrderNumberLogicalName).Trim(),
             SupplierUnitCost = RoundCurrency(ReadDecimal(item, HardwareSupplierUnitCostLogicalName) ?? 0m),
+            SupplierTotal = RoundCurrency(ReadDecimal(item, HardwareSupplierTotalLogicalName) ?? 0m),
+            FreightValue = RoundCurrency(ReadDecimal(item, HardwareFreightValueLogicalName) ?? 0m),
+            Utility = RoundCurrency(ReadDecimal(item, HardwareUtilityLogicalName) ?? 0m),
+            MarginValue = Math.Round(ReadDecimal(item, HardwareMarginValueLogicalName) ?? 0m, 2, MidpointRounding.AwayFromZero),
             InvoiceHasClientPayment = state.Value == HardwareStateClosed,
             OdcDateValue = FormatHardwareDateValue(ReadDateOnly(item, HardwareOdcDateLogicalName)),
             OdcDateDisplay = FormatHardwareDateDisplay(ReadDateOnly(item, HardwareOdcDateLogicalName)),
@@ -1601,6 +1777,10 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
+
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         var selectFields = BuildHardwareBoardSelectFields(metadata, attributes);
         var relativeUrl =
@@ -1608,12 +1788,21 @@ public sealed partial class DataverseService
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         using var doc = JsonDocument.Parse(json);
-        return BuildHardwareBoardRowDto(metadata, attributes, doc.RootElement)
+        var row = BuildHardwareBoardRowDto(metadata, attributes, doc.RootElement)
             ?? throw new InvalidOperationException("No fue posible reconstruir el registro de Hardware.");
+
+        if (!IsHardwareRecordOwnedByCurrentUser(row, currentUser))
+            throw new InvalidOperationException("El registro de Hardware seleccionado no pertenece al owner autenticado.");
+
+        return row;
     }
 
     private async Task AutoClosePaidHardwareRecordsAsync(ClaimsPrincipal user, CancellationToken ct)
     {
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
+
         var metadata = await TryResolveHardwareEntityMetadataAsync(user, ct);
         if (metadata is null)
             return;
@@ -1624,11 +1813,14 @@ public sealed partial class DataverseService
             return;
 
         var filter =
-            $"{HardwareStateLogicalName} eq {HardwareStateBilledAwaitingPayment} and {HardwareInvoiceNumberLogicalName} ne null";
+            $"{BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName)} eq {NormalizeGuid(currentUser.SystemUserId, nameof(currentUser.SystemUserId))}" +
+            $" and {HardwareStateLogicalName} eq {HardwareStateBilledAwaitingPayment}" +
+            $" and {HardwareInvoiceNumberLogicalName} ne null";
         var selectFields = string.Join(",",
             new[]
             {
                 metadata.PrimaryIdField,
+                BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName),
                 HardwareStateLogicalName,
                 HardwareInvoiceNumberLogicalName
             }
@@ -1723,6 +1915,30 @@ public sealed partial class DataverseService
         return warnings;
     }
 
+    private static bool IsHardwareRecordOwnedByCurrentUser(HardwareBoardRowDto row, CurrentUserInfo? currentUser)
+    {
+        if (currentUser is null)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(currentUser.SystemUserId)
+            && !string.IsNullOrWhiteSpace(row.OwnerId)
+            && string.Equals(NormalizeOptionalGuid(row.OwnerId), NormalizeOptionalGuid(currentUser.SystemUserId), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentUser.DisplayName)
+            && !string.IsNullOrWhiteSpace(row.OwnerName)
+            && string.Equals(row.OwnerName.Trim(), currentUser.DisplayName.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(currentUser.Email)
+            && !string.IsNullOrWhiteSpace(row.OwnerName)
+            && string.Equals(row.OwnerName.Trim(), currentUser.Email.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static HardwareStateOptionDto ResolveHardwareStateOption(int stateValue)
     {
         return HardwareStates.FirstOrDefault(item => item.Value == stateValue)
@@ -1739,6 +1955,78 @@ public sealed partial class DataverseService
 
     private static int NormalizeHardwareStateValue(int stateValue) =>
         stateValue <= 0 ? HardwareStateWaitingDocumentation : stateValue;
+
+    private static List<string> ResolveHardwareStageRecordIds(HardwareStageSaveRequest request)
+    {
+        var rawIds = (request.RecordIds ?? new List<string>())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(request.RecordId))
+            rawIds.Insert(0, request.RecordId);
+
+        var normalized = rawIds
+            .Select(id => NormalizeGuid(id, nameof(request.RecordIds)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalized.Count == 0)
+            throw new InvalidOperationException("Selecciona al menos una fila de Hardware.");
+
+        return normalized;
+    }
+
+    private static Dictionary<string, HardwareDocumentationLineSaveRequest> ResolveHardwareDocumentationRows(
+        HardwareStageSaveRequest request,
+        IReadOnlyList<HardwareBoardRowDto> currentRecords)
+    {
+        var rows = (request.DocumentationRows ?? new List<HardwareDocumentationLineSaveRequest>())
+            .Where(row => !string.IsNullOrWhiteSpace(row.RecordId))
+            .GroupBy(row => NormalizeGuid(row.RecordId, nameof(row.RecordId)), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        if (rows.Count == 0 && currentRecords.Count == 1)
+        {
+            var recordKey = NormalizeGuid(currentRecords[0].RecordId, nameof(currentRecords));
+            rows[recordKey] = new HardwareDocumentationLineSaveRequest
+            {
+                RecordId = currentRecords[0].RecordId,
+                OdcDateValue = request.OdcDateValue,
+                SupplierUnitCost = request.SupplierUnitCost,
+                Provider = request.Provider
+            };
+        }
+
+        foreach (var record in currentRecords)
+        {
+            var recordKey = NormalizeGuid(record.RecordId, nameof(record.RecordId));
+            if (!rows.ContainsKey(recordKey))
+                throw new InvalidOperationException($"Faltan los datos de documentación para la fila {record.Name}.");
+        }
+
+        return rows;
+    }
+
+    private static List<decimal> SplitHardwareFreight(decimal totalFreight, int count)
+    {
+        if (count <= 0)
+            return new List<decimal>();
+
+        var roundedTotal = RoundCurrency(totalFreight);
+        var baseValue = RoundCurrency(roundedTotal / count);
+        var result = Enumerable.Repeat(baseValue, count).ToList();
+        var assigned = result.Sum();
+        result[^1] = RoundCurrency(result[^1] + (roundedTotal - assigned));
+        return result;
+    }
+
+    private static decimal CalculateHardwareMarginValue(decimal priceSale, decimal utility)
+    {
+        if (priceSale <= 0m)
+            return 0m;
+
+        return Math.Round((utility / priceSale) * 100m, 2, MidpointRounding.AwayFromZero);
+    }
 
     private static bool HasHardwareAttribute(IReadOnlyList<HardwareAttributeMetadata> attributes, string logicalName)
     {
@@ -1804,6 +2092,14 @@ public sealed partial class DataverseService
     {
         if (!value.HasValue || value.Value <= 0m)
             throw new InvalidOperationException($"El campo {label} es obligatorio y debe ser mayor a cero.");
+
+        return RoundCurrency(value.Value);
+    }
+
+    private static decimal ParseHardwareStageNonNegativeCurrency(decimal? value, string label)
+    {
+        if (!value.HasValue || value.Value < 0m)
+            throw new InvalidOperationException($"El campo {label} es obligatorio y no puede ser negativo.");
 
         return RoundCurrency(value.Value);
     }

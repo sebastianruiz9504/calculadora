@@ -190,5 +190,39 @@
 
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 @await RenderSectionAsync("Scripts", required: false)
+<script>
+(function () {
+  const hardwareHref = '@Url.Action("Index", "Hardware")';
+  if (!hardwareHref || document.querySelector(`a[href="${hardwareHref}"]`)) return;
+
+  const links = Array.from(document.querySelectorAll('aside nav a, nav a'));
+  const facturacionLink = links.find(link =>
+    /facturaci[oó]n|facturacion/i.test(link.textContent || '') ||
+    (link.getAttribute('href') || '').toLowerCase().includes('/facturacion')
+  );
+
+  if (!facturacionLink) return;
+
+  const targetList = facturacionLink.closest('ul');
+  if (!targetList) return;
+
+  const link = document.createElement('a');
+  const isActive = window.location.pathname.toLowerCase().startsWith('/hardware');
+  link.href = hardwareHref;
+  link.className = 'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium no-underline text-white ' +
+    (isActive ? 'bg-white/[0.10] shadow-soft' : 'hover:bg-white/[0.08]');
+  link.innerHTML = '<i class="ti ti-cpu"></i> <span class="nav-text">Hardware</span>';
+
+  const item = document.createElement('li');
+  item.appendChild(link);
+
+  const facturacionItem = facturacionLink?.closest('li');
+  if (facturacionItem) {
+    facturacionItem.insertAdjacentElement('afterend', item);
+  } else {
+    targetList.appendChild(item);
+  }
+})();
+</script>
 </body>
 </html>

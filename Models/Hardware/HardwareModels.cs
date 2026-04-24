@@ -7,6 +7,25 @@ public sealed class HardwarePageViewModel
     public string TableDisplayName { get; set; } = "Hardware";
 }
 
+public sealed class HardwareWorkspaceViewModel
+{
+    public string RootId { get; set; } = "hardwareApp";
+    public string CurrentUserLabel { get; set; } = "";
+    public string PreviewUrl { get; set; } = "";
+    public string ProvisionUrl { get; set; } = "";
+    public string BoardUrl { get; set; } = "";
+    public string SaveUrl { get; set; } = "";
+    public string UploadUrl { get; set; } = "";
+    public string DownloadUrl { get; set; } = "";
+    public string InvoiceSearchUrl { get; set; } = "";
+    public bool ShowHero { get; set; } = true;
+    public string HeroKicker { get; set; } = "Operación";
+    public string HeroTitle { get; set; } = "Hardware";
+    public string HeroSubtitle { get; set; } =
+        "Administra el ciclo completo de cada línea de hardware, desde la documentación inicial hasta el cierre por pago del cliente.";
+    public string AccessLabel { get; set; } = "Acceso";
+}
+
 public sealed class HardwareStateOptionDto
 {
     public int Value { get; set; }
@@ -51,6 +70,8 @@ public sealed class HardwareBoardRowDto
 {
     public string RecordId { get; set; } = "";
     public string Name { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public int Quantity { get; set; }
@@ -64,7 +85,12 @@ public sealed class HardwareBoardRowDto
     public bool HasAction { get; set; }
     public string Provider { get; set; } = "";
     public string InvoiceNumber { get; set; } = "";
+    public string PurchaseOrderNumber { get; set; } = "";
     public decimal SupplierUnitCost { get; set; }
+    public decimal SupplierTotal { get; set; }
+    public decimal FreightValue { get; set; }
+    public decimal Utility { get; set; }
+    public decimal MarginValue { get; set; }
     public bool InvoiceHasClientPayment { get; set; }
     public string OdcDateValue { get; set; } = "";
     public string OdcDateDisplay { get; set; } = "";
@@ -86,19 +112,32 @@ public sealed class HardwareBoardRowDto
 public sealed class HardwareStageSaveRequest
 {
     public string RecordId { get; set; } = "";
+    public List<string> RecordIds { get; set; } = new();
     public string ActionKey { get; set; } = "";
+    public string PurchaseOrderNumber { get; set; } = "";
+    public decimal? FreightValue { get; set; }
     public string OdcDateValue { get; set; } = "";
     public decimal? SupplierUnitCost { get; set; }
     public string Provider { get; set; } = "";
     public string SupplierPaymentDateValue { get; set; } = "";
     public string DeliveryRecordDateValue { get; set; } = "";
     public string InvoiceNumber { get; set; } = "";
+    public List<HardwareDocumentationLineSaveRequest> DocumentationRows { get; set; } = new();
+}
+
+public sealed class HardwareDocumentationLineSaveRequest
+{
+    public string RecordId { get; set; } = "";
+    public string OdcDateValue { get; set; } = "";
+    public decimal? SupplierUnitCost { get; set; }
+    public string Provider { get; set; } = "";
 }
 
 public sealed class HardwareSaveResultDto
 {
     public string Message { get; set; } = "";
     public HardwareBoardRowDto Record { get; set; } = new();
+    public IReadOnlyList<HardwareBoardRowDto> Records { get; set; } = Array.Empty<HardwareBoardRowDto>();
 }
 
 public sealed class HardwareFileUploadResultDto
