@@ -402,7 +402,7 @@
             if (!rows.length) {
                 elements.rows.innerHTML = `
                     <tr>
-                        <td colspan="12" class="support-cloud-table__empty">No encontramos tickets para este rango.</td>
+                        <td colspan="8" class="support-cloud-table__empty">No encontramos tickets para este rango.</td>
                     </tr>
                 `;
                 return;
@@ -410,20 +410,22 @@
 
             elements.rows.innerHTML = rows.map(row => `
                 <tr tabindex="0" class="support-cloud-table__row" data-sc-record-id="${escapeHtml(row.recordId || "")}">
-                    <td>${escapeHtml(row.creationDateDisplay || "-")}</td>
-                    <td>${escapeHtml(row.title || "-")}</td>
-                    <td>${escapeHtml(row.description || "-")}</td>
-                    <td>${renderPill(row.stateLabel || "Sin estado")}</td>
-                    <td>${escapeHtml(row.typeLabel || "-")}</td>
-                    <td>${escapeHtml(row.clientName || "-")}</td>
-                    <td>${escapeHtml(row.categoryLabel || "-")}</td>
-                    <td>${escapeHtml(row.creatorName || "-")}</td>
-                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(row.hoursTaken || 0)))}</td>
-                    <td>${escapeHtml(row.methodLabel || "-")}</td>
-                    <td>${escapeHtml(row.solution || "-")}</td>
-                    <td>
+                    <td data-label="Fecha">${escapeHtml(row.creationDateDisplay || "-")}</td>
+                    <td data-label="Ticket">
+                        <div class="support-cloud-table__ticket">
+                            <div class="support-cloud-table__ticket-title">${escapeHtml(row.title || "-")}</div>
+                            <div class="support-cloud-table__ticket-description">${escapeHtml(buildTicketExcerpt(row))}</div>
+                            ${renderTicketMeta(row)}
+                        </div>
+                    </td>
+                    <td data-label="Cliente">${escapeHtml(row.clientName || "-")}</td>
+                    <td data-label="Estado">${renderPill(row.stateLabel || "Sin estado")}</td>
+                    <td data-label="Tipo">${escapeHtml(row.typeLabel || "-")}</td>
+                    <td data-label="Creador">${escapeHtml(row.creatorName || "-")}</td>
+                    <td data-label="Horas" class="text-end support-cloud-table__hours">${escapeHtml(numberFormatter.format(Number(row.hoursTaken || 0)))}</td>
+                    <td data-label="Adjunto">
                         ${row.hasAttachment
-                            ? `<a class="support-cloud-table__link" href="${escapeHtml(buildDownloadUrl(row.recordId || ""))}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`
+                            ? `<a class="support-cloud-table__link" href="${escapeHtml(buildDownloadUrl(row.recordId || ""))}" target="_blank" rel="noopener" title="${escapeHtml(row.attachmentFileName || "Adjunto")}">Descargar</a>`
                             : '<span class="support-cloud-table__muted">Sin adjunto</span>'}
                     </td>
                 </tr>
@@ -872,6 +874,30 @@
         return Number.isFinite(parsed) ? parsed : 0;
     }
 
+    function buildTicketExcerpt(row) {
+        const text = (row?.description || row?.solution || "").trim();
+        if (!text) {
+            return "Abre el ticket para ver el detalle completo.";
+        }
+
+        return truncateText(text, 180);
+    }
+
+    function renderTicketMeta(row) {
+        const tags = [
+            row?.categoryLabel,
+            row?.methodLabel
+        ]
+            .filter(value => String(value || "").trim().length > 0)
+            .map(value => `<span class="support-cloud-table__tag">${escapeHtml(value)}</span>`);
+
+        if (!tags.length) {
+            return "";
+        }
+
+        return `<div class="support-cloud-table__ticket-meta">${tags.join("")}</div>`;
+    }
+
     function buildRangeLabel(startDate, endDate) {
         if (!startDate && !endDate) {
             return "Sin rango";
@@ -891,6 +917,18 @@
             .replace(/[\u0300-\u036f]/g, "")
             .toLowerCase()
             .trim();
+    }
+
+    function truncateText(value, maxLength) {
+        const text = String(value ?? "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        if (!text || text.length <= maxLength) {
+            return text;
+        }
+
+        return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
     }
 
     function resetAttachmentInput() {
