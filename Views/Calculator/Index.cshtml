@@ -511,6 +511,8 @@
     let scenarios = [];
     let activeScenarioId = null;
     const provisioningState = { date: "", contractType: "", client: null, loading: false };
+    let provisioningApprovalPollTimer = 0;
+    let provisioningApprovalLastStatusKey = "";
     let prorationSearchTimer = null;
     let prorationClientResults = [];
     let provisioningSearchTimer = null;
@@ -1766,6 +1768,109 @@ async function saveScenarioToDataverse(scenario, lines) {
         const line = `<div class="${isError ? "text-danger" : "text-success"}">${escapeHtml(ts)} - ${escapeHtml(message)}</div>`;
         provisioningLog.innerHTML = line + (provisioningLog.innerHTML || "");
     }
+
+    function stopProvisioningApprovalPolling() {
+        if (provisioningApprovalPollTimer) {
+            clearTimeout(provisioningApprovalPollTimer);
+            provisioningApprovalPollTimer = 0;
+        }
+    }
+
+    function scheduleProvisioningApprovalPolling(statusUrl, attempt = 1) {
+        stopProvisioningApprovalPolling();
+        if (!statusUrl) return;
+        const delayMs = attempt <= 1 ? 5000 : 15000;
+        provisioningApprovalPollTimer = window.setTimeout(() => {
+            pollProvisioningApprovalStatus(statusUrl, attempt);
+        }, delayMs);
+    }
+
+    async function pollProvisioningApprovalStatus(statusUrl, attempt = 1) {
+        if (!statusUrl) return;
+
+        try {
+            const res = await fetch(statusUrl, {
+                method: "GET",
+                headers: { Accept: "application/json" }
+            });
+
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || `Error HTTP ${res.status}`);
+            }
+
+            const payload = await res.json().catch(() => null);
+            const nextAction = handleProvisioningApprovalStatus(payload);
+            if (nextAction === "continue") {
+                scheduleProvisioningApprovalPolling(statusUrl, attempt + 1);
+                return;
+            }
+
+            stopProvisioningApprovalPolling();
+        } catch (err) {
+            if (attempt < 120) {
+                scheduleProvisioningApprovalPolling(statusUrl, attempt + 1);
+                return;
+            }
+
+            appendProvisioningLog(`No fue posible confirmar el estado final de la aprobación. ${err?.message || "Error inesperado."}`, true);
+            stopProvisioningApprovalPolling();
+        }
+    }
+
+    function handleProvisioningApprovalStatus(payload) {
+        const status = String(payload?.status || "").trim();
+        const hardwareSync = payload?.hardwareSync || {};
+        const hardwareStatus = String(hardwareSync?.status || "").trim();
+        const importedCount = Number(hardwareSync?.importedCount || 0);
+        const message = String(hardwareSync?.message || payload?.comments || "").trim();
+        const statusKey = [status, hardwareStatus, importedCount, message].join("|");
+
+        if (statusKey && statusKey === provisioningApprovalLastStatusKey) {
+            return status === "pending-approval" || (status === "approved" && hardwareStatus === "pending")
+                ? "continue"
+                : "stop";
+        }
+
+        provisioningApprovalLastStatusKey = statusKey;
+
+        if (status === "pending-approval") {
+            appendProvisioningLog("La solicitud sigue pendiente de aprobación.");
+            return "continue";
+        }
+
+        if (status === "approved") {
+            if (hardwareStatus === "completed") {
+                appendProvisioningLog(`Aprobación positiva recibida. Hardware sincronizado: ${importedCount} línea(s).`);
+                return "stop";
+            }
+
+            if (hardwareStatus === "not-required") {
+                appendProvisioningLog("Aprobación positiva recibida. La solicitud no tenía líneas de Hardware por sincronizar.");
+                return "stop";
+            }
+
+            if (hardwareStatus === "failed") {
+                appendProvisioningLog(`Aprobación positiva recibida, pero falló la sincronización de Hardware. ${message || ""}`.trim(), true);
+                return "stop";
+            }
+
+            appendProvisioningLog("Aprobación positiva recibida. La app está sincronizando las líneas de Hardware.");
+            return "continue";
+        }
+
+        if (status === "rejected") {
+            appendProvisioningLog("La solicitud fue rechazada en la aprobación.", true);
+            return "stop";
+        }
+
+        if (status === "flow-dispatch-failed") {
+            appendProvisioningLog("La solicitud no pudo enviarse correctamente al flujo.", true);
+            return "stop";
+        }
+
+        return "continue";
+    }
 function setAttachmentStatus(message, type = "error") {
         if (!attachmentStatus) return;
         attachmentStatus.classList.remove("status-success", "status-error");
@@ -1780,6 +1885,8 @@ function setAttachmentStatus(message, type = "error") {
     }
 
     function resetProvisioningForm() {
+        stopProvisioningApprovalPolling();
+        provisioningApprovalLastStatusKey = "";
         provisioningState.date = "";
         provisioningState.contractType = "";
         provisioningState.client = null;
@@ -2034,8 +2141,18 @@ function setAttachmentStatus(message, type = "error") {
                 throw new Error(txt || `Error HTTP ${res.status}`);
             }
 
-            appendProvisioningLog(`Solicitud enviada (${payload.lineItems.length} líneas). Cliente: ${payload.cliente.nombre}.`);
-            setProvisioningStatus("Solicitud enviada y enviada a aprobación.", "success");
+            const result = await res.json().catch(() => null);
+            const requestId = result?.requestId || "";
+            const statusUrl = result?.statusUrl || (requestId ? `/Calculator/ProvisioningRequestStatus?requestId=${encodeURIComponent(requestId)}` : "");
+            const successMessage = result?.message || "Solicitud enviada a aprobación.";
+            const requestSuffix = requestId ? ` RequestId: ${requestId}.` : "";
+            appendProvisioningLog(`Solicitud enviada (${payload.lineItems.length} líneas). Cliente: ${payload.cliente.nombre}.${requestSuffix}`);
+            setProvisioningStatus(successMessage, "success");
+            provisioningApprovalLastStatusKey = "";
+            if (statusUrl) {
+                appendProvisioningLog("La app quedó monitoreando la aprobación para notificar el resultado.");
+                scheduleProvisioningApprovalPolling(statusUrl, 1);
+            }
             setTimeout(closeProvisioningModal, 600);
         } catch (err) {
             const message = err?.message || "Error enviando la solicitud.";

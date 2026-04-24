@@ -50,6 +50,7 @@ builder.Services.AddMicrosoftIdentityConsentHandler();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
+builder.Services.AddSingleton<IProvisioningRequestStore, FileProvisioningRequestStore>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));

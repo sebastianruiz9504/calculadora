@@ -158,7 +158,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Copiers,
         Label = "Copiers",
-        Category = "Copiers",
+        Category = "Soporte",
         Description = "Administra mantenimientos, equipos, suministros y entregas del inventario operativo.",
         OptionValue = 645250011,
         Controller = "Copiers"
@@ -198,8 +198,8 @@ public static class AppModuleCatalog
     public static readonly AppModuleDefinition SoporteCloud = new()
     {
         Key = AppModule.SoporteCloud,
-        Label = "Soporte cloud",
-        Category = "Dashboard",
+        Label = "Cloud",
+        Category = "Soporte",
         Description = "Gestiona tickets de soporte cloud, su clasificacion, cliente, horas y adjuntos.",
         OptionValue = 645250008,
         Controller = "SoporteCloud"
@@ -256,13 +256,14 @@ public static class AppModuleCatalog
         },
         new AppModuleNavigationGroup
         {
-            Label = "Copiers",
-            Modules = new[] { Copiers }
+            Label = "Soporte",
+            Modules = new[] { Copiers, SoporteCloud },
+            IsDropdown = true
         },
         new AppModuleNavigationGroup
         {
             Label = "Dashboard",
-            Modules = new[] { Dashboard, SoporteCloud }
+            Modules = new[] { Dashboard }
         }
     };
 

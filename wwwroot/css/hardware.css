@@ -1,0 +1,680 @@
+:root {
+    --hardware-ink: #1b2733;
+    --hardware-muted: #617181;
+    --hardware-line: #d8e1ea;
+    --hardware-panel: #ffffff;
+    --hardware-soft: #f7fafc;
+    --hardware-soft-strong: #eef4f8;
+    --hardware-brand: #1768ac;
+    --hardware-brand-deep: #0e4f84;
+    --hardware-brand-soft: #e7f2fb;
+    --hardware-success: #1c7c54;
+    --hardware-danger: #bf3b53;
+    --hardware-warning: #9b6b00;
+    --hardware-doc-bg: #fff5db;
+    --hardware-doc-ink: #8d5d00;
+    --hardware-supplier-bg: #e7f4ff;
+    --hardware-supplier-ink: #0c5b9d;
+    --hardware-paid-bg: #eafaf0;
+    --hardware-paid-ink: #176f44;
+    --hardware-transit-bg: #eef0ff;
+    --hardware-transit-ink: #4b4bb7;
+    --hardware-billing-bg: #fceee4;
+    --hardware-billing-ink: #b45b11;
+    --hardware-payment-bg: #f8ebff;
+    --hardware-payment-ink: #7a2db9;
+    --hardware-closed-bg: #e8f8f2;
+    --hardware-closed-ink: #126a48;
+}
+
+.hardware-shell {
+    display: grid;
+    gap: 18px;
+    width: 100%;
+    min-width: 0;
+    padding-bottom: 24px;
+}
+
+.hardware-shell > *,
+.hardware-card > *,
+.hardware-hero > *,
+.hardware-modal__dialog > * {
+    min-width: 0;
+}
+
+.hardware-hero,
+.hardware-card,
+.hardware-status,
+.hardware-summary__card,
+.hardware-state-card {
+    background: var(--hardware-panel);
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+}
+
+.hardware-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 26px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+}
+
+.hardware-card {
+    display: grid;
+    gap: 18px;
+    padding: 22px;
+}
+
+.hardware-kicker,
+.hardware-user-pill__label,
+.hardware-field__label,
+.hardware-summary__label,
+.hardware-toolbar__summary-label,
+.hardware-section-subtitle,
+.hardware-modal__meta,
+.hardware-file-card__hint,
+.hardware-field__hint {
+    color: var(--hardware-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.hardware-kicker {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--hardware-brand-soft);
+    color: var(--hardware-brand);
+}
+
+.hardware-title,
+.hardware-section-title,
+.hardware-modal__title {
+    margin: 6px 0 0;
+    color: var(--hardware-ink);
+    font-weight: 700;
+}
+
+.hardware-title {
+    font-size: 2.2rem;
+}
+
+.hardware-section-title {
+    font-size: 1.8rem;
+}
+
+.hardware-modal__title {
+    font-size: 1.5rem;
+}
+
+.hardware-subtitle,
+.hardware-section-subtitle,
+.hardware-modal__subtitle,
+.hardware-stage-panel__header p,
+.hardware-note-card p {
+    margin: 8px 0 0;
+    color: var(--hardware-muted);
+    font-size: 14px;
+    line-height: 1.6;
+    text-transform: none;
+}
+
+.hardware-user-pill {
+    display: grid;
+    gap: 6px;
+    min-width: 240px;
+    max-width: 340px;
+    padding: 12px 14px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: var(--hardware-soft);
+    color: var(--hardware-ink);
+    overflow-wrap: anywhere;
+}
+
+.hardware-section-header,
+.hardware-toolbar,
+.hardware-toolbar__filters,
+.hardware-toolbar__actions,
+.hardware-import-panel__head,
+.hardware-actions,
+.hardware-modal__header,
+.hardware-modal__footer,
+.hardware-file-card,
+.hardware-file-card__actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.hardware-toolbar,
+.hardware-toolbar__filters,
+.hardware-toolbar__actions,
+.hardware-actions {
+    align-items: flex-end;
+}
+
+.hardware-import-grid,
+.hardware-form__grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hardware-form__grid--nested {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hardware-field {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+}
+
+.hardware-field--span-2 {
+    grid-column: span 2;
+}
+
+.hardware-field .form-control,
+.hardware-field .form-select {
+    min-height: 44px;
+    border-color: #c8d5e1;
+    border-radius: 10px;
+    color: var(--hardware-ink);
+    box-shadow: none;
+}
+
+.hardware-field .form-control:focus,
+.hardware-field .form-select:focus {
+    border-color: var(--hardware-brand);
+    box-shadow: 0 0 0 .18rem rgba(23, 104, 172, .14);
+}
+
+.hardware-status,
+.hardware-inline-status {
+    display: none;
+    padding: 14px 16px;
+    border-radius: 10px;
+}
+
+.hardware-status.is-visible,
+.hardware-inline-status.is-visible {
+    display: block;
+}
+
+.hardware-status.is-info,
+.hardware-inline-status.is-info {
+    background: var(--hardware-brand-soft);
+    border: 1px solid #c4d9ef;
+    color: var(--hardware-brand-deep);
+}
+
+.hardware-status.is-success,
+.hardware-inline-status.is-success {
+    background: #edf8f2;
+    border: 1px solid #c9e7d9;
+    color: var(--hardware-success);
+}
+
+.hardware-status.is-warning,
+.hardware-inline-status.is-warning {
+    background: #fff7e6;
+    border: 1px solid #f0d79e;
+    color: var(--hardware-warning);
+}
+
+.hardware-status.is-error,
+.hardware-inline-status.is-error {
+    background: #fff0f3;
+    border: 1px solid #f0c8d1;
+    color: var(--hardware-danger);
+}
+
+.hardware-import-panels {
+    display: grid;
+    gap: 16px;
+}
+
+.hardware-import-panel {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: var(--hardware-soft);
+}
+
+.hardware-import-panel__title,
+.hardware-stage-panel__header h3,
+.hardware-note-card strong,
+.hardware-form__summary-title {
+    margin: 0;
+    color: var(--hardware-ink);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.hardware-mini-table-wrap,
+.hardware-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.hardware-mini-table,
+.hardware-table {
+    margin: 0;
+}
+
+.hardware-mini-table thead th,
+.hardware-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f7fafc;
+    color: var(--hardware-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-bottom-color: #dbe4ec;
+}
+
+.hardware-summary {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.hardware-summary__card {
+    display: grid;
+    gap: 6px;
+    padding: 16px;
+    background: var(--hardware-soft);
+}
+
+.hardware-summary__value {
+    color: var(--hardware-ink);
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+
+.hardware-toolbar__summary {
+    display: grid;
+    gap: 4px;
+}
+
+.hardware-toolbar__summary strong {
+    color: var(--hardware-ink);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.hardware-warning-list {
+    display: grid;
+    gap: 8px;
+}
+
+.hardware-warning-list[hidden] {
+    display: none;
+}
+
+.hardware-warning-list__item {
+    padding: 12px 14px;
+    border: 1px solid #f0d79e;
+    border-radius: 10px;
+    background: #fff7e6;
+    color: var(--hardware-warning);
+    font-size: 13px;
+}
+
+.hardware-state-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.hardware-state-card {
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    background: var(--hardware-soft);
+}
+
+.hardware-state-card__label {
+    color: var(--hardware-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.hardware-state-card__value {
+    color: var(--hardware-ink);
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.hardware-table {
+    width: 100%;
+    min-width: 1080px;
+    table-layout: fixed;
+}
+
+.hardware-table td {
+    padding: 14px 12px;
+    color: var(--hardware-ink);
+    vertical-align: top;
+    border-color: #edf2f7;
+}
+
+.hardware-table tbody tr {
+    border-left: 4px solid transparent;
+}
+
+.hardware-table__row.is-documentation {
+    background: linear-gradient(90deg, rgba(255, 245, 219, .75) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #d8ab32;
+}
+
+.hardware-table__row.is-supplier-ready {
+    background: linear-gradient(90deg, rgba(231, 244, 255, .75) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #5b9bd5;
+}
+
+.hardware-table__row.is-supplier-paid {
+    background: linear-gradient(90deg, rgba(234, 250, 240, .8) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #39a46b;
+}
+
+.hardware-table__row.is-in-transit {
+    background: linear-gradient(90deg, rgba(238, 240, 255, .8) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #7d7ddf;
+}
+
+.hardware-table__row.is-awaiting-billing {
+    background: linear-gradient(90deg, rgba(252, 238, 228, .8) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #db8e43;
+}
+
+.hardware-table__row.is-awaiting-payment {
+    background: linear-gradient(90deg, rgba(248, 235, 255, .8) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #9a52d1;
+}
+
+.hardware-table__row.is-closed {
+    background: linear-gradient(90deg, rgba(232, 248, 242, .85) 0%, rgba(255, 255, 255, 0) 18%);
+    border-left-color: #209466;
+}
+
+.hardware-table__title {
+    display: grid;
+    gap: 6px;
+}
+
+.hardware-table__title strong {
+    font-size: 14px;
+}
+
+.hardware-table__meta,
+.hardware-table__submeta,
+.hardware-table__empty,
+.hardware-file-card__name,
+.hardware-form__summary-meta {
+    color: var(--hardware-muted);
+    font-size: 13px;
+}
+
+.hardware-table__tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.hardware-tag,
+.hardware-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.hardware-pill.is-documentation,
+.hardware-tag.is-documentation {
+    background: var(--hardware-doc-bg);
+    color: var(--hardware-doc-ink);
+}
+
+.hardware-pill.is-supplier-ready,
+.hardware-tag.is-supplier-ready {
+    background: var(--hardware-supplier-bg);
+    color: var(--hardware-supplier-ink);
+}
+
+.hardware-pill.is-supplier-paid,
+.hardware-tag.is-supplier-paid {
+    background: var(--hardware-paid-bg);
+    color: var(--hardware-paid-ink);
+}
+
+.hardware-pill.is-in-transit,
+.hardware-tag.is-in-transit {
+    background: var(--hardware-transit-bg);
+    color: var(--hardware-transit-ink);
+}
+
+.hardware-pill.is-awaiting-billing,
+.hardware-tag.is-awaiting-billing {
+    background: var(--hardware-billing-bg);
+    color: var(--hardware-billing-ink);
+}
+
+.hardware-pill.is-awaiting-payment,
+.hardware-tag.is-awaiting-payment {
+    background: var(--hardware-payment-bg);
+    color: var(--hardware-payment-ink);
+}
+
+.hardware-pill.is-closed,
+.hardware-tag.is-closed {
+    background: var(--hardware-closed-bg);
+    color: var(--hardware-closed-ink);
+}
+
+.hardware-action-cell {
+    display: flex;
+    align-items: center;
+    min-height: 100%;
+}
+
+.hardware-action-cell .btn {
+    width: 100%;
+}
+
+.hardware-empty {
+    padding: 22px;
+    text-align: center;
+    color: var(--hardware-muted);
+}
+
+.hardware-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.hardware-modal[hidden] {
+    display: none;
+}
+
+.hardware-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, .48);
+}
+
+.hardware-modal__dialog {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 16px;
+    width: min(980px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow: auto;
+    padding: 22px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .18);
+}
+
+.hardware-status--modal {
+    margin: 0;
+}
+
+.hardware-form {
+    display: grid;
+    gap: 16px;
+}
+
+.hardware-form__summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: var(--hardware-soft);
+}
+
+.hardware-stage-panel {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.hardware-stage-panel[hidden] {
+    display: none;
+}
+
+.hardware-note-card,
+.hardware-file-card {
+    padding: 14px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: var(--hardware-soft);
+}
+
+.hardware-file-card__title {
+    color: var(--hardware-ink);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.hardware-file-card__link {
+    color: var(--hardware-brand);
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.hardware-file-card__link.is-disabled {
+    color: var(--hardware-muted);
+    pointer-events: none;
+    text-decoration: none;
+}
+
+body.hardware-modal-open {
+    overflow: hidden;
+}
+
+.hardware-list {
+    margin: 0;
+    padding-left: 18px;
+}
+
+@media (max-width: 1100px) {
+    .hardware-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .hardware-hero,
+    .hardware-toolbar,
+    .hardware-toolbar__actions,
+    .hardware-actions,
+    .hardware-modal__header,
+    .hardware-modal__footer,
+    .hardware-form__summary,
+    .hardware-file-card,
+    .hardware-file-card__actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .hardware-user-pill {
+        max-width: none;
+        width: 100%;
+    }
+
+    .hardware-import-grid,
+    .hardware-form__grid,
+    .hardware-form__grid--nested {
+        grid-template-columns: 1fr;
+    }
+
+    .hardware-field--span-2 {
+        grid-column: span 1;
+    }
+}
+
+@media (max-width: 640px) {
+    .hardware-shell {
+        gap: 14px;
+    }
+
+    .hardware-hero,
+    .hardware-card {
+        padding: 16px;
+    }
+
+    .hardware-title {
+        font-size: 1.9rem;
+    }
+
+    .hardware-section-title,
+    .hardware-modal__title {
+        font-size: 1.45rem;
+    }
+
+    .hardware-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .hardware-modal {
+        padding: 12px;
+        place-items: stretch;
+    }
+
+    .hardware-modal__dialog {
+        width: 100%;
+        max-height: calc(100vh - 24px);
+        padding: 16px;
+    }
+}
