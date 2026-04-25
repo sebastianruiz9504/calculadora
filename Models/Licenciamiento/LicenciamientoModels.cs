@@ -118,6 +118,40 @@ public sealed class LicenciamientoLookupItemDto
     public string MatchedValue { get; set; } = "";
 }
 
+public sealed class LicenciamientoRegisterAccountIdRequestDto
+{
+    public string AccountId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+}
+
+public sealed class LicenciamientoRegisterAccountIdResultDto
+{
+    public string Id { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class LicenciamientoRegisterProductRequestDto
+{
+    public string ProductDescription { get; set; } = "";
+    public decimal PurchasePrice { get; set; }
+    public decimal Acelerador { get; set; }
+    public string ServiceIdentifier { get; set; } = "";
+}
+
+public sealed class LicenciamientoRegisterProductResultDto
+{
+    public string Id { get; set; } = "";
+    public string ProductDescription { get; set; } = "";
+    public decimal PurchasePrice { get; set; }
+    public decimal Acelerador { get; set; }
+    public string ServiceIdentifier { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
 public sealed class LicenciamientoAdjustTrmRequestDto
 {
     public string FacturaValue { get; set; } = "";

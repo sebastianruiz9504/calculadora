@@ -92,6 +92,8 @@ public interface IDataverseService
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoAccountsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoProductsAsync(string query, int top = 12, CancellationToken ct = default);
+    Task<LicenciamientoRegisterAccountIdResultDto> RegisterLicenciamientoAccountIdAsync(LicenciamientoRegisterAccountIdRequestDto request, CancellationToken ct = default);
+    Task<LicenciamientoRegisterProductResultDto> RegisterLicenciamientoProductAsync(LicenciamientoRegisterProductRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(LicenciamientoImportRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoAdjustTrmResultDto> AdjustLicenciamientoTrmAsync(LicenciamientoAdjustTrmRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoUpdateContractTypeResultDto> UpdateLicenciamientoContractTypeAsync(LicenciamientoUpdateContractTypeRequestDto request, CancellationToken ct = default);

@@ -19,6 +19,7 @@ public sealed partial class DataverseService
     private const string LicensingAccountLookupTargetFallbackEntitySetName = "cr07a_accountidicps";
     private const string LicensingAccountLookupTargetFallbackIdField = "cr07a_accountidicpid";
     private const string LicensingAccountLookupTargetFallbackPrimaryNameField = "cr07a_name";
+    private const string LicensingAccountClientLookupField = "cr07a_cliente";
     private const string LicensingCustomerNameField = "cr07a_nombrecliente";
     private const string LicensingVendorField = "cr07a_vendor";
     private const string LicensingProductLookupField = "cr07a_producto";
@@ -39,6 +40,7 @@ public sealed partial class DataverseService
     private const string LicensingProductLookupTargetFallbackIdField = "cr07a_precioscloudid";
     private const string LicensingProductLookupTargetFallbackPrimaryNameField = "cr07a_priceableitemdescription";
     private const string LicensingProductDescriptionLookupField = "cr07a_priceableitemdescription";
+    private const string LicensingProductServiceIdentifierField = "cr07a_serviceidentifier";
     private const string LicensingModifiedOnField = "modifiedon";
     private const string LicensingManualBreakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
 
@@ -194,6 +196,165 @@ public sealed partial class DataverseService
             Math.Clamp(top, 1, 25),
             httpContext.User,
             ct);
+    }
+
+    public async Task<LicenciamientoRegisterAccountIdResultDto> RegisterLicenciamientoAccountIdAsync(
+        LicenciamientoRegisterAccountIdRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var accountId = (request.AccountId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(accountId))
+            throw new InvalidOperationException("Debes indicar el Account ID.");
+
+        var clientId = NormalizeOptionalGuid(request.ClientId);
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("Debes seleccionar un cliente valido.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            LicensingAccountLookupTargetLogicalName,
+            LicensingAccountClientLookupField,
+            LicensingAccountClientLookupField,
+            httpContext.User,
+            ct);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [LicensingAccountLookupTargetFallbackPrimaryNameField] = ConvertLicensingPayloadValue(
+                metadata.AccountAttributeTypes,
+                LicensingAccountLookupTargetFallbackPrimaryNameField,
+                accountId),
+            [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})"
+        };
+
+        if (!payload.ContainsKey(metadata.AccountMetadata.PrimaryNameField))
+        {
+            payload[metadata.AccountMetadata.PrimaryNameField] = ConvertLicensingPayloadValue(
+                metadata.AccountAttributeTypes,
+                metadata.AccountMetadata.PrimaryNameField,
+                accountId);
+        }
+
+        var select = string.Join(",",
+            new[]
+            {
+                metadata.AccountMetadata.PrimaryIdField,
+                metadata.AccountMetadata.PrimaryNameField,
+                LicensingAccountLookupTargetFallbackPrimaryNameField
+            }
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        using var response = await SendDataversePayloadWithRepresentationAsync(
+            $"/api/data/v9.2/{metadata.AccountMetadata.EntitySetName}?$select={select}",
+            "POST",
+            payload,
+            httpContext.User,
+            ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var createdId = ExtractRhRecordId(response, body, metadata.AccountMetadata.PrimaryIdField);
+        if (string.IsNullOrWhiteSpace(createdId))
+            throw new InvalidOperationException("Dataverse registro el Account ID, pero no devolvio el identificador.");
+
+        return new LicenciamientoRegisterAccountIdResultDto
+        {
+            Id = createdId,
+            AccountId = accountId,
+            ClientId = clientId,
+            ClientName = (request.ClientName ?? "").Trim(),
+            Message = $"Account ID {accountId} registrado correctamente."
+        };
+    }
+
+    public async Task<LicenciamientoRegisterProductResultDto> RegisterLicenciamientoProductAsync(
+        LicenciamientoRegisterProductRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var description = (request.ProductDescription ?? "").Trim();
+        if (description.Length < 2)
+            throw new InvalidOperationException("El producto debe tener un nombre valido.");
+
+        if (request.PurchasePrice < 0)
+            throw new InvalidOperationException("El costo no puede ser negativo.");
+
+        if (request.Acelerador < 0)
+            throw new InvalidOperationException("El acelerador no puede ser negativo.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var serviceIdentifier = (request.ServiceIdentifier ?? "").Trim();
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [LicensingProductDescriptionLookupField] = ConvertLicensingPayloadValue(
+                metadata.ProductAttributeTypes,
+                LicensingProductDescriptionLookupField,
+                description),
+            [ProductsPurchasePriceField] = ConvertLicensingPayloadValue(
+                metadata.ProductAttributeTypes,
+                ProductsPurchasePriceField,
+                RoundCurrency(request.PurchasePrice)),
+            [ProductsAceleradorField] = ConvertLicensingPayloadValue(
+                metadata.ProductAttributeTypes,
+                ProductsAceleradorField,
+                RoundCurrency(request.Acelerador)),
+            [LicensingProductServiceIdentifierField] = ConvertLicensingPayloadValue(
+                metadata.ProductAttributeTypes,
+                LicensingProductServiceIdentifierField,
+                serviceIdentifier)
+        };
+
+        if (!payload.ContainsKey(metadata.ProductMetadata.PrimaryNameField))
+        {
+            payload[metadata.ProductMetadata.PrimaryNameField] = ConvertLicensingPayloadValue(
+                metadata.ProductAttributeTypes,
+                metadata.ProductMetadata.PrimaryNameField,
+                description);
+        }
+
+        var select = string.Join(",",
+            new[]
+            {
+                metadata.ProductMetadata.PrimaryIdField,
+                metadata.ProductMetadata.PrimaryNameField,
+                LicensingProductDescriptionLookupField,
+                ProductsPurchasePriceField,
+                ProductsAceleradorField,
+                LicensingProductServiceIdentifierField
+            }
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        using var response = await SendDataversePayloadWithRepresentationAsync(
+            $"/api/data/v9.2/{metadata.ProductMetadata.EntitySetName}?$select={select}",
+            "POST",
+            payload,
+            httpContext.User,
+            ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var createdId = ExtractRhRecordId(response, body, metadata.ProductMetadata.PrimaryIdField);
+        if (string.IsNullOrWhiteSpace(createdId))
+            throw new InvalidOperationException("Dataverse registro el producto, pero no devolvio el identificador.");
+
+        return new LicenciamientoRegisterProductResultDto
+        {
+            Id = createdId,
+            ProductDescription = description,
+            PurchasePrice = RoundCurrency(request.PurchasePrice),
+            Acelerador = RoundCurrency(request.Acelerador),
+            ServiceIdentifier = serviceIdentifier,
+            Message = $"Producto registrado correctamente en {LicensingProductLookupTargetLogicalName}."
+        };
     }
 
     public async Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(
@@ -1178,12 +1339,18 @@ public sealed partial class DataverseService
     private static object? ConvertLicensingPayloadValue(
         LicensingMetadata metadata,
         string fieldName,
+        object? value) =>
+        ConvertLicensingPayloadValue(metadata.ConsumptionAttributeTypes, fieldName, value);
+
+    private static object? ConvertLicensingPayloadValue(
+        IReadOnlyDictionary<string, string> attributeTypes,
+        string fieldName,
         object? value)
     {
         if (value is null)
             return null;
 
-        metadata.ConsumptionAttributeTypes.TryGetValue(fieldName, out var attributeType);
+        attributeTypes.TryGetValue(fieldName, out var attributeType);
         if (string.IsNullOrWhiteSpace(attributeType))
             return value;
 

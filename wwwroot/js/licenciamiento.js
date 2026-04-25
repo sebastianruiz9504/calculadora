@@ -7,7 +7,10 @@
     const loadUrl = app.dataset.loadUrl || "";
     const previewUrl = app.dataset.previewUrl || "";
     const accountSearchUrl = app.dataset.accountSearchUrl || "";
+    const clientSearchUrl = app.dataset.clientSearchUrl || "";
     const productSearchUrl = app.dataset.productSearchUrl || "";
+    const registerAccountUrl = app.dataset.registerAccountUrl || "";
+    const registerProductUrl = app.dataset.registerProductUrl || "";
     const importUrl = app.dataset.importUrl || "";
     const adjustTrmUrl = app.dataset.adjustTrmUrl || "";
     const updateContractUrl = app.dataset.updateContractUrl || "";
@@ -48,6 +51,24 @@
     const previewDataCount = document.getElementById("licPreviewDataCount");
     const previewDataBody = document.getElementById("licPreviewDataBody");
     const previewClean = document.getElementById("licPreviewClean");
+
+    const accountRegistrationModal = document.getElementById("licAccountRegistrationModal");
+    const accountRegistrationStatus = document.getElementById("licAccountRegistrationStatus");
+    const accountRegistrationForm = document.getElementById("licAccountRegistrationForm");
+    const accountIdInput = document.getElementById("licAccountIdInput");
+    const accountClientInput = document.getElementById("licAccountClientInput");
+    const accountClientMenu = document.getElementById("licAccountClientMenu");
+    const accountClientHelper = document.getElementById("licAccountClientHelper");
+    const accountRegistrationSaveBtn = document.getElementById("licAccountRegistrationSaveBtn");
+
+    const productRegistrationModal = document.getElementById("licProductRegistrationModal");
+    const productRegistrationStatus = document.getElementById("licProductRegistrationStatus");
+    const productRegistrationForm = document.getElementById("licProductRegistrationForm");
+    const productDescriptionInput = document.getElementById("licProductDescriptionInput");
+    const productPurchasePriceInput = document.getElementById("licProductPurchasePriceInput");
+    const productAceleradorInput = document.getElementById("licProductAceleradorInput");
+    const productServiceIdentifierInput = document.getElementById("licProductServiceIdentifierInput");
+    const productRegistrationSaveBtn = document.getElementById("licProductRegistrationSaveBtn");
 
     const breakdownModal = document.getElementById("licBreakdownModal");
     const breakdownStatus = document.getElementById("licBreakdownStatus");
@@ -98,6 +119,17 @@
         productLookupTimers: new Map(),
         productLookupRequests: new Map(),
         productLookupRequestSeq: 0,
+        accountRegistration: {
+            accountId: "",
+            clientId: "",
+            clientName: "",
+            clientQuery: "",
+            clientFailureReason: ""
+        },
+        accountClientLookupTimer: 0,
+        accountClientLookupRequestSeq: 0,
+        accountClientLookupActiveRequest: 0,
+        productRegistrationIndex: -1,
         breakdownSourceIndex: -1,
         breakdownDraftRows: [],
         breakdownDraftSeq: 0,
@@ -121,6 +153,16 @@
     uploadForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await previewExcel();
+    });
+
+    accountRegistrationForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await registerAccountId();
+    });
+
+    productRegistrationForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await registerProduct();
     });
 
     trmForm?.addEventListener("submit", async (event) => {
@@ -176,6 +218,11 @@
             return;
         }
 
+        if (target === accountClientInput) {
+            handleAccountClientInput(target);
+            return;
+        }
+
         if (target.matches("[data-breakdown-client-search]")) {
             handleBreakdownLookupInput(target, "client");
             return;
@@ -202,6 +249,11 @@
             return;
         }
 
+        if (target === accountClientInput && target.value.trim().length >= 2) {
+            openAccountClientLookupMenu();
+            return;
+        }
+
         if (target.matches("[data-breakdown-client-search]") && target.value.trim().length >= 2) {
             openBreakdownLookupMenu(target, "client");
             return;
@@ -224,6 +276,12 @@
             return;
         }
 
+        const accountClientOption = target.closest("[data-account-client-option]");
+        if (accountClientOption instanceof HTMLElement) {
+            selectAccountClientOption(accountClientOption);
+            return;
+        }
+
         const breakdownClientOption = target.closest("[data-breakdown-client-option]");
         if (breakdownClientOption instanceof HTMLElement) {
             selectBreakdownLookupOption(breakdownClientOption, "client");
@@ -238,17 +296,26 @@
 
         if (!target.closest(".lic-lookup")) {
             closeProductLookupMenus();
+            closeAccountClientLookupMenu();
             closeBreakdownLookupMenus();
         }
 
         if (target.hasAttribute("data-lic-close")) {
             closeUploadModal();
+        } else if (target.hasAttribute("data-lic-account-close")) {
+            closeAccountRegistrationModal();
+        } else if (target.hasAttribute("data-lic-product-close")) {
+            closeProductRegistrationModal();
         } else if (target.hasAttribute("data-lic-breakdown-close")) {
             closeBreakdownModal();
         } else if (target.hasAttribute("data-lic-trm-close")) {
             closeTrmModal();
         } else if (target.hasAttribute("data-lic-contract-close")) {
             closeContractModal();
+        } else if (target.hasAttribute("data-preview-register-account")) {
+            openAccountRegistrationModal(target.getAttribute("data-preview-register-account") || "");
+        } else if (target.hasAttribute("data-preview-register-product")) {
+            openProductRegistrationModal(Number.parseInt(target.getAttribute("data-preview-register-product") || "-1", 10));
         } else if (target.hasAttribute("data-preview-breakdown")) {
             openBreakdownModal(Number.parseInt(target.getAttribute("data-preview-breakdown") || "-1", 10));
         } else if (target.hasAttribute("data-breakdown-remove")) {
@@ -262,7 +329,11 @@
             return;
         }
 
-        if (breakdownModal && !breakdownModal.hidden) {
+        if (productRegistrationModal && !productRegistrationModal.hidden) {
+            closeProductRegistrationModal();
+        } else if (accountRegistrationModal && !accountRegistrationModal.hidden) {
+            closeAccountRegistrationModal();
+        } else if (breakdownModal && !breakdownModal.hidden) {
             closeBreakdownModal();
         } else if (uploadModal && !uploadModal.hidden) {
             closeUploadModal();
@@ -453,7 +524,14 @@
                     </td>
                     <td data-label="Filas">${escapeHtml(group.sourceRows.join(", "))}</td>
                     <td data-label="Clientes">${escapeHtml(group.clients.join(", ") || "Sin cliente")}</td>
-                    <td data-label="Motivo"><span class="lic-lookup-note is-warning">${escapeHtml(group.reason || "Sin lookup")}</span></td>
+                    <td data-label="Accion">
+                        <button type="button"
+                                class="btn btn-outline-primary btn-sm"
+                                data-preview-register-account="${escapeHtml(group.accountId || "")}"
+                                ${group.accountId ? "" : "disabled"}>
+                            Registrar ID
+                        </button>
+                    </td>
                 </tr>
             `).join("");
         }
@@ -467,16 +545,9 @@
         }
 
         previewBody.innerHTML = productRows.map(({ row, index }) => {
-            const messages = getPreviewMessages(row);
-            const badgeClass = row.isValid
-                ? (messages.length > 0 ? "is-warning" : "is-good")
-                : "is-danger";
-            const statusText = row.isValid
-                ? (messages.length > 0 ? messages.join(" | ") : "Lista")
-                : messages.join(" | ");
             const actions = requiresBreakdown(row)
                 ? `<button type="button" class="btn btn-outline-primary btn-sm" data-preview-breakdown="${index}">Desglosar</button>`
-                : "<span class=\"lic-muted\">Resuelve el lookup</span>";
+                : `<button type="button" class="btn btn-outline-primary btn-sm" data-preview-register-product="${index}">Registrar producto</button>`;
 
             return `
                 <tr data-preview-index="${index}">
@@ -487,9 +558,7 @@
                         ${renderLookupHelper(row.companyAccountLookupFound, row.companyAccountLookupRequired, row.companyAccountLookupLabel, row.companyAccountLookupFailureReason)}
                     </td>
                     <td data-label="Vendor">${escapeHtml(row.vendor)}</td>
-                    <td data-label="Producto">
-                        ${renderPreviewProductCell(row, index)}
-                    </td>
+                    <td data-label="Producto">${escapeHtml(row.productDescription || row.productLookupLabel || "Sin producto")}</td>
                     <td data-label="Factura">${escapeHtml(row.facturaDisplay || row.facturaValue)}</td>
                     <td class="text-end" data-label="USD">${usdFormatter.format(Number(row.valorTotalUsd || 0))}</td>
                     <td data-label="Tipo">
@@ -497,8 +566,7 @@
                             ${renderContractOptions(row.contractTypeValue)}
                         </select>
                     </td>
-                    <td data-label="Estado"><span class="lic-badge ${badgeClass}" data-preview-status="${index}">${escapeHtml(statusText || "Error")}</span></td>
-                    <td data-label="Acciones">${actions}</td>
+                    <td data-label="Accion">${actions}</td>
                 </tr>`;
         }).join("");
 
@@ -882,6 +950,15 @@
         return `${accountSearchUrl}${separator}q=${encodeURIComponent(query)}&top=8`;
     }
 
+    function buildClientSearchUrl(query) {
+        if (!clientSearchUrl) {
+            return "";
+        }
+
+        const separator = clientSearchUrl.includes("?") ? "&" : "?";
+        return `${clientSearchUrl}${separator}q=${encodeURIComponent(query)}&top=8`;
+    }
+
     function getProductLookupMenu(index) {
         return previewBody.querySelector(`[data-preview-product-menu="${index}"]`);
     }
@@ -900,6 +977,359 @@
         previewBody.querySelectorAll(".lic-lookup-menu.is-open").forEach((menu) => {
             menu.classList.remove("is-open");
             menu.innerHTML = "";
+        });
+    }
+
+    function openAccountRegistrationModal(accountId) {
+        const normalizedAccountId = (accountId || "").trim();
+        if (!normalizedAccountId) {
+            showStatus(uploadStatus, "warning", "No encontramos el Account ID para registrar.");
+            return;
+        }
+
+        state.accountRegistration = {
+            accountId: normalizedAccountId,
+            clientId: "",
+            clientName: "",
+            clientQuery: "",
+            clientFailureReason: ""
+        };
+
+        if (accountIdInput) {
+            accountIdInput.value = normalizedAccountId;
+        }
+        if (accountClientInput) {
+            accountClientInput.value = "";
+        }
+        closeAccountClientLookupMenu();
+        clearStatus(accountRegistrationStatus);
+        refreshAccountRegistrationState();
+        accountRegistrationModal.hidden = false;
+        accountClientInput?.focus();
+    }
+
+    function closeAccountRegistrationModal() {
+        if (accountRegistrationModal) {
+            accountRegistrationModal.hidden = true;
+        }
+        closeAccountClientLookupMenu();
+        clearStatus(accountRegistrationStatus);
+    }
+
+    function handleAccountClientInput(input) {
+        const query = input.value.trim();
+        state.accountRegistration.clientId = "";
+        state.accountRegistration.clientName = "";
+        state.accountRegistration.clientQuery = query;
+        state.accountRegistration.clientFailureReason = query.length < 2
+            ? "Escribe al menos 2 caracteres para buscar el cliente."
+            : "";
+        refreshAccountRegistrationState();
+
+        if (query.length < 2) {
+            closeAccountClientLookupMenu();
+            return;
+        }
+
+        scheduleAccountClientSearch(query, 260);
+    }
+
+    function openAccountClientLookupMenu() {
+        const query = accountClientInput?.value.trim() || "";
+        if (query.length < 2) {
+            return;
+        }
+
+        scheduleAccountClientSearch(query, 0);
+    }
+
+    function scheduleAccountClientSearch(query, delay) {
+        if (state.accountClientLookupTimer) {
+            window.clearTimeout(state.accountClientLookupTimer);
+        }
+
+        state.accountClientLookupTimer = window.setTimeout(() => searchAccountClients(query), delay);
+    }
+
+    async function searchAccountClients(query) {
+        if (!accountClientMenu || !clientSearchUrl) {
+            return;
+        }
+
+        const requestId = ++state.accountClientLookupRequestSeq;
+        state.accountClientLookupActiveRequest = requestId;
+        accountClientMenu.innerHTML = "<div class=\"lic-lookup-empty\">Buscando...</div>";
+        accountClientMenu.classList.add("is-open");
+
+        try {
+            const items = await fetchJson(buildClientSearchUrl(query));
+            if (state.accountClientLookupActiveRequest !== requestId) {
+                return;
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                state.accountRegistration.clientFailureReason = `No se encontraron clientes para "${query}".`;
+                refreshAccountRegistrationState();
+                accountClientMenu.innerHTML = "<div class=\"lic-lookup-empty\">Sin resultados</div>";
+                accountClientMenu.classList.add("is-open");
+                return;
+            }
+
+            accountClientMenu.innerHTML = items.map((item) => `
+                <button type="button"
+                        class="lic-lookup-option"
+                        data-account-client-option
+                        data-id="${escapeHtml(item.id || "")}"
+                        data-name="${escapeHtml(item.name || "")}">
+                    <span>${escapeHtml(item.name || "Cliente sin nombre")}</span>
+                    <small>${escapeHtml(item.id || "")}</small>
+                </button>
+            `).join("");
+            accountClientMenu.classList.add("is-open");
+        } catch (error) {
+            if (state.accountClientLookupActiveRequest !== requestId) {
+                return;
+            }
+
+            state.accountRegistration.clientFailureReason = getErrorMessage(error);
+            refreshAccountRegistrationState();
+            accountClientMenu.innerHTML = "<div class=\"lic-lookup-empty\">No se pudo buscar</div>";
+            accountClientMenu.classList.add("is-open");
+        }
+    }
+
+    function selectAccountClientOption(option) {
+        const clientId = option.getAttribute("data-id") || "";
+        const clientName = option.getAttribute("data-name") || "";
+        state.accountRegistration.clientId = clientId;
+        state.accountRegistration.clientName = clientName;
+        state.accountRegistration.clientQuery = clientName;
+        state.accountRegistration.clientFailureReason = "";
+
+        if (accountClientInput) {
+            accountClientInput.value = clientName;
+        }
+
+        closeAccountClientLookupMenu();
+        refreshAccountRegistrationState();
+    }
+
+    function refreshAccountRegistrationState() {
+        const selectedClient = Boolean(state.accountRegistration.clientId);
+        if (accountClientHelper) {
+            accountClientHelper.className = selectedClient ? "lic-muted" : "lic-lookup-note is-warning";
+            accountClientHelper.textContent = selectedClient
+                ? `Cliente seleccionado: ${state.accountRegistration.clientName || state.accountRegistration.clientId}`
+                : (state.accountRegistration.clientFailureReason || "Busca y selecciona un cliente.");
+        }
+
+        if (accountRegistrationSaveBtn) {
+            accountRegistrationSaveBtn.disabled = state.busy
+                || !state.accountRegistration.accountId
+                || !state.accountRegistration.clientId;
+        }
+    }
+
+    function closeAccountClientLookupMenu() {
+        if (!accountClientMenu) {
+            return;
+        }
+
+        accountClientMenu.classList.remove("is-open");
+        accountClientMenu.innerHTML = "";
+    }
+
+    async function registerAccountId() {
+        const accountId = state.accountRegistration.accountId;
+        const clientId = state.accountRegistration.clientId;
+        const clientName = state.accountRegistration.clientName;
+        if (!accountId || !clientId) {
+            showStatus(accountRegistrationStatus, "warning", "Selecciona un cliente para registrar el Account ID.");
+            return;
+        }
+
+        let succeeded = false;
+        try {
+            setBusy(true);
+            accountRegistrationSaveBtn.disabled = true;
+            showStatus(accountRegistrationStatus, "info", "Registrando Account ID...");
+            const result = await fetchJson(registerAccountUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accountId, clientId, clientName })
+            });
+
+            applyRegisteredAccountId(result);
+            renderPreview();
+            const message = result.message || "Account ID registrado correctamente.";
+            succeeded = true;
+            showStatus(accountRegistrationStatus, "success", message);
+            showStatus(uploadStatus, "success", message);
+            window.setTimeout(() => {
+                if (accountRegistrationModal && !accountRegistrationModal.hidden) {
+                    closeAccountRegistrationModal();
+                }
+            }, 900);
+        } catch (error) {
+            showStatus(accountRegistrationStatus, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+            refreshAccountRegistrationState();
+            if (succeeded && accountRegistrationSaveBtn) {
+                accountRegistrationSaveBtn.disabled = true;
+            }
+        }
+    }
+
+    function applyRegisteredAccountId(result) {
+        const accountId = (result?.accountId || state.accountRegistration.accountId || "").trim();
+        const recordId = result?.id || "";
+        if (!accountId || !recordId) {
+            return;
+        }
+
+        const key = normalizeLookupGroupKey(accountId);
+        state.previewRows.forEach((row) => {
+            if (normalizeLookupGroupKey(row.companyAccountId) !== key) {
+                return;
+            }
+
+            row.companyAccountLookupId = recordId;
+            row.companyAccountLookupLabel = accountId;
+            row.companyAccountLookupFound = true;
+            row.companyAccountLookupFailureReason = "";
+            removeAccountLookupWarnings(row);
+        });
+    }
+
+    function removeAccountLookupWarnings(row) {
+        if (!Array.isArray(row.warnings)) {
+            row.warnings = [];
+            return;
+        }
+
+        row.warnings = row.warnings.filter((message) => {
+            const text = (message || "").toString().toLowerCase();
+            return !text.includes("companyaccountid")
+                && !text.includes("account id")
+                && !text.includes("cr07a_accountidicp");
+        });
+    }
+
+    function openProductRegistrationModal(index) {
+        const row = state.previewRows[index];
+        if (!row || !shouldSkipPreviewRow(row)) {
+            showStatus(uploadStatus, "warning", "No encontramos el producto pendiente para registrar.");
+            return;
+        }
+
+        state.productRegistrationIndex = index;
+        if (productDescriptionInput) {
+            productDescriptionInput.value = row.productDescription || "";
+        }
+        if (productPurchasePriceInput) {
+            productPurchasePriceInput.value = "";
+        }
+        if (productAceleradorInput) {
+            productAceleradorInput.value = "0";
+        }
+        if (productServiceIdentifierInput) {
+            productServiceIdentifierInput.value = "";
+        }
+
+        clearStatus(productRegistrationStatus);
+        if (productRegistrationSaveBtn) {
+            productRegistrationSaveBtn.disabled = false;
+        }
+        productRegistrationModal.hidden = false;
+        productPurchasePriceInput?.focus();
+    }
+
+    function closeProductRegistrationModal() {
+        if (productRegistrationModal) {
+            productRegistrationModal.hidden = true;
+        }
+        clearStatus(productRegistrationStatus);
+        state.productRegistrationIndex = -1;
+    }
+
+    async function registerProduct() {
+        const row = state.previewRows[state.productRegistrationIndex];
+        const productDescription = (productDescriptionInput?.value || row?.productDescription || "").trim();
+        const purchasePrice = Number.parseFloat(productPurchasePriceInput?.value || "0");
+        const acelerador = Number.parseFloat(productAceleradorInput?.value || "0");
+        const serviceIdentifier = (productServiceIdentifierInput?.value || "").trim();
+
+        if (!row || !productDescription) {
+            showStatus(productRegistrationStatus, "warning", "No encontramos el producto pendiente para registrar.");
+            return;
+        }
+
+        if (!Number.isFinite(purchasePrice) || purchasePrice < 0) {
+            showStatus(productRegistrationStatus, "warning", "Indica un costo valido.");
+            return;
+        }
+
+        if (!Number.isFinite(acelerador) || acelerador < 0) {
+            showStatus(productRegistrationStatus, "warning", "Indica un acelerador valido.");
+            return;
+        }
+
+        let succeeded = false;
+        try {
+            setBusy(true);
+            productRegistrationSaveBtn.disabled = true;
+            showStatus(productRegistrationStatus, "info", "Registrando producto...");
+            const result = await fetchJson(registerProductUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    productDescription,
+                    purchasePrice,
+                    acelerador,
+                    serviceIdentifier
+                })
+            });
+
+            applyRegisteredProduct(result, productDescription);
+            renderPreview();
+            const message = result.message || "Producto registrado correctamente.";
+            succeeded = true;
+            showStatus(productRegistrationStatus, "success", message);
+            showStatus(uploadStatus, "success", message);
+            window.setTimeout(() => {
+                if (productRegistrationModal && !productRegistrationModal.hidden) {
+                    closeProductRegistrationModal();
+                }
+            }, 900);
+        } catch (error) {
+            showStatus(productRegistrationStatus, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+            if (productRegistrationSaveBtn) {
+                productRegistrationSaveBtn.disabled = succeeded;
+            }
+        }
+    }
+
+    function applyRegisteredProduct(result, sourceDescription) {
+        const productId = result?.id || "";
+        const productDescription = (result?.productDescription || sourceDescription || "").trim();
+        if (!productId || !productDescription) {
+            return;
+        }
+
+        const key = normalizeLookupGroupKey(productDescription);
+        state.previewRows.forEach((row) => {
+            if (normalizeLookupGroupKey(row.productDescription) !== key) {
+                return;
+            }
+
+            row.productLookupId = productId;
+            row.productLookupLabel = productDescription;
+            row.productLookupFound = true;
+            row.productLookupFailureReason = "";
+            removeProductLookupWarnings(row);
         });
     }
 
@@ -1566,6 +1996,10 @@
         refreshBtn.disabled = value;
         newBtn.disabled = value;
         trmBtn.disabled = value;
+        if (productRegistrationSaveBtn) {
+            productRegistrationSaveBtn.disabled = value;
+        }
+        refreshAccountRegistrationState();
         renderSelectionState();
     }
 

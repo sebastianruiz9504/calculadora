@@ -12,7 +12,10 @@
      data-load-url="@Url.Action("Data", "Licenciamiento")"
      data-preview-url="@Url.Action("Preview", "Licenciamiento")"
      data-account-search-url="@Url.Action("AccountLookupSearch", "Licenciamiento")"
+     data-client-search-url="@Url.Action("ClientLookupSearch", "Licenciamiento")"
      data-product-search-url="@Url.Action("ProductLookupSearch", "Licenciamiento")"
+     data-register-account-url="@Url.Action("RegisterAccountId", "Licenciamiento")"
+     data-register-product-url="@Url.Action("RegisterProduct", "Licenciamiento")"
      data-import-url="@Url.Action("Import", "Licenciamiento")"
      data-adjust-trm-url="@Url.Action("AdjustTrm", "Licenciamiento")"
      data-update-contract-url="@Url.Action("UpdateContractType", "Licenciamiento")">
@@ -134,7 +137,7 @@
                                     <th>Account ID</th>
                                     <th>Filas</th>
                                     <th>Clientes</th>
-                                    <th>Motivo</th>
+                                    <th>Accion</th>
                                 </tr>
                             </thead>
                             <tbody id="licPreviewAccountBody"></tbody>
@@ -159,8 +162,7 @@
                                     <th>Factura</th>
                                     <th class="text-end">USD</th>
                                     <th>Tipo</th>
-                                    <th>Estado</th>
-                                    <th>Acciones</th>
+                                    <th>Accion</th>
                                 </tr>
                             </thead>
                             <tbody id="licPreviewBody"></tbody>
@@ -196,6 +198,78 @@
                 <button type="button" class="btn btn-outline-secondary" data-lic-close>Cancelar</button>
                 <button type="submit" class="btn btn-outline-primary" id="licPreviewBtn">Vista previa</button>
                 <button type="button" class="btn btn-primary" id="licImportBtn" disabled>Procesar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licAccountRegistrationModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-account-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="licAccountRegistrationTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Account ID</div>
+                <h2 class="lic-modal__title" id="licAccountRegistrationTitle">Registrar ID</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-account-close>Cerrar</button>
+        </div>
+        <div id="licAccountRegistrationStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licAccountRegistrationForm">
+            <label class="lic-field">
+                <span>Account ID</span>
+                <input class="form-control" id="licAccountIdInput" type="text" readonly />
+            </label>
+            <label class="lic-field">
+                <span>Cliente</span>
+                <div class="lic-lookup">
+                    <input class="form-control lic-lookup-input"
+                           id="licAccountClientInput"
+                           type="search"
+                           autocomplete="off"
+                           placeholder="Buscar cliente..." />
+                    <div class="lic-lookup-menu" id="licAccountClientMenu"></div>
+                </div>
+                <small class="lic-lookup-note is-warning" id="licAccountClientHelper">Busca y selecciona un cliente.</small>
+            </label>
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-account-close>Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="licAccountRegistrationSaveBtn">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licProductRegistrationModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-product-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="licProductRegistrationTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Precios Cloud</div>
+                <h2 class="lic-modal__title" id="licProductRegistrationTitle">Registrar producto</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-product-close>Cerrar</button>
+        </div>
+        <div id="licProductRegistrationStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licProductRegistrationForm">
+            <label class="lic-field">
+                <span>Producto</span>
+                <textarea class="form-control" id="licProductDescriptionInput" rows="3" readonly></textarea>
+            </label>
+            <label class="lic-field">
+                <span>Costo</span>
+                <input class="form-control" id="licProductPurchasePriceInput" type="number" min="0" step="0.01" inputmode="decimal" />
+            </label>
+            <label class="lic-field">
+                <span>Acelerador</span>
+                <input class="form-control" id="licProductAceleradorInput" type="number" min="0" step="0.01" inputmode="decimal" />
+            </label>
+            <label class="lic-field">
+                <span>Service Identifier</span>
+                <input class="form-control" id="licProductServiceIdentifierInput" type="text" />
+            </label>
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-product-close>Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="licProductRegistrationSaveBtn">Enviar</button>
             </div>
         </form>
     </div>

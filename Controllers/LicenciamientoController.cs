@@ -94,6 +94,66 @@ public sealed class LicenciamientoController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ClientLookupSearch([FromQuery] string q, [FromQuery] int top = 12, CancellationToken ct = default)
+    {
+        try
+        {
+            return Json(await _dataverse.SearchClientsAsync(q, top, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar clientes.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> RegisterAccountId([FromBody] LicenciamientoRegisterAccountIdRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar el Account ID y el cliente."));
+
+        try
+        {
+            return Ok(await _dataverse.RegisterLicenciamientoAccountIdAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar el Account ID.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> RegisterProduct([FromBody] LicenciamientoRegisterProductRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar el producto para registrar."));
+
+        try
+        {
+            return Ok(await _dataverse.RegisterLicenciamientoProductAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar el producto.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> ProductLookupSearch([FromQuery] string q, [FromQuery] int top = 12, CancellationToken ct = default)
     {
         try
