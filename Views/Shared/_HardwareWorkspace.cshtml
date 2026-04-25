@@ -27,66 +27,6 @@
 
     <div class="hardware-status" data-hw-status role="status" aria-live="polite"></div>
 
-    @if (Model.ShowHero && !string.IsNullOrWhiteSpace(Model.PreviewUrl) && !string.IsNullOrWhiteSpace(Model.ProvisionUrl))
-    {
-        <section class="hardware-card">
-            <div class="hardware-section-header">
-                <div>
-                    <div class="hardware-kicker">Importación</div>
-                    <h2 class="hardware-section-title">Carga base del módulo</h2>
-                    <p class="hardware-section-subtitle">
-                        Mantuvimos la carga CSV para crear o reforzar la tabla base de Hardware sin perder el flujo por etapas.
-                    </p>
-                </div>
-            </div>
-
-            <div class="hardware-import-grid">
-                <label class="hardware-field hardware-field--span-2">
-                    <span class="hardware-field__label">Archivo CSV</span>
-                    <input class="form-control" type="file" id="hardwareCsvFile-@Model.RootId" accept=".csv,text/csv" data-hw-csv-file />
-                </label>
-                <div class="hardware-actions">
-                    <button type="button" class="btn btn-outline-secondary" data-hw-analyze-csv>Analizar CSV</button>
-                    <button type="button" class="btn btn-primary" data-hw-provision-csv disabled>Crear tabla e importar</button>
-                </div>
-            </div>
-
-            <div class="hardware-inline-status" data-hw-import-status role="status" aria-live="polite"></div>
-
-            <div class="hardware-import-panels">
-                <section class="hardware-import-panel" data-hw-summary hidden>
-                    <h3 class="hardware-import-panel__title">Resumen de estructura</h3>
-                    <ul class="hardware-list" data-hw-summary-list></ul>
-                </section>
-
-                <section class="hardware-import-panel" data-hw-columns-wrap hidden>
-                    <div class="hardware-import-panel__head">
-                        <h3 class="hardware-import-panel__title">Columnas sugeridas</h3>
-                        <small class="text-muted" data-hw-system-columns-note></small>
-                    </div>
-                    <div class="hardware-mini-table-wrap">
-                        <table class="table align-middle hardware-mini-table">
-                            <thead>
-                                <tr>
-                                    <th>CSV original</th>
-                                    <th>Nombre Dataverse</th>
-                                    <th>Tipo</th>
-                                    <th>Ejemplo</th>
-                                </tr>
-                            </thead>
-                            <tbody data-hw-columns-body></tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="hardware-import-panel" data-hw-provision-wrap hidden>
-                    <h3 class="hardware-import-panel__title">Resultado de la carga</h3>
-                    <ul class="hardware-list" data-hw-provision-list></ul>
-                </section>
-            </div>
-        </section>
-    }
-
     <section class="hardware-card">
         <div class="hardware-toolbar">
             <div class="hardware-toolbar__filters">
@@ -113,29 +53,19 @@
         <div class="hardware-inline-status" data-hw-board-status role="status" aria-live="polite"></div>
         <div class="hardware-warning-list" data-hw-warnings hidden></div>
 
-        <div class="hardware-summary">
-            <article class="hardware-summary__card">
-                <span class="hardware-summary__label">Registros</span>
-                <strong class="hardware-summary__value" data-hw-total-records>0</strong>
-            </article>
-            <article class="hardware-summary__card">
-                <span class="hardware-summary__label">Venta visible</span>
-                <strong class="hardware-summary__value" data-hw-total-sales>$0</strong>
-            </article>
-            <article class="hardware-summary__card">
-                <span class="hardware-summary__label">Acciones pendientes</span>
-                <strong class="hardware-summary__value" data-hw-pending-actions>0</strong>
-            </article>
-            <article class="hardware-summary__card">
-                <span class="hardware-summary__label">Cerrados</span>
-                <strong class="hardware-summary__value" data-hw-closed-count>0</strong>
-            </article>
-        </div>
-
-        <div class="hardware-state-grid" data-hw-state-summary></div>
-
         <div class="hardware-table-wrap">
             <table class="table align-middle hardware-table">
+                <colgroup>
+                    <col class="hardware-table__col-select" />
+                    <col class="hardware-table__col-hardware" />
+                    <col class="hardware-table__col-client" />
+                    <col class="hardware-table__col-order" />
+                    <col class="hardware-table__col-quantity" />
+                    <col class="hardware-table__col-sale-unit" />
+                    <col class="hardware-table__col-total" />
+                    <col class="hardware-table__col-state" />
+                    <col class="hardware-table__col-action" />
+                </colgroup>
                 <thead>
                     <tr>
                         <th class="hardware-table__select-col">

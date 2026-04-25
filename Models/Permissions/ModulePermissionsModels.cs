@@ -48,7 +48,7 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Calculator,
         Label = "Calculadora",
-        Category = "Calculadora",
+        Category = "Area comercial",
         Description = "Cotiza escenarios, compara lineas de negocio y prepara solicitudes de aprovisionamiento.",
         OptionValue = 645250000,
         Controller = "Calculator"
@@ -189,8 +189,8 @@ public static class AppModuleCatalog
     {
         Key = AppModule.Hardware,
         Label = "Hardware",
-        Category = "Admin",
-        Description = "Prepara esquemas de importacion CSV y administra la carga base de hardware en Dataverse.",
+        Category = "Area comercial",
+        Description = "Administra el ciclo comercial y documental de las lineas de hardware.",
         OptionValue = 645250014,
         Controller = "Hardware"
     };
@@ -208,6 +208,7 @@ public static class AppModuleCatalog
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
+        Hardware,
         Renovaciones,
         Puntajes,
         Nomina,
@@ -217,7 +218,6 @@ public static class AppModuleCatalog
         PortalProveedores,
         CuentasCobro,
         Inventario,
-        Hardware,
         GestionHumana,
         Copiers,
         Dashboard,
@@ -234,8 +234,9 @@ public static class AppModuleCatalog
     {
         new AppModuleNavigationGroup
         {
-            Label = "Calculadora",
-            Modules = new[] { Calculator }
+            Label = "Area comercial",
+            Modules = new[] { Calculator, Hardware },
+            IsDropdown = true
         },
         new AppModuleNavigationGroup
         {
@@ -246,7 +247,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Admin",
-            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario, Hardware },
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario },
             IsDropdown = true
         },
         new AppModuleNavigationGroup

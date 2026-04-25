@@ -625,26 +625,24 @@
                     <td>
                         <input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar grupo ${escapeHtml(group.orderNumber)}" />
                     </td>
-                    <td>
+                    <td class="hardware-table__hardware-cell">
                         <button type="button" class="hardware-group-toggle" data-hw-toggle-group="${escapeHtml(group.key)}" aria-expanded="${expanded ? "true" : "false"}">
                             ${expanded ? "-" : "+"}
                         </button>
                         <div class="hardware-table__title">
                             <strong>${formatNumber(group.rows.length)} filas agrupadas</strong>
-                            <div class="hardware-table__meta">Orden ${escapeHtml(group.orderNumber)}</div>
                         </div>
                     </td>
-                    <td>
+                    <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
                             <strong>${escapeHtml(clientLabel)}</strong>
-                            <div class="hardware-table__submeta">${escapeHtml(buildGroupProviderLabel(group.rows))}</div>
                         </div>
                     </td>
-                    <td><span class="hardware-tag ${toneClass(first.stateTone)}">${escapeHtml(group.orderNumber)}</span></td>
+                    <td class="hardware-table__order-cell"><span class="hardware-order-number">${escapeHtml(group.orderNumber)}</span></td>
                     <td class="text-end">${formatNumber(totalQuantity)}</td>
                     <td class="text-end">-</td>
                     <td class="text-end">${formatCurrency(totalSale)}</td>
-                    <td>${renderPill(first.stateLabel || "Sin estado", first.stateTone || "")}</td>
+                    <td class="hardware-table__state-cell">${renderStatePill(first.stateLabel || "Sin estado", first.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
                             ${first.hasAction
@@ -664,24 +662,21 @@
                     <td>
                         <input type="checkbox" class="form-check-input" data-hw-select-record="${escapeHtml(row?.recordId || "")}" ${selected ? "checked" : ""} aria-label="Seleccionar ${escapeHtml(row?.name || "hardware")}" />
                     </td>
-                    <td>
+                    <td class="hardware-table__hardware-cell">
                         <div class="hardware-table__title">
                             <strong>${escapeHtml(row?.name || "")}</strong>
-                            <div class="hardware-table__meta">${escapeHtml(buildRowMeta(row))}</div>
-                            <div class="hardware-table__tags">${renderRowTags(row)}</div>
                         </div>
                     </td>
-                    <td>
+                    <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
                             <strong>${escapeHtml(row?.clientName || "-")}</strong>
-                            <div class="hardware-table__submeta">${escapeHtml(row?.provider || "Sin proveedor registrado")}</div>
                         </div>
                     </td>
-                    <td>${row?.purchaseOrderNumber ? `<span class="hardware-tag ${toneClass(row?.stateTone)}">${escapeHtml(row.purchaseOrderNumber)}</span>` : `<span class="hardware-table__submeta">Sin orden</span>`}</td>
+                    <td class="hardware-table__order-cell">${row?.purchaseOrderNumber ? `<span class="hardware-order-number">${escapeHtml(row.purchaseOrderNumber)}</span>` : `<span class="hardware-table__submeta">Sin orden</span>`}</td>
                     <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.totalSale || 0)}</td>
-                    <td>${renderPill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
+                    <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
                             ${row?.hasAction
@@ -728,61 +723,6 @@
             });
 
             return singles.sort((left, right) => left.index - right.index);
-        }
-
-        function renderRowTags(row) {
-            const tags = [];
-
-            if (row?.invoiceNumber) {
-                tags.push(`<span class="hardware-tag ${toneClass(row?.stateTone)}">Factura: ${escapeHtml(row.invoiceNumber)}</span>`);
-            }
-            if (row?.hasOrderPurchase) {
-                tags.push('<span class="hardware-tag is-documentation">ODC</span>');
-            }
-            if (row?.hasProforma) {
-                tags.push('<span class="hardware-tag is-documentation">Proforma</span>');
-            }
-            if (row?.hasSupplierPaymentProof) {
-                tags.push('<span class="hardware-tag is-supplier-paid">Pago proveedor</span>');
-            }
-            if (row?.hasDeliveryRecord) {
-                tags.push('<span class="hardware-tag is-in-transit">Acta entrega</span>');
-            }
-            if (Number(row?.freightValue || 0) > 0) {
-                tags.push(`<span class="hardware-tag is-supplier-ready">Flete ${formatCurrency(row.freightValue)}</span>`);
-            }
-            if (Number(row?.utility || 0) !== 0) {
-                tags.push(`<span class="hardware-tag is-closed">Utilidad ${formatCurrency(row.utility)}</span>`);
-            }
-
-            return tags.join("");
-        }
-
-        function buildRowMeta(row) {
-            const details = [];
-            if (row?.odcDateDisplay) {
-                details.push(`ODC: ${row.odcDateDisplay}`);
-            }
-            if (row?.supplierPaymentDateDisplay) {
-                details.push(`Pago proveedor: ${row.supplierPaymentDateDisplay}`);
-            }
-            if (row?.deliveryRecordDateDisplay) {
-                details.push(`Acta: ${row.deliveryRecordDateDisplay}`);
-            }
-            if (Number(row?.supplierUnitCost || 0) > 0) {
-                details.push(`Costo proveedor: ${formatCurrency(row.supplierUnitCost)}`);
-            }
-            if (Number(row?.supplierTotal || 0) > 0) {
-                details.push(`Total proveedor: ${formatCurrency(row.supplierTotal)}`);
-            }
-            if (Number(row?.marginValue || 0) !== 0) {
-                details.push(`Margen: ${formatNumber(row.marginValue)}%`);
-            }
-            if (row?.modifiedOnDisplay) {
-                details.push(`Actualizado: ${row.modifiedOnDisplay}`);
-            }
-
-            return details.length ? details.join(" · ") : "Sin gestión registrada";
         }
 
         function renderSelectionState() {
@@ -1417,11 +1357,6 @@
             elements.selectAll.checked = state.rows.length > 0 && selectedVisible === state.rows.length;
         }
 
-        function buildGroupProviderLabel(rows) {
-            const provider = getCommonValue(rows, "provider");
-            return provider || "Varios proveedores o sin proveedor";
-        }
-
         function getCommonValue(rows, property) {
             const values = rows
                 .map(row => String(row?.[property] || "").trim())
@@ -1566,6 +1501,31 @@
 
         function renderPill(label, tone) {
             return `<span class="hardware-pill ${toneClass(tone)}">${escapeHtml(label || "-")}</span>`;
+        }
+
+        function renderStatePill(label, tone) {
+            const lines = getStateLabelLines(label);
+            return `<span class="hardware-pill hardware-pill--state ${toneClass(tone)}">${lines.map(line => `<span>${escapeHtml(line)}</span>`).join("")}</span>`;
+        }
+
+        function getStateLabelLines(label) {
+            const text = String(label || "-").trim();
+            switch (normalizeText(text)) {
+                case "en espera de documentacion":
+                    return ["En espera de", "documentación"];
+                case "ok para pago a proveedor":
+                    return ["Ok para pago", "a proveedor"];
+                case "pagada a proveedor":
+                    return ["Pagada", "a proveedor"];
+                case "en transito a oficina o cliente":
+                    return ["En tránsito", "a oficina o cliente"];
+                case "entregado en espera de facturacion":
+                    return ["Entregado", "en espera de facturación"];
+                case "facturado en espera de pago":
+                    return ["Facturado", "en espera de pago"];
+                default:
+                    return [text || "-"];
+            }
         }
 
         function formatNumber(value) {

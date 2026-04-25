@@ -8,3 +8,1490 @@ info: Microsoft.Hosting.Lifetime[0]
       Hosting environment: Development
 info: Microsoft.Hosting.Lifetime[0]
       Content root path: C:\Users\SebastianRuiz\CotizadorInterno\CotizadorInterno.Web
+warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3]
+      Failed to determine the https port for redirect.
+info: Microsoft.Identity.Web.TokenAcquisition[405]
+      [MsIdWeb] Attempting to load the credential from the CredentialDescription with Id=RedactedClientSecret=mCk0eXDAzx+bUzB9Lc5u11HIvLu0aMqxHb+skMPg0Fw= and Skip=False . 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(2fc18053-5251-4bf4-a0fc-dbd6348688d8)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenByAuthorizationCode
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 2fc18053-5251-4bf4-a0fc-dbd6348688d8
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] === Token Acquisition (ConfidentialAuthCodeRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] [Instance Discovery] Instance discovery is enabled and will be performed
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Fetching instance discovery from the network from host login.microsoftonline.com. 
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET https://login.microsoftonline.com/common/discovery/instance?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET https://login.microsoftonline.com/common/discovery/instance?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 343.6809ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 382.0988ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Authority validation enabled? True. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:04Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Authority validation - is known env? True. 
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request POST https://login.microsoftonline.com/cab7ea42-4a21-4548-952f-fcde81f2bdd6/oauth2/v2.0/token
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request POST https://login.microsoftonline.com/cab7ea42-4a21-4548-952f-fcde81f2bdd6/oauth2/v2.0/token
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 405.6769ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 406.1692ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Checking client info returned from the server..
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Saving token response to cache..
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] [SaveTokenResponseAsync] Saving AT in cache and removing overlapping ATs...
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Looking for scopes for the authority in the cache which intersect with https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z] [Internal cache] Total number of cache partitions found while getting access tokens: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Intersecting scope entries count - 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Matching entries after filtering by user - 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] [SaveTokenResponseAsync] Saving Id Token and Account in cache ...
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] [SaveTokenResponseAsync] Saving RT in cache...
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8]  AT expiration time: 24/04/2026 10:57:49 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: IdentityProvider
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] Fetched access token from host login.microsoftonline.com. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1110
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 799
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:05Z - 2fc18053-5251-4bf4-a0fc-dbd6348688d8] TokenEndpoint: ****
+info: Microsoft.IdentityModel.LoggingExtensions.IdentityLoggerAdapter[0]
+      Microsoft.IdentityModel Version: 8.15.0.0. Date 04/24/2026 21:54:05. PII logging is OFF. See https://aka.ms/IdentityModel/PII for details. 
+      IDX10242: Security token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]' has a valid signature.
+info: Microsoft.IdentityModel.LoggingExtensions.IdentityLoggerAdapter[0]
+      IDX10239: Lifetime of the token is valid.
+info: Microsoft.IdentityModel.LoggingExtensions.IdentityLoggerAdapter[0]
+      IDX10234: Audience Validated.Audience: '3a00b1a6-a85b-4ddf-9014-8eb939e22aac'
+info: Microsoft.IdentityModel.LoggingExtensions.IdentityLoggerAdapter[0]
+      IDX10245: Creating claims identity from the validated token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]'.
+info: Microsoft.Identity.Web.TokenAcquisition[405]
+      [MsIdWeb] Attempting to load the credential from the CredentialDescription with Id=RedactedClientSecret=mCk0eXDAzx+bUzB9Lc5u11HIvLu0aMqxHb+skMPg0Fw= and Skip=False . 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z - 1675ac95-6109-46d4-8b71-55f745b951f7] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z - 1675ac95-6109-46d4-8b71-55f745b951f7] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z - 1675ac95-6109-46d4-8b71-55f745b951f7] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z - 1675ac95-6109-46d4-8b71-55f745b951f7] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [FindRefreshTokenAsync] Discovered 1 refresh tokens in cache using key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [FindRefreshTokenAsync] Refresh token found in the cache? - True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Instance Discovery] Instance discovery is enabled and will be performed
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Region discovery] Not using a regional authority. 
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request POST https://login.microsoftonline.com/cab7ea42-4a21-4548-952f-fcde81f2bdd6/oauth2/v2.0/token
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request POST https://login.microsoftonline.com/cab7ea42-4a21-4548-952f-fcde81f2bdd6/oauth2/v2.0/token
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 259.0627ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 259.3064ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Checking client info returned from the server..
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Saving token response to cache..
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [SaveTokenResponseAsync] Saving AT in cache and removing overlapping ATs...
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Looking for scopes for the authority in the cache which intersect with https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Intersecting scope entries count - 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Matching entries after filtering by user - 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [SaveTokenResponseAsync] Saving Id Token and Account in cache ...
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] [SaveTokenResponseAsync] Saving RT in cache...
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: IdentityProvider
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] Fetched access token from host login.microsoftonline.com. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NoCachedAccessToken
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 309
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 259
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:06Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/systemusers?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/systemusers?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 1059.9871ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 1060.2663ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z - 900a8ea1-944d-4b8a-8c5f-3602b3a79e21] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z - 900a8ea1-944d-4b8a-8c5f-3602b3a79e21] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z - 900a8ea1-944d-4b8a-8c5f-3602b3a79e21] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z - 900a8ea1-944d-4b8a-8c5f-3602b3a79e21] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:07) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 14
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:07Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_empleados?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_empleados?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 249.2471ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 249.5962ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[405]
+      [MsIdWeb] Attempting to load the credential from the CredentialDescription with Id=RedactedClientSecret=mCk0eXDAzx+bUzB9Lc5u11HIvLu0aMqxHb+skMPg0Fw= and Skip=False . 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z - dc077340-cf31-48b1-bb72-cd882f5d9ed6] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z - dc077340-cf31-48b1-bb72-cd882f5d9ed6] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z - dc077340-cf31-48b1-bb72-cd882f5d9ed6] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z - dc077340-cf31-48b1-bb72-cd882f5d9ed6] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:14) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 2
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:14Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/systemusers?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/systemusers?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 215.6448ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 215.9613ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 9d797e88-0ebb-4127-9bc5-7e25349f9935] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 9d797e88-0ebb-4127-9bc5-7e25349f9935] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 9d797e88-0ebb-4127-9bc5-7e25349f9935] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 9d797e88-0ebb-4127-9bc5-7e25349f9935] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:15) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 2
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_empleados?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_empleados?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 206.6436ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 206.8916ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[405]
+      [MsIdWeb] Attempting to load the credential from the CredentialDescription with Id=RedactedClientSecret=mCk0eXDAzx+bUzB9Lc5u11HIvLu0aMqxHb+skMPg0Fw= and Skip=False . 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 1343740b-115f-48dd-9b55-ea67a3eea6d0] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 1343740b-115f-48dd-9b55-ea67a3eea6d0] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 1343740b-115f-48dd-9b55-ea67a3eea6d0] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 1343740b-115f-48dd-9b55-ea67a3eea6d0] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:15) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 2
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/systemusers?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/systemusers?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 188.6457ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 188.8516ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 4e9183fc-2338-4fcf-ad51-2fe8f05638dd] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 4e9183fc-2338-4fcf-ad51-2fe8f05638dd] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 4e9183fc-2338-4fcf-ad51-2fe8f05638dd] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - 4e9183fc-2338-4fcf-ad51-2fe8f05638dd] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:15) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 2
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_empleados?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_empleados?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 191.0756ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 191.3451ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - dd0b8422-e231-4bce-9347-13aeb4b41418] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - dd0b8422-e231-4bce-9347-13aeb4b41418] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - dd0b8422-e231-4bce-9347-13aeb4b41418] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z - dd0b8422-e231-4bce-9347-13aeb4b41418] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:15) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:15Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 397.3867ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 397.6127ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 02e291d6-a759-4740-b29b-c2409fdcef68] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 02e291d6-a759-4740-b29b-c2409fdcef68] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 02e291d6-a759-4740-b29b-c2409fdcef68] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 02e291d6-a759-4740-b29b-c2409fdcef68] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:16) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 191.0998ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 191.329ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 1ddc2d6c-3993-4cf8-b675-9a789e74b4f0] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 1ddc2d6c-3993-4cf8-b675-9a789e74b4f0] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 1ddc2d6c-3993-4cf8-b675-9a789e74b4f0] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 1ddc2d6c-3993-4cf8-b675-9a789e74b4f0] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:16) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 211.191ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 211.3929ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 96766ab7-40f9-41a0-873f-9995c957c149] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 96766ab7-40f9-41a0-873f-9995c957c149] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 96766ab7-40f9-41a0-873f-9995c957c149] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z - 96766ab7-40f9-41a0-873f-9995c957c149] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:16) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:16Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_hardwares?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_hardwares?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 325.813ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 326.0553ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8f1d6805-3f11-40a0-a54c-440d70b08c3d] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8f1d6805-3f11-40a0-a54c-440d70b08c3d] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8f1d6805-3f11-40a0-a54c-440d70b08c3d] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8f1d6805-3f11-40a0-a54c-440d70b08c3d] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:17) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 194.8415ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 195.0587ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8fb2c811-de0b-41a3-aca2-ab12a50829e4] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8fb2c811-de0b-41a3-aca2-ab12a50829e4] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8fb2c811-de0b-41a3-aca2-ab12a50829e4] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 8fb2c811-de0b-41a3-aca2-ab12a50829e4] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:17) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 306.4324ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 306.8419ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 345f60d9-81c4-4758-af35-f0857bf34220] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 345f60d9-81c4-4758-af35-f0857bf34220] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 345f60d9-81c4-4758-af35-f0857bf34220] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z - 345f60d9-81c4-4758-af35-f0857bf34220] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:17) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:17Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 271.7018ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 271.9068ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - 878239f2-93a1-42b7-bf90-a7adfafde87b] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - 878239f2-93a1-42b7-bf90-a7adfafde87b] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - 878239f2-93a1-42b7-bf90-a7adfafde87b] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - 878239f2-93a1-42b7-bf90-a7adfafde87b] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:18) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 299.8625ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 300.0538ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - a1a30e91-ab5e-468f-8032-f67899fc0d30] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - a1a30e91-ab5e-468f-8032-f67899fc0d30] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - a1a30e91-ab5e-468f-8032-f67899fc0d30] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - a1a30e91-ab5e-468f-8032-f67899fc0d30] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:18) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/EntityDefinitions(LogicalName='cr07a_hardware')?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 205.4ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 205.6129ms - 200
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - ca4b02b4-61a2-4a0a-8925-f2161b9ddd6d] ==== GetAccounts started - GetAccountById ====
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - ca4b02b4-61a2-4a0a-8925-f2161b9ddd6d] Account id filter: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting refresh tokens: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting accounts: 1. PartitionKey  True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - ca4b02b4-61a2-4a0a-8925-f2161b9ddd6d] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z - ca4b02b4-61a2-4a0a-8925-f2161b9ddd6d] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Found 1 cache accounts and 0 broker accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Returning 1 accounts
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] MSAL MSAL.NetCore with assembly version '4.79.2.0'. CorrelationId(00000000-0000-0000-0000-000000000000)
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] === AcquireTokenSilent Parameters ===
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] LoginHint provided: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Account provided: True
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] ForceRefresh: False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+      === Request Data ===
+      Authority Provided? - True
+      Scopes - https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+      Extra Query Params Keys (space separated) - 
+      ApiId - AcquireTokenSilent
+      IsConfidentialClient - True
+      SendX5C - False
+      LoginHint ? False
+      IsBrokerConfigured - False
+      HomeAccountId - False
+      CorrelationId - 00000000-0000-0000-0000-000000000000
+      UserAssertion set: False
+      LongRunningOboCacheKey set: False
+      Region configured: 
+      FMI Path: 
+      Credential FMI Path: 
+      
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] === Token Acquisition (SilentRequest) started:
+	 Scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation
+	Authority Host: login.microsoftonline.com
+warn: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Only in-memory caching is used. The cache is not persisted and will be lost if the machine is restarted. It also does not scale for a web app or web API, where the number of users can grow large. In production, web apps and web APIs should use distributed caching like Redis. See https://aka.ms/msal-net-cca-token-cache-serialization
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Internal cache] Total number of cache partitions found while getting access tokens: 1
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [FindAccessTokenAsync] Discovered 1 access tokens in cache using partition key: 7210b83f-ca5c-447a-aadb-4aefa72f17ad.cab7ea42-4a21-4548-952f-fcde81f2bdd6
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Access token is not expired. Returning the found cache entry. [Current time (04/24/2026 21:54:18) - Expiration Time (04/24/2026 22:56:26 +00:00) - Extended Expiration Time (04/24/2026 22:56:26 +00:00)]
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] Returning access token found in cache. RefreshOn exists ? False
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] [Region discovery] Not using a regional authority. 
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+	=== Token Acquisition finished successfully:
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z]  AT expiration time: 24/04/2026 10:56:26 p. m. +00:00, scopes: https://orgc79ca19c.crm2.dynamics.com/user_impersonation. source: Cache
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] 
+      [LogMetricsFromAuthResult] Cache Refresh Reason: NotApplicable
+      [LogMetricsFromAuthResult] DurationInCacheInMs: 0
+      [LogMetricsFromAuthResult] DurationTotalInMs: 1
+      [LogMetricsFromAuthResult] DurationInHttpInMs: 0
+info: Microsoft.Identity.Web.TokenAcquisition[0]
+      False MSAL 4.79.2.0 MSAL.NetCore .NET 10.0.0 Microsoft Windows 10.0.26200 [2026-04-24 21:54:18Z] TokenEndpoint: ****
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[100]
+      Start processing HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_hardwares?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[100]
+      Sending HTTP request GET https://orgc79ca19c.crm2.dynamics.com/api/data/v9.2/cr07a_hardwares?*
+info: System.Net.Http.HttpClient.Dataverse.ClientHandler[101]
+      Received HTTP response headers after 219.6275ms - 200
+info: System.Net.Http.HttpClient.Dataverse.LogicalHandler[101]
+      End processing HTTP request after 219.9938ms - 200
