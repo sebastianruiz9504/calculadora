@@ -7,9 +7,13 @@
      data-provision-url="@Model.ProvisionUrl"
      data-board-url="@Model.BoardUrl"
      data-save-url="@Model.SaveUrl"
+     data-edit-url="@Model.EditUrl"
      data-upload-url="@Model.UploadUrl"
      data-download-url="@Model.DownloadUrl"
-     data-invoice-search-url="@Model.InvoiceSearchUrl">
+     data-invoice-search-url="@Model.InvoiceSearchUrl"
+     data-client-search-url="@Model.ClientSearchUrl"
+     data-initial-start-date="@Model.InitialStartDate"
+     data-initial-end-date="@Model.InitialEndDate">
     @if (Model.ShowHero)
     {
         <section class="hardware-hero">
@@ -36,6 +40,14 @@
                         <option value="">Todos los estados</option>
                     </select>
                 </label>
+                <label class="hardware-field">
+                    <span class="hardware-field__label">Desde ODC</span>
+                    <input type="date" class="form-control" data-hw-start-date />
+                </label>
+                <label class="hardware-field">
+                    <span class="hardware-field__label">Hasta ODC</span>
+                    <input type="date" class="form-control" data-hw-end-date />
+                </label>
             </div>
             <div class="hardware-toolbar__actions">
                 <div class="hardware-toolbar__summary">
@@ -44,49 +56,18 @@
                 </div>
                 <div class="hardware-actions">
                     <button type="button" class="btn btn-primary" data-hw-selected-action disabled>Gestionar selección</button>
+                    <button type="button" class="btn btn-outline-primary" data-hw-edit-selected disabled>Editar selección</button>
                     <button type="button" class="btn btn-outline-secondary" data-hw-refresh>Actualizar</button>
                 </div>
-                <div class="hardware-selection-summary" data-hw-selection-summary>Selecciona una o varias filas del mismo estado.</div>
+                <div class="hardware-selection-summary" data-hw-selection-summary>Selecciona una o varias filas.</div>
             </div>
         </div>
 
         <div class="hardware-inline-status" data-hw-board-status role="status" aria-live="polite"></div>
         <div class="hardware-warning-list" data-hw-warnings hidden></div>
 
-        <div class="hardware-table-wrap">
-            <table class="table align-middle hardware-table">
-                <colgroup>
-                    <col class="hardware-table__col-select" />
-                    <col class="hardware-table__col-hardware" />
-                    <col class="hardware-table__col-client" />
-                    <col class="hardware-table__col-order" />
-                    <col class="hardware-table__col-quantity" />
-                    <col class="hardware-table__col-sale-unit" />
-                    <col class="hardware-table__col-total" />
-                    <col class="hardware-table__col-state" />
-                    <col class="hardware-table__col-action" />
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th class="hardware-table__select-col">
-                            <input type="checkbox" class="form-check-input" data-hw-select-all aria-label="Seleccionar todas las filas visibles" />
-                        </th>
-                        <th>Hardware</th>
-                        <th>Cliente</th>
-                        <th>No orden</th>
-                        <th class="text-end">Cantidad</th>
-                        <th class="text-end">Venta unidad</th>
-                        <th class="text-end">Total línea</th>
-                        <th class="hardware-table__state-col">Estado</th>
-                        <th class="hardware-table__action-col">Botón</th>
-                    </tr>
-                </thead>
-                <tbody data-hw-rows>
-                    <tr>
-                        <td colspan="9" class="hardware-table__empty">Cargando tabla...</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="hardware-owner-tables" data-hw-rows>
+            <div class="hardware-empty">Cargando tabla...</div>
         </div>
     </section>
 
@@ -278,6 +259,110 @@
                     <div class="hardware-actions">
                         <button type="button" class="btn btn-outline-secondary" data-hw-close-modal>Cancelar</button>
                         <button type="submit" class="btn btn-primary" data-hw-save-stage>Guardar etapa</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="hardware-modal" data-hw-edit-modal hidden>
+        <div class="hardware-modal__backdrop" data-hw-close-edit-modal></div>
+        <div class="hardware-modal__dialog hardware-modal__dialog--edit" role="dialog" aria-modal="true" aria-labelledby="hardwareEditModalTitle-@Model.RootId">
+            <div class="hardware-modal__header">
+                <div>
+                    <div class="hardware-kicker">Edición</div>
+                    <h2 class="hardware-modal__title" id="hardwareEditModalTitle-@Model.RootId" data-hw-edit-title>Editar Hardware</h2>
+                    <p class="hardware-modal__subtitle" data-hw-edit-subtitle>Actualiza los campos de las filas seleccionadas.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-hw-close-edit-modal>Cerrar</button>
+            </div>
+
+            <div class="hardware-status hardware-status--modal" data-hw-edit-status role="status" aria-live="polite"></div>
+
+            <form class="hardware-form" data-hw-edit-form>
+                <div class="hardware-form__summary">
+                    <div>
+                        <div class="hardware-form__summary-title" data-hw-edit-count>0 filas seleccionadas</div>
+                        <div class="hardware-form__summary-meta">Solo se guardan los campos que modifiques.</div>
+                    </div>
+                </div>
+
+                <div class="hardware-form__grid">
+                    <label class="hardware-field hardware-field--span-2">
+                        <span class="hardware-field__label">Cliente</span>
+                        <div class="hardware-lookup">
+                            <input type="search" class="form-control" autocomplete="off" data-hw-edit-field="clientName" />
+                            <div class="hardware-lookup__menu" data-hw-client-options></div>
+                        </div>
+                        <span class="hardware-field__hint" data-hw-client-hint>Busca y selecciona un cliente para cambiarlo.</span>
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Cantidad</span>
+                        <input type="number" min="0" step="1" class="form-control" data-hw-edit-field="quantity" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Venta unidad</span>
+                        <input type="number" min="0" step="0.01" class="form-control" data-hw-edit-field="saleUnit" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Total línea</span>
+                        <input type="number" min="0" step="0.01" class="form-control" data-hw-edit-field="totalSale" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Estado</span>
+                        <select class="form-select" data-hw-edit-field="stateValue"></select>
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">No orden</span>
+                        <input type="text" class="form-control" data-hw-edit-field="purchaseOrderNumber" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">cr07a_fechaodc</span>
+                        <input type="date" class="form-control" data-hw-edit-field="odcDateValue" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Costo unt proveedor</span>
+                        <input type="number" min="0" step="0.01" class="form-control" data-hw-edit-field="supplierUnitCost" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Total proveedor</span>
+                        <input type="number" min="0" step="0.01" class="form-control" data-hw-edit-field="supplierTotal" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Valor flete</span>
+                        <input type="number" min="0" step="0.01" class="form-control" data-hw-edit-field="freightValue" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Utilidad</span>
+                        <input type="number" step="0.01" class="form-control" data-hw-edit-field="utility" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Valor margen</span>
+                        <input type="number" step="0.01" class="form-control" data-hw-edit-field="marginValue" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Proveedor</span>
+                        <input type="text" class="form-control" data-hw-edit-field="provider" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Fecha pago proveedor</span>
+                        <input type="date" class="form-control" data-hw-edit-field="supplierPaymentDateValue" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Fecha acta entrega</span>
+                        <input type="date" class="form-control" data-hw-edit-field="deliveryRecordDateValue" />
+                    </label>
+                    <label class="hardware-field hardware-field--span-2">
+                        <span class="hardware-field__label">Número de factura</span>
+                        <input type="text" class="form-control" data-hw-edit-field="invoiceNumber" />
+                    </label>
+                </div>
+
+                <div class="hardware-modal__footer">
+                    <div class="hardware-modal__meta" data-hw-edit-meta>Sin cambios</div>
+                    <div class="hardware-actions">
+                        <button type="button" class="btn btn-outline-secondary" data-hw-close-edit-modal>Cancelar</button>
+                        <button type="submit" class="btn btn-primary" data-hw-save-edit>Guardar cambios</button>
                     </div>
                 </div>
             </form>

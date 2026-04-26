@@ -18,6 +18,10 @@ public sealed class HardwareWorkspaceViewModel
     public string UploadUrl { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
     public string InvoiceSearchUrl { get; set; } = "";
+    public string ClientSearchUrl { get; set; } = "";
+    public string EditUrl { get; set; } = "";
+    public string InitialStartDate { get; set; } = "";
+    public string InitialEndDate { get; set; } = "";
     public bool ShowHero { get; set; } = true;
     public string HeroKicker { get; set; } = "Operación";
     public string HeroTitle { get; set; } = "Hardware";
@@ -55,6 +59,9 @@ public sealed class HardwareInvoiceLookupItemDto
 public sealed class HardwareBoardDto
 {
     public string Message { get; set; } = "";
+    public string DateFilterStartValue { get; set; } = "";
+    public string DateFilterEndValue { get; set; } = "";
+    public string DateFilterLabel { get; set; } = "";
     public int TotalCount { get; set; }
     public int SyncedRequestsCount { get; set; }
     public int SyncedImportedCount { get; set; }
@@ -131,6 +138,50 @@ public sealed class HardwareDocumentationLineSaveRequest
     public string OdcDateValue { get; set; } = "";
     public decimal? SupplierUnitCost { get; set; }
     public string Provider { get; set; } = "";
+}
+
+public sealed class HardwareBulkEditRequest
+{
+    public List<string> RecordIds { get; set; } = new();
+    public bool ClientChanged { get; set; }
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public bool QuantityChanged { get; set; }
+    public int? Quantity { get; set; }
+    public bool SaleUnitChanged { get; set; }
+    public decimal? SaleUnit { get; set; }
+    public bool TotalSaleChanged { get; set; }
+    public decimal? TotalSale { get; set; }
+    public bool StateChanged { get; set; }
+    public int? StateValue { get; set; }
+    public bool PurchaseOrderNumberChanged { get; set; }
+    public string PurchaseOrderNumber { get; set; } = "";
+    public bool OdcDateChanged { get; set; }
+    public string OdcDateValue { get; set; } = "";
+    public bool SupplierUnitCostChanged { get; set; }
+    public decimal? SupplierUnitCost { get; set; }
+    public bool SupplierTotalChanged { get; set; }
+    public decimal? SupplierTotal { get; set; }
+    public bool FreightValueChanged { get; set; }
+    public decimal? FreightValue { get; set; }
+    public bool UtilityChanged { get; set; }
+    public decimal? Utility { get; set; }
+    public bool MarginValueChanged { get; set; }
+    public decimal? MarginValue { get; set; }
+    public bool ProviderChanged { get; set; }
+    public string Provider { get; set; } = "";
+    public bool SupplierPaymentDateChanged { get; set; }
+    public string SupplierPaymentDateValue { get; set; } = "";
+    public bool DeliveryRecordDateChanged { get; set; }
+    public string DeliveryRecordDateValue { get; set; } = "";
+    public bool InvoiceNumberChanged { get; set; }
+    public string InvoiceNumber { get; set; } = "";
+}
+
+public sealed class HardwareBulkEditResultDto
+{
+    public string Message { get; set; } = "";
+    public IReadOnlyList<HardwareBoardRowDto> Records { get; set; } = Array.Empty<HardwareBoardRowDto>();
 }
 
 public sealed class HardwareSaveResultDto

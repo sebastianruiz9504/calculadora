@@ -285,9 +285,13 @@
                 CurrentUserLabel = !string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.DisplayName : Model.CurrentUser.Email,
                 BoardUrl = Url.Action("Board", "Hardware") ?? "",
                 SaveUrl = Url.Action("SaveStage", "Hardware") ?? "",
+                EditUrl = Url.Action("EditRecords", "Hardware") ?? "",
                 UploadUrl = Url.Action("UploadFile", "Hardware") ?? "",
                 DownloadUrl = Url.Action("DownloadFile", "Hardware") ?? "",
                 InvoiceSearchUrl = Url.Action("InvoiceSearch", "Hardware") ?? "",
+                ClientSearchUrl = Url.Action("ClientSearch", "Hardware") ?? "",
+                InitialStartDate = Model.InitialSupportStartDate,
+                InitialEndDate = Model.InitialSupportEndDate,
                 ShowHero = false
             })
     </div>

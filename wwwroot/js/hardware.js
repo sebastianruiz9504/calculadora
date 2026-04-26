@@ -8,9 +8,13 @@
             provisionUrl: root.dataset.provisionUrl || "",
             boardUrl: root.dataset.boardUrl || "",
             saveUrl: root.dataset.saveUrl || "",
+            editUrl: root.dataset.editUrl || "",
             uploadUrl: root.dataset.uploadUrl || "",
             downloadUrl: root.dataset.downloadUrl || "",
-            invoiceSearchUrl: root.dataset.invoiceSearchUrl || ""
+            invoiceSearchUrl: root.dataset.invoiceSearchUrl || "",
+            clientSearchUrl: root.dataset.clientSearchUrl || "",
+            initialStartDate: root.dataset.initialStartDate || "",
+            initialEndDate: root.dataset.initialEndDate || ""
         };
 
         const elements = {
@@ -28,9 +32,12 @@
             provisionList: root.querySelector("[data-hw-provision-list]"),
             boardStatus: root.querySelector("[data-hw-board-status]"),
             stateFilter: root.querySelector("[data-hw-state-filter]"),
+            startDate: root.querySelector("[data-hw-start-date]"),
+            endDate: root.querySelector("[data-hw-end-date]"),
             filterLabel: root.querySelector("[data-hw-filter-label]"),
             refreshBtn: root.querySelector("[data-hw-refresh]"),
             selectedActionBtn: root.querySelector("[data-hw-selected-action]"),
+            editSelectedBtn: root.querySelector("[data-hw-edit-selected]"),
             selectionSummary: root.querySelector("[data-hw-selection-summary]"),
             warnings: root.querySelector("[data-hw-warnings]"),
             stateSummary: root.querySelector("[data-hw-state-summary]"),
@@ -72,6 +79,36 @@
             downloadLinks: Array.from(root.querySelectorAll("[data-hw-download-link]"))
         };
 
+        elements.editModal = root.querySelector("[data-hw-edit-modal]");
+        elements.editTitle = root.querySelector("[data-hw-edit-title]");
+        elements.editSubtitle = root.querySelector("[data-hw-edit-subtitle]");
+        elements.editStatus = root.querySelector("[data-hw-edit-status]");
+        elements.editForm = root.querySelector("[data-hw-edit-form]");
+        elements.editCount = root.querySelector("[data-hw-edit-count]");
+        elements.editMeta = root.querySelector("[data-hw-edit-meta]");
+        elements.saveEditBtn = root.querySelector("[data-hw-save-edit]");
+        elements.closeEditModalButtons = Array.from(root.querySelectorAll("[data-hw-close-edit-modal]"));
+        elements.clientOptions = root.querySelector("[data-hw-client-options]");
+        elements.clientHint = root.querySelector("[data-hw-client-hint]");
+        elements.editFields = {
+            clientName: root.querySelector('[data-hw-edit-field="clientName"]'),
+            quantity: root.querySelector('[data-hw-edit-field="quantity"]'),
+            saleUnit: root.querySelector('[data-hw-edit-field="saleUnit"]'),
+            totalSale: root.querySelector('[data-hw-edit-field="totalSale"]'),
+            stateValue: root.querySelector('[data-hw-edit-field="stateValue"]'),
+            purchaseOrderNumber: root.querySelector('[data-hw-edit-field="purchaseOrderNumber"]'),
+            odcDateValue: root.querySelector('[data-hw-edit-field="odcDateValue"]'),
+            supplierUnitCost: root.querySelector('[data-hw-edit-field="supplierUnitCost"]'),
+            supplierTotal: root.querySelector('[data-hw-edit-field="supplierTotal"]'),
+            freightValue: root.querySelector('[data-hw-edit-field="freightValue"]'),
+            utility: root.querySelector('[data-hw-edit-field="utility"]'),
+            marginValue: root.querySelector('[data-hw-edit-field="marginValue"]'),
+            provider: root.querySelector('[data-hw-edit-field="provider"]'),
+            supplierPaymentDateValue: root.querySelector('[data-hw-edit-field="supplierPaymentDateValue"]'),
+            deliveryRecordDateValue: root.querySelector('[data-hw-edit-field="deliveryRecordDateValue"]'),
+            invoiceNumber: root.querySelector('[data-hw-edit-field="invoiceNumber"]')
+        };
+
         if (!config.boardUrl
             || !config.saveUrl
             || !config.uploadUrl
@@ -96,12 +133,18 @@
             busy: false,
             boardLoading: false,
             saving: false,
+            editRecords: [],
+            editDirtyFields: new Set(),
+            editClientSelection: null,
+            clientLookupTimer: 0,
+            clientLookupSequence: 0,
+            clientSuggestions: [],
             invoiceSuggestions: [],
             invoiceLookupTimer: 0,
             invoiceLookupSequence: 0
         };
 
-        [elements.status, elements.importStatus, elements.boardStatus, elements.modalStatus]
+        [elements.status, elements.importStatus, elements.boardStatus, elements.modalStatus, elements.editStatus]
             .filter(Boolean)
             .forEach(element => {
                 element.dataset.baseClass = element.className;
@@ -161,11 +204,25 @@
         elements.provisionCsvBtn?.addEventListener("click", provisionCsv);
         elements.refreshBtn.addEventListener("click", () => loadBoard());
         elements.selectedActionBtn.addEventListener("click", openSelectedRows);
+        elements.editSelectedBtn?.addEventListener("click", openBulkEditForSelectedRows);
+        if (elements.startDate) {
+            elements.startDate.value = config.initialStartDate || "";
+            elements.startDate.addEventListener("change", handleDateFilterChange);
+        }
+        if (elements.endDate) {
+            elements.endDate.value = config.initialEndDate || "";
+            elements.endDate.addEventListener("change", handleDateFilterChange);
+        }
         elements.stateFilter.addEventListener("change", () => {
             elements.filterLabel.textContent = elements.stateFilter.options[elements.stateFilter.selectedIndex]?.text || "Todos los estados";
             state.selectedRecordIds.clear();
             loadBoard();
         });
+
+        function handleDateFilterChange() {
+            state.selectedRecordIds.clear();
+            loadBoard();
+        }
 
         elements.selectAll?.addEventListener("change", () => {
             const checked = Boolean(elements.selectAll?.checked);
@@ -258,6 +315,14 @@
             await saveStage();
         });
 
+        elements.editForm?.addEventListener("submit", async event => {
+            event.preventDefault();
+            await saveBulkEdit();
+        });
+
+        elements.editForm?.addEventListener("input", handleBulkEditInput);
+        elements.editForm?.addEventListener("change", handleBulkEditChange);
+
         elements.form.addEventListener("change", event => {
             const target = event.target;
             if (!(target instanceof HTMLInputElement)) {
@@ -287,6 +352,10 @@
             button.addEventListener("click", closeModal);
         });
 
+        elements.closeEditModalButtons.forEach(button => {
+            button.addEventListener("click", closeEditModal);
+        });
+
         elements.modal.addEventListener("click", event => {
             const target = event.target;
             if (target instanceof HTMLElement && target.hasAttribute("data-hw-close-modal")) {
@@ -294,8 +363,42 @@
             }
         });
 
+        elements.editModal?.addEventListener("click", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            if (target.hasAttribute("data-hw-close-edit-modal")) {
+                closeEditModal();
+                return;
+            }
+
+            const option = target.closest("[data-hw-client-option]");
+            if (option instanceof HTMLElement) {
+                selectClientOption(option);
+            }
+        });
+
+        document.addEventListener("click", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            if (!target.closest(".hardware-lookup")) {
+                closeClientLookupMenu();
+            }
+        });
+
         document.addEventListener("keydown", event => {
-            if (event.key === "Escape" && !elements.modal.hidden) {
+            if (event.key !== "Escape") {
+                return;
+            }
+
+            if (elements.editModal && !elements.editModal.hidden) {
+                closeEditModal();
+            } else if (!elements.modal.hidden) {
                 closeModal();
             }
         });
@@ -483,9 +586,7 @@
                 renderBoard(result);
             } catch (error) {
                 elements.rows.innerHTML = `
-                    <tr>
-                        <td colspan="9" class="hardware-table__empty">${escapeHtml(getErrorMessage(error))}</td>
-                    </tr>
+                    <div class="hardware-empty">${escapeHtml(getErrorMessage(error))}</div>
                 `;
                 setStatus(elements.boardStatus, "error", getErrorMessage(error));
             } finally {
@@ -537,8 +638,7 @@
                 `).join("")}
             `;
 
-            elements.filterLabel.textContent =
-                elements.stateFilter.options[elements.stateFilter.selectedIndex]?.text || "Todos los estados";
+            elements.filterLabel.textContent = buildActiveFilterLabel(board);
         }
 
         function renderWarnings(board) {
@@ -588,28 +688,94 @@
 
         function renderRows(board) {
             const rows = Array.isArray(board?.rows) ? board.rows : [];
-            state.displayItems = buildDisplayItems(rows);
+            const ownerTables = buildOwnerTables(rows);
+            state.displayItems = ownerTables.flatMap(owner => owner.items);
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
-                    <tr>
-                        <td colspan="9" class="hardware-table__empty">No hay registros de Hardware para mostrar.</td>
-                    </tr>
+                    <div class="hardware-empty">No hay registros de Hardware para mostrar.</div>
                 `;
                 syncSelectAllState();
                 return;
             }
 
-            elements.rows.innerHTML = state.displayItems.map(item => {
-                if (item.type === "group") {
-                    return renderGroupRows(item);
-                }
-
-                return renderRecordRow(item.row, false);
-            }).join("");
+            elements.rows.innerHTML = ownerTables.map(renderOwnerTable).join("");
 
             syncGroupCheckboxStates();
             syncSelectAllState();
+        }
+
+        function buildOwnerTables(rows) {
+            const owners = new Map();
+            rows.forEach((row, index) => {
+                const ownerKey = normalizeText(row?.ownerId || row?.ownerName || "sin-owner") || "sin-owner";
+                if (!owners.has(ownerKey)) {
+                    owners.set(ownerKey, {
+                        key: ownerKey,
+                        ownerId: row?.ownerId || "",
+                        ownerName: row?.ownerName || "Sin propietario",
+                        rows: [],
+                        index
+                    });
+                }
+
+                owners.get(ownerKey).rows.push(row);
+            });
+
+            return Array.from(owners.values())
+                .sort((left, right) => left.index - right.index)
+                .map(owner => ({
+                    ...owner,
+                    items: buildDisplayItems(owner.rows)
+                }));
+        }
+
+        function renderOwnerTable(owner) {
+            const totalSale = owner.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const totalQuantity = owner.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
+            return `
+                <section class="hardware-owner-table" data-hw-owner-table="${escapeHtml(owner.key)}">
+                    <div class="hardware-owner-table__header">
+                        <div>
+                            <h3>${escapeHtml(owner.ownerName || "Sin propietario")}</h3>
+                            <p>${formatNumber(owner.rows.length)} registro(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(totalSale)}</p>
+                        </div>
+                    </div>
+                    <div class="hardware-table-wrap">
+                        <table class="table align-middle hardware-table">
+                            <colgroup>
+                                <col class="hardware-table__col-select" />
+                                <col class="hardware-table__col-client" />
+                                <col class="hardware-table__col-order" />
+                                <col class="hardware-table__col-date" />
+                                <col class="hardware-table__col-quantity" />
+                                <col class="hardware-table__col-sale-unit" />
+                                <col class="hardware-table__col-total" />
+                                <col class="hardware-table__col-state" />
+                                <col class="hardware-table__col-action" />
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th class="hardware-table__select-col"></th>
+                                    <th>Cliente</th>
+                                    <th>No orden</th>
+                                    <th>Fecha ODC</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Venta unidad</th>
+                                    <th class="text-end">Total línea</th>
+                                    <th class="hardware-table__state-col">Estado</th>
+                                    <th class="hardware-table__action-col">Botón</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${owner.items.map(item => item.type === "group"
+                                    ? renderGroupRows(item)
+                                    : renderRecordRow(item.row, false)).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            `;
         }
 
         function renderGroupRows(group) {
@@ -625,20 +791,17 @@
                     <td>
                         <input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar grupo ${escapeHtml(group.orderNumber)}" />
                     </td>
-                    <td class="hardware-table__hardware-cell">
-                        <button type="button" class="hardware-group-toggle" data-hw-toggle-group="${escapeHtml(group.key)}" aria-expanded="${expanded ? "true" : "false"}">
-                            ${expanded ? "-" : "+"}
-                        </button>
-                        <div class="hardware-table__title">
-                            <strong>${formatNumber(group.rows.length)} filas agrupadas</strong>
-                        </div>
-                    </td>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
+                            <button type="button" class="hardware-group-toggle" data-hw-toggle-group="${escapeHtml(group.key)}" aria-expanded="${expanded ? "true" : "false"}">
+                                ${expanded ? "-" : "+"}
+                            </button>
                             <strong>${escapeHtml(clientLabel)}</strong>
+                            <div class="hardware-table__submeta">${formatNumber(group.rows.length)} filas agrupadas</div>
                         </div>
                     </td>
                     <td class="hardware-table__order-cell"><span class="hardware-order-number">${escapeHtml(group.orderNumber)}</span></td>
+                    <td>${escapeHtml(getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas")}</td>
                     <td class="text-end">${formatNumber(totalQuantity)}</td>
                     <td class="text-end">-</td>
                     <td class="text-end">${formatCurrency(totalSale)}</td>
@@ -662,17 +825,13 @@
                     <td>
                         <input type="checkbox" class="form-check-input" data-hw-select-record="${escapeHtml(row?.recordId || "")}" ${selected ? "checked" : ""} aria-label="Seleccionar ${escapeHtml(row?.name || "hardware")}" />
                     </td>
-                    <td class="hardware-table__hardware-cell">
-                        <div class="hardware-table__title">
-                            <strong>${escapeHtml(row?.name || "")}</strong>
-                        </div>
-                    </td>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
                             <strong>${escapeHtml(row?.clientName || "-")}</strong>
                         </div>
                     </td>
                     <td class="hardware-table__order-cell">${row?.purchaseOrderNumber ? `<span class="hardware-order-number">${escapeHtml(row.purchaseOrderNumber)}</span>` : `<span class="hardware-table__submeta">Sin orden</span>`}</td>
+                    <td>${row?.odcDateDisplay ? escapeHtml(row.odcDateDisplay) : `<span class="hardware-table__submeta">Sin fecha</span>`}</td>
                     <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.totalSale || 0)}</td>
@@ -733,18 +892,24 @@
             if (count === 0) {
                 elements.selectedActionBtn.disabled = true;
                 elements.selectedActionBtn.textContent = "Gestionar selección";
+                if (elements.editSelectedBtn) {
+                    elements.editSelectedBtn.disabled = true;
+                }
                 setText(elements.selectionSummary, "Selecciona una o varias filas del mismo estado.");
                 syncSelectAllState();
                 return;
             }
 
             elements.selectedActionBtn.disabled = state.busy || !validation.ok;
+            if (elements.editSelectedBtn) {
+                elements.editSelectedBtn.disabled = state.busy;
+            }
             elements.selectedActionBtn.textContent = validation.ok
                 ? (selectedRecords[0].actionLabel || "Gestionar selección")
                 : "Gestionar selección";
             setText(elements.selectionSummary, validation.ok
                 ? `${formatNumber(count)} fila(s) seleccionada(s) · ${selectedRecords[0].stateLabel || "Sin estado"}`
-                : validation.message);
+                : `${validation.message} · Puedes editar la selección.`);
             syncSelectAllState();
         }
 
@@ -1017,6 +1182,374 @@
             }
         }
 
+        function openBulkEditForSelectedRows() {
+            if (!config.editUrl) {
+                setStatus(elements.boardStatus, "warning", "No está configurada la edición de registros de Hardware.");
+                return;
+            }
+
+            const selectedRecords = getSelectedRows();
+            if (!selectedRecords.length) {
+                setStatus(elements.boardStatus, "warning", "Selecciona al menos una fila de Hardware para editar.");
+                return;
+            }
+
+            state.editRecords = selectedRecords.map(record => ({ ...record }));
+            state.editDirtyFields = new Set();
+            state.editClientSelection = null;
+            state.clientSuggestions = [];
+            closeClientLookupMenu();
+            renderBulkEditModal();
+
+            elements.editModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+        }
+
+        function renderBulkEditModal() {
+            if (!elements.editForm || !state.editRecords.length) {
+                return;
+            }
+
+            const records = state.editRecords;
+            const clientName = getCommonValue(records, "clientName");
+            const clientId = getCommonValue(records, "clientId");
+            state.editClientSelection = clientName && clientId
+                ? { id: clientId, name: clientName }
+                : null;
+
+            setText(elements.editCount, `${formatNumber(records.length)} fila(s) seleccionada(s)`);
+            setEditFieldValue("clientName", clientName);
+            setEditFieldValue("quantity", getCommonNumberValue(records, "quantity"));
+            setEditFieldValue("saleUnit", getCommonNumberValue(records, "saleUnit"));
+            setEditFieldValue("totalSale", getCommonNumberValue(records, "totalSale"));
+            renderBulkEditStateOptions(getCommonValue(records, "stateValue"));
+            setEditFieldValue("purchaseOrderNumber", getCommonValue(records, "purchaseOrderNumber"));
+            setEditFieldValue("odcDateValue", getCommonValue(records, "odcDateValue"));
+            setEditFieldValue("supplierUnitCost", getCommonNumberValue(records, "supplierUnitCost"));
+            setEditFieldValue("supplierTotal", getCommonNumberValue(records, "supplierTotal"));
+            setEditFieldValue("freightValue", getCommonNumberValue(records, "freightValue"));
+            setEditFieldValue("utility", getCommonNumberValue(records, "utility"));
+            setEditFieldValue("marginValue", getCommonNumberValue(records, "marginValue"));
+            setEditFieldValue("provider", getCommonValue(records, "provider"));
+            setEditFieldValue("supplierPaymentDateValue", getCommonValue(records, "supplierPaymentDateValue"));
+            setEditFieldValue("deliveryRecordDateValue", getCommonValue(records, "deliveryRecordDateValue"));
+            setEditFieldValue("invoiceNumber", getCommonValue(records, "invoiceNumber"));
+
+            if (elements.clientHint) {
+                elements.clientHint.textContent = clientName
+                    ? "El cliente actual se mantiene si no haces una nueva selección."
+                    : "Busca y selecciona un cliente para cambiarlo.";
+            }
+
+            clearStatus(elements.editStatus);
+            updateEditDirtyMeta();
+        }
+
+        function renderBulkEditStateOptions(selectedValue) {
+            const target = elements.editFields.stateValue;
+            if (!target) {
+                return;
+            }
+
+            const options = Array.isArray(state.board?.stateOptions) ? state.board.stateOptions : [];
+            target.innerHTML = `
+                <option value="">Sin cambio</option>
+                ${options.map(option => `
+                    <option value="${escapeHtml(option.value)}">${escapeHtml(option.label || "")}</option>
+                `).join("")}
+            `;
+            target.value = selectedValue ? String(selectedValue) : "";
+        }
+
+        function handleBulkEditInput(event) {
+            const fieldName = getEditFieldName(event.target);
+            if (!fieldName) {
+                return;
+            }
+
+            markEditFieldDirty(fieldName);
+            if (fieldName === "clientName") {
+                state.editClientSelection = null;
+                queueClientLookup((elements.editFields.clientName?.value || "").trim());
+            }
+        }
+
+        function handleBulkEditChange(event) {
+            const fieldName = getEditFieldName(event.target);
+            if (!fieldName) {
+                return;
+            }
+
+            markEditFieldDirty(fieldName);
+        }
+
+        function markEditFieldDirty(fieldName) {
+            state.editDirtyFields.add(fieldName);
+            updateEditDirtyMeta();
+        }
+
+        function updateEditDirtyMeta() {
+            const changedCount = state.editDirtyFields.size;
+            setText(elements.editMeta, changedCount === 0
+                ? "Sin cambios"
+                : `${formatNumber(changedCount)} campo(s) modificado(s)`);
+
+            if (elements.saveEditBtn) {
+                elements.saveEditBtn.disabled = state.busy || changedCount === 0;
+            }
+        }
+
+        function queueClientLookup(query) {
+            window.clearTimeout(state.clientLookupTimer);
+
+            if (!elements.clientOptions || !config.clientSearchUrl) {
+                return;
+            }
+
+            if (query.length < 2) {
+                state.clientSuggestions = [];
+                closeClientLookupMenu();
+                if (elements.clientHint) {
+                    elements.clientHint.textContent = "Escribe al menos 2 caracteres para buscar el cliente.";
+                }
+                return;
+            }
+
+            if (elements.clientHint) {
+                elements.clientHint.textContent = "Buscando cliente...";
+            }
+
+            const sequence = ++state.clientLookupSequence;
+            state.clientLookupTimer = window.setTimeout(async () => {
+                try {
+                    const result = await fetchJson(buildClientSearchUrl(query), { method: "GET" });
+                    if (sequence !== state.clientLookupSequence) {
+                        return;
+                    }
+
+                    state.clientSuggestions = Array.isArray(result) ? result : [];
+                    renderClientLookupOptions(state.clientSuggestions);
+                    if (elements.clientHint) {
+                        elements.clientHint.textContent = state.clientSuggestions.length > 0
+                            ? "Selecciona una coincidencia para guardar el lookup."
+                            : "No se encontraron clientes con esa búsqueda.";
+                    }
+                } catch (error) {
+                    if (sequence !== state.clientLookupSequence) {
+                        return;
+                    }
+
+                    state.clientSuggestions = [];
+                    closeClientLookupMenu();
+                    if (elements.clientHint) {
+                        elements.clientHint.textContent = getErrorMessage(error);
+                    }
+                }
+            }, 220);
+        }
+
+        function renderClientLookupOptions(items) {
+            if (!elements.clientOptions) {
+                return;
+            }
+
+            if (!items.length) {
+                elements.clientOptions.innerHTML = `<div class="hardware-lookup__empty">Sin coincidencias</div>`;
+                elements.clientOptions.classList.add("is-open");
+                return;
+            }
+
+            elements.clientOptions.innerHTML = items.map(item => `
+                <button type="button"
+                        class="hardware-lookup__option"
+                        data-hw-client-option
+                        data-client-id="${escapeHtml(item?.id || "")}"
+                        data-client-name="${escapeHtml(item?.name || "")}">
+                    <span>${escapeHtml(item?.name || "Cliente sin nombre")}</span>
+                    <small>${escapeHtml(item?.id || "")}</small>
+                </button>
+            `).join("");
+            elements.clientOptions.classList.add("is-open");
+        }
+
+        function selectClientOption(option) {
+            const clientId = option.dataset.clientId || "";
+            const clientName = option.dataset.clientName || "";
+            if (!clientId || !clientName) {
+                return;
+            }
+
+            state.editClientSelection = { id: clientId, name: clientName };
+            setEditFieldValue("clientName", clientName);
+            markEditFieldDirty("clientName");
+            closeClientLookupMenu();
+            if (elements.clientHint) {
+                elements.clientHint.textContent = "Cliente seleccionado para guardar.";
+            }
+        }
+
+        function closeClientLookupMenu() {
+            if (!elements.clientOptions) {
+                return;
+            }
+
+            elements.clientOptions.innerHTML = "";
+            elements.clientOptions.classList.remove("is-open");
+        }
+
+        async function saveBulkEdit() {
+            if (state.saving || !state.editRecords.length) {
+                return;
+            }
+
+            let payload;
+            try {
+                payload = buildBulkEditPayload();
+            } catch (error) {
+                setStatus(elements.editStatus, "error", getErrorMessage(error));
+                return;
+            }
+
+            try {
+                state.saving = true;
+                setBusy(true);
+                setStatus(elements.editStatus, "info", "Guardando cambios de Hardware...");
+                const result = await fetchJson(config.editUrl, {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+
+                closeEditModal(true);
+                state.selectedRecordIds.clear();
+                await loadBoard();
+                setStatus(elements.status, "success", result?.message || "Registros de Hardware actualizados.");
+            } catch (error) {
+                setStatus(elements.editStatus, "error", getErrorMessage(error));
+            } finally {
+                state.saving = false;
+                if (state.busy) {
+                    setBusy(false);
+                }
+            }
+        }
+
+        function buildBulkEditPayload() {
+            const dirty = state.editDirtyFields;
+            if (!dirty.size) {
+                throw new Error("Modifica al menos un campo antes de guardar.");
+            }
+
+            const payload = {
+                recordIds: state.editRecords.map(record => record.recordId).filter(Boolean)
+            };
+
+            if (!payload.recordIds.length) {
+                throw new Error("Selecciona al menos una fila de Hardware para editar.");
+            }
+
+            if (dirty.has("clientName")) {
+                const typedClient = (elements.editFields.clientName?.value || "").trim();
+                if (!state.editClientSelection?.id
+                    || normalizeText(state.editClientSelection.name) !== normalizeText(typedClient)) {
+                    throw new Error("Selecciona un cliente válido desde la lista de resultados.");
+                }
+
+                payload.clientChanged = true;
+                payload.clientId = state.editClientSelection.id;
+                payload.clientName = state.editClientSelection.name;
+            }
+
+            if (dirty.has("quantity")) {
+                payload.quantityChanged = true;
+                payload.quantity = parseOptionalIntegerInput("quantity", "Cantidad");
+            }
+            if (dirty.has("saleUnit")) {
+                payload.saleUnitChanged = true;
+                payload.saleUnit = parseOptionalDecimalInput("saleUnit", "Venta unidad");
+            }
+            if (dirty.has("totalSale")) {
+                payload.totalSaleChanged = true;
+                payload.totalSale = parseOptionalDecimalInput("totalSale", "Total línea");
+            }
+            if (dirty.has("stateValue")) {
+                const rawState = getEditFieldValue("stateValue");
+                const stateValue = rawState ? Number.parseInt(rawState, 10) : Number.NaN;
+                if (!Number.isInteger(stateValue)) {
+                    throw new Error("Selecciona un estado válido.");
+                }
+                payload.stateChanged = true;
+                payload.stateValue = stateValue;
+            }
+            if (dirty.has("purchaseOrderNumber")) {
+                payload.purchaseOrderNumberChanged = true;
+                payload.purchaseOrderNumber = getEditFieldValue("purchaseOrderNumber");
+            }
+            if (dirty.has("odcDateValue")) {
+                payload.odcDateChanged = true;
+                payload.odcDateValue = getEditFieldValue("odcDateValue");
+            }
+            if (dirty.has("supplierUnitCost")) {
+                payload.supplierUnitCostChanged = true;
+                payload.supplierUnitCost = parseOptionalDecimalInput("supplierUnitCost", "Costo unt proveedor");
+            }
+            if (dirty.has("supplierTotal")) {
+                payload.supplierTotalChanged = true;
+                payload.supplierTotal = parseOptionalDecimalInput("supplierTotal", "Total proveedor");
+            }
+            if (dirty.has("freightValue")) {
+                payload.freightValueChanged = true;
+                payload.freightValue = parseOptionalDecimalInput("freightValue", "Valor flete");
+            }
+            if (dirty.has("utility")) {
+                payload.utilityChanged = true;
+                payload.utility = parseOptionalDecimalInput("utility", "Utilidad");
+            }
+            if (dirty.has("marginValue")) {
+                payload.marginValueChanged = true;
+                payload.marginValue = parseOptionalDecimalInput("marginValue", "Valor margen");
+            }
+            if (dirty.has("provider")) {
+                payload.providerChanged = true;
+                payload.provider = getEditFieldValue("provider");
+            }
+            if (dirty.has("supplierPaymentDateValue")) {
+                payload.supplierPaymentDateChanged = true;
+                payload.supplierPaymentDateValue = getEditFieldValue("supplierPaymentDateValue");
+            }
+            if (dirty.has("deliveryRecordDateValue")) {
+                payload.deliveryRecordDateChanged = true;
+                payload.deliveryRecordDateValue = getEditFieldValue("deliveryRecordDateValue");
+            }
+            if (dirty.has("invoiceNumber")) {
+                payload.invoiceNumberChanged = true;
+                payload.invoiceNumber = getEditFieldValue("invoiceNumber");
+            }
+
+            return payload;
+        }
+
+        function closeEditModal(force = false) {
+            if (state.saving && !force) {
+                return;
+            }
+
+            window.clearTimeout(state.clientLookupTimer);
+            state.editRecords = [];
+            state.editDirtyFields = new Set();
+            state.editClientSelection = null;
+            state.clientSuggestions = [];
+            closeClientLookupMenu();
+            clearStatus(elements.editStatus);
+
+            if (elements.editModal) {
+                elements.editModal.hidden = true;
+            }
+
+            if (!elements.modal || elements.modal.hidden) {
+                document.body.classList.remove("hardware-modal-open");
+            }
+        }
+
         async function uploadPendingFiles() {
             const entries = Object.entries(state.pendingFiles)
                 .filter(([, file]) => file instanceof File);
@@ -1281,10 +1814,24 @@
         function buildBoardUrl() {
             const url = new URL(config.boardUrl, window.location.origin);
             const stateValue = elements.stateFilter.value || "";
+            const startDate = (elements.startDate?.value || "").trim();
+            const endDate = (elements.endDate?.value || "").trim();
             if (stateValue) {
                 url.searchParams.set("stateValue", stateValue);
             }
+            if (startDate) {
+                url.searchParams.set("startDate", startDate);
+            }
+            if (endDate) {
+                url.searchParams.set("endDate", endDate);
+            }
 
+            return `${url.pathname}${url.search}`;
+        }
+
+        function buildClientSearchUrl(query) {
+            const url = new URL(config.clientSearchUrl, window.location.origin);
+            url.searchParams.set("q", query);
             return `${url.pathname}${url.search}`;
         }
 
@@ -1302,7 +1849,7 @@
         }
 
         function buildGroupKey(row) {
-            return `${Number(row?.stateValue || 0)}|${normalizeText(row?.purchaseOrderNumber || "")}`;
+            return `${normalizeText(row?.ownerId || row?.ownerName || "sin-owner")}|${Number(row?.stateValue || 0)}|${normalizeText(row?.purchaseOrderNumber || "")}`;
         }
 
         function buildDocumentationFileKey(recordId, fieldName) {
@@ -1369,6 +1916,16 @@
             return values.every(value => value === first) ? first : "";
         }
 
+        function getCommonNumberValue(rows, property) {
+            const value = getCommonValue(rows, property);
+            if (value === "") {
+                return "";
+            }
+
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? String(numeric) : value;
+        }
+
         function sumValues(rows, property) {
             return rows.reduce((total, row) => total + Number(row?.[property] || 0), 0);
         }
@@ -1380,9 +1937,12 @@
                 elements.analyzeCsvBtn,
                 elements.provisionCsvBtn,
                 elements.stateFilter,
+                elements.startDate,
+                elements.endDate,
                 elements.refreshBtn,
                 elements.selectAll,
-                elements.selectedActionBtn
+                elements.selectedActionBtn,
+                elements.editSelectedBtn
             ].forEach(element => {
                 if (element) {
                     element.disabled = isBusy;
@@ -1397,12 +1957,21 @@
                 button.disabled = isBusy;
             });
 
+            elements.editForm?.querySelectorAll("input, select, textarea, button").forEach(element => {
+                element.disabled = isBusy;
+            });
+
+            elements.closeEditModalButtons.forEach(button => {
+                button.disabled = isBusy;
+            });
+
             if (elements.provisionCsvBtn && !isBusy) {
                 const previewColumns = Array.isArray(state.preview?.columns) ? state.preview.columns : [];
                 elements.provisionCsvBtn.disabled = previewColumns.length === 0 || Number(state.preview?.totalRows || 0) === 0;
             }
 
             renderSelectionState();
+            updateEditDirtyMeta();
         }
 
         async function fetchJson(url, options = {}) {
@@ -1487,6 +2056,57 @@
             if (element) {
                 element.value = value ?? "";
             }
+        }
+
+        function setEditFieldValue(fieldName, value) {
+            setFieldValue(elements.editFields?.[fieldName], value);
+        }
+
+        function getEditFieldValue(fieldName) {
+            return (elements.editFields?.[fieldName]?.value || "").trim();
+        }
+
+        function getEditFieldName(target) {
+            if (!(target instanceof HTMLElement)) {
+                return "";
+            }
+
+            const field = target.closest("[data-hw-edit-field]");
+            return field instanceof HTMLElement ? field.dataset.hwEditField || "" : "";
+        }
+
+        function parseOptionalIntegerInput(fieldName, label) {
+            const raw = getEditFieldValue(fieldName);
+            if (!raw) {
+                return null;
+            }
+
+            const parsed = Number.parseInt(raw, 10);
+            if (!Number.isInteger(parsed) || String(parsed) !== String(Number(raw))) {
+                throw new Error(`${label} debe ser un número entero válido.`);
+            }
+
+            return parsed;
+        }
+
+        function parseOptionalDecimalInput(fieldName, label) {
+            const raw = getEditFieldValue(fieldName);
+            if (!raw) {
+                return null;
+            }
+
+            const parsed = parseDecimal(raw);
+            if (!Number.isFinite(parsed)) {
+                throw new Error(`${label} debe ser un número válido.`);
+            }
+
+            return parsed;
+        }
+
+        function buildActiveFilterLabel(board) {
+            const stateLabel = elements.stateFilter.options[elements.stateFilter.selectedIndex]?.text || "Todos los estados";
+            const dateLabel = board?.dateFilterLabel || "";
+            return dateLabel ? `${stateLabel} · ${dateLabel}` : stateLabel;
         }
 
         function resetFileInputs() {

@@ -364,6 +364,36 @@
     font-size: 13px;
 }
 
+.hardware-owner-tables {
+    display: grid;
+    gap: 18px;
+}
+
+.hardware-owner-table {
+    display: grid;
+    gap: 10px;
+}
+
+.hardware-owner-table__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.hardware-owner-table__header h3 {
+    margin: 0;
+    color: var(--hardware-ink);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.hardware-owner-table__header p {
+    margin: 4px 0 0;
+    color: var(--hardware-muted);
+    font-size: 13px;
+}
+
 .hardware-state-grid {
     display: grid;
     gap: 12px;
@@ -439,6 +469,10 @@
 
 .hardware-table__col-order {
     width: 92px;
+}
+
+.hardware-table__col-date {
+    width: 102px;
 }
 
 .hardware-table__col-quantity {
@@ -688,6 +722,10 @@
     box-shadow: 0 24px 60px rgba(15, 23, 42, .18);
 }
 
+.hardware-modal__dialog--edit {
+    width: min(980px, 100%);
+}
+
 .hardware-status--modal {
     margin: 0;
 }
@@ -758,6 +796,62 @@
     min-width: 170px;
 }
 
+.hardware-lookup {
+    position: relative;
+}
+
+.hardware-lookup__menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 6px);
+    right: 0;
+    left: 0;
+    display: none;
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, .16);
+}
+
+.hardware-lookup__menu.is-open {
+    display: grid;
+}
+
+.hardware-lookup__option {
+    display: grid;
+    gap: 3px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-bottom: 1px solid #edf2f7;
+    background: #fff;
+    color: var(--hardware-ink);
+    text-align: left;
+}
+
+.hardware-lookup__option:hover,
+.hardware-lookup__option:focus {
+    background: var(--hardware-brand-soft);
+    outline: none;
+}
+
+.hardware-lookup__option span {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.hardware-lookup__option small,
+.hardware-lookup__empty {
+    color: var(--hardware-muted);
+    font-size: 12px;
+}
+
+.hardware-lookup__empty {
+    padding: 12px;
+}
+
 body.hardware-modal-open {
     overflow: hidden;
 }
@@ -782,6 +876,7 @@ body.hardware-modal-open {
     .hardware-toolbar,
     .hardware-toolbar__actions,
     .hardware-actions,
+    .hardware-owner-table__header,
     .hardware-modal__header,
     .hardware-modal__footer,
     .hardware-form__summary,

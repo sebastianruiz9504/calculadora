@@ -518,16 +518,16 @@ public sealed partial class DataverseService
         };
     }
 
-    public async Task<HardwareBoardDto> GetHardwareBoardAsync(int? stateValue = null, CancellationToken ct = default)
+    public async Task<HardwareBoardDto> GetHardwareBoardAsync(
+        int? stateValue = null,
+        DateOnly? startDate = null,
+        DateOnly? endDate = null,
+        CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var user = httpContext.User;
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
-            throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
-
         var metadata = await TryResolveHardwareEntityMetadataAsync(user, ct);
         if (metadata is null)
         {
@@ -543,36 +543,42 @@ public sealed partial class DataverseService
         await EnsureHardwareWorkflowSchemaAsync(user, ct);
         metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
+        if ((startDate.HasValue || endDate.HasValue) && !HasHardwareAttribute(attributes, HardwareOdcDateLogicalName))
+            throw new InvalidOperationException($"La tabla Hardware no tiene la columna {HardwareOdcDateLogicalName} para filtrar por fecha ODC.");
+
         var selectFields = BuildHardwareBoardSelectFields(metadata, attributes);
-        var ownerFilter =
-            $"{BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName)} eq {NormalizeGuid(currentUser.SystemUserId, nameof(currentUser.SystemUserId))}";
+        var filters = BuildHardwareBoardFilters(stateValue, startDate, endDate, attributes);
+        var filter = filters.Count > 0
+            ? $"&$filter={Uri.EscapeDataString(string.Join(" and ", filters))}"
+            : "";
+        var orderBy = HasHardwareAttribute(attributes, HardwareOdcDateLogicalName)
+            ? $"{HardwareOdcDateLogicalName} desc,{HardwareModifiedOnLogicalName} desc"
+            : $"{HardwareModifiedOnLogicalName} desc";
         var relativeUrl =
             $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields.Distinct(StringComparer.OrdinalIgnoreCase))}" +
-            $"&$filter={Uri.EscapeDataString(ownerFilter)}" +
-            $"&$orderby={HardwareModifiedOnLogicalName} desc,createdon desc&$top=250";
+            filter +
+            $"&$orderby={Uri.EscapeDataString(orderBy)}&$top=500";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         var rows = items
             .Select(item => BuildHardwareBoardRowDto(metadata, attributes, item))
             .Where(row => row is not null)
             .Select(row => row!)
-            .Where(row => IsHardwareRecordOwnedByCurrentUser(row, currentUser))
             .ToList();
-
-        var filteredRows = stateValue.HasValue && stateValue.Value > 0
-            ? rows.Where(row => row.StateValue == stateValue.Value).ToList()
-            : rows;
 
         return new HardwareBoardDto
         {
-            Message = filteredRows.Count == 0
+            Message = rows.Count == 0
                 ? "No hay registros de Hardware para mostrar con el filtro actual."
-                : $"Se cargaron {filteredRows.Count} registro(s) de Hardware.",
-            TotalCount = filteredRows.Count,
+                : $"Se cargaron {rows.Count} registro(s) de Hardware.",
+            DateFilterStartValue = FormatHardwareDateValue(startDate),
+            DateFilterEndValue = FormatHardwareDateValue(endDate),
+            DateFilterLabel = BuildHardwareDateFilterLabel(startDate, endDate),
+            TotalCount = rows.Count,
             SelectedStateValue = stateValue,
             StateOptions = HardwareStates.ToList(),
             StateSummaries = BuildHardwareStateSummaries(rows),
             Warnings = BuildHardwareWarnings(attributes),
-            Rows = filteredRows
+            Rows = rows
         };
     }
 
@@ -760,6 +766,43 @@ public sealed partial class DataverseService
             Message = message,
             Record = updatedRecords.FirstOrDefault() ?? new HardwareBoardRowDto(),
             Records = updatedRecords
+        };
+    }
+
+    public async Task<HardwareBulkEditResultDto> SaveHardwareRecordsAsync(
+        HardwareBulkEditRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var user = httpContext.User;
+        await EnsureProvisioningHardwareSchemaAsync(user, ct);
+
+        var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
+        var attributes = await LoadHardwareAttributesAsync(user, ct);
+        var recordIds = ResolveHardwareBulkEditRecordIds(request);
+        var payload = await BuildHardwareBulkEditPayloadAsync(request, attributes, user, ct);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("Modifica al menos un campo antes de guardar.");
+
+        foreach (var recordId in recordIds)
+        {
+            await PatchHardwareRecordAsync(metadata.EntitySetName, recordId, payload, user, ct);
+        }
+
+        var updatedRecords = new List<HardwareBoardRowDto>(recordIds.Count);
+        foreach (var recordId in recordIds)
+            updatedRecords.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
+
+        return new HardwareBulkEditResultDto
+        {
+            Records = updatedRecords,
+            Message = recordIds.Count == 1
+                ? "Se actualizo 1 fila de Hardware."
+                : $"Se actualizaron {recordIds.Count} filas de Hardware."
         };
     }
 
@@ -1777,10 +1820,6 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
-            throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
-
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         var selectFields = BuildHardwareBoardSelectFields(metadata, attributes);
         var relativeUrl =
@@ -1791,18 +1830,11 @@ public sealed partial class DataverseService
         var row = BuildHardwareBoardRowDto(metadata, attributes, doc.RootElement)
             ?? throw new InvalidOperationException("No fue posible reconstruir el registro de Hardware.");
 
-        if (!IsHardwareRecordOwnedByCurrentUser(row, currentUser))
-            throw new InvalidOperationException("El registro de Hardware seleccionado no pertenece al owner autenticado.");
-
         return row;
     }
 
     private async Task AutoClosePaidHardwareRecordsAsync(ClaimsPrincipal user, CancellationToken ct)
     {
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
-            throw new InvalidOperationException("No fue posible identificar el owner autenticado.");
-
         var metadata = await TryResolveHardwareEntityMetadataAsync(user, ct);
         if (metadata is null)
             return;
@@ -1813,8 +1845,7 @@ public sealed partial class DataverseService
             return;
 
         var filter =
-            $"{BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName)} eq {NormalizeGuid(currentUser.SystemUserId, nameof(currentUser.SystemUserId))}" +
-            $" and {HardwareStateLogicalName} eq {HardwareStateBilledAwaitingPayment}" +
+            $"{HardwareStateLogicalName} eq {HardwareStateBilledAwaitingPayment}" +
             $" and {HardwareInvoiceNumberLogicalName} ne null";
         var selectFields = string.Join(",",
             new[]
@@ -1900,6 +1931,42 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private static List<string> BuildHardwareBoardFilters(
+        int? stateValue,
+        DateOnly? startDate,
+        DateOnly? endDate,
+        IReadOnlyList<HardwareAttributeMetadata> attributes)
+    {
+        var filters = new List<string>();
+        if (stateValue.HasValue && stateValue.Value > 0)
+            filters.Add($"{HardwareStateLogicalName} eq {NormalizeHardwareStateValue(stateValue.Value)}");
+
+        if (HasHardwareAttribute(attributes, HardwareOdcDateLogicalName))
+        {
+            if (startDate.HasValue)
+                filters.Add($"{HardwareOdcDateLogicalName} ge {startDate.Value:yyyy-MM-dd}");
+
+            if (endDate.HasValue)
+                filters.Add($"{HardwareOdcDateLogicalName} le {endDate.Value:yyyy-MM-dd}");
+        }
+
+        return filters;
+    }
+
+    private static string BuildHardwareDateFilterLabel(DateOnly? startDate, DateOnly? endDate)
+    {
+        if (startDate.HasValue && endDate.HasValue)
+            return $"ODC {startDate.Value:dd/MM/yyyy} - {endDate.Value:dd/MM/yyyy}";
+
+        if (startDate.HasValue)
+            return $"ODC desde {startDate.Value:dd/MM/yyyy}";
+
+        if (endDate.HasValue)
+            return $"ODC hasta {endDate.Value:dd/MM/yyyy}";
+
+        return "Todas las fechas ODC";
+    }
+
     private static IReadOnlyList<string> BuildHardwareWarnings(IReadOnlyList<HardwareAttributeMetadata> attributes)
     {
         var warnings = new List<string>();
@@ -1974,6 +2041,85 @@ public sealed partial class DataverseService
             throw new InvalidOperationException("Selecciona al menos una fila de Hardware.");
 
         return normalized;
+    }
+
+    private static List<string> ResolveHardwareBulkEditRecordIds(HardwareBulkEditRequest request)
+    {
+        var normalized = (request.RecordIds ?? new List<string>())
+            .Where(static id => !string.IsNullOrWhiteSpace(id))
+            .Select(static id => NormalizeGuid(id, nameof(request.RecordIds)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalized.Count == 0)
+            throw new InvalidOperationException("Selecciona al menos una fila de Hardware para editar.");
+
+        return normalized;
+    }
+
+    private async Task<Dictionary<string, object?>> BuildHardwareBulkEditPayloadAsync(
+        HardwareBulkEditRequest request,
+        IReadOnlyList<HardwareAttributeMetadata> attributes,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (request.ClientChanged)
+        {
+            EnsureHardwareAttributeExists(attributes, HardwareClientLookupLogicalName);
+            var clientId = NormalizeOptionalGuid(request.ClientId);
+            if (string.IsNullOrWhiteSpace(clientId))
+                throw new InvalidOperationException("Selecciona un cliente valido de la lista.");
+
+            var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                HardwareTableLogicalName,
+                HardwareClientLookupLogicalName,
+                HardwareClientLookupLogicalName,
+                user,
+                ct);
+            payload[$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})";
+        }
+
+        if (request.QuantityChanged)
+            payload[HardwareQuantityLogicalName] = ParseHardwareBulkInteger(request.Quantity, "Cantidad");
+        if (request.SaleUnitChanged)
+            payload[HardwareSaleUnitLogicalName] = ParseHardwareBulkNonNegativeCurrency(request.SaleUnit, "Venta unidad");
+        if (request.TotalSaleChanged)
+            payload[HardwareTotalSaleLogicalName] = ParseHardwareBulkNonNegativeCurrency(request.TotalSale, "Total linea");
+        if (request.StateChanged)
+            payload[HardwareStateLogicalName] = ParseHardwareBulkState(request.StateValue);
+        if (request.PurchaseOrderNumberChanged)
+            payload[HardwarePurchaseOrderNumberLogicalName] = NormalizeHardwareCell(request.PurchaseOrderNumber);
+        if (request.OdcDateChanged)
+            payload[HardwareOdcDateLogicalName] = ParseHardwareBulkOptionalDate(request.OdcDateValue, "Fecha ODC");
+        if (request.SupplierUnitCostChanged)
+            payload[HardwareSupplierUnitCostLogicalName] = ParseHardwareBulkNonNegativeCurrency(request.SupplierUnitCost, "Costo unt proveedor");
+        if (request.SupplierTotalChanged)
+            payload[HardwareSupplierTotalLogicalName] = ParseHardwareBulkNonNegativeCurrency(request.SupplierTotal, "Total proveedor");
+        if (request.FreightValueChanged)
+            payload[HardwareFreightValueLogicalName] = ParseHardwareBulkNonNegativeCurrency(request.FreightValue, "Valor flete");
+        if (request.UtilityChanged)
+            payload[HardwareUtilityLogicalName] = ParseHardwareBulkCurrency(request.Utility, "Utilidad");
+        if (request.MarginValueChanged)
+            payload[HardwareMarginValueLogicalName] = ParseHardwareBulkCurrency(request.MarginValue, "Valor margen");
+        if (request.ProviderChanged)
+            payload[HardwareSupplierLogicalName] = NormalizeHardwareCell(request.Provider);
+        if (request.SupplierPaymentDateChanged)
+            payload[HardwareSupplierPaymentDateLogicalName] = ParseHardwareBulkOptionalDate(request.SupplierPaymentDateValue, "Fecha pago proveedor");
+        if (request.DeliveryRecordDateChanged)
+            payload[HardwareDeliveryRecordDateLogicalName] = ParseHardwareBulkOptionalDate(request.DeliveryRecordDateValue, "Fecha acta entrega");
+        if (request.InvoiceNumberChanged)
+            payload[HardwareInvoiceNumberLogicalName] = NormalizeHardwareCell(request.InvoiceNumber);
+
+        foreach (var fieldName in payload.Keys
+                     .Where(fieldName => !fieldName.EndsWith("@odata.bind", StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            EnsureHardwareAttributeExists(attributes, fieldName);
+        }
+
+        return payload;
     }
 
     private static Dictionary<string, HardwareDocumentationLineSaveRequest> ResolveHardwareDocumentationRows(
@@ -2104,6 +2250,52 @@ public sealed partial class DataverseService
         return RoundCurrency(value.Value);
     }
 
+    private static int ParseHardwareBulkInteger(int? value, string label)
+    {
+        if (!value.HasValue || value.Value < 0)
+            throw new InvalidOperationException($"El campo {label} debe ser un numero entero no negativo.");
+
+        return value.Value;
+    }
+
+    private static decimal ParseHardwareBulkNonNegativeCurrency(decimal? value, string label)
+    {
+        if (!value.HasValue || value.Value < 0m)
+            throw new InvalidOperationException($"El campo {label} no puede ser negativo.");
+
+        return RoundCurrency(value.Value);
+    }
+
+    private static decimal ParseHardwareBulkCurrency(decimal? value, string label)
+    {
+        if (!value.HasValue)
+            throw new InvalidOperationException($"El campo {label} debe ser numerico.");
+
+        return RoundCurrency(value.Value);
+    }
+
+    private static int ParseHardwareBulkState(int? value)
+    {
+        if (!value.HasValue)
+            throw new InvalidOperationException("Selecciona un estado valido.");
+
+        var normalized = NormalizeHardwareStateValue(value.Value);
+        _ = ResolveHardwareStateOption(normalized);
+        return normalized;
+    }
+
+    private static string? ParseHardwareBulkOptionalDate(string? rawValue, string label)
+    {
+        var normalized = NormalizeHardwareCell(rawValue);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        if (!TryParseHardwareDate(normalized, out var date))
+            throw new InvalidOperationException($"El campo {label} debe ser una fecha valida.");
+
+        return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
     private static string RequireHardwareText(string? value, string label)
     {
         var normalized = NormalizeHardwareCell(value);
@@ -2111,6 +2303,14 @@ public sealed partial class DataverseService
             throw new InvalidOperationException($"El campo {label} es obligatorio.");
 
         return normalized;
+    }
+
+    private static void EnsureHardwareAttributeExists(
+        IReadOnlyList<HardwareAttributeMetadata> attributes,
+        string fieldName)
+    {
+        if (!HasHardwareAttribute(attributes, fieldName))
+            throw new InvalidOperationException($"La tabla Hardware no tiene la columna {fieldName}.");
     }
 
     private static string ResolveHardwareAllowedFileField(string? fieldName)

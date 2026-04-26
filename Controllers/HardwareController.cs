@@ -27,6 +27,7 @@ public sealed class HardwareController : Controller
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var currentUser = await GetCurrentUserAsync(ct);
+        var today = ResolveBogotaToday();
         return View(new HardwareWorkspaceViewModel
         {
             RootId = "hardwareApp",
@@ -37,9 +38,13 @@ public sealed class HardwareController : Controller
             ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
             BoardUrl = Url.Action(nameof(Board), "Hardware") ?? "",
             SaveUrl = Url.Action(nameof(SaveStage), "Hardware") ?? "",
+            EditUrl = Url.Action(nameof(EditRecords), "Hardware") ?? "",
             UploadUrl = Url.Action(nameof(UploadFile), "Hardware") ?? "",
             DownloadUrl = Url.Action(nameof(DownloadFile), "Hardware") ?? "",
-            InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? ""
+            InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? "",
+            ClientSearchUrl = Url.Action(nameof(ClientSearch), "Hardware") ?? "",
+            InitialStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
+            InitialEndDate = today.ToString("yyyy-MM-dd")
         });
     }
 
@@ -99,7 +104,11 @@ public sealed class HardwareController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Board([FromQuery] int? stateValue, CancellationToken ct)
+    public async Task<IActionResult> Board(
+        [FromQuery] int? stateValue,
+        [FromQuery] DateOnly? startDate,
+        [FromQuery] DateOnly? endDate,
+        CancellationToken ct)
     {
         try
         {
@@ -138,7 +147,7 @@ public sealed class HardwareController : Controller
                 }
             }
 
-            var board = await _dataverse.GetHardwareBoardAsync(stateValue, ct);
+            var board = await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct);
             board.SyncedRequestsCount = syncedRequestsCount;
             board.SyncedImportedCount = syncedImportedCount;
             board.SyncMessages = syncMessages;
@@ -168,6 +177,27 @@ public sealed class HardwareController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible guardar la etapa de Hardware.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> EditRecords([FromBody] HardwareBulkEditRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar las filas y los campos que quieres editar."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveHardwareRecordsAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible editar los registros de Hardware.", ex));
         }
     }
 
@@ -244,8 +274,47 @@ public sealed class HardwareController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ClientSearch([FromQuery(Name = "q")] string query, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.SearchClientsAsync(query, 12, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar clientes para Hardware.", ex));
+        }
+    }
+
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct) =>
         await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
+
+    private static DateOnly ResolveBogotaToday()
+    {
+        var utcNow = DateTimeOffset.UtcNow;
+        foreach (var timeZoneId in new[] { "SA Pacific Standard Time", "America/Bogota" })
+        {
+            try
+            {
+                var timezone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, timezone).DateTime);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return DateOnly.FromDateTime(utcNow.UtcDateTime);
+    }
 
     private object CreateErrorPayload(string message, Exception? ex = null)
     {
