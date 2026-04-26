@@ -12,6 +12,7 @@
      data-download-url="@Model.DownloadUrl"
      data-invoice-search-url="@Model.InvoiceSearchUrl"
      data-client-search-url="@Model.ClientSearchUrl"
+     data-owner-search-url="@Model.OwnerSearchUrl"
      data-initial-start-date="@Model.InitialStartDate"
      data-initial-end-date="@Model.InitialEndDate">
     @if (Model.ShowHero)
@@ -288,6 +289,14 @@
                 </div>
 
                 <div class="hardware-form__grid">
+                    <label class="hardware-field hardware-field--span-2">
+                        <span class="hardware-field__label">Propietario</span>
+                        <div class="hardware-lookup">
+                            <input type="search" class="form-control" autocomplete="off" data-hw-edit-field="ownerName" />
+                            <div class="hardware-lookup__menu" data-hw-owner-options></div>
+                        </div>
+                        <span class="hardware-field__hint" data-hw-owner-hint>Busca y selecciona un usuario para cambiar el propietario.</span>
+                    </label>
                     <label class="hardware-field hardware-field--span-2">
                         <span class="hardware-field__label">Cliente</span>
                         <div class="hardware-lookup">

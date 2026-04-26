@@ -792,6 +792,49 @@ public sealed partial class DataverseService : IDataverseService
 
         return list;
     }
+
+    public async Task<IReadOnlyList<SystemUserLookupItem>> SearchSystemUsersAsync(string query, int top = 12, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        query = (query ?? "").Trim();
+        if (query.Length < 2)
+            return Array.Empty<SystemUserLookupItem>();
+
+        top = Math.Clamp(top, 1, 50);
+        var safeQuery = EscapeOdataLiteral(query);
+        var filter =
+            $"isdisabled eq false and (contains(fullname,'{safeQuery}') or contains(internalemailaddress,'{safeQuery}'))";
+        const string select = "systemuserid,fullname,internalemailaddress";
+        var relativeUrl =
+            $"/api/data/v9.2/systemusers?$select={select}" +
+            $"&$filter={Uri.EscapeDataString(filter)}&$orderby=fullname asc&$top={top}";
+
+        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement.GetProperty("value");
+        var list = new List<SystemUserLookupItem>(Math.Min(arr.GetArrayLength(), top));
+        foreach (var item in arr.EnumerateArray())
+        {
+            var id = ReadString(item, "systemuserid");
+            var name = ReadString(item, "fullname");
+            var email = ReadString(item, "internalemailaddress");
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            list.Add(new SystemUserLookupItem
+            {
+                Id = id,
+                Name = string.IsNullOrWhiteSpace(email) ? name : $"{name} ({email})",
+                Email = email
+            });
+        }
+
+        return list;
+    }
+
     public async Task<IReadOnlyList<RenewalDateLookupItem>> SearchRenewalDatesByClientAsync(string clientId, int top = 250, CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext

@@ -13,6 +13,7 @@
             downloadUrl: root.dataset.downloadUrl || "",
             invoiceSearchUrl: root.dataset.invoiceSearchUrl || "",
             clientSearchUrl: root.dataset.clientSearchUrl || "",
+            ownerSearchUrl: root.dataset.ownerSearchUrl || "",
             initialStartDate: root.dataset.initialStartDate || "",
             initialEndDate: root.dataset.initialEndDate || ""
         };
@@ -90,7 +91,10 @@
         elements.closeEditModalButtons = Array.from(root.querySelectorAll("[data-hw-close-edit-modal]"));
         elements.clientOptions = root.querySelector("[data-hw-client-options]");
         elements.clientHint = root.querySelector("[data-hw-client-hint]");
+        elements.ownerOptions = root.querySelector("[data-hw-owner-options]");
+        elements.ownerHint = root.querySelector("[data-hw-owner-hint]");
         elements.editFields = {
+            ownerName: root.querySelector('[data-hw-edit-field="ownerName"]'),
             clientName: root.querySelector('[data-hw-edit-field="clientName"]'),
             quantity: root.querySelector('[data-hw-edit-field="quantity"]'),
             saleUnit: root.querySelector('[data-hw-edit-field="saleUnit"]'),
@@ -136,9 +140,13 @@
             editRecords: [],
             editDirtyFields: new Set(),
             editClientSelection: null,
+            editOwnerSelection: null,
             clientLookupTimer: 0,
             clientLookupSequence: 0,
             clientSuggestions: [],
+            ownerLookupTimer: 0,
+            ownerLookupSequence: 0,
+            ownerSuggestions: [],
             invoiceSuggestions: [],
             invoiceLookupTimer: 0,
             invoiceLookupSequence: 0
@@ -377,6 +385,12 @@
             const option = target.closest("[data-hw-client-option]");
             if (option instanceof HTMLElement) {
                 selectClientOption(option);
+                return;
+            }
+
+            const ownerOption = target.closest("[data-hw-owner-option]");
+            if (ownerOption instanceof HTMLElement) {
+                selectOwnerOption(ownerOption);
             }
         });
 
@@ -387,7 +401,7 @@
             }
 
             if (!target.closest(".hardware-lookup")) {
-                closeClientLookupMenu();
+                closeLookupMenus();
             }
         });
 
@@ -1197,8 +1211,10 @@
             state.editRecords = selectedRecords.map(record => ({ ...record }));
             state.editDirtyFields = new Set();
             state.editClientSelection = null;
+            state.editOwnerSelection = null;
             state.clientSuggestions = [];
-            closeClientLookupMenu();
+            state.ownerSuggestions = [];
+            closeLookupMenus();
             renderBulkEditModal();
 
             elements.editModal.hidden = false;
@@ -1211,13 +1227,19 @@
             }
 
             const records = state.editRecords;
+            const ownerName = getCommonValue(records, "ownerName");
+            const ownerId = getCommonValue(records, "ownerId");
             const clientName = getCommonValue(records, "clientName");
             const clientId = getCommonValue(records, "clientId");
+            state.editOwnerSelection = ownerName && ownerId
+                ? { id: ownerId, name: ownerName }
+                : null;
             state.editClientSelection = clientName && clientId
                 ? { id: clientId, name: clientName }
                 : null;
 
             setText(elements.editCount, `${formatNumber(records.length)} fila(s) seleccionada(s)`);
+            setEditFieldValue("ownerName", ownerName);
             setEditFieldValue("clientName", clientName);
             setEditFieldValue("quantity", getCommonNumberValue(records, "quantity"));
             setEditFieldValue("saleUnit", getCommonNumberValue(records, "saleUnit"));
@@ -1239,6 +1261,11 @@
                 elements.clientHint.textContent = clientName
                     ? "El cliente actual se mantiene si no haces una nueva selección."
                     : "Busca y selecciona un cliente para cambiarlo.";
+            }
+            if (elements.ownerHint) {
+                elements.ownerHint.textContent = ownerName
+                    ? "El propietario actual se mantiene si no haces una nueva selección."
+                    : "Busca y selecciona un usuario para cambiar el propietario.";
             }
 
             clearStatus(elements.editStatus);
@@ -1271,6 +1298,9 @@
             if (fieldName === "clientName") {
                 state.editClientSelection = null;
                 queueClientLookup((elements.editFields.clientName?.value || "").trim());
+            } else if (fieldName === "ownerName") {
+                state.editOwnerSelection = null;
+                queueOwnerLookup((elements.editFields.ownerName?.value || "").trim());
             }
         }
 
@@ -1348,6 +1378,55 @@
             }, 220);
         }
 
+        function queueOwnerLookup(query) {
+            window.clearTimeout(state.ownerLookupTimer);
+
+            if (!elements.ownerOptions || !config.ownerSearchUrl) {
+                return;
+            }
+
+            if (query.length < 2) {
+                state.ownerSuggestions = [];
+                closeOwnerLookupMenu();
+                if (elements.ownerHint) {
+                    elements.ownerHint.textContent = "Escribe al menos 2 caracteres para buscar el usuario.";
+                }
+                return;
+            }
+
+            if (elements.ownerHint) {
+                elements.ownerHint.textContent = "Buscando usuario...";
+            }
+
+            const sequence = ++state.ownerLookupSequence;
+            state.ownerLookupTimer = window.setTimeout(async () => {
+                try {
+                    const result = await fetchJson(buildOwnerSearchUrl(query), { method: "GET" });
+                    if (sequence !== state.ownerLookupSequence) {
+                        return;
+                    }
+
+                    state.ownerSuggestions = Array.isArray(result) ? result : [];
+                    renderOwnerLookupOptions(state.ownerSuggestions);
+                    if (elements.ownerHint) {
+                        elements.ownerHint.textContent = state.ownerSuggestions.length > 0
+                            ? "Selecciona una coincidencia para guardar el propietario."
+                            : "No se encontraron usuarios con esa búsqueda.";
+                    }
+                } catch (error) {
+                    if (sequence !== state.ownerLookupSequence) {
+                        return;
+                    }
+
+                    state.ownerSuggestions = [];
+                    closeOwnerLookupMenu();
+                    if (elements.ownerHint) {
+                        elements.ownerHint.textContent = getErrorMessage(error);
+                    }
+                }
+            }, 220);
+        }
+
         function renderClientLookupOptions(items) {
             if (!elements.clientOptions) {
                 return;
@@ -1372,6 +1451,30 @@
             elements.clientOptions.classList.add("is-open");
         }
 
+        function renderOwnerLookupOptions(items) {
+            if (!elements.ownerOptions) {
+                return;
+            }
+
+            if (!items.length) {
+                elements.ownerOptions.innerHTML = `<div class="hardware-lookup__empty">Sin coincidencias</div>`;
+                elements.ownerOptions.classList.add("is-open");
+                return;
+            }
+
+            elements.ownerOptions.innerHTML = items.map(item => `
+                <button type="button"
+                        class="hardware-lookup__option"
+                        data-hw-owner-option
+                        data-owner-id="${escapeHtml(item?.id || "")}"
+                        data-owner-name="${escapeHtml(item?.name || "")}">
+                    <span>${escapeHtml(item?.name || "Usuario sin nombre")}</span>
+                    <small>${escapeHtml(item?.email || item?.id || "")}</small>
+                </button>
+            `).join("");
+            elements.ownerOptions.classList.add("is-open");
+        }
+
         function selectClientOption(option) {
             const clientId = option.dataset.clientId || "";
             const clientName = option.dataset.clientName || "";
@@ -1388,6 +1491,22 @@
             }
         }
 
+        function selectOwnerOption(option) {
+            const ownerId = option.dataset.ownerId || "";
+            const ownerName = option.dataset.ownerName || "";
+            if (!ownerId || !ownerName) {
+                return;
+            }
+
+            state.editOwnerSelection = { id: ownerId, name: ownerName };
+            setEditFieldValue("ownerName", ownerName);
+            markEditFieldDirty("ownerName");
+            closeOwnerLookupMenu();
+            if (elements.ownerHint) {
+                elements.ownerHint.textContent = "Propietario seleccionado para guardar.";
+            }
+        }
+
         function closeClientLookupMenu() {
             if (!elements.clientOptions) {
                 return;
@@ -1395,6 +1514,20 @@
 
             elements.clientOptions.innerHTML = "";
             elements.clientOptions.classList.remove("is-open");
+        }
+
+        function closeOwnerLookupMenu() {
+            if (!elements.ownerOptions) {
+                return;
+            }
+
+            elements.ownerOptions.innerHTML = "";
+            elements.ownerOptions.classList.remove("is-open");
+        }
+
+        function closeLookupMenus() {
+            closeClientLookupMenu();
+            closeOwnerLookupMenu();
         }
 
         async function saveBulkEdit() {
@@ -1445,6 +1578,18 @@
 
             if (!payload.recordIds.length) {
                 throw new Error("Selecciona al menos una fila de Hardware para editar.");
+            }
+
+            if (dirty.has("ownerName")) {
+                const typedOwner = (elements.editFields.ownerName?.value || "").trim();
+                if (!state.editOwnerSelection?.id
+                    || normalizeText(state.editOwnerSelection.name) !== normalizeText(typedOwner)) {
+                    throw new Error("Selecciona un propietario válido desde la lista de usuarios.");
+                }
+
+                payload.ownerChanged = true;
+                payload.ownerId = state.editOwnerSelection.id;
+                payload.ownerName = state.editOwnerSelection.name;
             }
 
             if (dirty.has("clientName")) {
@@ -1534,11 +1679,14 @@
             }
 
             window.clearTimeout(state.clientLookupTimer);
+            window.clearTimeout(state.ownerLookupTimer);
             state.editRecords = [];
             state.editDirtyFields = new Set();
             state.editClientSelection = null;
+            state.editOwnerSelection = null;
             state.clientSuggestions = [];
-            closeClientLookupMenu();
+            state.ownerSuggestions = [];
+            closeLookupMenus();
             clearStatus(elements.editStatus);
 
             if (elements.editModal) {
@@ -1831,6 +1979,12 @@
 
         function buildClientSearchUrl(query) {
             const url = new URL(config.clientSearchUrl, window.location.origin);
+            url.searchParams.set("q", query);
+            return `${url.pathname}${url.search}`;
+        }
+
+        function buildOwnerSearchUrl(query) {
+            const url = new URL(config.ownerSearchUrl, window.location.origin);
             url.searchParams.set("q", query);
             return `${url.pathname}${url.search}`;
         }

@@ -19,6 +19,7 @@ public sealed class HardwareWorkspaceViewModel
     public string DownloadUrl { get; set; } = "";
     public string InvoiceSearchUrl { get; set; } = "";
     public string ClientSearchUrl { get; set; } = "";
+    public string OwnerSearchUrl { get; set; } = "";
     public string EditUrl { get; set; } = "";
     public string InitialStartDate { get; set; } = "";
     public string InitialEndDate { get; set; } = "";
@@ -143,6 +144,9 @@ public sealed class HardwareDocumentationLineSaveRequest
 public sealed class HardwareBulkEditRequest
 {
     public List<string> RecordIds { get; set; } = new();
+    public bool OwnerChanged { get; set; }
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
     public bool ClientChanged { get; set; }
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";

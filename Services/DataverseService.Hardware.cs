@@ -2065,6 +2065,21 @@ public sealed partial class DataverseService
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
+        if (request.OwnerChanged)
+        {
+            var ownerId = NormalizeOptionalGuid(request.OwnerId);
+            if (string.IsNullOrWhiteSpace(ownerId))
+                throw new InvalidOperationException("Selecciona un propietario valido de la lista.");
+
+            var ownerNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                HardwareTableLogicalName,
+                HardwareOwnerLogicalName,
+                HardwareOwnerLogicalName,
+                user,
+                ct);
+            payload[$"{ownerNavigationProperty}@odata.bind"] = $"/systemusers({ownerId})";
+        }
+
         if (request.ClientChanged)
         {
             EnsureHardwareAttributeExists(attributes, HardwareClientLookupLogicalName);

@@ -43,6 +43,7 @@ public sealed class HardwareController : Controller
             DownloadUrl = Url.Action(nameof(DownloadFile), "Hardware") ?? "",
             InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? "",
             ClientSearchUrl = Url.Action(nameof(ClientSearch), "Hardware") ?? "",
+            OwnerSearchUrl = Url.Action(nameof(OwnerSearch), "Hardware") ?? "",
             InitialStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
             InitialEndDate = today.ToString("yyyy-MM-dd")
         });
@@ -289,6 +290,24 @@ public sealed class HardwareController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar clientes para Hardware.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> OwnerSearch([FromQuery(Name = "q")] string query, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.SearchSystemUsersAsync(query, 12, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar usuarios para Hardware.", ex));
         }
     }
 
