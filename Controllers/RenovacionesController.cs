@@ -51,7 +51,17 @@ public sealed class RenovacionesController : Controller
             return BadRequest("Debes seleccionar al menos una linea para actualizar.");
 
         var updatedCount = await _dataverse.UpdateRenewalRecordsAsync(request.Items, ct);
-        return Ok(new { ok = true, updated = updatedCount });
+        var scenario = await _dataverse.CreateRenewalScenarioAsync(request.Items, ct);
+        var redirectUrl = Url.Action("Index", "Calculator", new { scenarioId = scenario.ScenarioId }) ?? $"/Calculator?scenarioId={Uri.EscapeDataString(scenario.ScenarioId)}";
+        return Ok(new
+        {
+            ok = true,
+            updated = updatedCount,
+            scenarioId = scenario.ScenarioId,
+            scenarioName = scenario.ScenarioName,
+            redirectUrl,
+            warnings = scenario.Warnings
+        });
     }
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct)

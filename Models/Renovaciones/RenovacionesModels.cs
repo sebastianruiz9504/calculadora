@@ -76,8 +76,11 @@ public sealed class RenewalRecordDto
     public string ClientName { get; set; } = "";
     public string ProductId { get; set; } = "";
     public string ProductName { get; set; } = "";
+    public int ProductLineOptionValue { get; set; }
+    public int BusinessType { get; set; }
     public int Quantity { get; set; }
     public decimal UnitSaleUsd { get; set; }
+    public bool HasVat { get; set; }
     public string RenewalDateValue { get; set; } = "";
     public string RenewalDateDisplay { get; set; } = "";
     public decimal ContractValue { get; set; }
@@ -94,14 +97,26 @@ public sealed class RenewalRecordUpdateItem
 {
     public string RecordId { get; set; } = "";
     public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
     public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
     public string OriginalClientId { get; set; } = "";
     public string OriginalProductId { get; set; } = "";
+    public int ProductLineOptionValue { get; set; }
+    public int BusinessType { get; set; }
     public int Quantity { get; set; }
     public decimal UnitSaleUsd { get; set; }
+    public bool HasVat { get; set; }
     public string RenewalDateValue { get; set; } = "";
     public string ClientLookupLogicalName { get; set; } = "";
     public string ProductLookupLogicalName { get; set; } = "";
+}
+
+public sealed class RenewalScenarioCreateResultDto
+{
+    public string ScenarioId { get; set; } = "";
+    public string ScenarioName { get; set; } = "";
+    public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
 }
 
 public sealed class RenovacionesPageViewModel

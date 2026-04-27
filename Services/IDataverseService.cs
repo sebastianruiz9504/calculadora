@@ -26,6 +26,7 @@ public interface IDataverseService
     Task<CurrentUserInfo?> GetCurrentUserAsync(CancellationToken ct = default);
     Task<RenewalBoardDto> GetRenewalBoardAsync(RenewalPeriodFilter filter, CancellationToken ct = default);
     Task<int> UpdateRenewalRecordsAsync(IReadOnlyList<RenewalRecordUpdateItem> items, CancellationToken ct = default);
+    Task<RenewalScenarioCreateResultDto> CreateRenewalScenarioAsync(IReadOnlyList<RenewalRecordUpdateItem> items, CancellationToken ct = default);
     Task<ScoreBoardDto> GetScoreBoardAsync(ScorePeriodFilter filter, CancellationToken ct = default);
     Task<ScoreVerificationDetailDto> GetScoreVerificationDetailAsync(string recordId, ScorePeriodFilter filter, CancellationToken ct = default);
     Task<ScoreVerificationComputedResultDto> RecalculateScoreRecordAsync(ScoreVerificationRequest request, CancellationToken ct = default);

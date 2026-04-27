@@ -92,6 +92,7 @@
     });
 
     const CROSS_SALE_DEAL_TYPE = 1;
+    const RENEWAL_DEAL_TYPES = new Set([2, 3, 4]);
     const AUTO_BILL_YES_VALUE = 1;
     const MODERN_WORK_LINE_OPTION_VALUE = 645250000;
 
@@ -775,7 +776,9 @@
     }
 
     function getGroupKey(group) {
-        return group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
+        const baseKey = group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
+        const sectionKey = group._sectionKey || group.sectionKey || "";
+        return sectionKey ? `${sectionKey}:${baseKey}` : baseKey;
     }
 
     function rebuildIndexes(board) {
@@ -806,6 +809,99 @@
         summaryScore && (summaryScore.textContent = formatScoreValue(safeBoard.totalScore));
         summaryCommission && (summaryCommission.textContent = formatNumber(safeBoard.totalCommission));
         summaryAnnualValue && (summaryAnnualValue.textContent = formatNumber(safeBoard.totalValue ?? safeBoard.totalAnnualValue));
+    }
+
+    function isRenewalRecord(record) {
+        return RENEWAL_DEAL_TYPES.has(Number(record?.dealTypeValue || 0));
+    }
+
+    function sortScoreRecords(records) {
+        return [...records].sort((a, b) => {
+            const dateCompare = (a.contractStartDateValue || "").localeCompare(b.contractStartDateValue || "", "es", { sensitivity: "base" });
+            if (dateCompare !== 0) {
+                return dateCompare;
+            }
+
+            const clientCompare = (a.clientName || "").localeCompare(b.clientName || "", "es", { sensitivity: "base" });
+            if (clientCompare !== 0) {
+                return clientCompare;
+            }
+
+            return (a.offer || "").localeCompare(b.offer || "", "es", { sensitivity: "base" });
+        });
+    }
+
+    function sumRecords(records, selector) {
+        return records.reduce((total, record) => total + toNumber(selector(record), 0), 0);
+    }
+
+    function cloneGroupForSection(group, records, sectionKey) {
+        const orderedRecords = sortScoreRecords(records);
+        return {
+            ...group,
+            _sectionKey: sectionKey,
+            recordCount: orderedRecords.length,
+            productLinesCount: sumRecords(orderedRecords, record => record.productLinesCount),
+            totalCommission: sumRecords(orderedRecords, record => record.commission),
+            totalScore: sumRecords(orderedRecords, record => record.score),
+            totalMonthlyValue: sumRecords(orderedRecords, record => record.monthlyValue),
+            totalValue: sumRecords(orderedRecords, record => record.totalValue ?? record.annualValue),
+            totalAnnualValue: sumRecords(orderedRecords, record => record.totalValue ?? record.annualValue),
+            allVerified: orderedRecords.length > 0 && orderedRecords.every(record => record.isVerified),
+            salesPerson: orderedRecords.find(record => record.salesPerson)?.salesPerson || group.salesPerson || "Sin vendedor",
+            records: orderedRecords
+        };
+    }
+
+    function summarizeSection(section) {
+        const groups = section.groups || [];
+        return {
+            clientsCount: groups.length,
+            recordsCount: sumRecords(groups, group => group.recordCount),
+            productLinesCount: sumRecords(groups, group => group.productLinesCount),
+            totalScore: sumRecords(groups, group => group.totalScore),
+            totalCommission: sumRecords(groups, group => group.totalCommission),
+            totalValue: sumRecords(groups, group => group.totalValue ?? group.totalAnnualValue)
+        };
+    }
+
+    function buildScoreSections(board) {
+        const baseSections = [
+            {
+                key: "new-business",
+                title: "Negocios nuevos",
+                description: "ClienteNuevo y CrossSale."
+            },
+            {
+                key: "renewals",
+                title: "Renovaciones",
+                description: "Renovacion 1 vez, 2 veces y 3 veces o mas."
+            }
+        ];
+
+        const sections = baseSections.map(section => ({ ...section, groups: [] }));
+        const newBusinessSection = sections[0];
+        const renewalsSection = sections[1];
+
+        (Array.isArray(board?.groups) ? board.groups : []).forEach(group => {
+            const records = Array.isArray(group.records) ? group.records : [];
+            const newBusinessRecords = records.filter(record => !isRenewalRecord(record));
+            const renewalRecords = records.filter(isRenewalRecord);
+
+            if (newBusinessRecords.length) {
+                newBusinessSection.groups.push(cloneGroupForSection(group, newBusinessRecords, newBusinessSection.key));
+            }
+
+            if (renewalRecords.length) {
+                renewalsSection.groups.push(cloneGroupForSection(group, renewalRecords, renewalsSection.key));
+            }
+        });
+
+        sections.forEach(section => {
+            section.summary = summarizeSection(section);
+        });
+
+        return sections;
     }
 
     function renderMetaChip(label, value) {
@@ -970,6 +1066,55 @@
         `;
     }
 
+    function renderGroupArticle(group) {
+        const groupKey = getGroupKey(group);
+        const isExpanded = state.expandedGroups.has(groupKey);
+        return `
+            <article class="scores-group ${isExpanded ? "scores-group--expanded" : "scores-group--collapsed"}" data-group-key="${escapeHtml(groupKey)}">
+                <div class="scores-group__header">
+                    <div class="scores-group__header-main">
+                        <h2 class="scores-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
+                        <div class="scores-group__compact-line">
+                            <span class="scores-group__salesperson">${escapeHtml(group.salesPerson || "Sin vendedor")}</span>
+                            ${group.allVerified ? '<span class="scores-group__complete">Verificado completo</span>' : ""}
+                        </div>
+                        ${isExpanded ? `<p class="scores-group__subtitle">${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos.</p>` : ""}
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
+                        ${isExpanded ? "Resumir" : "Desplegar"}
+                    </button>
+                </div>
+                ${isExpanded ? renderGroupMetrics(group) : ""}
+            </article>
+        `;
+    }
+
+    function renderScoreSection(section) {
+        const summary = section.summary || {};
+        const groups = Array.isArray(section.groups) ? section.groups : [];
+        return `
+            <section class="scores-section" data-section-key="${escapeHtml(section.key)}">
+                <div class="scores-section__header">
+                    <div>
+                        <h2 class="scores-section__title">${escapeHtml(section.title)}</h2>
+                        <p class="scores-section__subtitle">${escapeHtml(section.description)}</p>
+                    </div>
+                    <div class="scores-section__meta">
+                        <span>${formatNumber(summary.recordsCount)} aprovisionamientos</span>
+                        <span>${formatNumber(summary.productLinesCount)} productos</span>
+                        <span>Puntaje ${formatScoreValue(summary.totalScore)}</span>
+                        <span>Venta ${formatNumber(summary.totalValue)}</span>
+                    </div>
+                </div>
+                <div class="scores-section__groups">
+                    ${groups.length
+                        ? groups.map(renderGroupArticle).join("")
+                        : '<div class="scores-section__empty">No hay registros en esta seccion.</div>'}
+                </div>
+            </section>
+        `;
+    }
+
     function renderGroups(board) {
         if (!groupsContainer) {
             return;
@@ -988,28 +1133,7 @@
             return;
         }
 
-        groupsContainer.innerHTML = groups.map(group => {
-            const groupKey = getGroupKey(group);
-            const isExpanded = state.expandedGroups.has(groupKey);
-            return `
-                <article class="scores-group ${isExpanded ? "scores-group--expanded" : "scores-group--collapsed"}" data-group-key="${escapeHtml(groupKey)}">
-                    <div class="scores-group__header">
-                        <div class="scores-group__header-main">
-                            <h2 class="scores-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
-                            <div class="scores-group__compact-line">
-                                <span class="scores-group__salesperson">${escapeHtml(group.salesPerson || "Sin vendedor")}</span>
-                                ${group.allVerified ? '<span class="scores-group__complete">Verificado completo</span>' : ""}
-                            </div>
-                            ${isExpanded ? `<p class="scores-group__subtitle">${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos.</p>` : ""}
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
-                            ${isExpanded ? "Resumir" : "Desplegar"}
-                        </button>
-                    </div>
-                    ${isExpanded ? renderGroupMetrics(group) : ""}
-                </article>
-            `;
-        }).join("");
+        groupsContainer.innerHTML = buildScoreSections(board).map(renderScoreSection).join("");
 
         bindGroupEvents();
         renderCloseMonthPanel();

@@ -219,6 +219,68 @@
     gap: 14px;
 }
 
+.scores-section {
+    display: grid;
+    gap: 12px;
+}
+
+.scores-section + .scores-section {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--scores-line);
+}
+
+.scores-section__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.scores-section__title {
+    margin: 0;
+    color: var(--scores-ink);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.scores-section__subtitle {
+    margin: 4px 0 0;
+    color: var(--scores-muted);
+    font-size: 13px;
+}
+
+.scores-section__meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.scores-section__meta span {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid var(--scores-line);
+    color: #42526b;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.scores-section__groups {
+    display: grid;
+    gap: 14px;
+}
+
+.scores-section__empty {
+    padding: 20px;
+    border: 1px dashed var(--scores-line);
+    border-radius: 18px;
+    color: var(--scores-muted);
+    text-align: center;
+}
+
 .scores-empty {
     padding: 48px 20px;
     text-align: center;

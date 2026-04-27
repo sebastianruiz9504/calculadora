@@ -488,6 +488,7 @@
     const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUserClient, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const storedScenarios = @Html.Raw(JsonSerializer.Serialize(storedScenarios, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const PROVISIONING_SUBMIT_URL = "/Calculator/SubmitProvisioning";
+    const requestedScenarioId = new URLSearchParams(window.location.search).get("scenarioId") || "";
 
     const contractTypeLabels = {
         "645250000": "Nuevo",
@@ -2471,7 +2472,9 @@ if (attachmentInput) {
     renderTypeChips();
     if (Array.isArray(storedScenarios) && storedScenarios.length > 0) {
         scenarios = storedScenarios.map(mapStoredScenario);
-        activeScenarioId = scenarios[0]?.id || null;
+        activeScenarioId = (requestedScenarioId
+            ? scenarios.find(s => s.id === requestedScenarioId)?.id
+            : null) || scenarios[0]?.id || null;
     } else {
         scenarios = [createScenario("Escenario 1")];
         activeScenarioId = scenarios[0].id;

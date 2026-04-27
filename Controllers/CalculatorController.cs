@@ -244,6 +244,21 @@ public sealed class CalculatorController : Controller
             return BadRequest("Configura la URL del flujo en Calculator:ProvisioningRequestFlowUrl antes de enviar la solicitud.");
         }
 
+        if (string.IsNullOrWhiteSpace(_calculatorOptions.ProvisioningApprovalCallbackSecret))
+        {
+            return BadRequest("Configura Calculator:ProvisioningApprovalCallbackSecret y usa el mismo valor en Power Automate como header X-Calculator-Callback-Secret.");
+        }
+
+        var callbackUrl = ResolveProvisioningApprovalCallbackUrl();
+        if (string.IsNullOrWhiteSpace(callbackUrl))
+        {
+            return BadRequest("No se pudo resolver la URL publica del callback de aprobacion. Configura Calculator:ProvisioningApprovalCallbackUrl.");
+        }
+
+        var callbackUrlValidation = ValidateProvisioningApprovalCallbackUrl(callbackUrl);
+        if (!string.IsNullOrWhiteSpace(callbackUrlValidation))
+            return BadRequest(callbackUrlValidation);
+
         try
         {
             await EnsureHardwareProductsForProvisioningAsync(input, ct);
@@ -254,12 +269,6 @@ public sealed class CalculatorController : Controller
         }
 
         var requestId = Guid.NewGuid().ToString("N");
-        var callbackUrl = ResolveProvisioningApprovalCallbackUrl();
-        if (string.IsNullOrWhiteSpace(callbackUrl))
-        {
-            return BadRequest("No se pudo resolver la URL publica del callback de aprobacion. Configura Calculator:ProvisioningApprovalCallbackUrl.");
-        }
-
         var statusUrl = Url.Action(
             nameof(ProvisioningRequestStatus),
             "Calculator",
@@ -750,6 +759,22 @@ public sealed class CalculatorController : Controller
             controller: "ProvisioningApproval",
             values: null,
             protocol: Request.Scheme) ?? "";
+    }
+
+    private static string? ValidateProvisioningApprovalCallbackUrl(string callbackUrl)
+    {
+        if (!Uri.TryCreate(callbackUrl, UriKind.Absolute, out var uri))
+            return "Calculator:ProvisioningApprovalCallbackUrl debe ser una URL absoluta alcanzable por Power Automate.";
+
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return "Calculator:ProvisioningApprovalCallbackUrl debe usar HTTPS para que Power Automate pueda llamar el callback de aprobacion.";
+
+        if (uri.IsLoopback)
+        {
+            return "La URL del callback de aprobacion resuelve a localhost. Power Automate no puede llamar localhost; configura Calculator:ProvisioningApprovalCallbackUrl con una URL publica HTTPS o un tunel publico.";
+        }
+
+        return null;
     }
 
     private static bool CanAccessProvisioningRequest(ProvisioningStoredRequest record, CurrentUserInfo? currentUser)

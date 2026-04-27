@@ -651,8 +651,11 @@
                 productName: record.productName || "",
                 originalClientId: record.clientId || "",
                 originalProductId: record.productId || "",
+                productLineOptionValue: Number(record.productLineOptionValue || 0),
+                businessType: Number(record.businessType || 0),
                 quantity: Number(record.quantity || 0),
                 unitSaleUsd: Number(record.unitSaleUsd || 0),
+                hasVat: Boolean(record.hasVat),
                 renewalDateValue: addOneYearToDateValue(record.renewalDateValue || ""),
                 clientLookupLogicalName: record.clientLookupLogicalName || "",
                 productLookupLogicalName: record.productLookupLogicalName || ""
@@ -1091,11 +1094,16 @@
             payload.push({
                 recordId: draft.recordId,
                 clientId: draft.clientId,
+                clientName: draft.clientName || "",
                 productId: draft.productId,
+                productName: draft.productName || "",
                 originalClientId: draft.originalClientId || "",
                 originalProductId: draft.originalProductId || "",
+                productLineOptionValue: Number(draft.productLineOptionValue || 0),
+                businessType: Number(draft.businessType || 0),
                 quantity: draft.quantity,
                 unitSaleUsd: Number(draft.unitSaleUsd.toFixed(2)),
+                hasVat: Boolean(draft.hasVat),
                 renewalDateValue: draft.renewalDateValue,
                 clientLookupLogicalName: draft.clientLookupLogicalName || "cr07a_clienteid",
                 productLookupLogicalName: draft.productLookupLogicalName || "cr07a_producto"
@@ -1162,9 +1170,15 @@
             }
 
             const result = await response.json();
-            await loadBoard();
             const successMessage = `Renovacion enviada con exito. Se actualizaron ${result.updated || payload.items.length} lineas.`;
             setStatus("success", successMessage);
+            if (result.redirectUrl) {
+                setStatus("success", `${successMessage} Abriendo escenario en la calculadora...`);
+                window.location.href = result.redirectUrl;
+                return;
+            }
+
+            await loadBoard();
             showResultModal("Renovacion enviada con exito", successMessage);
         } catch (error) {
             console.error(error);

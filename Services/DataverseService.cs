@@ -740,8 +740,29 @@ public sealed partial class DataverseService : IDataverseService
         return string.IsNullOrWhiteSpace(item.Id) ? null : item;
     }
 
+    private async Task<ProductLookupItem?> GetCalculatorProductByIdAsync(
+        string productId,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(productId, out var parsedId))
+            return null;
+
+        var filter = $"{ProductsIdField} eq {parsedId:D}";
+        var relativeUrl = $"/api/data/v9.2/{ProductsEntitySetName}?$select={BuildProductSelectClause()}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+        if (value.GetArrayLength() == 0)
+            return null;
+
+        var item = ToProductLookupItem(value[0]);
+        return string.IsNullOrWhiteSpace(item.Id) ? null : item;
+    }
+
     private static string BuildProductSelectClause() =>
-        string.Join(",", new[]
+        string.Join(",", new[] 
         {
             ProductsDescriptionField,
             ProductsPurchasePriceField,
@@ -1092,6 +1113,87 @@ public sealed partial class DataverseService : IDataverseService
         }
 
         return items.Count;
+    }
+
+    public async Task<RenewalScenarioCreateResultDto> CreateRenewalScenarioAsync(
+        IReadOnlyList<RenewalRecordUpdateItem> items,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        if (items is null)
+            throw new ArgumentNullException(nameof(items));
+
+        var selectedItems = items
+            .Where(item => item is not null)
+            .ToList();
+
+        if (selectedItems.Count == 0)
+            throw new InvalidOperationException("Debes seleccionar al menos una linea para crear el escenario.");
+
+        var warnings = new List<string>();
+        var productCache = new Dictionary<string, ProductLookupItem?>(StringComparer.OrdinalIgnoreCase);
+        var lines = new List<ScenarioLineInput>(selectedItems.Count);
+
+        foreach (var item in selectedItems)
+        {
+            var productId = NormalizeGuid(item.ProductId, nameof(item.ProductId));
+            if (!productCache.TryGetValue(productId, out var product))
+            {
+                product = await GetCalculatorProductByIdAsync(productId, httpContext.User, ct);
+                productCache[productId] = product;
+            }
+
+            var productName = FirstNonEmpty(product?.Description, item.ProductName, productId);
+            var costUnit = RoundCurrency(Math.Max(product?.PurchasePrice ?? 0m, 0m));
+            var saleUnit = RoundCurrency(Math.Max(item.UnitSaleUsd, 0m));
+
+            if (product is null)
+            {
+                warnings.Add($"No se pudo leer el producto {productName} para traer costo y acelerador.");
+            }
+            else if (costUnit <= 0m && saleUnit > 0m)
+            {
+                warnings.Add($"El producto {productName} no tiene costo configurado; revisa el margen en la calculadora.");
+            }
+
+            lines.Add(new ScenarioLineInput
+            {
+                BusinessType = (int)ResolveRenewalBusinessType(item),
+                ProductId = productId,
+                ProductDescription = productName,
+                CostUnit = costUnit,
+                MarginPercent = CalculateMarginPercentForSale(saleUnit, costUnit),
+                ContractMonths = 12,
+                Quantity = Math.Max(item.Quantity, 1),
+                SuggestedRetailPrice = RoundCurrency(Math.Max(product?.SuggestedRetailPrice ?? 0m, 0m)),
+                Acelerador = RoundCurrency(Math.Max(product?.Acelerador ?? 0m, 0m)),
+                HasVat = item.HasVat
+            });
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var scenarioId = $"renovacion-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}".Substring(0, 38);
+        var clientName = ResolveMostCommonValue(selectedItems.Select(item => item.ClientName), "Cliente");
+        var scenarioName = $"Renovacion {clientName} {now:yyyyMMdd HHmm}";
+
+        await UpsertScenarioAsync(new ScenarioSaveRequest
+        {
+            ScenarioId = scenarioId,
+            ScenarioName = scenarioName,
+            DealType = (int)DealType.Renovacion1,
+            RequiresProration = false,
+            Lines = lines,
+            LastResult = null
+        }, ct);
+
+        return new RenewalScenarioCreateResultDto
+        {
+            ScenarioId = scenarioId,
+            ScenarioName = scenarioName,
+            Warnings = warnings
+        };
     }
 
     public async Task<IReadOnlyList<SupplierProviderLookupItem>> GetSupplierCertificateProvidersAsync(
@@ -1592,6 +1694,9 @@ public sealed partial class DataverseService : IDataverseService
         var productName = ReadLookupFormattedValue(item, productLookupProperty);
         var quantity = ReadIntFlexible(item, DefaultSalesPerformanceQuantityField);
         var unitSaleUsd = ReadDecimal(item, DefaultSalesPerformanceUnitSaleUsdField) ?? 0m;
+        var productLineOptionValue = ReadOptionValue(item, _salesPerformanceProductLineField);
+        var businessType = ResolveRenewalBusinessType(productLineOptionValue);
+        var hasVat = ReadYesNoOptionFlexible(item, _salesPerformanceHasVatField);
 
         clientName = string.IsNullOrWhiteSpace(clientName) ? "Cliente sin asignar" : clientName.Trim();
         productName = string.IsNullOrWhiteSpace(productName) ? "Producto sin asignar" : productName.Trim();
@@ -1603,8 +1708,11 @@ public sealed partial class DataverseService : IDataverseService
             ClientName = clientName,
             ProductId = productId,
             ProductName = productName,
+            ProductLineOptionValue = productLineOptionValue,
+            BusinessType = (int)businessType,
             Quantity = quantity,
             UnitSaleUsd = RoundCurrency(unitSaleUsd),
+            HasVat = hasVat,
             RenewalDateValue = renewalDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             RenewalDateDisplay = renewalDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
             ContractValue = RoundCurrency(quantity * unitSaleUsd * 12m),
@@ -1625,6 +1733,34 @@ public sealed partial class DataverseService : IDataverseService
             return $"id:{item.ClientId}";
 
         return $"name:{item.ClientName}";
+    }
+
+    private static BusinessType ResolveRenewalBusinessType(RenewalRecordUpdateItem item)
+    {
+        if (Enum.IsDefined(typeof(BusinessType), item.BusinessType))
+            return (BusinessType)item.BusinessType;
+
+        return ResolveRenewalBusinessType(item.ProductLineOptionValue);
+    }
+
+    private static BusinessType ResolveRenewalBusinessType(int productLineOptionValue) =>
+        productLineOptionValue switch
+        {
+            645250000 => BusinessType.ModernWork,
+            645250001 => BusinessType.Acronis,
+            645250002 => BusinessType.Azure,
+            645250003 => BusinessType.Copiers,
+            645250007 => BusinessType.Perpetuo,
+            645250004 => BusinessType.Hardware,
+            _ => BusinessType.ModernWork
+        };
+
+    private static decimal CalculateMarginPercentForSale(decimal saleUnit, decimal costUnit)
+    {
+        if (costUnit <= 0m)
+            return 0m;
+
+        return Math.Round(((saleUnit / costUnit) - 1m) * 100m, 6, MidpointRounding.AwayFromZero);
     }
 
     private static string? DetectLookupValueProperty(JsonElement item, IEnumerable<string> candidates, string containsToken)
