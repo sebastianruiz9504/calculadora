@@ -640,13 +640,12 @@ public sealed partial class DataverseService
                 var purchaseOrderNumber = RequireHardwareText(request.PurchaseOrderNumber, "No orden");
                 var freightSplits = SplitHardwareFreight(ParseHardwareStageOptionalNonNegativeCurrency(request.FreightValue, "Valor flete"), currentRecords.Count);
                 var documentationRows = ResolveHardwareDocumentationRows(request, currentRecords);
+                EnsureHardwareOrderFilePresent(currentRecords, HardwareOrderPurchaseFileLogicalName, "Adjuntar ODC");
+                EnsureHardwareOrderFilePresent(currentRecords, HardwareProformaFileLogicalName, "Adjuntar proforma");
 
                 for (var index = 0; index < currentRecords.Count; index++)
                 {
                     var current = currentRecords[index];
-                    EnsureHardwareFilePresent(current, HardwareOrderPurchaseFileLogicalName, "Adjuntar ODC");
-                    EnsureHardwareFilePresent(current, HardwareProformaFileLogicalName, "Adjuntar proforma");
-
                     var row = documentationRows[NormalizeGuid(current.RecordId, nameof(current.RecordId))];
                     var supplierUnitCost = ParseHardwareStageCurrency(row.SupplierUnitCost, "Costo Unt Proveedor antes de IVA");
                     var supplierTotal = RoundCurrency(Math.Max(current.Quantity, 0) * supplierUnitCost);
@@ -876,8 +875,7 @@ public sealed partial class DataverseService
         ValidateHardwareAttachmentUpload(safeFileName, content);
 
         using var fileContent = new ByteArrayContent(content);
-        fileContent.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(
-            string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+        fileContent.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/octet-stream");
 
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}/$value";
         using var response = await CallRhDataverseResponseAsync(
@@ -2258,7 +2256,21 @@ public sealed partial class DataverseService
 
     private static void EnsureHardwareFilePresent(HardwareBoardRowDto record, string fieldName, string fieldLabel)
     {
-        var hasFile = fieldName switch
+        if (!HasHardwareFile(record, fieldName))
+            throw new InvalidOperationException($"Debes cargar el archivo '{fieldLabel}' antes de avanzar esta etapa.");
+    }
+
+    private static void EnsureHardwareOrderFilePresent(
+        IEnumerable<HardwareBoardRowDto> records,
+        string fieldName,
+        string fieldLabel)
+    {
+        if (!records.Any(record => HasHardwareFile(record, fieldName)))
+            throw new InvalidOperationException($"Debes cargar el archivo '{fieldLabel}' de la orden antes de avanzar esta etapa.");
+    }
+
+    private static bool HasHardwareFile(HardwareBoardRowDto record, string fieldName) =>
+        fieldName switch
         {
             HardwareOrderPurchaseFileLogicalName => record.HasOrderPurchase,
             HardwareProformaFileLogicalName => record.HasProforma,
@@ -2266,10 +2278,6 @@ public sealed partial class DataverseService
             HardwareDeliveryRecordFileLogicalName => record.HasDeliveryRecord,
             _ => false
         };
-
-        if (!hasFile)
-            throw new InvalidOperationException($"Debes cargar el archivo '{fieldLabel}' antes de avanzar esta etapa.");
-    }
 
     private static string ParseHardwareStageDate(string? rawValue, string label)
     {

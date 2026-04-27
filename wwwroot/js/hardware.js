@@ -47,10 +47,15 @@
             stateSummary: root.querySelector("[data-hw-state-summary]"),
             rows: root.querySelector("[data-hw-rows]"),
             createForm: root.querySelector("[data-hw-create-form]"),
+            createModal: root.querySelector("[data-hw-create-modal]"),
             createStatus: root.querySelector("[data-hw-create-status]"),
             createLines: root.querySelector("[data-hw-create-lines]"),
+            openCreateModalBtn: root.querySelector("[data-hw-open-create-modal]"),
             addCreateLineBtn: root.querySelector("[data-hw-add-create-line]"),
             saveCreateBtn: root.querySelector("[data-hw-save-create]"),
+            closeCreateModalButtons: Array.from(root.querySelectorAll("[data-hw-close-create-modal]")),
+            createFileInputs: Array.from(root.querySelectorAll("[data-hw-create-file-input]")),
+            createFileNames: Array.from(root.querySelectorAll("[data-hw-create-file-name]")),
             createClientOptions: root.querySelector("[data-hw-create-client-options]"),
             createClientHint: root.querySelector("[data-hw-create-client-hint]"),
             createFields: {
@@ -233,10 +238,22 @@
         elements.refreshBtn.addEventListener("click", () => loadBoard());
         elements.selectedActionBtn?.addEventListener("click", openSelectedRows);
         elements.editSelectedBtn?.addEventListener("click", openBulkEditForSelectedRows);
+        elements.openCreateModalBtn?.addEventListener("click", openCreateModal);
         elements.addCreateLineBtn?.addEventListener("click", () => addCreateLine());
         elements.createForm?.addEventListener("submit", async event => {
             event.preventDefault();
             await createCommercialOrder();
+        });
+        elements.createForm?.addEventListener("change", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement)) {
+                return;
+            }
+
+            const fileInput = target.closest("[data-hw-create-file-input]");
+            if (fileInput instanceof HTMLInputElement) {
+                renderCreateFileNames();
+            }
         });
         elements.createFields.clientName?.addEventListener("input", handleCreateClientLookupInput);
         if (elements.startDate) {
@@ -363,16 +380,6 @@
                 return;
             }
 
-            const documentationInput = target.closest("[data-hw-doc-file-input]");
-            if (documentationInput instanceof HTMLInputElement) {
-                const recordId = documentationInput.dataset.hwRecordId || "";
-                const fieldName = documentationInput.dataset.hwDocFileInput || "";
-                state.pendingFiles[buildDocumentationFileKey(recordId, fieldName)] =
-                    documentationInput.files && documentationInput.files.length > 0 ? documentationInput.files[0] : null;
-                renderDocumentationFileNames();
-                return;
-            }
-
             const globalFileInput = target.closest("[data-hw-file-input]");
             if (globalFileInput instanceof HTMLInputElement) {
                 const fieldName = globalFileInput.dataset.hwFileInput || "";
@@ -384,6 +391,10 @@
 
         elements.closeModalButtons.forEach(button => {
             button.addEventListener("click", closeModal);
+        });
+
+        elements.closeCreateModalButtons.forEach(button => {
+            button.addEventListener("click", closeCreateModal);
         });
 
         elements.closeEditModalButtons.forEach(button => {
@@ -417,6 +428,13 @@
             const ownerOption = target.closest("[data-hw-owner-option]");
             if (ownerOption instanceof HTMLElement) {
                 selectOwnerOption(ownerOption);
+            }
+        });
+
+        elements.createModal?.addEventListener("click", event => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.hasAttribute("data-hw-close-create-modal")) {
+                closeCreateModal();
             }
         });
 
@@ -455,7 +473,9 @@
                 return;
             }
 
-            if (elements.editModal && !elements.editModal.hidden) {
+            if (elements.createModal && !elements.createModal.hidden) {
+                closeCreateModal();
+            } else if (elements.editModal && !elements.editModal.hidden) {
                 closeEditModal();
             } else if (!elements.modal.hidden) {
                 closeModal();
@@ -781,15 +801,13 @@
                         <thead>
                             <tr>
                                 <th>Orden / Cliente</th>
-                                <th>cr07a_name</th>
-                                <th class="text-end">cr07a_cant</th>
-                                <th class="text-end">cr07a_costountproveedor</th>
-                                <th class="text-end">cr07a_ventaunidad</th>
-                                <th>cr07a_proveedor</th>
-                                <th>cr07a_ordendecompra</th>
-                                <th>cr07a_adjuntarproforma</th>
+                                <th>Producto / referencia</th>
+                                <th class="text-end">Cant.</th>
+                                <th class="text-end">Costo proveedor</th>
+                                <th class="text-end">Venta unidad</th>
+                                <th>Proveedor</th>
                                 <th>Estado</th>
-                                <th>Botón</th>
+                                <th>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -830,11 +848,15 @@
             const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
             return `
                 <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
-                    <td colspan="10">
+                    <td colspan="8">
                         <div class="hardware-commercial-order">
                             <div>
                                 <strong>${escapeHtml(group.orderNumber)}</strong>
                                 <span>${escapeHtml(clientLabel)} · ${escapeHtml(odcDate)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und</span>
+                                <div class="hardware-commercial-order__files">
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_ordendecompra")}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_adjuntarproforma")}
+                                </div>
                             </div>
                             ${validAction.ok
                                 ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(group.rows[0].actionLabel || "Gestionar")}</button>`
@@ -863,8 +885,6 @@
                     <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
                     <td>${escapeHtml(row?.provider || "-")}</td>
-                    <td>${renderCommercialFileLink(row, "cr07a_ordendecompra")}</td>
-                    <td>${renderCommercialFileLink(row, "cr07a_adjuntarproforma")}</td>
                     <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
@@ -877,16 +897,18 @@
             `;
         }
 
-        function renderCommercialFileLink(row, fieldName) {
+        function renderCommercialGroupFileLink(rows, fieldName) {
+            const row = resolveOrderFileRecord(rows, fieldName);
+            const label = resolveFileLabel(fieldName).replace(/^Adjuntar\s+/i, "");
             const hasFile = hasExistingFile(row, fieldName);
-            const fileName = resolveExistingFileName(row, fieldName);
             if (!hasFile) {
-                return `<span class="hardware-table__submeta">Sin archivo</span>`;
+                return `<span class="hardware-file-chip is-missing">${escapeHtml(label)} pendiente</span>`;
             }
 
+            const fileName = resolveExistingFileName(row, fieldName);
             return `
-                <a class="hardware-file-card__link" href="${escapeHtml(buildDownloadUrl(row.recordId, fieldName))}" target="_blank" rel="noopener">
-                    ${escapeHtml(fileName || "Descargar")}
+                <a class="hardware-file-chip" href="${escapeHtml(buildDownloadUrl(row.recordId, fieldName))}" target="_blank" rel="noopener">
+                    ${escapeHtml(label)}${fileName ? ` · ${escapeHtml(fileName)}` : ""}
                 </a>
             `;
         }
@@ -1241,39 +1263,8 @@
                     <td>
                         <input type="text" class="form-control form-control-sm" data-hw-doc-field="provider" value="${escapeHtml(row.provider || "")}" />
                     </td>
-                    <td>${renderDocumentationFileCell(row, "cr07a_ordendecompra")}</td>
-                    <td>${renderDocumentationFileCell(row, "cr07a_adjuntarproforma")}</td>
                 </tr>
             `).join("");
-
-            renderDocumentationFileNames();
-        }
-
-        function renderDocumentationFileCell(row, fieldName) {
-            const hasExisting = hasExistingFile(row, fieldName);
-            const link = hasExisting
-                ? `<a class="hardware-file-card__link" href="${escapeHtml(buildDownloadUrl(row.recordId, fieldName))}" target="_blank" rel="noopener">Descargar</a>`
-                : `<span class="hardware-table__submeta">Sin archivo</span>`;
-
-            return `
-                <div class="hardware-doc-file">
-                    ${link}
-                    <span class="hardware-file-card__name" data-hw-doc-file-name="${escapeHtml(fieldName)}" data-hw-record-id="${escapeHtml(row.recordId)}">${escapeHtml(resolveExistingFileName(row, fieldName) || "Sin archivo")}</span>
-                    <input type="file" class="form-control form-control-sm" data-hw-doc-file-input="${escapeHtml(fieldName)}" data-hw-record-id="${escapeHtml(row.recordId)}" />
-                </div>
-            `;
-        }
-
-        function renderDocumentationFileNames() {
-            elements.form.querySelectorAll("[data-hw-doc-file-name]").forEach(target => {
-                const recordId = target.dataset.hwRecordId || "";
-                const fieldName = target.dataset.hwDocFileName || "";
-                const record = state.modalRecords.find(row => row.recordId === recordId);
-                const pending = state.pendingFiles[buildDocumentationFileKey(recordId, fieldName)];
-                target.textContent = pending instanceof File
-                    ? pending.name
-                    : resolveExistingFileName(record, fieldName) || "Sin archivo";
-            });
         }
 
         function closeModal(force = false) {
@@ -1302,8 +1293,38 @@
                 const fileHintTarget = elements.fileHints.find(item => item.dataset.hwFileHint === fieldName);
                 const downloadLink = elements.downloadLinks.find(item => item.dataset.hwDownloadLink === fieldName);
                 const pendingFile = state.pendingFiles[fieldName];
+                const actionKey = elements.actionKey?.value || "";
+                const isDocumentationOrderFile = actionKey === "register-documentation" && isOrderDocumentationFile(fieldName);
                 const existingCount = state.modalRecords.filter(record => hasExistingFile(record, fieldName)).length;
                 const total = state.modalRecords.length;
+                const firstRecord = state.modalRecords[0] || null;
+                const orderFileRecord = resolveOrderFileRecord(state.modalRecords, fieldName);
+
+                if (isDocumentationOrderFile) {
+                    const orderHasFile = hasExistingFile(orderFileRecord, fieldName);
+                    if (fileNameTarget) {
+                        fileNameTarget.textContent = pendingFile instanceof File
+                            ? pendingFile.name
+                            : resolveExistingFileName(orderFileRecord, fieldName) || "Sin archivo";
+                    }
+
+                    if (fileHintTarget) {
+                        fileHintTarget.textContent = pendingFile instanceof File
+                            ? "El archivo se cargará solo en la primera fila de la orden."
+                            : orderHasFile
+                                ? "Adjunto registrado en una fila de la orden."
+                                : (fileHintTarget.dataset.defaultHint || "");
+                    }
+
+                    if (downloadLink) {
+                        downloadLink.href = orderHasFile && orderFileRecord
+                            ? buildDownloadUrl(orderFileRecord.recordId, fieldName)
+                            : "#";
+                        downloadLink.classList.toggle("is-disabled", !orderHasFile);
+                    }
+
+                    return;
+                }
 
                 if (fileNameTarget) {
                     if (pendingFile instanceof File) {
@@ -1709,6 +1730,38 @@
             closeOwnerLookupMenu();
         }
 
+        function openCreateModal() {
+            if (!elements.createModal) {
+                return;
+            }
+
+            if (elements.createLines && !elements.createLines.children.length) {
+                addCreateLine();
+            }
+
+            renderCreateFileNames();
+            clearStatus(elements.createStatus);
+            elements.createModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+            elements.createFields.purchaseOrderNumber?.focus();
+        }
+
+        function closeCreateModal(force = false) {
+            if (state.saving && !force) {
+                return;
+            }
+
+            clearStatus(elements.createStatus);
+            if (elements.createModal) {
+                elements.createModal.hidden = true;
+            }
+
+            if ((!elements.modal || elements.modal.hidden)
+                && (!elements.editModal || elements.editModal.hidden)) {
+                document.body.classList.remove("hardware-modal-open");
+            }
+        }
+
         function addCreateLine(values = {}) {
             if (!elements.createLines) {
                 return;
@@ -1731,12 +1784,6 @@
                     </td>
                     <td>
                         <input type="text" class="form-control form-control-sm" data-hw-create-line-field="provider" value="${escapeHtml(values.provider || "")}" />
-                    </td>
-                    <td>
-                        <input type="file" class="form-control form-control-sm" data-hw-create-line-file="cr07a_ordendecompra" />
-                    </td>
-                    <td>
-                        <input type="file" class="form-control form-control-sm" data-hw-create-line-file="cr07a_adjuntarproforma" />
                     </td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-secondary" data-hw-remove-create-line="${escapeHtml(rowKey)}">Quitar</button>
@@ -1904,15 +1951,13 @@
                 }
 
                 setStatus(elements.createStatus, "info", "Cargando adjuntos de la orden...");
-                for (let index = 0; index < draft.lines.length; index++) {
-                    const recordId = records[index]?.recordId || "";
-                    if (!recordId) {
-                        throw new Error(`No se recibió el id de la fila ${index + 1}.`);
-                    }
-
-                    await uploadFile(recordId, "cr07a_ordendecompra", draft.lines[index].orderFile);
-                    await uploadFile(recordId, "cr07a_adjuntarproforma", draft.lines[index].proformaFile);
+                const firstRecordId = records[0]?.recordId || "";
+                if (!firstRecordId) {
+                    throw new Error("No se recibió el id de la primera fila.");
                 }
+
+                await uploadFile(firstRecordId, "cr07a_ordendecompra", draft.orderFile);
+                await uploadFile(firstRecordId, "cr07a_adjuntarproforma", draft.proformaFile);
 
                 setStatus(elements.createStatus, "info", "Aplicando documentación de la orden...");
                 const savePayload = {
@@ -1935,8 +1980,9 @@
                 });
 
                 resetCreateForm();
+                closeCreateModal(true);
                 await loadBoard();
-                setStatus(elements.createStatus, "success", saveResult?.message || createResult?.message || "Orden de Hardware guardada.");
+                setStatus(elements.status, "success", saveResult?.message || createResult?.message || "Orden de Hardware guardada.");
             } catch (error) {
                 setStatus(elements.createStatus, "error", getErrorMessage(error));
             } finally {
@@ -1963,6 +2009,15 @@
                 throw new Error("Selecciona un cliente válido desde el buscador.");
             }
 
+            const orderFile = getCreateOrderFile("cr07a_ordendecompra");
+            const proformaFile = getCreateOrderFile("cr07a_adjuntarproforma");
+            if (!(orderFile instanceof File)) {
+                throw new Error("Debes adjuntar la ODC de la orden.");
+            }
+            if (!(proformaFile instanceof File)) {
+                throw new Error("Debes adjuntar la Proforma de la orden.");
+            }
+
             const rows = Array.from(elements.createLines?.querySelectorAll("[data-hw-create-line]") || []);
             if (!rows.length) {
                 throw new Error("Agrega al menos una fila.");
@@ -1974,29 +2029,21 @@
                 const supplierUnitCost = parseDecimal(getCreateLineValue(row, "supplierUnitCost"));
                 const saleUnit = parseDecimal(getCreateLineValue(row, "saleUnit"));
                 const provider = getCreateLineValue(row, "provider");
-                const orderFile = getCreateLineFile(row, "cr07a_ordendecompra");
-                const proformaFile = getCreateLineFile(row, "cr07a_adjuntarproforma");
 
                 if (!name) {
-                    throw new Error(`Debes diligenciar cr07a_name en la fila ${index + 1}.`);
+                    throw new Error(`Debes diligenciar Producto / referencia en la fila ${index + 1}.`);
                 }
                 if (!Number.isInteger(quantity) || quantity <= 0) {
-                    throw new Error(`Debes diligenciar cr07a_cant válido en la fila ${index + 1}.`);
+                    throw new Error(`Debes diligenciar una cantidad válida en la fila ${index + 1}.`);
                 }
                 if (!(supplierUnitCost > 0)) {
-                    throw new Error(`Debes diligenciar cr07a_costountproveedor válido en la fila ${index + 1}.`);
+                    throw new Error(`Debes diligenciar un costo unitario de proveedor válido en la fila ${index + 1}.`);
                 }
                 if (!(saleUnit > 0)) {
-                    throw new Error(`Debes diligenciar cr07a_ventaunidad válido en la fila ${index + 1}.`);
+                    throw new Error(`Debes diligenciar una venta unidad válida en la fila ${index + 1}.`);
                 }
                 if (!provider) {
-                    throw new Error(`Debes diligenciar cr07a_proveedor en la fila ${index + 1}.`);
-                }
-                if (!(orderFile instanceof File)) {
-                    throw new Error(`Debes adjuntar cr07a_ordendecompra en la fila ${index + 1}.`);
-                }
-                if (!(proformaFile instanceof File)) {
-                    throw new Error(`Debes adjuntar cr07a_adjuntarproforma en la fila ${index + 1}.`);
+                    throw new Error(`Debes diligenciar proveedor en la fila ${index + 1}.`);
                 }
 
                 return {
@@ -2005,9 +2052,7 @@
                     quantity,
                     supplierUnitCost,
                     saleUnit,
-                    provider,
-                    orderFile,
-                    proformaFile
+                    provider
                 };
             });
 
@@ -2026,7 +2071,9 @@
                         provider: line.provider
                     }))
                 },
-                lines
+                lines,
+                orderFile,
+                proformaFile
             };
         }
 
@@ -2042,17 +2089,26 @@
             if (elements.createClientHint) {
                 elements.createClientHint.textContent = "Busca y selecciona un cliente.";
             }
+            renderCreateFileNames();
         }
 
         function getCreateLineValue(row, fieldName) {
             return (row.querySelector(`[data-hw-create-line-field="${cssEscape(fieldName)}"]`)?.value || "").trim();
         }
 
-        function getCreateLineFile(row, fieldName) {
-            const input = row.querySelector(`[data-hw-create-line-file="${cssEscape(fieldName)}"]`);
+        function getCreateOrderFile(fieldName) {
+            const input = elements.createFileInputs.find(item => item.dataset.hwCreateFileInput === fieldName);
             return input instanceof HTMLInputElement && input.files && input.files.length > 0
                 ? input.files[0]
                 : null;
+        }
+
+        function renderCreateFileNames() {
+            elements.createFileNames.forEach(target => {
+                const fieldName = target.dataset.hwCreateFileName || "";
+                const file = getCreateOrderFile(fieldName);
+                target.textContent = file instanceof File ? file.name : "Sin archivo";
+            });
         }
 
         async function saveBulkEdit() {
@@ -2234,6 +2290,14 @@
                     continue;
                 }
 
+                if ((elements.actionKey?.value || "") === "register-documentation" && isOrderDocumentationFile(key)) {
+                    const firstRecord = state.modalRecords[0];
+                    if (firstRecord?.recordId) {
+                        await uploadFile(firstRecord.recordId, key, file);
+                    }
+                    continue;
+                }
+
                 for (const record of state.modalRecords) {
                     await uploadFile(record.recordId, key, file);
                 }
@@ -2322,6 +2386,12 @@
             if (isCommercialMode && !commonOdcDate) {
                 throw new Error("Debes diligenciar cr07a_fechaodc.");
             }
+            if (!hasOrderDocumentationFileOrPending("cr07a_ordendecompra")) {
+                throw new Error("Debes cargar la ODC de la orden.");
+            }
+            if (!hasOrderDocumentationFileOrPending("cr07a_adjuntarproforma")) {
+                throw new Error("Debes cargar la Proforma de la orden.");
+            }
 
             const documentationRows = Array.from(elements.documentationRows?.querySelectorAll("[data-hw-documentation-row]") || [])
                 .map(rowElement => {
@@ -2342,12 +2412,6 @@
                     if (!provider) {
                         throw new Error(`Debes diligenciar Proveedor para ${record?.name || "la fila seleccionada"}.`);
                     }
-                    if (!hasDocumentationFileOrPending(record, "cr07a_ordendecompra")) {
-                        throw new Error(`Debes cargar Adjuntar ODC para ${record?.name || "la fila seleccionada"}.`);
-                    }
-                    if (!hasDocumentationFileOrPending(record, "cr07a_adjuntarproforma")) {
-                        throw new Error(`Debes cargar Adjuntar Proforma para ${record?.name || "la fila seleccionada"}.`);
-                    }
 
                     return {
                         recordId,
@@ -2367,6 +2431,11 @@
             };
         }
 
+        function hasOrderDocumentationFileOrPending(fieldName) {
+            return state.pendingFiles[fieldName] instanceof File
+                || state.modalRecords.some(record => hasExistingFile(record, fieldName));
+        }
+
         function hasGlobalFileOrPending(fieldName) {
             if (state.pendingFiles[fieldName] instanceof File) {
                 return true;
@@ -2374,15 +2443,6 @@
 
             return state.modalRecords.length > 0
                 && state.modalRecords.every(record => hasExistingFile(record, fieldName));
-        }
-
-        function hasDocumentationFileOrPending(record, fieldName) {
-            if (!record) {
-                return false;
-            }
-
-            return state.pendingFiles[buildDocumentationFileKey(record.recordId, fieldName)] instanceof File
-                || hasExistingFile(record, fieldName);
         }
 
         function hasExistingFile(record, fieldName) {
@@ -2402,6 +2462,11 @@
                 default:
                     return false;
             }
+        }
+
+        function resolveOrderFileRecord(records, fieldName) {
+            const items = Array.isArray(records) ? records : [];
+            return items.find(record => hasExistingFile(record, fieldName)) || items[0] || null;
         }
 
         function resolveExistingFileName(record, fieldName) {
@@ -2537,8 +2602,8 @@
             return `${normalizeText(row?.ownerId || row?.ownerName || "sin-owner")}|${Number(row?.stateValue || 0)}|${normalizeText(row?.purchaseOrderNumber || "")}`;
         }
 
-        function buildDocumentationFileKey(recordId, fieldName) {
-            return `${recordId}|${fieldName}`;
+        function isOrderDocumentationFile(fieldName) {
+            return fieldName === "cr07a_ordendecompra" || fieldName === "cr07a_adjuntarproforma";
         }
 
         function findDisplayGroup(key) {
@@ -2628,6 +2693,7 @@
                 elements.selectAll,
                 elements.selectedActionBtn,
                 elements.editSelectedBtn,
+                elements.openCreateModalBtn,
                 elements.addCreateLineBtn,
                 elements.saveCreateBtn
             ].forEach(element => {
@@ -2641,6 +2707,10 @@
             });
 
             elements.closeModalButtons.forEach(button => {
+                button.disabled = isBusy;
+            });
+
+            elements.closeCreateModalButtons.forEach(button => {
                 button.disabled = isBusy;
             });
 
