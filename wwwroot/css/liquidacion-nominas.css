@@ -223,7 +223,7 @@
 
 .payroll-table {
     margin-bottom: 0;
-    min-width: 1700px;
+    min-width: 680px;
 }
 
 .payroll-vertical-table {
@@ -249,12 +249,35 @@
     letter-spacing: 0.06em;
 }
 
-.payroll-input {
-    min-width: 6.5rem;
+.payroll-row {
+    cursor: pointer;
+}
+
+.payroll-row > * {
+    transition: background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.payroll-row:hover > *,
+.payroll-row:focus-visible > * {
+    background: #f2f7ff;
+}
+
+.payroll-row:focus-visible {
+    outline: 2px solid #145af2;
+    outline-offset: -2px;
 }
 
 .payroll-row--warning {
     background: #fffbeb;
+}
+
+.payroll-row--warning > * {
+    background: #fffbeb;
+}
+
+.payroll-row--warning:hover > *,
+.payroll-row--warning:focus-visible > * {
+    background: #fff7d6;
 }
 
 .payroll-row__name {
@@ -305,6 +328,147 @@
     font-size: 0.78rem;
     margin: 0.15rem 0.2rem 0.15rem 0;
     padding: 0.2rem 0.55rem;
+}
+
+body.payroll-modal-open {
+    overflow: hidden;
+}
+
+.payroll-modal {
+    display: grid;
+    inset: 0;
+    padding: 1rem;
+    place-items: center;
+    position: fixed;
+    z-index: 1060;
+}
+
+.payroll-modal[hidden] {
+    display: none;
+}
+
+.payroll-modal__backdrop {
+    background: rgba(15, 23, 42, 0.52);
+    inset: 0;
+    position: absolute;
+}
+
+.payroll-modal__dialog {
+    background: #ffffff;
+    border: 1px solid #dbe4f0;
+    border-radius: 24px;
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.28);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    margin: 0;
+    max-height: calc(100vh - 2rem);
+    max-width: 980px;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    width: min(100%, 980px);
+}
+
+.payroll-modal__header,
+.payroll-modal__footer {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+}
+
+.payroll-modal__header {
+    border-bottom: 1px solid #dbe4f0;
+}
+
+.payroll-modal__footer {
+    border-top: 1px solid #dbe4f0;
+}
+
+.payroll-modal__title {
+    color: #10213a;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0.45rem 0 0.2rem;
+}
+
+.payroll-modal__subtitle,
+.payroll-modal__meta {
+    color: #64748b;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.payroll-modal__meta {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.payroll-modal__body {
+    display: grid;
+    gap: 1rem;
+    overflow-y: auto;
+    padding: 1.1rem 1.25rem;
+}
+
+.payroll-detail-warnings {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 18px;
+    padding: 0.75rem;
+}
+
+.payroll-detail-section {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.payroll-detail-section__title {
+    color: #10213a;
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.payroll-detail-grid,
+.payroll-detail-form-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.payroll-detail-item {
+    background: #f8fbff;
+    border: 1px solid #dbe7f3;
+    border-radius: 16px;
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+    padding: 0.8rem;
+}
+
+.payroll-detail-item span {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.payroll-detail-item strong {
+    color: #0f172a;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+}
+
+.payroll-detail-item--strong {
+    background: #eef5ff;
+    border-color: #c8dafd;
+}
+
+.payroll-detail-input {
+    min-width: 0;
 }
 
 .payroll-logs {
@@ -410,5 +574,26 @@
 
     .payroll-toolbar__buttons {
         justify-content: flex-start;
+    }
+
+    .payroll-modal {
+        align-items: stretch;
+        padding: 0.5rem;
+    }
+
+    .payroll-modal__dialog {
+        border-radius: 18px;
+        max-height: calc(100vh - 1rem);
+    }
+
+    .payroll-modal__header,
+    .payroll-modal__footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .payroll-modal__header .btn,
+    .payroll-modal__footer .btn {
+        width: 100%;
     }
 }

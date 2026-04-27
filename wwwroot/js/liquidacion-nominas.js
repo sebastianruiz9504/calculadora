@@ -27,10 +27,25 @@
     const summaryDisbursement = document.getElementById("summaryDisbursement");
     const summaryCopiers = document.getElementById("summaryCopiers");
     const summaryCloud = document.getElementById("summaryCloud");
+    const detailModal = document.getElementById("nominaDetailModal");
+    const detailForm = document.getElementById("nominaDetailForm");
+    const detailTitle = document.getElementById("nominaDetailTitle");
+    const detailSubtitle = document.getElementById("nominaDetailSubtitle");
+    const detailWarnings = document.getElementById("nominaDetailWarnings");
+    const detailMeta = document.getElementById("nominaDetailMeta");
+    const detailInputs = detailModal ? Array.from(detailModal.querySelectorAll("[data-detail-field]")) : [];
+    const detailCloseButtons = detailModal ? Array.from(detailModal.querySelectorAll("[data-nomina-detail-close]")) : [];
+    const detailOutputs = detailModal
+        ? Array.from(detailModal.querySelectorAll("[data-detail-output]")).reduce((map, element) => {
+            map[element.dataset.detailOutput] = element;
+            return map;
+        }, {})
+        : {};
 
     const state = {
         rows: [],
-        logs: []
+        logs: [],
+        activeRowId: ""
     };
 
     periodInput.value = app.dataset.initialPeriod || "";
@@ -55,19 +70,43 @@
         renderStatus("info", "La vista fue limpiada. Selecciona mes y fecha de pago para preparar una nueva liquidacion.");
     });
 
-    rowsBody.addEventListener("input", (event) => {
+    rowsBody.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        const rowElement = target ? target.closest("tr[data-row-id]") : null;
+        if (!rowElement) {
+            return;
+        }
+
+        openDetail(rowElement.dataset.rowId);
+    });
+
+    rowsBody.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        const target = event.target instanceof Element ? event.target : null;
+        const rowElement = target ? target.closest("tr[data-row-id]") : null;
+        if (!rowElement) {
+            return;
+        }
+
+        event.preventDefault();
+        openDetail(rowElement.dataset.rowId);
+    });
+
+    detailForm?.addEventListener("input", (event) => {
         const input = event.target;
         if (!(input instanceof HTMLInputElement)) {
             return;
         }
 
-        const rowId = input.dataset.rowId;
-        const field = input.dataset.field;
-        if (!rowId || !field) {
+        const field = input.dataset.detailField;
+        if (!field) {
             return;
         }
 
-        const row = state.rows.find((item) => item.employeeId === rowId);
+        const row = getActiveDetailRow();
         if (!row) {
             return;
         }
@@ -75,8 +114,26 @@
         row[field] = toPositiveNumber(input.value);
         recalculateRow(row);
         updateRowOutputs(row);
+        renderDetailValues(row);
+        renderDetailWarnings(row);
         renderSummary();
         renderVerticals();
+    });
+
+    detailForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+    });
+
+    detailCloseButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            closeDetail();
+        });
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && detailModal && !detailModal.hidden) {
+            closeDetail();
+        }
     });
 
     async function requestPreview() {
@@ -163,6 +220,7 @@
     }
 
     function loadResult(payload, fromConfirm) {
+        closeDetail();
         state.rows = Array.isArray(payload.rows) ? payload.rows.map((row) => normalizeRow(row)) : [];
         state.logs = Array.isArray(payload.logs) ? payload.logs.slice() : [];
 
@@ -225,33 +283,14 @@
 
     function renderRows() {
         rowsBody.innerHTML = state.rows.map((row) => {
-            const warningTags = buildWarningTags(row);
             return `
-                <tr data-row-id="${escapeHtml(row.employeeId)}" class="${row.warnings.length > 0 ? "payroll-row payroll-row--warning" : "payroll-row"}">
+                <tr data-row-id="${escapeHtml(row.employeeId)}" class="${buildRowClass(row)}" tabindex="0" role="button" aria-label="Liquidacion de ${escapeHtml(row.employeeName || "empleado")}">
                     <td>
                         <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
-                        <div class="payroll-row__meta">${escapeHtml(row.employeeId)}</div>
                     </td>
-                    <td>
-                        <span class="payroll-badge ${row.operation === "update" ? "payroll-badge--warning" : "payroll-badge--success"}">${escapeHtml(row.operation || "create")}</span>
-                    </td>
-                    <td class="text-end">${formatMoney(row.salaryBase)}</td>
-                    <td class="text-end">${formatMoney(row.auxilio)}</td>
-                    <td class="text-end">${formatMoney(row.commissionsCopiers)}</td>
-                    <td class="text-end">${formatMoney(row.commissionsCloud)}</td>
-                    <td class="text-end">${buildInput(row, "bonusCompliance")}</td>
-                    <td class="text-end" data-role="health">${formatMoney(row.health)}</td>
-                    <td class="text-end" data-role="pension">${formatMoney(row.pension)}</td>
-                    <td class="text-end">${buildInput(row, "otherDeductions")}</td>
-                    <td class="text-end">${buildInput(row, "loan")}</td>
-                    <td class="text-end">${buildInput(row, "payrollWithholding")}</td>
-                    <td class="text-end" data-role="cuentaDeCobro">${formatMoney(row.cuentaDeCobro)}</td>
-                    <td class="text-end">${buildInput(row, "externalWithholding")}</td>
                     <td class="text-end" data-role="netPayroll">${formatMoney(row.netPayroll)}</td>
-                    <td class="text-end" data-role="netCuentaDeCobro">${formatMoney(row.netCuentaDeCobro)}</td>
                     <td class="text-end" data-role="totalCopiers">${formatMoney(row.totalCopiers)}</td>
                     <td class="text-end" data-role="totalCloud">${formatMoney(row.totalCloud)}</td>
-                    <td>${warningTags}</td>
                 </tr>
             `;
         }).join("");
@@ -263,13 +302,126 @@
             return;
         }
 
-        setCellText(tr, "health", formatMoney(row.health));
-        setCellText(tr, "pension", formatMoney(row.pension));
-        setCellText(tr, "cuentaDeCobro", formatMoney(row.cuentaDeCobro));
+        tr.className = buildRowClass(row);
         setCellText(tr, "netPayroll", formatMoney(row.netPayroll));
-        setCellText(tr, "netCuentaDeCobro", formatMoney(row.netCuentaDeCobro));
         setCellText(tr, "totalCopiers", formatMoney(row.totalCopiers));
         setCellText(tr, "totalCloud", formatMoney(row.totalCloud));
+    }
+
+    function openDetail(rowId) {
+        if (!detailModal || !rowId) {
+            return;
+        }
+
+        const row = state.rows.find((item) => item.employeeId === rowId);
+        if (!row) {
+            return;
+        }
+
+        state.activeRowId = row.employeeId;
+        renderDetail(row);
+        detailModal.hidden = false;
+        document.body.classList.add("payroll-modal-open");
+
+        window.requestAnimationFrame(() => {
+            const firstInput = detailInputs[0];
+            if (firstInput) {
+                firstInput.focus();
+                firstInput.select();
+            }
+        });
+    }
+
+    function closeDetail() {
+        if (!detailModal) {
+            return;
+        }
+
+        detailModal.hidden = true;
+        state.activeRowId = "";
+        document.body.classList.remove("payroll-modal-open");
+    }
+
+    function getActiveDetailRow() {
+        if (!state.activeRowId) {
+            return null;
+        }
+
+        return state.rows.find((item) => item.employeeId === state.activeRowId) || null;
+    }
+
+    function renderDetail(row) {
+        if (detailTitle) {
+            detailTitle.textContent = row.employeeName || "Empleado sin nombre";
+        }
+
+        if (detailSubtitle) {
+            detailSubtitle.textContent = row.employeeId || "";
+        }
+
+        if (detailMeta) {
+            detailMeta.textContent = row.existingPayrollRecordId
+                ? `Registro Dataverse: ${row.existingPayrollRecordId}`
+                : "Sin registro previo";
+        }
+
+        detailInputs.forEach((input) => {
+            const field = input.dataset.detailField;
+            if (field) {
+                input.value = toInputValue(row[field]);
+            }
+        });
+
+        renderDetailValues(row);
+        renderDetailWarnings(row);
+    }
+
+    function renderDetailValues(row) {
+        setDetailOutput("operation", row.operation === "update" ? "Actualizar" : "Crear");
+        setDetailOutput("salaryBase", formatMoney(row.salaryBase));
+        setDetailOutput("auxilio", formatMoney(row.auxilio));
+        setDetailOutput("commissions", formatMoney(row.commissions));
+        setDetailOutput("commissionsCopiers", formatMoney(row.commissionsCopiers));
+        setDetailOutput("commissionsCloud", formatMoney(row.commissionsCloud));
+        setDetailOutput("commissionCap", formatMoney(row.commissionCap));
+        setDetailOutput("appliedCommissionBase", formatMoney(row.appliedCommissionBase));
+        setDetailOutput("contributionBase", formatMoney(row.contributionBase));
+        setDetailOutput("health", formatMoney(row.health));
+        setDetailOutput("pension", formatMoney(row.pension));
+        setDetailOutput("cuentaDeCobro", formatMoney(row.cuentaDeCobro));
+        setDetailOutput("grossSalary", formatMoney(row.grossSalary));
+        setDetailOutput("netPayroll", formatMoney(row.netPayroll));
+        setDetailOutput("netCuentaDeCobro", formatMoney(row.netCuentaDeCobro));
+        setDetailOutput("totalDisbursement", formatMoney(roundMoney(row.netPayroll + row.netCuentaDeCobro)));
+        setDetailOutput("factorCopiers", formatPercent(row.factorCopiers));
+        setDetailOutput("factorCloud", formatPercent(row.factorCloud));
+        setDetailOutput("totalCopiers", formatMoney(row.totalCopiers));
+        setDetailOutput("totalCloud", formatMoney(row.totalCloud));
+    }
+
+    function renderDetailWarnings(row) {
+        if (!detailWarnings) {
+            return;
+        }
+
+        const warnings = getRowWarnings(row);
+        if (warnings.length === 0) {
+            detailWarnings.hidden = true;
+            detailWarnings.innerHTML = "";
+            return;
+        }
+
+        detailWarnings.hidden = false;
+        detailWarnings.innerHTML = warnings
+            .map((warning) => `<span class="payroll-warning-tag">${escapeHtml(warning)}</span>`)
+            .join("");
+    }
+
+    function setDetailOutput(role, value) {
+        const element = detailOutputs[role];
+        if (element) {
+            element.textContent = value;
+        }
     }
 
     function renderSummary() {
@@ -335,17 +487,13 @@
         `).join("");
     }
 
-    function buildInput(row, field) {
-        return `<input class="form-control form-control-sm payroll-input text-end"
-                       type="number"
-                       min="0"
-                       step="0.01"
-                       value="${toInputValue(row[field])}"
-                       data-row-id="${escapeHtml(row.employeeId)}"
-                       data-field="${escapeHtml(field)}" />`;
+    function buildRowClass(row) {
+        return getRowWarnings(row).length > 0
+            ? "payroll-row payroll-row--warning"
+            : "payroll-row";
     }
 
-    function buildWarningTags(row) {
+    function getRowWarnings(row) {
         const warnings = Array.isArray(row.warnings) ? row.warnings.slice() : [];
         if (row.netPayroll < 0) {
             warnings.push("El monto pagado de nomina quedo negativo.");
@@ -355,11 +503,7 @@
             warnings.push("El monto de cuenta de cobro quedo negativo.");
         }
 
-        if (warnings.length === 0) {
-            return "<span class=\"text-muted\">Sin novedades</span>";
-        }
-
-        return warnings.map((warning) => `<span class="payroll-warning-tag">${escapeHtml(warning)}</span>`).join("");
+        return warnings;
     }
 
     function handleFailure(error) {
@@ -413,6 +557,7 @@
     }
 
     function clearState() {
+        closeDetail();
         state.rows = [];
         state.logs = [];
         summarySection.hidden = true;
@@ -444,6 +589,9 @@
         previewBtn.disabled = isBusy;
         confirmBtn.disabled = isBusy || state.rows.length === 0;
         resetBtn.disabled = isBusy;
+        detailInputs.forEach((input) => {
+            input.disabled = isBusy;
+        });
     }
 
     function setCellText(tr, role, value) {
@@ -499,6 +647,13 @@
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         }).format(toNumber(value));
+    }
+
+    function formatPercent(value) {
+        return `${toNumber(value).toLocaleString("es-CO", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        })}%`;
     }
 
     function getLastDayOfMonth(periodValue) {

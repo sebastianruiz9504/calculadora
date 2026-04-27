@@ -95,30 +95,162 @@
                 <thead>
                     <tr>
                         <th>Empleado</th>
-                        <th>Accion</th>
-                        <th class="text-end">Sueldo base</th>
-                        <th class="text-end">Auxilio</th>
-                        <th class="text-end">Comis. copiers</th>
-                        <th class="text-end">Comis. cloud</th>
-                        <th class="text-end">Bono</th>
-                        <th class="text-end">Salud</th>
-                        <th class="text-end">Pension</th>
-                        <th class="text-end">Otras ded.</th>
-                        <th class="text-end">Prestamo</th>
-                        <th class="text-end">Rete nomina</th>
-                        <th class="text-end">Cuenta cobro</th>
-                        <th class="text-end">Rete externo</th>
                         <th class="text-end">Monto pagado</th>
-                        <th class="text-end">Monto pagado cxc</th>
                         <th class="text-end">Total copiers</th>
                         <th class="text-end">Total cloud</th>
-                        <th>Observaciones</th>
                     </tr>
                 </thead>
                 <tbody id="nominaRowsBody"></tbody>
             </table>
         </div>
     </section>
+
+    <div class="payroll-modal" id="nominaDetailModal" hidden>
+        <div class="payroll-modal__backdrop" data-nomina-detail-close></div>
+        <form class="payroll-modal__dialog" id="nominaDetailForm" role="dialog" aria-modal="true" aria-labelledby="nominaDetailTitle">
+            <div class="payroll-modal__header">
+                <div>
+                    <div class="payroll-kicker">Detalle empleado</div>
+                    <h2 class="payroll-modal__title" id="nominaDetailTitle">Liquidacion</h2>
+                    <p class="payroll-modal__subtitle" id="nominaDetailSubtitle"></p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-nomina-detail-close>Cerrar</button>
+            </div>
+
+            <div class="payroll-modal__body">
+                <div class="payroll-detail-warnings" id="nominaDetailWarnings" hidden></div>
+
+                <section class="payroll-detail-section">
+                    <h3 class="payroll-detail-section__title">Valores base</h3>
+                    <div class="payroll-detail-grid">
+                        <div class="payroll-detail-item">
+                            <span>Accion</span>
+                            <strong data-detail-output="operation">-</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Sueldo base</span>
+                            <strong data-detail-output="salaryBase">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Auxilio</span>
+                            <strong data-detail-output="auxilio">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Comisiones</span>
+                            <strong data-detail-output="commissions">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Comis. copiers</span>
+                            <strong data-detail-output="commissionsCopiers">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Comis. cloud</span>
+                            <strong data-detail-output="commissionsCloud">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Tope comisional</span>
+                            <strong data-detail-output="commissionCap">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Base aplicada</span>
+                            <strong data-detail-output="appliedCommissionBase">0</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="payroll-detail-section">
+                    <h3 class="payroll-detail-section__title">Ajustes de liquidacion</h3>
+                    <div class="payroll-detail-form-grid">
+                        <div class="payroll-field">
+                            <label class="form-label" for="detailBonusCompliance">Bono</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailBonusCompliance" type="number" min="0" step="0.01" data-detail-field="bonusCompliance" />
+                        </div>
+                        <div class="payroll-field">
+                            <label class="form-label" for="detailOtherDeductions">Otras deducciones</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailOtherDeductions" type="number" min="0" step="0.01" data-detail-field="otherDeductions" />
+                        </div>
+                        <div class="payroll-field">
+                            <label class="form-label" for="detailLoan">Prestamo</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailLoan" type="number" min="0" step="0.01" data-detail-field="loan" />
+                        </div>
+                        <div class="payroll-field">
+                            <label class="form-label" for="detailPayrollWithholding">Rete nomina</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailPayrollWithholding" type="number" min="0" step="0.01" data-detail-field="payrollWithholding" />
+                        </div>
+                        <div class="payroll-field">
+                            <label class="form-label" for="detailExternalWithholding">Rete externo</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailExternalWithholding" type="number" min="0" step="0.01" data-detail-field="externalWithholding" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="payroll-detail-section">
+                    <h3 class="payroll-detail-section__title">Aportes y resultado</h3>
+                    <div class="payroll-detail-grid">
+                        <div class="payroll-detail-item">
+                            <span>Base aportes</span>
+                            <strong data-detail-output="contributionBase">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Salud</span>
+                            <strong data-detail-output="health">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Pension</span>
+                            <strong data-detail-output="pension">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Cuenta cobro</span>
+                            <strong data-detail-output="cuentaDeCobro">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Sueldo bruto</span>
+                            <strong data-detail-output="grossSalary">0</strong>
+                        </div>
+                        <div class="payroll-detail-item payroll-detail-item--strong">
+                            <span>Monto pagado</span>
+                            <strong data-detail-output="netPayroll">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Monto pagado cxc</span>
+                            <strong data-detail-output="netCuentaDeCobro">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Total desembolso</span>
+                            <strong data-detail-output="totalDisbursement">0</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="payroll-detail-section">
+                    <h3 class="payroll-detail-section__title">Distribucion por vertical</h3>
+                    <div class="payroll-detail-grid">
+                        <div class="payroll-detail-item">
+                            <span>Factor copiers</span>
+                            <strong data-detail-output="factorCopiers">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Factor cloud</span>
+                            <strong data-detail-output="factorCloud">0</strong>
+                        </div>
+                        <div class="payroll-detail-item payroll-detail-item--strong">
+                            <span>Total copiers</span>
+                            <strong data-detail-output="totalCopiers">0</strong>
+                        </div>
+                        <div class="payroll-detail-item payroll-detail-item--strong">
+                            <span>Total cloud</span>
+                            <strong data-detail-output="totalCloud">0</strong>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="payroll-modal__footer">
+                <div class="payroll-modal__meta" id="nominaDetailMeta">Sin registro previo</div>
+                <button type="button" class="btn btn-primary" data-nomina-detail-close>Listo</button>
+            </div>
+        </form>
+    </div>
 
     <section class="payroll-card" id="nominaVerticalsCard" hidden>
         <div class="payroll-section-header">
