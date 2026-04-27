@@ -44,6 +44,8 @@
 
     const receptorInput = document.getElementById("ccbReceptorInput");
     const nitInput = document.getElementById("ccbNitInput");
+    const fechaEmisionInput = document.getElementById("ccbFechaEmisionInput");
+    const fechaPagoInput = document.getElementById("ccbFechaPagoInput");
     const retePorcentajeInput = document.getElementById("ccbRetePorcentajeInput");
     const valorTotalInput = document.getElementById("ccbValorTotalInput");
     const valorPagoInput = document.getElementById("ccbValorPagoInput");
@@ -196,7 +198,7 @@
         }
     });
 
-    [receptorInput, nitInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput].forEach((element) => {
+    [receptorInput, nitInput, fechaEmisionInput, fechaPagoInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput].forEach((element) => {
         element?.addEventListener("input", syncEditorFromInputs);
     });
 
@@ -296,8 +298,8 @@
             ? `Detalle de ${capitalize(state.board.selectedPeriodLabel)}`
             : "Detalle por periodo";
         periodSource.textContent = state.board?.periodSourceLabel
-            ? `El agrupador usa: ${state.board.periodSourceLabel}.`
-            : "El agrupador usa el periodo del documento.";
+            ? `El filtro usa: ${state.board.periodSourceLabel}.`
+            : "El filtro usa la fecha de emision.";
     }
 
     function renderRows() {
@@ -310,6 +312,10 @@
                 <td>
                     <div class="ccb-row__title">${escapeHtml(row.receptor || "Sin receptor")}</div>
                     <div class="ccb-row__subtitle">${escapeHtml(row.nitOCedula || "Sin NIT o cedula")}</div>
+                </td>
+                <td>
+                    <div class="ccb-row__title">${escapeHtml(row.fechaEmisionDisplay || "Sin fecha")}</div>
+                    <div class="ccb-row__subtitle">${row.fechaPagoDisplay ? `Pago ${escapeHtml(row.fechaPagoDisplay)}` : "Sin fecha de pago"}</div>
                 </td>
                 <td class="text-end">${escapeHtml(moneyFormatter.format(Number(row.valorTotal || 0)))}</td>
                 <td class="text-end">${escapeHtml(moneyFormatter.format(Number(row.valorPago || 0)))}</td>
@@ -371,8 +377,13 @@
         renderEditor();
     }
 
-    function closeEditor() {
-        if (state.busy) {
+    function closeEditor(options) {
+        const config = {
+            force: false,
+            ...options
+        };
+
+        if (state.busy && !config.force) {
             return;
         }
 
@@ -400,14 +411,16 @@
         const isNew = !record.recordId;
         modalTitle.textContent = isNew ? "Nueva cuenta de cobro" : "Editar cuenta de cobro";
         modalSubtitle.textContent = isNew
-            ? `El registro se guardara en ${buildFallbackPeriodLabel()}.`
+            ? `El registro se filtrara por la fecha de emision.`
             : `Edita el formulario completo para ${record.receptor || "la cuenta de cobro seleccionada"}.`;
         modalMeta.textContent = isNew
-            ? `Periodo: ${buildFallbackPeriodLabel()}`
-            : `Periodo: ${record.periodLabel || buildFallbackPeriodLabel()}${record.modifiedOnDisplay ? ` | Actualizada ${record.modifiedOnDisplay}` : ""}`;
+            ? `Fecha de emision: ${record.fechaEmisionDisplay || "sin fecha"}`
+            : `Fecha de emision: ${record.fechaEmisionDisplay || "sin fecha"}${record.modifiedOnDisplay ? ` | Actualizada ${record.modifiedOnDisplay}` : ""}`;
 
         receptorInput.value = record.receptor || "";
         nitInput.value = record.nitOCedula || "";
+        fechaEmisionInput.value = record.fechaEmisionValue || "";
+        fechaPagoInput.value = record.fechaPagoValue || "";
         retePorcentajeInput.value = formatInputNumber(record.reteFuentePorcentaje);
         valorTotalInput.value = formatInputNumber(record.valorTotal);
         valorPagoInput.value = formatInputNumber(record.valorPago);
@@ -461,6 +474,10 @@
 
         record.receptor = receptorInput.value || "";
         record.nitOCedula = nitInput.value || "";
+        record.fechaEmisionValue = fechaEmisionInput.value || "";
+        record.fechaEmisionDisplay = formatDateDisplay(record.fechaEmisionValue);
+        record.fechaPagoValue = fechaPagoInput.value || "";
+        record.fechaPagoDisplay = formatDateDisplay(record.fechaPagoValue);
         record.reteFuentePorcentaje = parseDecimal(retePorcentajeInput.value);
         record.valorTotal = parseDecimal(valorTotalInput.value);
         record.valorPago = parseDecimal(valorPagoInput.value);
@@ -506,6 +523,8 @@
                     receptor: record.receptor,
                     nitOCedula: record.nitOCedula,
                     observaciones: record.observaciones,
+                    fechaEmisionValue: record.fechaEmisionValue,
+                    fechaPagoValue: record.fechaPagoValue,
                     valorTotal: record.valorTotal,
                     reteFuentePorcentaje: record.reteFuentePorcentaje,
                     valorPago: record.valorPago
@@ -531,8 +550,10 @@
                 : payload.message || "Cuenta de cobro guardada correctamente.";
 
             state.editor.pendingFile = null;
-            closeEditor();
-            await loadBoard(state.year, state.month, { silent: true });
+            const targetYear = savedRecord?.periodYear || state.year;
+            const targetMonth = savedRecord?.periodMonth || state.month;
+            closeEditor({ force: true });
+            await loadBoard(targetYear, targetMonth, { silent: true });
             renderStatus("success", message);
             showResultDialog("success", "Guardado exitosamente", message);
 
@@ -722,12 +743,17 @@
 
     function createEmptyRow() {
         state.sequence += 1;
+        const fechaEmisionValue = buildFallbackEmissionDateValue();
         return recomputeRow({
             localId: `new-${state.sequence}`,
             recordId: "",
             receptor: "",
             nitOCedula: "",
             observaciones: "",
+            fechaEmisionValue,
+            fechaEmisionDisplay: formatDateDisplay(fechaEmisionValue),
+            fechaPagoValue: "",
+            fechaPagoDisplay: "",
             valorTotal: 0,
             reteFuentePorcentaje: 0,
             valorPago: 0,
@@ -749,6 +775,10 @@
             receptor: record.receptor || "",
             nitOCedula: record.nitOCedula || "",
             observaciones: record.observaciones || "",
+            fechaEmisionValue: record.fechaEmisionValue || "",
+            fechaEmisionDisplay: record.fechaEmisionDisplay || formatDateDisplay(record.fechaEmisionValue || ""),
+            fechaPagoValue: record.fechaPagoValue || "",
+            fechaPagoDisplay: record.fechaPagoDisplay || formatDateDisplay(record.fechaPagoValue || ""),
             valorTotal: Number(record.valorTotal || 0),
             reteFuentePorcentaje: Number(record.reteFuentePorcentaje || 0),
             valorPago: Number(record.valorPago || 0),
@@ -757,6 +787,8 @@
             impresa: Boolean(record.impresa),
             hasAdjunto: Boolean(record.hasAdjunto),
             adjuntoFileName: record.adjuntoFileName || "",
+            periodYear: Number(record.periodYear || 0),
+            periodMonth: Number(record.periodMonth || 0),
             periodLabel: record.periodLabel || buildFallbackPeriodLabel(),
             createdOnDisplay: record.createdOnDisplay || "",
             modifiedOnDisplay: record.modifiedOnDisplay || ""
@@ -787,6 +819,14 @@
             return "Debes diligenciar el NIT o cedula.";
         }
 
+        if (!isValidDateValue(row.fechaEmisionValue)) {
+            return "Debes diligenciar una fecha de emision valida.";
+        }
+
+        if (row.fechaPagoValue && !isValidDateValue(row.fechaPagoValue)) {
+            return "La fecha de pago debe ser valida.";
+        }
+
         if (row.valorTotal <= 0) {
             return "El valor total debe ser mayor a cero.";
         }
@@ -810,6 +850,12 @@
         const selectedMonth = monthSelect?.selectedOptions?.[0]?.textContent || "";
         const selectedYear = yearSelect?.value || String(state.year || "");
         return [selectedMonth.replace(/\(\d+\)/g, "").trim(), selectedYear].filter(Boolean).join(" ");
+    }
+
+    function buildFallbackEmissionDateValue() {
+        const selectedYear = parseInteger(yearSelect?.value, state.year);
+        const selectedMonth = parseInteger(monthSelect?.value, state.month);
+        return `${String(selectedYear).padStart(4, "0")}-${String(selectedMonth).padStart(2, "0")}-01`;
     }
 
     function resetAttachmentInput() {
@@ -853,7 +899,7 @@
             modalPrintBtn.disabled = isBusy || !state.editor.record?.recordId;
         }
 
-        [receptorInput, nitInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput, attachmentInput].forEach((element) => {
+        [receptorInput, nitInput, fechaEmisionInput, fechaPagoInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput, attachmentInput].forEach((element) => {
             if (element) {
                 element.disabled = isBusy;
             }
@@ -887,6 +933,19 @@
     function parseInteger(value, fallback) {
         const parsed = Number.parseInt(String(value || ""), 10);
         return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function isValidDateValue(value) {
+        return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+    }
+
+    function formatDateDisplay(value) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+        if (!match) {
+            return "";
+        }
+
+        return `${match[3]}/${match[2]}/${match[1]}`;
     }
 
     function formatInputNumber(value) {

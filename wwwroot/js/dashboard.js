@@ -695,7 +695,7 @@
         }
 
         if (copiersClientInvoicesBody) {
-            copiersClientInvoicesBody.innerHTML = '<tr><td colspan="5" class="dashboard-table__empty">Selecciona un cliente para ver sus facturas emitidas.</td></tr>';
+            copiersClientInvoicesBody.innerHTML = '<tr><td colspan="6" class="dashboard-table__empty">Selecciona un cliente para ver sus facturas emitidas.</td></tr>';
         }
     }
 
@@ -728,7 +728,7 @@
         }
 
         if (copiersClientInvoicesBody) {
-            copiersClientInvoicesBody.innerHTML = '<tr><td colspan="5" class="dashboard-table__empty">Cargando facturas emitidas...</td></tr>';
+            copiersClientInvoicesBody.innerHTML = '<tr><td colspan="6" class="dashboard-table__empty">Cargando facturas emitidas...</td></tr>';
         }
 
         setStatus(copiersClientInvoicesStatus, "info", "Consultando facturas del cliente...");
@@ -768,9 +768,15 @@
                         ? '<span class="dashboard-badge dashboard-badge--overdue" title="Sin pago y en mora">Vencida</span>'
                         : escapeHtml(row.paymentDateDisplay || "Sin fecha")}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
+                    <td class="text-center">${(() => {
+                        const publicUrl = (row.publicUrl || "").trim();
+                        return isHttpUrl(publicUrl)
+                            ? `<a class="dashboard-icon-link" href="${escapeHtml(publicUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Descargar factura ${escapeHtml(row.invoiceNumber || "")}" title="Descargar factura"><span aria-hidden="true">⬇</span></a>`
+                            : '<span class="dashboard-muted-text">-</span>';
+                    })()}</td>
                 </tr>
             `).join("")
-            : `<tr><td colspan="5" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas Copiers para este cliente.")}</td></tr>`;
+            : `<tr><td colspan="6" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas Copiers para este cliente.")}</td></tr>`;
     }
 
     function isCopiersEquipmentDetailOpen() {
@@ -4682,7 +4688,7 @@
             }
 
             if (copiersClientInvoicesBody) {
-                copiersClientInvoicesBody.innerHTML = '<tr><td colspan="5" class="dashboard-table__empty">No pudimos consultar las facturas emitidas de este cliente.</td></tr>';
+                copiersClientInvoicesBody.innerHTML = '<tr><td colspan="6" class="dashboard-table__empty">No pudimos consultar las facturas emitidas de este cliente.</td></tr>';
             }
 
             setStatus(copiersClientInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible cargar las facturas emitidas.");

@@ -163,6 +163,7 @@ public sealed class CopiersClientInvoiceRowDto
 {
     public string RecordId { get; set; } = "";
     public string InvoiceNumber { get; set; } = "";
+    public string PublicUrl { get; set; } = "";
     public decimal TotalInvoice { get; set; }
     public string EmissionDateValue { get; set; } = "";
     public string EmissionDateDisplay { get; set; } = "";

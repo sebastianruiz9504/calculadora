@@ -24,12 +24,15 @@ public sealed partial class DataverseService
     private const string CuentaCobroValorPagoField = "cr07a_valorpago";
     private const string CuentaCobroReteFuenteValorField = "cr07a_rteftevalor";
     private const string CuentaCobroObservacionesField = "cr07a_observaciones";
+    private const string CuentaCobroFechaEmisionField = "cr07a_fechadeemision";
+    private const string CuentaCobroFechaPagoField = "cr07a_fechadepago";
     private const string CuentaCobroAdjuntoField = "cr07a_adjunto";
     private const string CuentaCobroAdjuntoNameField = "cr07a_adjunto_name";
     private const string CuentaCobroImpresaField = "cr07a_impresa";
     private static readonly CultureInfo CuentaCobroCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly string[] CuentaCobroPeriodFieldCandidates =
     {
+        CuentaCobroFechaEmisionField,
         "cr07a_periodo",
         "cr07a_fecha",
         "cr07a_fechadecuenta",
@@ -133,17 +136,19 @@ public sealed partial class DataverseService
         var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            [metadata.BaseMetadata.PrimaryNameField] = BuildCuentaCobroPrimaryName(normalized.Year, normalized.Month, normalized.Receptor),
+            [metadata.BaseMetadata.PrimaryNameField] = BuildCuentaCobroPrimaryName(normalized.FechaEmision.Year, normalized.FechaEmision.Month, normalized.Receptor),
             [CuentaCobroReceptorField] = normalized.Receptor,
             [CuentaCobroNitField] = normalized.NitOCedula,
             [CuentaCobroObservacionesField] = normalized.Observaciones,
+            [CuentaCobroFechaEmisionField] = FormatCuentaCobroDateValue(normalized.FechaEmision),
+            [CuentaCobroFechaPagoField] = normalized.FechaPago.HasValue ? FormatCuentaCobroDateValue(normalized.FechaPago.Value) : null,
             [CuentaCobroValorTotalField] = normalized.ValorTotal,
             [CuentaCobroReteFuentePorcentajeField] = normalized.ReteFuentePorcentaje,
             [CuentaCobroValorPagoField] = normalized.ValorPago,
             [CuentaCobroReteFuenteValorField] = normalized.ReteFuenteValor
         };
 
-        ApplyCuentaCobroPeriodPayload(payload, metadata, normalized.Year, normalized.Month);
+        ApplyCuentaCobroPeriodPayload(payload, metadata, normalized.FechaEmision);
 
         var relativeUrl = isCreate
             ? $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}"
@@ -297,9 +302,9 @@ public sealed partial class DataverseService
         var resolved = new CuentaCobroMetadata
         {
             BaseMetadata = baseMetadata,
-            PeriodField = CuentaCobroPeriodFallbackField,
-            UsesExplicitPeriodField = false,
-            PeriodSourceLabel = "Mes de creacion",
+            PeriodField = CuentaCobroFechaEmisionField,
+            UsesExplicitPeriodField = true,
+            PeriodSourceLabel = "Fecha de emision",
             PrintedValueMode = CuentaCobroPrintedValueMode.Unknown
         };
 
@@ -321,7 +326,13 @@ public sealed partial class DataverseService
                 {
                     resolved.PeriodField = periodField;
                     resolved.UsesExplicitPeriodField = true;
-                    resolved.PeriodSourceLabel = "Periodo del documento";
+                    resolved.PeriodSourceLabel = ResolveCuentaCobroPeriodSourceLabel(periodField);
+                }
+                else
+                {
+                    resolved.PeriodField = CuentaCobroPeriodFallbackField;
+                    resolved.UsesExplicitPeriodField = false;
+                    resolved.PeriodSourceLabel = "Mes de creacion";
                 }
 
                 resolved.PrintedValueMode = ResolveCuentaCobroPrintedValueMode(attributes);
@@ -360,6 +371,8 @@ public sealed partial class DataverseService
                 CuentaCobroReteFuentePorcentajeField,
                 CuentaCobroValorPagoField,
                 CuentaCobroReteFuenteValorField,
+                CuentaCobroFechaEmisionField,
+                CuentaCobroFechaPagoField,
                 CuentaCobroAdjuntoField,
                 CuentaCobroAdjuntoNameField,
                 CuentaCobroImpresaField,
@@ -381,7 +394,9 @@ public sealed partial class DataverseService
         var reteFuentePorcentaje = RoundCurrency(ReadDecimal(item, CuentaCobroReteFuentePorcentajeField) ?? 0m);
         var valorPago = RoundCurrency(ReadDecimal(item, CuentaCobroValorPagoField) ?? 0m);
         var reteFuenteValor = CalculateCuentaCobroReteFuenteValue(valorTotal, reteFuentePorcentaje);
-        var periodDate = ResolveCuentaCobroPeriodDate(item, metadata) ?? ResolveCuentaCobroDate(item, CuentaCobroPeriodFallbackField) ?? ResolveCuentaCobroNow();
+        var fechaEmision = ResolveCuentaCobroDate(item, CuentaCobroFechaEmisionField);
+        var fechaPago = ResolveCuentaCobroDate(item, CuentaCobroFechaPagoField);
+        var periodDate = fechaEmision ?? ResolveCuentaCobroPeriodDate(item, metadata) ?? ResolveCuentaCobroDate(item, CuentaCobroPeriodFallbackField) ?? ResolveCuentaCobroNow();
         var createdOn = ResolveCuentaCobroDate(item, CuentaCobroPeriodFallbackField) ?? periodDate;
         var modifiedOn = ResolveCuentaCobroDate(item, CuentaCobroModifiedOnField);
         var attachmentRaw = ReadString(item, CuentaCobroAdjuntoField);
@@ -405,6 +420,10 @@ public sealed partial class DataverseService
             PeriodYear = periodDate.Year,
             PeriodMonth = periodDate.Month,
             PeriodLabel = BuildCuentaCobroPeriodLabel(periodDate.Year, periodDate.Month),
+            FechaEmisionValue = fechaEmision.HasValue ? FormatCuentaCobroDateValue(fechaEmision.Value) : "",
+            FechaEmisionDisplay = FormatCuentaCobroDateDisplay(fechaEmision),
+            FechaPagoValue = fechaPago.HasValue ? FormatCuentaCobroDateValue(fechaPago.Value) : "",
+            FechaPagoDisplay = FormatCuentaCobroDateDisplay(fechaPago),
             CreatedOnValue = createdOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             CreatedOnDisplay = createdOn.ToString("dd/MM/yyyy", CuentaCobroCulture),
             ModifiedOnDisplay = modifiedOn?.ToString("dd/MM/yyyy", CuentaCobroCulture) ?? ""
@@ -498,12 +517,26 @@ public sealed partial class DataverseService
         var valorTotal = RoundCurrency(request.ValorTotal);
         var reteFuentePorcentaje = RoundCurrency(request.ReteFuentePorcentaje);
         var valorPago = RoundCurrency(request.ValorPago);
+        var rawFechaEmision = request.FechaEmisionValue?.Trim() ?? "";
+        var rawFechaPago = request.FechaPagoValue?.Trim() ?? "";
 
         if (string.IsNullOrWhiteSpace(receptor))
             throw new InvalidOperationException("El campo receptor es obligatorio.");
 
         if (string.IsNullOrWhiteSpace(nitOCedula))
             throw new InvalidOperationException("El campo NIT o cedula es obligatorio.");
+
+        if (!TryParseDateOnly(rawFechaEmision, out var fechaEmision))
+            throw new InvalidOperationException("La fecha de emision es obligatoria y debe ser valida.");
+
+        DateOnly? fechaPago = null;
+        if (!string.IsNullOrWhiteSpace(rawFechaPago))
+        {
+            if (!TryParseDateOnly(rawFechaPago, out var parsedFechaPago))
+                throw new InvalidOperationException("La fecha de pago debe ser valida.");
+
+            fechaPago = parsedFechaPago;
+        }
 
         if (valorTotal <= 0m)
             throw new InvalidOperationException("El valor total debe ser mayor a cero.");
@@ -525,6 +558,8 @@ public sealed partial class DataverseService
             Receptor = receptor,
             NitOCedula = nitOCedula,
             Observaciones = observaciones,
+            FechaEmision = fechaEmision,
+            FechaPago = fechaPago,
             ValorTotal = valorTotal,
             ReteFuentePorcentaje = reteFuentePorcentaje,
             ValorPago = valorPago,
@@ -558,6 +593,16 @@ public sealed partial class DataverseService
     private static string BuildCuentaCobroPeriodLabel(int year, int month)
     {
         return $"{BuildCuentaCobroMonthLabel(month)} {year:D4}";
+    }
+
+    private static string FormatCuentaCobroDateValue(DateOnly date)
+    {
+        return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCuentaCobroDateDisplay(DateOnly? date)
+    {
+        return date?.ToString("dd/MM/yyyy", CuentaCobroCulture) ?? "";
     }
 
     private static int ResolveCuentaCobroSelectedMonth(
@@ -675,16 +720,22 @@ public sealed partial class DataverseService
         return attributeType.Contains("date", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string ResolveCuentaCobroPeriodSourceLabel(string periodField)
+    {
+        return string.Equals(periodField, CuentaCobroFechaEmisionField, StringComparison.OrdinalIgnoreCase)
+            ? "Fecha de emision"
+            : "Periodo del documento";
+    }
+
     private static void ApplyCuentaCobroPeriodPayload(
         Dictionary<string, object?> payload,
         CuentaCobroMetadata metadata,
-        int year,
-        int month)
+        DateOnly periodDate)
     {
         if (!metadata.UsesExplicitPeriodField || string.IsNullOrWhiteSpace(metadata.PeriodField))
             return;
 
-        payload[metadata.PeriodField] = new DateOnly(year, month, 1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        payload[metadata.PeriodField] = FormatCuentaCobroDateValue(periodDate);
     }
 
     private static void ValidateCuentaCobroUpload(string fileName, byte[] content)
@@ -766,6 +817,8 @@ public sealed partial class DataverseService
         public string Receptor { get; init; } = "";
         public string NitOCedula { get; init; } = "";
         public string Observaciones { get; init; } = "";
+        public DateOnly FechaEmision { get; init; }
+        public DateOnly? FechaPago { get; init; }
         public decimal ValorTotal { get; init; }
         public decimal ReteFuentePorcentaje { get; init; }
         public decimal ValorPago { get; init; }

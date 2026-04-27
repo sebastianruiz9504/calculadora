@@ -196,7 +196,7 @@
 
 .ccb-table {
     width: 100%;
-    min-width: 0;
+    min-width: 780px;
     margin-bottom: 0;
     table-layout: fixed;
 }

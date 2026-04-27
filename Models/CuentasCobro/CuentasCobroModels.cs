@@ -34,6 +34,10 @@ public sealed class CuentaCobroRowDto
     public int PeriodYear { get; set; }
     public int PeriodMonth { get; set; }
     public string PeriodLabel { get; set; } = "";
+    public string FechaEmisionValue { get; set; } = "";
+    public string FechaEmisionDisplay { get; set; } = "";
+    public string FechaPagoValue { get; set; } = "";
+    public string FechaPagoDisplay { get; set; } = "";
     public string CreatedOnValue { get; set; } = "";
     public string CreatedOnDisplay { get; set; } = "";
     public string ModifiedOnDisplay { get; set; } = "";
@@ -63,6 +67,8 @@ public sealed class CuentaCobroSaveRequest
     public string Receptor { get; set; } = "";
     public string NitOCedula { get; set; } = "";
     public string Observaciones { get; set; } = "";
+    public string FechaEmisionValue { get; set; } = "";
+    public string FechaPagoValue { get; set; } = "";
     public decimal ValorTotal { get; set; }
     public decimal ReteFuentePorcentaje { get; set; }
     public decimal ValorPago { get; set; }

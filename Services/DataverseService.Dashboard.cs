@@ -164,6 +164,7 @@ public sealed partial class DataverseService
                     {
                         RecordId = row.RecordId,
                         InvoiceNumber = row.InvoiceNumber,
+                        PublicUrl = row.PublicUrl,
                         TotalInvoice = row.TotalInvoice,
                         EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                         EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",

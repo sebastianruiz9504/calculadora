@@ -1203,7 +1203,15 @@
 }
 
 .dashboard-client-invoices-table {
-    min-width: 900px;
+    width: 100%;
+    min-width: 100%;
+    table-layout: fixed;
+}
+
+.dashboard-client-invoices-table thead th,
+.dashboard-client-invoices-table tbody td {
+    white-space: normal;
+    word-break: break-word;
 }
 
 .dashboard-report-summary {
@@ -1322,12 +1330,12 @@
 
 .dashboard-client-invoices-table thead th:nth-child(1),
 .dashboard-client-invoices-table tbody td:nth-child(1) {
-    width: 26%;
+    width: 14%;
 }
 
 .dashboard-client-invoices-table thead th:nth-child(2),
 .dashboard-client-invoices-table tbody td:nth-child(2) {
-    width: 20%;
+    width: 19%;
 }
 
 .dashboard-client-invoices-table thead th:nth-child(3),
@@ -1339,7 +1347,13 @@
 .dashboard-client-invoices-table tbody td:nth-child(4),
 .dashboard-client-invoices-table thead th:nth-child(5),
 .dashboard-client-invoices-table tbody td:nth-child(5) {
-    width: 18%;
+    width: 17%;
+}
+
+.dashboard-client-invoices-table thead th:nth-child(6),
+.dashboard-client-invoices-table tbody td:nth-child(6) {
+    width: 8%;
+    text-align: center;
 }
 
 .dashboard-equipment-table,

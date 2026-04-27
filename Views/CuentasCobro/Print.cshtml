@@ -169,6 +169,14 @@
             </thead>
             <tbody>
                 <tr>
+                    <td>Fecha emision</td>
+                    <td>@(string.IsNullOrWhiteSpace(Model.Record.FechaEmisionDisplay) ? "Sin fecha" : Model.Record.FechaEmisionDisplay)</td>
+                </tr>
+                <tr>
+                    <td>Fecha pago</td>
+                    <td>@(string.IsNullOrWhiteSpace(Model.Record.FechaPagoDisplay) ? "Sin fecha" : Model.Record.FechaPagoDisplay)</td>
+                </tr>
+                <tr>
                     <td>Valor total</td>
                     <td>@Model.Record.ValorTotal.ToString("N2")</td>
                 </tr>
