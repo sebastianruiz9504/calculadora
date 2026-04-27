@@ -666,23 +666,13 @@
             renderSummaryCards(board);
             renderRows(board);
 
-            const syncMessages = Array.isArray(board?.syncMessages) ? board.syncMessages.filter(Boolean) : [];
             const warnings = Array.isArray(board?.warnings) ? board.warnings.filter(Boolean) : [];
             const summaryParts = [];
             if (board?.message) {
                 summaryParts.push(String(board.message));
             }
-            if (Number(board?.syncedRequestsCount || 0) > 0) {
-                summaryParts.push(`Se procesaron ${formatNumber(board.syncedRequestsCount)} solicitud(es) aprobadas.`);
-            }
-            if (Number(board?.syncedImportedCount || 0) > 0) {
-                summaryParts.push(`Se importaron ${formatNumber(board.syncedImportedCount)} línea(s) desde aprobaciones.`);
-            }
-            if (syncMessages.length > 0) {
-                summaryParts.push(syncMessages.join(" | "));
-            }
 
-            const kind = warnings.length > 0 || syncMessages.length > 0
+            const kind = warnings.length > 0
                 ? "warning"
                 : state.rows.length > 0 ? "success" : "info";
             setStatus(elements.boardStatus, kind, summaryParts.join(" ").trim() || "Tabla cargada.");

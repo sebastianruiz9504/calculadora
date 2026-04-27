@@ -23,7 +23,6 @@ public sealed class CalculatorController : Controller
     private readonly IDataverseService _dataverse;
     private readonly IQuoteCalculator _calculator;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IProvisioningRequestStore _provisioningRequestStore;
     private readonly CalculatorOptions _calculatorOptions;
     private readonly ILogger<CalculatorController> _logger;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
@@ -32,14 +31,12 @@ public sealed class CalculatorController : Controller
         IDataverseService dataverse,
         IQuoteCalculator calculator,
         IHttpClientFactory httpClientFactory,
-        IProvisioningRequestStore provisioningRequestStore,
         IOptions<CalculatorOptions> calculatorOptions,
         ILogger<CalculatorController> logger)
     {
         _dataverse = dataverse;
         _calculator = calculator;
         _httpClientFactory = httpClientFactory;
-        _provisioningRequestStore = provisioningRequestStore;
         _calculatorOptions = calculatorOptions.Value;
         _logger = logger;
     }
@@ -244,21 +241,6 @@ public sealed class CalculatorController : Controller
             return BadRequest("Configura la URL del flujo en Calculator:ProvisioningRequestFlowUrl antes de enviar la solicitud.");
         }
 
-        if (string.IsNullOrWhiteSpace(_calculatorOptions.ProvisioningApprovalCallbackSecret))
-        {
-            return BadRequest("Configura Calculator:ProvisioningApprovalCallbackSecret y usa el mismo valor en Power Automate como header X-Calculator-Callback-Secret.");
-        }
-
-        var callbackUrl = ResolveProvisioningApprovalCallbackUrl();
-        if (string.IsNullOrWhiteSpace(callbackUrl))
-        {
-            return BadRequest("No se pudo resolver la URL publica del callback de aprobacion. Configura Calculator:ProvisioningApprovalCallbackUrl.");
-        }
-
-        var callbackUrlValidation = ValidateProvisioningApprovalCallbackUrl(callbackUrl);
-        if (!string.IsNullOrWhiteSpace(callbackUrlValidation))
-            return BadRequest(callbackUrlValidation);
-
         try
         {
             await EnsureHardwareProductsForProvisioningAsync(input, ct);
@@ -269,23 +251,7 @@ public sealed class CalculatorController : Controller
         }
 
         var requestId = Guid.NewGuid().ToString("N");
-        var statusUrl = Url.Action(
-            nameof(ProvisioningRequestStatus),
-            "Calculator",
-            new { requestId },
-            protocol: Request.Scheme) ?? "";
-        var now = DateTimeOffset.UtcNow;
-        var storedRequest = new ProvisioningStoredRequest
-        {
-            RequestId = requestId,
-            Source = input.Source?.Trim() ?? "calculator",
-            Status = ProvisioningRequestLifecycleStatus.PendingApproval,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-            Request = input
-        };
-        await _provisioningRequestStore.SavePendingAsync(storedRequest, ct);
-        var payload = BuildProvisioningFlowPayload(input, requestId, callbackUrl, statusUrl);
+        var payload = BuildProvisioningFlowPayload(input, requestId);
         var client = _httpClientFactory.CreateClient();
         try
         {
@@ -296,14 +262,12 @@ public sealed class CalculatorController : Controller
                 var message = string.IsNullOrWhiteSpace(body)
                     ? $"El flujo respondiÃ³ con error HTTP {(int)response.StatusCode}."
                     : body;
-                await _provisioningRequestStore.MarkFlowDispatchFailedAsync(requestId, message, ct);
                 return BadRequest(message);
             }
         }
         catch (Exception ex)
         {
             var message = BuildDiagnosticMessage(ex);
-            await _provisioningRequestStore.MarkFlowDispatchFailedAsync(requestId, message, ct);
             return BadRequest(message);
         }
 
@@ -311,64 +275,7 @@ public sealed class CalculatorController : Controller
         {
             ok = true,
             requestId,
-            statusUrl,
-            message = "Solicitud enviada a aprobacion. La app quedo esperando el callback del flujo."
-        });
-    }
-
-    [HttpGet]
-    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> ProvisioningRequestStatus([FromQuery] string requestId, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-            return BadRequest("requestId requerido.");
-
-        ProvisioningStoredRequest? record;
-        try
-        {
-            record = await _provisioningRequestStore.GetAsync(requestId, ct);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-
-        if (record is null)
-            return NotFound("No se encontro la solicitud.");
-
-        var currentUser = await _dataverse.GetCurrentUserAsync(ct);
-        if (!CanAccessProvisioningRequest(record, currentUser))
-            return Forbid();
-
-        if (record.Status == ProvisioningRequestLifecycleStatus.Approved
-            && record.Approval?.Approved == true
-            && record.HardwareSync.Status == ProvisioningHardwareSyncStatus.Pending)
-        {
-            await TrySynchronizeApprovedHardwareAsync(record, ct);
-            record = await _provisioningRequestStore.GetAsync(requestId, ct) ?? record;
-        }
-
-        return Json(new
-        {
-            requestId = record.RequestId,
-            status = ToProvisioningStatusKey(record.Status),
-            approved = record.Approval?.Approved,
-            outcome = record.Approval?.Outcome ?? "",
-            comments = record.Approval?.Comments ?? "",
-            updatedAtUtc = record.UpdatedAtUtc,
-            flowDispatchMessage = record.FlowDispatchMessage,
-            approver = record.Approval?.Approver is null ? null : new
-            {
-                displayName = record.Approval.Approver.DisplayName,
-                email = record.Approval.Approver.Email
-            },
-            hardwareSync = new
-            {
-                status = ToHardwareSyncStatusKey(record.HardwareSync.Status),
-                importedCount = record.HardwareSync.ImportedCount,
-                message = record.HardwareSync.Message,
-                processedAtUtc = record.HardwareSync.ProcessedAtUtc
-            }
+            message = "Solicitud enviada a aprobacion."
         });
     }
 
@@ -560,9 +467,7 @@ public sealed class CalculatorController : Controller
 
     private static object BuildProvisioningFlowPayload(
         ProvisioningRequestInput input,
-        string requestId,
-        string approvalCallbackUrl,
-        string statusUrl)
+        string requestId)
     {
         var requester = input.Requester;
         var cliente = input.Cliente;
@@ -656,13 +561,6 @@ public sealed class CalculatorController : Controller
                 inicio = item.Inicio,
                 final = item.Final
             }),
-            approvalCallback = new
-            {
-                requestId,
-                callbackUrl = approvalCallbackUrl,
-                statusUrl,
-                secretHeaderName = ProvisioningApprovalController.CallbackSecretHeaderName
-            },
             attachment = attachment is null ? null : new
             {
                 fileName = attachment.FileName?.Trim() ?? "",
@@ -723,97 +621,6 @@ public sealed class CalculatorController : Controller
 
         return builder.ToString();
     }
-
-    private async Task TrySynchronizeApprovedHardwareAsync(ProvisioningStoredRequest record, CancellationToken ct)
-    {
-        try
-        {
-            var result = await _dataverse.SyncProvisioningHardwareAsync(record, ct);
-            await _provisioningRequestStore.MarkHardwareSyncResultAsync(
-                record.RequestId,
-                result.Status,
-                result.ImportedCount,
-                result.Message,
-                ct);
-        }
-        catch (Exception ex)
-        {
-            var detail = BuildDiagnosticMessage(ex);
-            await _provisioningRequestStore.MarkHardwareSyncResultAsync(
-                record.RequestId,
-                ProvisioningHardwareSyncStatus.Failed,
-                0,
-                detail,
-                ct);
-        }
-    }
-
-    private string ResolveProvisioningApprovalCallbackUrl()
-    {
-        var configured = _calculatorOptions.ProvisioningApprovalCallbackUrl?.Trim() ?? "";
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured;
-
-        return Url.Action(
-            action: nameof(ProvisioningApprovalController.ApprovalCallback),
-            controller: "ProvisioningApproval",
-            values: null,
-            protocol: Request.Scheme) ?? "";
-    }
-
-    private static string? ValidateProvisioningApprovalCallbackUrl(string callbackUrl)
-    {
-        if (!Uri.TryCreate(callbackUrl, UriKind.Absolute, out var uri))
-            return "Calculator:ProvisioningApprovalCallbackUrl debe ser una URL absoluta alcanzable por Power Automate.";
-
-        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            return "Calculator:ProvisioningApprovalCallbackUrl debe usar HTTPS para que Power Automate pueda llamar el callback de aprobacion.";
-
-        if (uri.IsLoopback)
-        {
-            return "La URL del callback de aprobacion resuelve a localhost. Power Automate no puede llamar localhost; configura Calculator:ProvisioningApprovalCallbackUrl con una URL publica HTTPS o un tunel publico.";
-        }
-
-        return null;
-    }
-
-    private static bool CanAccessProvisioningRequest(ProvisioningStoredRequest record, CurrentUserInfo? currentUser)
-    {
-        if (currentUser is null)
-            return false;
-
-        var requester = record.Request.Requester;
-        if (!string.IsNullOrWhiteSpace(requester?.SystemUserId)
-            && !string.IsNullOrWhiteSpace(currentUser.SystemUserId)
-            && string.Equals(requester.SystemUserId, currentUser.SystemUserId, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return !string.IsNullOrWhiteSpace(requester?.Email)
-            && !string.IsNullOrWhiteSpace(currentUser.Email)
-            && string.Equals(requester.Email, currentUser.Email, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string ToProvisioningStatusKey(ProvisioningRequestLifecycleStatus status) =>
-        status switch
-        {
-            ProvisioningRequestLifecycleStatus.PendingApproval => "pending-approval",
-            ProvisioningRequestLifecycleStatus.FlowDispatchFailed => "flow-dispatch-failed",
-            ProvisioningRequestLifecycleStatus.Approved => "approved",
-            ProvisioningRequestLifecycleStatus.Rejected => "rejected",
-            _ => "unknown"
-        };
-
-    private static string ToHardwareSyncStatusKey(ProvisioningHardwareSyncStatus status) =>
-        status switch
-        {
-            ProvisioningHardwareSyncStatus.Pending => "pending",
-            ProvisioningHardwareSyncStatus.NotRequired => "not-required",
-            ProvisioningHardwareSyncStatus.Completed => "completed",
-            ProvisioningHardwareSyncStatus.Failed => "failed",
-            _ => "unknown"
-        };
 
     private static string ResolveDealTypeLabel(ProvisioningScenarioContext? scenario)
     {

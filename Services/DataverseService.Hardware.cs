@@ -428,103 +428,6 @@ public sealed partial class DataverseService
         };
     }
 
-    public async Task<HardwareProvisioningSyncResultDto> SyncProvisioningHardwareAsync(
-        ProvisioningStoredRequest request,
-        CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (request.Status != ProvisioningRequestLifecycleStatus.Approved || request.Approval?.Approved != true)
-        {
-            return new HardwareProvisioningSyncResultDto
-            {
-                RequestId = request.RequestId,
-                Status = ProvisioningHardwareSyncStatus.NotRequired,
-                Message = "La solicitud no tiene una aprobacion positiva."
-            };
-        }
-
-        var hardwareLines = (request.Request.LineItems ?? new List<ProvisioningLineItem>())
-            .Select((line, index) => new { Line = line, Index = index + 1 })
-            .Where(item => IsProvisioningHardwareLine(item.Line.Tipo))
-            .ToList();
-
-        if (hardwareLines.Count == 0)
-        {
-            return new HardwareProvisioningSyncResultDto
-            {
-                RequestId = request.RequestId,
-                Status = ProvisioningHardwareSyncStatus.NotRequired,
-                Message = "La solicitud aprobada no contiene lineas de Hardware."
-            };
-        }
-
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var user = httpContext.User;
-        await EnsureHardwareWorkflowSchemaAsync(user, ct);
-
-        var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
-        var clientName = request.Request.Cliente?.Nombre?.Trim() ?? "";
-        if (string.IsNullOrWhiteSpace(clientName))
-            throw new InvalidOperationException("La solicitud aprobada no trae el nombre del cliente.");
-
-        var clientId = await ResolveCopiersClientIdAsync(clientName, ct);
-        if (string.IsNullOrWhiteSpace(clientId))
-        {
-            throw new InvalidOperationException(
-                $"No se encontro un cliente exacto para '{clientName}' y no se pudo poblar el lookup {HardwareClientLookupLogicalName}.");
-        }
-
-        var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
-            HardwareTableLogicalName,
-            HardwareClientLookupLogicalName,
-            HardwareClientLookupLogicalName,
-            user,
-            ct);
-        var ownerNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
-            HardwareTableLogicalName,
-            HardwareOwnerLogicalName,
-            HardwareOwnerLogicalName,
-            user,
-            ct);
-
-        var importedCount = 0;
-        var skippedCount = 0;
-        foreach (var item in hardwareLines)
-        {
-            var importKey = ComputeProvisioningHardwareImportKey(request.RequestId, item.Line, item.Index);
-            if (await HardwareRecordExistsAsync(metadata.EntitySetName, importKey, user, ct))
-            {
-                skippedCount++;
-                continue;
-            }
-
-            var payload = BuildProvisioningHardwareRecordPayload(
-                metadata.PrimaryNameField,
-                request,
-                item.Line,
-                item.Index,
-                importKey,
-                clientId,
-                clientNavigationProperty,
-                ownerNavigationProperty);
-            await CallDataverseSendAsync($"/api/data/v9.2/{metadata.EntitySetName}", "POST", payload, user, ct);
-            importedCount++;
-        }
-
-        return new HardwareProvisioningSyncResultDto
-        {
-            RequestId = request.RequestId,
-            Status = ProvisioningHardwareSyncStatus.Completed,
-            ImportedCount = importedCount,
-            Message = skippedCount > 0
-                ? $"Se sincronizaron {importedCount} linea(s) de Hardware y se omitieron {skippedCount} duplicada(s)."
-                : $"Se sincronizaron {importedCount} linea(s) de Hardware."
-        };
-    }
-
     public async Task<HardwareBoardDto> GetHardwareBoardAsync(
         int? stateValue = null,
         DateOnly? startDate = null,
@@ -1716,7 +1619,7 @@ public sealed partial class DataverseService
         if (clientAttribute is null)
         {
             throw new InvalidOperationException(
-                $"La tabla Hardware no tiene el campo lookup {HardwareClientLookupLogicalName}. Crealo en Dataverse antes de sincronizar aprobaciones.");
+                $"La tabla Hardware no tiene el campo lookup {HardwareClientLookupLogicalName}. Crealo en Dataverse antes de gestionar registros de Hardware.");
         }
     }
 
@@ -1791,76 +1694,6 @@ public sealed partial class DataverseService
             [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({NormalizeGuid(clientId, nameof(clientId))})",
             [$"{ownerNavigationProperty}@odata.bind"] = $"/systemusers({NormalizeGuid(ownerId, nameof(ownerId))})"
         };
-    }
-
-    private static Dictionary<string, object?> BuildProvisioningHardwareRecordPayload(
-        string primaryNameField,
-        ProvisioningStoredRequest request,
-        ProvisioningLineItem line,
-        int lineIndex,
-        string importKey,
-        string clientId,
-        string clientNavigationProperty,
-        string ownerNavigationProperty)
-    {
-        var name = BuildProvisioningHardwareRecordName(line.ProductoNombre, lineIndex);
-        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        {
-            [string.IsNullOrWhiteSpace(primaryNameField) ? HardwarePrimaryNameLogicalName : primaryNameField] = name,
-            [HardwareImportKeyLogicalName] = importKey,
-            [HardwareSourceFileNameLogicalName] = $"provisioning:{request.RequestId}",
-            [HardwareSourceRowNumberLogicalName] = lineIndex,
-            [HardwareQuantityLogicalName] = NormalizeProvisioningHardwareQuantity(line.Cantidad, lineIndex),
-            [HardwareSaleUnitLogicalName] = RoundCurrency(Math.Max(line.VentaUnd, 0m)),
-            [HardwareTotalSaleLogicalName] = RoundCurrency(Math.Max(line.VentaTotal, 0m)),
-            [HardwareStateLogicalName] = HardwareStateWaitingDocumentation,
-            [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({NormalizeGuid(clientId, nameof(clientId))})"
-        };
-
-        var requesterOwnerId = NormalizeOptionalGuid(request.Request.Requester?.SystemUserId);
-        if (!string.IsNullOrWhiteSpace(requesterOwnerId))
-            payload[$"{ownerNavigationProperty}@odata.bind"] = $"/systemusers({requesterOwnerId})";
-
-        return payload;
-    }
-
-    private static string BuildProvisioningHardwareRecordName(string? productName, int lineIndex)
-    {
-        var normalized = NormalizeHardwareCell(productName);
-        if (string.IsNullOrWhiteSpace(normalized))
-            normalized = $"Hardware {lineIndex}";
-
-        return normalized.Length <= 200 ? normalized : normalized[..200];
-    }
-
-    private static string ComputeProvisioningHardwareImportKey(string requestId, ProvisioningLineItem line, int lineIndex)
-    {
-        var rawKey = string.Join(
-            "|",
-            new[]
-            {
-                "provisioning",
-                requestId.Trim(),
-                NormalizeHardwareCell(line.LineId),
-                NormalizeHardwareCell(line.ProductoId),
-                NormalizeHardwareCell(line.ProductoNombre),
-                NormalizeHardwareCell(line.Tipo),
-                lineIndex.ToString(CultureInfo.InvariantCulture)
-            });
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawKey));
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
-
-    private static bool IsProvisioningHardwareLine(string? tipo) =>
-        string.Equals(NormalizeHardwareCell(tipo), "Hardware", StringComparison.OrdinalIgnoreCase);
-
-    private static int NormalizeProvisioningHardwareQuantity(decimal quantity, int lineIndex)
-    {
-        if (quantity <= 0m)
-            throw new InvalidOperationException($"La linea de Hardware {lineIndex} tiene una cantidad invalida.");
-
-        var rounded = (int)Math.Round(quantity, MidpointRounding.AwayFromZero);
-        return rounded > 0 ? rounded : throw new InvalidOperationException($"La linea de Hardware {lineIndex} tiene una cantidad invalida.");
     }
 
     private List<string> BuildHardwareBoardSelectFields(

@@ -14,12 +14,10 @@ public sealed class HardwareController : Controller
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private const long MaxUploadBytes = 128 * 1024 * 1024;
     private readonly IDataverseService _dataverse;
-    private readonly IProvisioningRequestStore _provisioningRequestStore;
 
-    public HardwareController(IDataverseService dataverse, IProvisioningRequestStore provisioningRequestStore)
+    public HardwareController(IDataverseService dataverse)
     {
         _dataverse = dataverse;
-        _provisioningRequestStore = provisioningRequestStore;
     }
 
     [HttpGet]
@@ -61,47 +59,7 @@ public sealed class HardwareController : Controller
     {
         try
         {
-            var currentUser = await GetCurrentUserAsync(ct);
-            var syncMessages = new List<string>();
-            var syncedRequestsCount = 0;
-            var syncedImportedCount = 0;
-            var pendingRequests = await _provisioningRequestStore.GetApprovedPendingHardwareSyncAsync(ct);
-
-            foreach (var request in pendingRequests.Where(request => IsProvisioningRequestForCurrentUser(request, currentUser)))
-            {
-                try
-                {
-                    var syncResult = await _dataverse.SyncProvisioningHardwareAsync(request, ct);
-                    await _provisioningRequestStore.MarkHardwareSyncResultAsync(
-                        request.RequestId,
-                        syncResult.Status,
-                        syncResult.ImportedCount,
-                        syncResult.Message,
-                        ct);
-                    syncedRequestsCount++;
-                    syncedImportedCount += Math.Max(0, syncResult.ImportedCount);
-
-                    if (!string.IsNullOrWhiteSpace(syncResult.Message))
-                        syncMessages.Add($"{request.RequestId}: {syncResult.Message}");
-                }
-                catch (Exception ex)
-                {
-                    var detail = BuildExceptionDetail(ex);
-                    await _provisioningRequestStore.MarkHardwareSyncResultAsync(
-                        request.RequestId,
-                        ProvisioningHardwareSyncStatus.Failed,
-                        0,
-                        detail,
-                        ct);
-                    syncMessages.Add($"{request.RequestId}: {detail}");
-                }
-            }
-
-            var board = await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct, currentOwnerOnly: true);
-            board.SyncedRequestsCount = syncedRequestsCount;
-            board.SyncedImportedCount = syncedImportedCount;
-            board.SyncMessages = syncMessages;
-            return Json(board);
+            return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct, currentOwnerOnly: true));
         }
         catch (Exception ex)
         {
@@ -194,46 +152,7 @@ public sealed class HardwareController : Controller
     {
         try
         {
-            var syncMessages = new List<string>();
-            var syncedRequestsCount = 0;
-            var syncedImportedCount = 0;
-            var pendingRequests = await _provisioningRequestStore.GetApprovedPendingHardwareSyncAsync(ct);
-
-            foreach (var request in pendingRequests)
-            {
-                try
-                {
-                    var syncResult = await _dataverse.SyncProvisioningHardwareAsync(request, ct);
-                    await _provisioningRequestStore.MarkHardwareSyncResultAsync(
-                        request.RequestId,
-                        syncResult.Status,
-                        syncResult.ImportedCount,
-                        syncResult.Message,
-                        ct);
-                    syncedRequestsCount++;
-                    syncedImportedCount += Math.Max(0, syncResult.ImportedCount);
-
-                    if (!string.IsNullOrWhiteSpace(syncResult.Message))
-                        syncMessages.Add($"{request.RequestId}: {syncResult.Message}");
-                }
-                catch (Exception ex)
-                {
-                    var detail = BuildExceptionDetail(ex);
-                    await _provisioningRequestStore.MarkHardwareSyncResultAsync(
-                        request.RequestId,
-                        ProvisioningHardwareSyncStatus.Failed,
-                        0,
-                        detail,
-                        ct);
-                    syncMessages.Add($"{request.RequestId}: {detail}");
-                }
-            }
-
-            var board = await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct);
-            board.SyncedRequestsCount = syncedRequestsCount;
-            board.SyncedImportedCount = syncedImportedCount;
-            board.SyncMessages = syncMessages;
-            return Json(board);
+            return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct));
         }
         catch (Exception ex)
         {
@@ -471,21 +390,6 @@ public sealed class HardwareController : Controller
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct) =>
         await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
-
-    private static bool IsProvisioningRequestForCurrentUser(ProvisioningStoredRequest request, CurrentUserInfo currentUser)
-    {
-        var requester = request.Request.Requester;
-        if (!string.IsNullOrWhiteSpace(requester?.SystemUserId)
-            && !string.IsNullOrWhiteSpace(currentUser.SystemUserId)
-            && string.Equals(requester.SystemUserId, currentUser.SystemUserId, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return !string.IsNullOrWhiteSpace(requester?.Email)
-            && !string.IsNullOrWhiteSpace(currentUser.Email)
-            && string.Equals(requester.Email, currentUser.Email, StringComparison.OrdinalIgnoreCase);
-    }
 
     private static DateOnly ResolveBogotaToday()
     {

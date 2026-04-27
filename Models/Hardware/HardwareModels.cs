@@ -68,10 +68,7 @@ public sealed class HardwareBoardDto
     public string DateFilterEndValue { get; set; } = "";
     public string DateFilterLabel { get; set; } = "";
     public int TotalCount { get; set; }
-    public int SyncedRequestsCount { get; set; }
-    public int SyncedImportedCount { get; set; }
     public int? SelectedStateValue { get; set; }
-    public IReadOnlyList<string> SyncMessages { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
     public IReadOnlyList<HardwareStateOptionDto> StateOptions { get; set; } = Array.Empty<HardwareStateOptionDto>();
     public IReadOnlyList<HardwareStateSummaryDto> StateSummaries { get; set; } = Array.Empty<HardwareStateSummaryDto>();
@@ -235,14 +232,6 @@ public sealed class HardwareFileDownloadResult
     public string FileName { get; set; } = "";
     public string ContentType { get; set; } = "application/octet-stream";
     public byte[] Content { get; set; } = Array.Empty<byte>();
-}
-
-public sealed class HardwareProvisioningSyncResultDto
-{
-    public string RequestId { get; set; } = "";
-    public ProvisioningHardwareSyncStatus Status { get; set; } = ProvisioningHardwareSyncStatus.Pending;
-    public int ImportedCount { get; set; }
-    public string Message { get; set; } = "";
 }
 
 public sealed class HardwareCsvPreviewResultDto
