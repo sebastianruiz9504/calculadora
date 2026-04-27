@@ -3,9 +3,11 @@
 <div class="hardware-shell @(Model.ShowHero ? "" : "hardware-shell--embedded")"
      id="@Model.RootId"
      data-hw-root
+     data-hw-mode="@Model.Mode"
      data-preview-url="@Model.PreviewUrl"
      data-provision-url="@Model.ProvisionUrl"
      data-board-url="@Model.BoardUrl"
+     data-create-url="@Model.CreateUrl"
      data-save-url="@Model.SaveUrl"
      data-edit-url="@Model.EditUrl"
      data-upload-url="@Model.UploadUrl"
@@ -32,6 +34,65 @@
 
     <div class="hardware-status" data-hw-status role="status" aria-live="polite"></div>
 
+    @if (Model.IsCommercialMode)
+    {
+        <section class="hardware-card hardware-commercial-create">
+            <div class="hardware-section-header">
+                <div>
+                    <div class="hardware-kicker">Area comercial</div>
+                    <h2 class="hardware-section-title">Nueva orden de hardware</h2>
+                    <p class="hardware-section-subtitle">Registra la orden y sus lineas. Los calculos se guardan automaticamente.</p>
+                </div>
+            </div>
+
+            <div class="hardware-inline-status" data-hw-create-status role="status" aria-live="polite"></div>
+
+            <form class="hardware-form" data-hw-create-form>
+                <div class="hardware-form__grid hardware-commercial-create__header">
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">cr07a_noorden</span>
+                        <input type="text" class="form-control" data-hw-create-field="purchaseOrderNumber" />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">cr07a_fechaodc</span>
+                        <input type="date" class="form-control" data-hw-create-field="odcDate" />
+                    </label>
+                    <label class="hardware-field hardware-field--span-2">
+                        <span class="hardware-field__label">cr07a_cliente</span>
+                        <div class="hardware-lookup">
+                            <input type="search" class="form-control" autocomplete="off" data-hw-create-field="clientName" />
+                            <div class="hardware-lookup__menu" data-hw-create-client-options></div>
+                        </div>
+                        <span class="hardware-field__hint" data-hw-create-client-hint>Busca y selecciona un cliente.</span>
+                    </label>
+                </div>
+
+                <div class="hardware-table-wrap hardware-commercial-create__lines">
+                    <table class="table align-middle hardware-stage-table hardware-create-table">
+                        <thead>
+                            <tr>
+                                <th>cr07a_name</th>
+                                <th class="text-end">cr07a_cant</th>
+                                <th class="text-end">cr07a_costountproveedor</th>
+                                <th class="text-end">cr07a_ventaunidad</th>
+                                <th>cr07a_proveedor</th>
+                                <th>cr07a_ordendecompra</th>
+                                <th>cr07a_adjuntarproforma</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody data-hw-create-lines></tbody>
+                    </table>
+                </div>
+
+                <div class="hardware-commercial-create__actions">
+                    <button type="button" class="btn btn-outline-primary" data-hw-add-create-line>Agregar fila</button>
+                    <button type="submit" class="btn btn-primary" data-hw-save-create>Guardar orden</button>
+                </div>
+            </form>
+        </section>
+    }
+
     <section class="hardware-card">
         <div class="hardware-toolbar">
             <div class="hardware-toolbar__filters">
@@ -56,11 +117,17 @@
                     <strong data-hw-filter-label>Todos los estados</strong>
                 </div>
                 <div class="hardware-actions">
-                    <button type="button" class="btn btn-primary" data-hw-selected-action disabled>Gestionar selección</button>
-                    <button type="button" class="btn btn-outline-primary" data-hw-edit-selected disabled>Editar selección</button>
+                    <button type="button" class="btn btn-primary" data-hw-selected-action disabled @(Model.IsCommercialMode ? "hidden" : "")>Gestionar selección</button>
+                    @if (!Model.IsCommercialMode)
+                    {
+                        <button type="button" class="btn btn-outline-primary" data-hw-edit-selected disabled>Editar selección</button>
+                    }
                     <button type="button" class="btn btn-outline-secondary" data-hw-refresh>Actualizar</button>
                 </div>
-                <div class="hardware-selection-summary" data-hw-selection-summary>Selecciona una o varias filas.</div>
+                @if (!Model.IsCommercialMode)
+                {
+                    <div class="hardware-selection-summary" data-hw-selection-summary>Selecciona una o varias filas.</div>
+                }
             </div>
         </div>
 
@@ -109,23 +176,46 @@
                                 <span class="hardware-field__label">cr07a_noorden</span>
                                 <input type="text" class="form-control" data-hw-field="purchaseOrderNumber" />
                             </label>
-                            <label class="hardware-field">
-                                <span class="hardware-field__label">cr07a_valorflete</span>
-                                <input type="number" min="0" step="0.01" class="form-control" data-hw-field="freightValue" />
-                            </label>
+                            @if (Model.IsCommercialMode)
+                            {
+                                <label class="hardware-field">
+                                    <span class="hardware-field__label">cr07a_fechaodc</span>
+                                    <input type="date" class="form-control" data-hw-field="odcDate" />
+                                </label>
+                            }
+                            else
+                            {
+                                <label class="hardware-field">
+                                    <span class="hardware-field__label">cr07a_valorflete</span>
+                                    <input type="number" min="0" step="0.01" class="form-control" data-hw-field="freightValue" />
+                                </label>
+                            }
                         </div>
                         <div class="hardware-stage-table-wrap">
                             <table class="table align-middle hardware-stage-table">
                                 <thead>
                                     <tr>
-                                        <th>Hardware</th>
-                                        <th class="text-end">Cant.</th>
-                                        <th class="text-end">Venta unidad</th>
-                                        <th>Fecha ODC</th>
-                                        <th>Costo Unt Proveedor antes de IVA</th>
-                                        <th>Proveedor</th>
-                                        <th>Adjuntar ODC</th>
-                                        <th>Adjuntar Proforma</th>
+                                        @if (Model.IsCommercialMode)
+                                        {
+                                            <th>cr07a_name</th>
+                                            <th class="text-end">cr07a_cant</th>
+                                            <th class="text-end">cr07a_ventaunidad</th>
+                                            <th>cr07a_costountproveedor</th>
+                                            <th>cr07a_proveedor</th>
+                                            <th>cr07a_ordendecompra</th>
+                                            <th>cr07a_adjuntarproforma</th>
+                                        }
+                                        else
+                                        {
+                                            <th>Hardware</th>
+                                            <th class="text-end">Cant.</th>
+                                            <th class="text-end">Venta unidad</th>
+                                            <th>Fecha ODC</th>
+                                            <th>Costo Unt Proveedor antes de IVA</th>
+                                            <th>Proveedor</th>
+                                            <th>Adjuntar ODC</th>
+                                            <th>Adjuntar Proforma</th>
+                                        }
                                     </tr>
                                 </thead>
                                 <tbody data-hw-documentation-rows></tbody>

@@ -483,6 +483,12 @@ public sealed partial class DataverseService
             HardwareClientLookupLogicalName,
             user,
             ct);
+        var ownerNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            HardwareTableLogicalName,
+            HardwareOwnerLogicalName,
+            HardwareOwnerLogicalName,
+            user,
+            ct);
 
         var importedCount = 0;
         var skippedCount = 0;
@@ -502,7 +508,8 @@ public sealed partial class DataverseService
                 item.Index,
                 importKey,
                 clientId,
-                clientNavigationProperty);
+                clientNavigationProperty,
+                ownerNavigationProperty);
             await CallDataverseSendAsync($"/api/data/v9.2/{metadata.EntitySetName}", "POST", payload, user, ct);
             importedCount++;
         }
@@ -522,12 +529,17 @@ public sealed partial class DataverseService
         int? stateValue = null,
         DateOnly? startDate = null,
         DateOnly? endDate = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool currentOwnerOnly = false)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var user = httpContext.User;
+        var currentUser = currentOwnerOnly ? await GetCurrentUserAsync(ct) : null;
+        if (currentOwnerOnly && string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible resolver el owner autenticado para filtrar Hardware.");
+
         var metadata = await TryResolveHardwareEntityMetadataAsync(user, ct);
         if (metadata is null)
         {
@@ -548,6 +560,11 @@ public sealed partial class DataverseService
 
         var selectFields = BuildHardwareBoardSelectFields(metadata, attributes);
         var filters = BuildHardwareBoardFilters(stateValue, startDate, endDate, attributes);
+        if (currentOwnerOnly)
+        {
+            filters.Add(
+                $"{BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName)} eq {NormalizeGuid(currentUser!.SystemUserId, nameof(currentUser.SystemUserId))}");
+        }
         var filter = filters.Count > 0
             ? $"&$filter={Uri.EscapeDataString(string.Join(" and ", filters))}"
             : "";
@@ -582,9 +599,107 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<HardwareOrderCreateResultDto> CreateHardwareOrderDraftAsync(
+        HardwareOrderCreateRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var user = httpContext.User;
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible resolver el owner autenticado para crear Hardware.");
+
+        await EnsureProvisioningHardwareSchemaAsync(user, ct);
+
+        var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
+        var attributes = await LoadHardwareAttributesAsync(user, ct);
+        foreach (var fieldName in new[]
+                 {
+                     HardwareQuantityLogicalName,
+                     HardwareSaleUnitLogicalName,
+                     HardwareTotalSaleLogicalName,
+                     HardwareUtilityLogicalName,
+                     HardwareMarginValueLogicalName,
+                     HardwareStateLogicalName,
+                     HardwareSupplierUnitCostLogicalName,
+                     HardwareSupplierTotalLogicalName,
+                     HardwarePurchaseOrderNumberLogicalName,
+                     HardwareSupplierLogicalName,
+                     HardwareOdcDateLogicalName
+                 })
+        {
+            EnsureHardwareAttributeExists(attributes, fieldName);
+        }
+
+        var purchaseOrderNumber = RequireHardwareText(request.PurchaseOrderNumber, "cr07a_noorden");
+        var odcDate = ParseHardwareStageDate(request.OdcDateValue, "cr07a_fechaodc");
+        var clientId = NormalizeOptionalGuid(request.ClientId);
+        if (string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(request.ClientName))
+            clientId = await ResolveCopiersClientIdAsync(request.ClientName.Trim(), ct);
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("Selecciona un cliente valido desde el buscador.");
+
+        var lines = (request.Lines ?? new List<HardwareOrderLineCreateRequest>())
+            .Where(line => line is not null)
+            .ToList();
+        if (lines.Count == 0)
+            throw new InvalidOperationException("Agrega al menos una fila de hardware.");
+
+        var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            HardwareTableLogicalName,
+            HardwareClientLookupLogicalName,
+            HardwareClientLookupLogicalName,
+            user,
+            ct);
+        var ownerNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            HardwareTableLogicalName,
+            HardwareOwnerLogicalName,
+            HardwareOwnerLogicalName,
+            user,
+            ct);
+
+        var createdRecords = new List<HardwareBoardRowDto>(lines.Count);
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var payload = BuildHardwareOrderDraftPayload(
+                metadata,
+                lines[index],
+                index,
+                purchaseOrderNumber,
+                odcDate,
+                clientId,
+                clientNavigationProperty,
+                currentUser.SystemUserId,
+                ownerNavigationProperty);
+
+            using var response = await SendDataversePayloadWithRepresentationAsync(
+                $"/api/data/v9.2/{metadata.EntitySetName}",
+                "POST",
+                payload,
+                user,
+                ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var createdId = ExtractRhRecordId(response, body, metadata.PrimaryIdField);
+            createdRecords.Add(await GetHardwareRecordByIdAsync(metadata, createdId, user, ct));
+        }
+
+        return new HardwareOrderCreateResultDto
+        {
+            Message = createdRecords.Count == 1
+                ? "Se creo 1 fila de Hardware."
+                : $"Se crearon {createdRecords.Count} filas de Hardware.",
+            Records = createdRecords
+        };
+    }
+
     public async Task<HardwareSaveResultDto> SaveHardwareStageAsync(
         HardwareStageSaveRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool requireCurrentOwner = false)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -599,6 +714,9 @@ public sealed partial class DataverseService
         var currentRecords = new List<HardwareBoardRowDto>(normalizedRecordIds.Count);
         foreach (var recordId in normalizedRecordIds)
             currentRecords.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
+
+        if (requireCurrentOwner)
+            EnsureHardwareRecordsOwnedByCurrentUser(currentRecords, await GetCurrentUserAsync(ct));
 
         var normalizedActionKey = NormalizeHardwareCell(request.ActionKey).ToLowerInvariant();
         var currentStates = currentRecords
@@ -617,7 +735,7 @@ public sealed partial class DataverseService
             case "register-documentation":
                 EnsureHardwareActionState(currentState, HardwareStateWaitingDocumentation, currentRecords[0].StateLabel);
                 var purchaseOrderNumber = RequireHardwareText(request.PurchaseOrderNumber, "No orden");
-                var freightSplits = SplitHardwareFreight(ParseHardwareStageNonNegativeCurrency(request.FreightValue, "Valor flete"), currentRecords.Count);
+                var freightSplits = SplitHardwareFreight(ParseHardwareStageOptionalNonNegativeCurrency(request.FreightValue, "Valor flete"), currentRecords.Count);
                 var documentationRows = ResolveHardwareDocumentationRows(request, currentRecords);
 
                 for (var index = 0; index < currentRecords.Count; index++)
@@ -631,8 +749,8 @@ public sealed partial class DataverseService
                     var supplierTotal = RoundCurrency(Math.Max(current.Quantity, 0) * supplierUnitCost);
                     var priceSale = RoundCurrency(Math.Max(current.Quantity, 0) * current.SaleUnit);
                     var freightValue = freightSplits[index];
-                    var utility = RoundCurrency(priceSale - (supplierTotal + freightValue));
-                    var marginValue = CalculateHardwareMarginValue(priceSale, utility);
+                    var marginValue = CalculateHardwareMarginValue(priceSale, supplierTotal);
+                    var utility = CalculateHardwareUtility(priceSale, marginValue);
 
                     payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -833,7 +951,8 @@ public sealed partial class DataverseService
         string fileName,
         string contentType,
         byte[] content,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool requireCurrentOwner = false)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -844,6 +963,12 @@ public sealed partial class DataverseService
         var normalizedFieldName = ResolveHardwareAllowedFileField(fieldName);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         EnsureHardwareFileAttributeExists(attributes, normalizedFieldName);
+        if (requireCurrentOwner)
+        {
+            var currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+            EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, await GetCurrentUserAsync(ct));
+        }
+
         var safeFileName = SanitizeRhFileName(fileName, HardwareAllowedFileFields[normalizedFieldName]);
         ValidateHardwareAttachmentUpload(safeFileName, content);
 
@@ -879,7 +1004,8 @@ public sealed partial class DataverseService
     public async Task<HardwareFileDownloadResult?> DownloadHardwareFileAsync(
         string recordId,
         string fieldName,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool requireCurrentOwner = false)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -890,6 +1016,11 @@ public sealed partial class DataverseService
         var normalizedFieldName = ResolveHardwareAllowedFileField(fieldName);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         EnsureHardwareFileAttributeExists(attributes, normalizedFieldName);
+        if (requireCurrentOwner)
+        {
+            var currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+            EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, await GetCurrentUserAsync(ct));
+        }
 
         using var response = await CallRhDataverseResponseAsync(
             $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}/$value",
@@ -1619,6 +1750,49 @@ public sealed partial class DataverseService
         await ResolveHardwareColumnLogicalNamesAsync(HardwareProvisioningColumns.ToList(), user, ct);
     }
 
+    private static Dictionary<string, object?> BuildHardwareOrderDraftPayload(
+        RhEntityMetadata metadata,
+        HardwareOrderLineCreateRequest line,
+        int lineIndex,
+        string purchaseOrderNumber,
+        string odcDate,
+        string clientId,
+        string clientNavigationProperty,
+        string ownerId,
+        string ownerNavigationProperty)
+    {
+        var name = RequireHardwareText(line.Name, $"cr07a_name de la fila {lineIndex + 1}");
+        if (name.Length > 200)
+            name = name[..200];
+
+        var quantity = ParseHardwareOrderQuantity(line.Quantity, lineIndex);
+        var supplierUnitCost = ParseHardwareStageCurrency(line.SupplierUnitCost, $"cr07a_costountproveedor de la fila {lineIndex + 1}");
+        var saleUnit = ParseHardwareStageCurrency(line.SaleUnit, $"cr07a_ventaunidad de la fila {lineIndex + 1}");
+        var supplierTotal = RoundCurrency(quantity * supplierUnitCost);
+        var priceSale = RoundCurrency(quantity * saleUnit);
+        var marginValue = CalculateHardwareMarginValue(priceSale, supplierTotal);
+        var utility = CalculateHardwareUtility(priceSale, marginValue);
+
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [string.IsNullOrWhiteSpace(metadata.PrimaryNameField) ? HardwarePrimaryNameLogicalName : metadata.PrimaryNameField] = name,
+            [HardwareQuantityLogicalName] = quantity,
+            [HardwareSaleUnitLogicalName] = saleUnit,
+            [HardwareTotalSaleLogicalName] = priceSale,
+            [HardwareSupplierUnitCostLogicalName] = supplierUnitCost,
+            [HardwareSupplierTotalLogicalName] = supplierTotal,
+            [HardwareFreightValueLogicalName] = 0m,
+            [HardwareUtilityLogicalName] = utility,
+            [HardwareMarginValueLogicalName] = marginValue,
+            [HardwarePurchaseOrderNumberLogicalName] = purchaseOrderNumber,
+            [HardwareSupplierLogicalName] = RequireHardwareText(line.Provider, $"cr07a_proveedor de la fila {lineIndex + 1}"),
+            [HardwareOdcDateLogicalName] = odcDate,
+            [HardwareStateLogicalName] = HardwareStateWaitingDocumentation,
+            [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({NormalizeGuid(clientId, nameof(clientId))})",
+            [$"{ownerNavigationProperty}@odata.bind"] = $"/systemusers({NormalizeGuid(ownerId, nameof(ownerId))})"
+        };
+    }
+
     private static Dictionary<string, object?> BuildProvisioningHardwareRecordPayload(
         string primaryNameField,
         ProvisioningStoredRequest request,
@@ -1626,7 +1800,8 @@ public sealed partial class DataverseService
         int lineIndex,
         string importKey,
         string clientId,
-        string clientNavigationProperty)
+        string clientNavigationProperty,
+        string ownerNavigationProperty)
     {
         var name = BuildProvisioningHardwareRecordName(line.ProductoNombre, lineIndex);
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -1641,6 +1816,10 @@ public sealed partial class DataverseService
             [HardwareStateLogicalName] = HardwareStateWaitingDocumentation,
             [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({NormalizeGuid(clientId, nameof(clientId))})"
         };
+
+        var requesterOwnerId = NormalizeOptionalGuid(request.Request.Requester?.SystemUserId);
+        if (!string.IsNullOrWhiteSpace(requesterOwnerId))
+            payload[$"{ownerNavigationProperty}@odata.bind"] = $"/systemusers({requesterOwnerId})";
 
         return payload;
     }
@@ -1793,7 +1972,7 @@ public sealed partial class DataverseService
             SupplierUnitCost = RoundCurrency(ReadDecimal(item, HardwareSupplierUnitCostLogicalName) ?? 0m),
             SupplierTotal = RoundCurrency(ReadDecimal(item, HardwareSupplierTotalLogicalName) ?? 0m),
             FreightValue = RoundCurrency(ReadDecimal(item, HardwareFreightValueLogicalName) ?? 0m),
-            Utility = RoundCurrency(ReadDecimal(item, HardwareUtilityLogicalName) ?? 0m),
+            Utility = Math.Round(ReadDecimal(item, HardwareUtilityLogicalName) ?? 0m, 4, MidpointRounding.AwayFromZero),
             MarginValue = Math.Round(ReadDecimal(item, HardwareMarginValueLogicalName) ?? 0m, 2, MidpointRounding.AwayFromZero),
             InvoiceHasClientPayment = state.Value == HardwareStateClosed,
             OdcDateValue = FormatHardwareDateValue(ReadDateOnly(item, HardwareOdcDateLogicalName)),
@@ -2006,6 +2185,21 @@ public sealed partial class DataverseService
             && string.Equals(row.OwnerName.Trim(), currentUser.Email.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
+    private static void EnsureHardwareRecordsOwnedByCurrentUser(
+        IEnumerable<HardwareBoardRowDto> records,
+        CurrentUserInfo? currentUser)
+    {
+        if (currentUser is null)
+            throw new InvalidOperationException("No fue posible resolver el owner autenticado.");
+
+        var unauthorized = records
+            .Where(record => !IsHardwareRecordOwnedByCurrentUser(record, currentUser))
+            .Select(record => record.Name)
+            .FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(unauthorized))
+            throw new InvalidOperationException($"El registro '{unauthorized}' no pertenece al owner autenticado.");
+    }
+
     private static HardwareStateOptionDto ResolveHardwareStateOption(int stateValue)
     {
         return HardwareStates.FirstOrDefault(item => item.Value == stateValue)
@@ -2181,12 +2375,15 @@ public sealed partial class DataverseService
         return result;
     }
 
-    private static decimal CalculateHardwareMarginValue(decimal priceSale, decimal utility)
+    private static decimal CalculateHardwareMarginValue(decimal priceSale, decimal supplierTotal) =>
+        RoundCurrency(priceSale - supplierTotal);
+
+    private static decimal CalculateHardwareUtility(decimal priceSale, decimal marginValue)
     {
         if (priceSale <= 0m)
             return 0m;
 
-        return Math.Round((utility / priceSale) * 100m, 2, MidpointRounding.AwayFromZero);
+        return Math.Round(marginValue / priceSale, 4, MidpointRounding.AwayFromZero);
     }
 
     private static bool HasHardwareAttribute(IReadOnlyList<HardwareAttributeMetadata> attributes, string logicalName)
@@ -2263,6 +2460,25 @@ public sealed partial class DataverseService
             throw new InvalidOperationException($"El campo {label} es obligatorio y no puede ser negativo.");
 
         return RoundCurrency(value.Value);
+    }
+
+    private static decimal ParseHardwareStageOptionalNonNegativeCurrency(decimal? value, string label)
+    {
+        if (!value.HasValue)
+            return 0m;
+
+        if (value.Value < 0m)
+            throw new InvalidOperationException($"El campo {label} no puede ser negativo.");
+
+        return RoundCurrency(value.Value);
+    }
+
+    private static int ParseHardwareOrderQuantity(int? value, int lineIndex)
+    {
+        if (!value.HasValue || value.Value <= 0)
+            throw new InvalidOperationException($"El campo cr07a_cant de la fila {lineIndex + 1} debe ser mayor a cero.");
+
+        return value.Value;
     }
 
     private static int ParseHardwareBulkInteger(int? value, string label)

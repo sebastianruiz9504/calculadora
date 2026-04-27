@@ -10,10 +10,12 @@ public sealed class HardwarePageViewModel
 public sealed class HardwareWorkspaceViewModel
 {
     public string RootId { get; set; } = "hardwareApp";
+    public string Mode { get; set; } = "dashboard";
     public string CurrentUserLabel { get; set; } = "";
     public string PreviewUrl { get; set; } = "";
     public string ProvisionUrl { get; set; } = "";
     public string BoardUrl { get; set; } = "";
+    public string CreateUrl { get; set; } = "";
     public string SaveUrl { get; set; } = "";
     public string UploadUrl { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
@@ -29,6 +31,8 @@ public sealed class HardwareWorkspaceViewModel
     public string HeroSubtitle { get; set; } =
         "Administra el ciclo completo de cada línea de hardware, desde la documentación inicial hasta el cierre por pago del cliente.";
     public string AccessLabel { get; set; } = "Acceso";
+    public bool IsCommercialMode =>
+        string.Equals(Mode, "commercial", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class HardwareStateOptionDto
@@ -180,6 +184,31 @@ public sealed class HardwareBulkEditRequest
     public string DeliveryRecordDateValue { get; set; } = "";
     public bool InvoiceNumberChanged { get; set; }
     public string InvoiceNumber { get; set; } = "";
+}
+
+public sealed class HardwareOrderCreateRequest
+{
+    public string PurchaseOrderNumber { get; set; } = "";
+    public string OdcDateValue { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public List<HardwareOrderLineCreateRequest> Lines { get; set; } = new();
+}
+
+public sealed class HardwareOrderLineCreateRequest
+{
+    public string RowKey { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int? Quantity { get; set; }
+    public decimal? SupplierUnitCost { get; set; }
+    public decimal? SaleUnit { get; set; }
+    public string Provider { get; set; } = "";
+}
+
+public sealed class HardwareOrderCreateResultDto
+{
+    public string Message { get; set; } = "";
+    public IReadOnlyList<HardwareBoardRowDto> Records { get; set; } = Array.Empty<HardwareBoardRowDto>();
 }
 
 public sealed class HardwareBulkEditResultDto

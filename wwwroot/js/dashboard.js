@@ -548,7 +548,7 @@
         }
 
         if (pnlDetailBody) {
-            pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Selecciona una celda del P&L para ver el detalle.</td></tr>';
+            pnlDetailBody.innerHTML = '<tr><td colspan="15" class="dashboard-table__empty">Selecciona una celda del P&L para ver el detalle.</td></tr>';
         }
     }
 
@@ -1252,7 +1252,7 @@
         }
 
         if (pnlDetailBody) {
-            pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Cargando detalle...</td></tr>';
+            pnlDetailBody.innerHTML = '<tr><td colspan="15" class="dashboard-table__empty">Cargando detalle...</td></tr>';
         }
     }
 
@@ -1587,7 +1587,7 @@
         if (!records.length) {
             pnlDetailBody.innerHTML = `
                 <tr>
-                    <td colspan="14" class="dashboard-table__empty">${escapeHtml(detail?.emptyMessage || "No encontramos registros para esta celda.")}</td>
+                    <td colspan="15" class="dashboard-table__empty">${escapeHtml(detail?.emptyMessage || "No encontramos registros para esta celda.")}</td>
                 </tr>
             `;
             return;
@@ -1604,16 +1604,17 @@
                     data-original-category="${escapeHtml(String(record.categoryOptionValue ?? ""))}"
                     data-original-cloud="${escapeHtml(String(Number(record.cloudValue || 0)))}"
                     data-original-copiers="${escapeHtml(String(Number(record.copiersValue || 0)))}">
-                    <td>${escapeHtml(record.sourceLabel || "")}</td>
-                    <td>${escapeHtml(record.documentNumber || "")}</td>
+                    <td>${escapeHtml(record.sourceLabel || record.sourceType || "-")}</td>
+                    <td>${escapeHtml(record.documentNumber || "-")}</td>
                     <td>${escapeHtml(record.dateDisplay || "-")}</td>
-                    <td>${escapeHtml(record.description || "")}</td>
-                    <td>${renderPnlVerticalEditor(record, detail?.verticalOptions)}</td>
+                    <td>${escapeHtml(record.description || "-")}</td>
                     <td>${renderPnlCategoryEditor(record, detail?.categoryOptions)}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.totalInvoice || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.vatValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.totalBeforeVatValue || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(record.paymentValue || 0)))}</td>
+                    <td>${renderPnlVerticalEditor(record, detail?.verticalOptions)}</td>
+                    <td>${escapeHtml(record.assignedMonthDisplay || "-")}</td>
                     <td class="text-end">${renderPnlAllocationEditor(record, "cloudValue")}</td>
                     <td class="text-end">${renderPnlAllocationEditor(record, "copiersValue")}</td>
                     <td class="text-end"><strong>${escapeHtml(formatMetric(record.cellValue || 0, cellValueFormat))}</strong></td>
@@ -1650,7 +1651,7 @@
         } catch (error) {
             setStatus(pnlDetailStatus, "error", error instanceof Error ? error.message : "No fue posible cargar el detalle de la celda.");
             if (pnlDetailBody) {
-                pnlDetailBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">No fue posible cargar el detalle.</td></tr>';
+                pnlDetailBody.innerHTML = '<tr><td colspan="15" class="dashboard-table__empty">No fue posible cargar el detalle.</td></tr>';
             }
             throw error;
         } finally {

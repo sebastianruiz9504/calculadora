@@ -102,11 +102,12 @@ public interface IDataverseService
     Task<HardwareCsvPreviewResultDto> PreviewHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<HardwareProvisionResultDto> ProvisionHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<HardwareProvisioningSyncResultDto> SyncProvisioningHardwareAsync(ProvisioningStoredRequest request, CancellationToken ct = default);
-    Task<HardwareBoardDto> GetHardwareBoardAsync(int? stateValue = null, DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default);
-    Task<HardwareSaveResultDto> SaveHardwareStageAsync(HardwareStageSaveRequest request, CancellationToken ct = default);
+    Task<HardwareBoardDto> GetHardwareBoardAsync(int? stateValue = null, DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default, bool currentOwnerOnly = false);
+    Task<HardwareOrderCreateResultDto> CreateHardwareOrderDraftAsync(HardwareOrderCreateRequest request, CancellationToken ct = default);
+    Task<HardwareSaveResultDto> SaveHardwareStageAsync(HardwareStageSaveRequest request, CancellationToken ct = default, bool requireCurrentOwner = false);
     Task<HardwareBulkEditResultDto> SaveHardwareRecordsAsync(HardwareBulkEditRequest request, CancellationToken ct = default);
-    Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default);
-    Task<HardwareFileDownloadResult?> DownloadHardwareFileAsync(string recordId, string fieldName, CancellationToken ct = default);
+    Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default, bool requireCurrentOwner = false);
+    Task<HardwareFileDownloadResult?> DownloadHardwareFileAsync(string recordId, string fieldName, CancellationToken ct = default, bool requireCurrentOwner = false);
     Task<IReadOnlyList<HardwareInvoiceLookupItemDto>> SearchHardwareInvoicesAsync(string query, int top = 12, CancellationToken ct = default);
     Task<SoporteCloudBoardDto> GetSoporteCloudBoardAsync(DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default);
     Task<SoporteCloudSaveResultDto> SaveSoporteCloudTicketAsync(SoporteCloudSaveRequest request, CancellationToken ct = default);

@@ -282,6 +282,7 @@
             new CotizadorInterno.Web.Models.Hardware.HardwareWorkspaceViewModel
             {
                 RootId = "dashboardHardwareApp",
+                Mode = "dashboard",
                 CurrentUserLabel = !string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.DisplayName : Model.CurrentUser.Email,
                 BoardUrl = Url.Action("Board", "Hardware") ?? "",
                 SaveUrl = Url.Action("SaveStage", "Hardware") ?? "",
@@ -998,16 +999,17 @@
             <table class="table dashboard-table dashboard-pnl-detail-table">
                 <thead>
                     <tr>
-                        <th>Origen</th>
+                        <th>Fuente</th>
                         <th>Documento</th>
-                        <th>Fecha</th>
-                        <th>Detalle</th>
-                        <th>Vertical</th>
+                        <th>fecha_emision</th>
+                        <th>Proveedor/cliente</th>
                         <th>Categoria</th>
                         <th class="text-end">Total factura</th>
                         <th class="text-end">IVA</th>
                         <th class="text-end">Base</th>
                         <th class="text-end">Valor pago</th>
+                        <th>Vertical</th>
+                        <th>Mes asignado</th>
                         <th class="text-end">Cloud</th>
                         <th class="text-end">Copiers</th>
                         <th class="text-end">Valor celda</th>
@@ -1016,7 +1018,7 @@
                 </thead>
                 <tbody id="pnlDetailBody">
                     <tr>
-                        <td colspan="14" class="dashboard-table__empty">Selecciona una celda del P&amp;L para ver el detalle.</td>
+                        <td colspan="15" class="dashboard-table__empty">Selecciona una celda del P&amp;L para ver el detalle.</td>
                     </tr>
                 </tbody>
             </table>

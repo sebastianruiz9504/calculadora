@@ -17,6 +17,19 @@ public sealed partial class DataverseService
     private const string DashboardExpenseTotalField = "cr07a_total";
     private const string DashboardExpenseVatField = "cr07a_iva";
     private const string DashboardExpenseTotalBeforeVatField = "cr07a_totalantesdeiva";
+    private const string DashboardExpenseEmissionDateField = "cr07a_fechadeemision";
+    private const string DashboardExpenseEmissionDateFieldKind = "date-only";
+    private const string PnlExpensePrimasCesantiasBucket = "primas-cesantias";
+    private const string PnlExpenseFinancialIncomeBucket = "financial-income";
+    private const string PnlExpenseFinancialExpenseBucket = "financial-expense";
+    private const string PnlExpenseOtherNonOperatingBucket = "other-non-operating";
+
+    private static readonly PnlExpenseDateFieldCandidate[] DashboardExpenseEmissionDateFieldCandidates =
+    {
+        new(DashboardExpenseEmissionDateField, DashboardExpenseEmissionDateFieldKind),
+        new("cr07a_fechaemision", "date-only"),
+        new("cr07a_fecha", "date-only")
+    };
 
     private const int PnlExpensePersonalCloudOption = 645250000;
     private const int PnlExpensePersonalCopiersOption = 645250001;
@@ -92,9 +105,9 @@ public sealed partial class DataverseService
             .ToList();
 
         var scopedExpenseRecords = expenseRecords
-            .Where(record => record.PaymentDate is not null
-                && record.PaymentDate.Value.Year == resolvedYear
-                && record.PaymentDate.Value.Month <= resolvedMonthCutoff)
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value.Year == resolvedYear
+                && record.EmissionDate.Value.Month <= resolvedMonthCutoff)
             .ToList();
 
         var months = BuildPnlMonthColumns(resolvedYear, resolvedMonthCutoff);
@@ -124,9 +137,10 @@ public sealed partial class DataverseService
         var grossProfit = SubtractPnlSeries(operatingRevenue, cogs);
 
         var personalAdministrative = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "personal-administrative");
+        var primasCesantias = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, PnlExpensePrimasCesantiasBucket);
         var personalCloud = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "personal-cloud");
         var personalCopiers = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "personal-copiers");
-        var personalSubtotal = SumPnlSeries(personalAdministrative, personalCloud, personalCopiers);
+        var personalSubtotal = SumPnlSeries(personalAdministrative, primasCesantias, personalCloud, personalCopiers);
 
         var officeRent = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "office-rent");
         var warehouse = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "warehouse");
@@ -144,9 +158,14 @@ public sealed partial class DataverseService
         var operatingExpenses = SumPnlSeries(personalSubtotal, administrativeSubtotal, commercialSubtotal);
         var ebitda = SubtractPnlSeries(grossProfit, operatingExpenses);
 
+        var financialIncome = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, PnlExpenseFinancialIncomeBucket);
+        var financialExpenses = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, PnlExpenseFinancialExpenseBucket);
+        var otherNonOperating = BuildPnlOtherNonOperatingSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey);
+        var totalOtherIncomeExpenses = SumPnlSeries(financialIncome, NegatePnlSeries(financialExpenses), otherNonOperating);
+        var incomeBeforeTaxes = SumPnlSeries(ebitda, totalOtherIncomeExpenses);
+
         var taxes = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "taxes");
-        var financial = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "financial");
-        var otherNonOperating = SumPnlSeries(taxes, financial);
+        var netIncome = SubtractPnlSeries(incomeBeforeTaxes, taxes);
 
         var recordsCount = CountPnlRelevantBillingRecords(scopedBillingRecords, verticalKey)
             + CountPnlRelevantExpenseRecords(scopedExpenseRecords, verticalKey);
@@ -174,7 +193,7 @@ public sealed partial class DataverseService
             FocusLabel = verticalKey == DashboardPnlVerticalAll
                 ? "P&L mensual consolidado"
                 : $"P&L mensual {verticalLabel}",
-            Description = "Estructura P&L mensual bajo NIIF con corte al ultimo mes cargado. La fila de rebates queda en cero mientras no exista una fuente manual configurada.",
+            Description = "P&L mensual sin IVA, asignado por Fecha de Emision. La fila de rebates queda en cero mientras no exista una fuente manual configurada.",
             HasData = recordsCount > 0,
             RecordsCount = recordsCount,
             EmptyStateTitle = "No encontramos movimientos para construir el P&L.",
@@ -202,6 +221,7 @@ public sealed partial class DataverseService
                 cogs,
                 grossProfit,
                 personalAdministrative,
+                primasCesantias,
                 personalCloud,
                 personalCopiers,
                 personalSubtotal,
@@ -217,9 +237,13 @@ public sealed partial class DataverseService
                 marketing,
                 commercialSubtotal,
                 ebitda,
+                financialIncome,
+                financialExpenses,
+                otherNonOperating,
+                totalOtherIncomeExpenses,
+                incomeBeforeTaxes,
                 taxes,
-                financial,
-                otherNonOperating),
+                netIncome),
             OrphanRows = orphanRows
         };
     }
@@ -298,10 +322,13 @@ public sealed partial class DataverseService
             .ToList();
 
         var scopedExpenseRecords = expenseRecords
-            .Where(record => record.PaymentDate is not null
-                && record.PaymentDate.Value.Year == resolvedYear
-                && record.PaymentDate.Value.Month <= resolvedMonthCutoff
-                && (!resolvedCellMonth.HasValue || record.PaymentDate.Value.Month == resolvedCellMonth.Value))
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value.Year == resolvedYear
+                && record.EmissionDate.Value.Month <= resolvedMonthCutoff
+                && (!resolvedCellMonth.HasValue
+                    || record.EmissionDate.Value.Month == resolvedCellMonth.Value
+                    || (ShouldIncludePnlProvisionRowsInDetail(rowMetadata.Key)
+                        && ResolvePnlExpenseBucketKey(record) == PnlExpensePrimasCesantiasBucket)))
             .ToList();
 
         var records = new List<PnlCellDetailRecordDto>();
@@ -317,7 +344,7 @@ public sealed partial class DataverseService
 
         foreach (var record in scopedExpenseRecords)
         {
-            var contribution = GetPnlExpenseContributionForRow(record, verticalKey, rowMetadata.Key);
+            var contribution = GetPnlExpenseContributionForRow(record, verticalKey, rowMetadata.Key, resolvedMonthCutoff, resolvedCellMonth);
             if (Math.Abs(contribution) < 0.01m)
                 continue;
 
@@ -480,24 +507,49 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var select = string.Join(",", new[]
+        Exception? lastError = null;
+        foreach (var dateField in DashboardExpenseEmissionDateFieldCandidates)
         {
-            _supplierExpensesIdField,
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentValueField,
-            DashboardExpenseCloudField,
-            DashboardExpenseCopiersField,
-            DashboardExpenseCategoryField,
-            DashboardExpenseIssuerNameField,
-            DashboardExpenseTotalField,
-            DashboardExpenseVatField,
-            DashboardExpenseTotalBeforeVatField
-        });
+            var select = string.Join(",", new[]
+            {
+                _supplierExpensesIdField,
+                dateField.FieldName,
+                DashboardExpensePaymentValueField,
+                DashboardExpenseCloudField,
+                DashboardExpenseCopiersField,
+                DashboardExpenseCategoryField,
+                DashboardExpenseIssuerNameField,
+                DashboardExpenseTotalField,
+                DashboardExpenseVatField,
+                DashboardExpenseTotalBeforeVatField
+            }
+            .Where(static field => !string.IsNullOrWhiteSpace(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
 
-        var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}({recordId})?$select={select}";
-        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
-        using var doc = JsonDocument.Parse(json);
-        return ParsePnlExpenseRow(doc.RootElement);
+            var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}({recordId})?$select={select}";
+            try
+            {
+                var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+                using var doc = JsonDocument.Parse(json);
+                return ParsePnlExpenseRow(doc.RootElement, dateField.FieldName);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                lastError = ex;
+            }
+        }
+
+        try
+        {
+            var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}({recordId})";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            using var doc = JsonDocument.Parse(json);
+            return ParsePnlExpenseRow(doc.RootElement, DashboardExpenseEmissionDateField);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            throw new InvalidOperationException("No fue posible leer el gasto P&L seleccionado desde Dataverse.", lastError ?? ex);
+        }
     }
 
     private async Task<List<PnlExpenseRow>> GetPnlExpenseRowsAsync(
@@ -506,77 +558,105 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var fullSelect = string.Join(",", new[]
+        Exception? lastError = null;
+        foreach (var dateField in DashboardExpenseEmissionDateFieldCandidates)
         {
-            _supplierExpensesIdField,
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentValueField,
-            DashboardExpenseCloudField,
-            DashboardExpenseCopiersField,
-            DashboardExpenseCategoryField,
-            DashboardExpenseIssuerNameField,
-            DashboardExpenseTotalField,
-            DashboardExpenseVatField,
-            DashboardExpenseTotalBeforeVatField
-        });
+            var fullSelect = string.Join(",", new[]
+            {
+                _supplierExpensesIdField,
+                dateField.FieldName,
+                DashboardExpensePaymentValueField,
+                DashboardExpenseCloudField,
+                DashboardExpenseCopiersField,
+                DashboardExpenseCategoryField,
+                DashboardExpenseIssuerNameField,
+                DashboardExpenseTotalField,
+                DashboardExpenseVatField,
+                DashboardExpenseTotalBeforeVatField
+            }
+            .Where(static field => !string.IsNullOrWhiteSpace(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
 
-        var fallbackSelect = string.Join(",", new[]
-        {
-            _supplierExpensesIdField,
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentValueField,
-            DashboardExpenseCloudField,
-            DashboardExpenseCopiersField,
-            DashboardExpenseCategoryField,
-            DashboardExpenseIssuerNameField
-        });
+            var filter = BuildBillingDateFilter(
+                dateField.FieldName,
+                dateField.FieldKind,
+                startInclusive,
+                endExclusive);
 
-        var filter = BuildBillingDateFilter(
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentDateFieldKind,
-            startInclusive,
-            endExclusive);
+            var fullRelativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={fullSelect}&$filter={Uri.EscapeDataString(filter)}&$orderby={dateField.FieldName} asc";
+            var fallbackRelativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$filter={Uri.EscapeDataString(filter)}&$orderby={dateField.FieldName} asc";
 
-        var fullRelativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={fullSelect}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
-        var fallbackRelativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={fallbackSelect}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
+            IReadOnlyList<JsonElement> items;
+            try
+            {
+                items = await GetDataverseEntitiesAsync(fullRelativeUrl, user, ct, AddFormattedValueHeaders);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                lastError = ex;
+                try
+                {
+                    items = await GetDataverseEntitiesAsync(fallbackRelativeUrl, user, ct, AddFormattedValueHeaders);
+                }
+                catch (Exception fallbackEx) when (!ct.IsCancellationRequested)
+                {
+                    lastError = fallbackEx;
+                    continue;
+                }
+            }
 
-        IReadOnlyList<JsonElement> items;
-        try
-        {
-            items = await GetDataverseEntitiesAsync(fullRelativeUrl, user, ct, AddFormattedValueHeaders);
+            return items
+                .Select(item => ParsePnlExpenseRow(item, dateField.FieldName))
+                .Where(static row => row is not null)
+                .Cast<PnlExpenseRow>()
+                .GroupBy(row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList();
         }
-        catch (Exception) when (!ct.IsCancellationRequested)
-        {
-            items = await GetDataverseEntitiesAsync(fallbackRelativeUrl, user, ct, AddFormattedValueHeaders);
-        }
 
-        return items
-            .Select(ParsePnlExpenseRow)
-            .Where(static row => row is not null)
-            .Cast<PnlExpenseRow>()
-            .ToList();
+        throw new InvalidOperationException(
+            "No fue posible cargar gastos del P&L por Fecha de Emision. Valida que exista una columna de fecha de emision en la tabla de gastos.",
+            lastError);
     }
 
-    private PnlExpenseRow? ParsePnlExpenseRow(JsonElement item)
+    private PnlExpenseRow? ParsePnlExpenseRow(JsonElement item, string emissionDateField)
     {
         var categoryOptionValue = ReadInt(item, DashboardExpenseCategoryField);
         var recordId = FirstNonEmpty(
             ReadString(item, _supplierExpensesIdField),
-            $"{categoryOptionValue}|{ReadString(item, DashboardExpensePaymentDateField)}|{ReadString(item, DashboardExpensePaymentValueField)}");
+            $"{categoryOptionValue}|{ReadString(item, emissionDateField)}|{ReadString(item, DashboardExpenseTotalField)}|{ReadString(item, DashboardExpensePaymentValueField)}");
 
         if (string.IsNullOrWhiteSpace(recordId))
             return null;
 
-        var totalValue = RoundCurrency(ReadDecimal(item, DashboardExpenseTotalField) ?? 0m);
-        var vatValue = RoundCurrency(ReadDecimal(item, DashboardExpenseVatField) ?? 0m);
+        var totalValue = RoundCurrency(ReadFirstPnlDecimal(
+            item,
+            DashboardExpenseTotalField,
+            "cr07a_totalfactura",
+            "total_factura",
+            "TOTAL_FACTURA",
+            "Total Factura") ?? 0m);
+        var vatValue = RoundCurrency(ReadFirstPnlDecimal(
+            item,
+            DashboardExpenseVatField,
+            "cr07a_ivavalor",
+            "iva_valor",
+            "IVA_Valor",
+            "IVA VALOR",
+            "Valor IVA") ?? 0m);
         var totalBeforeVatValue = RoundCurrency(
-            ReadDecimal(item, DashboardExpenseTotalBeforeVatField)
+            ReadFirstPnlDecimal(
+                item,
+                DashboardExpenseTotalBeforeVatField,
+                "cr07a_base",
+                "base",
+                "Base")
             ?? (totalValue != 0m || vatValue != 0m ? totalValue - vatValue : 0m));
 
         return new PnlExpenseRow
         {
             RecordId = recordId.Trim(),
-            PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
+            EmissionDate = ReadDateOnly(item, emissionDateField),
             PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
             IssuerName = ReadString(item, DashboardExpenseIssuerNameField).Trim(),
             CategoryOptionValue = categoryOptionValue,
@@ -589,6 +669,18 @@ public sealed partial class DataverseService
             CloudValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCloudField) ?? 0m),
             CopiersValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCopiersField) ?? 0m)
         };
+    }
+
+    private static decimal? ReadFirstPnlDecimal(JsonElement item, params string[] fieldNames)
+    {
+        foreach (var fieldName in fieldNames)
+        {
+            var value = ReadDecimal(item, fieldName);
+            if (value.HasValue)
+                return value;
+        }
+
+        return null;
     }
 
     private static IReadOnlyList<PnlKpiDto> BuildPnlKpis(
@@ -638,6 +730,7 @@ public sealed partial class DataverseService
         IReadOnlyList<decimal> cogs,
         IReadOnlyList<decimal> grossProfit,
         IReadOnlyList<decimal> personalAdministrative,
+        IReadOnlyList<decimal> primasCesantias,
         IReadOnlyList<decimal> personalCloud,
         IReadOnlyList<decimal> personalCopiers,
         IReadOnlyList<decimal> personalSubtotal,
@@ -653,9 +746,13 @@ public sealed partial class DataverseService
         IReadOnlyList<decimal> marketing,
         IReadOnlyList<decimal> commercialSubtotal,
         IReadOnlyList<decimal> ebitda,
+        IReadOnlyList<decimal> financialIncome,
+        IReadOnlyList<decimal> financialExpenses,
+        IReadOnlyList<decimal> otherNonOperating,
+        IReadOnlyList<decimal> totalOtherIncomeExpenses,
+        IReadOnlyList<decimal> incomeBeforeTaxes,
         IReadOnlyList<decimal> taxes,
-        IReadOnlyList<decimal> financial,
-        IReadOnlyList<decimal> otherNonOperating)
+        IReadOnlyList<decimal> netIncome)
     {
         return new[]
         {
@@ -669,7 +766,7 @@ public sealed partial class DataverseService
             BuildPnlValueRow("cogs-rebates", "Rebates", "detail", 1, rebates),
             BuildPnlValueRow("cogs-supplies", "Suministros", "detail", 1, supplies),
             BuildPnlValueRow("cogs-machines", "Maquinas", "detail", 1, machines),
-            BuildPnlValueRow("cogs-technical", "Servicio Tecnico", "detail", 1, technicalService),
+            BuildPnlValueRow("cogs-technical-service", "Servicio Tecnico", "detail", 1, technicalService),
             BuildPnlValueRow("cogs-total", "COGS (total)", "subtotal", 1, cogs),
 
             BuildPnlSection("section-gross-profit", "3. Utilidad Bruta", 0),
@@ -678,6 +775,7 @@ public sealed partial class DataverseService
             BuildPnlSection("section-operating-expenses", "4. Gastos Operacionales", 0),
             BuildPnlSection("section-personal", "4.1 Gastos de personal", 1),
             BuildPnlValueRow("personal-administrative", "Personal Administrativo", "detail", 2, personalAdministrative),
+            BuildPnlValueRow("personal-primas-cesantias", "Primas/Cesantias", "detail", 2, primasCesantias),
             BuildPnlValueRow("personal-cloud", "Personal Cloud", "detail", 2, personalCloud),
             BuildPnlValueRow("personal-copiers", "Personal Copiers", "detail", 2, personalCopiers),
             BuildPnlValueRow("personal-total", "Subtotal personal", "subtotal", 2, personalSubtotal),
@@ -701,9 +799,19 @@ public sealed partial class DataverseService
             BuildPnlValueRow("ebitda", "EBITDA", "formula", 1, ebitda),
 
             BuildPnlSection("section-other", "6. Otros Ingresos / Gastos", 0),
-            BuildPnlValueRow("other-taxes", "Impuestos", "detail", 1, taxes),
-            BuildPnlValueRow("other-financial", "Financieros / Contables", "detail", 1, financial),
-            BuildPnlValueRow("other-total", "Otros ingresos / gastos (total)", "subtotal", 1, otherNonOperating)
+            BuildPnlValueRow("other-financial-income", "Ingresos financieros", "detail", 1, financialIncome),
+            BuildPnlValueRow("other-financial-expenses", "Gastos financieros", "detail", 1, financialExpenses),
+            BuildPnlValueRow("other-non-operating", "Otros ingresos/gastos no operacionales", "detail", 1, otherNonOperating),
+            BuildPnlValueRow("other-total", "Total otros ingresos/gastos", "subtotal", 1, totalOtherIncomeExpenses),
+
+            BuildPnlSection("section-income-before-taxes", "7. Utilidad antes de impuestos", 0),
+            BuildPnlValueRow("income-before-taxes", "UTILIDAD ANTES DE IMPUESTOS", "formula", 1, incomeBeforeTaxes),
+
+            BuildPnlSection("section-taxes", "8. Impuestos", 0),
+            BuildPnlValueRow("taxes", "Impuestos", "detail", 1, taxes),
+
+            BuildPnlSection("section-net-income", "9. Utilidad neta", 0),
+            BuildPnlValueRow("net-income", "UTILIDAD NETA", "formula", 1, netIncome)
         };
     }
 
@@ -777,10 +885,10 @@ public sealed partial class DataverseService
         var values = new int[Math.Clamp(monthCutoff, 1, 12)];
         foreach (var row in rows)
         {
-            if (row.PaymentDate is null || !predicate(row))
+            if (row.EmissionDate is null || !predicate(row))
                 continue;
 
-            var month = row.PaymentDate.Value.Month;
+            var month = row.EmissionDate.Value.Month;
             if (month is < 1 or > 12 || month > values.Length)
                 continue;
 
@@ -837,6 +945,16 @@ public sealed partial class DataverseService
         _ => false
     };
 
+    private static bool ShouldIncludePnlProvisionRowsInDetail(string rowKey) => rowKey switch
+    {
+        "personal-primas-cesantias" => true,
+        "personal-total" => true,
+        "ebitda" => true,
+        "income-before-taxes" => true,
+        "net-income" => true,
+        _ => false
+    };
+
     private static PnlCellDetailDto BuildPnlOrphanCellDetail(
         int year,
         int monthCutoff,
@@ -853,10 +971,10 @@ public sealed partial class DataverseService
             .ToList();
 
         var scopedExpenseRecords = expenseRecords
-            .Where(record => record.PaymentDate is not null
-                && record.PaymentDate.Value.Year == year
-                && record.PaymentDate.Value.Month <= monthCutoff
-                && (!cellMonth.HasValue || record.PaymentDate.Value.Month == cellMonth.Value))
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value.Year == year
+                && record.EmissionDate.Value.Month <= monthCutoff
+                && (!cellMonth.HasValue || record.EmissionDate.Value.Month == cellMonth.Value))
             .ToList();
 
         List<PnlCellDetailRecordDto> records = rowMetadata.Key switch
@@ -911,47 +1029,62 @@ public sealed partial class DataverseService
         {
             "income-cloud" => cloudAmount,
             "income-copiers" => copiersAmount,
-            "income-total" or "gross-profit" or "ebitda" => RoundCurrency(cloudAmount + copiersAmount),
+            "income-total" or "gross-profit" or "ebitda" or "income-before-taxes" or "net-income" => RoundCurrency(cloudAmount + copiersAmount),
             _ => 0m
         };
     }
 
-    private static decimal GetPnlExpenseContributionForRow(PnlExpenseRow row, string verticalKey, string rowKey)
+    private static decimal GetPnlExpenseContributionForRow(
+        PnlExpenseRow row,
+        string verticalKey,
+        string rowKey,
+        int monthCutoff,
+        int? cellMonth)
     {
         var amount = GetPnlExpenseViewAmount(row, verticalKey);
         if (Math.Abs(amount) < 0.01m)
             return 0m;
 
         var bucketKey = ResolvePnlExpenseBucketKey(row);
+        var pnlAmount = bucketKey == PnlExpensePrimasCesantiasBucket
+            ? GetPnlProvisionExpenseContribution(amount, monthCutoff, cellMonth)
+            : amount;
+        var otherSignedAmount = GetPnlOtherIncomeExpenseSignedAmount(row, amount, bucketKey);
+        var incomeBeforeTaxContribution = ResolvePnlIncomeBeforeTaxExpenseContribution(bucketKey, pnlAmount, otherSignedAmount);
 
         return rowKey switch
         {
-            "cogs-licensing" => bucketKey == "licensing" ? amount : 0m,
+            "cogs-licensing" => bucketKey == "licensing" ? pnlAmount : 0m,
             "cogs-rebates" => 0m,
-            "cogs-supplies" => bucketKey == "supplies" ? amount : 0m,
-            "cogs-machines" => bucketKey == "machines" ? amount : 0m,
-            "cogs-technical-service" => bucketKey == "technical-service" ? amount : 0m,
-            "cogs-total" => IsPnlCogsBucket(bucketKey) ? amount : 0m,
-            "gross-profit" => IsPnlCogsBucket(bucketKey) ? RoundCurrency(-amount) : 0m,
-            "personal-administrative" => bucketKey == "personal-administrative" ? amount : 0m,
-            "personal-cloud" => bucketKey == "personal-cloud" ? amount : 0m,
-            "personal-copiers" => bucketKey == "personal-copiers" ? amount : 0m,
-            "personal-total" => IsPnlPersonalBucket(bucketKey) ? amount : 0m,
-            "admin-office-rent" => bucketKey == "office-rent" ? amount : 0m,
-            "admin-warehouse" => bucketKey == "warehouse" ? amount : 0m,
-            "admin-transport" => bucketKey == "transport" ? amount : 0m,
-            "admin-internal" => bucketKey == "internal" ? amount : 0m,
-            "admin-recurring" => bucketKey == "recurring" ? amount : 0m,
-            "admin-equipment" => bucketKey == "equipment" ? amount : 0m,
-            "admin-travel" => bucketKey == "travel" ? amount : 0m,
-            "admin-empty" => bucketKey == "empty" ? amount : 0m,
-            "admin-total" => IsPnlAdministrativeBucket(bucketKey) ? amount : 0m,
-            "commercial-marketing" => bucketKey == "marketing" ? amount : 0m,
-            "commercial-total" => bucketKey == "marketing" ? amount : 0m,
-            "ebitda" => IsPnlEbitdaExpenseBucket(bucketKey) ? RoundCurrency(-amount) : 0m,
-            "other-taxes" => bucketKey == "taxes" ? amount : 0m,
-            "other-financial" => bucketKey == "financial" ? amount : 0m,
-            "other-total" => bucketKey is "taxes" or "financial" ? amount : 0m,
+            "cogs-supplies" => bucketKey == "supplies" ? pnlAmount : 0m,
+            "cogs-machines" => bucketKey == "machines" ? pnlAmount : 0m,
+            "cogs-technical-service" => bucketKey == "technical-service" ? pnlAmount : 0m,
+            "cogs-total" => IsPnlCogsBucket(bucketKey) ? pnlAmount : 0m,
+            "gross-profit" => IsPnlCogsBucket(bucketKey) ? RoundCurrency(-pnlAmount) : 0m,
+            "personal-administrative" => bucketKey == "personal-administrative" ? pnlAmount : 0m,
+            "personal-primas-cesantias" => bucketKey == PnlExpensePrimasCesantiasBucket ? pnlAmount : 0m,
+            "personal-cloud" => bucketKey == "personal-cloud" ? pnlAmount : 0m,
+            "personal-copiers" => bucketKey == "personal-copiers" ? pnlAmount : 0m,
+            "personal-total" => IsPnlPersonalBucket(bucketKey) ? pnlAmount : 0m,
+            "admin-office-rent" => bucketKey == "office-rent" ? pnlAmount : 0m,
+            "admin-warehouse" => bucketKey == "warehouse" ? pnlAmount : 0m,
+            "admin-transport" => bucketKey == "transport" ? pnlAmount : 0m,
+            "admin-internal" => bucketKey == "internal" ? pnlAmount : 0m,
+            "admin-recurring" => bucketKey == "recurring" ? pnlAmount : 0m,
+            "admin-equipment" => bucketKey == "equipment" ? pnlAmount : 0m,
+            "admin-travel" => bucketKey == "travel" ? pnlAmount : 0m,
+            "admin-empty" => bucketKey == "empty" ? pnlAmount : 0m,
+            "admin-total" => IsPnlAdministrativeBucket(bucketKey) ? pnlAmount : 0m,
+            "commercial-marketing" => bucketKey == "marketing" ? pnlAmount : 0m,
+            "commercial-total" => bucketKey == "marketing" ? pnlAmount : 0m,
+            "ebitda" => IsPnlEbitdaExpenseBucket(bucketKey) ? RoundCurrency(-pnlAmount) : 0m,
+            "other-financial-income" => bucketKey == PnlExpenseFinancialIncomeBucket ? pnlAmount : 0m,
+            "other-financial-expenses" => bucketKey == PnlExpenseFinancialExpenseBucket ? pnlAmount : 0m,
+            "other-non-operating" => bucketKey == PnlExpenseOtherNonOperatingBucket ? otherSignedAmount : 0m,
+            "other-total" => IsPnlOtherIncomeExpenseBucket(bucketKey) ? otherSignedAmount : 0m,
+            "income-before-taxes" => incomeBeforeTaxContribution,
+            "taxes" => bucketKey == "taxes" ? pnlAmount : 0m,
+            "net-income" => bucketKey == "taxes" ? RoundCurrency(-pnlAmount) : incomeBeforeTaxContribution,
             _ => 0m
         };
     }
@@ -960,13 +1093,50 @@ public sealed partial class DataverseService
         bucketKey is "licensing" or "supplies" or "machines" or "technical-service";
 
     private static bool IsPnlPersonalBucket(string bucketKey) =>
-        bucketKey is "personal-administrative" or "personal-cloud" or "personal-copiers";
+        bucketKey is "personal-administrative" or PnlExpensePrimasCesantiasBucket or "personal-cloud" or "personal-copiers";
 
     private static bool IsPnlAdministrativeBucket(string bucketKey) =>
         bucketKey is "office-rent" or "warehouse" or "transport" or "internal" or "recurring" or "equipment" or "travel" or "empty";
 
     private static bool IsPnlEbitdaExpenseBucket(string bucketKey) =>
         IsPnlCogsBucket(bucketKey) || IsPnlPersonalBucket(bucketKey) || IsPnlAdministrativeBucket(bucketKey) || bucketKey == "marketing";
+
+    private static bool IsPnlOtherIncomeExpenseBucket(string bucketKey) =>
+        bucketKey is PnlExpenseFinancialIncomeBucket or PnlExpenseFinancialExpenseBucket or PnlExpenseOtherNonOperatingBucket;
+
+    private static decimal GetPnlProvisionExpenseContribution(decimal amount, int monthCutoff, int? cellMonth)
+    {
+        if (!cellMonth.HasValue)
+            return amount;
+
+        var months = Math.Clamp(monthCutoff, 1, 12);
+        return months == 0 ? 0m : RoundCurrency(amount / months);
+    }
+
+    private static decimal GetPnlOtherIncomeExpenseSignedAmount(PnlExpenseRow row, decimal amount, string bucketKey)
+    {
+        return bucketKey switch
+        {
+            PnlExpenseFinancialIncomeBucket => amount,
+            PnlExpenseFinancialExpenseBucket => RoundCurrency(-amount),
+            PnlExpenseOtherNonOperatingBucket => IsPnlIncomeLabel(row.CategoryLabel) ? amount : RoundCurrency(-amount),
+            _ => 0m
+        };
+    }
+
+    private static decimal ResolvePnlIncomeBeforeTaxExpenseContribution(string bucketKey, decimal pnlAmount, decimal otherSignedAmount)
+    {
+        if (bucketKey == "taxes")
+            return 0m;
+
+        if (IsPnlEbitdaExpenseBucket(bucketKey))
+            return RoundCurrency(-pnlAmount);
+
+        if (IsPnlOtherIncomeExpenseBucket(bucketKey))
+            return otherSignedAmount;
+
+        return 0m;
+    }
 
     private static PnlCellDetailRecordDto BuildPnlBillingDetailRecord(BillingRecordRow row, decimal cellValue, string sourceLabel = "Facturacion")
     {
@@ -979,12 +1149,13 @@ public sealed partial class DataverseService
             DocumentNumber = row.InvoiceNumber,
             Description = row.ClientName,
             DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "-",
+            AssignedMonthDisplay = ResolvePnlAssignedMonthDisplay(row.EmissionDate),
             VerticalKey = verticalKey,
             VerticalLabel = string.IsNullOrWhiteSpace(row.VerticalLabel) ? ResolvePnlDetailVerticalLabel(verticalKey) : row.VerticalLabel,
             CategoryLabel = "No aplica",
             TotalInvoice = row.TotalInvoice,
             VatValue = row.VatValue,
-            TotalBeforeVatValue = CalculateInvoiceTaxBase(row),
+            TotalBeforeVatValue = GetPnlBillingBaseValue(row),
             PaymentValue = row.PaymentValue,
             CloudValue = 0m,
             CopiersValue = 0m,
@@ -1005,7 +1176,8 @@ public sealed partial class DataverseService
             RecordId = row.RecordId,
             DocumentNumber = row.RecordId,
             Description = string.IsNullOrWhiteSpace(row.IssuerName) ? row.CategoryLabel : row.IssuerName,
-            DateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "-",
+            DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "-",
+            AssignedMonthDisplay = ResolvePnlAssignedMonthDisplay(row.EmissionDate),
             VerticalKey = verticalKey,
             VerticalLabel = ResolvePnlDetailVerticalLabel(verticalKey),
             CategoryOptionValue = row.CategoryOptionValue,
@@ -1039,6 +1211,7 @@ public sealed partial class DataverseService
             "cogs-total" => new PnlRowMetadata(normalizedKey, "COGS (total)"),
             "gross-profit" => new PnlRowMetadata(normalizedKey, "UTILIDAD BRUTA"),
             "personal-administrative" => new PnlRowMetadata(normalizedKey, "Personal Administrativo"),
+            "personal-primas-cesantias" => new PnlRowMetadata(normalizedKey, "Primas/Cesantias"),
             "personal-cloud" => new PnlRowMetadata(normalizedKey, "Personal Cloud"),
             "personal-copiers" => new PnlRowMetadata(normalizedKey, "Personal Copiers"),
             "personal-total" => new PnlRowMetadata(normalizedKey, "Subtotal personal"),
@@ -1054,9 +1227,13 @@ public sealed partial class DataverseService
             "commercial-marketing" => new PnlRowMetadata(normalizedKey, "Marketing"),
             "commercial-total" => new PnlRowMetadata(normalizedKey, "Subtotal comerciales"),
             "ebitda" => new PnlRowMetadata(normalizedKey, "EBITDA"),
-            "other-taxes" => new PnlRowMetadata(normalizedKey, "Impuestos"),
-            "other-financial" => new PnlRowMetadata(normalizedKey, "Financieros / Contables"),
-            "other-total" => new PnlRowMetadata(normalizedKey, "Otros ingresos / gastos (total)"),
+            "other-financial-income" => new PnlRowMetadata(normalizedKey, "Ingresos financieros"),
+            "other-financial-expenses" => new PnlRowMetadata(normalizedKey, "Gastos financieros"),
+            "other-non-operating" => new PnlRowMetadata(normalizedKey, "Otros ingresos/gastos no operacionales"),
+            "other-total" => new PnlRowMetadata(normalizedKey, "Total otros ingresos/gastos"),
+            "income-before-taxes" => new PnlRowMetadata(normalizedKey, "UTILIDAD ANTES DE IMPUESTOS"),
+            "taxes" => new PnlRowMetadata(normalizedKey, "Impuestos"),
+            "net-income" => new PnlRowMetadata(normalizedKey, "UTILIDAD NETA"),
             "orphan-billing-no-vertical" => new PnlRowMetadata(normalizedKey, "Facturacion sin vertical", "number"),
             "orphan-expense-no-category" => new PnlRowMetadata(normalizedKey, "Gastos sin categoria", "number"),
             "orphan-expense-allocation-mismatch" => new PnlRowMetadata(normalizedKey, "Gastos con reparto invalido", "number"),
@@ -1070,6 +1247,14 @@ public sealed partial class DataverseService
             return $"{ResolvePnlMonthLabel(year, cellMonth.Value)} {year}";
 
         return $"Total acumulado a {ResolvePnlMonthLabel(year, monthCutoff)} {year}";
+    }
+
+    private static string ResolvePnlAssignedMonthDisplay(DateOnly? emissionDate)
+    {
+        if (!emissionDate.HasValue)
+            return "-";
+
+        return $"{ResolvePnlMonthLabel(emissionDate.Value.Year, emissionDate.Value.Month)} {emissionDate.Value.Year}";
     }
 
     private static string BuildPnlDetailEmptyMessage(string rowKey) => rowKey switch
@@ -1239,14 +1424,17 @@ public sealed partial class DataverseService
         string verticalKey,
         string bucketKey)
     {
+        if (string.Equals(bucketKey, PnlExpensePrimasCesantiasBucket, StringComparison.OrdinalIgnoreCase))
+            return BuildPnlProvisionExpenseSeries(monthCutoff, rows, verticalKey, bucketKey);
+
         var values = new decimal[Math.Clamp(monthCutoff, 1, 12)];
 
         foreach (var row in rows)
         {
-            if (row.PaymentDate is null)
+            if (row.EmissionDate is null)
                 continue;
 
-            var month = row.PaymentDate.Value.Month;
+            var month = row.EmissionDate.Value.Month;
             if (month is < 1 or > 12 || month > values.Length)
                 continue;
 
@@ -1254,6 +1442,56 @@ public sealed partial class DataverseService
                 continue;
 
             values[month - 1] = RoundCurrency(values[month - 1] + GetPnlExpenseViewAmount(row, verticalKey));
+        }
+
+        return values;
+    }
+
+    private static IReadOnlyList<decimal> BuildPnlProvisionExpenseSeries(
+        int monthCutoff,
+        IReadOnlyList<PnlExpenseRow> rows,
+        string verticalKey,
+        string bucketKey)
+    {
+        var values = new decimal[Math.Clamp(monthCutoff, 1, 12)];
+        var total = RoundCurrency(rows
+            .Where(row => string.Equals(ResolvePnlExpenseBucketKey(row), bucketKey, StringComparison.OrdinalIgnoreCase))
+            .Sum(row => GetPnlExpenseViewAmount(row, verticalKey)));
+
+        if (Math.Abs(total) < 0.01m || values.Length == 0)
+            return values;
+
+        var monthly = RoundCurrency(total / values.Length);
+        for (var index = 0; index < values.Length; index += 1)
+        {
+            values[index] = monthly;
+        }
+
+        values[^1] = RoundCurrency(total - values.Take(values.Length - 1).Sum());
+        return values;
+    }
+
+    private static IReadOnlyList<decimal> BuildPnlOtherNonOperatingSeries(
+        int monthCutoff,
+        IReadOnlyList<PnlExpenseRow> rows,
+        string verticalKey)
+    {
+        var values = new decimal[Math.Clamp(monthCutoff, 1, 12)];
+
+        foreach (var row in rows)
+        {
+            if (row.EmissionDate is null)
+                continue;
+
+            var month = row.EmissionDate.Value.Month;
+            if (month is < 1 or > 12 || month > values.Length)
+                continue;
+
+            var bucketKey = ResolvePnlExpenseBucketKey(row);
+            if (!string.Equals(bucketKey, PnlExpenseOtherNonOperatingBucket, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            values[month - 1] = RoundCurrency(values[month - 1] + GetPnlOtherIncomeExpenseSignedAmount(row, GetPnlExpenseViewAmount(row, verticalKey), bucketKey));
         }
 
         return values;
@@ -1277,6 +1515,9 @@ public sealed partial class DataverseService
 
         return values;
     }
+
+    private static IReadOnlyList<decimal> NegatePnlSeries(IReadOnlyList<decimal> series) =>
+        series.Select(value => RoundCurrency(-value)).ToList();
 
     private static IReadOnlyList<decimal> SubtractPnlSeries(IReadOnlyList<decimal> baseSeries, params IReadOnlyList<decimal>[] deductions)
     {
@@ -1311,6 +1552,14 @@ public sealed partial class DataverseService
         return rows.Count(row => Math.Abs(GetPnlExpenseViewAmount(row, verticalKey)) >= 0.01m);
     }
 
+    private static decimal GetPnlBillingBaseValue(BillingRecordRow row)
+    {
+        if (Math.Abs(row.TotalInvoice) < 0.01m && Math.Abs(row.VatValue) < 0.01m)
+            return 0m;
+
+        return RoundCurrency(row.TotalInvoice - row.VatValue);
+    }
+
     private static decimal GetPnlRevenueAmount(BillingRecordRow row, string verticalKey, int targetVerticalOption)
     {
         if (row.VerticalOptionValue != targetVerticalOption)
@@ -1319,7 +1568,7 @@ public sealed partial class DataverseService
         if (!MatchesPnlVerticalSelection(targetVerticalOption, verticalKey))
             return 0m;
 
-        return row.TotalInvoice;
+        return GetPnlBillingBaseValue(row);
     }
 
     private static decimal GetPnlExpenseViewAmount(PnlExpenseRow row, string verticalKey)
@@ -1362,19 +1611,20 @@ public sealed partial class DataverseService
         if (Math.Abs(row.TotalValue - row.VatValue) >= 0.01m)
             return RoundCurrency(row.TotalValue - row.VatValue);
 
-        return row.PaymentValue;
+        return 0m;
     }
 
     private static decimal GetPnlExpenseAllocationReferenceValue(PnlExpenseRow row)
     {
-        if (Math.Abs(row.PaymentValue) >= 0.01m)
-            return row.PaymentValue;
-
         return GetPnlExpenseBaseValue(row);
     }
 
     private static string ResolvePnlExpenseBucketKey(PnlExpenseRow row)
     {
+        var labelBucket = ResolvePnlExpenseBucketKeyFromLabel(row.CategoryLabel);
+        if (labelBucket is PnlExpensePrimasCesantiasBucket or PnlExpenseFinancialIncomeBucket or PnlExpenseFinancialExpenseBucket or PnlExpenseOtherNonOperatingBucket)
+            return labelBucket;
+
         return row.CategoryOptionValue switch
         {
             PnlExpenseLicensingOption => "licensing",
@@ -1393,8 +1643,8 @@ public sealed partial class DataverseService
             PnlExpenseTravelOption => "travel",
             PnlExpenseMarketingOption => "marketing",
             PnlExpenseTaxesOption => "taxes",
-            PnlExpenseFinancialOption => "financial",
-            _ => ResolvePnlExpenseBucketKeyFromLabel(row.CategoryLabel)
+            PnlExpenseFinancialOption => PnlExpenseFinancialExpenseBucket,
+            _ => labelBucket
         };
     }
 
@@ -1415,6 +1665,9 @@ public sealed partial class DataverseService
 
         if (normalized.Contains("servicio", StringComparison.Ordinal) && normalized.Contains("tecn", StringComparison.Ordinal))
             return "technical-service";
+
+        if (normalized.Contains("prima", StringComparison.Ordinal) || normalized.Contains("cesant", StringComparison.Ordinal))
+            return PnlExpensePrimasCesantiasBucket;
 
         if (normalized.Contains("personal") && normalized.Contains("administr", StringComparison.Ordinal))
             return "personal-administrative";
@@ -1452,8 +1705,18 @@ public sealed partial class DataverseService
         if (normalized.Contains("impuesto", StringComparison.Ordinal))
             return "taxes";
 
-        if (normalized.Contains("financ", StringComparison.Ordinal) || normalized.Contains("contab", StringComparison.Ordinal))
-            return "financial";
+        if (normalized.Contains("financ", StringComparison.Ordinal))
+            return normalized.Contains("ingreso", StringComparison.Ordinal)
+                ? PnlExpenseFinancialIncomeBucket
+                : PnlExpenseFinancialExpenseBucket;
+
+        if (normalized.Contains("no operacional", StringComparison.Ordinal)
+            || normalized.Contains("no operacion", StringComparison.Ordinal)
+            || (normalized.Contains("otro", StringComparison.Ordinal) && (normalized.Contains("ingreso", StringComparison.Ordinal) || normalized.Contains("gasto", StringComparison.Ordinal))))
+            return PnlExpenseOtherNonOperatingBucket;
+
+        if (normalized.Contains("contab", StringComparison.Ordinal))
+            return PnlExpenseFinancialExpenseBucket;
 
         return "empty";
     }
@@ -1477,10 +1740,10 @@ public sealed partial class DataverseService
 
         months.AddRange(
             expenseRecords
-                .Where(row => row.PaymentDate is not null
-                    && row.PaymentDate.Value.Year == year
+                .Where(row => row.EmissionDate is not null
+                    && row.EmissionDate.Value.Year == year
                     && Math.Abs(GetPnlExpenseViewAmount(row, verticalKey)) >= 0.01m)
-                .Select(row => row.PaymentDate!.Value.Month));
+                .Select(row => row.EmissionDate!.Value.Month));
 
         if (months.Count > 0)
             return Math.Clamp(months.Max(), 1, 12);
@@ -1590,12 +1853,22 @@ public sealed partial class DataverseService
         return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
+    private static bool IsPnlIncomeLabel(string? value)
+    {
+        var normalized = NormalizePnlLabel(value);
+        return normalized.Contains("ingreso", StringComparison.Ordinal)
+            || normalized.Contains("reintegro", StringComparison.Ordinal)
+            || normalized.Contains("recuperacion", StringComparison.Ordinal);
+    }
+
     private sealed record PnlRowMetadata(string Key, string Label, string ValueFormat = "currency");
+
+    private sealed record PnlExpenseDateFieldCandidate(string FieldName, string FieldKind);
 
     private sealed class PnlExpenseRow
     {
         public string RecordId { get; set; } = "";
-        public DateOnly? PaymentDate { get; set; }
+        public DateOnly? EmissionDate { get; set; }
         public decimal PaymentValue { get; set; }
         public string IssuerName { get; set; } = "";
         public int CategoryOptionValue { get; set; }

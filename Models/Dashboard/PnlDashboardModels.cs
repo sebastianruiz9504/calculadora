@@ -87,6 +87,7 @@ public sealed class PnlCellDetailRecordDto
     public string DocumentNumber { get; set; } = "";
     public string Description { get; set; } = "";
     public string DateDisplay { get; set; } = "";
+    public string AssignedMonthDisplay { get; set; } = "";
     public string VerticalKey { get; set; } = "";
     public string VerticalLabel { get; set; } = "";
     public int? CategoryOptionValue { get; set; }

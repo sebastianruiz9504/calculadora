@@ -31,22 +31,103 @@ public sealed class HardwareController : Controller
         return View(new HardwareWorkspaceViewModel
         {
             RootId = "hardwareApp",
+            Mode = "commercial",
             CurrentUserLabel = !string.IsNullOrWhiteSpace(currentUser.DisplayName)
                 ? currentUser.DisplayName
                 : currentUser.Email,
             PreviewUrl = Url.Action(nameof(Preview), "Hardware") ?? "",
             ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
-            BoardUrl = Url.Action(nameof(Board), "Hardware") ?? "",
-            SaveUrl = Url.Action(nameof(SaveStage), "Hardware") ?? "",
-            EditUrl = Url.Action(nameof(EditRecords), "Hardware") ?? "",
-            UploadUrl = Url.Action(nameof(UploadFile), "Hardware") ?? "",
-            DownloadUrl = Url.Action(nameof(DownloadFile), "Hardware") ?? "",
+            BoardUrl = Url.Action(nameof(CommercialBoard), "Hardware") ?? "",
+            CreateUrl = Url.Action(nameof(CreateOrder), "Hardware") ?? "",
+            SaveUrl = Url.Action(nameof(CommercialSaveStage), "Hardware") ?? "",
+            EditUrl = "",
+            UploadUrl = Url.Action(nameof(CommercialUploadFile), "Hardware") ?? "",
+            DownloadUrl = Url.Action(nameof(CommercialDownloadFile), "Hardware") ?? "",
             InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? "",
             ClientSearchUrl = Url.Action(nameof(ClientSearch), "Hardware") ?? "",
-            OwnerSearchUrl = Url.Action(nameof(OwnerSearch), "Hardware") ?? "",
+            OwnerSearchUrl = "",
             InitialStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
             InitialEndDate = today.ToString("yyyy-MM-dd")
         });
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CommercialBoard(
+        [FromQuery] int? stateValue,
+        [FromQuery] DateOnly? startDate,
+        [FromQuery] DateOnly? endDate,
+        CancellationToken ct)
+    {
+        try
+        {
+            var currentUser = await GetCurrentUserAsync(ct);
+            var syncMessages = new List<string>();
+            var syncedRequestsCount = 0;
+            var syncedImportedCount = 0;
+            var pendingRequests = await _provisioningRequestStore.GetApprovedPendingHardwareSyncAsync(ct);
+
+            foreach (var request in pendingRequests.Where(request => IsProvisioningRequestForCurrentUser(request, currentUser)))
+            {
+                try
+                {
+                    var syncResult = await _dataverse.SyncProvisioningHardwareAsync(request, ct);
+                    await _provisioningRequestStore.MarkHardwareSyncResultAsync(
+                        request.RequestId,
+                        syncResult.Status,
+                        syncResult.ImportedCount,
+                        syncResult.Message,
+                        ct);
+                    syncedRequestsCount++;
+                    syncedImportedCount += Math.Max(0, syncResult.ImportedCount);
+
+                    if (!string.IsNullOrWhiteSpace(syncResult.Message))
+                        syncMessages.Add($"{request.RequestId}: {syncResult.Message}");
+                }
+                catch (Exception ex)
+                {
+                    var detail = BuildExceptionDetail(ex);
+                    await _provisioningRequestStore.MarkHardwareSyncResultAsync(
+                        request.RequestId,
+                        ProvisioningHardwareSyncStatus.Failed,
+                        0,
+                        detail,
+                        ct);
+                    syncMessages.Add($"{request.RequestId}: {detail}");
+                }
+            }
+
+            var board = await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct, currentOwnerOnly: true);
+            board.SyncedRequestsCount = syncedRequestsCount;
+            board.SyncedImportedCount = syncedImportedCount;
+            board.SyncMessages = syncMessages;
+            return Json(board);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar la tabla comercial de Hardware.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CreateOrder([FromBody] HardwareOrderCreateRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar los datos de la orden de Hardware."));
+
+        try
+        {
+            return Ok(await _dataverse.CreateHardwareOrderDraftAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible crear la orden de Hardware.", ex));
+        }
     }
 
     [HttpPost]
@@ -183,6 +264,27 @@ public sealed class HardwareController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CommercialSaveStage([FromBody] HardwareStageSaveRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar el hardware y la etapa que quieres guardar."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveHardwareStageAsync(request, ct, requireCurrentOwner: true));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible guardar la etapa comercial de Hardware.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> EditRecords([FromBody] HardwareBulkEditRequest? request, CancellationToken ct)
     {
         if (request is null)
@@ -235,6 +337,40 @@ public sealed class HardwareController : Controller
         }
     }
 
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [RequestSizeLimit(MaxUploadBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes)]
+    public async Task<IActionResult> CommercialUploadFile(string recordId, string fieldName, IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length <= 0)
+            return BadRequest(CreateErrorPayload("Debes seleccionar un archivo valido."));
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ct);
+
+            return Ok(await _dataverse.UploadHardwareFileAsync(
+                recordId,
+                fieldName,
+                file.FileName,
+                file.ContentType,
+                buffer.ToArray(),
+                ct,
+                requireCurrentOwner: true));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el adjunto comercial de Hardware.", ex));
+        }
+    }
+
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> DownloadFile(string recordId, string fieldName, CancellationToken ct)
@@ -254,6 +390,28 @@ public sealed class HardwareController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el adjunto de Hardware.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CommercialDownloadFile(string recordId, string fieldName, CancellationToken ct)
+    {
+        try
+        {
+            var file = await _dataverse.DownloadHardwareFileAsync(recordId, fieldName, ct, requireCurrentOwner: true);
+            if (file is null || file.Content.Length == 0)
+                return NotFound();
+
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el adjunto comercial de Hardware.", ex));
         }
     }
 
@@ -313,6 +471,21 @@ public sealed class HardwareController : Controller
 
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct) =>
         await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
+
+    private static bool IsProvisioningRequestForCurrentUser(ProvisioningStoredRequest request, CurrentUserInfo currentUser)
+    {
+        var requester = request.Request.Requester;
+        if (!string.IsNullOrWhiteSpace(requester?.SystemUserId)
+            && !string.IsNullOrWhiteSpace(currentUser.SystemUserId)
+            && string.Equals(requester.SystemUserId, currentUser.SystemUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(requester?.Email)
+            && !string.IsNullOrWhiteSpace(currentUser.Email)
+            && string.Equals(requester.Email, currentUser.Email, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static DateOnly ResolveBogotaToday()
     {

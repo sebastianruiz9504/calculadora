@@ -4,9 +4,11 @@
 
     function initHardwareWorkspace(root) {
         const config = {
+            mode: root.dataset.hwMode || "dashboard",
             previewUrl: root.dataset.previewUrl || "",
             provisionUrl: root.dataset.provisionUrl || "",
             boardUrl: root.dataset.boardUrl || "",
+            createUrl: root.dataset.createUrl || "",
             saveUrl: root.dataset.saveUrl || "",
             editUrl: root.dataset.editUrl || "",
             uploadUrl: root.dataset.uploadUrl || "",
@@ -17,6 +19,7 @@
             initialStartDate: root.dataset.initialStartDate || "",
             initialEndDate: root.dataset.initialEndDate || ""
         };
+        const isCommercialMode = normalizeText(config.mode) === "commercial";
 
         const elements = {
             status: root.querySelector("[data-hw-status]"),
@@ -43,6 +46,18 @@
             warnings: root.querySelector("[data-hw-warnings]"),
             stateSummary: root.querySelector("[data-hw-state-summary]"),
             rows: root.querySelector("[data-hw-rows]"),
+            createForm: root.querySelector("[data-hw-create-form]"),
+            createStatus: root.querySelector("[data-hw-create-status]"),
+            createLines: root.querySelector("[data-hw-create-lines]"),
+            addCreateLineBtn: root.querySelector("[data-hw-add-create-line]"),
+            saveCreateBtn: root.querySelector("[data-hw-save-create]"),
+            createClientOptions: root.querySelector("[data-hw-create-client-options]"),
+            createClientHint: root.querySelector("[data-hw-create-client-hint]"),
+            createFields: {
+                purchaseOrderNumber: root.querySelector('[data-hw-create-field="purchaseOrderNumber"]'),
+                odcDate: root.querySelector('[data-hw-create-field="odcDate"]'),
+                clientName: root.querySelector('[data-hw-create-field="clientName"]')
+            },
             selectAll: root.querySelector("[data-hw-select-all]"),
             totalRecords: root.querySelector("[data-hw-total-records]"),
             totalSales: root.querySelector("[data-hw-total-sales]"),
@@ -121,7 +136,7 @@
             || !elements.form
             || !elements.stateFilter
             || !elements.refreshBtn
-            || !elements.selectedActionBtn) {
+            || (!isCommercialMode && !elements.selectedActionBtn)) {
             return;
         }
 
@@ -147,12 +162,17 @@
             ownerLookupTimer: 0,
             ownerLookupSequence: 0,
             ownerSuggestions: [],
+            createClientSelection: null,
+            createClientLookupTimer: 0,
+            createClientLookupSequence: 0,
+            createClientSuggestions: [],
+            createLineSequence: 0,
             invoiceSuggestions: [],
             invoiceLookupTimer: 0,
             invoiceLookupSequence: 0
         };
 
-        [elements.status, elements.importStatus, elements.boardStatus, elements.modalStatus, elements.editStatus]
+        [elements.status, elements.importStatus, elements.boardStatus, elements.modalStatus, elements.editStatus, elements.createStatus]
             .filter(Boolean)
             .forEach(element => {
                 element.dataset.baseClass = element.className;
@@ -211,8 +231,14 @@
         elements.analyzeCsvBtn?.addEventListener("click", previewCsv);
         elements.provisionCsvBtn?.addEventListener("click", provisionCsv);
         elements.refreshBtn.addEventListener("click", () => loadBoard());
-        elements.selectedActionBtn.addEventListener("click", openSelectedRows);
+        elements.selectedActionBtn?.addEventListener("click", openSelectedRows);
         elements.editSelectedBtn?.addEventListener("click", openBulkEditForSelectedRows);
+        elements.addCreateLineBtn?.addEventListener("click", () => addCreateLine());
+        elements.createForm?.addEventListener("submit", async event => {
+            event.preventDefault();
+            await createCommercialOrder();
+        });
+        elements.createFields.clientName?.addEventListener("input", handleCreateClientLookupInput);
         if (elements.startDate) {
             elements.startDate.value = config.initialStartDate || "";
             elements.startDate.addEventListener("change", handleDateFilterChange);
@@ -394,6 +420,24 @@
             }
         });
 
+        elements.createForm?.addEventListener("click", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            const clientOption = target.closest("[data-hw-create-client-option]");
+            if (clientOption instanceof HTMLElement) {
+                selectCreateClientOption(clientOption);
+                return;
+            }
+
+            const removeLineButton = target.closest("[data-hw-remove-create-line]");
+            if (removeLineButton instanceof HTMLButtonElement) {
+                removeCreateLine(removeLineButton.dataset.hwRemoveCreateLine || "");
+            }
+        });
+
         document.addEventListener("click", event => {
             const target = event.target;
             if (!(target instanceof HTMLElement)) {
@@ -402,6 +446,7 @@
 
             if (!target.closest(".hardware-lookup")) {
                 closeLookupMenus();
+                closeCreateClientLookupMenu();
             }
         });
 
@@ -420,6 +465,10 @@
         elements.fields.invoiceNumber?.addEventListener("input", handleInvoiceLookupInput);
         elements.fields.invoiceNumber?.addEventListener("change", syncInvoiceSelection);
         elements.fields.invoiceNumber?.addEventListener("blur", syncInvoiceSelection);
+
+        if (isCommercialMode && elements.createLines && !elements.createLines.children.length) {
+            addCreateLine();
+        }
 
         loadBoard();
 
@@ -702,6 +751,11 @@
 
         function renderRows(board) {
             const rows = Array.isArray(board?.rows) ? board.rows : [];
+            if (isCommercialMode) {
+                renderCommercialRows(rows);
+                return;
+            }
+
             const ownerTables = buildOwnerTables(rows);
             state.displayItems = ownerTables.flatMap(owner => owner.items);
 
@@ -717,6 +771,134 @@
 
             syncGroupCheckboxStates();
             syncSelectAllState();
+        }
+
+        function renderCommercialRows(rows) {
+            const groups = buildCommercialGroups(rows);
+            state.displayItems = groups;
+
+            if (!rows.length) {
+                elements.rows.innerHTML = `
+                    <div class="hardware-empty">No hay registros de Hardware para tu usuario.</div>
+                `;
+                syncSelectAllState();
+                return;
+            }
+
+            elements.rows.innerHTML = `
+                <div class="hardware-table-wrap">
+                    <table class="table align-middle hardware-table hardware-commercial-table">
+                        <thead>
+                            <tr>
+                                <th>Orden / Cliente</th>
+                                <th>cr07a_name</th>
+                                <th class="text-end">cr07a_cant</th>
+                                <th class="text-end">cr07a_costountproveedor</th>
+                                <th class="text-end">cr07a_ventaunidad</th>
+                                <th>cr07a_proveedor</th>
+                                <th>cr07a_ordendecompra</th>
+                                <th>cr07a_adjuntarproforma</th>
+                                <th>Estado</th>
+                                <th>Botón</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${groups.map(renderCommercialGroup).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function buildCommercialGroups(rows) {
+            const groups = new Map();
+            rows.forEach((row, index) => {
+                const orderNumber = String(row?.purchaseOrderNumber || "").trim() || "Sin orden";
+                const key = normalizeText(orderNumber) || `sin-orden-${index}`;
+                if (!groups.has(key)) {
+                    groups.set(key, {
+                        type: "group",
+                        key,
+                        orderNumber,
+                        rows: [],
+                        index
+                    });
+                }
+
+                groups.get(key).rows.push(row);
+            });
+
+            return Array.from(groups.values())
+                .sort((left, right) => left.index - right.index);
+        }
+
+        function renderCommercialGroup(group) {
+            const first = group.rows[0] || {};
+            const validAction = validateActionRecords(group.rows);
+            const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
+            const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
+            const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
+            return `
+                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
+                    <td colspan="10">
+                        <div class="hardware-commercial-order">
+                            <div>
+                                <strong>${escapeHtml(group.orderNumber)}</strong>
+                                <span>${escapeHtml(clientLabel)} · ${escapeHtml(odcDate)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und</span>
+                            </div>
+                            ${validAction.ok
+                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(group.rows[0].actionLabel || "Gestionar")}</button>`
+                                : `<span class="hardware-table__submeta">${escapeHtml(validAction.message || "Sin botón")}</span>`}
+                        </div>
+                    </td>
+                </tr>
+                ${group.rows.map(row => renderCommercialRecordRow(row)).join("")}
+            `;
+        }
+
+        function renderCommercialRecordRow(row) {
+            return `
+                <tr class="hardware-table__row hardware-table__row--child ${toneClass(row?.stateTone)}">
+                    <td class="hardware-table__client-cell">
+                        <div class="hardware-table__submeta">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</div>
+                        <strong>${escapeHtml(row?.clientName || "Sin cliente")}</strong>
+                        <div class="hardware-table__submeta">${escapeHtml(row?.odcDateDisplay || "Sin fecha")}</div>
+                    </td>
+                    <td>
+                        <div class="hardware-table__title">
+                            <strong>${escapeHtml(row?.name || "Hardware")}</strong>
+                        </div>
+                    </td>
+                    <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
+                    <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
+                    <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
+                    <td>${escapeHtml(row?.provider || "-")}</td>
+                    <td>${renderCommercialFileLink(row, "cr07a_ordendecompra")}</td>
+                    <td>${renderCommercialFileLink(row, "cr07a_adjuntarproforma")}</td>
+                    <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
+                    <td>
+                        <div class="hardware-action-cell">
+                            ${row?.hasAction
+                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-record="${escapeHtml(row?.recordId || "")}">${escapeHtml(row?.actionLabel || "Gestionar")}</button>`
+                                : `<span class="hardware-table__submeta">Sin botón</span>`}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderCommercialFileLink(row, fieldName) {
+            const hasFile = hasExistingFile(row, fieldName);
+            const fileName = resolveExistingFileName(row, fieldName);
+            if (!hasFile) {
+                return `<span class="hardware-table__submeta">Sin archivo</span>`;
+            }
+
+            return `
+                <a class="hardware-file-card__link" href="${escapeHtml(buildDownloadUrl(row.recordId, fieldName))}" target="_blank" rel="noopener">
+                    ${escapeHtml(fileName || "Descargar")}
+                </a>
+            `;
         }
 
         function buildOwnerTables(rows) {
@@ -899,6 +1081,10 @@
         }
 
         function renderSelectionState() {
+            if (!elements.selectedActionBtn) {
+                return;
+            }
+
             const selectedRecords = getSelectedRows();
             const validation = validateActionRecords(selectedRecords);
             const count = selectedRecords.length;
@@ -1001,6 +1187,7 @@
 
             setFieldValue(elements.fields.purchaseOrderNumber, getCommonValue(state.modalRecords, "purchaseOrderNumber"));
             setFieldValue(elements.fields.freightValue, formatInputNumber(sumValues(state.modalRecords, "freightValue")));
+            setFieldValue(elements.fields.odcDate, getCommonValue(state.modalRecords, "odcDateValue"));
             setFieldValue(elements.fields.supplierPaymentDate, getCommonValue(state.modalRecords, "supplierPaymentDateValue"));
             setFieldValue(elements.fields.deliveryRecordDate, getCommonValue(state.modalRecords, "deliveryRecordDateValue"));
             setFieldValue(elements.fields.invoiceNumber, getCommonValue(state.modalRecords, "invoiceNumber"));
@@ -1053,9 +1240,11 @@
                     </td>
                     <td class="text-end">${formatNumber(row.quantity || 0)}</td>
                     <td class="text-end">${formatCurrency(row.saleUnit || 0)}</td>
-                    <td>
-                        <input type="date" class="form-control form-control-sm" data-hw-doc-field="odcDate" value="${escapeHtml(row.odcDateValue || "")}" />
-                    </td>
+                    ${isCommercialMode ? "" : `
+                        <td>
+                            <input type="date" class="form-control form-control-sm" data-hw-doc-field="odcDate" value="${escapeHtml(row.odcDateValue || "")}" />
+                        </td>
+                    `}
                     <td>
                         <input type="number" min="0" step="0.01" class="form-control form-control-sm" data-hw-doc-field="supplierUnitCost" value="${escapeHtml(formatInputNumber(row.supplierUnitCost || 0))}" />
                     </td>
@@ -1530,6 +1719,352 @@
             closeOwnerLookupMenu();
         }
 
+        function addCreateLine(values = {}) {
+            if (!elements.createLines) {
+                return;
+            }
+
+            const rowKey = values.rowKey || `line-${++state.createLineSequence}`;
+            elements.createLines.insertAdjacentHTML("beforeend", `
+                <tr data-hw-create-line="${escapeHtml(rowKey)}">
+                    <td>
+                        <input type="text" class="form-control form-control-sm" data-hw-create-line-field="name" value="${escapeHtml(values.name || "")}" />
+                    </td>
+                    <td>
+                        <input type="number" min="1" step="1" class="form-control form-control-sm text-end" data-hw-create-line-field="quantity" value="${escapeHtml(values.quantity || "")}" />
+                    </td>
+                    <td>
+                        <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end" data-hw-create-line-field="supplierUnitCost" value="${escapeHtml(values.supplierUnitCost || "")}" />
+                    </td>
+                    <td>
+                        <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end" data-hw-create-line-field="saleUnit" value="${escapeHtml(values.saleUnit || "")}" />
+                    </td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm" data-hw-create-line-field="provider" value="${escapeHtml(values.provider || "")}" />
+                    </td>
+                    <td>
+                        <input type="file" class="form-control form-control-sm" data-hw-create-line-file="cr07a_ordendecompra" />
+                    </td>
+                    <td>
+                        <input type="file" class="form-control form-control-sm" data-hw-create-line-file="cr07a_adjuntarproforma" />
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-hw-remove-create-line="${escapeHtml(rowKey)}">Quitar</button>
+                    </td>
+                </tr>
+            `);
+            syncCreateLineButtons();
+        }
+
+        function removeCreateLine(rowKey) {
+            if (!elements.createLines) {
+                return;
+            }
+
+            const row = elements.createLines.querySelector(`[data-hw-create-line="${cssEscape(rowKey)}"]`);
+            row?.remove();
+            if (!elements.createLines.children.length) {
+                addCreateLine();
+            }
+            syncCreateLineButtons();
+        }
+
+        function syncCreateLineButtons() {
+            if (!elements.createLines) {
+                return;
+            }
+
+            const rows = Array.from(elements.createLines.querySelectorAll("[data-hw-create-line]"));
+            rows.forEach(row => {
+                const button = row.querySelector("[data-hw-remove-create-line]");
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = rows.length <= 1 || state.busy;
+                }
+            });
+        }
+
+        function handleCreateClientLookupInput() {
+            const query = (elements.createFields.clientName?.value || "").trim();
+            state.createClientSelection = null;
+            queueCreateClientLookup(query);
+        }
+
+        function queueCreateClientLookup(query) {
+            window.clearTimeout(state.createClientLookupTimer);
+
+            if (!elements.createClientOptions || !config.clientSearchUrl) {
+                return;
+            }
+
+            if (query.length < 2) {
+                state.createClientSuggestions = [];
+                closeCreateClientLookupMenu();
+                if (elements.createClientHint) {
+                    elements.createClientHint.textContent = "Escribe al menos 2 caracteres para buscar el cliente.";
+                }
+                return;
+            }
+
+            if (elements.createClientHint) {
+                elements.createClientHint.textContent = "Buscando cliente...";
+            }
+
+            const sequence = ++state.createClientLookupSequence;
+            state.createClientLookupTimer = window.setTimeout(async () => {
+                try {
+                    const result = await fetchJson(buildClientSearchUrl(query), { method: "GET" });
+                    if (sequence !== state.createClientLookupSequence) {
+                        return;
+                    }
+
+                    state.createClientSuggestions = Array.isArray(result) ? result : [];
+                    renderCreateClientLookupOptions(state.createClientSuggestions);
+                    if (elements.createClientHint) {
+                        elements.createClientHint.textContent = state.createClientSuggestions.length > 0
+                            ? "Selecciona una coincidencia para guardar el lookup."
+                            : "No se encontraron clientes con esa búsqueda.";
+                    }
+                } catch (error) {
+                    if (sequence !== state.createClientLookupSequence) {
+                        return;
+                    }
+
+                    state.createClientSuggestions = [];
+                    closeCreateClientLookupMenu();
+                    if (elements.createClientHint) {
+                        elements.createClientHint.textContent = getErrorMessage(error);
+                    }
+                }
+            }, 220);
+        }
+
+        function renderCreateClientLookupOptions(items) {
+            if (!elements.createClientOptions) {
+                return;
+            }
+
+            if (!items.length) {
+                elements.createClientOptions.innerHTML = `<div class="hardware-lookup__empty">Sin coincidencias</div>`;
+                elements.createClientOptions.classList.add("is-open");
+                return;
+            }
+
+            elements.createClientOptions.innerHTML = items.map(item => `
+                <button type="button"
+                        class="hardware-lookup__option"
+                        data-hw-create-client-option
+                        data-client-id="${escapeHtml(item?.id || "")}"
+                        data-client-name="${escapeHtml(item?.name || "")}">
+                    <span>${escapeHtml(item?.name || "Cliente sin nombre")}</span>
+                    <small>${escapeHtml(item?.id || "")}</small>
+                </button>
+            `).join("");
+            elements.createClientOptions.classList.add("is-open");
+        }
+
+        function selectCreateClientOption(option) {
+            const clientId = option.dataset.clientId || "";
+            const clientName = option.dataset.clientName || "";
+            if (!clientId || !clientName) {
+                return;
+            }
+
+            state.createClientSelection = { id: clientId, name: clientName };
+            setFieldValue(elements.createFields.clientName, clientName);
+            closeCreateClientLookupMenu();
+            if (elements.createClientHint) {
+                elements.createClientHint.textContent = "Cliente seleccionado.";
+            }
+        }
+
+        function closeCreateClientLookupMenu() {
+            if (!elements.createClientOptions) {
+                return;
+            }
+
+            elements.createClientOptions.innerHTML = "";
+            elements.createClientOptions.classList.remove("is-open");
+        }
+
+        async function createCommercialOrder() {
+            if (state.saving || !elements.createForm || !config.createUrl) {
+                return;
+            }
+
+            let draft;
+            try {
+                draft = buildCreateOrderDraft();
+            } catch (error) {
+                setStatus(elements.createStatus, "error", getErrorMessage(error));
+                return;
+            }
+
+            try {
+                state.saving = true;
+                setBusy(true);
+                setStatus(elements.createStatus, "info", "Creando registros de Hardware...");
+                const createResult = await fetchJson(config.createUrl, {
+                    method: "POST",
+                    body: JSON.stringify(draft.payload)
+                });
+
+                const records = Array.isArray(createResult?.records) ? createResult.records : [];
+                if (records.length !== draft.lines.length) {
+                    throw new Error("La respuesta de creación no coincide con las filas enviadas.");
+                }
+
+                setStatus(elements.createStatus, "info", "Cargando adjuntos de la orden...");
+                for (let index = 0; index < draft.lines.length; index++) {
+                    const recordId = records[index]?.recordId || "";
+                    if (!recordId) {
+                        throw new Error(`No se recibió el id de la fila ${index + 1}.`);
+                    }
+
+                    await uploadFile(recordId, "cr07a_ordendecompra", draft.lines[index].orderFile);
+                    await uploadFile(recordId, "cr07a_adjuntarproforma", draft.lines[index].proformaFile);
+                }
+
+                setStatus(elements.createStatus, "info", "Aplicando documentación de la orden...");
+                const savePayload = {
+                    recordId: records[0].recordId,
+                    recordIds: records.map(record => record.recordId).filter(Boolean),
+                    actionKey: "register-documentation",
+                    purchaseOrderNumber: draft.payload.purchaseOrderNumber,
+                    freightValue: 0,
+                    documentationRows: records.map((record, index) => ({
+                        recordId: record.recordId,
+                        odcDateValue: draft.payload.odcDateValue,
+                        supplierUnitCost: draft.lines[index].supplierUnitCost,
+                        provider: draft.lines[index].provider
+                    }))
+                };
+
+                const saveResult = await fetchJson(config.saveUrl, {
+                    method: "POST",
+                    body: JSON.stringify(savePayload)
+                });
+
+                resetCreateForm();
+                await loadBoard();
+                setStatus(elements.createStatus, "success", saveResult?.message || createResult?.message || "Orden de Hardware guardada.");
+            } catch (error) {
+                setStatus(elements.createStatus, "error", getErrorMessage(error));
+            } finally {
+                state.saving = false;
+                if (state.busy) {
+                    setBusy(false);
+                }
+            }
+        }
+
+        function buildCreateOrderDraft() {
+            const purchaseOrderNumber = (elements.createFields.purchaseOrderNumber?.value || "").trim();
+            const odcDateValue = (elements.createFields.odcDate?.value || "").trim();
+            const typedClient = (elements.createFields.clientName?.value || "").trim();
+
+            if (!purchaseOrderNumber) {
+                throw new Error("Debes diligenciar cr07a_noorden.");
+            }
+            if (!odcDateValue) {
+                throw new Error("Debes diligenciar cr07a_fechaodc.");
+            }
+            if (!state.createClientSelection?.id
+                || normalizeText(state.createClientSelection.name) !== normalizeText(typedClient)) {
+                throw new Error("Selecciona un cliente válido desde el buscador.");
+            }
+
+            const rows = Array.from(elements.createLines?.querySelectorAll("[data-hw-create-line]") || []);
+            if (!rows.length) {
+                throw new Error("Agrega al menos una fila.");
+            }
+
+            const lines = rows.map((row, index) => {
+                const name = getCreateLineValue(row, "name");
+                const quantity = parseIntegerStrict(getCreateLineValue(row, "quantity"));
+                const supplierUnitCost = parseDecimal(getCreateLineValue(row, "supplierUnitCost"));
+                const saleUnit = parseDecimal(getCreateLineValue(row, "saleUnit"));
+                const provider = getCreateLineValue(row, "provider");
+                const orderFile = getCreateLineFile(row, "cr07a_ordendecompra");
+                const proformaFile = getCreateLineFile(row, "cr07a_adjuntarproforma");
+
+                if (!name) {
+                    throw new Error(`Debes diligenciar cr07a_name en la fila ${index + 1}.`);
+                }
+                if (!Number.isInteger(quantity) || quantity <= 0) {
+                    throw new Error(`Debes diligenciar cr07a_cant válido en la fila ${index + 1}.`);
+                }
+                if (!(supplierUnitCost > 0)) {
+                    throw new Error(`Debes diligenciar cr07a_costountproveedor válido en la fila ${index + 1}.`);
+                }
+                if (!(saleUnit > 0)) {
+                    throw new Error(`Debes diligenciar cr07a_ventaunidad válido en la fila ${index + 1}.`);
+                }
+                if (!provider) {
+                    throw new Error(`Debes diligenciar cr07a_proveedor en la fila ${index + 1}.`);
+                }
+                if (!(orderFile instanceof File)) {
+                    throw new Error(`Debes adjuntar cr07a_ordendecompra en la fila ${index + 1}.`);
+                }
+                if (!(proformaFile instanceof File)) {
+                    throw new Error(`Debes adjuntar cr07a_adjuntarproforma en la fila ${index + 1}.`);
+                }
+
+                return {
+                    rowKey: row.dataset.hwCreateLine || `line-${index + 1}`,
+                    name,
+                    quantity,
+                    supplierUnitCost,
+                    saleUnit,
+                    provider,
+                    orderFile,
+                    proformaFile
+                };
+            });
+
+            return {
+                payload: {
+                    purchaseOrderNumber,
+                    odcDateValue,
+                    clientId: state.createClientSelection.id,
+                    clientName: state.createClientSelection.name,
+                    lines: lines.map(line => ({
+                        rowKey: line.rowKey,
+                        name: line.name,
+                        quantity: line.quantity,
+                        supplierUnitCost: line.supplierUnitCost,
+                        saleUnit: line.saleUnit,
+                        provider: line.provider
+                    }))
+                },
+                lines
+            };
+        }
+
+        function resetCreateForm() {
+            elements.createForm?.reset();
+            state.createClientSelection = null;
+            state.createClientSuggestions = [];
+            closeCreateClientLookupMenu();
+            if (elements.createLines) {
+                elements.createLines.innerHTML = "";
+                addCreateLine();
+            }
+            if (elements.createClientHint) {
+                elements.createClientHint.textContent = "Busca y selecciona un cliente.";
+            }
+        }
+
+        function getCreateLineValue(row, fieldName) {
+            return (row.querySelector(`[data-hw-create-line-field="${cssEscape(fieldName)}"]`)?.value || "").trim();
+        }
+
+        function getCreateLineFile(row, fieldName) {
+            const input = row.querySelector(`[data-hw-create-line-file="${cssEscape(fieldName)}"]`);
+            return input instanceof HTMLInputElement && input.files && input.files.length > 0
+                ? input.files[0]
+                : null;
+        }
+
         async function saveBulkEdit() {
             if (state.saving || !state.editRecords.length) {
                 return;
@@ -1787,18 +2322,24 @@
             const purchaseOrderNumber = (elements.fields.purchaseOrderNumber?.value || "").trim();
             const freightValueRaw = (elements.fields.freightValue?.value || "").trim();
             const freightValue = parseDecimal(freightValueRaw);
+            const commonOdcDate = (elements.fields.odcDate?.value || "").trim();
             if (!purchaseOrderNumber) {
                 throw new Error("Debes diligenciar cr07a_noorden.");
             }
-            if (!freightValueRaw || freightValue < 0) {
+            if (freightValueRaw && freightValue < 0) {
                 throw new Error("Debes diligenciar un cr07a_valorflete válido.");
+            }
+            if (isCommercialMode && !commonOdcDate) {
+                throw new Error("Debes diligenciar cr07a_fechaodc.");
             }
 
             const documentationRows = Array.from(elements.documentationRows?.querySelectorAll("[data-hw-documentation-row]") || [])
                 .map(rowElement => {
                     const recordId = rowElement.dataset.hwDocumentationRow || "";
                     const record = state.modalRecords.find(item => item.recordId === recordId);
-                    const odcDate = (rowElement.querySelector('[data-hw-doc-field="odcDate"]')?.value || "").trim();
+                    const odcDate = isCommercialMode
+                        ? commonOdcDate
+                        : (rowElement.querySelector('[data-hw-doc-field="odcDate"]')?.value || "").trim();
                     const supplierUnitCost = parseDecimal(rowElement.querySelector('[data-hw-doc-field="supplierUnitCost"]')?.value || "");
                     const provider = (rowElement.querySelector('[data-hw-doc-field="provider"]')?.value || "").trim();
 
@@ -1831,7 +2372,7 @@
                 recordIds,
                 actionKey,
                 purchaseOrderNumber,
-                freightValue,
+                freightValue: freightValueRaw ? freightValue : 0,
                 documentationRows
             };
         }
@@ -2096,7 +2637,9 @@
                 elements.refreshBtn,
                 elements.selectAll,
                 elements.selectedActionBtn,
-                elements.editSelectedBtn
+                elements.editSelectedBtn,
+                elements.addCreateLineBtn,
+                elements.saveCreateBtn
             ].forEach(element => {
                 if (element) {
                     element.disabled = isBusy;
@@ -2115,6 +2658,10 @@
                 element.disabled = isBusy;
             });
 
+            elements.createForm?.querySelectorAll("input, select, textarea, button").forEach(element => {
+                element.disabled = isBusy;
+            });
+
             elements.closeEditModalButtons.forEach(button => {
                 button.disabled = isBusy;
             });
@@ -2126,6 +2673,7 @@
 
             renderSelectionState();
             updateEditDirtyMeta();
+            syncCreateLineButtons();
         }
 
         async function fetchJson(url, options = {}) {
@@ -2335,6 +2883,15 @@
             return Number.isFinite(parsed) ? parsed : 0;
         }
 
+        function parseIntegerStrict(value) {
+            const normalized = String(value || "").trim();
+            if (!/^\d+$/.test(normalized)) {
+                return Number.NaN;
+            }
+
+            return Number.parseInt(normalized, 10);
+        }
+
         function formatInputNumber(value) {
             return Number(value || 0) > 0 ? Number(value).toFixed(2) : "";
         }
@@ -2354,6 +2911,14 @@
                 .replaceAll(">", "&gt;")
                 .replaceAll('"', "&quot;")
                 .replaceAll("'", "&#39;");
+        }
+
+        function cssEscape(value) {
+            if (window.CSS && typeof window.CSS.escape === "function") {
+                return window.CSS.escape(String(value || ""));
+            }
+
+            return String(value || "").replaceAll('"', '\\"').replaceAll("\\", "\\\\");
         }
     }
 })();

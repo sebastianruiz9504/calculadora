@@ -394,6 +394,101 @@
     font-size: 13px;
 }
 
+.hardware-commercial-create {
+    gap: 18px;
+}
+
+.hardware-commercial-create__header {
+    align-items: start;
+}
+
+.hardware-commercial-create__lines {
+    border-radius: 8px;
+}
+
+.hardware-create-table {
+    min-width: 1180px;
+}
+
+.hardware-create-table th:last-child,
+.hardware-create-table td:last-child {
+    width: 84px;
+    text-align: right;
+}
+
+.hardware-commercial-create__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.hardware-commercial-table {
+    min-width: 1240px;
+}
+
+.hardware-commercial-table th:nth-child(1) {
+    width: 170px;
+}
+
+.hardware-commercial-table th:nth-child(2) {
+    width: 190px;
+}
+
+.hardware-commercial-table th:nth-child(3) {
+    width: 74px;
+}
+
+.hardware-commercial-table th:nth-child(4),
+.hardware-commercial-table th:nth-child(5) {
+    width: 126px;
+}
+
+.hardware-commercial-table th:nth-child(6) {
+    width: 130px;
+}
+
+.hardware-commercial-table th:nth-child(7),
+.hardware-commercial-table th:nth-child(8) {
+    width: 140px;
+}
+
+.hardware-commercial-table th:nth-child(9) {
+    width: 138px;
+}
+
+.hardware-commercial-table th:nth-child(10) {
+    width: 126px;
+}
+
+.hardware-commercial-table__group td {
+    padding: 12px 14px;
+    background: var(--hardware-soft);
+}
+
+.hardware-commercial-order {
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hardware-commercial-order > div {
+    display: grid;
+    gap: 3px;
+}
+
+.hardware-commercial-order strong {
+    color: var(--hardware-ink);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.hardware-commercial-order span {
+    color: var(--hardware-muted);
+    font-size: 13px;
+}
+
 .hardware-state-grid {
     display: grid;
     gap: 12px;
@@ -876,6 +971,8 @@ body.hardware-modal-open {
     .hardware-toolbar,
     .hardware-toolbar__actions,
     .hardware-actions,
+    .hardware-commercial-create__actions,
+    .hardware-commercial-order,
     .hardware-owner-table__header,
     .hardware-modal__header,
     .hardware-modal__footer,
