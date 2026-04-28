@@ -885,12 +885,10 @@
                     <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
                     <td>${escapeHtml(row?.provider || "-")}</td>
-                    <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
+                    <td class="hardware-table__state-cell"><span class="hardware-table__submeta">Gestionado por orden</span></td>
                     <td>
                         <div class="hardware-action-cell">
-                            ${row?.hasAction
-                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-record="${escapeHtml(row?.recordId || "")}">${escapeHtml(row?.actionLabel || "Gestionar")}</button>`
-                                : `<span class="hardware-table__submeta">Sin botón</span>`}
+                            <span class="hardware-table__submeta">Gestionado por orden</span>
                         </div>
                     </td>
                 </tr>
@@ -1295,10 +1293,8 @@
                 const pendingFile = state.pendingFiles[fieldName];
                 const actionKey = elements.actionKey?.value || "";
                 const isDocumentationOrderFile = actionKey === "register-documentation" && isOrderDocumentationFile(fieldName);
-                const existingCount = state.modalRecords.filter(record => hasExistingFile(record, fieldName)).length;
-                const total = state.modalRecords.length;
-                const firstRecord = state.modalRecords[0] || null;
                 const orderFileRecord = resolveOrderFileRecord(state.modalRecords, fieldName);
+                const orderHasFile = hasExistingFile(orderFileRecord, fieldName);
 
                 if (isDocumentationOrderFile) {
                     const orderHasFile = hasExistingFile(orderFileRecord, fieldName);
@@ -1327,31 +1323,24 @@
                 }
 
                 if (fileNameTarget) {
-                    if (pendingFile instanceof File) {
-                        fileNameTarget.textContent = pendingFile.name;
-                    } else if (total === 1) {
-                        fileNameTarget.textContent = resolveExistingFileName(state.modalRecords[0], fieldName) || "Sin archivo";
-                    } else {
-                        fileNameTarget.textContent = existingCount > 0
-                            ? `${formatNumber(existingCount)} de ${formatNumber(total)} con archivo`
-                            : "Sin archivo";
-                    }
+                    fileNameTarget.textContent = pendingFile instanceof File
+                        ? pendingFile.name
+                        : resolveExistingFileName(orderFileRecord, fieldName) || "Sin archivo";
                 }
 
                 if (fileHintTarget) {
                     fileHintTarget.textContent = pendingFile instanceof File
-                        ? "El archivo se cargará en todas las filas seleccionadas antes de guardar."
-                        : existingCount === total && total > 0
-                            ? "Todas las filas seleccionadas ya tienen archivo registrado."
+                        ? "El archivo se cargará solo en la primera fila de la orden."
+                        : orderHasFile
+                            ? "Adjunto registrado en una fila de la orden."
                             : (fileHintTarget.dataset.defaultHint || "");
                 }
 
                 if (downloadLink) {
-                    const enabled = total === 1 && hasExistingFile(state.modalRecords[0], fieldName);
-                    downloadLink.href = enabled
-                        ? buildDownloadUrl(state.modalRecords[0].recordId, fieldName)
+                    downloadLink.href = orderHasFile && orderFileRecord
+                        ? buildDownloadUrl(orderFileRecord.recordId, fieldName)
                         : "#";
-                    downloadLink.classList.toggle("is-disabled", !enabled);
+                    downloadLink.classList.toggle("is-disabled", !(orderHasFile && orderFileRecord));
                 }
             });
         }
@@ -2290,16 +2279,9 @@
                     continue;
                 }
 
-                if ((elements.actionKey?.value || "") === "register-documentation" && isOrderDocumentationFile(key)) {
-                    const firstRecord = state.modalRecords[0];
-                    if (firstRecord?.recordId) {
-                        await uploadFile(firstRecord.recordId, key, file);
-                    }
-                    continue;
-                }
-
-                for (const record of state.modalRecords) {
-                    await uploadFile(record.recordId, key, file);
+                const firstRecord = state.modalRecords[0];
+                if (firstRecord?.recordId) {
+                    await uploadFile(firstRecord.recordId, key, file);
                 }
             }
         }
@@ -2441,8 +2423,8 @@
                 return true;
             }
 
-            return state.modalRecords.length > 0
-                && state.modalRecords.every(record => hasExistingFile(record, fieldName));
+            const orderFileRecord = resolveOrderFileRecord(state.modalRecords, fieldName);
+            return hasExistingFile(orderFileRecord, fieldName);
         }
 
         function hasExistingFile(record, fieldName) {

@@ -804,6 +804,15 @@ public sealed partial class DataverseService
         var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         var recordIds = ResolveHardwareBulkEditRecordIds(request);
+        if (request.StateChanged)
+        {
+            recordIds = await ExpandHardwareRecordIdsToOrderScopeAsync(
+                metadata,
+                recordIds,
+                user,
+                ct);
+        }
+
         var payload = await BuildHardwareBulkEditPayloadAsync(request, attributes, user, ct);
         if (payload.Count == 0)
             throw new InvalidOperationException("Modifica al menos un campo antes de guardar.");
@@ -845,6 +854,41 @@ public sealed partial class DataverseService
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+    }
+
+    private async Task<List<string>> ExpandHardwareRecordIdsToOrderScopeAsync(
+        RhEntityMetadata metadata,
+        IReadOnlyCollection<string> baseRecordIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var expandedRecordIds = new HashSet<string>(baseRecordIds, StringComparer.OrdinalIgnoreCase);
+        var orderNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var recordId in baseRecordIds)
+        {
+            var record = await GetHardwareRecordByIdAsync(metadata, recordId, user, ct);
+            var orderNumber = record.PurchaseOrderNumber.Trim();
+            if (!string.IsNullOrWhiteSpace(orderNumber))
+                orderNumbers.Add(orderNumber);
+        }
+
+        foreach (var orderNumber in orderNumbers)
+        {
+            var filter = $"{HardwarePurchaseOrderNumberLogicalName} eq '{EscapeOdataLiteral(orderNumber)}'";
+            var relativeUrl =
+                $"/api/data/v9.2/{metadata.EntitySetName}?$select={metadata.PrimaryIdField}" +
+                $"&$filter={Uri.EscapeDataString(filter)}&$top=250";
+            var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct);
+            foreach (var item in items)
+            {
+                var recordId = ReadString(item, metadata.PrimaryIdField).Trim();
+                if (!string.IsNullOrWhiteSpace(recordId))
+                    expandedRecordIds.Add(NormalizeGuid(recordId, metadata.PrimaryIdField));
+            }
+        }
+
+        return expandedRecordIds.ToList();
     }
 
     public async Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(
