@@ -877,7 +877,7 @@ public sealed partial class DataverseService
         using var fileContent = new ByteArrayContent(content);
         fileContent.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/octet-stream");
 
-        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}/$value";
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}";
         using var response = await CallRhDataverseResponseAsync(
             relativeUrl,
             "PATCH",
