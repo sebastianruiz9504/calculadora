@@ -53,6 +53,10 @@
             openCreateModalBtn: root.querySelector("[data-hw-open-create-modal]"),
             addCreateLineBtn: root.querySelector("[data-hw-add-create-line]"),
             saveCreateBtn: root.querySelector("[data-hw-save-create]"),
+            createModalKicker: root.querySelector("[data-hw-create-modal-kicker]"),
+            createModalTitle: root.querySelector("[data-hw-create-modal-title]"),
+            createModalSubtitle: root.querySelector("[data-hw-create-modal-subtitle]"),
+            createModalMeta: root.querySelector("[data-hw-create-modal-meta]"),
             closeCreateModalButtons: Array.from(root.querySelectorAll("[data-hw-close-create-modal]")),
             createFileInputs: Array.from(root.querySelectorAll("[data-hw-create-file-input]")),
             createFileNames: Array.from(root.querySelectorAll("[data-hw-create-file-name]")),
@@ -172,6 +176,7 @@
             createClientLookupSequence: 0,
             createClientSuggestions: [],
             createLineSequence: 0,
+            createEditingRecord: null,
             invoiceSuggestions: [],
             invoiceLookupTimer: 0,
             invoiceLookupSequence: 0
@@ -242,7 +247,7 @@
         elements.addCreateLineBtn?.addEventListener("click", () => addCreateLine());
         elements.createForm?.addEventListener("submit", async event => {
             event.preventDefault();
-            await createCommercialOrder();
+            await saveCommercialCreateForm();
         });
         elements.createForm?.addEventListener("change", event => {
             const target = event.target;
@@ -319,6 +324,15 @@
                 const record = findRow(actionButton.dataset.hwActionRecord || "");
                 if (record) {
                     openModalForRecords([record]);
+                }
+                return;
+            }
+
+            const editableRow = target.closest("[data-hw-edit-record]");
+            if (isCommercialMode && editableRow instanceof HTMLElement) {
+                const record = findRow(editableRow.dataset.hwEditRecord || "");
+                if (record) {
+                    openCreateModalForEdit(record);
                 }
             }
         });
@@ -869,8 +883,12 @@
         }
 
         function renderCommercialRecordRow(row) {
+            const editable = isCommercialLineEditable(row);
+            const editAttributes = editable
+                ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
+                : "";
             return `
-                <tr class="hardware-table__row hardware-table__row--child ${toneClass(row?.stateTone)}">
+                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${toneClass(row?.stateTone)}"${editAttributes}>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__submeta">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</div>
                         <strong>${escapeHtml(row?.clientName || "Sin cliente")}</strong>
@@ -888,7 +906,7 @@
                     <td class="hardware-table__state-cell"><span class="hardware-table__submeta">Gestionado por orden</span></td>
                     <td>
                         <div class="hardware-action-cell">
-                            <span class="hardware-table__submeta">Gestionado por orden</span>
+                            <span class="hardware-table__submeta">${editable ? "Editar" : "Gestionado por orden"}</span>
                         </div>
                     </td>
                 </tr>
@@ -1165,6 +1183,13 @@
             }
 
             return { ok: true, message: "" };
+        }
+
+        function isCommercialLineEditable(row) {
+            return isCommercialMode
+                && Boolean(row?.recordId)
+                && (normalizeText(row?.actionKey || "") === "register-supplier-payment"
+                    || normalizeText(row?.actionLabel || "") === "registrar pago a proveedor");
         }
 
         function renderModal() {
@@ -1724,15 +1749,62 @@
                 return;
             }
 
-            if (elements.createLines && !elements.createLines.children.length) {
-                addCreateLine();
+            state.createEditingRecord = null;
+            resetCreateForm();
+            renderCreateFormMode();
+            renderCreateFileNames();
+            clearStatus(elements.createStatus);
+            elements.createModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+            elements.createFields.purchaseOrderNumber?.focus();
+        }
+
+        function openCreateModalForEdit(record) {
+            if (!elements.createModal) {
+                return;
+            }
+
+            if (!isCommercialLineEditable(record)) {
+                setStatus(elements.boardStatus, "warning", "Solo puedes editar líneas con acción Registrar pago a proveedor.");
+                return;
+            }
+
+            state.createEditingRecord = { ...record };
+            resetCreateForm({ preserveEditingRecord: true, addBlankLine: false });
+            renderCreateFormMode();
+
+            setFieldValue(elements.createFields.purchaseOrderNumber, record.purchaseOrderNumber || "");
+            setFieldValue(elements.createFields.odcDate, record.odcDateValue || "");
+            setFieldValue(elements.createFields.clientName, record.clientName || "");
+            state.createClientSelection = record.clientId && record.clientName
+                ? { id: record.clientId, name: record.clientName }
+                : null;
+            if (elements.createClientHint) {
+                elements.createClientHint.textContent = state.createClientSelection
+                    ? "Cliente seleccionado."
+                    : "Busca y selecciona un cliente.";
+            }
+
+            if (elements.createLines) {
+                elements.createLines.innerHTML = "";
+                addCreateLine({
+                    rowKey: record.recordId || `line-${++state.createLineSequence}`,
+                    name: record.name || "",
+                    quantity: record.quantity || "",
+                    supplierUnitCost: formatInputNumber(record.supplierUnitCost || 0),
+                    saleUnit: formatInputNumber(record.saleUnit || 0),
+                    provider: record.provider || ""
+                });
             }
 
             renderCreateFileNames();
             clearStatus(elements.createStatus);
             elements.createModal.hidden = false;
             document.body.classList.add("hardware-modal-open");
-            elements.createFields.purchaseOrderNumber?.focus();
+            const firstLineInput = elements.createLines?.querySelector('[data-hw-create-line-field="name"]');
+            if (firstLineInput instanceof HTMLElement) {
+                firstLineInput.focus();
+            }
         }
 
         function closeCreateModal(force = false) {
@@ -1741,6 +1813,7 @@
             }
 
             clearStatus(elements.createStatus);
+            state.createEditingRecord = null;
             if (elements.createModal) {
                 elements.createModal.hidden = true;
             }
@@ -1748,6 +1821,27 @@
             if ((!elements.modal || elements.modal.hidden)
                 && (!elements.editModal || elements.editModal.hidden)) {
                 document.body.classList.remove("hardware-modal-open");
+            }
+        }
+
+        function renderCreateFormMode() {
+            const editing = Boolean(state.createEditingRecord?.recordId);
+            setText(elements.createModalKicker, editing ? "Edición comercial" : "Area comercial");
+            setText(elements.createModalTitle, editing ? "Editar línea de hardware" : "Nuevo registro de hardware");
+            setText(
+                elements.createModalSubtitle,
+                editing
+                    ? "Actualiza la línea seleccionada antes de registrar el pago al proveedor."
+                    : "Registra la orden, adjunta ODC y Proforma una sola vez, y agrega sus líneas.");
+            setText(
+                elements.createModalMeta,
+                editing
+                    ? "La edición solo está disponible antes de registrar el pago al proveedor."
+                    : "ODC y Proforma se cargan una sola vez por orden.");
+            setText(elements.saveCreateBtn, editing ? "Guardar cambios" : "Guardar orden");
+            if (elements.addCreateLineBtn) {
+                elements.addCreateLineBtn.hidden = editing;
+                elements.addCreateLineBtn.disabled = editing || state.busy;
             }
         }
 
@@ -1804,7 +1898,9 @@
             rows.forEach(row => {
                 const button = row.querySelector("[data-hw-remove-create-line]");
                 if (button instanceof HTMLButtonElement) {
-                    button.disabled = rows.length <= 1 || state.busy;
+                    const editing = Boolean(state.createEditingRecord?.recordId);
+                    button.hidden = editing;
+                    button.disabled = editing || rows.length <= 1 || state.busy;
                 }
             });
         }
@@ -1912,6 +2008,63 @@
             elements.createClientOptions.classList.remove("is-open");
         }
 
+        async function saveCommercialCreateForm() {
+            if (state.createEditingRecord?.recordId) {
+                await updateCommercialLine();
+                return;
+            }
+
+            await createCommercialOrder();
+        }
+
+        async function updateCommercialLine() {
+            if (state.saving || !elements.createForm || !config.editUrl || !state.createEditingRecord?.recordId) {
+                return;
+            }
+
+            let draft;
+            try {
+                draft = buildEditOrderDraft();
+            } catch (error) {
+                setStatus(elements.createStatus, "error", getErrorMessage(error));
+                return;
+            }
+
+            try {
+                state.saving = true;
+                setBusy(true);
+                setStatus(elements.createStatus, "info", "Guardando cambios de Hardware...");
+                const result = await fetchJson(config.editUrl, {
+                    method: "POST",
+                    body: JSON.stringify(draft.payload)
+                });
+
+                const pendingUploads = [
+                    ["cr07a_ordendecompra", draft.orderFile],
+                    ["cr07a_adjuntarproforma", draft.proformaFile]
+                ].filter(([, file]) => file instanceof File);
+
+                if (pendingUploads.length) {
+                    setStatus(elements.createStatus, "info", "Cargando adjuntos actualizados...");
+                    for (const [fieldName, file] of pendingUploads) {
+                        await uploadFile(draft.fileRecordIds[fieldName] || draft.payload.recordId, fieldName, file);
+                    }
+                }
+
+                resetCreateForm();
+                closeCreateModal(true);
+                await loadBoard();
+                setStatus(elements.status, "success", result?.message || "Línea de Hardware actualizada.");
+            } catch (error) {
+                setStatus(elements.createStatus, "error", getErrorMessage(error));
+            } finally {
+                state.saving = false;
+                if (state.busy) {
+                    setBusy(false);
+                }
+            }
+        }
+
         async function createCommercialOrder() {
             if (state.saving || !elements.createForm || !config.createUrl) {
                 return;
@@ -2007,12 +2160,97 @@
                 throw new Error("Debes adjuntar la Proforma de la orden.");
             }
 
+            const lines = readCreateLineDrafts();
+            return {
+                payload: {
+                    purchaseOrderNumber,
+                    odcDateValue,
+                    clientId: state.createClientSelection.id,
+                    clientName: state.createClientSelection.name,
+                    lines: lines.map(line => ({
+                        rowKey: line.rowKey,
+                        name: line.name,
+                        quantity: line.quantity,
+                        supplierUnitCost: line.supplierUnitCost,
+                        saleUnit: line.saleUnit,
+                        provider: line.provider
+                    }))
+                },
+                lines,
+                orderFile,
+                proformaFile
+            };
+        }
+
+        function buildEditOrderDraft() {
+            const record = state.createEditingRecord;
+            if (!record?.recordId) {
+                throw new Error("No hay una línea de Hardware activa para editar.");
+            }
+
+            if (!isCommercialLineEditable(record)) {
+                throw new Error("Solo puedes editar líneas con acción Registrar pago a proveedor.");
+            }
+
+            const purchaseOrderNumber = (elements.createFields.purchaseOrderNumber?.value || "").trim();
+            const odcDateValue = (elements.createFields.odcDate?.value || "").trim();
+            const typedClient = (elements.createFields.clientName?.value || "").trim();
+
+            if (!purchaseOrderNumber) {
+                throw new Error("Debes diligenciar cr07a_noorden.");
+            }
+            if (!odcDateValue) {
+                throw new Error("Debes diligenciar cr07a_fechaodc.");
+            }
+            if (!state.createClientSelection?.id
+                || normalizeText(state.createClientSelection.name) !== normalizeText(typedClient)) {
+                throw new Error("Selecciona un cliente válido desde el buscador.");
+            }
+
+            const orderFile = getCreateOrderFile("cr07a_ordendecompra");
+            const proformaFile = getCreateOrderFile("cr07a_adjuntarproforma");
+            if (!(orderFile instanceof File) && !hasExistingCreateFile("cr07a_ordendecompra")) {
+                throw new Error("Debes adjuntar la ODC de la orden.");
+            }
+            if (!(proformaFile instanceof File) && !hasExistingCreateFile("cr07a_adjuntarproforma")) {
+                throw new Error("Debes adjuntar la Proforma de la orden.");
+            }
+
+            const lines = readCreateLineDrafts();
+            if (lines.length !== 1) {
+                throw new Error("La edición permite una sola línea de Hardware.");
+            }
+
+            const line = lines[0];
+            return {
+                payload: {
+                    recordId: record.recordId,
+                    purchaseOrderNumber,
+                    odcDateValue,
+                    clientId: state.createClientSelection.id,
+                    clientName: state.createClientSelection.name,
+                    name: line.name,
+                    quantity: line.quantity,
+                    supplierUnitCost: line.supplierUnitCost,
+                    saleUnit: line.saleUnit,
+                    provider: line.provider
+                },
+                orderFile,
+                proformaFile,
+                fileRecordIds: {
+                    cr07a_ordendecompra: resolveCreateFileRecordId("cr07a_ordendecompra"),
+                    cr07a_adjuntarproforma: resolveCreateFileRecordId("cr07a_adjuntarproforma")
+                }
+            };
+        }
+
+        function readCreateLineDrafts() {
             const rows = Array.from(elements.createLines?.querySelectorAll("[data-hw-create-line]") || []);
             if (!rows.length) {
                 throw new Error("Agrega al menos una fila.");
             }
 
-            const lines = rows.map((row, index) => {
+            return rows.map((row, index) => {
                 const name = getCreateLineValue(row, "name");
                 const quantity = parseIntegerStrict(getCreateLineValue(row, "quantity"));
                 const supplierUnitCost = parseDecimal(getCreateLineValue(row, "supplierUnitCost"));
@@ -2044,40 +2282,28 @@
                     provider
                 };
             });
-
-            return {
-                payload: {
-                    purchaseOrderNumber,
-                    odcDateValue,
-                    clientId: state.createClientSelection.id,
-                    clientName: state.createClientSelection.name,
-                    lines: lines.map(line => ({
-                        rowKey: line.rowKey,
-                        name: line.name,
-                        quantity: line.quantity,
-                        supplierUnitCost: line.supplierUnitCost,
-                        saleUnit: line.saleUnit,
-                        provider: line.provider
-                    }))
-                },
-                lines,
-                orderFile,
-                proformaFile
-            };
         }
 
-        function resetCreateForm() {
+        function resetCreateForm(options = {}) {
+            const preserveEditingRecord = Boolean(options.preserveEditingRecord);
+            const addBlankLine = options.addBlankLine !== false;
             elements.createForm?.reset();
+            if (!preserveEditingRecord) {
+                state.createEditingRecord = null;
+            }
             state.createClientSelection = null;
             state.createClientSuggestions = [];
             closeCreateClientLookupMenu();
             if (elements.createLines) {
                 elements.createLines.innerHTML = "";
-                addCreateLine();
+                if (addBlankLine) {
+                    addCreateLine();
+                }
             }
             if (elements.createClientHint) {
                 elements.createClientHint.textContent = "Busca y selecciona un cliente.";
             }
+            renderCreateFormMode();
             renderCreateFileNames();
         }
 
@@ -2096,8 +2322,47 @@
             elements.createFileNames.forEach(target => {
                 const fieldName = target.dataset.hwCreateFileName || "";
                 const file = getCreateOrderFile(fieldName);
-                target.textContent = file instanceof File ? file.name : "Sin archivo";
+                target.textContent = file instanceof File
+                    ? file.name
+                    : resolveExistingCreateFileName(fieldName) || "Sin archivo";
             });
+        }
+
+        function resolveExistingCreateFileName(fieldName) {
+            return state.createEditingRecord?.recordId
+                ? resolveExistingFileName(resolveCreateOrderFileRecord(fieldName), fieldName)
+                : "";
+        }
+
+        function hasExistingCreateFile(fieldName) {
+            return state.createEditingRecord?.recordId
+                ? hasExistingFile(resolveCreateOrderFileRecord(fieldName), fieldName)
+                : false;
+        }
+
+        function resolveCreateFileRecordId(fieldName) {
+            const record = resolveCreateOrderFileRecord(fieldName) || state.createEditingRecord;
+            return record?.recordId || "";
+        }
+
+        function resolveCreateOrderFileRecord(fieldName) {
+            if (!state.createEditingRecord?.recordId) {
+                return null;
+            }
+
+            const orderRows = findCommercialOrderRows(state.createEditingRecord);
+            return resolveOrderFileRecord(orderRows, fieldName) || state.createEditingRecord;
+        }
+
+        function findCommercialOrderRows(record) {
+            const orderNumber = normalizeText(record?.purchaseOrderNumber || "");
+            if (!orderNumber) {
+                return [record];
+            }
+
+            const rows = state.rows.filter(row =>
+                normalizeText(row?.purchaseOrderNumber || "") === orderNumber);
+            return rows.length ? rows : [record];
         }
 
         async function saveBulkEdit() {
@@ -2715,6 +2980,7 @@
 
             renderSelectionState();
             updateEditDirtyMeta();
+            renderCreateFormMode();
             syncCreateLineButtons();
         }
 

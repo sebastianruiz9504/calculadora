@@ -161,7 +161,7 @@ public sealed partial class DataverseService
 
         var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
         var additional = BuildAdditionalSnapshot(normalizedRequest, computation, existingContext.Additional, currentUser);
-        var additionalJson = JsonSerializer.Serialize(additional);
+        var additionalJson = SerializeAdditionalForDataverse(additional);
 
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         Exception? lastError = null;
@@ -1908,6 +1908,88 @@ public sealed partial class DataverseService
         throw new InvalidOperationException($"No se pudo crear la linea en cr07a_salesperformancerecord.{diagnosticDetail}", lastError);
     }
 
+
+    private string SerializeAdditionalForDataverse(ScoreAdditionalDataSnapshot additional)
+    {
+        const int maxLength = 4000;
+        var json = JsonSerializer.Serialize(additional);
+        if (json.Length <= maxLength)
+            return json;
+
+        var compact = CloneAdditionalForStorage(additional);
+        compact.LastResult = null;
+        foreach (var line in compact.Lines)
+        {
+            line.ProductName = TruncateForAdditional(line.ProductName, 80);
+            line.LineType = TruncateForAdditional(line.LineType, 30);
+            line.ProductId = TruncateForAdditional(line.ProductId, 60);
+            line.LineId = TruncateForAdditional(line.LineId, 40);
+        }
+
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
+
+        compact.MonthlyClosures = compact.MonthlyClosures
+            .OrderByDescending(item => item.ClosedAt)
+            .Take(2)
+            .ToList();
+        foreach (var closure in compact.MonthlyClosures)
+        {
+            closure.ClosedBy = TruncateForAdditional(closure.ClosedBy, 60);
+            closure.Lines = closure.Lines.Take(15).ToList();
+            foreach (var closureLine in closure.Lines)
+            {
+                closureLine.ProductName = TruncateForAdditional(closureLine.ProductName, 80);
+                closureLine.ProductId = TruncateForAdditional(closureLine.ProductId, 60);
+                closureLine.Warnings = new List<string>();
+            }
+        }
+
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
+
+        compact.Lines = compact.Lines.Take(25).ToList();
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
+
+        compact.MonthlyClosures = new List<ScoreMonthlyClosureSnapshot>();
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
+
+        compact.Lines = compact.Lines.Take(10).ToList();
+        compact.VerifiedBy = TruncateForAdditional(compact.VerifiedBy, 40);
+        compact.LastClosedBy = TruncateForAdditional(compact.LastClosedBy, 40);
+        json = JsonSerializer.Serialize(compact);
+
+        if (json.Length <= maxLength)
+            return json;
+
+        compact.Lines = new List<ScoreVerificationLineInput>();
+        compact.VerifiedBy = TruncateForAdditional(compact.VerifiedBy, 20);
+        compact.LastClosedBy = TruncateForAdditional(compact.LastClosedBy, 20);
+        compact.BusinessId = TruncateForAdditional(compact.BusinessId, 50);
+        compact.LastResult = null;
+        compact.MonthlyClosures = new List<ScoreMonthlyClosureSnapshot>();
+
+        return JsonSerializer.Serialize(compact);
+    }
+
+    private static ScoreAdditionalDataSnapshot CloneAdditionalForStorage(ScoreAdditionalDataSnapshot source) =>
+        DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(JsonSerializer.Serialize(source)) ?? new ScoreAdditionalDataSnapshot();
+
+    private static string TruncateForAdditional(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var normalized = value.Trim();
+        return normalized.Length <= maxLength ? normalized : normalized.Substring(0, maxLength);
+    }
+
     private async Task UpdateScoreAdditionalDataAsync(
         string recordId,
         ScoreAdditionalDataSnapshot additional,
@@ -1917,7 +1999,7 @@ public sealed partial class DataverseService
         var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
         var payload = new Dictionary<string, object?>
         {
-            [_scoresAdditionalField] = JsonSerializer.Serialize(additional)
+            [_scoresAdditionalField] = SerializeAdditionalForDataverse(additional)
         };
         var updateUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
         await CallDataverseSendAsync(updateUrl, "PATCH", payload, user, ct);

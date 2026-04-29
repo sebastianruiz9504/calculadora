@@ -91,9 +91,9 @@
             <div class="hardware-modal__dialog hardware-modal__dialog--create" role="dialog" aria-modal="true" aria-labelledby="hardwareCreateModalTitle-@Model.RootId">
                 <div class="hardware-modal__header">
                     <div>
-                        <div class="hardware-kicker">Area comercial</div>
-                        <h2 class="hardware-modal__title" id="hardwareCreateModalTitle-@Model.RootId">Nuevo registro de hardware</h2>
-                        <p class="hardware-modal__subtitle">Registra la orden, adjunta ODC y Proforma una sola vez, y agrega sus líneas.</p>
+                        <div class="hardware-kicker" data-hw-create-modal-kicker>Area comercial</div>
+                        <h2 class="hardware-modal__title" id="hardwareCreateModalTitle-@Model.RootId" data-hw-create-modal-title>Nuevo registro de hardware</h2>
+                        <p class="hardware-modal__subtitle" data-hw-create-modal-subtitle>Registra la orden, adjunta ODC y Proforma una sola vez, y agrega sus líneas.</p>
                     </div>
                     <button type="button" class="btn btn-outline-secondary" data-hw-close-create-modal>Cerrar</button>
                 </div>
@@ -175,7 +175,7 @@
                     </section>
 
                     <div class="hardware-modal__footer">
-                        <div class="hardware-modal__meta">ODC y Proforma se cargan una sola vez por orden.</div>
+                        <div class="hardware-modal__meta" data-hw-create-modal-meta>ODC y Proforma se cargan una sola vez por orden.</div>
                         <div class="hardware-actions">
                             <button type="button" class="btn btn-outline-primary" data-hw-add-create-line>Agregar fila</button>
                             <button type="button" class="btn btn-outline-secondary" data-hw-close-create-modal>Cancelar</button>

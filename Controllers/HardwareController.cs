@@ -38,7 +38,7 @@ public sealed class HardwareController : Controller
             BoardUrl = Url.Action(nameof(CommercialBoard), "Hardware") ?? "",
             CreateUrl = Url.Action(nameof(CreateOrder), "Hardware") ?? "",
             SaveUrl = Url.Action(nameof(CommercialSaveStage), "Hardware") ?? "",
-            EditUrl = "",
+            EditUrl = Url.Action(nameof(CommercialEditRecord), "Hardware") ?? "",
             UploadUrl = Url.Action(nameof(CommercialUploadFile), "Hardware") ?? "",
             DownloadUrl = Url.Action(nameof(CommercialDownloadFile), "Hardware") ?? "",
             InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? "",
@@ -85,6 +85,27 @@ public sealed class HardwareController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible crear la orden de Hardware.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CommercialEditRecord([FromBody] HardwareOrderLineEditRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar la línea de Hardware que quieres editar."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateHardwareCommercialDraftAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible editar la línea comercial de Hardware.", ex));
         }
     }
 

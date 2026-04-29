@@ -599,6 +599,107 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<HardwareBulkEditResultDto> UpdateHardwareCommercialDraftAsync(
+        HardwareOrderLineEditRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var user = httpContext.User;
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible resolver el owner autenticado para editar Hardware.");
+
+        await EnsureProvisioningHardwareSchemaAsync(user, ct);
+
+        var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
+        var attributes = await LoadHardwareAttributesAsync(user, ct);
+        foreach (var fieldName in new[]
+                 {
+                     HardwareQuantityLogicalName,
+                     HardwareSaleUnitLogicalName,
+                     HardwareTotalSaleLogicalName,
+                     HardwareUtilityLogicalName,
+                     HardwareMarginValueLogicalName,
+                     HardwareStateLogicalName,
+                     HardwareSupplierUnitCostLogicalName,
+                     HardwareSupplierTotalLogicalName,
+                     HardwarePurchaseOrderNumberLogicalName,
+                     HardwareSupplierLogicalName,
+                     HardwareOdcDateLogicalName,
+                     HardwareClientLookupLogicalName
+                 })
+        {
+            EnsureHardwareAttributeExists(attributes, fieldName);
+        }
+
+        var normalizedRecordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
+        var currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+        EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, currentUser);
+        EnsureHardwareActionState(
+            NormalizeHardwareStateValue(currentRecord.StateValue),
+            HardwareStateOkForSupplierPayment,
+            currentRecord.StateLabel);
+
+        var primaryNameField = string.IsNullOrWhiteSpace(metadata.PrimaryNameField)
+            ? HardwarePrimaryNameLogicalName
+            : metadata.PrimaryNameField;
+        var name = RequireHardwareText(request.Name, "Producto / referencia");
+        if (name.Length > 200)
+            name = name[..200];
+
+        var purchaseOrderNumber = RequireHardwareText(request.PurchaseOrderNumber, "cr07a_noorden");
+        var odcDate = ParseHardwareStageDate(request.OdcDateValue, "cr07a_fechaodc");
+        var quantity = ParseHardwareOrderQuantity(request.Quantity, 0);
+        var supplierUnitCost = ParseHardwareStageCurrency(request.SupplierUnitCost, "cr07a_costountproveedor");
+        var saleUnit = ParseHardwareStageCurrency(request.SaleUnit, "cr07a_ventaunidad");
+        var supplierTotal = RoundCurrency(quantity * supplierUnitCost);
+        var priceSale = RoundCurrency(quantity * saleUnit);
+        var marginValue = CalculateHardwareMarginValue(priceSale, supplierTotal);
+        var utility = CalculateHardwareUtility(priceSale, marginValue);
+
+        var clientId = NormalizeOptionalGuid(request.ClientId);
+        if (string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(request.ClientName))
+            clientId = await ResolveCopiersClientIdAsync(request.ClientName.Trim(), ct);
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("Selecciona un cliente valido desde el buscador.");
+
+        var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            HardwareTableLogicalName,
+            HardwareClientLookupLogicalName,
+            HardwareClientLookupLogicalName,
+            user,
+            ct);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [primaryNameField] = name,
+            [HardwareQuantityLogicalName] = quantity,
+            [HardwareSaleUnitLogicalName] = saleUnit,
+            [HardwareTotalSaleLogicalName] = priceSale,
+            [HardwareSupplierUnitCostLogicalName] = supplierUnitCost,
+            [HardwareSupplierTotalLogicalName] = supplierTotal,
+            [HardwareUtilityLogicalName] = utility,
+            [HardwareMarginValueLogicalName] = marginValue,
+            [HardwarePurchaseOrderNumberLogicalName] = purchaseOrderNumber,
+            [HardwareSupplierLogicalName] = RequireHardwareText(request.Provider, "cr07a_proveedor"),
+            [HardwareOdcDateLogicalName] = odcDate,
+            [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})"
+        };
+
+        await PatchHardwareRecordAsync(metadata.EntitySetName, normalizedRecordId, payload, user, ct);
+        var updatedRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+
+        return new HardwareBulkEditResultDto
+        {
+            Records = new[] { updatedRecord },
+            Message = "Se actualizó la línea de Hardware."
+        };
+    }
+
     public async Task<HardwareSaveResultDto> SaveHardwareStageAsync(
         HardwareStageSaveRequest request,
         CancellationToken ct = default,

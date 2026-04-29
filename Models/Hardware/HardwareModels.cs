@@ -202,6 +202,20 @@ public sealed class HardwareOrderLineCreateRequest
     public string Provider { get; set; } = "";
 }
 
+public sealed class HardwareOrderLineEditRequest
+{
+    public string RecordId { get; set; } = "";
+    public string PurchaseOrderNumber { get; set; } = "";
+    public string OdcDateValue { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int? Quantity { get; set; }
+    public decimal? SupplierUnitCost { get; set; }
+    public decimal? SaleUnit { get; set; }
+    public string Provider { get; set; } = "";
+}
+
 public sealed class HardwareOrderCreateResultDto
 {
     public string Message { get; set; } = "";
