@@ -13,6 +13,7 @@ namespace CotizadorInterno.Web.Controllers;
 public class PlanRioController : Controller
 {
     private const string RequiredSheetName = "plan corregido";
+    private static readonly string[] FallbackSheetNames = { "Plan Rio ajustado", "Plan diario" };
     private static readonly CultureInfo ColombianCulture = CultureInfo.GetCultureInfo("es-CO");
 
     private readonly IConfiguration _configuration;
@@ -49,16 +50,26 @@ public class PlanRioController : Controller
         }
 
         using var workbook = new XLWorkbook(fullPath);
-        var worksheet = workbook.Worksheets.FirstOrDefault(x =>
-            string.Equals(x.Name.Trim(), RequiredSheetName, StringComparison.OrdinalIgnoreCase));
+        var worksheet = FindWorksheet(workbook, RequiredSheetName);
+        var sourceStatus = $"Excel cargado desde la hoja '{worksheet?.Name ?? RequiredSheetName}'.";
+        if (worksheet is null)
+        {
+            worksheet = FallbackSheetNames
+                .Select(name => FindWorksheet(workbook, name))
+                .FirstOrDefault(sheet => sheet is not null);
+
+            if (worksheet is not null)
+                sourceStatus = $"El Excel no contiene la hoja '{RequiredSheetName}'. Cargué '{worksheet.Name}' como respaldo.";
+        }
 
         if (worksheet is null)
         {
+            var availableSheets = string.Join(", ", workbook.Worksheets.Select(sheet => sheet.Name));
             return new PlanRioPageViewModel
             {
                 SourcePath = pathSetting,
                 SourceSheet = RequiredSheetName,
-                SourceStatus = $"El Excel existe, pero no contiene la hoja '{RequiredSheetName}'.",
+                SourceStatus = $"El Excel existe, pero no contiene la hoja '{RequiredSheetName}'. Hojas disponibles: {availableSheets}.",
                 WeekLabel = "Semana no disponible"
             };
         }
@@ -153,7 +164,7 @@ public class PlanRioController : Controller
         {
             SourcePath = pathSetting,
             SourceSheet = worksheet.Name,
-            SourceStatus = $"Excel cargado desde la hoja '{worksheet.Name}'.",
+            SourceStatus = sourceStatus,
             WeekLabel = selectedWeekLabel,
             DetailColumnName = ResolveColumnName(headers, detailCol),
             WorkoutColumnName = ResolveColumnName(headers, workoutCol),
@@ -192,6 +203,10 @@ public class PlanRioController : Controller
         return bestScore >= 2 ? bestIndex : -1;
     }
 
+    private static IXLWorksheet? FindWorksheet(XLWorkbook workbook, string sheetName) =>
+        workbook.Worksheets.FirstOrDefault(sheet =>
+            string.Equals(sheet.Name.Trim(), sheetName, StringComparison.OrdinalIgnoreCase));
+
     private static int FindColumn(IReadOnlyList<PlanRioColumnHeader> headers, params string[] terms)
     {
         var normalizedTerms = terms.Select(Normalize).ToArray();
@@ -204,9 +219,13 @@ public class PlanRioController : Controller
         IReadOnlyList<IXLRangeRow> dataRows,
         params int[] excludedColumns)
     {
-        var direct = FindColumn(headers, "entreno", "entrenamiento", "actividad", "sesion", "sesión", "deporte", "disciplina", "tipo");
+        var direct = FindColumn(headers, "sesion", "sesión", "entreno", "entrenamiento", "actividad");
         if (direct > 0)
             return direct;
+
+        var discipline = FindColumn(headers, "deporte", "disciplina", "tipo");
+        if (discipline > 0)
+            return discipline;
 
         return headers
             .Where(header => !excludedColumns.Contains(header.Index))
@@ -250,6 +269,7 @@ public class PlanRioController : Controller
                 if (normalizedName.Contains("composicion")) headerScore += 100;
                 if (normalizedName.Contains("estructura")) headerScore += 80;
                 if (normalizedName.Contains("rutina")) headerScore += 80;
+                if (normalizedName.Contains("indicacion")) headerScore += 80;
                 if (normalizedName.Contains("observacion")) headerScore += 40;
 
                 var priorityPenalty = priorityColumns.Contains(header.Index) ? 80 : 0;
