@@ -1,32 +1,104 @@
 (() => {
-  const plan = [
-    { id: 1, day: 'Lunes', type: 'Natación técnica', goalMin: 60 },
-    { id: 2, day: 'Martes', type: 'Ciclismo intervalos', goalMin: 90 },
-    { id: 3, day: 'Miércoles', type: 'Trote Z2', goalMin: 50 },
-    { id: 4, day: 'Jueves', type: 'Natación fondo', goalMin: 70 },
-    { id: 5, day: 'Viernes', type: 'Fuerza y movilidad', goalMin: 45 },
-    { id: 6, day: 'Sábado', type: 'Brick (bici+trote)', goalMin: 120 },
-    { id: 7, day: 'Domingo', type: 'Rodaje largo', goalMin: 80 }
-  ];
+  const allWorkouts = (window.planRioWorkouts || []).map(item => ({
+    id: item.id,
+    date: item.date || '',
+    day: item.day || '',
+    weekKey: item.weekKey || '',
+    weekLabel: item.weekLabel || window.planRioWeekLabel || 'Semana no disponible',
+    type: item.workout || '',
+    detail: item.detail || '',
+    goalMin: Number(item.goalMin || 0)
+  }));
+  const weeks = (window.planRioWeeks || []).map(item => ({
+    key: item.key || '',
+    label: item.label || 'Semana no disponible',
+    workoutCount: Number(item.workoutCount || 0),
+    isSelected: Boolean(item.isSelected)
+  }));
 
   const storageKey = 'plan-rio-week';
+  const selectedWeekStorageKey = 'plan-rio-selected-week';
   const state = JSON.parse(localStorage.getItem(storageKey) || '{}');
   const weekGrid = document.getElementById('weekGrid');
+  const weekLabel = document.getElementById('weekLabel');
+  const selectedWeekTitle = document.getElementById('selectedWeekTitle');
+  const weekSelect = document.getElementById('weekSelect');
   const modalEl = document.getElementById('workoutModal');
   const workoutModal = new bootstrap.Modal(modalEl);
 
+  let selectedWeekKey = localStorage.getItem(selectedWeekStorageKey)
+    || weeks.find(item => item.isSelected)?.key
+    || weeks[0]?.key
+    || '';
+
+  if (weeks.length > 0 && !weeks.some(item => item.key === selectedWeekKey)) {
+    selectedWeekKey = weeks[0].key;
+  }
+
+  const escapeHtml = value => String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+  const formatDate = value => {
+    if (!value) return '';
+    const [year, month, day] = String(value).split('-');
+    return year && month && day ? `${day}/${month}/${year}` : value;
+  };
+
+  const getSelectedWeek = () => weeks.find(item => item.key === selectedWeekKey);
+  const getVisiblePlan = () => selectedWeekKey
+    ? allWorkouts.filter(item => item.weekKey === selectedWeekKey)
+    : allWorkouts;
   const getEntry = id => state[id] || { done: false, actualMin: 0, effort: 0, notes: '' };
 
   const save = () => localStorage.setItem(storageKey, JSON.stringify(state));
 
+  const syncWeekPanel = () => {
+    const selectedWeek = getSelectedWeek();
+    const visiblePlan = getVisiblePlan();
+    const label = selectedWeek?.label || visiblePlan[0]?.weekLabel || window.planRioWeekLabel || 'Semana no disponible';
+
+    weekLabel.textContent = label;
+    selectedWeekTitle.textContent = visiblePlan.length > 0
+      ? `${label} · ${visiblePlan.length} entrenos`
+      : label;
+
+    weekSelect.innerHTML = weeks.map(item => (
+      `<option value="${escapeHtml(item.key)}" ${item.key === selectedWeekKey ? 'selected' : ''}>${escapeHtml(item.label)} (${item.workoutCount})</option>`
+    )).join('');
+    weekSelect.disabled = weeks.length <= 1;
+  };
+
   const render = () => {
+    const plan = getVisiblePlan();
+    syncWeekPanel();
+
+    if (plan.length === 0) {
+      weekGrid.innerHTML = '<article class="plan-rio__day plan-rio__day--empty">No hay entrenos para mostrar con la fuente actual.</article>';
+      drawCharts();
+      return;
+    }
+
     weekGrid.innerHTML = plan.map(item => {
       const entry = getEntry(item.id);
+      const dateLabel = formatDate(item.date);
+      const meta = [escapeHtml(item.type), item.goalMin > 0 ? `Meta: ${item.goalMin} min` : 'Meta no definida']
+        .filter(Boolean)
+        .join('<br>');
+
       return `<article class="plan-rio__day ${entry.active ? 'is-active' : ''}">
-          <h3>${item.day}</h3>
-          <div class="plan-rio__meta">${item.type}<br>Meta: ${item.goalMin} min</div>
+          <div class="plan-rio__tags">
+            <span>${escapeHtml(item.weekLabel)}</span>
+            ${dateLabel ? `<span>${escapeHtml(dateLabel)}</span>` : ''}
+          </div>
+          <h3>${escapeHtml(item.day || 'Día sin definir')}</h3>
+          <div class="plan-rio__meta">${meta}</div>
+          <div class="plan-rio__detail">${escapeHtml(item.detail || 'Sin detalle en la hoja')}</div>
           <div class="plan-rio__status ${entry.done ? 'done' : 'pending'}">${entry.done ? 'Completado' : 'Pendiente'}</div>
-          <div class="d-flex gap-2">
+          <div class="d-flex gap-2 flex-wrap">
             <button class="btn btn-sm btn-outline-primary" data-action="active" data-id="${item.id}">Estoy haciéndolo</button>
             <button class="btn btn-sm btn-primary" data-action="register" data-id="${item.id}">Registrar</button>
           </div>
@@ -42,8 +114,17 @@
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = '#e9ecef';
-    ctx.beginPath(); ctx.moveTo(30, 10); ctx.lineTo(30, h - 25); ctx.lineTo(w - 10, h - 25); ctx.stroke();
-    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(30, 10);
+    ctx.lineTo(30, h - 25);
+    ctx.lineTo(w - 10, h - 25);
+    ctx.stroke();
+
+    if (values.length === 0) return;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
     values.forEach((v, i) => {
       const x = 30 + (i * (w - 45) / Math.max(values.length - 1, 1));
       const y = (h - 25) - ((v / Math.max(maxValue, 1)) * (h - 45));
@@ -53,13 +134,20 @@
   };
 
   const drawCharts = () => {
+    const plan = getVisiblePlan();
     const completion = plan.map(item => getEntry(item.id).done ? 1 : 0);
     const cumulative = completion.map((_, i) => completion.slice(0, i + 1).reduce((a, b) => a + b, 0));
     const realVolume = plan.map(item => getEntry(item.id).actualMin || 0);
     const goalVolume = plan.map(item => item.goalMin);
-    drawLine('completionChart', cumulative, '#0d6efd', 7);
-    drawLine('volumeChart', realVolume, '#198754', Math.max(...goalVolume));
+    drawLine('completionChart', cumulative, '#0d6efd', Math.max(plan.length, 1));
+    drawLine('volumeChart', realVolume, '#198754', Math.max(...goalVolume, 1));
   };
+
+  weekSelect.addEventListener('change', ev => {
+    selectedWeekKey = ev.target.value;
+    localStorage.setItem(selectedWeekStorageKey, selectedWeekKey);
+    render();
+  });
 
   weekGrid.addEventListener('click', ev => {
     const btn = ev.target.closest('button[data-action]');
@@ -69,7 +157,8 @@
       Object.keys(state).forEach(k => { if (state[k]) state[k].active = false; });
       const entry = getEntry(id);
       state[id] = { ...entry, active: true };
-      save(); render();
+      save();
+      render();
       return;
     }
 
@@ -98,8 +187,8 @@
   });
 
   document.getElementById('resetWeek').addEventListener('click', () => {
-    localStorage.removeItem(storageKey);
-    Object.keys(state).forEach(k => delete state[k]);
+    getVisiblePlan().forEach(item => delete state[item.id]);
+    save();
     render();
   });
 

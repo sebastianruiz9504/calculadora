@@ -26,16 +26,20 @@
             saveUrl: root.dataset.saveUrl || "",
             uploadUrl: root.dataset.uploadUrl || "",
             downloadUrl: root.dataset.downloadUrl || "",
+            trainingsUrl: root.dataset.trainingsUrl || "",
             currentUserName: root.dataset.currentUserName || "Usuario actual"
         };
 
         const elements = {
+            subtabButtons: Array.from(root.querySelectorAll("[data-sc-subtab]")),
+            subpanels: Array.from(root.querySelectorAll("[data-sc-subpanel]")),
             status: root.querySelector("[data-sc-status]"),
             startDate: root.querySelector("[data-sc-start-date]"),
             endDate: root.querySelector("[data-sc-end-date]"),
             rangeLabel: root.querySelector("[data-sc-range-label]"),
             refresh: root.querySelector("[data-sc-refresh]"),
             newTicket: root.querySelector("[data-sc-new-ticket]"),
+            ticketActions: Array.from(root.querySelectorAll("[data-sc-ticket-action]")),
             totalTickets: root.querySelector("[data-sc-total-tickets]"),
             totalHours: root.querySelector("[data-sc-total-hours]"),
             totalCreators: root.querySelector("[data-sc-total-creators]"),
@@ -48,6 +52,18 @@
             typeChart: root.querySelector('[data-sc-chart="type"]'),
             methodChart: root.querySelector('[data-sc-chart="method"]'),
             categoryChart: root.querySelector('[data-sc-chart="category"]'),
+            trainingsStatus: root.querySelector("[data-sct-status]"),
+            trainingsTotal: root.querySelector("[data-sct-total-trainings]"),
+            trainingsTotalHours: root.querySelector("[data-sct-total-hours]"),
+            trainingsTotalClients: root.querySelector("[data-sct-total-clients]"),
+            trainingsTotalAttendees: root.querySelector("[data-sct-total-attendees]"),
+            trainingsOwners: root.querySelector("[data-sct-owners]"),
+            trainingsRecordsCount: root.querySelector("[data-sct-records-count]"),
+            trainingsRows: root.querySelector("[data-sct-rows]"),
+            trainingsEmpty: root.querySelector("[data-sct-empty]"),
+            trainingsTopicChart: root.querySelector('[data-sct-chart="topic"]'),
+            trainingsClientChart: root.querySelector('[data-sct-chart="clients"]'),
+            trainingsTimeChart: root.querySelector('[data-sct-chart="time"]'),
             modal: root.querySelector("[data-sc-modal]"),
             modalStatus: root.querySelector("[data-sc-modal-status]"),
             modalTitle: root.querySelector("[data-sc-modal-title]"),
@@ -78,12 +94,17 @@
         };
 
         const state = {
+            activeSubtab: "tickets",
             board: null,
             records: [],
+            trainingsBoard: null,
+            trainingsRecords: [],
             clientSuggestions: [],
             busy: false,
+            trainingsBusy: false,
             saving: false,
             loaded: false,
+            trainingsLoaded: false,
             lookupTimer: 0,
             lookupSequence: 0,
             draft: null,
@@ -102,8 +123,19 @@
             elements.chartsSection.hidden = !config.showCharts;
         }
 
+        syncSupportSubtabVisibility();
+
+        elements.subtabButtons.forEach(button => {
+            button.addEventListener("click", () => {
+                const subtabKey = button.dataset.scSubtab || "tickets";
+                if (subtabKey !== state.activeSubtab) {
+                    setActiveSupportSubtab(subtabKey);
+                }
+            });
+        });
+
         elements.refresh?.addEventListener("click", () => {
-            loadBoard();
+            loadActiveSupportSubtab({ force: true });
         });
 
         elements.newTicket?.addEventListener("click", () => {
@@ -117,7 +149,9 @@
                         elements.startDate?.value || "",
                         elements.endDate?.value || "");
                 }
-                loadBoard();
+                state.loaded = false;
+                state.trainingsLoaded = false;
+                loadActiveSupportSubtab({ force: true });
             });
         });
 
@@ -226,13 +260,11 @@
         const dashboardTabButton = document.querySelector('[data-dashboard-tab="support-cloud"]');
         if (root.id === "dashboardSupportCloudApp") {
             dashboardTabButton?.addEventListener("click", () => {
-                if (!state.loaded) {
-                    loadBoard();
-                }
+                loadActiveSupportSubtab();
             });
 
             if (dashboardTabButton?.classList.contains("is-active")) {
-                loadBoard();
+                loadActiveSupportSubtab();
             }
         } else {
             loadBoard();
@@ -265,10 +297,62 @@
             return `${url.pathname}${url.search}`;
         }
 
+        function buildTrainingsUrl() {
+            const url = new URL(config.trainingsUrl, window.location.origin);
+            if (elements.startDate?.value) {
+                url.searchParams.set("startDate", elements.startDate.value);
+            }
+            if (elements.endDate?.value) {
+                url.searchParams.set("endDate", elements.endDate.value);
+            }
+            return `${url.pathname}${url.search}`;
+        }
+
         function buildDownloadUrl(recordId) {
             const url = new URL(config.downloadUrl, window.location.origin);
             url.searchParams.set("recordId", recordId);
             return `${url.pathname}${url.search}`;
+        }
+
+        function loadActiveSupportSubtab(options = {}) {
+            if (state.activeSubtab === "trainings") {
+                loadTrainings(options);
+                return;
+            }
+
+            if (!state.loaded || options.force) {
+                loadBoard(options);
+            }
+        }
+
+        function setActiveSupportSubtab(subtabKey) {
+            state.activeSubtab = subtabKey === "trainings" && config.trainingsUrl
+                ? "trainings"
+                : "tickets";
+            syncSupportSubtabVisibility();
+            loadActiveSupportSubtab();
+        }
+
+        function syncSupportSubtabVisibility() {
+            if (!elements.subtabButtons.length && !elements.subpanels.length) {
+                return;
+            }
+
+            elements.subtabButtons.forEach(button => {
+                const isActive = button.dataset.scSubtab === state.activeSubtab;
+                button.classList.toggle("is-active", isActive);
+                button.setAttribute("aria-selected", isActive ? "true" : "false");
+            });
+
+            elements.subpanels.forEach(panel => {
+                const isActive = panel.dataset.scSubpanel === state.activeSubtab;
+                panel.classList.toggle("is-active", isActive);
+                panel.hidden = !isActive;
+            });
+
+            elements.ticketActions.forEach(action => {
+                action.hidden = state.activeSubtab !== "tickets";
+            });
         }
 
         async function loadBoard(options = {}) {
@@ -296,6 +380,36 @@
                 setStatus(elements.status, "error", buildErrorMessage(error));
             } finally {
                 setBusy(false);
+            }
+        }
+
+        async function loadTrainings(options = {}) {
+            const force = Boolean(options.force);
+            if ((state.trainingsBusy && !force) || !config.trainingsUrl) {
+                return;
+            }
+
+            if (state.trainingsLoaded && !force) {
+                renderTrainingsDashboard();
+                return;
+            }
+
+            setTrainingsBusy(true);
+            setStatus(elements.trainingsStatus, "info", "Cargando capacitaciones de soporte cloud...");
+
+            try {
+                const board = await fetchJson(buildTrainingsUrl());
+                state.trainingsBoard = board;
+                state.trainingsRecords = Array.isArray(board?.records) ? board.records.map(hydrateTrainingRecord) : [];
+                state.trainingsLoaded = true;
+
+                syncRangeInputs(board);
+                renderTrainingsDashboard();
+                setStatus(elements.trainingsStatus, state.trainingsRecords.length ? "success" : "info", board?.message || "");
+            } catch (error) {
+                setStatus(elements.trainingsStatus, "error", buildErrorMessage(error));
+            } finally {
+                setTrainingsBusy(false);
             }
         }
 
@@ -383,6 +497,201 @@
                     </div>
                 `;
             }).join("");
+        }
+
+        function renderTrainingsDashboard() {
+            renderTrainingSummary();
+            renderTrainingOwnerBars();
+            renderTrainingCharts();
+            renderTrainingTable();
+        }
+
+        function renderTrainingSummary() {
+            const board = state.trainingsBoard || {};
+            if (elements.trainingsTotal) {
+                elements.trainingsTotal.textContent = numberFormatter.format(Number(board.totalTrainings || 0));
+            }
+            if (elements.trainingsTotalHours) {
+                elements.trainingsTotalHours.textContent = numberFormatter.format(Number(board.totalHoursDelivered || 0));
+            }
+            if (elements.trainingsTotalClients) {
+                elements.trainingsTotalClients.textContent = numberFormatter.format(Number(board.totalClients || 0));
+            }
+            if (elements.trainingsTotalAttendees) {
+                elements.trainingsTotalAttendees.textContent = numberFormatter.format(Number(board.totalAttendees || 0));
+            }
+        }
+
+        function renderTrainingOwnerBars() {
+            if (!elements.trainingsOwners) {
+                return;
+            }
+
+            const items = Array.isArray(state.trainingsBoard?.ownerSummaries) ? state.trainingsBoard.ownerSummaries : [];
+            if (!items.length) {
+                elements.trainingsOwners.innerHTML = '<div class="support-cloud-placeholder support-cloud-placeholder--compact">Sin owners en el rango.</div>';
+                return;
+            }
+
+            const maxTrainings = Math.max(1, ...items.map(item => Number(item.totalTrainings || 0)));
+            elements.trainingsOwners.innerHTML = items.map(item => {
+                const width = Math.max(6, Math.round((Number(item.totalTrainings || 0) / maxTrainings) * 100));
+                return `
+                    <div class="support-cloud-owner-bar">
+                        <div class="support-cloud-owner-bar__head">
+                            <span>${escapeHtml(item.ownerName || "Sin owner")}</span>
+                            <strong>${escapeHtml(numberFormatter.format(Number(item.totalTrainings || 0)))}</strong>
+                        </div>
+                        <div class="support-cloud-breakdown__track">
+                            <span class="support-cloud-breakdown__fill" style="width:${width}%"></span>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderTrainingCharts() {
+            renderTrainingBreakdown(elements.trainingsTopicChart, state.trainingsBoard?.topicBreakdowns, "No hay capacitaciones por tema.");
+            renderTrainingBreakdown(elements.trainingsClientChart, state.trainingsBoard?.clientBreakdowns, "No hay clientes con capacitaciones.");
+            renderTrainingTimeChart();
+        }
+
+        function renderTrainingBreakdown(container, items, emptyMessage) {
+            if (!container) {
+                return;
+            }
+
+            const rows = Array.isArray(items) ? items : [];
+            if (!rows.length) {
+                container.innerHTML = `<div class="support-cloud-placeholder">${escapeHtml(emptyMessage)}</div>`;
+                return;
+            }
+
+            const maxTrainings = Math.max(1, ...rows.map(item => Number(item.totalTrainings || 0)));
+            container.innerHTML = rows.map(item => {
+                const width = Math.max(6, Math.round((Number(item.totalTrainings || 0) / maxTrainings) * 100));
+                return `
+                    <div class="support-cloud-breakdown__row">
+                        <div class="support-cloud-breakdown__head">
+                            <span class="support-cloud-breakdown__label">${escapeHtml(item.label || "Sin dato")}</span>
+                            <span class="support-cloud-breakdown__value">${escapeHtml(numberFormatter.format(Number(item.totalTrainings || 0)))} cap. · ${escapeHtml(numberFormatter.format(Number(item.totalHours || 0)))} h · ${escapeHtml(numberFormatter.format(Number(item.totalAttendees || 0)))} asistentes</span>
+                        </div>
+                        <div class="support-cloud-breakdown__track">
+                            <span class="support-cloud-breakdown__fill" style="width:${width}%"></span>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderTrainingTimeChart() {
+            if (!elements.trainingsTimeChart) {
+                return;
+            }
+
+            const points = Array.isArray(state.trainingsBoard?.timeSeries) ? state.trainingsBoard.timeSeries : [];
+            const maxTrainings = Math.max(0, ...points.map(point => Number(point.totalTrainings || 0)));
+            if (!points.length || maxTrainings <= 0) {
+                elements.trainingsTimeChart.innerHTML = '<div class="support-cloud-placeholder">No hay datos suficientes para la serie de tiempo.</div>';
+                return;
+            }
+
+            const width = 760;
+            const height = 260;
+            const padding = { top: 24, right: 24, bottom: 46, left: 42 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+            const baselineY = padding.top + plotHeight;
+            const yForValue = value => baselineY - ((Number(value || 0) / maxTrainings) * plotHeight);
+            const xForIndex = index => points.length === 1
+                ? padding.left + (plotWidth / 2)
+                : padding.left + ((index / (points.length - 1)) * plotWidth);
+            const coords = points.map((point, index) => ({
+                x: xForIndex(index),
+                y: yForValue(point.totalTrainings),
+                point
+            }));
+            const linePath = coords
+                .map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(1)} ${coord.y.toFixed(1)}`)
+                .join(" ");
+            const labelEvery = Math.max(1, Math.ceil(points.length / 8));
+            const barSlot = plotWidth / Math.max(points.length, 1);
+            const barWidth = Math.max(5, Math.min(28, barSlot * 0.46));
+            const bars = coords.map(coord => {
+                const barHeight = Math.max(2, baselineY - coord.y);
+                return `<rect class="support-cloud-time-chart__bar" x="${(coord.x - (barWidth / 2)).toFixed(1)}" y="${coord.y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}"><title>${escapeHtml(coord.point.label || "")}: ${escapeHtml(numberFormatter.format(Number(coord.point.totalTrainings || 0)))} capacitaciones</title></rect>`;
+            }).join("");
+            const dots = coords.map(coord => `
+                <circle class="support-cloud-time-chart__dot" cx="${coord.x.toFixed(1)}" cy="${coord.y.toFixed(1)}" r="4">
+                    <title>${escapeHtml(coord.point.label || "")}: ${escapeHtml(numberFormatter.format(Number(coord.point.totalTrainings || 0)))} capacitaciones</title>
+                </circle>
+            `).join("");
+            const xLabels = coords
+                .filter((coord, index) => index === 0 || index === coords.length - 1 || index % labelEvery === 0)
+                .map(coord => `<text class="support-cloud-time-chart__axis" x="${coord.x.toFixed(1)}" y="${height - 12}" text-anchor="middle">${escapeHtml(coord.point.label || "")}</text>`)
+                .join("");
+            const yLabels = [0, Math.ceil(maxTrainings / 2), maxTrainings]
+                .filter((value, index, list) => list.indexOf(value) === index)
+                .map(value => {
+                    const y = yForValue(value);
+                    return `
+                        <line class="support-cloud-time-chart__grid" x1="${padding.left}" x2="${width - padding.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>
+                        <text class="support-cloud-time-chart__axis" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${escapeHtml(numberFormatter.format(value))}</text>
+                    `;
+                })
+                .join("");
+
+            elements.trainingsTimeChart.innerHTML = `
+                <svg class="support-cloud-time-chart__svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Capacitaciones en el tiempo">
+                    ${yLabels}
+                    <line class="support-cloud-time-chart__baseline" x1="${padding.left}" x2="${width - padding.right}" y1="${baselineY}" y2="${baselineY}"></line>
+                    ${bars}
+                    <path class="support-cloud-time-chart__line" d="${linePath}"></path>
+                    ${dots}
+                    ${xLabels}
+                </svg>
+            `;
+        }
+
+        function renderTrainingTable() {
+            if (!elements.trainingsRows) {
+                return;
+            }
+
+            const rows = state.trainingsRecords;
+            if (elements.trainingsRecordsCount) {
+                elements.trainingsRecordsCount.textContent = `${numberFormatter.format(rows.length)} capacitacion(es)`;
+            }
+
+            if (elements.trainingsEmpty) {
+                elements.trainingsEmpty.hidden = rows.length > 0;
+            }
+
+            if (!rows.length) {
+                elements.trainingsRows.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="support-cloud-table__empty">No encontramos capacitaciones para este rango.</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            elements.trainingsRows.innerHTML = rows.map(row => `
+                <tr class="support-cloud-table__row support-cloud-table__row--static">
+                    <td data-label="Fecha">${escapeHtml(row.dateDisplay || "-")}</td>
+                    <td data-label="Duracion">
+                        <div class="support-cloud-table__ticket">
+                            <div class="support-cloud-table__ticket-title">${escapeHtml(row.durationDisplay || "-")}</div>
+                            <div class="support-cloud-table__ticket-description">${escapeHtml(numberFormatter.format(Number(row.durationHours || 0)))} horas entregadas</div>
+                        </div>
+                    </td>
+                    <td data-label="Cliente">${escapeHtml(row.clientName || "-")}</td>
+                    <td data-label="Asistentes" class="text-end support-cloud-table__hours">${escapeHtml(numberFormatter.format(Number(row.attendees || 0)))}</td>
+                    <td data-label="Tema">${renderPill(row.topicLabel || "Sin tema")}</td>
+                    <td data-label="Propietario">${escapeHtml(row.ownerName || "-")}</td>
+                    <td data-label="ID"><span class="support-cloud-table__muted">${escapeHtml(truncateText(row.recordId || "-", 12))}</span></td>
+                </tr>
+            `).join("");
         }
 
         function renderTable() {
@@ -728,6 +1037,24 @@
             };
         }
 
+        function hydrateTrainingRecord(record) {
+            return {
+                recordId: record?.recordId || "",
+                dateValue: record?.dateValue || "",
+                dateDisplay: record?.dateDisplay || "",
+                durationMinutes: Number(record?.durationMinutes || 0),
+                durationHours: Number(record?.durationHours || 0),
+                durationDisplay: record?.durationDisplay || "",
+                clientId: record?.clientId || "",
+                clientName: record?.clientName || "",
+                attendees: Number(record?.attendees || 0),
+                topicValue: record?.topicValue ?? "",
+                topicLabel: record?.topicLabel || "",
+                ownerId: record?.ownerId || "",
+                ownerName: record?.ownerName || ""
+            };
+        }
+
         function renderClientSuggestions() {
             if (!elements.clientOptions) {
                 return;
@@ -779,6 +1106,24 @@
             });
 
             elements.closeModalButtons.forEach(button => {
+                button.disabled = isBusy;
+            });
+        }
+
+        function setTrainingsBusy(isBusy) {
+            state.trainingsBusy = isBusy;
+
+            [
+                elements.startDate,
+                elements.endDate,
+                elements.refresh
+            ].forEach(element => {
+                if (element) {
+                    element.disabled = isBusy;
+                }
+            });
+
+            elements.subtabButtons.forEach(button => {
                 button.disabled = isBusy;
             });
         }

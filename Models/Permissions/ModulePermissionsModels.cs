@@ -21,7 +21,9 @@ public enum AppModule
     Licenciamiento = 14,
     Hardware = 15,
     SoporteCloud = 16,
-    PlanRio = 17
+    PlanRio = 17,
+    Envios = 18,
+    Transportador = 19
 }
 
 public sealed class AppModuleDefinition
@@ -216,6 +218,26 @@ public static class AppModuleCatalog
         Controller = "PlanRio"
     };
 
+    public static readonly AppModuleDefinition Envios = new()
+    {
+        Key = AppModule.Envios,
+        Label = "Env\u00edos",
+        Category = "Logistica",
+        Description = "Crea solicitudes de envio, revisa la agenda diaria y aprueba recogidas y entregas.",
+        OptionValue = 645250017,
+        Controller = "Envios"
+    };
+
+    public static readonly AppModuleDefinition Transportador = new()
+    {
+        Key = AppModule.Transportador,
+        Label = "Transportador",
+        Category = "Logistica",
+        Description = "Agenda solicitudes abiertas, registra el valor del flete y confirma entregas.",
+        OptionValue = 645250018,
+        Controller = "Transportador"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -231,6 +253,8 @@ public static class AppModuleCatalog
         Inventario,
         GestionHumana,
         Copiers,
+        Envios,
+        Transportador,
         Dashboard,
         PlanRio,
         Permissions
@@ -271,6 +295,12 @@ public static class AppModuleCatalog
         {
             Label = "Soporte",
             Modules = new[] { Copiers, SoporteCloud },
+            IsDropdown = true
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Logistica",
+            Modules = new[] { Envios, Transportador },
             IsDropdown = true
         },
         new AppModuleNavigationGroup

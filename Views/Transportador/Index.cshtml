@@ -1,0 +1,104 @@
+@model EnviosPageViewModel
+@{
+    ViewData["Title"] = "Transportador";
+    var initialMonthValue = $"{Model.InitialYear:D4}-{Model.InitialMonth:D2}";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/envios.css" asp-append-version="true" />
+}
+
+<div class="envios-shell"
+     id="enviosTransportadorApp"
+     data-mode="transportador"
+     data-load-url="@Url.Action("Data", "Transportador")"
+     data-schedule-url="@Url.Action("Schedule", "Transportador")"
+     data-confirm-delivery-url="@Url.Action("ConfirmDelivery", "Transportador")"
+     data-initial-month="@initialMonthValue"
+     data-current-user-name="@Model.CurrentUserLabel">
+    <section class="envios-hero envios-hero--transportador">
+        <div>
+            <div class="envios-kicker">Log&iacute;stica</div>
+            <h1 class="envios-title">Transportador</h1>
+        </div>
+        <div class="envios-user-pill">
+            <span class="envios-user-pill__label">Transportador</span>
+            <span>@Model.CurrentUserLabel</span>
+        </div>
+    </section>
+
+    <div class="envios-status" data-env-status role="status" aria-live="polite"></div>
+
+    <section class="envios-panel">
+        <div class="envios-toolbar">
+            <label class="envios-field">
+                <span class="envios-field__label">Mes</span>
+                <input type="month" class="form-control" data-env-month />
+            </label>
+            <div class="envios-toolbar__actions">
+                <button type="button" class="btn btn-outline-secondary" data-env-refresh>Actualizar</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="envios-summary">
+        <article class="envios-summary__item">
+            <span>Abiertas</span>
+            <strong data-env-summary="open">0</strong>
+        </article>
+        <article class="envios-summary__item">
+            <span>Agendadas</span>
+            <strong data-env-summary="scheduled">0</strong>
+        </article>
+        <article class="envios-summary__item">
+            <span>Recogidas</span>
+            <strong data-env-summary="pickup">0</strong>
+        </article>
+        <article class="envios-summary__item">
+            <span>Fletes</span>
+            <strong data-env-summary="freight">$0</strong>
+        </article>
+    </section>
+
+    <section class="envios-panel">
+        <div class="envios-section-head">
+            <div>
+                <div class="envios-kicker">Calendario</div>
+                <h2 class="envios-section-title" data-env-month-label>Mes seleccionado</h2>
+            </div>
+        </div>
+        <div class="envios-calendar" data-env-calendar></div>
+    </section>
+
+    <section class="envios-panel">
+        <div class="envios-section-head">
+            <div>
+                <div class="envios-kicker">Solicitudes</div>
+                <h2 class="envios-section-title">Trabajo del transportador</h2>
+            </div>
+            <div class="envios-counter" data-env-count>0 solicitudes</div>
+        </div>
+
+        <div class="envios-table-wrap">
+            <table class="table align-middle envios-table envios-table--transportador">
+                <thead>
+                    <tr>
+                        <th>Estado</th>
+                        <th>Solicitud</th>
+                        <th>Ruta</th>
+                        <th>Recibe</th>
+                        <th>Fecha y flete</th>
+                        <th>Acci&oacute;n</th>
+                    </tr>
+                </thead>
+                <tbody data-env-rows></tbody>
+            </table>
+        </div>
+
+        <div class="envios-empty" data-env-empty hidden>No hay solicitudes para mostrar.</div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/envios.js" asp-append-version="true"></script>
+}

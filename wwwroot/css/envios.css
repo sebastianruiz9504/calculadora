@@ -1,0 +1,565 @@
+:root {
+    --envios-ink: #182234;
+    --envios-muted: #5b687a;
+    --envios-line: #d8e0ea;
+    --envios-panel: #ffffff;
+    --envios-soft: #f7fafc;
+    --envios-blue: #0f6cbd;
+    --envios-blue-soft: #e8f3fc;
+    --envios-green: #157347;
+    --envios-green-soft: #eaf7f0;
+    --envios-amber: #9a6700;
+    --envios-amber-soft: #fff4d8;
+    --envios-red: #b42342;
+    --envios-red-soft: #fff1f3;
+}
+
+.envios-shell {
+    display: grid;
+    gap: 18px;
+    width: 100%;
+    min-width: 0;
+}
+
+.envios-shell > *,
+.envios-panel > *,
+.envios-hero > *,
+.envios-modal__dialog > * {
+    min-width: 0;
+}
+
+.envios-hero,
+.envios-panel,
+.envios-status,
+.envios-summary__item,
+.envios-calendar__cell {
+    border: 1px solid var(--envios-line);
+    border-radius: 8px;
+    background: var(--envios-panel);
+}
+
+.envios-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 24px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+}
+
+.envios-hero--transportador {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fcf8 100%);
+}
+
+.envios-title,
+.envios-section-title,
+.envios-modal__title {
+    margin: 6px 0 0;
+    color: var(--envios-ink);
+    font-weight: 650;
+    letter-spacing: 0;
+}
+
+.envios-title {
+    font-size: 2.2rem;
+}
+
+.envios-section-title {
+    font-size: 24px;
+}
+
+.envios-kicker,
+.envios-field__label,
+.envios-user-pill__label,
+.envios-summary__item span,
+.envios-form__label,
+.envios-counter,
+.envios-calendar__weekday {
+    color: var(--envios-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.envios-kicker {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--envios-blue-soft);
+    color: var(--envios-blue);
+}
+
+.envios-user-pill {
+    display: grid;
+    gap: 6px;
+    max-width: 360px;
+    padding: 12px 14px;
+    border: 1px solid var(--envios-line);
+    border-radius: 8px;
+    background: var(--envios-soft);
+    color: var(--envios-ink);
+    overflow-wrap: anywhere;
+}
+
+.envios-panel {
+    display: grid;
+    gap: 18px;
+    padding: 20px;
+}
+
+.envios-toolbar,
+.envios-toolbar__actions,
+.envios-section-head,
+.envios-modal__header,
+.envios-modal__footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.envios-section-head,
+.envios-modal__header {
+    align-items: flex-start;
+}
+
+.envios-field {
+    display: grid;
+    gap: 8px;
+    min-width: 180px;
+}
+
+.envios-field .form-control,
+.envios-form__field .form-control,
+.envios-form__field .form-select,
+.envios-schedule-fields .form-control {
+    min-height: 42px;
+    border-color: #c8d5e3;
+    border-radius: 8px;
+    color: var(--envios-ink);
+    box-shadow: none;
+}
+
+.envios-field .form-control:focus,
+.envios-form__field .form-control:focus,
+.envios-form__field .form-select:focus,
+.envios-schedule-fields .form-control:focus {
+    border-color: var(--envios-blue);
+    box-shadow: 0 0 0 .18rem rgba(15, 108, 189, .14);
+}
+
+.envios-summary {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.envios-summary__item {
+    display: grid;
+    gap: 6px;
+    padding: 14px;
+    background: var(--envios-soft);
+}
+
+.envios-summary__item strong {
+    color: var(--envios-ink);
+    font-size: 1.45rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.envios-calendar {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.envios-calendar__weekday {
+    padding: 0 4px 4px;
+    text-align: center;
+}
+
+.envios-calendar__cell {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-height: 96px;
+    padding: 10px;
+    background: var(--envios-soft);
+}
+
+.envios-calendar__cell.is-empty {
+    visibility: hidden;
+}
+
+.envios-calendar__cell.has-count {
+    border-color: #b8d8f3;
+    background: var(--envios-blue-soft);
+}
+
+.envios-calendar__day {
+    color: var(--envios-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.envios-calendar__cell strong {
+    color: var(--envios-ink);
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.envios-calendar__cell small,
+.envios-table__muted,
+.envios-placeholder {
+    color: var(--envios-muted);
+    font-size: 13px;
+}
+
+.envios-table-wrap {
+    overflow: auto;
+    max-width: 100%;
+    border: 1px solid var(--envios-line);
+    border-radius: 8px;
+    background: #ffffff;
+    -webkit-overflow-scrolling: touch;
+}
+
+.envios-table {
+    width: 100%;
+    min-width: 920px;
+    margin: 0;
+    table-layout: fixed;
+}
+
+.envios-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding-top: 13px;
+    padding-bottom: 13px;
+    background: #f8fbff;
+    color: var(--envios-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border-bottom-color: rgba(148, 163, 184, .28);
+}
+
+.envios-table td {
+    padding: 12px;
+    color: var(--envios-ink);
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    border-color: #edf2f7;
+}
+
+.envios-table__main {
+    color: var(--envios-ink);
+    font-size: 14px;
+    font-weight: 650;
+}
+
+.envios-route {
+    display: grid;
+    gap: 3px;
+}
+
+.envios-route strong {
+    color: var(--envios-ink);
+}
+
+.envios-route span {
+    color: var(--envios-muted);
+}
+
+.envios-status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--envios-blue-soft);
+    color: var(--envios-blue);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.envios-status-pill.is-open {
+    background: var(--envios-amber-soft);
+    color: var(--envios-amber);
+}
+
+.envios-status-pill.is-pickup,
+.envios-status-pill.is-closed {
+    background: var(--envios-green-soft);
+    color: var(--envios-green);
+}
+
+.envios-status-pill.is-delivered {
+    background: var(--envios-red-soft);
+    color: var(--envios-red);
+}
+
+.envios-link {
+    color: var(--envios-blue);
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.envios-link:hover {
+    color: #0a5694;
+    text-decoration: underline;
+}
+
+.envios-action-stack,
+.envios-schedule-fields {
+    display: grid;
+    gap: 8px;
+}
+
+.envios-empty,
+.envios-placeholder {
+    padding: 18px;
+    border: 1px dashed var(--envios-line);
+    border-radius: 8px;
+    background: var(--envios-soft);
+    color: var(--envios-muted);
+    text-align: center;
+}
+
+.envios-status {
+    display: none;
+    padding: 13px 15px;
+    color: var(--envios-ink);
+}
+
+.envios-status.is-visible {
+    display: block;
+}
+
+.envios-status.is-info {
+    border-color: #bfd2e7;
+    background: var(--envios-blue-soft);
+    color: var(--envios-blue);
+}
+
+.envios-status.is-success {
+    border-color: #cce7d8;
+    background: var(--envios-green-soft);
+    color: var(--envios-green);
+}
+
+.envios-status.is-error {
+    border-color: #f1c6d1;
+    background: var(--envios-red-soft);
+    color: var(--envios-red);
+}
+
+.envios-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.envios-modal[hidden] {
+    display: none;
+}
+
+.envios-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, .46);
+}
+
+.envios-modal__dialog {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 16px;
+    width: min(860px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow: auto;
+    padding: 22px;
+    border: 1px solid var(--envios-line);
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .18);
+}
+
+.envios-form {
+    display: grid;
+    gap: 16px;
+}
+
+.envios-form__grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.envios-form__field {
+    display: grid;
+    gap: 8px;
+}
+
+.envios-form__field--span-2 {
+    grid-column: span 2;
+}
+
+.envios-form__textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+body.envios-modal-open {
+    overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+    .envios-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .envios-hero,
+    .envios-toolbar,
+    .envios-toolbar__actions,
+    .envios-section-head,
+    .envios-modal__header,
+    .envios-modal__footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .envios-user-pill {
+        max-width: none;
+        width: 100%;
+    }
+
+    .envios-calendar {
+        gap: 6px;
+    }
+
+    .envios-calendar__cell {
+        min-height: 76px;
+        padding: 8px;
+    }
+
+    .envios-form__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .envios-form__field--span-2 {
+        grid-column: span 1;
+    }
+}
+
+@media (max-width: 640px) {
+    .envios-shell {
+        gap: 14px;
+    }
+
+    .envios-hero,
+    .envios-panel {
+        padding: 16px;
+    }
+
+    .envios-title {
+        font-size: 1.9rem;
+    }
+
+    .envios-section-title,
+    .envios-modal__title {
+        font-size: 22px;
+    }
+
+    .envios-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .envios-calendar {
+        overflow-x: auto;
+        grid-template-columns: repeat(7, minmax(76px, 1fr));
+    }
+
+    .envios-table-wrap {
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .envios-table {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .envios-table thead {
+        display: none;
+    }
+
+    .envios-table tbody,
+    .envios-table tr,
+    .envios-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .envios-table tbody {
+        display: grid;
+        gap: 12px;
+    }
+
+    .envios-table tbody tr {
+        padding: 14px;
+        border: 1px solid var(--envios-line);
+        border-radius: 8px;
+        background: #ffffff;
+    }
+
+    .envios-table td {
+        display: grid;
+        grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        padding: 8px 0;
+        border: 0;
+        text-align: left !important;
+    }
+
+    .envios-table td + td {
+        border-top: 1px solid #edf2f7;
+    }
+
+    .envios-table td::before {
+        content: attr(data-label);
+        color: var(--envios-muted);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .envios-modal {
+        padding: 12px;
+        place-items: stretch;
+    }
+
+    .envios-modal__dialog {
+        max-height: calc(100vh - 24px);
+        padding: 16px;
+    }
+}

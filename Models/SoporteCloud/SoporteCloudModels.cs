@@ -79,6 +79,69 @@ public sealed class SoporteCloudBoardDto
     public IReadOnlyList<SoporteCloudOptionDto> MethodOptions { get; set; } = Array.Empty<SoporteCloudOptionDto>();
 }
 
+public sealed class SoporteCloudTrainingRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string DateValue { get; set; } = "";
+    public string DateDisplay { get; set; } = "";
+    public decimal DurationMinutes { get; set; }
+    public decimal DurationHours { get; set; }
+    public string DurationDisplay { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public int Attendees { get; set; }
+    public int? TopicValue { get; set; }
+    public string TopicLabel { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
+}
+
+public sealed class SoporteCloudTrainingOwnerSummaryDto
+{
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
+    public int TotalTrainings { get; set; }
+    public decimal TotalHours { get; set; }
+    public int TotalAttendees { get; set; }
+}
+
+public sealed class SoporteCloudTrainingBreakdownDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int TotalTrainings { get; set; }
+    public decimal TotalHours { get; set; }
+    public int TotalAttendees { get; set; }
+    public decimal SharePercent { get; set; }
+}
+
+public sealed class SoporteCloudTrainingTimePointDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int TotalTrainings { get; set; }
+    public decimal TotalHours { get; set; }
+    public int TotalAttendees { get; set; }
+}
+
+public sealed class SoporteCloudTrainingsBoardDto
+{
+    public string StartDateValue { get; set; } = "";
+    public string EndDateValue { get; set; } = "";
+    public string DateRangeLabel { get; set; } = "";
+    public int TotalTrainings { get; set; }
+    public decimal TotalHoursDelivered { get; set; }
+    public int TotalClients { get; set; }
+    public int TotalAttendees { get; set; }
+    public string Message { get; set; } = "";
+    public IReadOnlyList<SoporteCloudTrainingRowDto> Records { get; set; } = Array.Empty<SoporteCloudTrainingRowDto>();
+    public IReadOnlyList<SoporteCloudTrainingOwnerSummaryDto> OwnerSummaries { get; set; } = Array.Empty<SoporteCloudTrainingOwnerSummaryDto>();
+    public IReadOnlyList<SoporteCloudTrainingBreakdownDto> TopicBreakdowns { get; set; } = Array.Empty<SoporteCloudTrainingBreakdownDto>();
+    public IReadOnlyList<SoporteCloudTrainingBreakdownDto> ClientBreakdowns { get; set; } = Array.Empty<SoporteCloudTrainingBreakdownDto>();
+    public IReadOnlyList<SoporteCloudTrainingTimePointDto> TimeSeries { get; set; } = Array.Empty<SoporteCloudTrainingTimePointDto>();
+    public IReadOnlyList<SoporteCloudOptionDto> TopicOptions { get; set; } = Array.Empty<SoporteCloudOptionDto>();
+}
+
 public sealed class SoporteCloudSaveRequest
 {
     public string RecordId { get; set; } = "";

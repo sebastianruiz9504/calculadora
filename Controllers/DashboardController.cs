@@ -493,6 +493,25 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SupportCloudTrainings([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate, CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetSoporteCloudTrainingsBoardAsync(startDate, endDate, ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar las capacitaciones de soporte cloud.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SupportCloudClientSearch([FromQuery] string q, CancellationToken ct)
     {
         var items = await _dataverse.SearchClientsAsync(q, top: 12, ct: ct);

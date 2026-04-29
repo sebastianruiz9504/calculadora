@@ -1,5 +1,10 @@
+@model CotizadorInterno.Web.Models.PlanRio.PlanRioPageViewModel
+@using System.Text.Json
 @{
     ViewData["Title"] = "Plan Rio";
+    var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    var workoutsJson = JsonSerializer.Serialize(Model.Workouts, jsonOptions);
+    var weeksJson = JsonSerializer.Serialize(Model.Weeks, jsonOptions);
 }
 
 @section Styles {
@@ -11,10 +16,29 @@
         <div>
             <p class="plan-rio__eyebrow">Triatlón 70.3</p>
             <h1>Entrenamientos semanales</h1>
-            <p>Visualiza la semana, marca el entreno en curso y registra resultados diarios.</p>
+            <p class="mb-1" id="weekLabel">@Model.WeekLabel</p>
+            <small class="text-muted">
+                Fuente: hoja <strong>@Model.SourceSheet</strong> - @Model.SourcePath
+                @if (!string.IsNullOrWhiteSpace(Model.DetailColumnName))
+                {
+                    <span> | Detalle: <strong>@Model.DetailColumnName</strong></span>
+                }
+            </small>
+            @if (!string.IsNullOrWhiteSpace(Model.SourceStatus))
+            {
+                <div class="plan-rio__source-status">@Model.SourceStatus</div>
+            }
         </div>
-        <button id="resetWeek" class="btn btn-outline-secondary">Reiniciar semana</button>
+        <button id="resetWeek" class="btn btn-outline-secondary" type="button">Reiniciar semana</button>
     </header>
+
+    <section class="plan-rio__week-panel">
+        <div>
+            <span class="plan-rio__label">Semana en pantalla</span>
+            <strong id="selectedWeekTitle">@Model.WeekLabel</strong>
+        </div>
+        <select class="form-select" id="weekSelect" aria-label="Semana"></select>
+    </section>
 
     <section class="plan-rio__grid" id="weekGrid"></section>
 
@@ -49,7 +73,7 @@
                 </div>
                 <div>
                     <label class="form-label" for="notes">Notas</label>
-                    <textarea class="form-control" id="notes" rows="3" placeholder="Sensaciones, ritmos, observaciones..."></textarea>
+                    <textarea class="form-control" id="notes" rows="3"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
@@ -61,5 +85,10 @@
 </div>
 
 @section Scripts {
+    <script>
+        window.planRioWorkouts = @Html.Raw(workoutsJson);
+        window.planRioWeeks = @Html.Raw(weeksJson);
+        window.planRioWeekLabel = @Html.Raw(JsonSerializer.Serialize(Model.WeekLabel));
+    </script>
     <script src="~/js/plan-rio.js" asp-append-version="true"></script>
 }

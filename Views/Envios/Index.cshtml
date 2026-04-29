@@ -1,0 +1,165 @@
+@model EnviosPageViewModel
+@{
+    ViewData["Title"] = "Envios";
+    var initialMonthValue = $"{Model.InitialYear:D4}-{Model.InitialMonth:D2}";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/envios.css" asp-append-version="true" />
+}
+
+<div class="envios-shell"
+     id="enviosApp"
+     data-mode="usuario"
+     data-load-url="@Url.Action("Data", "Envios")"
+     data-client-search-url="@Url.Action("ClientSearch", "Envios")"
+     data-create-url="@Url.Action("Create", "Envios")"
+     data-approve-pickup-url="@Url.Action("ApprovePickup", "Envios")"
+     data-approve-delivery-url="@Url.Action("ApproveDelivery", "Envios")"
+     data-download-act-url="@Url.Action("DownloadAct", "Envios")"
+     data-initial-month="@initialMonthValue"
+     data-current-user-name="@Model.CurrentUserLabel">
+    <section class="envios-hero">
+        <div>
+            <div class="envios-kicker">Operaciones</div>
+            <h1 class="envios-title">Env&iacute;os</h1>
+        </div>
+        <div class="envios-user-pill">
+            <span class="envios-user-pill__label">Usuario</span>
+            <span>@Model.CurrentUserLabel</span>
+        </div>
+    </section>
+
+    <div class="envios-status" data-env-status role="status" aria-live="polite"></div>
+
+    <section class="envios-panel">
+        <div class="envios-toolbar">
+            <label class="envios-field">
+                <span class="envios-field__label">Mes</span>
+                <input type="month" class="form-control" data-env-month />
+            </label>
+            <div class="envios-toolbar__actions">
+                <button type="button" class="btn btn-outline-secondary" data-env-refresh>Actualizar</button>
+                <button type="button" class="btn btn-primary" data-env-new>Nuevo env&iacute;o</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="envios-summary">
+        <article class="envios-summary__item">
+            <span>Abiertas</span>
+            <strong data-env-summary="open">0</strong>
+        </article>
+        <article class="envios-summary__item">
+            <span>Agendadas</span>
+            <strong data-env-summary="scheduled">0</strong>
+        </article>
+        <article class="envios-summary__item">
+            <span>Por cierre</span>
+            <strong data-env-summary="delivered">0</strong>
+        </article>
+        <article class="envios-summary__item">
+            <span>Fletes</span>
+            <strong data-env-summary="freight">$0</strong>
+        </article>
+    </section>
+
+    <section class="envios-panel">
+        <div class="envios-section-head">
+            <div>
+                <div class="envios-kicker">Calendario</div>
+                <h2 class="envios-section-title" data-env-month-label>Mes seleccionado</h2>
+            </div>
+        </div>
+        <div class="envios-calendar" data-env-calendar></div>
+    </section>
+
+    <section class="envios-panel">
+        <div class="envios-section-head">
+            <div>
+                <div class="envios-kicker">Solicitudes</div>
+                <h2 class="envios-section-title">Env&iacute;os registrados</h2>
+            </div>
+            <div class="envios-counter" data-env-count>0 solicitudes</div>
+        </div>
+
+        <div class="envios-table-wrap">
+            <table class="table align-middle envios-table">
+                <thead>
+                    <tr>
+                        <th>Estado</th>
+                        <th>Fecha</th>
+                        <th>Ruta</th>
+                        <th>Cliente</th>
+                        <th>Recibe</th>
+                        <th>Flete</th>
+                        <th>Acci&oacute;n</th>
+                    </tr>
+                </thead>
+                <tbody data-env-rows></tbody>
+            </table>
+        </div>
+
+        <div class="envios-empty" data-env-empty hidden>No hay solicitudes para mostrar.</div>
+    </section>
+
+    <div class="envios-modal" data-env-modal hidden>
+        <div class="envios-modal__backdrop" data-env-close-modal></div>
+        <div class="envios-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="enviosModalTitle">
+            <div class="envios-modal__header">
+                <div>
+                    <div class="envios-kicker">Formulario</div>
+                    <h2 class="envios-modal__title" id="enviosModalTitle">Nuevo env&iacute;o</h2>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-env-close-modal>Cerrar</button>
+            </div>
+
+            <div class="envios-status" data-env-modal-status role="status" aria-live="polite"></div>
+
+            <form class="envios-form" data-env-form>
+                <input type="hidden" data-env-client-id />
+
+                <div class="envios-form__grid">
+                    <label class="envios-form__field">
+                        <span class="envios-form__label">Origen</span>
+                        <input type="text" class="form-control" data-env-field="origin" />
+                    </label>
+                    <label class="envios-form__field">
+                        <span class="envios-form__label">Destino</span>
+                        <input type="text" class="form-control" data-env-field="destination" />
+                    </label>
+                    <label class="envios-form__field envios-form__field--span-2">
+                        <span class="envios-form__label">Cliente</span>
+                        <input type="text" class="form-control" list="enviosClientOptions" autocomplete="off" data-env-field="clientName" />
+                        <datalist id="enviosClientOptions" data-env-client-options></datalist>
+                    </label>
+                    <label class="envios-form__field envios-form__field--span-2">
+                        <span class="envios-form__label">Qu&eacute; se env&iacute;a</span>
+                        <textarea class="form-control envios-form__textarea" rows="3" data-env-field="whatIsSent"></textarea>
+                    </label>
+                    <label class="envios-form__field envios-form__field--span-2">
+                        <span class="envios-form__label">Observaciones</span>
+                        <textarea class="form-control envios-form__textarea" rows="3" data-env-field="observations"></textarea>
+                    </label>
+                    <label class="envios-form__field">
+                        <span class="envios-form__label">Qui&eacute;n recibe</span>
+                        <input type="text" class="form-control" data-env-field="recipientName" />
+                    </label>
+                    <label class="envios-form__field">
+                        <span class="envios-form__label">Tel&eacute;fono de quien recibe</span>
+                        <input type="tel" class="form-control" data-env-field="recipientPhone" />
+                    </label>
+                </div>
+
+                <div class="envios-modal__footer">
+                    <button type="button" class="btn btn-outline-secondary" data-env-close-modal>Cancelar</button>
+                    <button type="submit" class="btn btn-primary" data-env-save>Crear solicitud</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/envios.js" asp-append-version="true"></script>
+}

@@ -3,6 +3,7 @@ using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models.CuentasCobro;
 using CotizadorInterno.Web.Models.Copiers;
 using CotizadorInterno.Web.Models.Dashboard;
+using CotizadorInterno.Web.Models.Envios;
 using CotizadorInterno.Web.Models.Hardware;
 using CotizadorInterno.Web.Models.Licenciamiento;
 using CotizadorInterno.Web.Models.Metricas;
@@ -110,7 +111,16 @@ public interface IDataverseService
     Task<HardwareFileDownloadResult?> DownloadHardwareFileAsync(string recordId, string fieldName, CancellationToken ct = default, bool requireCurrentOwner = false);
     Task<IReadOnlyList<HardwareInvoiceLookupItemDto>> SearchHardwareInvoicesAsync(string query, int top = 12, CancellationToken ct = default);
     Task<SoporteCloudBoardDto> GetSoporteCloudBoardAsync(DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default);
+    Task<SoporteCloudTrainingsBoardDto> GetSoporteCloudTrainingsBoardAsync(DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default);
     Task<SoporteCloudSaveResultDto> SaveSoporteCloudTicketAsync(SoporteCloudSaveRequest request, CancellationToken ct = default);
     Task<SoporteCloudFileUploadResultDto> UploadSoporteCloudAttachmentAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<SoporteCloudFileDownloadResult?> DownloadSoporteCloudAttachmentAsync(string recordId, CancellationToken ct = default);
+    Task<EnviosBoardDto> GetEnviosBoardAsync(int? year = null, int? month = null, CancellationToken ct = default);
+    Task<EnviosBoardDto> GetEnviosTransportadorBoardAsync(int? year = null, int? month = null, CancellationToken ct = default);
+    Task<EnvioSaveResultDto> CreateEnvioSolicitudAsync(EnvioCreateRequest request, CancellationToken ct = default);
+    Task<EnvioSaveResultDto> ScheduleEnvioAsync(EnvioScheduleRequest request, CancellationToken ct = default);
+    Task<EnvioSaveResultDto> ApproveEnvioPickupAsync(string recordId, CancellationToken ct = default);
+    Task<EnvioSaveResultDto> ConfirmEnvioDeliveryAsync(string recordId, CancellationToken ct = default);
+    Task<EnvioFileUploadResultDto> ApproveEnvioDeliverySatisfactionAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<EnvioFileDownloadResult?> DownloadEnvioDeliveryActAsync(string recordId, CancellationToken ct = default);
 }

@@ -1,0 +1,202 @@
+{
+  "table": {
+    "displayName": "Envio",
+    "displayCollectionName": "Envios",
+    "logicalName": "cr07a_envio",
+    "entitySetName": "cr07a_envios",
+    "primaryIdAttribute": "cr07a_envioid",
+    "primaryNameAttribute": "cr07a_name",
+    "ownership": "UserOwned"
+  },
+  "moduleOptions": [
+    {
+      "label": "Envios",
+      "value": 645250017,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Transportador",
+      "value": 645250018,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    }
+  ],
+  "statusOptions": [
+    {
+      "label": "Solicitud abierta",
+      "value": 645250000
+    },
+    {
+      "label": "Agendada por transportador",
+      "value": 645250001
+    },
+    {
+      "label": "Recogida aprobada",
+      "value": 645250002
+    },
+    {
+      "label": "Entrega confirmada",
+      "value": 645250003
+    },
+    {
+      "label": "Recibido a satisfaccion",
+      "value": 645250004
+    }
+  ],
+  "columns": [
+    {
+      "logicalName": "cr07a_name",
+      "displayName": "Nombre",
+      "type": "Text",
+      "maxLength": 200,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_origen",
+      "displayName": "Origen",
+      "type": "Text",
+      "maxLength": 300,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_destino",
+      "displayName": "Destino",
+      "type": "Text",
+      "maxLength": 300,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_cliente",
+      "displayName": "Cliente",
+      "type": "Lookup",
+      "targetTable": "cr07a_cliente",
+      "targetEntitySetName": "cr07a_clientes",
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_queseenvia",
+      "displayName": "Que se envia",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_observaciones",
+      "displayName": "Observaciones",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_quienrecibe",
+      "displayName": "Quien recibe",
+      "type": "Text",
+      "maxLength": 200,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_telefonorecibe",
+      "displayName": "Telefono de quien recibe",
+      "type": "Text",
+      "maxLength": 80,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_estado",
+      "displayName": "Estado",
+      "type": "Choice",
+      "required": true,
+      "optionsRef": "statusOptions"
+    },
+    {
+      "logicalName": "cr07a_fechaprogramada",
+      "displayName": "Fecha programada",
+      "type": "DateTime",
+      "behavior": "UserLocal",
+      "format": "DateAndTime",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_transportador",
+      "displayName": "Transportador",
+      "type": "Lookup",
+      "targetTable": "systemuser",
+      "targetEntitySetName": "systemusers",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_valorflete",
+      "displayName": "Valor flete",
+      "type": "Currency",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_recogidaaprobada",
+      "displayName": "Recogida aprobada",
+      "type": "TwoOptions",
+      "required": false,
+      "defaultValue": false
+    },
+    {
+      "logicalName": "cr07a_recogidaaprobadaen",
+      "displayName": "Recogida aprobada en",
+      "type": "DateTime",
+      "behavior": "UserLocal",
+      "format": "DateAndTime",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_recogidaaprobadapor",
+      "displayName": "Recogida aprobada por",
+      "type": "Lookup",
+      "targetTable": "systemuser",
+      "targetEntitySetName": "systemusers",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_entregaconfirmadaen",
+      "displayName": "Entrega confirmada en",
+      "type": "DateTime",
+      "behavior": "UserLocal",
+      "format": "DateAndTime",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_entregadapor",
+      "displayName": "Entregada por",
+      "type": "Lookup",
+      "targetTable": "systemuser",
+      "targetEntitySetName": "systemusers",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_recibidosatisfaccion",
+      "displayName": "Recibido a satisfaccion",
+      "type": "TwoOptions",
+      "required": false,
+      "defaultValue": false
+    },
+    {
+      "logicalName": "cr07a_recibidosatisfaccionen",
+      "displayName": "Recibido a satisfaccion en",
+      "type": "DateTime",
+      "behavior": "UserLocal",
+      "format": "DateAndTime",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_recibidosatisfaccionpor",
+      "displayName": "Recibido a satisfaccion por",
+      "type": "Lookup",
+      "targetTable": "systemuser",
+      "targetEntitySetName": "systemusers",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_actaentrega",
+      "displayName": "Acta de entrega",
+      "type": "File",
+      "maxSizeMb": 128,
+      "required": false
+    }
+  ]
+}

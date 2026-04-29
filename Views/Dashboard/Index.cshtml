@@ -306,10 +306,16 @@
              data-save-url="@Url.Action("SupportCloudTicket", "Dashboard")"
              data-upload-url="@Url.Action("SupportCloudUploadFile", "Dashboard")"
              data-download-url="@Url.Action("SupportCloudDownloadFile", "Dashboard")"
+             data-trainings-url="@Url.Action("SupportCloudTrainings", "Dashboard")"
              data-initial-start-date="@Model.InitialSupportStartDate"
              data-initial-end-date="@Model.InitialSupportEndDate"
              data-current-user-name="@(!string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.DisplayName : Model.CurrentUser.Email)"
              data-show-charts="true">
+            <section class="support-cloud-tabs" aria-label="Secciones de soporte cloud">
+                <button type="button" class="support-cloud-tab is-active" data-sc-subtab="tickets" aria-selected="true">Tickets</button>
+                <button type="button" class="support-cloud-tab" data-sc-subtab="trainings" aria-selected="false">Capacitaciones</button>
+            </section>
+
             <section class="support-cloud-card">
                 <div class="support-cloud-toolbar">
                     <div class="support-cloud-toolbar__filters">
@@ -329,12 +335,13 @@
                         </div>
                         <div class="support-cloud-toolbar__buttons">
                             <button type="button" class="btn btn-outline-secondary" data-sc-refresh>Actualizar</button>
-                            <button type="button" class="btn btn-primary" data-sc-new-ticket>Nuevo ticket</button>
+                            <button type="button" class="btn btn-primary" data-sc-new-ticket data-sc-ticket-action>Nuevo ticket</button>
                         </div>
                     </div>
                 </div>
             </section>
 
+            <div class="support-cloud-subpanel is-active" data-sc-subpanel="tickets">
             <div class="support-cloud-status" data-sc-status role="status" aria-live="polite"></div>
 
             <section class="support-cloud-summary">
@@ -538,6 +545,96 @@
                         </div>
                     </form>
                 </div>
+            </div>
+        </div>
+
+            <div class="support-cloud-subpanel" data-sc-subpanel="trainings" hidden>
+                <div class="support-cloud-status" data-sct-status role="status" aria-live="polite"></div>
+
+                <section class="support-cloud-training-summary">
+                    <article class="support-cloud-summary__card support-cloud-training-total-card">
+                        <div>
+                            <span class="support-cloud-summary__label">Total capacitaciones</span>
+                            <strong class="support-cloud-summary__value" data-sct-total-trainings>0</strong>
+                        </div>
+                        <div class="support-cloud-training-owner-bars" data-sct-owners></div>
+                    </article>
+                    <article class="support-cloud-summary__card">
+                        <span class="support-cloud-summary__label">Total horas entregadas</span>
+                        <strong class="support-cloud-summary__value" data-sct-total-hours>0</strong>
+                    </article>
+                    <article class="support-cloud-summary__card">
+                        <span class="support-cloud-summary__label">Clientes capacitados</span>
+                        <strong class="support-cloud-summary__value" data-sct-total-clients>0</strong>
+                    </article>
+                    <article class="support-cloud-summary__card">
+                        <span class="support-cloud-summary__label">Total asistentes</span>
+                        <strong class="support-cloud-summary__value" data-sct-total-attendees>0</strong>
+                    </article>
+                </section>
+
+                <section class="support-cloud-training-grid">
+                    <article class="support-cloud-card">
+                        <div class="support-cloud-section-header">
+                            <div>
+                                <div class="support-cloud-kicker">Tema</div>
+                                <h2 class="support-cloud-section-title">Total por tema</h2>
+                            </div>
+                        </div>
+                        <div class="support-cloud-breakdown" data-sct-chart="topic"></div>
+                    </article>
+
+                    <article class="support-cloud-card">
+                        <div class="support-cloud-section-header">
+                            <div>
+                                <div class="support-cloud-kicker">Clientes</div>
+                                <h2 class="support-cloud-section-title">Clientes con m&aacute;s capacitaciones</h2>
+                            </div>
+                        </div>
+                        <div class="support-cloud-breakdown" data-sct-chart="clients"></div>
+                    </article>
+                </section>
+
+                <section class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Tiempo</div>
+                            <h2 class="support-cloud-section-title">Capacitaciones en el tiempo</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-time-chart" data-sct-chart="time"></div>
+                </section>
+
+                <section class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Detalle</div>
+                            <h2 class="support-cloud-section-title">Detalle completo de capacitaciones</h2>
+                        </div>
+                        <div class="support-cloud-counter" data-sct-records-count>0 capacitaciones</div>
+                    </div>
+
+                    <div class="support-cloud-table-wrap">
+                        <table class="table align-middle support-cloud-table support-cloud-training-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Duraci&oacute;n</th>
+                                    <th>Cliente</th>
+                                    <th class="text-end">Asistentes</th>
+                                    <th>Tema</th>
+                                    <th>Propietario</th>
+                                    <th>ID</th>
+                                </tr>
+                            </thead>
+                            <tbody data-sct-rows></tbody>
+                        </table>
+                    </div>
+
+                    <div class="support-cloud-empty" data-sct-empty hidden>
+                        No hay capacitaciones de soporte cloud en el rango seleccionado.
+                    </div>
+                </section>
             </div>
         </div>
     </div>
