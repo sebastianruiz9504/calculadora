@@ -20,7 +20,8 @@ public enum AppModule
     Inventario = 13,
     Licenciamiento = 14,
     Hardware = 15,
-    SoporteCloud = 16
+    SoporteCloud = 16,
+    PlanRio = 17
 }
 
 public sealed class AppModuleDefinition
@@ -205,6 +206,16 @@ public static class AppModuleCatalog
         Controller = "SoporteCloud"
     };
 
+    public static readonly AppModuleDefinition PlanRio = new()
+    {
+        Key = AppModule.PlanRio,
+        Label = "Plan Rio 70.3",
+        Category = "Plan Rio",
+        Description = "Consulta entrenos semanales, registra resultados diarios y revisa la progresion en graficas.",
+        OptionValue = 645250016,
+        Controller = "PlanRio"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -221,6 +232,7 @@ public static class AppModuleCatalog
         GestionHumana,
         Copiers,
         Dashboard,
+        PlanRio,
         Permissions
     };
 
@@ -260,6 +272,11 @@ public static class AppModuleCatalog
             Label = "Soporte",
             Modules = new[] { Copiers, SoporteCloud },
             IsDropdown = true
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Plan Rio",
+            Modules = new[] { PlanRio }
         },
         new AppModuleNavigationGroup
         {

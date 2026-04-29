@@ -1,0 +1,65 @@
+@{
+    ViewData["Title"] = "Plan Rio";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/plan-rio.css" asp-append-version="true" />
+}
+
+<div class="plan-rio">
+    <header class="plan-rio__header">
+        <div>
+            <p class="plan-rio__eyebrow">Triatlón 70.3</p>
+            <h1>Entrenamientos semanales</h1>
+            <p>Visualiza la semana, marca el entreno en curso y registra resultados diarios.</p>
+        </div>
+        <button id="resetWeek" class="btn btn-outline-secondary">Reiniciar semana</button>
+    </header>
+
+    <section class="plan-rio__grid" id="weekGrid"></section>
+
+    <section class="plan-rio__charts">
+        <article class="plan-rio__card">
+            <h2>Progresión de cumplimiento</h2>
+            <canvas id="completionChart" height="180"></canvas>
+        </article>
+        <article class="plan-rio__card">
+            <h2>Volumen semanal (meta vs real)</h2>
+            <canvas id="volumeChart" height="180"></canvas>
+        </article>
+    </section>
+</div>
+
+<div class="modal fade" id="workoutModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content" id="workoutForm">
+            <div class="modal-header">
+                <h5 class="modal-title">Registrar entreno</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="workoutId" />
+                <div class="mb-3">
+                    <label class="form-label" for="actualDuration">Duración real (min)</label>
+                    <input class="form-control" id="actualDuration" type="number" min="0" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="effort">Esfuerzo (RPE 1-10)</label>
+                    <input class="form-control" id="effort" type="number" min="1" max="10" required />
+                </div>
+                <div>
+                    <label class="form-label" for="notes">Notas</label>
+                    <textarea class="form-control" id="notes" rows="3" placeholder="Sensaciones, ritmos, observaciones..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/plan-rio.js" asp-append-version="true"></script>
+}
