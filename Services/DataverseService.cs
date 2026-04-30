@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -27,6 +28,11 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DataverseService> _logger;
     private readonly IQuoteCalculator _calculator;
+    private readonly string _dataverseBaseUrl;
+    private readonly string _azureAuthorityInstance;
+    private readonly string _azureTenantId;
+    private readonly string _azureClientId;
+    private readonly string _dataverseClientSecret;
     private readonly ConcurrentDictionary<string, string[]> _salesPerformanceNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _salesPerformancePrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _entityPrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
@@ -293,6 +299,13 @@ public sealed partial class DataverseService : IDataverseService
         _logger = logger;
         _calculator = calculator;
         var rh = rhOptions.Value;
+        _dataverseBaseUrl = (configuration["Dataverse:BaseUrl"] ?? "").TrimEnd('/');
+        _azureAuthorityInstance = configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/";
+        _azureTenantId = configuration["AzureAd:TenantId"] ?? "";
+        _azureClientId = configuration["AzureAd:ClientId"] ?? "";
+        _dataverseClientSecret = configuration["Dataverse:ClientSecret"]
+            ?? configuration["AzureAd:ClientSecret"]
+            ?? "";
         _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
             ?? DefaultScenariosTableSetName;
         _scenariosTableName = configuration["Dataverse:ScenariosTableName"]
@@ -2109,6 +2122,127 @@ public sealed partial class DataverseService : IDataverseService
             return fallback;
 
         return parsed > 1m ? parsed / 100m : parsed;
+    }
+
+    private async Task<string> GetDataverseAppAccessTokenAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_dataverseBaseUrl)
+            || string.IsNullOrWhiteSpace(_azureTenantId)
+            || string.IsNullOrWhiteSpace(_azureClientId)
+            || string.IsNullOrWhiteSpace(_dataverseClientSecret))
+        {
+            throw new InvalidOperationException(
+                "La encuesta publica requiere configurar Dataverse:BaseUrl, AzureAd:TenantId, AzureAd:ClientId y Dataverse:ClientSecret o AzureAd:ClientSecret.");
+        }
+
+        var authorityBase = _azureAuthorityInstance.EndsWith("/", StringComparison.Ordinal)
+            ? _azureAuthorityInstance
+            : $"{_azureAuthorityInstance}/";
+        var app = ConfidentialClientApplicationBuilder
+            .Create(_azureClientId)
+            .WithClientSecret(_dataverseClientSecret)
+            .WithAuthority($"{authorityBase}{_azureTenantId}")
+            .Build();
+
+        var result = await app
+            .AcquireTokenForClient(new[] { $"{_dataverseBaseUrl}/.default" })
+            .ExecuteAsync(ct);
+
+        return result.AccessToken;
+    }
+
+    private async Task<HttpResponseMessage> CallDataverseAppResponseAsync(
+        string relativeUrl,
+        string method,
+        CancellationToken ct,
+        HttpContent? content = null,
+        Action<HttpRequestMessage>? customizeRequest = null)
+    {
+        var token = await GetDataverseAppAccessTokenAsync(ct);
+        var client = _httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(new HttpMethod(method), BuildDataverseAppUri(relativeUrl));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.TryAddWithoutValidation("OData-MaxVersion", "4.0");
+        request.Headers.TryAddWithoutValidation("OData-Version", "4.0");
+        if (content is not null)
+            request.Content = content;
+
+        customizeRequest?.Invoke(request);
+        return await client.SendAsync(request, ct);
+    }
+
+    private Uri BuildDataverseAppUri(string relativeUrl)
+    {
+        if (Uri.TryCreate(relativeUrl, UriKind.Absolute, out var absoluteUri))
+            return absoluteUri;
+
+        var normalizedRelativeUrl = relativeUrl.StartsWith("/", StringComparison.Ordinal)
+            ? relativeUrl
+            : $"/{relativeUrl}";
+
+        return new Uri($"{_dataverseBaseUrl}{normalizedRelativeUrl}", UriKind.Absolute);
+    }
+
+    private async Task<string> CallDataverseAppGetJsonAsync(
+        string relativeUrl,
+        CancellationToken ct,
+        Action<HttpRequestMessage>? customizeRequest = null)
+    {
+        using var response = await CallDataverseAppResponseAsync(relativeUrl, "GET", ct, customizeRequest: customizeRequest);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+
+        return body;
+    }
+
+    private async Task<string> CallDataverseAppSendAsync(
+        string relativeUrl,
+        string method,
+        object payload,
+        CancellationToken ct,
+        Action<HttpRequestMessage>? customizeRequest = null)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        using var response = await CallDataverseAppResponseAsync(relativeUrl, method, ct, content, customizeRequest);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+
+        return body;
+    }
+
+    private async Task<List<JsonElement>> GetDataverseAppEntitiesAsync(
+        string relativeUrl,
+        CancellationToken ct,
+        Action<HttpRequestMessage>? customizeRequest = null)
+    {
+        const int maxPages = 50;
+        var pageCount = 0;
+        var items = new List<JsonElement>();
+        string? nextRelativeUrl = relativeUrl;
+
+        while (!string.IsNullOrWhiteSpace(nextRelativeUrl))
+        {
+            pageCount++;
+            if (pageCount > maxPages)
+                throw new InvalidOperationException("Se alcanzo el limite de paginas consultando registros publicos de Dataverse.");
+
+            var json = await CallDataverseAppGetJsonAsync(nextRelativeUrl, ct, customizeRequest);
+            using var doc = JsonDocument.Parse(json);
+            var value = doc.RootElement.GetProperty("value");
+            foreach (var item in value.EnumerateArray())
+            {
+                items.Add(item.Clone());
+            }
+
+            nextRelativeUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var nextLinkProp)
+                ? GetRelativeDataverseUrl(nextLinkProp.GetString())
+                : null;
+        }
+
+        return items;
     }
 
     private async Task<string> CallDataverseGetJsonAsync(

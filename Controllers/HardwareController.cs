@@ -417,11 +417,8 @@ public sealed class HardwareController : Controller
         {
             var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
             var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
-            if (isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName))
-                return BadRequest(CreateErrorPayload("Cartera solo puede descargar el soporte de pago a proveedor."));
-
-            if (!isSupplierPaymentUser && IsSupplierPaymentFile(fieldName))
-                return BadRequest(CreateErrorPayload("Solo cartera puede descargar el soporte de pago a proveedor."));
+            if (isSupplierPaymentUser && !IsSupplierPaymentDownloadFile(fieldName))
+                return BadRequest(CreateErrorPayload("Cartera solo puede descargar la proforma y el soporte de pago a proveedor."));
 
             var file = await _dataverse.DownloadHardwareFileAsync(
                 recordId,
@@ -579,6 +576,13 @@ public sealed class HardwareController : Controller
         string.Equals(
             (fieldName ?? "").Trim(),
             HardwareAccessPolicy.SupplierPaymentFileField,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupplierPaymentDownloadFile(string? fieldName) =>
+        IsSupplierPaymentFile(fieldName)
+        || string.Equals(
+            (fieldName ?? "").Trim(),
+            HardwareAccessPolicy.ProformaFileField,
             StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveSystemUserDisplayName(SystemUserLookupItem selectedUser)

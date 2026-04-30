@@ -66,6 +66,7 @@ public interface IDataverseService
     Task<CopiersEquipmentMovementSaveResultDto> RegisterCopiersEquipmentMovementAsync(CopiersEquipmentMovementSaveRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentClientSaveResultDto> SaveCopiersEquipmentClientAsync(CopiersEquipmentClientSaveRequestDto request, CancellationToken ct = default);
     Task<PlanRioPageViewModel> GetPlanRioPageAsync(CancellationToken ct = default);
+    Task<PlanRioWorkoutSaveResultDto> SavePlanRioWorkoutAsync(PlanRioWorkoutSaveRequestDto request, CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadCopiersMaintenanceAttachmentAsync(string maintenanceId, CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> SaveCopiersMaintenanceAsync(CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveRequestDto request, CancellationToken ct = default);
@@ -118,6 +119,15 @@ public interface IDataverseService
     Task<SoporteCloudSaveResultDto> SaveSoporteCloudTicketAsync(SoporteCloudSaveRequest request, CancellationToken ct = default);
     Task<SoporteCloudFileUploadResultDto> UploadSoporteCloudAttachmentAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<SoporteCloudFileDownloadResult?> DownloadSoporteCloudAttachmentAsync(string recordId, CancellationToken ct = default);
+    Task<SoporteCloudSurveyBoardDto> GetSoporteCloudSurveyBoardAsync(CancellationToken ct = default);
+    Task<SoporteCloudSurveySessionDetailDto> GetSoporteCloudSurveySessionDetailAsync(string sessionId, CancellationToken ct = default);
+    Task<SoporteCloudSurveySaveResultDto> SaveSoporteCloudSurveyTopicAsync(SoporteCloudSurveyTopicSaveRequest request, CancellationToken ct = default);
+    Task<SoporteCloudSurveySaveResultDto> SaveSoporteCloudSurveyQuestionAsync(SoporteCloudSurveyQuestionSaveRequest request, CancellationToken ct = default);
+    Task<SoporteCloudSurveySaveResultDto> SaveSoporteCloudSurveySessionAsync(SoporteCloudSurveySessionSaveRequest request, CancellationToken ct = default);
+    Task<SoporteCloudSurveySaveResultDto> CloseSoporteCloudSurveySessionAsync(string sessionId, CancellationToken ct = default);
+    Task<SoporteCloudPublicSurveyViewModel> GetSoporteCloudPublicSurveyAsync(string code, CancellationToken ct = default);
+    Task<SoporteCloudSurveySubmitResultDto> SubmitSoporteCloudPublicSurveyAsync(SoporteCloudSurveySubmitRequest request, CancellationToken ct = default);
+    Task<SoporteCloudSurveySessionDetailDto> GetSoporteCloudPublicSurveyResultsAsync(string code, CancellationToken ct = default);
     Task<EnviosBoardDto> GetEnviosBoardAsync(int? year = null, int? month = null, CancellationToken ct = default);
     Task<EnviosBoardDto> GetEnviosTransportadorBoardAsync(int? year = null, int? month = null, CancellationToken ct = default);
     Task<EnvioSaveResultDto> CreateEnvioSolicitudAsync(EnvioCreateRequest request, CancellationToken ct = default);

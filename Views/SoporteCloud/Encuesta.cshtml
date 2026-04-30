@@ -1,0 +1,175 @@
+@model SoporteCloudPublicSurveyViewModel
+@{
+    Layout = null;
+    var title = string.IsNullOrWhiteSpace(Model.SessionName) ? "Encuesta de capacitacion" : Model.SessionName;
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@title - Digital Tech</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
+</head>
+<body class="support-cloud-public-body">
+    <main class="support-cloud-public"
+          id="soporteCloudPublicSurvey"
+          data-code="@Model.Code"
+          data-submit-url="@Url.Action("SubmitSurvey", "SoporteCloud", new { code = Model.Code })"
+          data-results-url="@Url.Action("PublicSurveyResults", "SoporteCloud", new { code = Model.Code })">
+        <section class="support-cloud-public-hero">
+            <div>
+                <div class="support-cloud-kicker">Digital Tech</div>
+                <h1 class="support-cloud-title">@title</h1>
+                <p class="support-cloud-subtitle">@Model.TopicName</p>
+            </div>
+            <div class="support-cloud-user-pill">
+                <span class="support-cloud-user-pill__label">Codigo</span>
+                <span>@Model.Code</span>
+            </div>
+        </section>
+
+        <div class="support-cloud-status is-visible is-info" data-scs-public-status>@Model.Message</div>
+
+        @if (!Model.IsClosed && Model.KnowledgeQuestions.Count > 0)
+        {
+            <form class="support-cloud-public-form" data-scs-public-form>
+                <section class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Participante</div>
+                            <h2 class="support-cloud-section-title">Datos de asistencia</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-form__grid">
+                        <label class="support-cloud-form__field">
+                            <span class="support-cloud-form__label">Nombre</span>
+                            <input type="text" class="form-control" data-scs-full-name required />
+                        </label>
+                        <label class="support-cloud-form__field">
+                            <span class="support-cloud-form__label">Correo</span>
+                            <input type="email" class="form-control" data-scs-email />
+                        </label>
+                        <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                            <span class="support-cloud-form__label">Empresa</span>
+                            <input type="text" class="form-control" data-scs-company />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Preguntas</div>
+                            <h2 class="support-cloud-section-title">Conocimiento</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-public-question-list">
+                        @foreach (var question in Model.KnowledgeQuestions)
+                        {
+                            <article class="support-cloud-public-question" data-scs-question="@question.QuestionId" data-scs-question-type="single">
+                                <h3>@question.Text</h3>
+                                <div class="support-cloud-public-options">
+                                    @foreach (var option in question.Options.Where(option => option.IsActive))
+                                    {
+                                        <label>
+                                            <input type="radio" name="q_@question.QuestionId" value="@option.OptionId" required />
+                                            <span>@option.Text</span>
+                                        </label>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                </section>
+
+                <section class="support-cloud-card">
+                    <div class="support-cloud-section-header">
+                        <div>
+                            <div class="support-cloud-kicker">Satisfaccion</div>
+                            <h2 class="support-cloud-section-title">Experiencia</h2>
+                        </div>
+                    </div>
+                    <div class="support-cloud-public-question-list">
+                        @foreach (var question in Model.SatisfactionQuestions)
+                        {
+                            var questionType = question.InputTypeValue == 645250002 ? "text" : "rating";
+                            <article class="support-cloud-public-question" data-scs-question="@question.QuestionId" data-scs-question-type="@questionType">
+                                <h3>@question.Text</h3>
+                                @if (questionType == "text")
+                                {
+                                    <textarea class="form-control" rows="3" required></textarea>
+                                }
+                                else
+                                {
+                                    <select class="form-select" required>
+                                        <option value="">Selecciona...</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                    </select>
+                                }
+                            </article>
+                        }
+                    </div>
+                </section>
+
+                <div class="support-cloud-public-actions">
+                    <button type="submit" class="btn btn-primary btn-lg">Enviar respuestas</button>
+                </div>
+            </form>
+        }
+        else if (Model.IsClosed && Model.Leaderboard.Count > 0)
+        {
+            <section class="support-cloud-card">
+                <div class="support-cloud-section-header">
+                    <div>
+                        <div class="support-cloud-kicker">Resultados</div>
+                        <h2 class="support-cloud-section-title">Ganadores</h2>
+                    </div>
+                </div>
+                <ol class="support-cloud-leaderboard support-cloud-leaderboard--public">
+                    @for (var i = 0; i < Model.Leaderboard.Count; i++)
+                    {
+                        var item = Model.Leaderboard[i];
+                        <li>
+                            <span>@(i + 1)</span>
+                            <strong>@item.FullName</strong>
+                            <em>@item.ScorePercent.ToString("N2")%</em>
+                        </li>
+                    }
+                </ol>
+            </section>
+
+            <section class="support-cloud-card">
+                <div class="support-cloud-section-header">
+                    <div>
+                        <div class="support-cloud-kicker">Preguntas</div>
+                        <h2 class="support-cloud-section-title">Detalle de conocimiento</h2>
+                    </div>
+                </div>
+                <div class="support-cloud-breakdown">
+                    @foreach (var stat in Model.QuestionStats)
+                    {
+                        var width = Math.Max(6, Math.Min(100, (int)Math.Round(stat.CorrectPercent)));
+                        <div class="support-cloud-breakdown__row">
+                            <div class="support-cloud-breakdown__head">
+                                <span class="support-cloud-breakdown__label">@stat.QuestionText</span>
+                                <span class="support-cloud-breakdown__value">@stat.CorrectPercent.ToString("N2")% correcto · @stat.TotalAnswers respuestas</span>
+                            </div>
+                            <div class="support-cloud-breakdown__track">
+                                <span class="support-cloud-breakdown__fill" style="width:@width%"></span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+    </main>
+
+    <script src="~/js/support-cloud-surveys.js" asp-append-version="true"></script>
+</body>
+</html>

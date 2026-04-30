@@ -950,6 +950,8 @@
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
             const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
             const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
+            const groupStateLabel = getCommonValue(group.rows, "stateLabel") || "Varios estados";
+            const groupStateTone = getCommonValue(group.rows, "stateTone") || first.stateTone || "";
             return `
                 <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
                     <td colspan="8">
@@ -960,11 +962,17 @@
                                 <div class="hardware-commercial-order__files">
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_ordendecompra")}
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_adjuntarproforma")}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_pagoaproveedor")}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_actadeentrega")}
+                                    ${renderCommercialGroupInvoiceChip(group.rows)}
                                 </div>
                             </div>
-                            ${validAction.ok
-                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(group.rows[0].actionLabel || "Gestionar")}</button>`
-                                : `<span class="hardware-table__submeta">${escapeHtml(validAction.message || "Sin botón")}</span>`}
+                            <div class="hardware-commercial-order__status">
+                                ${renderStatePill(groupStateLabel, groupStateTone)}
+                                ${validAction.ok
+                                    ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(group.rows[0].actionLabel || "Gestionar")}</button>`
+                                    : `<span class="hardware-table__submeta">${escapeHtml(validAction.message || "Sin botón")}</span>`}
+                            </div>
                         </div>
                     </td>
                 </tr>
@@ -993,7 +1001,7 @@
                     <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
                     <td>${escapeHtml(row?.provider || "-")}</td>
-                    <td class="hardware-table__state-cell"><span class="hardware-table__submeta">Gestionado por orden</span></td>
+                    <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
                             <span class="hardware-table__submeta">${editable ? "Editar" : "Gestionado por orden"}</span>
@@ -1005,18 +1013,52 @@
 
         function renderCommercialGroupFileLink(rows, fieldName) {
             const row = resolveOrderFileRecord(rows, fieldName);
-            const label = resolveFileLabel(fieldName).replace(/^Adjuntar\s+/i, "");
+            const label = resolveFileChipLabel(fieldName);
             const hasFile = hasExistingFile(row, fieldName);
             if (!hasFile) {
                 return `<span class="hardware-file-chip is-missing">${escapeHtml(label)} pendiente</span>`;
             }
 
             const fileName = resolveExistingFileName(row, fieldName);
+            if (!canDownloadCommercialFile(fieldName)) {
+                return `<span class="hardware-file-chip">${escapeHtml(label)}${fileName ? ` · ${escapeHtml(fileName)}` : ""}</span>`;
+            }
+
             return `
                 <a class="hardware-file-chip" href="${escapeHtml(buildDownloadUrl(row.recordId, fieldName))}" target="_blank" rel="noopener">
                     ${escapeHtml(label)}${fileName ? ` · ${escapeHtml(fileName)}` : ""}
                 </a>
             `;
+        }
+
+        function renderCommercialGroupInvoiceChip(rows) {
+            const invoiceNumbers = Array.from(new Set((Array.isArray(rows) ? rows : [])
+                .map(row => String(row?.invoiceNumber || "").trim())
+                .filter(Boolean)));
+
+            if (!invoiceNumbers.length) {
+                return `<span class="hardware-file-chip is-missing">Factura pendiente</span>`;
+            }
+
+            const label = invoiceNumbers.length === 1
+                ? `Factura · ${invoiceNumbers[0]}`
+                : `Facturas · ${formatNumber(invoiceNumbers.length)}`;
+            return `<span class="hardware-file-chip">${escapeHtml(label)}</span>`;
+        }
+
+        function resolveFileChipLabel(fieldName) {
+            switch (fieldName) {
+                case "cr07a_ordendecompra":
+                    return "ODC";
+                case "cr07a_adjuntarproforma":
+                    return "Proforma";
+                case "cr07a_pagoaproveedor":
+                    return "Pago proveedor";
+                case "cr07a_actadeentrega":
+                    return "Acta entrega";
+                default:
+                    return "Archivo";
+            }
         }
 
         function buildOwnerTables(rows) {
@@ -2966,6 +3008,14 @@
 
         function isOrderDocumentationFile(fieldName) {
             return fieldName === "cr07a_ordendecompra" || fieldName === "cr07a_adjuntarproforma";
+        }
+
+        function canDownloadCommercialFile(fieldName) {
+            if (!isSupplierPaymentEffectiveUser()) {
+                return true;
+            }
+
+            return fieldName === "cr07a_adjuntarproforma" || fieldName === "cr07a_pagoaproveedor";
         }
 
         function findDisplayGroup(key) {

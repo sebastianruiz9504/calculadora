@@ -1,7 +1,9 @@
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.Hardware;
 using CotizadorInterno.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace CotizadorInterno.Web.Filters;
@@ -19,6 +21,12 @@ public sealed class ModuleAccessFilter : IAsyncActionFilter
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
+        if (context.Filters.OfType<IAllowAnonymousFilter>().Any())
+        {
+            await next();
+            return;
+        }
+
         var user = context.HttpContext.User;
         if (user?.Identity?.IsAuthenticated != true)
         {

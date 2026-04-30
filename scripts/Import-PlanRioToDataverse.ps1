@@ -3,7 +3,8 @@ param(
     [string]$WorkbookPath = "App_Data/plan-rio.xlsx",
     [string]$PreferredSheetName = "plan corregido",
     [string[]]$FallbackSheetNames = @("Plan Rio ajustado", "Plan diario"),
-    [switch]$KeepExistingRows
+    [switch]$KeepExistingRows,
+    [switch]$OnlyEnsureSchema
 )
 
 $ErrorActionPreference = "Stop"
@@ -170,7 +171,7 @@ function New-IntegerAttribute([string]$SchemaName, [string]$Label, [int]$MinValu
     }
 }
 
-function New-DecimalAttribute([string]$SchemaName, [string]$Label) {
+function New-DecimalAttribute([string]$SchemaName, [string]$Label, [double]$MinValue = 0.0, [double]$MaxValue = 100.0, [int]$Precision = 2) {
     @{
         "@odata.type" = "Microsoft.Dynamics.CRM.DecimalAttributeMetadata"
         AttributeType = "Decimal"
@@ -179,9 +180,9 @@ function New-DecimalAttribute([string]$SchemaName, [string]$Label) {
         DisplayName = New-Label $Label
         Description = New-Label $Label
         RequiredLevel = New-RequiredLevel
-        MinValue = 0.0
-        MaxValue = 100.0
-        Precision = 2
+        MinValue = $MinValue
+        MaxValue = $MaxValue
+        Precision = $Precision
     }
 }
 
@@ -264,6 +265,9 @@ function Ensure-Columns {
     Ensure-Attribute "cr07a_objetivo" (New-MemoAttribute "cr07a_Objetivo" "Objetivo" 2000)
     Ensure-Attribute "cr07a_estado" (New-StringAttribute "cr07a_Estado" "Estado" 80)
     Ensure-Attribute "cr07a_duracionreal" (New-IntegerAttribute "cr07a_DuracionReal" "Duracion real" 0 3000)
+    Ensure-Attribute "cr07a_distanciareal" (New-DecimalAttribute "cr07a_DistanciaReal" "Distancia real" 0.0 1000.0 2)
+    Ensure-Attribute "cr07a_fcpromedio" (New-IntegerAttribute "cr07a_FCPromedio" "FC promedio" 0 250)
+    Ensure-Attribute "cr07a_potenciapromedio" (New-IntegerAttribute "cr07a_PotenciaPromedio" "Potencia promedio" 0 2000)
     Ensure-Attribute "cr07a_notas" (New-MemoAttribute "cr07a_Notas" "Notas" 4000)
     Ensure-Attribute "cr07a_origenhoja" (New-StringAttribute "cr07a_OrigenHoja" "Origen hoja" 120)
     Ensure-Attribute "cr07a_filaorigen" (New-IntegerAttribute "cr07a_FilaOrigen" "Fila origen" 0 1000000)
@@ -493,6 +497,9 @@ function Read-PlanRows([string]$Path) {
                 Objetivo = Get-ByHeader $row @("Objetivo")
                 Estado = Get-ByHeader $row @("Estado")
                 DuracionReal = Convert-Int (Get-ByHeader $row @("Duración real", "Duracion real", "Duración real (min)", "Duracion real (min)"))
+                DistanciaReal = Convert-Decimal (Get-ByHeader $row @("Distancia", "Distancia real", "Distancia real (km)", "Distancia (km)"))
+                FCPromedio = Convert-Int (Get-ByHeader $row @("FC promedio", "Frecuencia cardiaca promedio", "Frecuencia cardíaca promedio", "HR promedio"))
+                PotenciaPromedio = Convert-Int (Get-ByHeader $row @("Potencia promedio", "Potencia media", "Watts promedio", "W promedio"))
                 Notas = Get-ByHeader $row @("Notas", "Comentarios")
             }
         }
@@ -575,6 +582,9 @@ function Import-Rows($Metadata, [object[]]$Rows) {
         Add-Value $payload "cr07a_objetivo" $row.Objetivo 2000
         Add-Value $payload "cr07a_estado" $row.Estado 80
         Add-Value $payload "cr07a_duracionreal" $row.DuracionReal
+        Add-Value $payload "cr07a_distanciareal" $row.DistanciaReal
+        Add-Value $payload "cr07a_fcpromedio" $row.FCPromedio
+        Add-Value $payload "cr07a_potenciapromedio" $row.PotenciaPromedio
         Add-Value $payload "cr07a_notas" $row.Notas 4000
         Add-Value $payload "cr07a_origenhoja" $row.SourceSheet 120
         Add-Value $payload "cr07a_filaorigen" $row.RowNumber
@@ -591,13 +601,23 @@ if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
     throw "Azure CLI no esta disponible para obtener token de Dataverse."
 }
 
-if (-not (Test-Path -LiteralPath $WorkbookPath)) {
-    throw "No existe el archivo $WorkbookPath."
-}
-
 $script:AccessToken = az account get-access-token --resource $DataverseUrl --query accessToken -o tsv
 if ([string]::IsNullOrWhiteSpace($script:AccessToken)) {
     throw "No se pudo obtener token para $DataverseUrl."
+}
+
+Ensure-Table
+Ensure-Columns
+Publish-PlanRioTable
+$metadata = Get-TableMetadata
+
+if ($OnlyEnsureSchema) {
+    Write-Host "Esquema verificado. Tabla: $($metadata.EntitySetName) ($TableLogicalName)."
+    return
+}
+
+if (-not (Test-Path -LiteralPath $WorkbookPath)) {
+    throw "No existe el archivo $WorkbookPath."
 }
 
 Write-Host "Leyendo $WorkbookPath..."
@@ -606,11 +626,6 @@ if ($rows.Count -eq 0) {
     throw "El archivo no contiene filas de entrenamiento para importar."
 }
 Write-Host "Filas detectadas: $($rows.Count). Hoja: $($rows[0].SourceSheet)."
-
-Ensure-Table
-Ensure-Columns
-Publish-PlanRioTable
-$metadata = Get-TableMetadata
 
 $deleted = Remove-ExistingRows $metadata
 if (-not $KeepExistingRows) {

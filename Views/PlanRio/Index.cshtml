@@ -59,30 +59,41 @@
 </div>
 
 <div class="modal fade" id="workoutModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <form class="modal-content" id="workoutForm">
             <div class="modal-header">
                 <h5 class="modal-title">Registrar entreno</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
-                <input type="hidden" id="workoutId" />
-                <div class="mb-3">
-                    <label class="form-label" for="actualDuration">Duración real (min)</label>
-                    <input class="form-control" id="actualDuration" type="number" min="0" required />
+                <input type="hidden" id="workoutKey" />
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="actualDuration">Duración (min)</label>
+                        <input class="form-control" id="actualDuration" type="number" min="1" max="3000" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="actualDistance">Distancia</label>
+                        <input class="form-control" id="actualDistance" type="number" min="0.01" max="1000" step="0.01" inputmode="decimal" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="averageHeartRate">FC promedio</label>
+                        <input class="form-control" id="averageHeartRate" type="number" min="1" max="250" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="averagePower">Potencia promedio</label>
+                        <input class="form-control" id="averagePower" type="number" min="0" max="2000" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="notes">Notas</label>
+                        <textarea class="form-control" id="notes" rows="3"></textarea>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label" for="effort">Esfuerzo (RPE 1-10)</label>
-                    <input class="form-control" id="effort" type="number" min="1" max="10" required />
-                </div>
-                <div>
-                    <label class="form-label" for="notes">Notas</label>
-                    <textarea class="form-control" id="notes" rows="3"></textarea>
-                </div>
+                <div class="plan-rio__form-status" id="workoutFormStatus" aria-live="polite"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+                <button type="submit" class="btn btn-primary" id="workoutSubmit">Guardar</button>
             </div>
         </form>
     </div>
@@ -93,6 +104,7 @@
         window.planRioWorkouts = @Html.Raw(workoutsJson);
         window.planRioWeeks = @Html.Raw(weeksJson);
         window.planRioWeekLabel = @Html.Raw(JsonSerializer.Serialize(Model.WeekLabel));
+        window.planRioRegisterUrl = @Html.Raw(JsonSerializer.Serialize(Url.Action("Register", "PlanRio")));
     </script>
     <script src="~/js/plan-rio.js" asp-append-version="true"></script>
 }

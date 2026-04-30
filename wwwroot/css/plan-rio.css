@@ -21,6 +21,14 @@
 .plan-rio__status { font-size: .85rem; font-weight: 600; margin-bottom: .75rem; }
 .plan-rio__status.done { color: #198754; }
 .plan-rio__status.pending { color: #dc3545; }
+.plan-rio__registered { border-top: 1px solid #e5e7eb; display: grid; gap: .35rem; margin: .25rem 0 .85rem; padding-top: .65rem; }
+.plan-rio__registered div { display: flex; gap: .5rem; justify-content: space-between; }
+.plan-rio__registered strong { color: #4b5563; font-size: .75rem; text-transform: uppercase; }
+.plan-rio__registered span { color: #111827; text-align: right; white-space: pre-line; }
+.plan-rio__form-status { display: none; font-size: .9rem; margin-top: .9rem; }
+.plan-rio__form-status.is-visible { display: block; }
+.plan-rio__form-status.is-error { color: #dc3545; }
+.plan-rio__form-status.is-saving { color: #6b7280; }
 .plan-rio__charts { display: grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap: 1rem; }
 .plan-rio__card { background: #fff; border: 1px solid #dde3ea; border-radius: 8px; padding: 1rem; }
 .plan-rio__card h2 { font-size: 1rem; margin-bottom: .75rem; }

@@ -21,9 +21,28 @@ public sealed class PlanRioWorkoutDto
     public string Objective { get; set; } = "";
     public string Status { get; set; } = "";
     public int ActualMin { get; set; }
+    public decimal? ActualDistance { get; set; }
+    public int AverageHeartRate { get; set; }
+    public int? AveragePower { get; set; }
     public string Notes { get; set; } = "";
     public string SourceSheet { get; set; } = "";
     public int SourceRow { get; set; }
+}
+
+public sealed class PlanRioWorkoutSaveRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public int DurationMinutes { get; set; }
+    public decimal Distance { get; set; }
+    public int AverageHeartRate { get; set; }
+    public int? AveragePower { get; set; }
+    public string Notes { get; set; } = "";
+}
+
+public sealed class PlanRioWorkoutSaveResultDto
+{
+    public string Message { get; set; } = "";
+    public PlanRioWorkoutDto? Record { get; set; }
 }
 
 public sealed class PlanRioWeekDto

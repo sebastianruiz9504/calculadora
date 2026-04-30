@@ -490,6 +490,13 @@
     gap: 3px;
 }
 
+.hardware-commercial-order__status {
+    display: grid;
+    gap: 8px;
+    justify-items: end;
+    min-width: 150px;
+}
+
 .hardware-commercial-order strong {
     color: var(--hardware-ink);
     font-size: 14px;
@@ -499,6 +506,14 @@
 .hardware-commercial-order span {
     color: var(--hardware-muted);
     font-size: 13px;
+}
+
+.hardware-commercial-order .hardware-file-chip {
+    color: var(--hardware-brand);
+}
+
+.hardware-commercial-order .hardware-file-chip.is-missing {
+    color: var(--hardware-muted);
 }
 
 .hardware-commercial-order__files {

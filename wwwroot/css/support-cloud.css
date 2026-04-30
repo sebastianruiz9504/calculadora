@@ -281,6 +281,271 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.support-cloud-survey-admin {
+    margin-top: 24px;
+}
+
+.support-cloud-survey-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+}
+
+.support-cloud-qr-panel {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 180px minmax(0, 1fr);
+    align-items: center;
+    padding: 16px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: var(--support-cloud-soft);
+}
+
+.support-cloud-qr-panel[hidden] {
+    display: none;
+}
+
+.support-cloud-qr-panel img {
+    width: 180px;
+    height: 180px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.support-cloud-qr-panel__content,
+.support-cloud-qr-panel__actions,
+.support-cloud-survey-stats,
+.support-cloud-public-question-list {
+    display: grid;
+    gap: 12px;
+}
+
+.support-cloud-qr-panel__content a {
+    color: var(--support-cloud-brand);
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.support-cloud-qr-panel__actions {
+    grid-template-columns: repeat(2, minmax(0, max-content));
+    align-items: center;
+}
+
+.support-cloud-survey-detail,
+.support-cloud-survey-stat-columns {
+    display: grid;
+    gap: 16px;
+}
+
+.support-cloud-survey-stat-columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.support-cloud-survey-stat-row {
+    display: grid;
+    gap: 4px;
+    padding: 10px 0;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.support-cloud-survey-stat-row strong {
+    color: var(--support-cloud-ink);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.support-cloud-survey-stat-row span {
+    color: var(--support-cloud-muted);
+    font-size: 12px;
+}
+
+.support-cloud-survey-options {
+    display: grid;
+    gap: 10px;
+}
+
+.support-cloud-survey-pick-list {
+    display: grid;
+    gap: 8px;
+    max-height: 260px;
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: var(--support-cloud-soft);
+}
+
+.support-cloud-survey-pick {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d6e1ec;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--support-cloud-ink);
+    text-align: left;
+}
+
+.support-cloud-survey-pick strong {
+    color: var(--support-cloud-ink);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.support-cloud-survey-pick span {
+    color: var(--support-cloud-muted);
+    font-size: 12px;
+}
+
+.support-cloud-survey-options[hidden],
+.support-cloud-survey-question-form [hidden] {
+    display: none;
+}
+
+.support-cloud-survey-option {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) max-content 110px max-content;
+    align-items: center;
+}
+
+.support-cloud-survey-option__check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--support-cloud-ink);
+    font-size: 13px;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.support-cloud-leaderboard {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.support-cloud-leaderboard li {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) max-content;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: var(--support-cloud-soft);
+}
+
+.support-cloud-leaderboard span {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--support-cloud-brand);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.support-cloud-leaderboard strong {
+    min-width: 0;
+    color: var(--support-cloud-ink);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.support-cloud-leaderboard em {
+    color: var(--support-cloud-brand);
+    font-style: normal;
+    font-weight: 700;
+}
+
+.support-cloud-table__row.is-selected {
+    background: var(--support-cloud-brand-soft);
+}
+
+.support-cloud-public-body {
+    min-height: 100vh;
+    margin: 0;
+    background: #f4f8fc;
+    color: var(--support-cloud-ink);
+}
+
+.support-cloud-public {
+    display: grid;
+    gap: 18px;
+    width: min(980px, calc(100% - 28px));
+    margin: 0 auto;
+    padding: 24px 0 36px;
+}
+
+.support-cloud-public-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 24px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.support-cloud-public-form,
+.support-cloud-public-question-list {
+    display: grid;
+    gap: 18px;
+}
+
+.support-cloud-public-question {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: var(--support-cloud-soft);
+}
+
+.support-cloud-public-question h3 {
+    margin: 0;
+    color: var(--support-cloud-ink);
+    font-size: 16px;
+    line-height: 1.45;
+}
+
+.support-cloud-public-options {
+    display: grid;
+    gap: 10px;
+}
+
+.support-cloud-public-options label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 11px 12px;
+    border: 1px solid #d6e1ec;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--support-cloud-ink);
+}
+
+.support-cloud-public-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.support-cloud-leaderboard--public li {
+    grid-template-columns: 42px minmax(0, 1fr) max-content;
+    padding: 14px;
+}
+
 .support-cloud-training-owner-bars {
     display: grid;
     gap: 8px;
@@ -749,6 +1014,11 @@ body.support-cloud-modal-open {
     .support-cloud-training-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .support-cloud-survey-grid,
+    .support-cloud-survey-stat-columns {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 900px) {
@@ -778,6 +1048,20 @@ body.support-cloud-modal-open {
     }
 
     .support-cloud-training-total-card {
+        grid-template-columns: 1fr;
+    }
+
+    .support-cloud-qr-panel,
+    .support-cloud-survey-option,
+    .support-cloud-public-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .support-cloud-public-hero {
+        flex-direction: column;
+    }
+
+    .support-cloud-qr-panel__actions {
         grid-template-columns: 1fr;
     }
 

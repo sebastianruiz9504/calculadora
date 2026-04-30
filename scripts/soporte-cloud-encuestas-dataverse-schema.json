@@ -1,0 +1,131 @@
+{
+  "optionSets": {
+    "componentOptions": [
+      { "label": "Preguntas de conocimiento", "value": 645250000 },
+      { "label": "Satisfaccion", "value": 645250001 }
+    ],
+    "answerTypeOptions": [
+      { "label": "Seleccion unica", "value": 645250000 },
+      { "label": "Escala 1 a 5", "value": 645250001 },
+      { "label": "Texto abierto", "value": 645250002 }
+    ],
+    "sessionStateOptions": [
+      { "label": "Borrador", "value": 645250000 },
+      { "label": "Abierta", "value": 645250001 },
+      { "label": "Cerrada", "value": 645250002 }
+    ]
+  },
+  "tables": [
+    {
+      "displayName": "Tema de capacitacion",
+      "displayCollectionName": "Temas de capacitacion",
+      "logicalName": "cr07a_capacitaciontema",
+      "entitySetName": "cr07a_capacitaciontemas",
+      "primaryIdAttribute": "cr07a_capacitaciontemaid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_descripcion", "displayName": "Descripcion", "type": "MultilineText", "maxLength": 2000, "required": false },
+        { "logicalName": "cr07a_activo", "displayName": "Activo", "type": "TwoOptions", "required": false, "defaultValue": true }
+      ]
+    },
+    {
+      "displayName": "Pregunta de capacitacion",
+      "displayCollectionName": "Preguntas de capacitacion",
+      "logicalName": "cr07a_capacitacionpregunta",
+      "entitySetName": "cr07a_capacitacionpreguntas",
+      "primaryIdAttribute": "cr07a_capacitacionpreguntaid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_tema", "displayName": "Tema", "type": "Lookup", "targetTable": "cr07a_capacitaciontema", "required": false },
+        { "logicalName": "cr07a_componente", "displayName": "Componente", "type": "Choice", "required": true, "optionsRef": "componentOptions" },
+        { "logicalName": "cr07a_tiporespuesta", "displayName": "Tipo de respuesta", "type": "Choice", "required": true, "optionsRef": "answerTypeOptions" },
+        { "logicalName": "cr07a_pregunta", "displayName": "Pregunta", "type": "MultilineText", "maxLength": 4000, "required": true },
+        { "logicalName": "cr07a_orden", "displayName": "Orden", "type": "WholeNumber", "required": false, "minValue": 0, "maxValue": 1000 },
+        { "logicalName": "cr07a_puntajemaximo", "displayName": "Puntaje maximo", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 1000, "precision": 2 },
+        { "logicalName": "cr07a_activa", "displayName": "Activa", "type": "TwoOptions", "required": false, "defaultValue": true }
+      ]
+    },
+    {
+      "displayName": "Opcion de capacitacion",
+      "displayCollectionName": "Opciones de capacitacion",
+      "logicalName": "cr07a_capacitacionopcion",
+      "entitySetName": "cr07a_capacitacionopcions",
+      "primaryIdAttribute": "cr07a_capacitacionopcionid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_pregunta", "displayName": "Pregunta", "type": "Lookup", "targetTable": "cr07a_capacitacionpregunta", "required": true },
+        { "logicalName": "cr07a_opcion", "displayName": "Opcion", "type": "MultilineText", "maxLength": 2000, "required": true },
+        { "logicalName": "cr07a_escorrecta", "displayName": "Es correcta", "type": "TwoOptions", "required": false, "defaultValue": false },
+        { "logicalName": "cr07a_puntos", "displayName": "Puntos", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 1000, "precision": 2 },
+        { "logicalName": "cr07a_orden", "displayName": "Orden", "type": "WholeNumber", "required": false, "minValue": 0, "maxValue": 1000 },
+        { "logicalName": "cr07a_activa", "displayName": "Activa", "type": "TwoOptions", "required": false, "defaultValue": true }
+      ]
+    },
+    {
+      "displayName": "Sesion de encuesta de capacitacion",
+      "displayCollectionName": "Sesiones de encuesta de capacitacion",
+      "logicalName": "cr07a_capacitacionsesion",
+      "entitySetName": "cr07a_capacitacionsesions",
+      "primaryIdAttribute": "cr07a_capacitacionsesionid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_tema", "displayName": "Tema", "type": "Lookup", "targetTable": "cr07a_capacitaciontema", "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": false },
+        { "logicalName": "cr07a_fecha", "displayName": "Fecha", "type": "DateTime", "behavior": "UserLocal", "format": "DateOnly", "required": true },
+        { "logicalName": "cr07a_codigo", "displayName": "Codigo publico", "type": "Text", "maxLength": 40, "required": true },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Choice", "required": true, "optionsRef": "sessionStateOptions" },
+        { "logicalName": "cr07a_cerradaen", "displayName": "Cerrada en", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false }
+      ]
+    },
+    {
+      "displayName": "Participante de encuesta de capacitacion",
+      "displayCollectionName": "Participantes de encuesta de capacitacion",
+      "logicalName": "cr07a_capacitacionparticipante",
+      "entitySetName": "cr07a_capacitacionparticipantes",
+      "primaryIdAttribute": "cr07a_capacitacionparticipanteid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_sesion", "displayName": "Sesion", "type": "Lookup", "targetTable": "cr07a_capacitacionsesion", "required": true },
+        { "logicalName": "cr07a_email", "displayName": "Correo", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_empresa", "displayName": "Empresa", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_puntaje", "displayName": "Puntaje", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 100000, "precision": 2 },
+        { "logicalName": "cr07a_puntajemaximo", "displayName": "Puntaje maximo", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 100000, "precision": 2 },
+        { "logicalName": "cr07a_porcentaje", "displayName": "Porcentaje", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 100, "precision": 2 },
+        { "logicalName": "cr07a_respondidaen", "displayName": "Respondida en", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false }
+      ]
+    },
+    {
+      "displayName": "Respuesta de encuesta de capacitacion",
+      "displayCollectionName": "Respuestas de encuesta de capacitacion",
+      "logicalName": "cr07a_capacitacionrespuesta",
+      "entitySetName": "cr07a_capacitacionrespuestas",
+      "primaryIdAttribute": "cr07a_capacitacionrespuestaid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_sesion", "displayName": "Sesion", "type": "Lookup", "targetTable": "cr07a_capacitacionsesion", "required": true },
+        { "logicalName": "cr07a_participante", "displayName": "Participante", "type": "Lookup", "targetTable": "cr07a_capacitacionparticipante", "required": true },
+        { "logicalName": "cr07a_pregunta", "displayName": "Pregunta", "type": "Lookup", "targetTable": "cr07a_capacitacionpregunta", "required": true },
+        { "logicalName": "cr07a_opcion", "displayName": "Opcion", "type": "Lookup", "targetTable": "cr07a_capacitacionopcion", "required": false },
+        { "logicalName": "cr07a_componente", "displayName": "Componente", "type": "Choice", "required": true, "optionsRef": "componentOptions" },
+        { "logicalName": "cr07a_puntos", "displayName": "Puntos", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 1000, "precision": 2 },
+        { "logicalName": "cr07a_puntajemaximo", "displayName": "Puntaje maximo", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 1000, "precision": 2 },
+        { "logicalName": "cr07a_correcta", "displayName": "Correcta", "type": "TwoOptions", "required": false, "defaultValue": false },
+        { "logicalName": "cr07a_valornumerico", "displayName": "Valor numerico", "type": "Decimal", "required": false, "minValue": 0, "maxValue": 100, "precision": 2 },
+        { "logicalName": "cr07a_respuestatexto", "displayName": "Respuesta texto", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_respondidaen", "displayName": "Respondida en", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false }
+      ]
+    }
+  ]
+}

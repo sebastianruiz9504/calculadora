@@ -27,6 +27,9 @@ public sealed partial class DataverseService
     private const string PlanRioObjectiveField = "cr07a_objetivo";
     private const string PlanRioStatusField = "cr07a_estado";
     private const string PlanRioActualMinutesField = "cr07a_duracionreal";
+    private const string PlanRioActualDistanceField = "cr07a_distanciareal";
+    private const string PlanRioAverageHeartRateField = "cr07a_fcpromedio";
+    private const string PlanRioAveragePowerField = "cr07a_potenciapromedio";
     private const string PlanRioNotesField = "cr07a_notas";
     private const string PlanRioSourceSheetField = "cr07a_origenhoja";
     private const string PlanRioSourceRowField = "cr07a_filaorigen";
@@ -86,37 +89,50 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<PlanRioWorkoutSaveResultDto> SavePlanRioWorkoutAsync(
+        PlanRioWorkoutSaveRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            PlanRioLogicalName,
+            PlanRioEntitySetName,
+            PlanRioPrimaryIdField,
+            PlanRioPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var recordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
+        var payload = BuildPlanRioSavePayload(request);
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({recordId})",
+            "PATCH",
+            payload,
+            httpContext.User,
+            ct);
+
+        var record = await LoadPlanRioWorkoutByIdAsync(metadata, recordId, httpContext.User, ct);
+        if (record is not null)
+            ApplyPlanRioWeekLabels(new[] { record });
+
+        return new PlanRioWorkoutSaveResultDto
+        {
+            Message = "Entreno registrado correctamente.",
+            Record = record
+        };
+    }
+
     private async Task<List<PlanRioWorkoutDto>> LoadPlanRioRowsAsync(
         RhEntityMetadata metadata,
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var selectFields = new[]
-        {
-            metadata.PrimaryIdField,
-            metadata.PrimaryNameField,
-            PlanRioDateField,
-            PlanRioDayField,
-            PlanRioWeekField,
-            PlanRioWeekStartField,
-            PlanRioPhaseField,
-            PlanRioDisciplineField,
-            PlanRioSessionField,
-            PlanRioMinutesField,
-            PlanRioHoursField,
-            PlanRioVolumeField,
-            PlanRioIntensityField,
-            PlanRioDetailField,
-            PlanRioNutritionField,
-            PlanRioObjectiveField,
-            PlanRioStatusField,
-            PlanRioActualMinutesField,
-            PlanRioNotesField,
-            PlanRioSourceSheetField,
-            PlanRioSourceRowField
-        }
-        .Where(value => !string.IsNullOrWhiteSpace(value))
-        .Distinct(StringComparer.OrdinalIgnoreCase);
+        var selectFields = BuildPlanRioSelectFields(metadata);
 
         var relativeUrl =
             $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields)}" +
@@ -127,6 +143,55 @@ public sealed partial class DataverseService
             .Select((item, index) => BuildPlanRioWorkout(item, metadata, index + 1))
             .Where(item => item is not null)
             .Cast<PlanRioWorkoutDto>()
+            .ToList();
+    }
+
+    private async Task<PlanRioWorkoutDto?> LoadPlanRioWorkoutByIdAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var selectFields = BuildPlanRioSelectFields(metadata);
+        var relativeUrl =
+            $"/api/data/v9.2/{metadata.EntitySetName}({recordId})?$select={string.Join(",", selectFields)}";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        using var doc = JsonDocument.Parse(json);
+        return BuildPlanRioWorkout(doc.RootElement, metadata, 1);
+    }
+
+    private static IReadOnlyList<string> BuildPlanRioSelectFields(RhEntityMetadata metadata)
+    {
+        return new[]
+            {
+                metadata.PrimaryIdField,
+                metadata.PrimaryNameField,
+                PlanRioDateField,
+                PlanRioDayField,
+                PlanRioWeekField,
+                PlanRioWeekStartField,
+                PlanRioPhaseField,
+                PlanRioDisciplineField,
+                PlanRioSessionField,
+                PlanRioMinutesField,
+                PlanRioHoursField,
+                PlanRioVolumeField,
+                PlanRioIntensityField,
+                PlanRioDetailField,
+                PlanRioNutritionField,
+                PlanRioObjectiveField,
+                PlanRioStatusField,
+                PlanRioActualMinutesField,
+                PlanRioActualDistanceField,
+                PlanRioAverageHeartRateField,
+                PlanRioAveragePowerField,
+                PlanRioNotesField,
+                PlanRioSourceSheetField,
+                PlanRioSourceRowField
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -161,9 +226,50 @@ public sealed partial class DataverseService
             Objective = ReadString(item, PlanRioObjectiveField).Trim(),
             Status = ReadString(item, PlanRioStatusField).Trim(),
             ActualMin = ReadInt(item, PlanRioActualMinutesField),
+            ActualDistance = ReadDecimal(item, PlanRioActualDistanceField),
+            AverageHeartRate = ReadInt(item, PlanRioAverageHeartRateField),
+            AveragePower = ReadNullableInt(item, PlanRioAveragePowerField),
             Notes = ReadString(item, PlanRioNotesField).Trim(),
             SourceSheet = ReadString(item, PlanRioSourceSheetField).Trim(),
             SourceRow = sourceRow
+        };
+    }
+
+    private static Dictionary<string, object?> BuildPlanRioSavePayload(PlanRioWorkoutSaveRequestDto request)
+    {
+        if (request.DurationMinutes <= 0 || request.DurationMinutes > 3000)
+            throw new InvalidOperationException("La duracion debe estar entre 1 y 3000 minutos.");
+
+        if (request.Distance <= 0m || request.Distance > 1000m)
+            throw new InvalidOperationException("La distancia debe estar entre 0.01 y 1000.");
+
+        if (request.AverageHeartRate <= 0 || request.AverageHeartRate > 250)
+            throw new InvalidOperationException("La FC promedio debe estar entre 1 y 250.");
+
+        if (request.AveragePower is < 0 or > 2000)
+            throw new InvalidOperationException("La potencia promedio debe estar entre 0 y 2000.");
+
+        var notes = request.Notes?.Trim() ?? "";
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [PlanRioActualMinutesField] = request.DurationMinutes,
+            [PlanRioActualDistanceField] = Math.Round(request.Distance, 2, MidpointRounding.AwayFromZero),
+            [PlanRioAverageHeartRateField] = request.AverageHeartRate,
+            [PlanRioAveragePowerField] = request.AveragePower,
+            [PlanRioNotesField] = string.IsNullOrWhiteSpace(notes) ? null : notes
+        };
+    }
+
+    private static int? ReadNullableInt(JsonElement el, string name)
+    {
+        if (!el.TryGetProperty(name, out var p) || p.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+
+        return p.ValueKind switch
+        {
+            JsonValueKind.Number => p.TryGetInt32(out var v) ? v : null,
+            JsonValueKind.String => int.TryParse(p.GetString(), out var v) ? v : null,
+            _ => null
         };
     }
 
