@@ -3,6 +3,7 @@ namespace CotizadorInterno.Web.Models.PlanRio;
 public sealed class PlanRioWorkoutDto
 {
     public int Id { get; set; }
+    public string RecordId { get; set; } = "";
     public DateOnly? Date { get; set; }
     public string Day { get; set; } = "";
     public string WeekKey { get; set; } = "";
@@ -11,6 +12,18 @@ public sealed class PlanRioWorkoutDto
     public string Workout { get; set; } = "";
     public string Detail { get; set; } = "";
     public int GoalMin { get; set; }
+    public decimal Hours { get; set; }
+    public string Phase { get; set; } = "";
+    public string Discipline { get; set; } = "";
+    public string VolumeObjective { get; set; } = "";
+    public string IntensityZone { get; set; } = "";
+    public string Nutrition { get; set; } = "";
+    public string Objective { get; set; } = "";
+    public string Status { get; set; } = "";
+    public int ActualMin { get; set; }
+    public string Notes { get; set; } = "";
+    public string SourceSheet { get; set; } = "";
+    public int SourceRow { get; set; }
 }
 
 public sealed class PlanRioWeekDto

@@ -18,7 +18,11 @@
             <h1>Entrenamientos semanales</h1>
             <p class="mb-1" id="weekLabel">@Model.WeekLabel</p>
             <small class="text-muted">
-                Fuente: hoja <strong>@Model.SourceSheet</strong> - @Model.SourcePath
+                Fuente: <strong>@Model.SourcePath</strong>
+                @if (!string.IsNullOrWhiteSpace(Model.SourceSheet))
+                {
+                    <span> | Origen: <strong>@Model.SourceSheet</strong></span>
+                }
                 @if (!string.IsNullOrWhiteSpace(Model.DetailColumnName))
                 {
                     <span> | Detalle: <strong>@Model.DetailColumnName</strong></span>

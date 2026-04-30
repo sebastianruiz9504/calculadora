@@ -7,7 +7,14 @@
     weekLabel: item.weekLabel || window.planRioWeekLabel || 'Semana no disponible',
     type: item.workout || '',
     detail: item.detail || '',
-    goalMin: Number(item.goalMin || 0)
+    goalMin: Number(item.goalMin || 0),
+    phase: item.phase || '',
+    discipline: item.discipline || '',
+    volumeObjective: item.volumeObjective || '',
+    intensityZone: item.intensityZone || '',
+    nutrition: item.nutrition || '',
+    objective: item.objective || '',
+    status: item.status || ''
   }));
   const weeks = (window.planRioWeeks || []).map(item => ({
     key: item.key || '',
@@ -56,6 +63,24 @@
 
   const save = () => localStorage.setItem(storageKey, JSON.stringify(state));
 
+  const buildDetailRows = item => {
+    const rows = [
+      ['Detalle', item.detail],
+      ['Zona', item.intensityZone],
+      ['Volumen', item.volumeObjective],
+      ['Nutrición', item.nutrition],
+      ['Objetivo', item.objective]
+    ].filter(([, value]) => String(value || '').trim().length > 0);
+
+    if (rows.length === 0) {
+      return '<div class="plan-rio__detail-empty">Sin detalle en Dataverse</div>';
+    }
+
+    return rows.map(([label, value]) => (
+      `<div class="plan-rio__detail-row"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`
+    )).join('');
+  };
+
   const syncWeekPanel = () => {
     const selectedWeek = getSelectedWeek();
     const visiblePlan = getVisiblePlan();
@@ -85,9 +110,15 @@
     weekGrid.innerHTML = plan.map(item => {
       const entry = getEntry(item.id);
       const dateLabel = formatDate(item.date);
-      const meta = [escapeHtml(item.type), item.goalMin > 0 ? `Meta: ${item.goalMin} min` : 'Meta no definida']
+      const meta = [
+        escapeHtml(item.discipline),
+        escapeHtml(item.type),
+        escapeHtml(item.phase),
+        item.goalMin > 0 ? `Meta: ${item.goalMin} min` : 'Meta no definida'
+      ]
         .filter(Boolean)
         .join('<br>');
+      const status = item.status || (entry.done ? 'Completado' : 'Pendiente');
 
       return `<article class="plan-rio__day ${entry.active ? 'is-active' : ''}">
           <div class="plan-rio__tags">
@@ -96,8 +127,8 @@
           </div>
           <h3>${escapeHtml(item.day || 'Día sin definir')}</h3>
           <div class="plan-rio__meta">${meta}</div>
-          <div class="plan-rio__detail">${escapeHtml(item.detail || 'Sin detalle en la hoja')}</div>
-          <div class="plan-rio__status ${entry.done ? 'done' : 'pending'}">${entry.done ? 'Completado' : 'Pendiente'}</div>
+          <div class="plan-rio__detail">${buildDetailRows(item)}</div>
+          <div class="plan-rio__status ${entry.done ? 'done' : 'pending'}">${escapeHtml(status)}</div>
           <div class="d-flex gap-2 flex-wrap">
             <button class="btn btn-sm btn-outline-primary" data-action="active" data-id="${item.id}">Estoy haciéndolo</button>
             <button class="btn btn-sm btn-primary" data-action="register" data-id="${item.id}">Registrar</button>

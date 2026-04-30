@@ -9,6 +9,7 @@ using CotizadorInterno.Web.Models.Licenciamiento;
 using CotizadorInterno.Web.Models.Metricas;
 using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Models.Permissions;
+using CotizadorInterno.Web.Models.PlanRio;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Models.RH;
@@ -63,6 +64,7 @@ public interface IDataverseService
     Task<CopiersEquipmentSaveResultDto> SaveCopiersEquipmentAsync(CopiersEquipmentSaveRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentMovementSaveResultDto> RegisterCopiersEquipmentMovementAsync(CopiersEquipmentMovementSaveRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentClientSaveResultDto> SaveCopiersEquipmentClientAsync(CopiersEquipmentClientSaveRequestDto request, CancellationToken ct = default);
+    Task<PlanRioPageViewModel> GetPlanRioPageAsync(CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadCopiersMaintenanceAttachmentAsync(string maintenanceId, CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> SaveCopiersMaintenanceAsync(CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveRequestDto request, CancellationToken ct = default);
