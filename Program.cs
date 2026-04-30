@@ -27,6 +27,7 @@ builder.Services.AddDownstreamApi("Dataverse", options =>
 builder.Services.AddScoped<CotizadorInterno.Web.Services.Calculator.IQuoteCalculator, CotizadorInterno.Web.Services.Calculator.QuoteCalculator>();
 builder.Services.AddHttpClient();
 builder.Services.Configure<SiigoOptions>(builder.Configuration.GetSection("Siigo"));
+builder.Services.Configure<M365Options>(builder.Configuration.GetSection("M365"));
 builder.Services.AddHttpClient<ISiigoService, SiigoService>((serviceProvider, client) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -50,6 +51,7 @@ builder.Services.AddMicrosoftIdentityConsentHandler();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
+builder.Services.AddScoped<IM365TenantConnectionService, M365TenantConnectionService>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));

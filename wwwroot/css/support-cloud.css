@@ -301,6 +301,29 @@
     font-weight: 650;
 }
 
+.support-cloud-summary__value--compact {
+    font-size: 1rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.support-cloud-report-summary .support-cloud-summary__card {
+    align-content: start;
+}
+
+.support-cloud-report-controls {
+    align-items: end;
+}
+
+.support-cloud-consent-card[hidden] {
+    display: none;
+}
+
+.support-cloud-report-url {
+    font-family: Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+}
+
 .support-cloud-creators {
     display: grid;
     gap: 12px;

@@ -1,0 +1,32 @@
+{
+  "optionSets": {},
+  "tables": [
+    {
+      "displayName": "Conexion Microsoft 365",
+      "displayCollectionName": "Conexiones Microsoft 365",
+      "logicalName": "cr07a_m365tenantconnection",
+      "entitySetName": "cr07a_m365tenantconnections",
+      "primaryIdAttribute": "cr07a_m365tenantconnectionid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": false },
+        { "logicalName": "cr07a_clienteidinterno", "displayName": "Cliente interno", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_tenantid", "displayName": "Tenant ID", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_tenanthint", "displayName": "Tenant solicitado", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_estadoconexion", "displayName": "Estado conexion", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_fechaconexion", "displayName": "Fecha conexion", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false },
+        { "logicalName": "cr07a_permisossolicitados", "displayName": "Permisos solicitados", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_resultadoconsentimiento", "displayName": "Resultado consentimiento", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_adminconsent", "displayName": "Admin consent", "type": "TwoOptions", "required": false, "defaultValue": false },
+        { "logicalName": "cr07a_scopeconsentido", "displayName": "Scope consentido", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_error", "displayName": "Error", "type": "Text", "maxLength": 300, "required": false },
+        { "logicalName": "cr07a_errordescripcion", "displayName": "Descripcion error", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_fechaultimaprueba", "displayName": "Fecha ultima prueba", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false },
+        { "logicalName": "cr07a_ultimapruebaexitosa", "displayName": "Ultima prueba exitosa", "type": "TwoOptions", "required": false, "defaultValue": false },
+        { "logicalName": "cr07a_resultadoultimaprueba", "displayName": "Resultado ultima prueba", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
+    }
+  ]
+}

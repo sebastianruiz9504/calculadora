@@ -77,6 +77,25 @@ public sealed class SoporteCloudController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ReportClients(CancellationToken ct)
+    {
+        try
+        {
+            var items = await _dataverse.SearchClientsAsync("", top: 5000, ct: ct);
+            return Ok(items);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar los clientes para reportes.", ex));
+        }
+    }
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Save([FromBody] SoporteCloudSaveRequest? request, CancellationToken ct)

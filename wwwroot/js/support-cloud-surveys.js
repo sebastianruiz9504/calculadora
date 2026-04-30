@@ -33,11 +33,18 @@
 
         const resolveInitialKey = () => {
             const hash = normalizeText(window.location.hash.replace("#", ""));
-            return hash === "capacitaciones" ? "capacitaciones" : "soporte";
+            if (hash === "capacitaciones") {
+                return "capacitaciones";
+            }
+            if (hash === "reportes") {
+                return "reportes";
+            }
+
+            return "soporte";
         };
 
         const setActive = (key, updateHash) => {
-            const activeKey = key === "capacitaciones" ? "capacitaciones" : "soporte";
+            const activeKey = key === "capacitaciones" || key === "reportes" ? key : "soporte";
             tabs.forEach(tab => {
                 const isActive = tab.dataset.scsModuleTab === activeKey;
                 tab.classList.toggle("is-active", isActive);
@@ -49,11 +56,19 @@
                 panel.hidden = !isActive;
             });
             if (updateHash) {
-                const nextHash = activeKey === "capacitaciones" ? "#capacitaciones" : "#soporte-cloud";
+                const nextHash = activeKey === "capacitaciones"
+                    ? "#capacitaciones"
+                    : activeKey === "reportes"
+                        ? "#reportes"
+                        : "#soporte-cloud";
                 if (window.location.hash !== nextHash) {
                     history.replaceState(null, "", nextHash);
                 }
             }
+
+            root.dispatchEvent(new CustomEvent("supportcloud:modulechange", {
+                detail: { activeKey }
+            }));
         };
 
         tabs.forEach(tab => {
