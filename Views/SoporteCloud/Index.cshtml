@@ -10,6 +10,17 @@
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
 }
 
+<div class="support-cloud-module-shell" id="soporteCloudModuleShell">
+    <section class="support-cloud-module-nav" aria-label="Submodulos de soporte cloud">
+        <button type="button" class="support-cloud-module-tab is-active" data-scs-module-tab="soporte" aria-selected="true">
+            Soporte Cloud
+        </button>
+        <button type="button" class="support-cloud-module-tab" data-scs-module-tab="capacitaciones" aria-selected="false">
+            Capacitaciones
+        </button>
+    </section>
+
+    <div class="support-cloud-module-panel is-active" data-scs-module-panel="soporte">
 <div class="support-cloud-shell"
      id="soporteCloudApp"
      data-load-url="@Url.Action("Data", "SoporteCloud")"
@@ -233,7 +244,9 @@
         </div>
     </div>
 </div>
+    </div>
 
+    <div class="support-cloud-module-panel" data-scs-module-panel="capacitaciones" hidden>
 <div class="support-cloud-shell support-cloud-survey-admin"
      id="soporteCloudSurveyAdmin"
      data-board-url="@Url.Action("SurveyBoard", "SoporteCloud")"
@@ -478,6 +491,8 @@
             <div class="support-cloud-breakdown" data-scs-weak-questions></div>
         </article>
     </section>
+</div>
+    </div>
 </div>
 
 @section Scripts {

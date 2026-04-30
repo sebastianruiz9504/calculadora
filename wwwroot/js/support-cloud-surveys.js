@@ -9,6 +9,11 @@
         maximumFractionDigits: 2
     });
 
+    const moduleRoot = document.getElementById("soporteCloudModuleShell");
+    if (moduleRoot) {
+        initializeSupportCloudModuleTabs(moduleRoot);
+    }
+
     const adminRoot = document.getElementById("soporteCloudSurveyAdmin");
     if (adminRoot) {
         initializeSurveyAdmin(adminRoot);
@@ -17,6 +22,48 @@
     const publicRoot = document.getElementById("soporteCloudPublicSurvey");
     if (publicRoot) {
         initializePublicSurvey(publicRoot);
+    }
+
+    function initializeSupportCloudModuleTabs(root) {
+        const tabs = Array.from(root.querySelectorAll("[data-scs-module-tab]"));
+        const panels = Array.from(root.querySelectorAll("[data-scs-module-panel]"));
+        if (!tabs.length || !panels.length) {
+            return;
+        }
+
+        const resolveInitialKey = () => {
+            const hash = normalizeText(window.location.hash.replace("#", ""));
+            return hash === "capacitaciones" ? "capacitaciones" : "soporte";
+        };
+
+        const setActive = (key, updateHash) => {
+            const activeKey = key === "capacitaciones" ? "capacitaciones" : "soporte";
+            tabs.forEach(tab => {
+                const isActive = tab.dataset.scsModuleTab === activeKey;
+                tab.classList.toggle("is-active", isActive);
+                tab.setAttribute("aria-selected", isActive ? "true" : "false");
+            });
+            panels.forEach(panel => {
+                const isActive = panel.dataset.scsModulePanel === activeKey;
+                panel.classList.toggle("is-active", isActive);
+                panel.hidden = !isActive;
+            });
+            if (updateHash) {
+                const nextHash = activeKey === "capacitaciones" ? "#capacitaciones" : "#soporte-cloud";
+                if (window.location.hash !== nextHash) {
+                    history.replaceState(null, "", nextHash);
+                }
+            }
+        };
+
+        tabs.forEach(tab => {
+            tab.addEventListener("click", () => {
+                setActive(tab.dataset.scsModuleTab || "soporte", true);
+            });
+        });
+
+        window.addEventListener("hashchange", () => setActive(resolveInitialKey(), false));
+        setActive(resolveInitialKey(), false);
     }
 
     function initializeSurveyAdmin(root) {

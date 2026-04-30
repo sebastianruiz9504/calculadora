@@ -15,8 +15,7 @@
             <div class="permissions-kicker">Control de acceso</div>
             <h1 class="permissions-title">Permisos</h1>
             <p class="permissions-subtitle">
-                Esta pantalla actualiza directamente <span class="permissions-highlight">cr07a_modulos</span>
-                en la tabla <span class="permissions-highlight">cr07a_empleado</span>.
+                Selecciona un empleado para editar sus modulos habilitados.
             </p>
         </div>
         <div class="permissions-user-pill">
@@ -25,68 +24,96 @@
         </div>
     </section>
 
-    <section class="permissions-card">
-        <div class="permissions-card__header">
+    <section class="permissions-panel">
+        <div class="permissions-toolbar">
             <div>
-                <div class="permissions-kicker">Matriz</div>
-                <h2 class="permissions-section-title">Empleados por modulo</h2>
+                <div class="permissions-kicker">Empleados</div>
+                <h2 class="permissions-section-title">Lista de permisos</h2>
                 <p class="permissions-section-subtitle">
-                    Marca los checks requeridos y usa guardar para actualizar Dataverse.
+                    La lista muestra solo nombre y correo. Abre cualquier empleado para asignar uno o varios modulos.
                 </p>
             </div>
-            <button type="button" class="btn btn-primary permissions-save-btn" id="savePermissionsBtn">
+            <button type="button"
+                    class="btn btn-primary permissions-save-btn permissions-save-action"
+                    id="savePermissionsBtn"
+                    @(Model.Employees.Count == 0 ? "disabled" : null)>
                 Guardar cambios
             </button>
         </div>
 
         <div id="permissionsStatus" class="permissions-status" role="status" aria-live="polite"></div>
 
-        <div class="permissions-table-wrap">
-            <table class="permissions-table">
-                <thead>
-                    <tr>
-                        <th>Empleado</th>
-                        <th>Usuario</th>
-                        @foreach (var module in Model.Modules)
-                        {
-                            <th>@module.Label</th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var employee in Model.Employees)
-                    {
-                        <tr data-employee-id="@employee.EmployeeId">
-                            <td>
-                                <div class="permissions-employee">@employee.EmployeeName</div>
-                            </td>
-                            <td>
-                                <div class="permissions-user">
-                                    <div>@(string.IsNullOrWhiteSpace(employee.UserDisplayName) ? "Sin usuario" : employee.UserDisplayName)</div>
-                                    @if (!string.IsNullOrWhiteSpace(employee.UserEmail))
-                                    {
-                                        <small>@employee.UserEmail</small>
-                                    }
-                                </div>
-                            </td>
-                            @foreach (var module in Model.Modules)
-                            {
-                                var checkboxId = $"perm_{employee.EmployeeId}_{module.OptionValue}";
-                                <td class="permissions-check-cell">
-                                    <label class="permissions-check" for="@checkboxId">
+        @if (Model.Employees.Count == 0)
+        {
+            <div class="permissions-empty">No hay empleados disponibles para editar permisos.</div>
+        }
+        else
+        {
+            <div class="permissions-employee-list" role="list">
+                @for (var employeeIndex = 0; employeeIndex < Model.Employees.Count; employeeIndex++)
+                {
+                    var employee = Model.Employees[employeeIndex];
+                    var panelId = $"permissionsEmployeePanel_{employeeIndex}";
+                    var employeeName = string.IsNullOrWhiteSpace(employee.EmployeeName)
+                        ? "Empleado sin nombre"
+                        : employee.EmployeeName;
+                    var email = string.IsNullOrWhiteSpace(employee.UserEmail)
+                        ? "Sin correo asociado"
+                        : employee.UserEmail;
+
+                    <article class="permissions-employee-item"
+                             data-employee-id="@employee.EmployeeId"
+                             role="listitem">
+                        <button type="button"
+                                class="permissions-employee-trigger"
+                                aria-expanded="false"
+                                aria-controls="@panelId">
+                            <span class="permissions-employee-copy">
+                                <span class="permissions-employee-name">@employeeName</span>
+                                <span class="permissions-employee-email">@email</span>
+                            </span>
+                            <span class="permissions-employee-chevron" aria-hidden="true"></span>
+                        </button>
+
+                        <div class="permissions-module-menu"
+                             id="@panelId"
+                             hidden>
+                            <div class="permissions-module-menu__header">
+                                <span>Modulos disponibles</span>
+                                <small>Seleccion multiple</small>
+                            </div>
+
+                            <div class="permissions-module-grid">
+                                @for (var moduleIndex = 0; moduleIndex < Model.Modules.Count; moduleIndex++)
+                                {
+                                    var module = Model.Modules[moduleIndex];
+                                    var checkboxId = $"perm_{employeeIndex}_{moduleIndex}_{module.OptionValue}";
+
+                                    <label class="permissions-module-option" for="@checkboxId">
                                         <input id="@checkboxId"
+                                               class="permissions-module-checkbox"
                                                type="checkbox"
                                                value="@module.OptionValue"
                                                @(employee.ModuleOptionValues.Contains(module.OptionValue) ? "checked" : null) />
-                                        <span></span>
+                                        <span class="permissions-module-box"></span>
+                                        <span class="permissions-module-copy">
+                                            <span class="permissions-module-name">@module.Label</span>
+                                            <span class="permissions-module-category">@module.Category</span>
+                                        </span>
                                     </label>
-                                </td>
-                            }
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                                }
+                            </div>
+
+                            <div class="permissions-module-actions">
+                                <button type="button" class="btn btn-primary permissions-save-btn permissions-save-action">
+                                    Guardar cambios
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
     </section>
 </div>
 
@@ -99,8 +126,9 @@
             }
 
             const saveUrl = app.dataset.saveUrl || "";
-            const saveButton = document.getElementById("savePermissionsBtn");
+            const saveButtons = Array.from(app.querySelectorAll(".permissions-save-action"));
             const status = document.getElementById("permissionsStatus");
+            const employeeItems = Array.from(app.querySelectorAll(".permissions-employee-item"));
 
             const setStatus = (message, tone) => {
                 if (!status) {
@@ -116,9 +144,9 @@
             };
 
             const buildPayload = () => {
-                const employees = Array.from(app.querySelectorAll("tbody tr[data-employee-id]")).map((row) => {
-                    const employeeId = row.dataset.employeeId || "";
-                    const moduleOptionValues = Array.from(row.querySelectorAll("input[type='checkbox']:checked"))
+                const employees = employeeItems.map((item) => {
+                    const employeeId = item.dataset.employeeId || "";
+                    const moduleOptionValues = Array.from(item.querySelectorAll(".permissions-module-checkbox:checked"))
                         .map((checkbox) => Number.parseInt(checkbox.value, 10))
                         .filter((value) => Number.isInteger(value));
 
@@ -132,13 +160,55 @@
             };
 
             const setBusy = (isBusy) => {
-                if (saveButton) {
-                    saveButton.disabled = isBusy;
-                    saveButton.textContent = isBusy ? "Guardando..." : "Guardar cambios";
+                saveButtons.forEach((button) => {
+                    button.disabled = isBusy;
+                    button.textContent = isBusy ? "Guardando..." : "Guardar cambios";
+                });
+            };
+
+            const closeEmployee = (item) => {
+                const trigger = item.querySelector(".permissions-employee-trigger");
+                const menu = item.querySelector(".permissions-module-menu");
+                item.classList.remove("is-open");
+                trigger?.setAttribute("aria-expanded", "false");
+                if (menu) {
+                    menu.hidden = true;
                 }
             };
 
-            saveButton?.addEventListener("click", async () => {
+            const openEmployee = (item) => {
+                employeeItems.forEach((candidate) => {
+                    if (candidate !== item) {
+                        closeEmployee(candidate);
+                    }
+                });
+
+                const trigger = item.querySelector(".permissions-employee-trigger");
+                const menu = item.querySelector(".permissions-module-menu");
+                item.classList.add("is-open");
+                trigger?.setAttribute("aria-expanded", "true");
+                if (menu) {
+                    menu.hidden = false;
+                }
+            };
+
+            employeeItems.forEach((item) => {
+                const trigger = item.querySelector(".permissions-employee-trigger");
+                trigger?.addEventListener("click", () => {
+                    if (item.classList.contains("is-open")) {
+                        closeEmployee(item);
+                        return;
+                    }
+
+                    openEmployee(item);
+                });
+            });
+
+            const saveChanges = async () => {
+                if (saveButtons.length === 0) {
+                    return;
+                }
+
                 if (!saveUrl) {
                     setStatus("No se encontro la ruta para guardar permisos.", "error");
                     return;
@@ -167,7 +237,9 @@
                 } finally {
                     setBusy(false);
                 }
-            });
+            };
+
+            saveButtons.forEach((button) => button.addEventListener("click", saveChanges));
         })();
     </script>
 }
