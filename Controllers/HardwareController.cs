@@ -33,6 +33,11 @@ public sealed class HardwareController : Controller
             CurrentUserLabel = !string.IsNullOrWhiteSpace(currentUser.DisplayName)
                 ? currentUser.DisplayName
                 : currentUser.Email,
+            CurrentUserId = currentUser.SystemUserId,
+            CurrentUserEmail = currentUser.Email,
+            CanImpersonate = HardwareAccessPolicy.IsImpersonationUser(currentUser),
+            AllowCreate = !HardwareAccessPolicy.IsSupplierPaymentUser(currentUser),
+            AllowCommercialDraftEdit = !HardwareAccessPolicy.IsSupplierPaymentUser(currentUser),
             PreviewUrl = Url.Action(nameof(Preview), "Hardware") ?? "",
             ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
             BoardUrl = Url.Action(nameof(CommercialBoard), "Hardware") ?? "",
@@ -44,6 +49,7 @@ public sealed class HardwareController : Controller
             InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? "",
             ClientSearchUrl = Url.Action(nameof(ClientSearch), "Hardware") ?? "",
             OwnerSearchUrl = "",
+            ImpersonationUsersUrl = Url.Action(nameof(ImpersonationUsers), "Hardware") ?? "",
             InitialStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
             InitialEndDate = today.ToString("yyyy-MM-dd")
         });
@@ -55,11 +61,32 @@ public sealed class HardwareController : Controller
         [FromQuery] int? stateValue,
         [FromQuery] DateOnly? startDate,
         [FromQuery] DateOnly? endDate,
+        [FromQuery] string? impersonatedOwnerId,
         CancellationToken ct)
     {
         try
         {
-            return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct, currentOwnerOnly: true));
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            var board = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser)
+                ? await _dataverse.GetHardwareBoardAsync(
+                    HardwareAccessPolicy.OkForSupplierPaymentStateValue,
+                    startDate,
+                    endDate,
+                    ct)
+                : await _dataverse.GetHardwareBoardAsync(
+                    stateValue,
+                    startDate,
+                    endDate,
+                    ct,
+                    currentOwnerOnly: true,
+                    ownerOverride: effectiveUser);
+
+            ApplyCommercialBoardAccess(board, effectiveUser);
+            return Json(board);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
         }
         catch (Exception ex)
         {
@@ -69,14 +96,19 @@ public sealed class HardwareController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> CreateOrder([FromBody] HardwareOrderCreateRequest? request, CancellationToken ct)
+    public async Task<IActionResult> CreateOrder(
+        [FromBody] HardwareOrderCreateRequest? request,
+        [FromQuery] string? impersonatedOwnerId,
+        CancellationToken ct)
     {
         if (request is null)
             return BadRequest(CreateErrorPayload("Debes indicar los datos de la orden de Hardware."));
 
         try
         {
-            return Ok(await _dataverse.CreateHardwareOrderDraftAsync(request, ct));
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            EnsureCommercialDraftAllowed(effectiveUser);
+            return Ok(await _dataverse.CreateHardwareOrderDraftAsync(request, ct, effectiveUser));
         }
         catch (InvalidOperationException ex)
         {
@@ -90,14 +122,19 @@ public sealed class HardwareController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> CommercialEditRecord([FromBody] HardwareOrderLineEditRequest? request, CancellationToken ct)
+    public async Task<IActionResult> CommercialEditRecord(
+        [FromBody] HardwareOrderLineEditRequest? request,
+        [FromQuery] string? impersonatedOwnerId,
+        CancellationToken ct)
     {
         if (request is null)
             return BadRequest(CreateErrorPayload("Debes indicar la línea de Hardware que quieres editar."));
 
         try
         {
-            return Ok(await _dataverse.UpdateHardwareCommercialDraftAsync(request, ct));
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            EnsureCommercialDraftAllowed(effectiveUser);
+            return Ok(await _dataverse.UpdateHardwareCommercialDraftAsync(request, ct, effectiveUser));
         }
         catch (InvalidOperationException ex)
         {
@@ -204,14 +241,34 @@ public sealed class HardwareController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> CommercialSaveStage([FromBody] HardwareStageSaveRequest? request, CancellationToken ct)
+    public async Task<IActionResult> CommercialSaveStage(
+        [FromBody] HardwareStageSaveRequest? request,
+        [FromQuery] string? impersonatedOwnerId,
+        CancellationToken ct)
     {
         if (request is null)
             return BadRequest(CreateErrorPayload("Debes indicar el hardware y la etapa que quieres guardar."));
 
         try
         {
-            return Ok(await _dataverse.SaveHardwareStageAsync(request, ct, requireCurrentOwner: true));
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
+            if (IsSupplierPaymentAction(request.ActionKey))
+            {
+                if (!isSupplierPaymentUser)
+                    return BadRequest(CreateErrorPayload("Solo cartera puede registrar el pago a proveedor en Hardware."));
+
+                return Ok(await _dataverse.SaveHardwareStageAsync(request, ct));
+            }
+
+            if (isSupplierPaymentUser)
+                return BadRequest(CreateErrorPayload("Cartera solo puede registrar pagos a proveedor en Hardware."));
+
+            return Ok(await _dataverse.SaveHardwareStageAsync(
+                request,
+                ct,
+                requireCurrentOwner: true,
+                ownerOverride: effectiveUser));
         }
         catch (InvalidOperationException ex)
         {
@@ -281,13 +338,26 @@ public sealed class HardwareController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     [RequestSizeLimit(MaxUploadBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes)]
-    public async Task<IActionResult> CommercialUploadFile(string recordId, string fieldName, IFormFile? file, CancellationToken ct)
+    public async Task<IActionResult> CommercialUploadFile(
+        string recordId,
+        string fieldName,
+        IFormFile? file,
+        [FromQuery] string? impersonatedOwnerId,
+        CancellationToken ct)
     {
         if (file is null || file.Length <= 0)
             return BadRequest(CreateErrorPayload("Debes seleccionar un archivo valido."));
 
         try
         {
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
+            if (isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName))
+                return BadRequest(CreateErrorPayload("Cartera solo puede cargar el soporte de pago a proveedor."));
+
+            if (!isSupplierPaymentUser && IsSupplierPaymentFile(fieldName))
+                return BadRequest(CreateErrorPayload("Solo cartera puede cargar el soporte de pago a proveedor."));
+
             await using var stream = file.OpenReadStream();
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer, ct);
@@ -299,7 +369,9 @@ public sealed class HardwareController : Controller
                 file.ContentType,
                 buffer.ToArray(),
                 ct,
-                requireCurrentOwner: true));
+                requireCurrentOwner: !isSupplierPaymentUser,
+                ownerOverride: isSupplierPaymentUser ? null : effectiveUser,
+                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null));
         }
         catch (InvalidOperationException ex)
         {
@@ -335,11 +407,29 @@ public sealed class HardwareController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> CommercialDownloadFile(string recordId, string fieldName, CancellationToken ct)
+    public async Task<IActionResult> CommercialDownloadFile(
+        string recordId,
+        string fieldName,
+        [FromQuery] string? impersonatedOwnerId,
+        CancellationToken ct)
     {
         try
         {
-            var file = await _dataverse.DownloadHardwareFileAsync(recordId, fieldName, ct, requireCurrentOwner: true);
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
+            if (isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName))
+                return BadRequest(CreateErrorPayload("Cartera solo puede descargar el soporte de pago a proveedor."));
+
+            if (!isSupplierPaymentUser && IsSupplierPaymentFile(fieldName))
+                return BadRequest(CreateErrorPayload("Solo cartera puede descargar el soporte de pago a proveedor."));
+
+            var file = await _dataverse.DownloadHardwareFileAsync(
+                recordId,
+                fieldName,
+                ct,
+                requireCurrentOwner: !isSupplierPaymentUser,
+                ownerOverride: isSupplierPaymentUser ? null : effectiveUser,
+                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null);
             if (file is null || file.Content.Length == 0)
                 return NotFound();
 
@@ -409,8 +499,98 @@ public sealed class HardwareController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ImpersonationUsers(CancellationToken ct)
+    {
+        try
+        {
+            var currentUser = await GetCurrentUserAsync(ct);
+            if (!HardwareAccessPolicy.IsImpersonationUser(currentUser))
+                return Forbid();
+
+            return Ok(await _dataverse.SearchSystemUsersAsync("", 500, ct, includeAllWhenEmpty: true));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar usuarios para personificación de Hardware.", ex));
+        }
+    }
+
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct) =>
         await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
+
+    private async Task<CurrentUserInfo> ResolveEffectiveHardwareUserAsync(string? impersonatedOwnerId, CancellationToken ct)
+    {
+        var currentUser = await GetCurrentUserAsync(ct);
+        var normalizedOwnerId = (impersonatedOwnerId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedOwnerId))
+            return currentUser;
+
+        if (!HardwareAccessPolicy.IsImpersonationUser(currentUser))
+            throw new InvalidOperationException("No tienes permisos para personificar usuarios en Hardware.");
+
+        var selectedUser = await _dataverse.GetSystemUserAsync(normalizedOwnerId, ct)
+            ?? throw new InvalidOperationException("No fue posible encontrar el usuario seleccionado para personificar.");
+
+        return new CurrentUserInfo
+        {
+            SystemUserId = selectedUser.Id,
+            DisplayName = ResolveSystemUserDisplayName(selectedUser),
+            Email = selectedUser.Email
+        };
+    }
+
+    private static void ApplyCommercialBoardAccess(HardwareBoardDto board, CurrentUserInfo effectiveUser)
+    {
+        if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser))
+        {
+            board.StateOptions = board.StateOptions
+                .Where(option => option.Value == HardwareAccessPolicy.OkForSupplierPaymentStateValue)
+                .ToList();
+            return;
+        }
+
+        foreach (var row in board.Rows.Where(row => row.StateValue == HardwareAccessPolicy.OkForSupplierPaymentStateValue))
+        {
+            row.ActionKey = "";
+            row.ActionLabel = "";
+            row.HasAction = false;
+        }
+    }
+
+    private static void EnsureCommercialDraftAllowed(CurrentUserInfo effectiveUser)
+    {
+        if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser))
+            throw new InvalidOperationException("Cartera solo puede gestionar pagos a proveedor en Hardware.");
+    }
+
+    private static bool IsSupplierPaymentAction(string? actionKey) =>
+        string.Equals(
+            (actionKey ?? "").Trim(),
+            HardwareAccessPolicy.SupplierPaymentActionKey,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupplierPaymentFile(string? fieldName) =>
+        string.Equals(
+            (fieldName ?? "").Trim(),
+            HardwareAccessPolicy.SupplierPaymentFileField,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveSystemUserDisplayName(SystemUserLookupItem selectedUser)
+    {
+        if (string.IsNullOrWhiteSpace(selectedUser.Name))
+            return selectedUser.Email;
+
+        var suffix = string.IsNullOrWhiteSpace(selectedUser.Email) ? "" : $" ({selectedUser.Email})";
+        return selectedUser.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            ? selectedUser.Name[..^suffix.Length]
+            : selectedUser.Name;
+    }
 
     private static DateOnly ResolveBogotaToday()
     {

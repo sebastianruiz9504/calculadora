@@ -1,4 +1,5 @@
 using CotizadorInterno.Web.Models.Permissions;
+using CotizadorInterno.Web.Models.Hardware;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -27,6 +28,14 @@ public sealed class ModuleAccessFilter : IAsyncActionFilter
 
         var definition = AppModuleCatalog.Find(_module);
         var currentUser = await _dataverse.GetCurrentUserAsync(context.HttpContext.RequestAborted);
+        if (_module == AppModule.Hardware
+            && (HardwareAccessPolicy.IsSupplierPaymentUser(currentUser)
+                || HardwareAccessPolicy.IsImpersonationUser(currentUser)))
+        {
+            await next();
+            return;
+        }
+
         if (definition is null || currentUser?.HasModule(definition.OptionValue) != true)
         {
             context.Result = new ForbidResult();

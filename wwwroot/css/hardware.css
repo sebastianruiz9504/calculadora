@@ -136,6 +136,23 @@
     overflow-wrap: anywhere;
 }
 
+.hardware-access-stack {
+    display: grid;
+    gap: 10px;
+    min-width: min(360px, 100%);
+}
+
+.hardware-impersonation {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+    padding: 12px 14px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: var(--hardware-panel);
+}
+
 .hardware-section-header,
 .hardware-toolbar,
 .hardware-toolbar__filters,
@@ -1030,9 +1047,15 @@ body.hardware-modal-open {
         align-items: stretch;
     }
 
-    .hardware-user-pill {
+    .hardware-user-pill,
+    .hardware-access-stack,
+    .hardware-impersonation {
         max-width: none;
         width: 100%;
+    }
+
+    .hardware-impersonation {
+        grid-template-columns: 1fr;
     }
 
     .hardware-import-grid,

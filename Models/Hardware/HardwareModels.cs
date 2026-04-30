@@ -22,9 +22,15 @@ public sealed class HardwareWorkspaceViewModel
     public string InvoiceSearchUrl { get; set; } = "";
     public string ClientSearchUrl { get; set; } = "";
     public string OwnerSearchUrl { get; set; } = "";
+    public string ImpersonationUsersUrl { get; set; } = "";
     public string EditUrl { get; set; } = "";
     public string InitialStartDate { get; set; } = "";
     public string InitialEndDate { get; set; } = "";
+    public string CurrentUserId { get; set; } = "";
+    public string CurrentUserEmail { get; set; } = "";
+    public bool CanImpersonate { get; set; }
+    public bool AllowCreate { get; set; } = true;
+    public bool AllowCommercialDraftEdit { get; set; } = true;
     public bool ShowHero { get; set; } = true;
     public string HeroKicker { get; set; } = "Operación";
     public string HeroTitle { get; set; } = "Hardware";

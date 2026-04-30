@@ -433,13 +433,14 @@ public sealed partial class DataverseService
         DateOnly? startDate = null,
         DateOnly? endDate = null,
         CancellationToken ct = default,
-        bool currentOwnerOnly = false)
+        bool currentOwnerOnly = false,
+        CurrentUserInfo? ownerOverride = null)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var user = httpContext.User;
-        var currentUser = currentOwnerOnly ? await GetCurrentUserAsync(ct) : null;
+        var currentUser = currentOwnerOnly ? ownerOverride ?? await GetCurrentUserAsync(ct) : null;
         if (currentOwnerOnly && string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
             throw new InvalidOperationException("No fue posible resolver el owner autenticado para filtrar Hardware.");
 
@@ -504,7 +505,8 @@ public sealed partial class DataverseService
 
     public async Task<HardwareOrderCreateResultDto> CreateHardwareOrderDraftAsync(
         HardwareOrderCreateRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        CurrentUserInfo? ownerOverride = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -512,7 +514,7 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var user = httpContext.User;
-        var currentUser = await GetCurrentUserAsync(ct);
+        var currentUser = ownerOverride ?? await GetCurrentUserAsync(ct);
         if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
             throw new InvalidOperationException("No fue posible resolver el owner autenticado para crear Hardware.");
 
@@ -601,7 +603,8 @@ public sealed partial class DataverseService
 
     public async Task<HardwareBulkEditResultDto> UpdateHardwareCommercialDraftAsync(
         HardwareOrderLineEditRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        CurrentUserInfo? ownerOverride = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -609,7 +612,7 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var user = httpContext.User;
-        var currentUser = await GetCurrentUserAsync(ct);
+        var currentUser = ownerOverride ?? await GetCurrentUserAsync(ct);
         if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
             throw new InvalidOperationException("No fue posible resolver el owner autenticado para editar Hardware.");
 
@@ -703,7 +706,8 @@ public sealed partial class DataverseService
     public async Task<HardwareSaveResultDto> SaveHardwareStageAsync(
         HardwareStageSaveRequest request,
         CancellationToken ct = default,
-        bool requireCurrentOwner = false)
+        bool requireCurrentOwner = false,
+        CurrentUserInfo? ownerOverride = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -720,7 +724,7 @@ public sealed partial class DataverseService
             currentRecords.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
 
         if (requireCurrentOwner)
-            EnsureHardwareRecordsOwnedByCurrentUser(currentRecords, await GetCurrentUserAsync(ct));
+            EnsureHardwareRecordsOwnedByCurrentUser(currentRecords, ownerOverride ?? await GetCurrentUserAsync(ct));
 
         var normalizedActionKey = NormalizeHardwareCell(request.ActionKey).ToLowerInvariant();
         var currentStates = currentRecords
@@ -999,7 +1003,9 @@ public sealed partial class DataverseService
         string contentType,
         byte[] content,
         CancellationToken ct = default,
-        bool requireCurrentOwner = false)
+        bool requireCurrentOwner = false,
+        CurrentUserInfo? ownerOverride = null,
+        int? requiredStateValue = null)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -1010,10 +1016,23 @@ public sealed partial class DataverseService
         var normalizedFieldName = ResolveHardwareAllowedFileField(fieldName);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         EnsureHardwareFileAttributeExists(attributes, normalizedFieldName);
+        HardwareBoardRowDto? currentRecord = null;
+        if (requireCurrentOwner || requiredStateValue.HasValue)
+        {
+            currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+        }
+
         if (requireCurrentOwner)
         {
-            var currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
-            EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, await GetCurrentUserAsync(ct));
+            EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord! }, ownerOverride ?? await GetCurrentUserAsync(ct));
+        }
+
+        if (requiredStateValue.HasValue)
+        {
+            EnsureHardwareActionState(
+                NormalizeHardwareStateValue(currentRecord!.StateValue),
+                requiredStateValue.Value,
+                currentRecord.StateLabel);
         }
 
         var safeFileName = SanitizeRhFileName(fileName, HardwareAllowedFileFields[normalizedFieldName]);
@@ -1051,7 +1070,9 @@ public sealed partial class DataverseService
         string recordId,
         string fieldName,
         CancellationToken ct = default,
-        bool requireCurrentOwner = false)
+        bool requireCurrentOwner = false,
+        CurrentUserInfo? ownerOverride = null,
+        int? requiredStateValue = null)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -1062,10 +1083,23 @@ public sealed partial class DataverseService
         var normalizedFieldName = ResolveHardwareAllowedFileField(fieldName);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         EnsureHardwareFileAttributeExists(attributes, normalizedFieldName);
+        HardwareBoardRowDto? currentRecord = null;
+        if (requireCurrentOwner || requiredStateValue.HasValue)
+        {
+            currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+        }
+
         if (requireCurrentOwner)
         {
-            var currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
-            EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, await GetCurrentUserAsync(ct));
+            EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord! }, ownerOverride ?? await GetCurrentUserAsync(ct));
+        }
+
+        if (requiredStateValue.HasValue)
+        {
+            EnsureHardwareActionState(
+                NormalizeHardwareStateValue(currentRecord!.StateValue),
+                requiredStateValue.Value,
+                currentRecord.StateLabel);
         }
 
         using var response = await CallRhDataverseResponseAsync(

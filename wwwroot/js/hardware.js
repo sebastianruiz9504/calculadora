@@ -5,6 +5,12 @@
     function initHardwareWorkspace(root) {
         const config = {
             mode: root.dataset.hwMode || "dashboard",
+            canImpersonate: root.dataset.hwCanImpersonate === "true",
+            currentUserId: root.dataset.hwCurrentUserId || "",
+            currentUserEmail: root.dataset.hwCurrentUserEmail || "",
+            allowCreate: root.dataset.hwAllowCreate !== "false",
+            allowCommercialDraftEdit: root.dataset.hwAllowCommercialDraftEdit !== "false",
+            supplierPaymentEmail: root.dataset.hwSupplierPaymentEmail || "",
             previewUrl: root.dataset.previewUrl || "",
             provisionUrl: root.dataset.provisionUrl || "",
             boardUrl: root.dataset.boardUrl || "",
@@ -16,6 +22,7 @@
             invoiceSearchUrl: root.dataset.invoiceSearchUrl || "",
             clientSearchUrl: root.dataset.clientSearchUrl || "",
             ownerSearchUrl: root.dataset.ownerSearchUrl || "",
+            impersonationUsersUrl: root.dataset.impersonationUsersUrl || "",
             initialStartDate: root.dataset.initialStartDate || "",
             initialEndDate: root.dataset.initialEndDate || ""
         };
@@ -23,6 +30,9 @@
 
         const elements = {
             status: root.querySelector("[data-hw-status]"),
+            activeUserLabel: root.querySelector("[data-hw-active-user-label]"),
+            impersonationSelect: root.querySelector("[data-hw-impersonation-select]"),
+            impersonationReset: root.querySelector("[data-hw-impersonation-reset]"),
             csvFile: root.querySelector("[data-hw-csv-file]"),
             analyzeCsvBtn: root.querySelector("[data-hw-analyze-csv]"),
             provisionCsvBtn: root.querySelector("[data-hw-provision-csv]"),
@@ -179,7 +189,11 @@
             createEditingRecord: null,
             invoiceSuggestions: [],
             invoiceLookupTimer: 0,
-            invoiceLookupSequence: 0
+            invoiceLookupSequence: 0,
+            impersonationUsers: [],
+            impersonatedOwnerId: "",
+            impersonatedOwnerEmail: "",
+            defaultUserLabel: (root.querySelector("[data-hw-active-user-label]")?.textContent || "").trim()
         };
 
         [elements.status, elements.importStatus, elements.boardStatus, elements.modalStatus, elements.editStatus, elements.createStatus]
@@ -237,6 +251,8 @@
             }
         };
 
+        elements.impersonationSelect?.addEventListener("change", handleImpersonationChange);
+        elements.impersonationReset?.addEventListener("click", resetImpersonation);
         elements.csvFile?.addEventListener("change", handleCsvFileChange);
         elements.analyzeCsvBtn?.addEventListener("click", previewCsv);
         elements.provisionCsvBtn?.addEventListener("click", provisionCsv);
@@ -504,7 +520,80 @@
             addCreateLine();
         }
 
+        if (config.canImpersonate && elements.impersonationSelect && config.impersonationUsersUrl) {
+            loadImpersonationUsers();
+        }
+
+        syncAccessControls();
         loadBoard();
+
+        async function loadImpersonationUsers() {
+            try {
+                const result = await fetchJson(config.impersonationUsersUrl, { method: "GET" });
+                state.impersonationUsers = Array.isArray(result) ? result : [];
+                renderImpersonationOptions();
+            } catch (error) {
+                setStatus(elements.status, "warning", getErrorMessage(error));
+            }
+        }
+
+        function renderImpersonationOptions() {
+            if (!elements.impersonationSelect) {
+                return;
+            }
+
+            const currentId = normalizeGuid(config.currentUserId);
+            const selectedId = normalizeGuid(state.impersonatedOwnerId);
+            const options = state.impersonationUsers
+                .filter(user => normalizeGuid(user?.id || "") !== currentId)
+                .map(user => {
+                    const id = user?.id || "";
+                    return `
+                        <option value="${escapeHtml(id)}" data-email="${escapeHtml(user?.email || "")}" ${normalizeGuid(id) === selectedId ? "selected" : ""}>
+                            ${escapeHtml(buildSystemUserLabel(user))}
+                        </option>
+                    `;
+                })
+                .join("");
+
+            elements.impersonationSelect.innerHTML = `
+                <option value="">Mi usuario</option>
+                ${options}
+            `;
+            elements.impersonationSelect.value = state.impersonatedOwnerId || "";
+        }
+
+        function handleImpersonationChange() {
+            const selectedOption = elements.impersonationSelect?.selectedOptions?.[0] || null;
+            state.impersonatedOwnerId = elements.impersonationSelect?.value || "";
+            state.impersonatedOwnerEmail = selectedOption?.dataset?.email || "";
+            state.selectedRecordIds.clear();
+            updateActiveUserLabel(selectedOption);
+            syncAccessControls();
+            closeModal(true);
+            closeCreateModal(true);
+            closeEditModal(true);
+            loadBoard();
+        }
+
+        function resetImpersonation() {
+            if (!elements.impersonationSelect) {
+                return;
+            }
+
+            elements.impersonationSelect.value = "";
+            handleImpersonationChange();
+        }
+
+        function updateActiveUserLabel(selectedOption) {
+            if (!elements.activeUserLabel) {
+                return;
+            }
+
+            elements.activeUserLabel.textContent = state.impersonatedOwnerId
+                ? selectedOption?.textContent?.trim() || "Usuario seleccionado"
+                : state.defaultUserLabel || "Mi usuario";
+        }
 
         function handleCsvFileChange() {
             state.preview = null;
@@ -699,6 +788,7 @@
             renderStateSummary(board);
             renderSummaryCards(board);
             renderRows(board);
+            syncAccessControls();
 
             const warnings = Array.isArray(board?.warnings) ? board.warnings.filter(Boolean) : [];
             const summaryParts = [];
@@ -1187,9 +1277,10 @@
 
         function isCommercialLineEditable(row) {
             return isCommercialMode
+                && config.allowCommercialDraftEdit
+                && !isSupplierPaymentEffectiveUser()
                 && Boolean(row?.recordId)
-                && (normalizeText(row?.actionKey || "") === "register-supplier-payment"
-                    || normalizeText(row?.actionLabel || "") === "registrar pago a proveedor");
+                && Number(row?.stateValue || 0) === 645250001;
         }
 
         function renderModal() {
@@ -1390,7 +1481,7 @@
                 await uploadPendingFiles();
 
                 setStatus(elements.modalStatus, "info", "Guardando etapa de Hardware...");
-                const result = await fetchJson(config.saveUrl, {
+                const result = await fetchJson(buildImpersonatedUrl(config.saveUrl), {
                     method: "POST",
                     body: JSON.stringify(payload)
                 });
@@ -1748,6 +1839,10 @@
             if (!elements.createModal) {
                 return;
             }
+            if (!canCreateCommercialRecords()) {
+                setStatus(elements.boardStatus, "warning", "La vista de cartera solo permite registrar pagos a proveedor.");
+                return;
+            }
 
             state.createEditingRecord = null;
             resetCreateForm();
@@ -1765,7 +1860,7 @@
             }
 
             if (!isCommercialLineEditable(record)) {
-                setStatus(elements.boardStatus, "warning", "Solo puedes editar líneas con acción Registrar pago a proveedor.");
+                setStatus(elements.boardStatus, "warning", "Solo puedes editar líneas comerciales pendientes de pago a proveedor.");
                 return;
             }
 
@@ -2034,7 +2129,7 @@
                 state.saving = true;
                 setBusy(true);
                 setStatus(elements.createStatus, "info", "Guardando cambios de Hardware...");
-                const result = await fetchJson(config.editUrl, {
+                const result = await fetchJson(buildImpersonatedUrl(config.editUrl), {
                     method: "POST",
                     body: JSON.stringify(draft.payload)
                 });
@@ -2082,7 +2177,7 @@
                 state.saving = true;
                 setBusy(true);
                 setStatus(elements.createStatus, "info", "Creando registros de Hardware...");
-                const createResult = await fetchJson(config.createUrl, {
+                const createResult = await fetchJson(buildImpersonatedUrl(config.createUrl), {
                     method: "POST",
                     body: JSON.stringify(draft.payload)
                 });
@@ -2116,7 +2211,7 @@
                     }))
                 };
 
-                const saveResult = await fetchJson(config.saveUrl, {
+                const saveResult = await fetchJson(buildImpersonatedUrl(config.saveUrl), {
                     method: "POST",
                     body: JSON.stringify(savePayload)
                 });
@@ -2382,7 +2477,7 @@
                 state.saving = true;
                 setBusy(true);
                 setStatus(elements.editStatus, "info", "Guardando cambios de Hardware...");
-                const result = await fetchJson(config.editUrl, {
+                const result = await fetchJson(buildImpersonatedUrl(config.editUrl), {
                     method: "POST",
                     body: JSON.stringify(payload)
                 });
@@ -2557,7 +2652,7 @@
             formData.append("fieldName", fieldName || "");
             formData.append("file", file);
 
-            await fetchJson(config.uploadUrl, {
+            await fetchJson(buildImpersonatedUrl(config.uploadUrl), {
                 method: "POST",
                 body: formData
             });
@@ -2816,6 +2911,7 @@
             if (endDate) {
                 url.searchParams.set("endDate", endDate);
             }
+            appendImpersonationParam(url);
 
             return `${url.pathname}${url.search}`;
         }
@@ -2842,7 +2938,26 @@
             const url = new URL(config.downloadUrl, window.location.origin);
             url.searchParams.set("recordId", recordId);
             url.searchParams.set("fieldName", fieldName);
+            appendImpersonationParam(url);
             return `${url.pathname}${url.search}`;
+        }
+
+        function buildImpersonatedUrl(rawUrl) {
+            if (!rawUrl) {
+                return rawUrl;
+            }
+
+            const url = new URL(rawUrl, window.location.origin);
+            appendImpersonationParam(url);
+            return `${url.pathname}${url.search}`;
+        }
+
+        function appendImpersonationParam(url) {
+            if (state.impersonatedOwnerId) {
+                url.searchParams.set("impersonatedOwnerId", state.impersonatedOwnerId);
+            } else {
+                url.searchParams.delete("impersonatedOwnerId");
+            }
         }
 
         function buildGroupKey(row) {
@@ -2927,6 +3042,36 @@
             return rows.reduce((total, row) => total + Number(row?.[property] || 0), 0);
         }
 
+        function buildSystemUserLabel(user) {
+            return user?.name || user?.email || user?.id || "Usuario";
+        }
+
+        function isSupplierPaymentEffectiveUser() {
+            const email = state.impersonatedOwnerId
+                ? state.impersonatedOwnerEmail
+                : config.currentUserEmail;
+            return Boolean(config.supplierPaymentEmail)
+                && normalizeText(email) === normalizeText(config.supplierPaymentEmail);
+        }
+
+        function canCreateCommercialRecords() {
+            return isCommercialMode
+                && config.allowCreate
+                && !isSupplierPaymentEffectiveUser();
+        }
+
+        function syncAccessControls() {
+            if (elements.openCreateModalBtn) {
+                const canCreate = canCreateCommercialRecords();
+                elements.openCreateModalBtn.hidden = !canCreate;
+                elements.openCreateModalBtn.disabled = state.busy || !canCreate;
+            }
+
+            if (elements.impersonationReset) {
+                elements.impersonationReset.disabled = state.busy || !state.impersonatedOwnerId;
+            }
+        }
+
         function setBusy(isBusy) {
             state.busy = isBusy;
             [
@@ -2937,6 +3082,8 @@
                 elements.startDate,
                 elements.endDate,
                 elements.refreshBtn,
+                elements.impersonationSelect,
+                elements.impersonationReset,
                 elements.selectAll,
                 elements.selectedActionBtn,
                 elements.editSelectedBtn,
@@ -2982,6 +3129,7 @@
             updateEditDirtyMeta();
             renderCreateFormMode();
             syncCreateLineButtons();
+            syncAccessControls();
         }
 
         async function fetchJson(url, options = {}) {
@@ -3208,6 +3356,14 @@
             return String(value || "")
                 .normalize("NFD")
                 .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .trim();
+        }
+
+        function normalizeGuid(value) {
+            return String(value || "")
+                .replaceAll("{", "")
+                .replaceAll("}", "")
                 .toLowerCase()
                 .trim();
         }

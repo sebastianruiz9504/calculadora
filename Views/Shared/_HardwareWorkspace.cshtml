@@ -1,9 +1,16 @@
 @model CotizadorInterno.Web.Models.Hardware.HardwareWorkspaceViewModel
+@using CotizadorInterno.Web.Models.Hardware
 
 <div class="hardware-shell @(Model.ShowHero ? "" : "hardware-shell--embedded")"
      id="@Model.RootId"
      data-hw-root
      data-hw-mode="@Model.Mode"
+     data-hw-can-impersonate="@(Model.CanImpersonate ? "true" : "false")"
+     data-hw-current-user-id="@Model.CurrentUserId"
+     data-hw-current-user-email="@Model.CurrentUserEmail"
+     data-hw-allow-create="@(Model.AllowCreate ? "true" : "false")"
+     data-hw-allow-commercial-draft-edit="@(Model.AllowCommercialDraftEdit ? "true" : "false")"
+     data-hw-supplier-payment-email="@HardwareAccessPolicy.SupplierPaymentEmail"
      data-preview-url="@Model.PreviewUrl"
      data-provision-url="@Model.ProvisionUrl"
      data-board-url="@Model.BoardUrl"
@@ -15,6 +22,7 @@
      data-invoice-search-url="@Model.InvoiceSearchUrl"
      data-client-search-url="@Model.ClientSearchUrl"
      data-owner-search-url="@Model.OwnerSearchUrl"
+     data-impersonation-users-url="@Model.ImpersonationUsersUrl"
      data-initial-start-date="@Model.InitialStartDate"
      data-initial-end-date="@Model.InitialEndDate">
     @if (Model.ShowHero)
@@ -25,9 +33,23 @@
                 <h1 class="hardware-title">@Model.HeroTitle</h1>
                 <p class="hardware-subtitle">@Model.HeroSubtitle</p>
             </div>
-            <div class="hardware-user-pill">
-                <span class="hardware-user-pill__label">@Model.AccessLabel</span>
-                <span>@Model.CurrentUserLabel</span>
+            <div class="hardware-access-stack">
+                <div class="hardware-user-pill">
+                    <span class="hardware-user-pill__label">@Model.AccessLabel</span>
+                    <span data-hw-active-user-label>@Model.CurrentUserLabel</span>
+                </div>
+                @if (Model.CanImpersonate)
+                {
+                    <div class="hardware-impersonation" data-hw-impersonation-panel>
+                        <label class="hardware-field" for="hardwareImpersonationSelect-@Model.RootId">
+                            <span class="hardware-field__label">Vista como</span>
+                            <select class="form-select" id="hardwareImpersonationSelect-@Model.RootId" data-hw-impersonation-select>
+                                <option value="">Mi usuario</option>
+                            </select>
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary" data-hw-impersonation-reset>Regresar</button>
+                    </div>
+                }
             </div>
         </section>
     }
@@ -58,7 +80,7 @@
                     <strong data-hw-filter-label>Todos los estados</strong>
                 </div>
                 <div class="hardware-actions">
-                    @if (Model.IsCommercialMode)
+                    @if (Model.IsCommercialMode && Model.AllowCreate)
                     {
                         <button type="button" class="btn btn-primary" data-hw-open-create-modal>Nuevo registro</button>
                     }

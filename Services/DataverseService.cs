@@ -814,19 +814,27 @@ public sealed partial class DataverseService : IDataverseService
         return list;
     }
 
-    public async Task<IReadOnlyList<SystemUserLookupItem>> SearchSystemUsersAsync(string query, int top = 12, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SystemUserLookupItem>> SearchSystemUsersAsync(
+        string query,
+        int top = 12,
+        CancellationToken ct = default,
+        bool includeAllWhenEmpty = false)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         query = (query ?? "").Trim();
-        if (query.Length < 2)
+        if (query.Length < 2 && !includeAllWhenEmpty)
             return Array.Empty<SystemUserLookupItem>();
 
-        top = Math.Clamp(top, 1, 50);
-        var safeQuery = EscapeOdataLiteral(query);
-        var filter =
-            $"isdisabled eq false and (contains(fullname,'{safeQuery}') or contains(internalemailaddress,'{safeQuery}'))";
+        top = Math.Clamp(top, 1, 500);
+        var filter = "isdisabled eq false";
+        if (query.Length >= 2)
+        {
+            var safeQuery = EscapeOdataLiteral(query);
+            filter += $" and (contains(fullname,'{safeQuery}') or contains(internalemailaddress,'{safeQuery}'))";
+        }
+
         const string select = "systemuserid,fullname,internalemailaddress";
         var relativeUrl =
             $"/api/data/v9.2/systemusers?$select={select}" +
@@ -854,6 +862,39 @@ public sealed partial class DataverseService : IDataverseService
         }
 
         return list;
+    }
+
+    public async Task<SystemUserLookupItem?> GetSystemUserAsync(string systemUserId, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var normalizedUserId = NormalizeGuid(systemUserId, nameof(systemUserId));
+        const string select = "systemuserid,fullname,internalemailaddress";
+        var filter = $"systemuserid eq {normalizedUserId}";
+        var relativeUrl =
+            $"/api/data/v9.2/systemusers?$select={select}" +
+            $"&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+        if (value.GetArrayLength() == 0)
+            return null;
+
+        var root = value[0];
+        var id = ReadString(root, "systemuserid");
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+
+        var name = ReadString(root, "fullname");
+        var email = ReadString(root, "internalemailaddress");
+        return new SystemUserLookupItem
+        {
+            Id = id,
+            Name = string.IsNullOrWhiteSpace(email) ? name : $"{name} ({email})",
+            Email = email
+        };
     }
 
     public async Task<IReadOnlyList<RenewalDateLookupItem>> SearchRenewalDatesByClientAsync(string clientId, int top = 250, CancellationToken ct = default)
