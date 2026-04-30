@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
+using CotizadorInterno.Web.Endpoints;
 using CotizadorInterno.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -86,6 +87,8 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapM365CallbackEndpoint();
 
 app.MapControllerRoute(
     name: "default",
