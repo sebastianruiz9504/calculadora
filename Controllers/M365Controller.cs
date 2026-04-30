@@ -55,9 +55,9 @@ public sealed class M365Controller : ControllerBase
         [FromQuery] string tenant,
         [FromQuery(Name = "admin_consent")] string adminConsent,
         [FromQuery] string state,
-        [FromQuery] string scope,
-        [FromQuery] string error,
-        [FromQuery(Name = "error_description")] string errorDescription,
+        [FromQuery] string? scope,
+        [FromQuery] string? error,
+        [FromQuery(Name = "error_description")] string? errorDescription,
         CancellationToken ct)
     {
         try
@@ -67,9 +67,9 @@ public sealed class M365Controller : ControllerBase
                 Tenant = tenant,
                 AdminConsent = adminConsent,
                 State = state,
-                Scope = scope,
-                Error = error,
-                ErrorDescription = errorDescription
+                Scope = scope ?? "",
+                Error = error ?? "",
+                ErrorDescription = errorDescription ?? ""
             }, ct);
 
             return HtmlCallbackResult(result.Success ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest, result.Message, result);
