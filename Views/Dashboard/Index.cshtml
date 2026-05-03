@@ -22,6 +22,7 @@
      data-copiers-client-invoices-url="@Url.Action("CopiersClientInvoices", "Dashboard")"
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
      data-copiers-equipment-url="@Url.Action("CopiersEquipment", "Dashboard")"
+     data-copiers-counters-url="@Url.Action("CopiersCounters", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
      data-copiers-equipment-assignment-url="@Url.Action("CopiersEquipmentAssignment", "Dashboard")"
      data-copiers-maintenance-file-url="@Url.Action("CopiersMaintenanceAttachment", "Dashboard")"
@@ -750,6 +751,7 @@
         <section class="dashboard-subtabs" aria-label="Subsecciones de copiers">
             <button type="button" class="dashboard-subtab is-active" data-copiers-subtab="billing">Facturaci&oacute;n copiers</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="equipment">Equipos</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="counters">Contadores</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance">Mantenimientos</button>
         </section>
 
@@ -930,6 +932,88 @@
                         <button type="button" class="btn btn-outline-secondary dashboard-pagination__btn" id="copiersMaintenancePrevBtn">Anterior</button>
                         <span id="copiersMaintenancePageSummary" class="dashboard-table-meta">P&aacute;gina 1 de 1</span>
                         <button type="button" class="btn btn-outline-secondary dashboard-pagination__btn" id="copiersMaintenanceNextBtn">Siguiente</button>
+                    </div>
+                </article>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-copiers-subpanel="counters" hidden>
+            <section class="dashboard-kpis dashboard-kpis--copiers-counters" id="copiersCountersKpisContainer"></section>
+
+            <section class="dashboard-grid">
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Contadores</div>
+                            <h2 class="dashboard-panel__title">Consumo mensual por cliente</h2>
+                            <p class="dashboard-panel__description" id="copiersCountersPeriodLabel">Copias y escaneos consolidados por periodo.</p>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <label class="dashboard-filter dashboard-filter--compact" for="copiersCountersMonthFilter">
+                                <span class="dashboard-filter__label">Mes</span>
+                                <select id="copiersCountersMonthFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                            </label>
+                            <label class="dashboard-filter dashboard-filter--compact" for="copiersCountersYearFilter">
+                                <span class="dashboard-filter__label">A&ntilde;o</span>
+                                <select id="copiersCountersYearFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                            </label>
+                            <label class="dashboard-filter dashboard-filter--compact" for="copiersCountersClientFilter">
+                                <span class="dashboard-filter__label">Cliente</span>
+                                <select id="copiersCountersClientFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                            </label>
+                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersCountersRefreshBtn">Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-meta">
+                        <span id="copiersCountersClientResultsCount">Mostrando 0 clientes</span>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+                        <table class="table dashboard-table dashboard-copiers-counters-client-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th class="text-end">Copias</th>
+                                    <th class="text-end">Escaneos</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Equipos con consumo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersCountersClientBody"></tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Contadores</div>
+                            <h2 class="dashboard-panel__title">Detalle por equipo</h2>
+                            <p class="dashboard-panel__description">Lectura actual contra lectura anterior para calcular el consumo mensual.</p>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <span id="copiersCountersEquipmentResultsCount" class="dashboard-table-meta">Mostrando 0 equipos</span>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                        <table class="table dashboard-table dashboard-copiers-counters-equipment-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Equipo</th>
+                                    <th>Fecha toma anterior</th>
+                                    <th>Fecha toma actual</th>
+                                    <th class="text-end">Contador actual copias</th>
+                                    <th class="text-end">Contador anterior copias</th>
+                                    <th class="text-end">Copias</th>
+                                    <th class="text-end">Contador actual escaneos</th>
+                                    <th class="text-end">Contador anterior escaneos</th>
+                                    <th class="text-end">Escaneos</th>
+                                    <th class="text-end">D&iacute;as entre tomas</th>
+                                    <th class="text-end">Total equipo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersCountersEquipmentBody"></tbody>
+                        </table>
                     </div>
                 </article>
             </section>

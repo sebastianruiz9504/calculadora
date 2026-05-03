@@ -304,6 +304,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.dashboard-kpis--copiers-counters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .dashboard-kpis--copiers-maintenance {
     grid-template-columns: minmax(0, 420px);
 }
@@ -334,6 +338,9 @@
 .dashboard-kpis--copiers-equipment .dashboard-kpi,
 .dashboard-kpis--copiers-equipment .dashboard-kpi:nth-child(4),
 .dashboard-kpis--copiers-equipment .dashboard-kpi:nth-child(5),
+.dashboard-kpis--copiers-counters .dashboard-kpi,
+.dashboard-kpis--copiers-counters .dashboard-kpi:nth-child(4),
+.dashboard-kpis--copiers-counters .dashboard-kpi:nth-child(5),
 .dashboard-kpis--copiers-maintenance .dashboard-kpi,
 .dashboard-kpis--copiers-maintenance .dashboard-kpi:nth-child(4),
 .dashboard-kpis--copiers-maintenance .dashboard-kpi:nth-child(5) {
@@ -917,6 +924,14 @@
 
 .dashboard-portfolio-invoices-table {
     min-width: 2240px;
+}
+
+.dashboard-copiers-counters-equipment-table {
+    min-width: 1680px;
+}
+
+.dashboard-copiers-counters-client-table {
+    min-width: 820px;
 }
 
 .dashboard-table thead th {
@@ -2055,6 +2070,10 @@
     }
 
     .dashboard-kpis--copiers-maintenance {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-kpis--copiers-counters {
         grid-template-columns: 1fr;
     }
 

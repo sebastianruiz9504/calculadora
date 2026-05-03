@@ -69,9 +69,11 @@
     const copiersNewRecordButton = document.getElementById("copiersNewRecordBtn");
     const copiersEquipmentRefreshButton = document.getElementById("copiersEquipmentRefreshBtn");
     const copiersMaintenanceRefreshButton = document.getElementById("copiersMaintenanceRefreshBtn");
+    const copiersCountersRefreshButton = document.getElementById("copiersCountersRefreshBtn");
     const copiersEquipmentResultsCount = document.getElementById("copiersEquipmentResultsCount");
     const copiersEquipmentKpisContainer = document.getElementById("copiersEquipmentKpisContainer");
     const copiersMaintenanceKpisContainer = document.getElementById("copiersMaintenanceKpisContainer");
+    const copiersCountersKpisContainer = document.getElementById("copiersCountersKpisContainer");
     const copiersClientSummaryBody = document.getElementById("copiersClientSummaryBody");
     const copiersStockBody = document.getElementById("copiersStockBody");
     const copiersEquipmentBody = document.getElementById("copiersEquipmentBody");
@@ -86,6 +88,14 @@
     const copiersMaintenancePrevBtn = document.getElementById("copiersMaintenancePrevBtn");
     const copiersMaintenanceNextBtn = document.getElementById("copiersMaintenanceNextBtn");
     const copiersMaintenancePageSummary = document.getElementById("copiersMaintenancePageSummary");
+    const copiersCountersMonthFilter = document.getElementById("copiersCountersMonthFilter");
+    const copiersCountersYearFilter = document.getElementById("copiersCountersYearFilter");
+    const copiersCountersClientFilter = document.getElementById("copiersCountersClientFilter");
+    const copiersCountersPeriodLabel = document.getElementById("copiersCountersPeriodLabel");
+    const copiersCountersClientResultsCount = document.getElementById("copiersCountersClientResultsCount");
+    const copiersCountersEquipmentResultsCount = document.getElementById("copiersCountersEquipmentResultsCount");
+    const copiersCountersClientBody = document.getElementById("copiersCountersClientBody");
+    const copiersCountersEquipmentBody = document.getElementById("copiersCountersEquipmentBody");
     const copiersEditorModal = document.getElementById("copiersEditorModal");
     const copiersEditorCloseBtn = document.getElementById("copiersEditorCloseBtn");
     const copiersEditorCancelBtn = document.getElementById("copiersEditorCancelBtn");
@@ -233,6 +243,8 @@
         siigoCustomerNitSearching: false,
         copiersDashboard: null,
         copiersEquipmentDashboard: null,
+        copiersCountersDashboard: null,
+        copiersCountersSignature: "",
         taxesDashboard: null,
         portfolioDashboard: null,
         pnlDashboard: null,
@@ -242,6 +254,7 @@
         copiersSubtab: "billing",
         copiersLoading: false,
         copiersEquipmentLoading: false,
+        copiersCountersLoading: false,
         copiersEditorSaving: false,
         copiersEditorOriginal: null,
         copiersClientSuggestions: [],
@@ -256,6 +269,9 @@
         copiersMaintenanceMonth: "all",
         copiersMaintenanceOwner: "all",
         copiersMaintenancePage: 1,
+        copiersCountersYear: currentYear,
+        copiersCountersMonth: currentValue,
+        copiersCountersClientId: "",
         portfolioSearchTerm: "",
         portfolioInvoicesSearchTerm: "",
         portfolioGrids: {
@@ -308,6 +324,10 @@
         return `${state.pnlYear}|${state.pnlMonth}|${state.pnlVertical}`;
     }
 
+    function getCopiersCountersSignature() {
+        return `${state.copiersCountersYear}|${state.copiersCountersMonth}|${state.copiersCountersClientId || ""}`;
+    }
+
     function formatMetric(value, format) {
         const numericValue = Number(value || 0);
         if (format === "number") {
@@ -323,6 +343,14 @@
         }
 
         return currencyFormatter.format(numericValue);
+    }
+
+    function formatNullableNumber(value) {
+        if (value === null || value === undefined || value === "") {
+            return "—";
+        }
+
+        return numberFormatter.format(Number(value || 0));
     }
 
     function formatGrowth(value) {
@@ -478,6 +506,21 @@
             copiersMaintenanceYearFilter,
             copiersMaintenanceMonthFilter,
             copiersMaintenanceOwnerFilter,
+            ...copiersSubtabButtons
+        ].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+    }
+
+    function setCopiersCountersLoading(loading) {
+        state.copiersCountersLoading = loading;
+        [
+            copiersCountersRefreshButton,
+            copiersCountersMonthFilter,
+            copiersCountersYearFilter,
+            copiersCountersClientFilter,
             ...copiersSubtabButtons
         ].forEach(element => {
             if (element) {
@@ -2164,6 +2207,17 @@
         return app.dataset.copiersEquipmentUrl || "";
     }
 
+    function buildCopiersCountersUrl() {
+        const baseUrl = app.dataset.copiersCountersUrl || "";
+        const params = new URLSearchParams({
+            year: String(state.copiersCountersYear),
+            month: String(state.copiersCountersMonth),
+            clientId: state.copiersCountersClientId || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
     function buildCopiersEquipmentDetailUrl(equipmentId) {
         const baseUrl = app.dataset.copiersEquipmentDetailUrl || "";
         const params = new URLSearchParams({
@@ -3409,6 +3463,112 @@
         `).join("");
     }
 
+    function buildCopiersCountersPeriodOptions() {
+        if (copiersCountersMonthFilter && !copiersCountersMonthFilter.options.length) {
+            copiersCountersMonthFilter.innerHTML = monthLabels
+                .map((label, index) => `<option value="${index + 1}">${escapeHtml(label)}</option>`)
+                .join("");
+        }
+
+        if (copiersCountersYearFilter && !copiersCountersYearFilter.options.length) {
+            const startYear = currentYear + 1;
+            const endYear = currentYear - 5;
+            copiersCountersYearFilter.innerHTML = Array.from({ length: startYear - endYear + 1 }, (_, index) => startYear - index)
+                .map(year => `<option value="${year}">${year}</option>`)
+                .join("");
+        }
+
+        if (copiersCountersMonthFilter) {
+            copiersCountersMonthFilter.value = String(state.copiersCountersMonth);
+        }
+
+        if (copiersCountersYearFilter) {
+            copiersCountersYearFilter.value = String(state.copiersCountersYear);
+        }
+    }
+
+    function renderCopiersCountersClientOptions(dashboard) {
+        if (!copiersCountersClientFilter) {
+            return;
+        }
+
+        const clients = Array.isArray(dashboard?.clients) ? dashboard.clients : [];
+        copiersCountersClientFilter.innerHTML = `
+            <option value="">Todos los clientes</option>
+            ${clients.map(client => `
+                <option value="${escapeHtml(client.id || "")}">${escapeHtml(client.name || "Cliente sin nombre")}</option>
+            `).join("")}
+        `;
+        copiersCountersClientFilter.value = dashboard?.selectedClientId || state.copiersCountersClientId || "";
+    }
+
+    function renderCopiersCountersClientTable(dashboard) {
+        const rows = Array.isArray(dashboard?.clientSummaries) ? dashboard.clientSummaries : [];
+        if (copiersCountersClientResultsCount) {
+            copiersCountersClientResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} clientes`;
+        }
+
+        if (!copiersCountersClientBody) {
+            return;
+        }
+
+        copiersCountersClientBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.totalCopies))}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.totalScans))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.totalConsumption))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.equipmentWithConsumption))}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="5" class="dashboard-table__empty">No hay datos para el periodo seleccionado.</td></tr>';
+    }
+
+    function renderCopiersCountersEquipmentTable(dashboard) {
+        const rows = Array.isArray(dashboard?.equipmentRows) ? dashboard.equipmentRows : [];
+        if (copiersCountersEquipmentResultsCount) {
+            copiersCountersEquipmentResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} equipos`;
+        }
+
+        if (!copiersCountersEquipmentBody) {
+            return;
+        }
+
+        copiersCountersEquipmentBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td>${escapeHtml(row.equipmentName || "Sin equipo")}</td>
+                    <td>${escapeHtml(row.previousDateDisplay || "—")}</td>
+                    <td>${escapeHtml(row.currentDateDisplay || "—")}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.currentCopiesCounter))}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.previousCopiesCounter))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.copiesConsumption))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.currentScansCounter))}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.previousScansCounter))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.scansConsumption))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.daysBetweenReadings))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.totalConsumption))}</strong></td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="12" class="dashboard-table__empty">No hay equipos con lecturas para el periodo seleccionado.</td></tr>';
+    }
+
+    function renderCopiersCountersDashboard(dashboard) {
+        buildCopiersCountersPeriodOptions();
+        renderCopiersCountersClientOptions(dashboard);
+        renderSimpleKpis(copiersCountersKpisContainer, dashboard?.kpis);
+        renderCopiersCountersClientTable(dashboard);
+        renderCopiersCountersEquipmentTable(dashboard);
+
+        if (copiersCountersPeriodLabel) {
+            copiersCountersPeriodLabel.textContent = dashboard?.dateRangeLabel
+                ? `${dashboard.periodLabel || "Periodo"} · ${dashboard.dateRangeLabel}`
+                : (dashboard?.periodLabel || "Copias y escaneos consolidados por periodo.");
+        }
+    }
+
     function renderCopiersEquipmentDashboard(dashboard) {
         renderCopiersEquipmentKpis(dashboard);
         renderCopiersClientSummaries(dashboard);
@@ -4189,14 +4349,18 @@
     function updateHeroForCopiers(dashboard) {
         const fallbackFocus = state.copiersSubtab === "equipment"
             ? "Equipos asignados, stock y disponibilidad"
+            : state.copiersSubtab === "counters"
+                ? "Consumo mensual de copias y escaneos"
             : state.copiersSubtab === "maintenance"
                 ? "Mantenimientos, owners y actas"
                 : "Ordenado por dia de facturacion";
-        const focusLabel = state.copiersSubtab === "billing"
+        const focusLabel = state.copiersSubtab === "billing" || state.copiersSubtab === "counters"
             ? (dashboard?.focusLabel || fallbackFocus)
             : fallbackFocus;
         const activeRecordCount = state.copiersSubtab === "maintenance"
             ? getFilteredCopiersMaintenanceRows().length
+            : state.copiersSubtab === "counters"
+                ? Number(dashboard?.recordsCount || 0)
             : Number(dashboard?.recordsCount || 0);
         compareLabel && (compareLabel.textContent = dashboard?.asOfDateLabel ? `Corte al ${dashboard.asOfDateLabel}` : "Corte actual");
         granularityLabel && (granularityLabel.textContent = focusLabel);
@@ -4259,6 +4423,18 @@
         }
     }
 
+    function updateCopiersCountersContext(dashboard) {
+        state.copiersCountersDashboard = dashboard;
+        state.copiersCountersYear = Number(dashboard?.year || state.copiersCountersYear);
+        state.copiersCountersMonth = Number(dashboard?.month || state.copiersCountersMonth);
+        state.copiersCountersClientId = dashboard?.selectedClientId ?? state.copiersCountersClientId ?? "";
+        state.copiersCountersSignature = getCopiersCountersSignature();
+
+        if (state.activeTab === "copiers" && state.copiersSubtab === "counters") {
+            updateHeroForCopiers(dashboard);
+        }
+    }
+
     function updatePnlContext(dashboard) {
         state.pnlDashboard = dashboard;
         state.pnlYear = Number(dashboard?.year || state.pnlYear);
@@ -4310,6 +4486,8 @@
     function setCopiersSubtab(subtabKey) {
         state.copiersSubtab = subtabKey === "equipment"
             ? "equipment"
+            : subtabKey === "counters"
+                ? "counters"
             : subtabKey === "maintenance"
                 ? "maintenance"
                 : "billing";
@@ -4336,6 +4514,16 @@
                 updateHeroForCopiers(state.copiersEquipmentDashboard);
             } else {
                 loadCopiersEquipment();
+            }
+            return;
+        }
+
+        if (state.copiersSubtab === "counters") {
+            buildCopiersCountersPeriodOptions();
+            if (state.copiersCountersDashboard && state.copiersCountersSignature === getCopiersCountersSignature()) {
+                updateHeroForCopiers(state.copiersCountersDashboard);
+            } else {
+                loadCopiersCounters();
             }
             return;
         }
@@ -4766,6 +4954,27 @@
         }
     }
 
+    async function loadCopiersCounters(options = {}) {
+        const quiet = Boolean(options.quiet);
+        setCopiersCountersLoading(true);
+        if (!quiet) {
+            setStatus(copiersStatusBanner, "info", "Consultando contadores copiers...");
+        }
+
+        try {
+            const dashboard = await fetchJson(buildCopiersCountersUrl());
+            updateCopiersCountersContext(dashboard);
+            renderCopiersCountersDashboard(dashboard);
+            if (!quiet) {
+                setStatus(copiersStatusBanner, "", "");
+            }
+        } catch (error) {
+            setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el consumo de contadores.");
+        } finally {
+            setCopiersCountersLoading(false);
+        }
+    }
+
     async function loadCopiersEquipmentDetail(recordId) {
         const row = getCopiersEquipmentRowById(recordId);
         renderCopiersEquipmentDetailLoading(row);
@@ -4963,6 +5172,9 @@
     copiersMaintenanceRefreshButton?.addEventListener("click", () => {
         loadCopiersEquipment();
     });
+    copiersCountersRefreshButton?.addEventListener("click", () => {
+        loadCopiersCounters();
+    });
     copiersNewRecordButton?.addEventListener("click", () => {
         openCopiersEditorModal("create");
     });
@@ -5120,6 +5332,18 @@
             updateHeroForCopiers(state.copiersEquipmentDashboard);
         }
     });
+    copiersCountersMonthFilter?.addEventListener("change", () => {
+        state.copiersCountersMonth = Number(copiersCountersMonthFilter.value || currentValue);
+        loadCopiersCounters();
+    });
+    copiersCountersYearFilter?.addEventListener("change", () => {
+        state.copiersCountersYear = Number(copiersCountersYearFilter.value || currentYear);
+        loadCopiersCounters();
+    });
+    copiersCountersClientFilter?.addEventListener("change", () => {
+        state.copiersCountersClientId = copiersCountersClientFilter.value || "";
+        loadCopiersCounters();
+    });
     pnlDetailBody?.addEventListener("click", event => {
         const saveButton = event.target.closest("[data-pnl-detail-save]");
         if (!saveButton) {
@@ -5179,6 +5403,7 @@
     syncSiigoDateRangeWithActivePeriod();
     buildPnlMonthOptions(12);
     buildCopiersMaintenanceFilterOptions();
+    buildCopiersCountersPeriodOptions();
     renderCopiersMaintenanceTable();
     resetBillingReportReference();
     syncBillingReportSelectionSummary();
