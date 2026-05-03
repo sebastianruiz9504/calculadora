@@ -57,6 +57,37 @@ public sealed class AzureOpenAIQuoteProposalService : IAzureOpenAIQuoteProposalS
     {
         ValidateAzureOpenAIOptions();
 
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var html = await RequestProposalHtmlAsync(payloadJson, attempt > 0, ct);
+            html = NormalizeHtmlResponse(html);
+
+            try
+            {
+                ValidateGeneratedHtml(html);
+                return html;
+            }
+            catch (InvalidOperationException ex) when (attempt == 0 && IsInternalContentValidationError(ex))
+            {
+                _logger.LogWarning(
+                    ex,
+                    "La propuesta HTML incluyo texto interno. Se reintentara la generacion con instrucciones estrictas.");
+            }
+        }
+
+        throw new InvalidOperationException("Azure OpenAI no devolvio una propuesta HTML valida.");
+    }
+
+    private async Task<string> RequestProposalHtmlAsync(string payloadJson, bool strictRetry, CancellationToken ct)
+    {
+        var userContent = strictRetry
+            ? "Regenera la propuesta comercial HTML usando exclusivamente este JSON. La version anterior incluyo texto interno. " +
+              "Entrega una propuesta limpia para cliente final: no menciones campos internos, calculos internos, variables internas, " +
+              "metricas internas ni digas que fueron ocultados. JSON:\n" + payloadJson
+            : "Genera la propuesta comercial HTML usando exclusivamente este JSON de cotizacion. " +
+              "No inventes productos, precios, descuentos, horas ni datos del cliente. JSON:\n" +
+              payloadJson;
+
         var requestBody = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["messages"] = new object[]
@@ -69,10 +100,7 @@ public sealed class AzureOpenAIQuoteProposalService : IAzureOpenAIQuoteProposalS
                 new
                 {
                     role = "user",
-                    content =
-                        "Genera la propuesta comercial HTML usando exclusivamente este JSON de cotizacion. " +
-                        "No inventes productos, precios, descuentos, horas ni datos del cliente. JSON:\n" +
-                        payloadJson
+                    content = userContent
                 }
             },
         };
@@ -106,8 +134,6 @@ public sealed class AzureOpenAIQuoteProposalService : IAzureOpenAIQuoteProposalS
             throw new InvalidOperationException($"Azure OpenAI error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
 
         var html = ExtractChatCompletionContent(body);
-        html = NormalizeHtmlResponse(html);
-        ValidateGeneratedHtml(html);
         return html;
     }
 
@@ -187,14 +213,9 @@ public sealed class AzureOpenAIQuoteProposalService : IAzureOpenAIQuoteProposalS
             },
             reglas = new
             {
-                noMostrar = new[]
-                {
-                    "Costo unitario",
-                    "Margen",
-                    "Acelerador",
-                    "Puntaje",
-                    "Comision interna"
-                },
+                usarSoloCamposComercialesPublicos = true,
+                ocultarCalculosYMetricasInternas = true,
+                noExplicarCamposOcultos = true,
                 formato = "HTML autonomo, imprimible, sin scripts, sin CDN, sin imagenes externas"
             }
         };
@@ -244,7 +265,8 @@ Reglas obligatorias:
 - Usa una identidad visual inspirada en la propuesta de referencia: portada azul marino, textos blancos, logo textual DIGITAL TECH, acentos cyan y verde, paginas blancas con franja superior azul, titulos grandes en mayuscula y tablas con encabezados azul marino.
 - Usa los colores del JSON de marca: azul principal #061943, cyan #18bdd7 y verde #28c76f.
 - No inventes productos, precios, descuentos, horas, fechas, contactos, clientes ni alcance no enviado.
-- Nunca muestres informacion interna: costo unitario, margen, acelerador, puntaje, comision ni formulas internas.
+- Nunca menciones ni expliques campos, variables, formulas, reglas ni metricas internas de calculo.
+- No escribas una seccion de campos ocultos ni digas que omitiste informacion interna.
 - Usa solo valores comerciales publicos: producto, tipo, cantidad, duracion, venta unitaria, venta mensual, venta total, IVA y totales.
 - Formatea moneda como COP en estilo colombiano.
 - Si falta cliente o contacto, usa "Por confirmar" sin inventar nombres.
@@ -317,6 +339,13 @@ Reglas obligatorias:
             if (html.Contains(term, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Azure OpenAI incluyo informacion interna no permitida: {term}.");
         }
+    }
+
+    private static bool IsInternalContentValidationError(Exception ex)
+    {
+        return ex.Message.Contains(
+            "incluyo informacion interna no permitida",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private void ValidateAzureOpenAIOptions()
