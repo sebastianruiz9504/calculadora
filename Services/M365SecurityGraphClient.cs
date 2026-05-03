@@ -318,7 +318,7 @@ public sealed class M365SecurityGraphClient : IM365SecurityGraphClient
     {
         var filter =
             $"createdDateTime ge {FormatGraphUtc(periodStartUtc)} and createdDateTime lt {FormatGraphUtc(periodEndExclusiveUtc)}";
-        return $"{path}?$filter={Uri.EscapeDataString(filter)}&$top=100";
+        return $"{path}?$filter={Uri.EscapeDataString(filter)}&$top=50";
     }
 
     private static string FormatGraphUtc(DateTimeOffset value) =>

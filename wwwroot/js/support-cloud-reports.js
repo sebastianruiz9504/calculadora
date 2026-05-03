@@ -154,7 +154,11 @@
             });
 
             renderSnapshot(result);
-            setStatus(result?.success ? "success" : "error", result?.message || "Recoleccion finalizada.");
+            setStatus(
+                result?.success ? "success" : "error",
+                result?.success
+                    ? (result?.message || "Recoleccion finalizada.")
+                    : (result?.errorConsulta || result?.message || "La consulta a Microsoft Graph fallo."));
         } catch (error) {
             setStatus("error", buildErrorMessage(error));
         } finally {
@@ -328,6 +332,14 @@
                     <span class="support-cloud-breakdown__value">${escapeHtml(result?.estadoConsulta || "")}</span>
                 </div>
             </div>
+            ${result?.errorConsulta ? `
+                <div class="support-cloud-breakdown__row">
+                    <div class="support-cloud-breakdown__head">
+                        <span class="support-cloud-breakdown__label">Error Graph</span>
+                        <span class="support-cloud-breakdown__value">${escapeHtml(result.errorConsulta)}</span>
+                    </div>
+                </div>
+            ` : ""}
         `;
     }
 
