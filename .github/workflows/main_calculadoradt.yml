@@ -3,6 +3,12 @@
 
 name: Build and deploy ASP.Net Core app to Azure Web App - calculadoradt
 
+env:
+  AZURE_WEBAPP_NAME: calculadoradt
+  AZURE_CLIENT_ID: 774a5f8a-8b6c-4e43-83a1-3efd8a90cea0
+  AZURE_TENANT_ID: cab7ea42-4a21-4548-952f-fcde81f2bdd6
+  AZURE_SUBSCRIPTION_ID: 7018b9b6-5dfc-4d91-bc4d-5f29f27553bd
+
 on:
   push:
     branches:
@@ -24,10 +30,10 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Build with dotnet
-        run: dotnet build --configuration Release
+        run: dotnet build CotizadorInterno.Web.csproj --configuration Release
 
       - name: dotnet publish
-        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+        run: dotnet publish CotizadorInterno.Web.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -51,15 +57,14 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6B701691511B41A49C0802271E4A704C }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_AA79A8E1CE8C4FFC8609EC4D0F41F552 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_50F44FF04B29438BABFAA20DC28B227C }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'calculadoradt'
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'Production'
           package: .
-          

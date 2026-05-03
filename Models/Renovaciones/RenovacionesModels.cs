@@ -62,6 +62,12 @@ public sealed class RenewalBoardDto
 
 public sealed class RenewalClientGroupDto
 {
+    public string PeriodKey { get; set; } = "";
+    public int RenewalYear { get; set; }
+    public int RenewalMonth { get; set; }
+    public string RenewalYearLabel { get; set; } = "";
+    public string RenewalMonthLabel { get; set; } = "";
+    public string RenewalPeriodLabel { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public int RecordCount { get; set; }

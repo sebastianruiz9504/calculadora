@@ -42,6 +42,7 @@ public sealed partial class DataverseService : IDataverseService
         PropertyNameCaseInsensitive = true,
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
+    private static readonly CultureInfo RenewalDisplayCulture = CultureInfo.GetCultureInfo("es-CO");
     private const string DefaultScenariosTableSetName = "cr07a_negocioscomercialeses";
     private const string DefaultScenariosTableName = "cr07a_negocioscomerciales";
     private const string DefaultSalesPerformanceEntityLogicalName = "cr07a_salesperformancerecord";
@@ -1010,8 +1011,13 @@ public sealed partial class DataverseService : IDataverseService
                 .ThenBy(item => item.ProductName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+        var clientCount = records
+            .Select(GetRenewalClientGroupKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
         var groups = records
-            .GroupBy(GetRenewalClientGroupKey, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(GetRenewalClientPeriodGroupKey, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var orderedRecords = filter == RenewalPeriodFilter.AllPast
@@ -1025,8 +1031,15 @@ public sealed partial class DataverseService : IDataverseService
                         .ToList();
 
                 var first = orderedRecords[0];
+                var period = GetRenewalPeriodInfo(first);
                 return new RenewalClientGroupDto
                 {
+                    PeriodKey = period.Key,
+                    RenewalYear = period.Year,
+                    RenewalMonth = period.Month,
+                    RenewalYearLabel = period.YearLabel,
+                    RenewalMonthLabel = period.MonthLabel,
+                    RenewalPeriodLabel = period.Label,
                     ClientId = first.ClientId,
                     ClientName = first.ClientName,
                     RecordCount = orderedRecords.Count,
@@ -1050,7 +1063,7 @@ public sealed partial class DataverseService : IDataverseService
         {
             Filter = filter.ToKey(),
             FilterLabel = filter.ToLabel(),
-            ClientsCount = groups.Count,
+            ClientsCount = clientCount,
             RecordsCount = records.Count,
             TotalContractValue = RoundCurrency(groups.Sum(group => group.ContractValue)),
             Groups = groups
@@ -1788,6 +1801,68 @@ public sealed partial class DataverseService : IDataverseService
 
         return $"name:{item.ClientName}";
     }
+
+    private static string GetRenewalClientPeriodGroupKey(RenewalRecordDto item)
+    {
+        var period = GetRenewalPeriodInfo(item);
+        return $"{period.Key}|{GetRenewalClientGroupKey(item)}";
+    }
+
+    private static RenewalPeriodInfo GetRenewalPeriodInfo(RenewalRecordDto item)
+    {
+        if (TryParseDateOnly(item.RenewalDateValue, out var date))
+        {
+            return BuildRenewalPeriodInfo(date);
+        }
+
+        var year = 0;
+        var month = 0;
+        if (!string.IsNullOrWhiteSpace(item.RenewalDateValue) && item.RenewalDateValue.Length >= 7)
+        {
+            _ = int.TryParse(item.RenewalDateValue[..4], NumberStyles.Integer, CultureInfo.InvariantCulture, out year);
+            _ = int.TryParse(item.RenewalDateValue.Substring(5, 2), NumberStyles.Integer, CultureInfo.InvariantCulture, out month);
+        }
+
+        var monthLabel = month is >= 1 and <= 12
+            ? RenewalDisplayCulture.DateTimeFormat.GetAbbreviatedMonthName(month).TrimEnd('.')
+            : "Sin mes";
+        var yearLabel = year > 0
+            ? year.ToString(CultureInfo.InvariantCulture)
+            : "Sin fecha";
+        var fallbackKey = year > 0 && month is >= 1 and <= 12
+            ? $"{year:D4}-{month:D2}"
+            : "sin-fecha";
+
+        return new RenewalPeriodInfo(
+            fallbackKey,
+            year,
+            month,
+            yearLabel,
+            monthLabel,
+            year > 0 && month is >= 1 and <= 12 ? $"{monthLabel} {yearLabel}" : "Sin fecha");
+    }
+
+    private static RenewalPeriodInfo BuildRenewalPeriodInfo(DateOnly date)
+    {
+        var monthLabel = RenewalDisplayCulture.DateTimeFormat.GetAbbreviatedMonthName(date.Month).TrimEnd('.');
+        var yearLabel = date.Year.ToString(CultureInfo.InvariantCulture);
+
+        return new RenewalPeriodInfo(
+            date.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            date.Year,
+            date.Month,
+            yearLabel,
+            monthLabel,
+            $"{monthLabel} {yearLabel}");
+    }
+
+    private readonly record struct RenewalPeriodInfo(
+        string Key,
+        int Year,
+        int Month,
+        string YearLabel,
+        string MonthLabel,
+        string Label);
 
     private static BusinessType ResolveRenewalBusinessType(RenewalRecordUpdateItem item)
     {

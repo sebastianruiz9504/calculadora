@@ -141,6 +141,22 @@
         gap: 18px;
     }
 
+    .renew-period-year {
+        margin-top: 4px;
+        color: #0f172a;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 0;
+    }
+
+    .renew-period-month {
+        margin-top: 2px;
+        color: #1d4ed8;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0;
+    }
+
     .renew-group {
         border: 1px solid #e2e8f0;
         border-radius: 16px;
@@ -355,7 +371,7 @@
                 <h1 class="renew-title">Renovaciones</h1>
                 <p class="renew-subtitle">
                     Administra las lineas de <span class="fw-semibold">cr07a_salesperformancerecord</span>,
-                    filtradas por fecha de renovacion, agrupadas por cliente y con edicion masiva sobre los registros seleccionados.
+                    filtradas por fecha de renovacion, agrupadas por periodo y cliente y con edicion masiva sobre los registros seleccionados.
                 </p>
             </div>
             <div class="renew-user-pill">
@@ -385,7 +401,7 @@
                     <button type="button" class="btn btn-outline-secondary" id="refreshBoardBtn">Actualizar</button>
                 </div>
                 <div class="renew-helper mt-2">
-                    Valor contrato por cliente = <strong>cantidad x valor venta unidad USD x 12</strong>, sumado por todas sus lineas.
+                    Valor contrato del grupo = <strong>cantidad x valor venta unidad USD x 12</strong>, sumado por sus lineas.
                 </div>
             </div>
             <div class="text-end">
@@ -508,6 +524,10 @@
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
+    const monthFormatter = new Intl.DateTimeFormat("es-CO", {
+        month: "short",
+        timeZone: "UTC"
+    });
 
     const state = {
         filter: initialFilter,
@@ -628,7 +648,8 @@
     }
 
     function getGroupKey(group) {
-        return group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
+        const clientKey = group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
+        return group.periodKey ? `${group.periodKey}|${clientKey}` : clientKey;
     }
 
     function syncDraftsWithSelection() {
@@ -687,6 +708,120 @@
         groupsContainer.innerHTML = `<div class="renew-empty">${escapeHtml(message)}</div>`;
     }
 
+    function shouldRenderPeriodSections() {
+        return state.filter === "all" || state.filter === "all-past";
+    }
+
+    function getGroupPeriodInfo(group) {
+        const records = Array.isArray(group.records) ? group.records : [];
+        const firstDateValue = records[0]?.renewalDateValue || "";
+        const periodKey = group.periodKey || (firstDateValue.length >= 7 ? firstDateValue.slice(0, 7) : "sin-fecha");
+        const year = Number(group.renewalYear || periodKey.slice(0, 4));
+        const month = Number(group.renewalMonth || periodKey.slice(5, 7));
+        const yearLabel = group.renewalYearLabel || (Number.isFinite(year) && year > 0 ? String(year) : "Sin fecha");
+        const monthLabel = group.renewalMonthLabel
+            || (Number.isFinite(month) && month >= 1 && month <= 12
+                ? monthFormatter.format(new Date(Date.UTC(2000, month - 1, 1))).replace(".", "")
+                : "Sin mes");
+
+        return {
+            key: periodKey,
+            yearLabel,
+            monthLabel,
+            monthKey: `${yearLabel}|${monthLabel}`
+        };
+    }
+
+    function renderGroups(groups) {
+        if (!shouldRenderPeriodSections()) {
+            return groups.map(renderGroupCard).join("");
+        }
+
+        let currentYear = "";
+        let currentMonth = "";
+        return groups.map(group => {
+            const period = getGroupPeriodInfo(group);
+            const yearHeader = period.yearLabel !== currentYear
+                ? `<div class="renew-period-year">${escapeHtml(period.yearLabel)}</div>`
+                : "";
+            const monthHeader = period.monthKey !== currentMonth
+                ? `<div class="renew-period-month">${escapeHtml(period.monthLabel)}</div>`
+                : "";
+
+            currentYear = period.yearLabel;
+            currentMonth = period.monthKey;
+            return `${yearHeader}${monthHeader}${renderGroupCard(group)}`;
+        }).join("");
+    }
+
+    function renderGroupCard(group) {
+        const groupKey = getGroupKey(group);
+        const records = Array.isArray(group.records) ? group.records : [];
+        const selectedCount = records.filter(record => state.selectedIds.has(record.recordId)).length;
+        const allSelected = records.length > 0 && selectedCount === records.length;
+        const isExpanded = state.expandedGroups.has(groupKey);
+        const firstRenewal = records[0]?.renewalDateDisplay || "Sin fecha";
+        const lastRenewal = records[records.length - 1]?.renewalDateDisplay || firstRenewal;
+        const renewalRange = records.length > 1 && firstRenewal !== lastRenewal
+            ? `${firstRenewal} a ${lastRenewal}`
+            : firstRenewal;
+
+        return `
+            <article class="renew-group" data-group-key="${escapeHtml(groupKey)}">
+                <div class="renew-group__header">
+                    <div class="d-flex align-items-start gap-3 flex-wrap">
+                        <div class="form-check mt-1">
+                            <input class="form-check-input group-checkbox" type="checkbox" data-group-key="${escapeHtml(groupKey)}" ${allSelected ? "checked" : ""}>
+                        </div>
+                        <div>
+                            <h2 class="renew-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
+                            <div class="renew-group__meta">${escapeHtml(String(group.recordCount || records.length))} lineas | ${selectedCount} seleccionadas | Fechas: ${escapeHtml(renewalRange)}</div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap align-items-center">
+                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
+                            ${isExpanded ? "Ocultar productos" : "Ver productos"}
+                        </button>
+                        <div class="renew-contract-pill">Valor contrato: ${formatMoney(group.contractValue || 0)}</div>
+                    </div>
+                </div>
+                ${isExpanded ? `
+                    <div class="renew-table-wrap">
+                        <table class="table table-hover renew-table">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Producto</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Valor venta UND USD</th>
+                                    <th>Fecha renovacion</th>
+                                    <th class="text-end">Valor contrato</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${records.map(record => `
+                                    <tr class="${state.selectedIds.has(record.recordId) ? "row-selected" : ""}">
+                                        <td>
+                                            <input class="form-check-input record-checkbox" type="checkbox" data-record-id="${escapeHtml(record.recordId)}" ${state.selectedIds.has(record.recordId) ? "checked" : ""}>
+                                        </td>
+                                        <td>
+                                            <div class="renew-record-name">${escapeHtml(record.productName || "Producto sin asignar")}</div>
+                                            <div class="renew-record-sub">${escapeHtml(record.recordId || "")}</div>
+                                        </td>
+                                        <td class="text-end">${escapeHtml(String(record.quantity ?? 0))}</td>
+                                        <td class="text-end">${formatMoney(record.unitSaleUsd || 0)}</td>
+                                        <td>${escapeHtml(record.renewalDateDisplay || "")}</td>
+                                        <td class="text-end fw-semibold">${formatMoney(record.contractValue || 0)}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : ""}
+            </article>
+        `;
+    }
+
     function renderBoard() {
         currentFilterLabel.textContent = state.board?.filterLabel || "Este mes";
         filterButtons.forEach(button => {
@@ -706,73 +841,7 @@
             return;
         }
 
-        groupsContainer.innerHTML = state.board.groups.map(group => {
-            const groupKey = getGroupKey(group);
-            const records = Array.isArray(group.records) ? group.records : [];
-            const selectedCount = records.filter(record => state.selectedIds.has(record.recordId)).length;
-            const allSelected = records.length > 0 && selectedCount === records.length;
-            const isExpanded = state.expandedGroups.has(groupKey);
-            const firstRenewal = records[0]?.renewalDateDisplay || "Sin fecha";
-            const lastRenewal = records[records.length - 1]?.renewalDateDisplay || firstRenewal;
-            const renewalRange = records.length > 1 && firstRenewal !== lastRenewal
-                ? `${firstRenewal} a ${lastRenewal}`
-                : firstRenewal;
-
-            return `
-                <article class="renew-group" data-group-key="${escapeHtml(groupKey)}">
-                    <div class="renew-group__header">
-                        <div class="d-flex align-items-start gap-3 flex-wrap">
-                            <div class="form-check mt-1">
-                                <input class="form-check-input group-checkbox" type="checkbox" data-group-key="${escapeHtml(groupKey)}" ${allSelected ? "checked" : ""}>
-                            </div>
-                            <div>
-                                <h2 class="renew-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
-                                <div class="renew-group__meta">${escapeHtml(String(group.recordCount || records.length))} lineas | ${selectedCount} seleccionadas | Fechas: ${escapeHtml(renewalRange)}</div>
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2 flex-wrap align-items-center">
-                            <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
-                                ${isExpanded ? "Ocultar productos" : "Ver productos"}
-                            </button>
-                            <div class="renew-contract-pill">Valor contrato: ${formatMoney(group.contractValue || 0)}</div>
-                        </div>
-                    </div>
-                    ${isExpanded ? `
-                        <div class="renew-table-wrap">
-                            <table class="table table-hover renew-table">
-                                <thead>
-                                    <tr>
-                                        <th></th>
-                                        <th>Producto</th>
-                                        <th class="text-end">Cantidad</th>
-                                        <th class="text-end">Valor venta UND USD</th>
-                                        <th>Fecha renovacion</th>
-                                        <th class="text-end">Valor contrato</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${records.map(record => `
-                                        <tr class="${state.selectedIds.has(record.recordId) ? "row-selected" : ""}">
-                                            <td>
-                                                <input class="form-check-input record-checkbox" type="checkbox" data-record-id="${escapeHtml(record.recordId)}" ${state.selectedIds.has(record.recordId) ? "checked" : ""}>
-                                            </td>
-                                            <td>
-                                                <div class="renew-record-name">${escapeHtml(record.productName || "Producto sin asignar")}</div>
-                                                <div class="renew-record-sub">${escapeHtml(record.recordId || "")}</div>
-                                            </td>
-                                            <td class="text-end">${escapeHtml(String(record.quantity ?? 0))}</td>
-                                            <td class="text-end">${formatMoney(record.unitSaleUsd || 0)}</td>
-                                            <td>${escapeHtml(record.renewalDateDisplay || "")}</td>
-                                            <td class="text-end fw-semibold">${formatMoney(record.contractValue || 0)}</td>
-                                        </tr>
-                                    `).join("")}
-                                </tbody>
-                            </table>
-                        </div>
-                    ` : ""}
-                </article>
-            `;
-        }).join("");
+        groupsContainer.innerHTML = renderGroups(state.board.groups);
 
         bindBoardEvents();
         updateSummary();

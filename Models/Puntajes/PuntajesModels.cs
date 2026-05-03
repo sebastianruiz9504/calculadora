@@ -255,6 +255,13 @@ public sealed class ScoreVerificationSaveResultDto
     public ScoreVerificationComputedResultDto Result { get; set; } = new();
 }
 
+public sealed class ScoreRecordDeleteResultDto
+{
+    public bool Ok { get; set; }
+    public string RecordId { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
 public sealed class ScoreMonthCloseRequest
 {
     public string Filter { get; set; } = "";

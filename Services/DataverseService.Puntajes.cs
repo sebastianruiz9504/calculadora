@@ -196,6 +196,33 @@ public sealed partial class DataverseService
         throw new InvalidOperationException("No se pudo guardar la verificacion en Dataverse.", lastError);
     }
 
+    public async Task<ScoreRecordDeleteResultDto> DeleteScoreRecordAsync(string recordId, CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var existingItem = await GetScoreRecordJsonAsync(normalizedRecordId, httpContext.User, ct);
+        var existingContext = ParseScoreRecordContext(existingItem, activePeriodKey: null)
+            ?? throw new InvalidOperationException("No se encontro el registro seleccionado.");
+
+        if (existingContext.Record.IsVerified)
+            throw new InvalidOperationException("Solo puedes eliminar registros pendientes de verificacion.");
+
+        if (existingContext.Additional.MonthlyClosures.Any())
+            throw new InvalidOperationException("No se puede eliminar un registro que ya tiene cierres mensuales asociados.");
+
+        var deleteUrl = $"/api/data/v9.2/{_scoresTableSetName}({normalizedRecordId})";
+        await CallDataverseDeleteAsync(deleteUrl, httpContext.User, ct);
+
+        return new ScoreRecordDeleteResultDto
+        {
+            Ok = true,
+            RecordId = existingContext.Record.RecordId,
+            Message = "El registro pendiente fue eliminado correctamente."
+        };
+    }
+
     public async Task<ScoreMonthCloseResultDto> CloseScoreMonthAsync(ScorePeriodFilter filter, CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext

@@ -744,6 +744,12 @@
         state.isSaving = saving;
         submitVerifyScoreBtn && (submitVerifyScoreBtn.disabled = saving);
         refreshButton && (refreshButton.disabled = saving || state.isLoading || state.isClosingMonth);
+        filterButtons.forEach(button => {
+            button.disabled = saving || state.isLoading || state.isClosingMonth;
+        });
+        groupsContainer?.querySelectorAll(".verify-record-btn, .delete-record-btn, .toggle-group-btn").forEach(button => {
+            button.disabled = saving || state.isLoading || state.isClosingMonth;
+        });
         renderCloseMonthPanel();
     }
 
@@ -981,6 +987,11 @@
     }
 
     function renderRecordRows(record) {
+        const canDelete = !record.isVerified && !record.isClosedForActivePeriod;
+        const deleteButton = canDelete
+            ? `<button type="button" class="btn btn-sm btn-outline-danger delete-record-btn" data-record-id="${escapeHtml(record.recordId)}" title="Eliminar registro pendiente">Eliminar</button>`
+            : "";
+
         return `
             <tr class="scores-record-row" data-record-id="${escapeHtml(record.recordId)}">
                 <td>
@@ -1004,6 +1015,7 @@
                         <button type="button" class="btn btn-sm ${record.isVerified ? "btn-outline-primary" : "btn-primary"} verify-record-btn" data-record-id="${escapeHtml(record.recordId)}">
                             ${record.isVerified ? "Editar" : "Verificar"}
                         </button>
+                        ${deleteButton}
                     </div>
                 </td>
                 <td class="text-center">
@@ -1365,6 +1377,58 @@
                 openVerifyModal(recordId);
             });
         });
+
+        groupsContainer.querySelectorAll(".delete-record-btn").forEach(button => {
+            button.addEventListener("click", async event => {
+                const recordId = event.currentTarget.dataset.recordId;
+                if (!recordId || state.isLoading || state.isSaving || state.isClosingMonth) {
+                    return;
+                }
+
+                const record = state.recordMap.get(recordId);
+                if (record?.isVerified) {
+                    setStatus("error", "El registro ya fue verificado y no se puede eliminar desde esta vista.");
+                    return;
+                }
+
+                const clientLabel = record?.clientName ? ` de ${record.clientName}` : "";
+                if (!window.confirm(`Eliminar el registro pendiente${clientLabel}? Esta accion no se puede deshacer.`)) {
+                    return;
+                }
+
+                const button = event.currentTarget;
+                button.disabled = true;
+                try {
+                    await deleteScoreRecord(recordId);
+                } finally {
+                    button.disabled = false;
+                }
+            });
+        });
+    }
+
+    async function deleteScoreRecord(recordId) {
+        if (!app.dataset.deleteUrl) {
+            setStatus("error", "No se encontro la ruta para eliminar registros.");
+            return;
+        }
+
+        setSaving(true);
+        setStatus("info", "Eliminando registro pendiente...");
+
+        try {
+            const result = await fetchJson(`${app.dataset.deleteUrl}?recordId=${encodeURIComponent(recordId)}`, {
+                method: "DELETE"
+            });
+
+            await loadBoard();
+            setStatus("success", result?.message || "El registro pendiente fue eliminado correctamente.");
+        } catch (error) {
+            console.error(error);
+            setStatus("error", formatErrorMessage(error, "No fue posible eliminar el registro."));
+        } finally {
+            setSaving(false);
+        }
     }
 
     async function fetchJson(url, requestOptions = {}) {

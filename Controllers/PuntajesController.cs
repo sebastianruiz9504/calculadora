@@ -73,6 +73,28 @@ public sealed class PuntajesController : Controller
         }
     }
 
+    [HttpDelete]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> DeleteRecord([FromQuery] string recordId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(recordId))
+            return BadRequest("Debes indicar el registro a eliminar.");
+
+        try
+        {
+            var result = await _dataverse.DeleteScoreRecordAsync(recordId, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible eliminar el registro.", ex));
+        }
+    }
+
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Detail([FromQuery] string recordId, [FromQuery] string? filter, CancellationToken ct)

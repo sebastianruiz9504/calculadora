@@ -165,6 +165,22 @@
     gap: 16px;
 }
 
+.renew-shell .renew-period-year {
+    margin-top: 4px;
+    color: #10213a;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.renew-shell .renew-period-month {
+    margin-top: 2px;
+    color: #145af2;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
 .renew-shell .renew-group {
     border: 1px solid #dbe4f0;
     border-radius: 22px;

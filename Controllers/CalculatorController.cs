@@ -12,6 +12,7 @@ using System.IO;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -28,6 +29,11 @@ public sealed class CalculatorController : Controller
     private readonly CalculatorOptions _calculatorOptions;
     private readonly ILogger<CalculatorController> _logger;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
+    private const int ProvisioningDescriptionMaxLength = 4000;
+    private static readonly JsonSerializerOptions ProvisioningDescriptionJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     public CalculatorController(
         IDataverseService dataverse,
@@ -648,9 +654,56 @@ public sealed class CalculatorController : Controller
         builder.AppendLine($"Prorrateo: {(resultado?.ProrrateoTexto?.Trim() ?? (requiresProration ? "Si" : "No"))}");
         builder.AppendLine($"Venta mensual total: {FormatDecimalText(resultado?.VentaMensualTotal ?? 0m)}");
         builder.AppendLine($"Venta total anual: {FormatDecimalText(resultado?.VentaTotalAnual ?? resultado?.VentaTotal ?? 0m)}");
+        var headerText = builder.ToString();
+        var detailedDescription = BuildProvisioningDescriptionText(
+            headerText,
+            SerializeDetailedProvisioningLines(lineItems));
+        if (detailedDescription.Length <= ProvisioningDescriptionMaxLength)
+            return detailedDescription;
+
+        var compactDescription = BuildProvisioningDescriptionText(
+            headerText,
+            SerializeCompactProvisioningLines(lineItems, maxProductNameLength: null, includeCommercialFields: true));
+        if (compactDescription.Length <= ProvisioningDescriptionMaxLength)
+            return compactDescription;
+
+        foreach (var maxProductNameLength in new[] { 120, 80, 50, 30 })
+        {
+            compactDescription = BuildProvisioningDescriptionText(
+                headerText,
+                SerializeCompactProvisioningLines(lineItems, maxProductNameLength, includeCommercialFields: true));
+            if (compactDescription.Length <= ProvisioningDescriptionMaxLength)
+                return compactDescription;
+        }
+
+        compactDescription = BuildProvisioningDescriptionText(
+            headerText,
+            SerializeCompactProvisioningLines(lineItems, maxProductNameLength: 30, includeCommercialFields: false));
+        if (compactDescription.Length <= ProvisioningDescriptionMaxLength)
+            return compactDescription;
+
+        return BuildProvisioningDescriptionWithLineBudget(headerText, lineItems);
+    }
+
+    private static string BuildProvisioningDescriptionText(string headerText, string linesJson, string? extraMetadataLine = null)
+    {
+        var builder = new StringBuilder(headerText.Length + linesJson.Length + 24);
+        builder.Append(headerText);
+        if (!string.IsNullOrWhiteSpace(extraMetadataLine))
+            extraMetadataLine = extraMetadataLine.Trim();
         builder.AppendLine();
         builder.AppendLine("Líneas:");
-        builder.Append(JsonSerializer.Serialize(lineItems.Select(item => new
+        builder.Append(linesJson);
+        if (!string.IsNullOrWhiteSpace(extraMetadataLine))
+        {
+            builder.AppendLine();
+            builder.Append(extraMetadataLine);
+        }
+        return builder.ToString();
+    }
+
+    private static string SerializeDetailedProvisioningLines(IReadOnlyList<ProvisioningFlowLinePayload> lineItems) =>
+        JsonSerializer.Serialize(lineItems.Select(item => new
         {
             lineId = item.LineId,
             productoId = item.ProductoId,
@@ -668,9 +721,106 @@ public sealed class CalculatorController : Controller
             requiereProrrateo = item.RequiereProrrateo,
             inicio = item.Inicio,
             final = item.Final
-        })));
+        }), ProvisioningDescriptionJsonOptions);
 
-        return builder.ToString();
+    private static string SerializeCompactProvisioningLines(
+        IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
+        int? maxProductNameLength,
+        bool includeCommercialFields)
+    {
+        if (includeCommercialFields)
+        {
+            return JsonSerializer.Serialize(lineItems.Select(item => new
+            {
+                lineId = item.LineId,
+                productoId = item.ProductoId,
+                productoNombre = TrimTextForDescription(item.ProductoNombre, maxProductNameLength),
+                cantidad = RoundWholeNumber(item.Cantidad),
+                costoUnd = RoundWholeNumber(item.CostoUnd),
+                ventaUnd = RoundWholeNumber(item.VentaUnd),
+                margenPorcentaje = Round2(item.MargenPorcentaje),
+                duracionMeses = item.DuracionMeses,
+                ventaMensual = RoundWholeNumber(item.VentaMensual),
+                ventaTotal = RoundWholeNumber(item.VentaTotal),
+                tieneIva = item.TieneIva,
+                tipo = item.Tipo
+            }), ProvisioningDescriptionJsonOptions);
+        }
+
+        return JsonSerializer.Serialize(lineItems.Select(item => new
+        {
+            productoId = item.ProductoId,
+            productoNombre = TrimTextForDescription(item.ProductoNombre, maxProductNameLength),
+            cantidad = RoundWholeNumber(item.Cantidad),
+            ventaUnd = RoundWholeNumber(item.VentaUnd),
+            duracionMeses = item.DuracionMeses,
+            ventaMensual = RoundWholeNumber(item.VentaMensual),
+            ventaTotal = RoundWholeNumber(item.VentaTotal),
+            tieneIva = item.TieneIva,
+            tipo = item.Tipo
+        }), ProvisioningDescriptionJsonOptions);
+    }
+
+    private static string BuildProvisioningDescriptionWithLineBudget(
+        string headerText,
+        IReadOnlyList<ProvisioningFlowLinePayload> lineItems)
+    {
+        var includedLines = new List<Dictionary<string, object?>>();
+        var lastAcceptedDescription = BuildProvisioningDescriptionText(
+            headerText,
+            "[]",
+            $"Lineas incluidas en descripcion: 0/{lineItems.Count}");
+
+        if (lastAcceptedDescription.Length > ProvisioningDescriptionMaxLength)
+            return TruncateTextForDescription(lastAcceptedDescription, ProvisioningDescriptionMaxLength);
+
+        foreach (var item in lineItems)
+        {
+            includedLines.Add(new Dictionary<string, object?>
+            {
+                ["productoId"] = item.ProductoId,
+                ["productoNombre"] = TrimTextForDescription(item.ProductoNombre, 20),
+                ["cantidad"] = RoundWholeNumber(item.Cantidad),
+                ["ventaMensual"] = RoundWholeNumber(item.VentaMensual),
+                ["ventaTotal"] = RoundWholeNumber(item.VentaTotal)
+            });
+
+            var candidate = BuildProvisioningDescriptionText(
+                headerText,
+                JsonSerializer.Serialize(includedLines, ProvisioningDescriptionJsonOptions),
+                $"Lineas incluidas en descripcion: {includedLines.Count}/{lineItems.Count}");
+            if (candidate.Length <= ProvisioningDescriptionMaxLength)
+            {
+                lastAcceptedDescription = candidate;
+                continue;
+            }
+
+            includedLines.RemoveAt(includedLines.Count - 1);
+            break;
+        }
+
+        return lastAcceptedDescription.Length <= ProvisioningDescriptionMaxLength
+            ? lastAcceptedDescription
+            : TruncateTextForDescription(lastAcceptedDescription, ProvisioningDescriptionMaxLength);
+    }
+
+    private static string TrimTextForDescription(string value, int? maxLength) =>
+        maxLength.HasValue
+            ? TruncateTextForDescription(value, maxLength.Value)
+            : value;
+
+    private static string TruncateTextForDescription(string value, int maxLength)
+    {
+        if (maxLength <= 0)
+            return "";
+
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            return value;
+
+        if (maxLength <= 3)
+            return value[..maxLength];
+
+        return value[..(maxLength - 3)].TrimEnd() + "...";
     }
 
     private static string ResolveDealTypeLabel(ProvisioningScenarioContext? scenario)
