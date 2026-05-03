@@ -14,4 +14,12 @@ public interface IReportesDataverseRepository
     Task<ReporteHtmlGeneradoRecord> UpsertGeneratedReportAsync(
         ReporteHtmlGeneradoRecord report,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<ReporteHtmlGeneradoRecord>> ListGeneratedReportsAsync(
+        string periodo,
+        CancellationToken ct = default);
+
+    Task<ReporteHtmlGeneradoRecord?> GetGeneratedReportAsync(
+        string reportId,
+        CancellationToken ct = default);
 }

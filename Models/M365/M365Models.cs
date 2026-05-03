@@ -67,3 +67,15 @@ public sealed class M365TenantConnectionRecord
     public string PermisosSolicitados { get; set; } = "";
     public string ResultadoConsentimiento { get; set; } = "";
 }
+
+public sealed class M365ConnectedClientItem
+{
+    public string ConnectionId { get; set; } = "";
+    public string ClienteId { get; set; } = "";
+    public string ClienteNombre { get; set; } = "";
+    public string TenantId { get; set; } = "";
+    public string TenantHint { get; set; } = "";
+    public string EstadoConexion { get; set; } = "";
+    public string FechaConexion { get; set; } = "";
+    public string PermisosSolicitados { get; set; } = "";
+}

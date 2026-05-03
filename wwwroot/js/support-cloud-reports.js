@@ -21,76 +21,110 @@
 
     const urls = {
         clients: root.dataset.clientsUrl || "",
+        connected: root.dataset.connectedUrl || "",
         connect: root.dataset.connectUrl || "",
-        test: root.dataset.testUrl || "",
         snapshot: root.dataset.snapshotUrl || "",
-        generate: root.dataset.generateUrl || ""
+        generate: root.dataset.generateUrl || "",
+        generatedReports: root.dataset.generatedReportsUrl || "",
+        reportDetail: root.dataset.reportDetailUrl || ""
     };
 
     const els = {
         status: root.querySelector("[data-scr-status]"),
-        client: root.querySelector("[data-scr-client]"),
-        month: root.querySelector("[data-scr-month]"),
+        connectedRows: root.querySelector("[data-scr-connected-rows]"),
+        connectedEmpty: root.querySelector("[data-scr-connected-empty]"),
+        refreshConnected: root.querySelector("[data-scr-refresh-connected]"),
+        openConsent: root.querySelector("[data-scr-open-consent]"),
+        consentModal: root.querySelector("[data-scr-consent-modal]"),
+        closeConsent: root.querySelectorAll("[data-scr-close-consent]"),
+        consentStatus: root.querySelector("[data-scr-consent-status]"),
+        consentClient: root.querySelector("[data-scr-consent-client]"),
         tenant: root.querySelector("[data-scr-tenant]"),
         connect: root.querySelector("[data-scr-connect]"),
-        test: root.querySelector("[data-scr-test]"),
-        collect: root.querySelector("[data-scr-collect]"),
+        consentCard: root.querySelector("[data-scr-consent-card]"),
+        consentLink: root.querySelector("[data-scr-consent-link]"),
+        consentUrl: root.querySelector("[data-scr-consent-url]"),
+        permissions: root.querySelector("[data-scr-permissions]"),
+        month: root.querySelector("[data-scr-month]"),
         generate: root.querySelector("[data-scr-generate]"),
         selectionMeta: root.querySelector("[data-scr-selection-meta]"),
-        totalClients: root.querySelector("[data-scr-total-clients]"),
+        totalConnected: root.querySelector("[data-scr-total-connected]"),
         selectedMonth: root.querySelector("[data-scr-selected-month]"),
         connectionState: root.querySelector("[data-scr-connection-state]"),
         reportState: root.querySelector("[data-scr-report-state]"),
         secureScore: root.querySelector("[data-scr-secure-score]"),
         alertsHigh: root.querySelector("[data-scr-alerts-high]"),
         incidentsActive: root.querySelector("[data-scr-incidents-active]"),
-        consentCard: root.querySelector("[data-scr-consent-card]"),
-        consentLink: root.querySelector("[data-scr-consent-link]"),
-        consentUrl: root.querySelector("[data-scr-consent-url]"),
-        permissions: root.querySelector("[data-scr-permissions]"),
         snapshotSummary: root.querySelector("[data-scr-snapshot-summary]"),
+        progressCard: root.querySelector("[data-scr-progress-card]"),
+        progressMessage: root.querySelector("[data-scr-progress-message]"),
+        progressBar: root.querySelector("[data-scr-progress-bar]"),
+        progressSteps: root.querySelector("[data-scr-progress-steps]"),
         reportCard: root.querySelector("[data-scr-report-card]"),
         reportFrame: root.querySelector("[data-scr-report-frame]"),
         reportId: root.querySelector("[data-scr-report-id]"),
-        openReport: root.querySelector("[data-scr-open-report]")
+        openReport: root.querySelector("[data-scr-open-report]"),
+        historyMonth: root.querySelector("[data-scr-history-month]"),
+        historyYear: root.querySelector("[data-scr-history-year]"),
+        loadHistory: root.querySelector("[data-scr-load-history]"),
+        historyRows: root.querySelector("[data-scr-history-rows]"),
+        historyEmpty: root.querySelector("[data-scr-history-empty]")
     };
 
     const state = {
         clients: [],
-        loaded: false,
-        busy: false,
+        connected: [],
+        clientsLoaded: false,
+        connectedLoaded: false,
+        selectedConnectionId: "",
         reportHtml: "",
-        reportBlobUrl: ""
+        reportBlobUrl: "",
+        busy: false
     };
 
     populateMonthOptions();
+    populateHistoryFilters();
     updateSelectionMeta();
+    renderProgress("idle");
 
     const moduleRoot = document.getElementById("soporteCloudModuleShell");
     moduleRoot?.addEventListener("supportcloud:modulechange", event => {
         if (event.detail?.activeKey === "reportes") {
-            loadClientsOnce();
+            loadInitialData();
         }
     });
 
     const panel = root.closest("[data-scs-module-panel]");
     if (!panel || !panel.hidden) {
-        loadClientsOnce();
+        loadInitialData();
     }
 
-    els.client?.addEventListener("change", handleSelectionChange);
-    els.month?.addEventListener("change", handleSelectionChange);
-    els.tenant?.addEventListener("input", updateSelectionMeta);
+    els.refreshConnected?.addEventListener("click", () => loadConnectedClients({ force: true }));
+    els.openConsent?.addEventListener("click", openConsentModal);
+    els.closeConsent?.forEach(element => element.addEventListener("click", closeConsentModal));
+    els.month?.addEventListener("change", () => {
+        clearGeneratedReport();
+        updateSelectionMeta();
+    });
+
+    els.connectedRows?.addEventListener("click", event => {
+        const button = event.target.closest("[data-scr-select-connection]");
+        if (!button) {
+            return;
+        }
+
+        selectConnection(button.dataset.scrSelectConnection || "");
+    });
 
     els.connect?.addEventListener("click", async () => {
-        const clienteId = els.client?.value || "";
+        const clienteId = els.consentClient?.value || "";
         if (!clienteId) {
-            setStatus("error", "Selecciona un cliente para generar el consentimiento.");
+            setConsentStatus("error", "Selecciona un cliente para generar el consentimiento.");
             return;
         }
 
         setBusy(true);
-        setStatus("info", "Generando URL de consentimiento Microsoft...");
+        setConsentStatus("info", "Generando URL de consentimiento Microsoft...");
         try {
             const result = await fetchJson(urls.connect, {
                 method: "POST",
@@ -101,109 +135,205 @@
             });
 
             renderConsent(result);
-            setStatus("success", "URL de consentimiento generada.");
+            setConsentStatus("success", "URL de consentimiento generada. Abre Microsoft para completar el permiso.");
         } catch (error) {
-            setStatus("error", buildErrorMessage(error));
+            setConsentStatus("error", buildErrorMessage(error));
         } finally {
             setBusy(false);
         }
     });
 
-    els.test?.addEventListener("click", async () => {
-        const clienteId = els.client?.value || "";
-        if (!clienteId && !(els.tenant?.value || "").trim()) {
-            setStatus("error", "Selecciona un cliente o indica un tenant para probar la conexion.");
+    els.generate?.addEventListener("click", generateSelectedReport);
+    els.openReport?.addEventListener("click", openCurrentReport);
+    els.loadHistory?.addEventListener("click", () => loadGeneratedReports());
+
+    els.historyRows?.addEventListener("click", async event => {
+        const button = event.target.closest("[data-scr-open-generated]");
+        if (!button) {
             return;
         }
 
-        setBusy(true);
-        setStatus("info", "Probando conexion con Microsoft Graph...");
-        try {
-            const result = await fetchJson(urls.test, {
-                method: "POST",
-                body: JSON.stringify({
-                    clienteId,
-                    tenantId: els.tenant?.value || ""
-                })
-            });
-
-            if (els.connectionState) {
-                els.connectionState.textContent = result?.estadoConexion || (result?.success ? "Conexion probada" : "Error prueba");
-            }
-
-            setStatus(result?.success ? "success" : "error", result?.message || "Prueba finalizada.");
-        } catch (error) {
-            if (els.connectionState) {
-                els.connectionState.textContent = "Error prueba";
-            }
-            setStatus("error", buildErrorMessage(error));
-        } finally {
-            setBusy(false);
-        }
+        await openGeneratedReport(button.dataset.scrOpenGenerated || "");
     });
 
-    els.collect?.addEventListener("click", async () => {
-        const clienteId = els.client?.value || "";
+    async function loadInitialData() {
+        await Promise.all([
+            loadClientsOnce(),
+            loadConnectedClients(),
+            loadGeneratedReports()
+        ]);
+    }
+
+    async function loadClientsOnce() {
+        if (state.clientsLoaded || !urls.clients) {
+            return;
+        }
+
+        try {
+            const items = await fetchJson(urls.clients);
+            state.clients = Array.isArray(items)
+                ? items
+                    .filter(item => item?.id && item?.name)
+                    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "es"))
+                : [];
+            state.clientsLoaded = true;
+            renderConsentClients();
+        } catch (error) {
+            setConsentStatus("error", buildErrorMessage(error));
+            renderConsentClients();
+        }
+    }
+
+    async function loadConnectedClients(options = {}) {
+        if (state.busy && !options.force) {
+            return;
+        }
+
+        setStatus("info", "Cargando clientes con consentimiento activo...");
+        try {
+            const items = await fetchJson(urls.connected);
+            state.connected = Array.isArray(items)
+                ? items
+                    .filter(item => item?.clienteId)
+                    .sort((a, b) => getClientLabel(a).localeCompare(getClientLabel(b), "es"))
+                : [];
+            state.connectedLoaded = true;
+            renderConnectedClients();
+            setStatus("success", state.connected.length
+                ? "Clientes conectados cargados."
+                : "No hay clientes con consentimiento activo.");
+        } catch (error) {
+            setStatus("error", buildErrorMessage(error));
+            renderConnectedClients();
+        }
+    }
+
+    function renderConsentClients() {
+        if (!els.consentClient) {
+            return;
+        }
+
+        els.consentClient.innerHTML = `
+            <option value="">Selecciona un cliente...</option>
+            ${state.clients.map(item => `
+                <option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>
+            `).join("")}
+        `;
+    }
+
+    function renderConnectedClients() {
+        if (els.totalConnected) {
+            els.totalConnected.textContent = numberFormatter.format(state.connected.length);
+        }
+
+        if (!els.connectedRows) {
+            return;
+        }
+
+        if (state.connected.length === 0) {
+            els.connectedRows.innerHTML = "";
+            if (els.connectedEmpty) {
+                els.connectedEmpty.hidden = false;
+            }
+            selectConnection("");
+            return;
+        }
+
+        if (els.connectedEmpty) {
+            els.connectedEmpty.hidden = true;
+        }
+
+        els.connectedRows.innerHTML = state.connected.map(item => {
+            const isSelected = getConnectionKey(item) === state.selectedConnectionId;
+            return `
+                <tr class="support-cloud-table__row ${isSelected ? "is-selected" : ""}">
+                    <td data-label="Cliente">
+                        <strong>${escapeHtml(getClientLabel(item))}</strong>
+                    </td>
+                    <td data-label="Tenant">
+                        <span class="support-cloud-table__muted">${escapeHtml(item.tenantId || item.tenantHint || "-")}</span>
+                    </td>
+                    <td data-label="Estado">
+                        <span class="support-cloud-pill">${escapeHtml(item.estadoConexion || "Conectado")}</span>
+                    </td>
+                    <td data-label="Consentimiento">${escapeHtml(formatDateTime(item.fechaConexion))}</td>
+                    <td data-label="Permisos">
+                        <span class="support-cloud-table__muted">${escapeHtml(compactPermissionText(item.permisosSolicitados))}</span>
+                    </td>
+                    <td data-label="Accion" class="text-end">
+                        <button type="button" class="btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-primary"}" data-scr-select-connection="${escapeHtml(getConnectionKey(item))}">
+                            ${isSelected ? "Seleccionado" : "Seleccionar"}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
+        if (!state.selectedConnectionId && state.connected.length === 1) {
+            selectConnection(getConnectionKey(state.connected[0]));
+        } else {
+            updateSelectionMeta();
+        }
+    }
+
+    function selectConnection(connectionId) {
+        state.selectedConnectionId = connectionId || "";
+        clearGeneratedReport();
+        renderConnectedClients();
+        updateSelectionMeta();
+    }
+
+    async function generateSelectedReport() {
+        const connection = getSelectedConnection();
         const periodo = els.month?.value || "";
-        if (!clienteId) {
-            setStatus("error", "Selecciona un cliente para recolectar el snapshot mensual.");
+        if (!connection) {
+            setStatus("error", "Selecciona un cliente conectado para generar el informe.");
             return;
         }
 
         setBusy(true);
-        setStatus("info", "Recolectando datos de seguridad Microsoft 365...");
+        clearGeneratedReport();
+        setReportState("Recolectando");
+        renderProgress("collecting");
+        setStatus("info", "Recolectando datos Microsoft 365 antes de generar el informe...");
+
         try {
-            const result = await fetchJson(urls.snapshot, {
+            const snapshot = await fetchJson(urls.snapshot, {
                 method: "POST",
                 body: JSON.stringify({
-                    clienteId,
-                    tenantId: els.tenant?.value || "",
+                    clienteId: connection.clienteId,
+                    tenantId: connection.tenantId || connection.tenantHint || "",
                     periodo
                 })
             });
+            renderSnapshot(snapshot);
 
-            renderSnapshot(result);
-            setStatus(
-                result?.success ? "success" : "error",
-                result?.success
-                    ? (result?.message || "Recoleccion finalizada.")
-                    : (result?.errorConsulta || result?.message || "La consulta a Microsoft Graph fallo."));
-        } catch (error) {
-            setStatus("error", buildErrorMessage(error));
-        } finally {
-            setBusy(false);
-        }
-    });
+            renderProgress("generating", snapshot?.success
+                ? "Snapshot recolectado. Generando informe HTML con Azure OpenAI..."
+                : "Snapshot guardado con advertencias. Generando informe con la evidencia disponible...");
+            setReportState("Generando");
 
-    els.generate?.addEventListener("click", async () => {
-        const clienteId = els.client?.value || "";
-        const periodo = els.month?.value || "";
-        if (!clienteId) {
-            setStatus("error", "Selecciona un cliente para generar el informe.");
-            return;
-        }
-
-        setBusy(true);
-        setReportState("Generando");
-        setStatus("info", "Generando informe HTML con Azure OpenAI...");
-        try {
             const result = await fetchJson(urls.generate, {
                 method: "POST",
                 body: JSON.stringify({
-                    clienteId,
+                    clienteId: connection.clienteId,
                     periodo
                 })
             });
 
             renderGeneratedReport(result);
+            renderProgress("done");
             const isError = String(result?.estado || "").toLowerCase() === "error";
             setStatus(
                 isError ? "error" : "success",
                 isError
                     ? (result?.error || "No fue posible generar el informe.")
                     : "Informe HTML generado correctamente.");
+
+            await loadGeneratedReports();
         } catch (error) {
             setReportState("Error");
+            renderProgress("error", buildErrorMessage(error));
             renderGeneratedReport({
                 idReporte: "",
                 html: "",
@@ -214,110 +344,74 @@
         } finally {
             setBusy(false);
         }
-    });
+    }
 
-    els.openReport?.addEventListener("click", () => {
-        if (!state.reportHtml) {
-            setStatus("error", "No hay HTML generado para abrir.");
+    async function loadGeneratedReports() {
+        if (!urls.generatedReports || !els.historyRows) {
             return;
         }
 
-        if (state.reportBlobUrl) {
-            URL.revokeObjectURL(state.reportBlobUrl);
+        const periodo = getHistoryPeriod();
+        try {
+            const items = await fetchJson(`${urls.generatedReports}?periodo=${encodeURIComponent(periodo)}`);
+            renderGeneratedReports(Array.isArray(items) ? items : []);
+        } catch (error) {
+            setStatus("error", buildErrorMessage(error));
+            renderGeneratedReports([]);
+        }
+    }
+
+    function renderGeneratedReports(items) {
+        if (!els.historyRows) {
+            return;
         }
 
-        const blob = new Blob([state.reportHtml], { type: "text/html;charset=utf-8" });
-        state.reportBlobUrl = URL.createObjectURL(blob);
-        window.open(state.reportBlobUrl, "_blank", "noopener");
-    });
+        if (items.length === 0) {
+            els.historyRows.innerHTML = "";
+            if (els.historyEmpty) {
+                els.historyEmpty.hidden = false;
+            }
+            return;
+        }
 
-    async function loadClientsOnce() {
-        if (state.loaded || state.busy || !urls.clients) {
+        if (els.historyEmpty) {
+            els.historyEmpty.hidden = true;
+        }
+
+        els.historyRows.innerHTML = items.map(item => `
+            <tr>
+                <td data-label="Cliente">
+                    <strong>${escapeHtml(item.clienteNombre || item.clienteId || "Cliente")}</strong>
+                </td>
+                <td data-label="Periodo">${escapeHtml(item.periodo || "-")}</td>
+                <td data-label="Estado"><span class="support-cloud-pill">${escapeHtml(item.estado || "-")}</span></td>
+                <td data-label="Generado">${escapeHtml(formatDateTime(item.fechaGeneracion))}</td>
+                <td data-label="Accion" class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-scr-open-generated="${escapeHtml(item.idReporte || "")}">
+                        Consultar
+                    </button>
+                </td>
+            </tr>
+        `).join("");
+    }
+
+    async function openGeneratedReport(idReporte) {
+        if (!idReporte) {
+            setStatus("error", "No se recibio el id del informe.");
             return;
         }
 
         setBusy(true);
-        setStatus("info", "Cargando clientes...");
+        setStatus("info", "Cargando informe generado...");
         try {
-            const items = await fetchJson(urls.clients);
-            state.clients = Array.isArray(items)
-                ? items
-                    .filter(item => item?.id && item?.name)
-                    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "es"))
-                : [];
-            state.loaded = true;
-            renderClients();
-            setStatus("success", state.clients.length
-                ? "Clientes cargados para reportes."
-                : "No se encontraron clientes.");
+            const result = await fetchJson(`${urls.reportDetail}/${encodeURIComponent(idReporte)}`);
+            renderGeneratedReport(result);
+            setStatus("success", "Informe cargado desde Dataverse.");
         } catch (error) {
             setStatus("error", buildErrorMessage(error));
-            renderClients();
         } finally {
             setBusy(false);
         }
-    }
-
-    function renderClients() {
-        if (!els.client) {
-            return;
-        }
-
-        els.client.innerHTML = `
-            <option value="">Selecciona un cliente...</option>
-            ${state.clients.map(item => `
-                <option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>
-            `).join("")}
-        `;
-
-        if (els.totalClients) {
-            els.totalClients.textContent = numberFormatter.format(state.clients.length);
-        }
-
-        updateSelectionMeta();
-    }
-
-    function populateMonthOptions() {
-        if (!els.month) {
-            return;
-        }
-
-        const now = new Date();
-        const current = new Date(now.getFullYear(), now.getMonth(), 1);
-        const months = [];
-        for (let offset = 0; offset < 24; offset += 1) {
-            const date = new Date(current.getFullYear(), current.getMonth() - offset, 1);
-            const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-            months.push({
-                value,
-                label: monthFormatter.format(date)
-            });
-        }
-
-        els.month.innerHTML = months.map((item, index) => `
-            <option value="${escapeHtml(item.value)}" ${index === 0 ? "selected" : ""}>${escapeHtml(capitalizeFirst(item.label))}</option>
-        `).join("");
-    }
-
-    function updateSelectionMeta() {
-        const selectedClient = getSelectedClientName();
-        const selectedMonthLabel = els.month?.selectedOptions?.[0]?.textContent || "-";
-        const tenant = (els.tenant?.value || "").trim();
-
-        if (els.selectionMeta) {
-            els.selectionMeta.textContent = selectedClient
-                ? `${selectedClient} · ${selectedMonthLabel}${tenant ? ` · ${tenant}` : ""}`
-                : "Selecciona un cliente";
-        }
-
-        if (els.selectedMonth) {
-            els.selectedMonth.textContent = selectedMonthLabel;
-        }
-    }
-
-    function handleSelectionChange() {
-        clearGeneratedReport();
-        updateSelectionMeta();
     }
 
     function renderConsent(result) {
@@ -383,7 +477,7 @@
             els.incidentsActive.textContent = numberFormatter.format(activeIncidents);
         }
         if (els.connectionState) {
-            els.connectionState.textContent = result?.estadoConsulta || (result?.success ? "Completado" : "Error consulta");
+            els.connectionState.textContent = result?.estadoConsulta || (result?.success ? "Snapshot recolectado" : "Error snapshot");
         }
         if (!els.snapshotSummary) {
             return;
@@ -456,6 +550,163 @@
         setReportState("Sin generar");
     }
 
+    function openCurrentReport() {
+        if (!state.reportHtml) {
+            setStatus("error", "No hay HTML generado para abrir.");
+            return;
+        }
+
+        if (state.reportBlobUrl) {
+            URL.revokeObjectURL(state.reportBlobUrl);
+        }
+
+        const blob = new Blob([state.reportHtml], { type: "text/html;charset=utf-8" });
+        state.reportBlobUrl = URL.createObjectURL(blob);
+        window.open(state.reportBlobUrl, "_blank", "noopener");
+    }
+
+    function openConsentModal() {
+        if (els.consentModal) {
+            els.consentModal.hidden = false;
+            document.body.classList.add("support-cloud-modal-open");
+        }
+        loadClientsOnce();
+        setConsentStatus("", "");
+    }
+
+    function closeConsentModal() {
+        if (els.consentModal) {
+            els.consentModal.hidden = true;
+            document.body.classList.remove("support-cloud-modal-open");
+        }
+        loadConnectedClients({ force: true });
+    }
+
+    function populateMonthOptions() {
+        if (!els.month) {
+            return;
+        }
+
+        const months = buildRecentMonths(24);
+        els.month.innerHTML = months.map((item, index) => `
+            <option value="${escapeHtml(item.value)}" ${index === 0 ? "selected" : ""}>${escapeHtml(item.label)}</option>
+        `).join("");
+    }
+
+    function populateHistoryFilters() {
+        const now = new Date();
+        if (els.historyMonth) {
+            els.historyMonth.innerHTML = Array.from({ length: 12 }, (_, index) => {
+                const value = String(index + 1).padStart(2, "0");
+                const date = new Date(now.getFullYear(), index, 1);
+                return `<option value="${value}" ${index === now.getMonth() ? "selected" : ""}>${escapeHtml(capitalizeFirst(new Intl.DateTimeFormat("es-CO", { month: "long" }).format(date)))}</option>`;
+            }).join("");
+        }
+
+        if (els.historyYear) {
+            const years = [];
+            for (let year = now.getFullYear(); year >= now.getFullYear() - 5; year -= 1) {
+                years.push(year);
+            }
+
+            els.historyYear.innerHTML = years.map(year => `
+                <option value="${year}">${year}</option>
+            `).join("");
+        }
+    }
+
+    function buildRecentMonths(count) {
+        const now = new Date();
+        const current = new Date(now.getFullYear(), now.getMonth(), 1);
+        const months = [];
+        for (let offset = 0; offset < count; offset += 1) {
+            const date = new Date(current.getFullYear(), current.getMonth() - offset, 1);
+            months.push({
+                value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+                label: capitalizeFirst(monthFormatter.format(date))
+            });
+        }
+
+        return months;
+    }
+
+    function getHistoryPeriod() {
+        const year = els.historyYear?.value || new Date().getFullYear();
+        const month = els.historyMonth?.value || String(new Date().getMonth() + 1).padStart(2, "0");
+        return `${year}-${month}`;
+    }
+
+    function updateSelectionMeta() {
+        const connection = getSelectedConnection();
+        const selectedMonthLabel = els.month?.selectedOptions?.[0]?.textContent || "-";
+
+        if (els.selectionMeta) {
+            els.selectionMeta.textContent = connection
+                ? `${getClientLabel(connection)} · ${selectedMonthLabel}`
+                : "Selecciona un cliente conectado";
+        }
+
+        if (els.selectedMonth) {
+            els.selectedMonth.textContent = selectedMonthLabel;
+        }
+
+        if (els.connectionState) {
+            els.connectionState.textContent = connection?.estadoConexion || "Sin seleccion";
+        }
+
+        if (els.generate) {
+            els.generate.disabled = state.busy || !connection;
+        }
+    }
+
+    function renderProgress(status, customMessage) {
+        const config = {
+            idle: { visible: false, width: 0, active: -1, message: "" },
+            collecting: { visible: true, width: 35, active: 0, message: "Recolectando Secure Score, alertas e incidentes desde Microsoft Graph..." },
+            generating: { visible: true, width: 72, active: 1, message: customMessage || "Generando HTML ejecutivo con Azure OpenAI..." },
+            done: { visible: true, width: 100, active: 2, message: "Informe generado y guardado en Dataverse." },
+            error: { visible: true, width: 100, active: 3, message: customMessage || "La generacion no pudo completarse." }
+        }[status] || { visible: false, width: 0, active: -1, message: "" };
+
+        if (els.progressCard) {
+            els.progressCard.hidden = !config.visible;
+        }
+        if (els.progressMessage) {
+            els.progressMessage.textContent = config.message;
+        }
+        if (els.progressBar) {
+            els.progressBar.style.width = `${config.width}%`;
+        }
+        if (els.progressSteps) {
+            const steps = [
+                "Recolectar datos M365",
+                "Generar informe HTML",
+                "Guardar resultado",
+                "Revisar error"
+            ];
+            els.progressSteps.innerHTML = steps.map((step, index) => `
+                <li class="${index < config.active ? "is-done" : ""} ${index === config.active ? "is-active" : ""}">
+                    ${escapeHtml(step)}
+                </li>
+            `).join("");
+        }
+    }
+
+    function renderMetricRow(label, value, width) {
+        const normalizedWidth = Math.max(0, Math.min(100, Number(width || 0)));
+        return `
+            <div class="support-cloud-breakdown__row">
+                <div class="support-cloud-breakdown__head">
+                    <span class="support-cloud-breakdown__label">${escapeHtml(label)}</span>
+                    <span class="support-cloud-breakdown__value">${escapeHtml(value)}</span>
+                </div>
+                <div class="support-cloud-breakdown__track">
+                    <span class="support-cloud-breakdown__fill" style="width:${normalizedWidth}%"></span>
+                </div>
+            </div>
+        `;
+    }
+
     function buildReportErrorHtml(message) {
         return `<!DOCTYPE html>
 <html lang="es">
@@ -478,31 +729,28 @@
 </html>`;
     }
 
-    function renderMetricRow(label, value, width) {
-        const normalizedWidth = Math.max(0, Math.min(100, Number(width || 0)));
-        return `
-            <div class="support-cloud-breakdown__row">
-                <div class="support-cloud-breakdown__head">
-                    <span class="support-cloud-breakdown__label">${escapeHtml(label)}</span>
-                    <span class="support-cloud-breakdown__value">${escapeHtml(value)}</span>
-                </div>
-                <div class="support-cloud-breakdown__track">
-                    <span class="support-cloud-breakdown__fill" style="width:${normalizedWidth}%"></span>
-                </div>
-            </div>
-        `;
-    }
-
-    function getSelectedClientName() {
-        return els.client?.selectedOptions?.[0]?.textContent?.trim() || "";
-    }
-
     function setBusy(isBusy) {
         state.busy = isBusy;
-        [els.client, els.month, els.tenant, els.connect, els.test, els.collect, els.generate, els.openReport].forEach(element => {
+        [
+            els.refreshConnected,
+            els.openConsent,
+            els.consentClient,
+            els.tenant,
+            els.connect,
+            els.month,
+            els.generate,
+            els.openReport,
+            els.historyMonth,
+            els.historyYear,
+            els.loadHistory
+        ].forEach(element => {
             if (element) {
-                element.disabled = isBusy || (element === els.openReport && !state.reportHtml);
+                element.disabled = isBusy || (element === els.openReport && !state.reportHtml) || (element === els.generate && !getSelectedConnection());
             }
+        });
+
+        root.querySelectorAll("[data-scr-select-connection], [data-scr-open-generated]").forEach(button => {
+            button.disabled = isBusy;
         });
     }
 
@@ -510,6 +758,29 @@
         if (els.reportState) {
             els.reportState.textContent = value || "Sin generar";
         }
+    }
+
+    function setStatus(type, message) {
+        setStatusElement(els.status, type, message);
+    }
+
+    function setConsentStatus(type, message) {
+        setStatusElement(els.consentStatus, type, message);
+    }
+
+    function setStatusElement(element, type, message) {
+        if (!element) {
+            return;
+        }
+
+        if (!message) {
+            element.className = "support-cloud-status";
+            element.textContent = "";
+            return;
+        }
+
+        element.className = `support-cloud-status is-visible is-${type}`;
+        element.textContent = message;
     }
 
     async function fetchJson(url, options = {}) {
@@ -535,9 +806,13 @@
             if (contentType.includes("application/json")) {
                 try {
                     const payload = rawBody ? JSON.parse(rawBody) : null;
-                    message = typeof payload === "string"
+                    const baseMessage = typeof payload === "string"
                         ? payload
-                        : payload?.message || payload?.detail || payload?.title || rawBody;
+                        : payload?.message || payload?.title || rawBody;
+                    const detail = typeof payload === "object" && payload?.detail && payload.detail !== baseMessage
+                        ? ` ${payload.detail}`
+                        : "";
+                    message = `${baseMessage || ""}${detail}`.trim();
                 } catch {
                     message = rawBody;
                 }
@@ -557,6 +832,42 @@
         return rawBody ? JSON.parse(rawBody) : null;
     }
 
+    function getSelectedConnection() {
+        return state.connected.find(item => getConnectionKey(item) === state.selectedConnectionId) || null;
+    }
+
+    function getConnectionKey(item) {
+        return item?.connectionId || `${item?.clienteId || ""}|${item?.tenantId || item?.tenantHint || ""}`;
+    }
+
+    function getClientLabel(item) {
+        return item?.clienteNombre || item?.name || item?.clienteId || "Cliente";
+    }
+
+    function compactPermissionText(value) {
+        const text = String(value || "").replace(/^Scopes:\s*/i, "").replace(/\s*\|\s*Permisos:\s*/i, " · ");
+        return text.length > 120 ? `${text.slice(0, 117)}...` : (text || "-");
+    }
+
+    function formatDateTime(value) {
+        if (!value) {
+            return "-";
+        }
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+
+        return new Intl.DateTimeFormat("es-CO", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit"
+        }).format(date);
+    }
+
     function isHtmlGatewayError(status, body) {
         const text = body || "";
         return (status === 502 || status === 503 || status === 504)
@@ -568,21 +879,6 @@
         const element = document.createElement("div");
         element.innerHTML = value;
         return (element.textContent || element.innerText || "").replace(/\s+/g, " ").trim();
-    }
-
-    function setStatus(type, message) {
-        if (!els.status) {
-            return;
-        }
-
-        if (!message) {
-            els.status.className = "support-cloud-status";
-            els.status.textContent = "";
-            return;
-        }
-
-        els.status.className = `support-cloud-status is-visible is-${type}`;
-        els.status.textContent = message;
     }
 
     function buildErrorMessage(error) {

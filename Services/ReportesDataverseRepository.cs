@@ -120,6 +120,7 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
             {
                 RecordId = existing?.RecordId ?? "",
                 ClienteId = clienteId,
+                ClienteNombre = existing?.ClienteNombre ?? "",
                 Periodo = periodo,
                 HtmlGenerado = report.HtmlGenerado,
                 Estado = report.Estado,
@@ -127,6 +128,51 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
                 PromptVersion = report.PromptVersion,
                 Errores = report.Errores
             };
+    }
+
+    public async Task<IReadOnlyList<ReporteHtmlGeneradoRecord>> ListGeneratedReportsAsync(
+        string periodo,
+        CancellationToken ct = default)
+    {
+        var normalizedPeriodo = NormalizeRequiredText(periodo, nameof(periodo));
+        var table = _options.GeneratedReport;
+        var filter = $"{table.PeriodoField} eq '{EscapeOdataLiteral(normalizedPeriodo)}'";
+        var relativeUrl =
+            $"/api/data/v9.2/{table.TableSetName}" +
+            $"?$select={BuildGeneratedReportListSelectClause()}" +
+            $"&$filter={Uri.EscapeDataString(filter)}" +
+            "&$orderby=modifiedon desc&$top=5000";
+
+        var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+        return items
+            .Select(BuildGeneratedReportRecord)
+            .Where(item => !string.IsNullOrWhiteSpace(item.RecordId))
+            .OrderBy(item => FirstNonEmpty(item.ClienteNombre, item.ClienteId), StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(item => item.FechaGeneracion, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<ReporteHtmlGeneradoRecord?> GetGeneratedReportAsync(
+        string reportId,
+        CancellationToken ct = default)
+    {
+        var normalizedReportId = NormalizeGuid(reportId, nameof(reportId));
+        var table = _options.GeneratedReport;
+        var relativeUrl =
+            $"/api/data/v9.2/{table.TableSetName}({normalizedReportId})" +
+            $"?$select={BuildGeneratedReportSelectClause()}";
+
+        try
+        {
+            var json = await CallDataverseAppGetJsonAsync(relativeUrl, ct, AddFormattedValueHeaders);
+            using var doc = JsonDocument.Parse(json);
+            var record = BuildGeneratedReportRecord(doc.RootElement);
+            return string.IsNullOrWhiteSpace(record.RecordId) ? null : record;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
     }
 
     private async Task<ReporteClienteData> LoadClientAsync(string clienteId, CancellationToken ct)
@@ -363,6 +409,7 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
         {
             RecordId = ReadString(item, table.IdField).Trim(),
             ClienteId = FirstNonEmpty(ReadString(item, table.InternalClientIdField), ReadString(item, clientLookup)),
+            ClienteNombre = FirstNonEmpty(ReadLookupFormattedValue(item, clientLookup), ReadFormattedValue(item, table.ClientLookupField)),
             Periodo = ReadString(item, table.PeriodoField).Trim(),
             HtmlGenerado = ReadString(item, table.HtmlGeneradoField),
             Estado = ReadString(item, table.EstadoField).Trim(),
@@ -440,6 +487,26 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
                 BuildLookupValuePropertyName(table.ClientLookupField),
                 table.PeriodoField,
                 table.HtmlGeneradoField,
+                table.EstadoField,
+                table.FechaGeneracionField,
+                table.PromptVersionField,
+                table.ErroresField
+            }
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private string BuildGeneratedReportListSelectClause()
+    {
+        var table = _options.GeneratedReport;
+        return string.Join(",",
+            new[]
+            {
+                table.IdField,
+                table.PrimaryNameField,
+                table.InternalClientIdField,
+                BuildLookupValuePropertyName(table.ClientLookupField),
+                table.PeriodoField,
                 table.EstadoField,
                 table.FechaGeneracionField,
                 table.PromptVersionField,

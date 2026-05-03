@@ -501,10 +501,12 @@
 <div class="support-cloud-shell support-cloud-reports"
      id="soporteCloudReports"
      data-clients-url="@Url.Action("ReportClients", "SoporteCloud")"
+     data-connected-url="@Url.Content("~/api/m365/connected-clients")"
      data-connect-url="@Url.Content("~/api/m365/connect-url")"
-     data-test-url="@Url.Content("~/api/m365/test-connection")"
      data-snapshot-url="@Url.Content("~/api/m365/security-snapshot")"
-     data-generate-url="@Url.Content("~/api/reportes/generar")">
+     data-generate-url="@Url.Content("~/api/reportes/generar")"
+     data-generated-reports-url="@Url.Content("~/api/reportes/generados")"
+     data-report-detail-url="@Url.Content("~/api/reportes/generados")">
     <section class="support-cloud-hero">
         <div>
             <div class="support-cloud-kicker">Reportes</div>
@@ -524,45 +526,54 @@
     <section class="support-cloud-card">
         <div class="support-cloud-section-header">
             <div>
-                <div class="support-cloud-kicker">Fase 1</div>
-                <h2 class="support-cloud-section-title">Conexion Microsoft 365</h2>
+                <div class="support-cloud-kicker">Tenants conectados</div>
+                <h2 class="support-cloud-section-title">Clientes con consentimiento activo</h2>
+                <p class="support-cloud-section-subtitle">
+                    Selecciona un cliente conectado, elige el periodo y genera el informe. La recoleccion mensual se ejecuta automaticamente antes de generar el HTML.
+                </p>
+            </div>
+            <div class="support-cloud-modal__actions">
+                <button type="button" class="btn btn-outline-secondary" data-scr-refresh-connected>Actualizar</button>
+                <button type="button" class="btn btn-primary" data-scr-open-consent>Crear nuevo consentimiento</button>
             </div>
         </div>
 
-        <div class="support-cloud-form__grid support-cloud-report-controls">
-            <label class="support-cloud-form__field support-cloud-form__field--span-2">
-                <span class="support-cloud-form__label">Cliente</span>
-                <select class="form-select" data-scr-client>
-                    <option value="">Cargando clientes...</option>
-                </select>
-            </label>
-
+        <div class="support-cloud-report-actionbar">
+            <div>
+                <span class="support-cloud-summary__label">Cliente seleccionado</span>
+                <strong data-scr-selection-meta>Selecciona un cliente conectado</strong>
+            </div>
             <label class="support-cloud-form__field">
                 <span class="support-cloud-form__label">Mes de reporte</span>
                 <select class="form-select" data-scr-month></select>
             </label>
-
-            <label class="support-cloud-form__field">
-                <span class="support-cloud-form__label">Tenant ID o dominio</span>
-                <input type="text" class="form-control" placeholder="contoso.com" data-scr-tenant />
-            </label>
+            <button type="button" class="btn btn-primary" data-scr-generate disabled>Generar informe</button>
         </div>
 
-        <div class="support-cloud-modal__footer">
-            <div class="support-cloud-modal__meta" data-scr-selection-meta>Selecciona un cliente</div>
-            <div class="support-cloud-modal__actions">
-                <button type="button" class="btn btn-outline-secondary" data-scr-test>Probar conexion</button>
-                <button type="button" class="btn btn-outline-primary" data-scr-collect>Recolectar datos</button>
-                <button type="button" class="btn btn-outline-primary" data-scr-connect>Generar consentimiento</button>
-                <button type="button" class="btn btn-primary" data-scr-generate>Generar informe</button>
-            </div>
+        <div class="support-cloud-table-wrap">
+            <table class="table align-middle support-cloud-table support-cloud-connected-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Tenant</th>
+                        <th>Estado</th>
+                        <th>Consentimiento</th>
+                        <th>Permisos</th>
+                        <th class="text-end">Accion</th>
+                    </tr>
+                </thead>
+                <tbody data-scr-connected-rows></tbody>
+            </table>
+        </div>
+        <div class="support-cloud-empty" data-scr-connected-empty hidden>
+            No hay clientes con consentimiento activo. Usa <strong>Crear nuevo consentimiento</strong> para iniciar una conexion.
         </div>
     </section>
 
     <section class="support-cloud-summary support-cloud-report-summary">
         <article class="support-cloud-summary__card">
-            <span class="support-cloud-summary__label">Clientes</span>
-            <strong class="support-cloud-summary__value" data-scr-total-clients>0</strong>
+            <span class="support-cloud-summary__label">Conectados</span>
+            <strong class="support-cloud-summary__value" data-scr-total-connected>0</strong>
         </article>
         <article class="support-cloud-summary__card">
             <span class="support-cloud-summary__label">Mes</span>
@@ -570,11 +581,7 @@
         </article>
         <article class="support-cloud-summary__card">
             <span class="support-cloud-summary__label">Conexion</span>
-            <strong class="support-cloud-summary__value support-cloud-summary__value--compact" data-scr-connection-state>Sin prueba</strong>
-        </article>
-        <article class="support-cloud-summary__card">
-            <span class="support-cloud-summary__label">Alcance</span>
-            <strong class="support-cloud-summary__value support-cloud-summary__value--compact">M365</strong>
+            <strong class="support-cloud-summary__value support-cloud-summary__value--compact" data-scr-connection-state>Sin seleccion</strong>
         </article>
         <article class="support-cloud-summary__card">
             <span class="support-cloud-summary__label">Informe</span>
@@ -594,16 +601,20 @@
         </article>
     </section>
 
-    <section class="support-cloud-card support-cloud-consent-card" data-scr-consent-card hidden>
+    <section class="support-cloud-card support-cloud-progress-card" data-scr-progress-card hidden>
         <div class="support-cloud-section-header">
             <div>
-                <div class="support-cloud-kicker">Admin consent</div>
-                <h2 class="support-cloud-section-title">URL de consentimiento</h2>
+                <div class="support-cloud-kicker">Progreso</div>
+                <h2 class="support-cloud-section-title">Generacion en curso</h2>
+                <p class="support-cloud-section-subtitle" data-scr-progress-message>Preparando solicitud...</p>
             </div>
-            <a class="btn btn-outline-primary" href="#" target="_blank" rel="noopener" data-scr-consent-link>Abrir Microsoft</a>
         </div>
-        <input type="text" class="form-control support-cloud-report-url" readonly data-scr-consent-url />
-        <div class="support-cloud-breakdown" data-scr-permissions></div>
+        <div class="support-cloud-progress">
+            <div class="support-cloud-progress__track">
+                <span data-scr-progress-bar></span>
+            </div>
+            <ol class="support-cloud-progress__steps" data-scr-progress-steps></ol>
+        </div>
     </section>
 
     <section class="support-cloud-card support-cloud-report-output" data-scr-report-card hidden>
@@ -629,28 +640,109 @@
         <article class="support-cloud-card">
             <div class="support-cloud-section-header">
                 <div>
-                    <div class="support-cloud-kicker">Dataverse</div>
-                    <h2 class="support-cloud-section-title">Tickets y analisis</h2>
-                </div>
-            </div>
-            <div class="support-cloud-placeholder support-cloud-placeholder--compact">
-                El informe mensual toma los tickets del periodo seleccionado.
-            </div>
-        </article>
-        <article class="support-cloud-card">
-            <div class="support-cloud-section-header">
-                <div>
-                    <div class="support-cloud-kicker">Tenant</div>
+                    <div class="support-cloud-kicker">Snapshot</div>
                     <h2 class="support-cloud-section-title">Datos Microsoft 365</h2>
                 </div>
             </div>
             <div class="support-cloud-breakdown" data-scr-snapshot-summary>
                 <div class="support-cloud-placeholder support-cloud-placeholder--compact">
-                    Sin snapshot mensual recolectado en esta sesion.
+                    El snapshot se mostrara despues de generar el informe.
                 </div>
             </div>
         </article>
+        <article class="support-cloud-card">
+            <div class="support-cloud-section-header">
+                <div>
+                    <div class="support-cloud-kicker">Historial</div>
+                    <h2 class="support-cloud-section-title">Consultar reportes</h2>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-scr-load-history>Consultar</button>
+            </div>
+            <div class="support-cloud-report-history-controls">
+                <label class="support-cloud-form__field">
+                    <span class="support-cloud-form__label">Mes</span>
+                    <select class="form-select" data-scr-history-month></select>
+                </label>
+                <label class="support-cloud-form__field">
+                    <span class="support-cloud-form__label">Ano</span>
+                    <select class="form-select" data-scr-history-year></select>
+                </label>
+            </div>
+            <div class="support-cloud-table-wrap">
+                <table class="table align-middle support-cloud-table support-cloud-report-history-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Periodo</th>
+                            <th>Estado</th>
+                            <th>Generado</th>
+                            <th class="text-end">Accion</th>
+                        </tr>
+                    </thead>
+                    <tbody data-scr-history-rows></tbody>
+                </table>
+            </div>
+            <div class="support-cloud-empty" data-scr-history-empty hidden>
+                No hay informes generados para el periodo seleccionado.
+            </div>
+        </article>
     </section>
+
+    <div class="support-cloud-modal" data-scr-consent-modal hidden>
+        <div class="support-cloud-modal__backdrop" data-scr-close-consent></div>
+        <div class="support-cloud-modal__dialog support-cloud-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudConsentTitle">
+            <div class="support-cloud-modal__header">
+                <div>
+                    <div class="support-cloud-kicker">Nuevo consentimiento</div>
+                    <h2 class="support-cloud-modal__title" id="supportCloudConsentTitle">Conectar Microsoft 365</h2>
+                    <p class="support-cloud-modal__subtitle">
+                        Selecciona el cliente, genera la URL de admin consent y abre Microsoft para completar el permiso.
+                    </p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-scr-close-consent>Cerrar</button>
+            </div>
+
+            <div class="support-cloud-status" data-scr-consent-status role="status" aria-live="polite"></div>
+
+            <div class="support-cloud-consent-steps">
+                <article class="support-cloud-consent-step">
+                    <span class="support-cloud-consent-step__number">1</span>
+                    <div>
+                        <h3>Datos del cliente</h3>
+                        <p>El tenant puede ser un dominio como contoso.com o un tenantId.</p>
+                    </div>
+                    <div class="support-cloud-form__grid support-cloud-form__field--span-2">
+                        <label class="support-cloud-form__field">
+                            <span class="support-cloud-form__label">Cliente</span>
+                            <select class="form-select" data-scr-consent-client>
+                                <option value="">Cargando clientes...</option>
+                            </select>
+                        </label>
+                        <label class="support-cloud-form__field">
+                            <span class="support-cloud-form__label">Tenant ID o dominio</span>
+                            <input type="text" class="form-control" placeholder="contoso.com" data-scr-tenant />
+                        </label>
+                    </div>
+                    <div class="support-cloud-modal__actions">
+                        <button type="button" class="btn btn-primary" data-scr-connect>Generar URL de consentimiento</button>
+                    </div>
+                </article>
+
+                <article class="support-cloud-consent-step" data-scr-consent-card hidden>
+                    <span class="support-cloud-consent-step__number">2</span>
+                    <div>
+                        <h3>Admin consent</h3>
+                        <p>Abre la URL, acepta los permisos como administrador y vuelve a este modulo para actualizar la tabla.</p>
+                    </div>
+                    <div class="support-cloud-consent-url-row">
+                        <input type="text" class="form-control support-cloud-report-url" readonly data-scr-consent-url />
+                        <a class="btn btn-outline-primary" href="#" target="_blank" rel="noopener" data-scr-consent-link>Abrir Microsoft</a>
+                    </div>
+                    <div class="support-cloud-breakdown" data-scr-permissions></div>
+                </article>
+            </div>
+        </div>
+    </div>
 </div>
     </div>
 </div>

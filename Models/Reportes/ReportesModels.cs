@@ -78,6 +78,7 @@ public sealed class ReporteHtmlGeneradoRecord
 {
     public string RecordId { get; set; } = "";
     public string ClienteId { get; set; } = "";
+    public string ClienteNombre { get; set; } = "";
     public string Periodo { get; set; } = "";
     public string HtmlGenerado { get; set; } = "";
     public string Estado { get; set; } = "";

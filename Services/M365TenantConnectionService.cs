@@ -257,6 +257,37 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         }
     }
 
+    public async Task<IReadOnlyList<M365ConnectedClientItem>> ListConnectedClientsAsync(CancellationToken ct = default)
+    {
+        var table = _options.Dataverse;
+        var filter = $"{table.AdminConsentField} eq true";
+        var relativeUrl =
+            $"/api/data/v9.2/{table.ConnectionTableSetName}" +
+            $"?$select={BuildConnectionSelectClause()}" +
+            $"&$filter={Uri.EscapeDataString(filter)}" +
+            "&$orderby=modifiedon desc&$top=5000";
+
+        var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+        return items
+            .Select(BuildConnectionRecord)
+            .Where(item => item.AdminConsent && !string.IsNullOrWhiteSpace(item.ClienteId))
+            .GroupBy(item => item.ClienteId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(item => new M365ConnectedClientItem
+            {
+                ConnectionId = item.RecordId,
+                ClienteId = item.ClienteId,
+                ClienteNombre = FirstNonEmpty(item.ClienteNombre, item.ClienteId),
+                TenantId = item.TenantId,
+                TenantHint = item.TenantHint,
+                EstadoConexion = FirstNonEmpty(item.EstadoConexion, "Conectado"),
+                FechaConexion = item.FechaConexion,
+                PermisosSolicitados = item.PermisosSolicitados
+            })
+            .OrderBy(item => item.ClienteNombre, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private async Task<M365TenantConnectionRecord> UpsertConnectionAsync(
         string clienteId,
         string tenantId,

@@ -77,6 +77,28 @@ public sealed class M365Controller : ControllerBase
         }
     }
 
+    [HttpGet("connected-clients")]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ConnectedClients(CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _m365.ListConnectedClientsAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "No fue posible cargar clientes conectados M365.");
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error inesperado cargando clientes conectados M365.");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible cargar los clientes con consentimiento Microsoft 365.", ex));
+        }
+    }
+
     [HttpPost("security-snapshot")]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> CollectSecuritySnapshot([FromBody] M365SecuritySnapshotRequest? request, CancellationToken ct)
