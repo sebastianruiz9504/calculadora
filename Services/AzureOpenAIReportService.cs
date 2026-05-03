@@ -174,6 +174,9 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         if (string.IsNullOrWhiteSpace(html) || !html.TrimStart().StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Azure OpenAI no devolvio un HTML completo con <!DOCTYPE html>.");
 
+        if (html.Contains("<script", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Azure OpenAI devolvio HTML con scripts. El informe debe contener solo HTML y CSS embebido.");
+
         return html;
     }
 

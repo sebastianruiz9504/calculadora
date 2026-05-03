@@ -503,13 +503,14 @@
      data-clients-url="@Url.Action("ReportClients", "SoporteCloud")"
      data-connect-url="@Url.Content("~/api/m365/connect-url")"
      data-test-url="@Url.Content("~/api/m365/test-connection")"
-     data-snapshot-url="@Url.Content("~/api/m365/security-snapshot")">
+     data-snapshot-url="@Url.Content("~/api/m365/security-snapshot")"
+     data-generate-url="@Url.Content("~/api/reportes/generar")">
     <section class="support-cloud-hero">
         <div>
             <div class="support-cloud-kicker">Reportes</div>
             <h1 class="support-cloud-title">Reportes automatizados</h1>
             <p class="support-cloud-subtitle">
-                Prepara el consentimiento Microsoft 365 por cliente y deja lista la conexion multi-tenant para los reportes mensuales.
+                Conecta Microsoft 365, recolecta el snapshot mensual y genera el informe HTML ejecutivo.
             </p>
         </div>
         <div class="support-cloud-user-pill">
@@ -552,7 +553,8 @@
             <div class="support-cloud-modal__actions">
                 <button type="button" class="btn btn-outline-secondary" data-scr-test>Probar conexion</button>
                 <button type="button" class="btn btn-outline-primary" data-scr-collect>Recolectar datos</button>
-                <button type="button" class="btn btn-primary" data-scr-connect>Generar consentimiento</button>
+                <button type="button" class="btn btn-outline-primary" data-scr-connect>Generar consentimiento</button>
+                <button type="button" class="btn btn-primary" data-scr-generate>Generar informe</button>
             </div>
         </div>
     </section>
@@ -573,6 +575,10 @@
         <article class="support-cloud-summary__card">
             <span class="support-cloud-summary__label">Alcance</span>
             <strong class="support-cloud-summary__value support-cloud-summary__value--compact">M365</strong>
+        </article>
+        <article class="support-cloud-summary__card">
+            <span class="support-cloud-summary__label">Informe</span>
+            <strong class="support-cloud-summary__value support-cloud-summary__value--compact" data-scr-report-state>Sin generar</strong>
         </article>
         <article class="support-cloud-summary__card">
             <span class="support-cloud-summary__label">Secure Score</span>
@@ -600,6 +606,25 @@
         <div class="support-cloud-breakdown" data-scr-permissions></div>
     </section>
 
+    <section class="support-cloud-card support-cloud-report-output" data-scr-report-card hidden>
+        <div class="support-cloud-section-header">
+            <div>
+                <div class="support-cloud-kicker">Informe HTML</div>
+                <h2 class="support-cloud-section-title">Resultado generado</h2>
+            </div>
+            <div class="support-cloud-modal__actions">
+                <button type="button" class="btn btn-outline-secondary" data-scr-open-report disabled>Abrir HTML</button>
+            </div>
+        </div>
+        <div class="support-cloud-report-result">
+            <span class="support-cloud-summary__label">Registro Dataverse</span>
+            <strong data-scr-report-id>-</strong>
+        </div>
+        <div class="support-cloud-report-preview">
+            <iframe title="Previsualizacion del informe generado" sandbox data-scr-report-frame></iframe>
+        </div>
+    </section>
+
     <section class="support-cloud-training-grid">
         <article class="support-cloud-card">
             <div class="support-cloud-section-header">
@@ -609,7 +634,7 @@
                 </div>
             </div>
             <div class="support-cloud-placeholder support-cloud-placeholder--compact">
-                La Fase 1 deja preparada la seleccion de cliente y mes para cruzar tickets en la siguiente fase.
+                El informe mensual toma los tickets del periodo seleccionado.
             </div>
         </article>
         <article class="support-cloud-card">

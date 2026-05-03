@@ -324,6 +324,42 @@
     font-size: 12px;
 }
 
+.support-cloud-report-output[hidden] {
+    display: none;
+}
+
+.support-cloud-report-result {
+    display: grid;
+    gap: 5px;
+    padding: 12px 14px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: var(--support-cloud-soft);
+}
+
+.support-cloud-report-result strong {
+    color: var(--support-cloud-ink);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.support-cloud-report-preview {
+    min-height: 560px;
+    overflow: hidden;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.support-cloud-report-preview iframe {
+    display: block;
+    width: 100%;
+    min-height: 560px;
+    height: min(76vh, 920px);
+    border: 0;
+    background: #ffffff;
+}
+
 .support-cloud-creators {
     display: grid;
     gap: 12px;
@@ -1247,5 +1283,10 @@ body.support-cloud-modal-open {
 
     .support-cloud-table__ticket-meta {
         gap: 6px;
+    }
+
+    .support-cloud-report-preview,
+    .support-cloud-report-preview iframe {
+        min-height: 460px;
     }
 }

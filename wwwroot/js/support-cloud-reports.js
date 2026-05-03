@@ -23,7 +23,8 @@
         clients: root.dataset.clientsUrl || "",
         connect: root.dataset.connectUrl || "",
         test: root.dataset.testUrl || "",
-        snapshot: root.dataset.snapshotUrl || ""
+        snapshot: root.dataset.snapshotUrl || "",
+        generate: root.dataset.generateUrl || ""
     };
 
     const els = {
@@ -34,10 +35,12 @@
         connect: root.querySelector("[data-scr-connect]"),
         test: root.querySelector("[data-scr-test]"),
         collect: root.querySelector("[data-scr-collect]"),
+        generate: root.querySelector("[data-scr-generate]"),
         selectionMeta: root.querySelector("[data-scr-selection-meta]"),
         totalClients: root.querySelector("[data-scr-total-clients]"),
         selectedMonth: root.querySelector("[data-scr-selected-month]"),
         connectionState: root.querySelector("[data-scr-connection-state]"),
+        reportState: root.querySelector("[data-scr-report-state]"),
         secureScore: root.querySelector("[data-scr-secure-score]"),
         alertsHigh: root.querySelector("[data-scr-alerts-high]"),
         incidentsActive: root.querySelector("[data-scr-incidents-active]"),
@@ -45,13 +48,19 @@
         consentLink: root.querySelector("[data-scr-consent-link]"),
         consentUrl: root.querySelector("[data-scr-consent-url]"),
         permissions: root.querySelector("[data-scr-permissions]"),
-        snapshotSummary: root.querySelector("[data-scr-snapshot-summary]")
+        snapshotSummary: root.querySelector("[data-scr-snapshot-summary]"),
+        reportCard: root.querySelector("[data-scr-report-card]"),
+        reportFrame: root.querySelector("[data-scr-report-frame]"),
+        reportId: root.querySelector("[data-scr-report-id]"),
+        openReport: root.querySelector("[data-scr-open-report]")
     };
 
     const state = {
         clients: [],
         loaded: false,
-        busy: false
+        busy: false,
+        reportHtml: "",
+        reportBlobUrl: ""
     };
 
     populateMonthOptions();
@@ -69,8 +78,8 @@
         loadClientsOnce();
     }
 
-    els.client?.addEventListener("change", updateSelectionMeta);
-    els.month?.addEventListener("change", updateSelectionMeta);
+    els.client?.addEventListener("change", handleSelectionChange);
+    els.month?.addEventListener("change", handleSelectionChange);
     els.tenant?.addEventListener("input", updateSelectionMeta);
 
     els.connect?.addEventListener("click", async () => {
@@ -166,6 +175,62 @@
         }
     });
 
+    els.generate?.addEventListener("click", async () => {
+        const clienteId = els.client?.value || "";
+        const periodo = els.month?.value || "";
+        if (!clienteId) {
+            setStatus("error", "Selecciona un cliente para generar el informe.");
+            return;
+        }
+
+        setBusy(true);
+        setReportState("Generando");
+        setStatus("info", "Generando informe HTML con Azure OpenAI...");
+        try {
+            const result = await fetchJson(urls.generate, {
+                method: "POST",
+                body: JSON.stringify({
+                    clienteId,
+                    periodo
+                })
+            });
+
+            renderGeneratedReport(result);
+            const isError = String(result?.estado || "").toLowerCase() === "error";
+            setStatus(
+                isError ? "error" : "success",
+                isError
+                    ? (result?.error || "No fue posible generar el informe.")
+                    : "Informe HTML generado correctamente.");
+        } catch (error) {
+            setReportState("Error");
+            renderGeneratedReport({
+                idReporte: "",
+                html: "",
+                estado: "Error",
+                error: buildErrorMessage(error)
+            });
+            setStatus("error", buildErrorMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    });
+
+    els.openReport?.addEventListener("click", () => {
+        if (!state.reportHtml) {
+            setStatus("error", "No hay HTML generado para abrir.");
+            return;
+        }
+
+        if (state.reportBlobUrl) {
+            URL.revokeObjectURL(state.reportBlobUrl);
+        }
+
+        const blob = new Blob([state.reportHtml], { type: "text/html;charset=utf-8" });
+        state.reportBlobUrl = URL.createObjectURL(blob);
+        window.open(state.reportBlobUrl, "_blank", "noopener");
+    });
+
     async function loadClientsOnce() {
         if (state.loaded || state.busy || !urls.clients) {
             return;
@@ -248,6 +313,11 @@
         if (els.selectedMonth) {
             els.selectedMonth.textContent = selectedMonthLabel;
         }
+    }
+
+    function handleSelectionChange() {
+        clearGeneratedReport();
+        updateSelectionMeta();
     }
 
     function renderConsent(result) {
@@ -343,6 +413,71 @@
         `;
     }
 
+    function renderGeneratedReport(result) {
+        const html = result?.html || "";
+        const estado = result?.estado || (html ? "Generado" : "Error");
+        const idReporte = result?.idReporte || "";
+        state.reportHtml = html;
+
+        if (els.reportCard) {
+            els.reportCard.hidden = false;
+        }
+        if (els.reportFrame) {
+            els.reportFrame.srcdoc = html || buildReportErrorHtml(result?.error || "No se recibio HTML generado.");
+        }
+        if (els.reportId) {
+            els.reportId.textContent = idReporte || "-";
+        }
+        if (els.openReport) {
+            els.openReport.disabled = !html;
+        }
+
+        setReportState(estado);
+    }
+
+    function clearGeneratedReport() {
+        state.reportHtml = "";
+        if (state.reportBlobUrl) {
+            URL.revokeObjectURL(state.reportBlobUrl);
+            state.reportBlobUrl = "";
+        }
+        if (els.reportCard) {
+            els.reportCard.hidden = true;
+        }
+        if (els.reportFrame) {
+            els.reportFrame.removeAttribute("srcdoc");
+        }
+        if (els.reportId) {
+            els.reportId.textContent = "-";
+        }
+        if (els.openReport) {
+            els.openReport.disabled = true;
+        }
+        setReportState("Sin generar");
+    }
+
+    function buildReportErrorHtml(message) {
+        return `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Informe no generado</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; color: #17263c; background: #f7fbff; }
+        main { padding: 32px; }
+        h1 { margin: 0 0 12px; font-size: 24px; }
+        p { margin: 0; color: #5f7088; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Informe no generado</h1>
+        <p>${escapeHtml(message)}</p>
+    </main>
+</body>
+</html>`;
+    }
+
     function renderMetricRow(label, value, width) {
         const normalizedWidth = Math.max(0, Math.min(100, Number(width || 0)));
         return `
@@ -364,11 +499,17 @@
 
     function setBusy(isBusy) {
         state.busy = isBusy;
-        [els.client, els.month, els.tenant, els.connect, els.test, els.collect].forEach(element => {
+        [els.client, els.month, els.tenant, els.connect, els.test, els.collect, els.generate, els.openReport].forEach(element => {
             if (element) {
-                element.disabled = isBusy;
+                element.disabled = isBusy || (element === els.openReport && !state.reportHtml);
             }
         });
+    }
+
+    function setReportState(value) {
+        if (els.reportState) {
+            els.reportState.textContent = value || "Sin generar";
+        }
     }
 
     async function fetchJson(url, options = {}) {
