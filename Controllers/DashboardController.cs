@@ -379,7 +379,7 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> CopiersCounters([FromQuery] int? year, [FromQuery] int? month, [FromQuery] string? clientId, CancellationToken ct)
+    public async Task<IActionResult> CopiersCounters([FromQuery] int? year, [FromQuery] int? month, [FromQuery] string? clientId, [FromQuery] string? clientName, CancellationToken ct)
     {
         try
         {
@@ -388,6 +388,7 @@ public sealed class DashboardController : Controller
                 year ?? today.Year,
                 month ?? today.Month,
                 clientId,
+                clientName,
                 ct);
 
             return Json(dashboard);

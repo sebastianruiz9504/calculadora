@@ -25,6 +25,7 @@ public sealed partial class DataverseService
         int year,
         int month,
         string? clientId = null,
+        string? clientName = null,
         CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -34,31 +35,13 @@ public sealed partial class DataverseService
         var selectedYear = year is >= 2000 and <= 2100 ? year : today.Year;
         var selectedMonth = month is >= 1 and <= 12 ? month : today.Month;
         var selectedClientId = NormalizeOptionalGuid(clientId);
+        var selectedClientName = (clientName ?? "").Trim();
         if (!string.IsNullOrWhiteSpace(clientId) && string.IsNullOrWhiteSpace(selectedClientId))
             throw new InvalidOperationException("El cliente seleccionado no es valido.");
 
         var periodStart = new DateOnly(selectedYear, selectedMonth, 1);
         var periodEnd = periodStart.AddMonths(1);
         var previousPeriodStart = periodStart.AddMonths(-1);
-
-        var clients = await SearchClientsAsync("", top: 5000, ct);
-        var clientOptions = clients
-            .Where(static client => !string.IsNullOrWhiteSpace(client.Id))
-            .GroupBy(static client => NormalizeOptionalGuid(client.Id), StringComparer.OrdinalIgnoreCase)
-            .Select(static group => new CopiersCountersClientOptionDto
-            {
-                Id = group.Key,
-                Name = group
-                    .Select(static client => client.Name?.Trim() ?? "")
-                    .FirstOrDefault(static name => !string.IsNullOrWhiteSpace(name)) ?? ""
-            })
-            .Where(static client => !string.IsNullOrWhiteSpace(client.Id))
-            .OrderBy(static client => client.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var clientNameById = clientOptions.ToDictionary(
-            static client => client.Id,
-            static client => client.Name,
-            StringComparer.OrdinalIgnoreCase);
 
         var equipmentMetadata = await ResolveRhEntityMetadataAsync(
             DashboardEquipmentTableLogicalName,
@@ -67,7 +50,9 @@ public sealed partial class DataverseService
             DashboardEquipmentPrimaryNameField,
             httpContext.User,
             ct);
-        var equipmentRows = await GetEquipmentRecordsAsync(equipmentMetadata, httpContext.User, ct);
+        var allEquipmentRows = await GetEquipmentRecordsAsync(equipmentMetadata, httpContext.User, ct);
+        var clientOptions = BuildCopiersCountersClientOptions(allEquipmentRows);
+        var equipmentRows = allEquipmentRows;
         if (!string.IsNullOrWhiteSpace(selectedClientId))
         {
             equipmentRows = equipmentRows
@@ -76,6 +61,20 @@ public sealed partial class DataverseService
                     selectedClientId,
                     StringComparison.OrdinalIgnoreCase))
                 .ToList();
+        }
+        else if (!string.IsNullOrWhiteSpace(selectedClientName))
+        {
+            var comparableClientName = NormalizeCopiersComparableValue(selectedClientName);
+            equipmentRows = equipmentRows
+                .Where(row => NormalizeCopiersComparableValue(row.ClientName).Contains(comparableClientName, StringComparison.Ordinal))
+                .ToList();
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedClientName) && !string.IsNullOrWhiteSpace(selectedClientId))
+        {
+            selectedClientName = equipmentRows
+                .Select(static row => row.ClientName)
+                .FirstOrDefault(static name => !string.IsNullOrWhiteSpace(name)) ?? "";
         }
 
         var semaphore = new SemaphoreSlim(8);
@@ -108,9 +107,7 @@ public sealed partial class DataverseService
                 }
 
                 var normalizedClientId = NormalizeOptionalGuid(equipment.ClientId);
-                clientNameById.TryGetValue(normalizedClientId, out var resolvedClientName);
                 var clientName = FirstNonEmpty(
-                    resolvedClientName,
                     equipment.InStock ? "Sin cliente" : equipment.ClientName,
                     "Sin cliente");
 
@@ -159,6 +156,7 @@ public sealed partial class DataverseService
             AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
             FocusLabel = $"Consumo mensual de copias y escaneos - {periodLabel}",
             SelectedClientId = selectedClientId,
+            SelectedClientName = selectedClientName,
             HasData = rows.Count > 0,
             RecordsCount = rows.Count,
             EmptyStateTitle = "No encontramos equipos para el filtro seleccionado.",
@@ -320,6 +318,24 @@ public sealed partial class DataverseService
             CopiersMonthlyCountersDateField,
             CopiersMonthlyCountersCopiesField,
             CopiersMonthlyCountersScansField);
+    }
+
+    private static IReadOnlyList<CopiersCountersClientOptionDto> BuildCopiersCountersClientOptions(
+        IReadOnlyList<CopiersEquipmentRecordRow> equipmentRows)
+    {
+        return equipmentRows
+            .Where(static row => !string.IsNullOrWhiteSpace(row.ClientId))
+            .GroupBy(static row => NormalizeOptionalGuid(row.ClientId), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => new CopiersCountersClientOptionDto
+            {
+                Id = group.Key,
+                Name = group
+                    .Select(static row => row.ClientName?.Trim() ?? "")
+                    .FirstOrDefault(static name => !string.IsNullOrWhiteSpace(name)) ?? ""
+            })
+            .Where(static client => !string.IsNullOrWhiteSpace(client.Id))
+            .OrderBy(static client => client.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static IReadOnlyList<CopiersCountersClientSummaryDto> BuildCopiersCountersClientSummaries(

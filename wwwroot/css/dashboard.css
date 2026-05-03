@@ -568,6 +568,10 @@
     min-width: 210px;
 }
 
+.dashboard-filter--wide {
+    min-width: 300px;
+}
+
 .dashboard-select--compact {
     min-width: 210px;
 }
@@ -2022,6 +2026,21 @@
     color: var(--dashboard-muted);
 }
 
+.dashboard-empty-state {
+    display: grid;
+    gap: 6px;
+    padding: 18px 20px;
+    color: var(--dashboard-muted);
+    background: #f7fbff;
+    border: 1px dashed rgba(15, 108, 189, .22);
+    border-radius: 18px;
+}
+
+.dashboard-empty-state strong {
+    color: var(--dashboard-ink);
+    font-size: 15px;
+}
+
 .dashboard-badge {
     display: inline-flex;
     align-items: center;
@@ -2103,6 +2122,7 @@
 
     .dashboard-search,
     .dashboard-filter--compact,
+    .dashboard-filter--wide,
     .dashboard-select--compact {
         min-width: 100%;
     }

@@ -15,9 +15,9 @@ public static class M365CallbackEndpoint
     }
 
     private static async Task<IResult> HandleCallbackAsync(
-        [FromQuery] string tenant,
-        [FromQuery(Name = "admin_consent")] string adminConsent,
-        [FromQuery] string state,
+        [FromQuery] string? tenant,
+        [FromQuery(Name = "admin_consent")] string? adminConsent,
+        [FromQuery] string? state,
         [FromQuery] string? scope,
         [FromQuery] string? error,
         [FromQuery(Name = "error_description")] string? errorDescription,
@@ -31,15 +31,28 @@ public static class M365CallbackEndpoint
         {
             var result = await m365.HandleConsentCallbackAsync(new M365ConsentCallbackRequest
             {
-                Tenant = tenant,
-                AdminConsent = adminConsent,
-                State = state,
+                Tenant = tenant ?? "",
+                AdminConsent = adminConsent ?? "",
+                State = state ?? "",
                 Scope = scope ?? "",
                 Error = error ?? "",
                 ErrorDescription = errorDescription ?? ""
             }, ct);
 
             return HtmlCallbackResult(result.Success ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest, result.Message, result);
+        }
+        catch (M365PersistenceConfigurationException ex)
+        {
+            logger.LogWarning(ex, "Persistencia M365 no configurada.");
+            return HtmlCallbackResult(
+                StatusCodes.Status400BadRequest,
+                ex.Message,
+                new M365ConsentCallbackResult
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    EstadoConexion = "Configuracion incompleta"
+                });
         }
         catch (InvalidOperationException ex)
         {

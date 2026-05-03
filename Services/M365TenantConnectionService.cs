@@ -25,6 +25,7 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
     private readonly string _dataverseTenantId;
     private readonly string _dataverseClientId;
     private readonly string _dataverseClientSecret;
+    private readonly string _dataverseCredentialSource;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -45,15 +46,12 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         _logger = logger;
         _dataverseBaseUrl = (configuration["Dataverse:BaseUrl"] ?? "").TrimEnd('/');
         _azureAuthorityInstance = configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/";
-        _dataverseTenantId = configuration["Dataverse:TenantId"]
-            ?? configuration["AzureAd:TenantId"]
-            ?? "";
-        _dataverseClientId = configuration["Dataverse:ClientId"]
-            ?? configuration["AzureAd:ClientId"]
-            ?? "";
-        _dataverseClientSecret = configuration["Dataverse:ClientSecret"]
-            ?? configuration["AzureAd:ClientSecret"]
-            ?? "";
+        _dataverseTenantId = FirstNonEmpty(configuration["Dataverse:TenantId"], configuration["AzureAd:TenantId"]);
+
+        var credential = ResolveDataverseAppCredential(configuration);
+        _dataverseClientId = credential.ClientId;
+        _dataverseClientSecret = credential.ClientSecret;
+        _dataverseCredentialSource = credential.Source;
     }
 
     public M365ConnectUrlResult BuildConnectUrl(M365ConnectUrlRequest request)
@@ -273,7 +271,7 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         string errorDescription,
         CancellationToken ct)
     {
-        var existing = await FindConnectionAsync(clienteId, tenantId, ct);
+        var existing = await FindConnectionForUpsertAsync(clienteId, tenantId, ct);
         var table = _options.Dataverse;
         var now = DateTimeOffset.UtcNow;
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -329,20 +327,56 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
     private async Task<M365TenantConnectionRecord?> FindConnectionAsync(string clienteId, string tenantId, CancellationToken ct)
     {
         var table = _options.Dataverse;
-        var filters = new List<string>();
         var normalizedClienteId = NormalizeOptionalGuid(clienteId);
+        var normalizedTenantId = tenantId?.Trim() ?? "";
+
+        if (!string.IsNullOrWhiteSpace(normalizedClienteId)
+            && !string.IsNullOrWhiteSpace(normalizedTenantId))
+        {
+            return await FindConnectionByFilterAsync(
+                $"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}' and {table.TenantIdField} eq '{EscapeOdataLiteral(normalizedTenantId)}'",
+                ct);
+        }
+
         if (!string.IsNullOrWhiteSpace(normalizedClienteId))
-            filters.Add($"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}'");
+        {
+            return await FindConnectionByFilterAsync(
+                $"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}'",
+                ct);
+        }
 
-        if (!string.IsNullOrWhiteSpace(tenantId))
-            filters.Add($"{table.TenantIdField} eq '{EscapeOdataLiteral(tenantId.Trim())}'");
+        if (!string.IsNullOrWhiteSpace(normalizedTenantId))
+        {
+            return await FindConnectionByFilterAsync(
+                $"{table.TenantIdField} eq '{EscapeOdataLiteral(normalizedTenantId)}'",
+                ct);
+        }
 
-        if (filters.Count == 0)
+        return null;
+    }
+
+    private async Task<M365TenantConnectionRecord?> FindConnectionForUpsertAsync(string clienteId, string tenantId, CancellationToken ct)
+    {
+        var exact = await FindConnectionAsync(clienteId, tenantId, ct);
+        if (exact is not null)
+            return exact;
+
+        var normalizedClienteId = NormalizeOptionalGuid(clienteId);
+        if (string.IsNullOrWhiteSpace(normalizedClienteId))
             return null;
 
-        var filter = filters.Count == 1
-            ? filters[0]
-            : $"({string.Join(" or ", filters)})";
+        var table = _options.Dataverse;
+        return await FindConnectionByFilterAsync(
+            $"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}'",
+            ct);
+    }
+
+    private async Task<M365TenantConnectionRecord?> FindConnectionByFilterAsync(string filter, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return null;
+
+        var table = _options.Dataverse;
         var relativeUrl =
             $"/api/data/v9.2/{table.ConnectionTableSetName}" +
             $"?$select={BuildConnectionSelectClause()}" +
@@ -444,8 +478,8 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
             || string.IsNullOrWhiteSpace(_dataverseClientId)
             || string.IsNullOrWhiteSpace(_dataverseClientSecret))
         {
-            throw new InvalidOperationException(
-                "La persistencia M365 requiere configurar Dataverse:BaseUrl, Dataverse:TenantId, Dataverse:ClientId y Dataverse:ClientSecret. Si no se configuran TenantId o ClientId en Dataverse, se usan AzureAd:TenantId y AzureAd:ClientId.");
+            throw new M365PersistenceConfigurationException(
+                "La persistencia M365 requiere credenciales app-only para Dataverse. Configura Dataverse:BaseUrl, Dataverse:TenantId o AzureAd:TenantId, y una credencial valida: Dataverse:ClientSecret con Dataverse:ClientId o AzureAd:ClientId, AzureAd:ClientSecret con AzureAd:ClientId, o M365:ClientSecret con M365:ClientId.");
         }
 
         var authorityBase = _azureAuthorityInstance.EndsWith("/", StringComparison.Ordinal)
@@ -460,6 +494,13 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         var result = await app
             .AcquireTokenForClient(new[] { $"{_dataverseBaseUrl}/.default" })
             .ExecuteAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(_dataverseCredentialSource))
+        {
+            _logger.LogDebug(
+                "Token app-only de Dataverse obtenido usando credencial {CredentialSource}.",
+                _dataverseCredentialSource);
+        }
 
         return result.AccessToken;
     }
@@ -820,6 +861,35 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
 
+    private static DataverseAppCredential ResolveDataverseAppCredential(IConfiguration configuration)
+    {
+        var dataverseClientId = FirstNonEmpty(configuration["Dataverse:ClientId"], configuration["AzureAd:ClientId"]);
+        var dataverseClientSecret = FirstNonEmpty(configuration["Dataverse:ClientSecret"]);
+        if (!string.IsNullOrWhiteSpace(dataverseClientId)
+            && !string.IsNullOrWhiteSpace(dataverseClientSecret))
+        {
+            return new DataverseAppCredential(dataverseClientId, dataverseClientSecret, "Dataverse");
+        }
+
+        var azureClientId = FirstNonEmpty(configuration["AzureAd:ClientId"]);
+        var azureClientSecret = FirstNonEmpty(configuration["AzureAd:ClientSecret"]);
+        if (!string.IsNullOrWhiteSpace(azureClientId)
+            && !string.IsNullOrWhiteSpace(azureClientSecret))
+        {
+            return new DataverseAppCredential(azureClientId, azureClientSecret, "AzureAd");
+        }
+
+        var m365ClientId = FirstNonEmpty(configuration["M365:ClientId"]);
+        var m365ClientSecret = FirstNonEmpty(configuration["M365:ClientSecret"]);
+        if (!string.IsNullOrWhiteSpace(m365ClientId)
+            && !string.IsNullOrWhiteSpace(m365ClientSecret))
+        {
+            return new DataverseAppCredential(m365ClientId, m365ClientSecret, "M365");
+        }
+
+        return new DataverseAppCredential(dataverseClientId, "", "");
+    }
+
     private static string? GetRelativeDataverseUrl(string? nextLink)
     {
         if (string.IsNullOrWhiteSpace(nextLink))
@@ -904,5 +974,15 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         public List<string> RequestedPermissions { get; set; } = new();
         public DateTimeOffset IssuedAtUtc { get; set; }
         public string Nonce { get; set; } = "";
+    }
+
+    private sealed record DataverseAppCredential(string ClientId, string ClientSecret, string Source);
+}
+
+public sealed class M365PersistenceConfigurationException : InvalidOperationException
+{
+    public M365PersistenceConfigurationException(string message)
+        : base(message)
+    {
     }
 }

@@ -938,15 +938,13 @@
         </div>
 
         <div class="dashboard-subpanel" data-copiers-subpanel="counters" hidden>
-            <section class="dashboard-kpis dashboard-kpis--copiers-counters" id="copiersCountersKpisContainer"></section>
-
             <section class="dashboard-grid">
                 <article class="dashboard-panel dashboard-panel--full">
                     <div class="dashboard-panel__header">
                         <div>
                             <div class="dashboard-panel__kicker">Contadores</div>
-                            <h2 class="dashboard-panel__title">Consumo mensual por cliente</h2>
-                            <p class="dashboard-panel__description" id="copiersCountersPeriodLabel">Copias y escaneos consolidados por periodo.</p>
+                            <h2 class="dashboard-panel__title">Filtrar consumo de contadores</h2>
+                            <p class="dashboard-panel__description" id="copiersCountersPeriodLabel">Selecciona mes, a&ntilde;o y cliente opcional. La consulta a Dataverse se ejecuta al aplicar el filtro.</p>
                         </div>
                         <div class="dashboard-panel__actions dashboard-panel__actions--table">
                             <label class="dashboard-filter dashboard-filter--compact" for="copiersCountersMonthFilter">
@@ -957,11 +955,38 @@
                                 <span class="dashboard-filter__label">A&ntilde;o</span>
                                 <select id="copiersCountersYearFilter" class="form-select dashboard-select dashboard-select--compact"></select>
                             </label>
-                            <label class="dashboard-filter dashboard-filter--compact" for="copiersCountersClientFilter">
+                            <label class="dashboard-filter dashboard-filter--wide" for="copiersCountersClientNameFilter">
                                 <span class="dashboard-filter__label">Cliente</span>
-                                <select id="copiersCountersClientFilter" class="form-select dashboard-select dashboard-select--compact"></select>
+                                <input type="text"
+                                       id="copiersCountersClientNameFilter"
+                                       class="form-control dashboard-select dashboard-select--compact"
+                                       list="copiersCountersClientOptions"
+                                       placeholder="Todos los clientes"
+                                       autocomplete="off" />
+                                <input type="hidden" id="copiersCountersClientIdFilter" />
+                                <datalist id="copiersCountersClientOptions"></datalist>
                             </label>
-                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersCountersRefreshBtn">Actualizar</button>
+                            <button type="button" class="btn btn-primary dashboard-refresh-btn" id="copiersCountersRefreshBtn">Aplicar filtros</button>
+                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersCountersClearBtn">Limpiar</button>
+                        </div>
+                    </div>
+                </article>
+            </section>
+
+            <div class="dashboard-empty-state" id="copiersCountersEmptyState">
+                <strong>Define los filtros para consultar contadores.</strong>
+                <span>Al aplicar el filtro se cargan los KPIs, el consumo por cliente y el detalle por equipo.</span>
+            </div>
+
+            <section class="dashboard-kpis dashboard-kpis--copiers-counters" id="copiersCountersKpisContainer" hidden></section>
+
+            <section class="dashboard-grid" id="copiersCountersResultsShell" hidden>
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Contadores</div>
+                            <h2 class="dashboard-panel__title">Consumo mensual por cliente</h2>
+                            <p class="dashboard-panel__description">Copias y escaneos consolidados por periodo.</p>
                         </div>
                     </div>
                     <div class="dashboard-table-meta">

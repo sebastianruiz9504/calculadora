@@ -10,6 +10,7 @@ public sealed class CopiersCountersDashboardDto
     public string AsOfDateLabel { get; set; } = "";
     public string FocusLabel { get; set; } = "";
     public string SelectedClientId { get; set; } = "";
+    public string SelectedClientName { get; set; } = "";
     public bool HasData { get; set; }
     public int RecordsCount { get; set; }
     public string EmptyStateTitle { get; set; } = "";

@@ -90,8 +90,13 @@
     const copiersMaintenancePageSummary = document.getElementById("copiersMaintenancePageSummary");
     const copiersCountersMonthFilter = document.getElementById("copiersCountersMonthFilter");
     const copiersCountersYearFilter = document.getElementById("copiersCountersYearFilter");
-    const copiersCountersClientFilter = document.getElementById("copiersCountersClientFilter");
+    const copiersCountersClientNameFilter = document.getElementById("copiersCountersClientNameFilter");
+    const copiersCountersClientIdFilter = document.getElementById("copiersCountersClientIdFilter");
+    const copiersCountersClientOptions = document.getElementById("copiersCountersClientOptions");
+    const copiersCountersClearButton = document.getElementById("copiersCountersClearBtn");
     const copiersCountersPeriodLabel = document.getElementById("copiersCountersPeriodLabel");
+    const copiersCountersEmptyState = document.getElementById("copiersCountersEmptyState");
+    const copiersCountersResultsShell = document.getElementById("copiersCountersResultsShell");
     const copiersCountersClientResultsCount = document.getElementById("copiersCountersClientResultsCount");
     const copiersCountersEquipmentResultsCount = document.getElementById("copiersCountersEquipmentResultsCount");
     const copiersCountersClientBody = document.getElementById("copiersCountersClientBody");
@@ -272,6 +277,9 @@
         copiersCountersYear: currentYear,
         copiersCountersMonth: currentValue,
         copiersCountersClientId: "",
+        copiersCountersClientName: "",
+        copiersCountersClientSuggestions: [],
+        copiersCountersHasAppliedFilters: false,
         portfolioSearchTerm: "",
         portfolioInvoicesSearchTerm: "",
         portfolioGrids: {
@@ -325,7 +333,7 @@
     }
 
     function getCopiersCountersSignature() {
-        return `${state.copiersCountersYear}|${state.copiersCountersMonth}|${state.copiersCountersClientId || ""}`;
+        return `${state.copiersCountersYear}|${state.copiersCountersMonth}|${state.copiersCountersClientId || ""}|${normalizeText(state.copiersCountersClientName || "")}`;
     }
 
     function formatMetric(value, format) {
@@ -518,9 +526,10 @@
         state.copiersCountersLoading = loading;
         [
             copiersCountersRefreshButton,
+            copiersCountersClearButton,
             copiersCountersMonthFilter,
             copiersCountersYearFilter,
-            copiersCountersClientFilter,
+            copiersCountersClientNameFilter,
             ...copiersSubtabButtons
         ].forEach(element => {
             if (element) {
@@ -2212,7 +2221,8 @@
         const params = new URLSearchParams({
             year: String(state.copiersCountersYear),
             month: String(state.copiersCountersMonth),
-            clientId: state.copiersCountersClientId || ""
+            clientId: state.copiersCountersClientId || "",
+            clientName: state.copiersCountersClientName || ""
         });
 
         return `${baseUrl}?${params.toString()}`;
@@ -3485,21 +3495,105 @@
         if (copiersCountersYearFilter) {
             copiersCountersYearFilter.value = String(state.copiersCountersYear);
         }
+
+        if (copiersCountersClientNameFilter) {
+            copiersCountersClientNameFilter.value = state.copiersCountersClientName || "";
+        }
+
+        if (copiersCountersClientIdFilter) {
+            copiersCountersClientIdFilter.value = state.copiersCountersClientId || "";
+        }
+    }
+
+    function syncCopiersCountersFiltersFromControls() {
+        state.copiersCountersMonth = Number(copiersCountersMonthFilter?.value || currentValue);
+        state.copiersCountersYear = Number(copiersCountersYearFilter?.value || currentYear);
+        state.copiersCountersClientId = copiersCountersClientIdFilter?.value || "";
+        state.copiersCountersClientName = (copiersCountersClientNameFilter?.value || "").trim();
+    }
+
+    function renderCopiersCountersPending(message) {
+        buildCopiersCountersPeriodOptions();
+
+        if (copiersCountersKpisContainer) {
+            copiersCountersKpisContainer.innerHTML = "";
+            copiersCountersKpisContainer.hidden = true;
+        }
+
+        if (copiersCountersResultsShell) {
+            copiersCountersResultsShell.hidden = true;
+        }
+
+        if (copiersCountersEmptyState) {
+            copiersCountersEmptyState.hidden = false;
+            copiersCountersEmptyState.innerHTML = `
+                <strong>Define los filtros para consultar contadores.</strong>
+                <span>${escapeHtml(message || "Al aplicar el filtro se cargan los KPIs, el consumo por cliente y el detalle por equipo.")}</span>
+            `;
+        }
+
+        if (copiersCountersClientResultsCount) {
+            copiersCountersClientResultsCount.textContent = "Sin consulta aplicada";
+        }
+
+        if (copiersCountersEquipmentResultsCount) {
+            copiersCountersEquipmentResultsCount.textContent = "Sin consulta aplicada";
+        }
+
+        if (copiersCountersClientBody) {
+            copiersCountersClientBody.innerHTML = '<tr><td colspan="5" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
+        }
+
+        if (copiersCountersEquipmentBody) {
+            copiersCountersEquipmentBody.innerHTML = '<tr><td colspan="12" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
+        }
+
+        if (copiersCountersPeriodLabel) {
+            copiersCountersPeriodLabel.textContent = "Selecciona mes, año y cliente opcional. La consulta a Dataverse se ejecuta al aplicar el filtro.";
+        }
+
+        if (state.activeTab === "copiers" && state.copiersSubtab === "counters") {
+            updateHeroForCopiers(null);
+        }
+    }
+
+    function markCopiersCountersFiltersPending(message) {
+        state.copiersCountersDashboard = null;
+        state.copiersCountersSignature = "";
+        state.copiersCountersHasAppliedFilters = false;
+        renderCopiersCountersPending(message || "Tienes filtros listos. Aplicalos para consultar Dataverse.");
+    }
+
+    function handleCopiersCountersFilterChanged(message) {
+        syncCopiersCountersFiltersFromControls();
+        markCopiersCountersFiltersPending(message);
     }
 
     function renderCopiersCountersClientOptions(dashboard) {
-        if (!copiersCountersClientFilter) {
+        if (!copiersCountersClientOptions) {
             return;
         }
 
         const clients = Array.isArray(dashboard?.clients) ? dashboard.clients : [];
-        copiersCountersClientFilter.innerHTML = `
-            <option value="">Todos los clientes</option>
-            ${clients.map(client => `
-                <option value="${escapeHtml(client.id || "")}">${escapeHtml(client.name || "Cliente sin nombre")}</option>
-            `).join("")}
-        `;
-        copiersCountersClientFilter.value = dashboard?.selectedClientId || state.copiersCountersClientId || "";
+        state.copiersCountersClientSuggestions = clients;
+        renderCopiersLookupOptions(copiersCountersClientOptions, clients, "name");
+
+        const selectedClientId = dashboard?.selectedClientId || state.copiersCountersClientId || "";
+        const selectedClientName = dashboard?.selectedClientName
+            || clients.find(client => String(client.id || "").toLowerCase() === selectedClientId.toLowerCase())?.name
+            || state.copiersCountersClientName
+            || "";
+
+        state.copiersCountersClientId = selectedClientId;
+        state.copiersCountersClientName = selectedClientName;
+
+        if (copiersCountersClientIdFilter) {
+            copiersCountersClientIdFilter.value = selectedClientId;
+        }
+
+        if (copiersCountersClientNameFilter) {
+            copiersCountersClientNameFilter.value = selectedClientName;
+        }
     }
 
     function renderCopiersCountersClientTable(dashboard) {
@@ -3558,6 +3652,18 @@
     function renderCopiersCountersDashboard(dashboard) {
         buildCopiersCountersPeriodOptions();
         renderCopiersCountersClientOptions(dashboard);
+        if (copiersCountersEmptyState) {
+            copiersCountersEmptyState.hidden = true;
+        }
+
+        if (copiersCountersKpisContainer) {
+            copiersCountersKpisContainer.hidden = false;
+        }
+
+        if (copiersCountersResultsShell) {
+            copiersCountersResultsShell.hidden = false;
+        }
+
         renderSimpleKpis(copiersCountersKpisContainer, dashboard?.kpis);
         renderCopiersCountersClientTable(dashboard);
         renderCopiersCountersEquipmentTable(dashboard);
@@ -4428,7 +4534,9 @@
         state.copiersCountersYear = Number(dashboard?.year || state.copiersCountersYear);
         state.copiersCountersMonth = Number(dashboard?.month || state.copiersCountersMonth);
         state.copiersCountersClientId = dashboard?.selectedClientId ?? state.copiersCountersClientId ?? "";
+        state.copiersCountersClientName = dashboard?.selectedClientName ?? state.copiersCountersClientName ?? "";
         state.copiersCountersSignature = getCopiersCountersSignature();
+        state.copiersCountersHasAppliedFilters = true;
 
         if (state.activeTab === "copiers" && state.copiersSubtab === "counters") {
             updateHeroForCopiers(dashboard);
@@ -4520,10 +4628,12 @@
 
         if (state.copiersSubtab === "counters") {
             buildCopiersCountersPeriodOptions();
-            if (state.copiersCountersDashboard && state.copiersCountersSignature === getCopiersCountersSignature()) {
+            if (state.copiersCountersHasAppliedFilters
+                && state.copiersCountersDashboard
+                && state.copiersCountersSignature === getCopiersCountersSignature()) {
                 updateHeroForCopiers(state.copiersCountersDashboard);
             } else {
-                loadCopiersCounters();
+                renderCopiersCountersPending();
             }
             return;
         }
@@ -4956,9 +5066,10 @@
 
     async function loadCopiersCounters(options = {}) {
         const quiet = Boolean(options.quiet);
+        syncCopiersCountersFiltersFromControls();
         setCopiersCountersLoading(true);
         if (!quiet) {
-            setStatus(copiersStatusBanner, "info", "Consultando contadores copiers...");
+            setStatus(copiersStatusBanner, "info", "Aplicando filtros y consultando contadores copiers...");
         }
 
         try {
@@ -5175,6 +5286,15 @@
     copiersCountersRefreshButton?.addEventListener("click", () => {
         loadCopiersCounters();
     });
+    copiersCountersClearButton?.addEventListener("click", () => {
+        state.copiersCountersYear = currentYear;
+        state.copiersCountersMonth = currentValue;
+        state.copiersCountersClientId = "";
+        state.copiersCountersClientName = "";
+        buildCopiersCountersPeriodOptions();
+        markCopiersCountersFiltersPending("Filtros restablecidos. Aplica el filtro cuando quieras consultar Dataverse.");
+        setStatus(copiersStatusBanner, "", "");
+    });
     copiersNewRecordButton?.addEventListener("click", () => {
         openCopiersEditorModal("create");
     });
@@ -5333,16 +5453,33 @@
         }
     });
     copiersCountersMonthFilter?.addEventListener("change", () => {
-        state.copiersCountersMonth = Number(copiersCountersMonthFilter.value || currentValue);
-        loadCopiersCounters();
+        handleCopiersCountersFilterChanged("Mes actualizado. Aplica el filtro para consultar Dataverse.");
     });
     copiersCountersYearFilter?.addEventListener("change", () => {
-        state.copiersCountersYear = Number(copiersCountersYearFilter.value || currentYear);
-        loadCopiersCounters();
+        handleCopiersCountersFilterChanged("Año actualizado. Aplica el filtro para consultar Dataverse.");
     });
-    copiersCountersClientFilter?.addEventListener("change", () => {
-        state.copiersCountersClientId = copiersCountersClientFilter.value || "";
-        loadCopiersCounters();
+    copiersCountersClientNameFilter?.addEventListener("input", () => {
+        if (copiersCountersClientIdFilter) {
+            copiersCountersClientIdFilter.value = "";
+        }
+
+        handleCopiersCountersFilterChanged("Cliente actualizado. Aplica el filtro para consultar Dataverse.");
+    });
+    copiersCountersClientNameFilter?.addEventListener("change", () => {
+        syncCopiersLookupSelection(
+            copiersCountersClientNameFilter,
+            copiersCountersClientIdFilter,
+            state.copiersCountersClientSuggestions,
+            "name");
+        handleCopiersCountersFilterChanged("Cliente actualizado. Aplica el filtro para consultar Dataverse.");
+    });
+    copiersCountersClientNameFilter?.addEventListener("blur", () => {
+        syncCopiersLookupSelection(
+            copiersCountersClientNameFilter,
+            copiersCountersClientIdFilter,
+            state.copiersCountersClientSuggestions,
+            "name");
+        syncCopiersCountersFiltersFromControls();
     });
     pnlDetailBody?.addEventListener("click", event => {
         const saveButton = event.target.closest("[data-pnl-detail-save]");
@@ -5404,6 +5541,7 @@
     buildPnlMonthOptions(12);
     buildCopiersMaintenanceFilterOptions();
     buildCopiersCountersPeriodOptions();
+    renderCopiersCountersPending();
     renderCopiersMaintenanceTable();
     resetBillingReportReference();
     syncBillingReportSelectionSummary();
