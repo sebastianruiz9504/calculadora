@@ -51,7 +51,7 @@ public sealed class ReportesTicketDataverseOptions
     public string TableLogicalName { get; set; } = "cr07a_ticket";
     public string TableSetName { get; set; } = "cr07a_tickets";
     public string IdField { get; set; } = "cr07a_ticketid";
-    public string PrimaryNameField { get; set; } = "cr07a_name";
+    public string PrimaryNameField { get; set; } = "cr07a_tituloticket";
     public string TitleField { get; set; } = "cr07a_tituloticket";
     public string DescriptionField { get; set; } = "cr07a_descripcion";
     public string CreationDateField { get; set; } = "cr07a_fechacreacion";
