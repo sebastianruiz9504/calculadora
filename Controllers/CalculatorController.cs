@@ -10,6 +10,7 @@ using CotizadorInterno.Web.Services.Calculator;
 using System.Globalization;
 using System.IO;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public sealed class CalculatorController : Controller
 {
     private readonly IDataverseService _dataverse;
     private readonly IQuoteCalculator _calculator;
+    private readonly IAzureOpenAIQuoteProposalService _proposalService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly CalculatorOptions _calculatorOptions;
     private readonly ILogger<CalculatorController> _logger;
@@ -30,12 +32,14 @@ public sealed class CalculatorController : Controller
     public CalculatorController(
         IDataverseService dataverse,
         IQuoteCalculator calculator,
+        IAzureOpenAIQuoteProposalService proposalService,
         IHttpClientFactory httpClientFactory,
         IOptions<CalculatorOptions> calculatorOptions,
         ILogger<CalculatorController> logger)
     {
         _dataverse = dataverse;
         _calculator = calculator;
+        _proposalService = proposalService;
         _httpClientFactory = httpClientFactory;
         _calculatorOptions = calculatorOptions.Value;
         _logger = logger;
@@ -210,6 +214,53 @@ public sealed class CalculatorController : Controller
             stream.ToArray(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileName);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> GenerateProposal([FromBody] QuoteScenarioInput input, CancellationToken ct)
+    {
+        if (input is null)
+            return BadRequest("Payload invalido.");
+
+        NormalizeProrationRules(input);
+
+        if (input.Lines is null || input.Lines.Count == 0)
+            return BadRequest("No hay lineas para generar la propuesta.");
+
+        var licenseValidation = ValidateLicenseCaps(input);
+        if (!string.IsNullOrWhiteSpace(licenseValidation))
+            return BadRequest(licenseValidation);
+
+        var productValidation = ValidateSelectedProducts(input.Lines, "generar la propuesta");
+        if (!string.IsNullOrWhiteSpace(productValidation))
+            return BadRequest(productValidation);
+
+        try
+        {
+            var result = _calculator.Calculate(input);
+            var proposalInput = new QuoteProposalGenerationInput
+            {
+                Scenario = input,
+                Result = result,
+                PreparedByName = ResolveCurrentUserName(),
+                PreparedByEmail = ResolveCurrentUserEmail(),
+                GeneratedAt = DateTimeOffset.UtcNow
+            };
+            var html = await _proposalService.GenerateProposalHtmlAsync(proposalInput, ct);
+            return File(
+                Encoding.UTF8.GetBytes(html),
+                "text/html; charset=utf-8",
+                BuildHtmlFileName(input.ScenarioName));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No fue posible generar la propuesta HTML.");
+            return BadRequest(BuildDiagnosticMessage(ex));
+        }
     }
 
     [HttpPost]
@@ -731,6 +782,30 @@ public sealed class CalculatorController : Controller
         if (string.IsNullOrWhiteSpace(safe))
             safe = "Cotizacion";
         return $"{safe}.xlsx";
+    }
+
+    private static string BuildHtmlFileName(string? scenarioName)
+    {
+        var safe = string.Join("_", (scenarioName ?? "Propuesta").Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+        if (string.IsNullOrWhiteSpace(safe))
+            safe = "Propuesta";
+        return $"{safe}_propuesta.html";
+    }
+
+    private string ResolveCurrentUserName()
+    {
+        return User.FindFirst("name")?.Value
+            ?? User.FindFirst(ClaimTypes.Name)?.Value
+            ?? User.Identity?.Name
+            ?? "";
+    }
+
+    private string ResolveCurrentUserEmail()
+    {
+        return User.FindFirst("preferred_username")?.Value
+            ?? User.FindFirst(ClaimTypes.Email)?.Value
+            ?? User.FindFirst("email")?.Value
+            ?? "";
     }
 
     private sealed class ProvisioningFlowLinePayload

@@ -391,6 +391,7 @@
 
            <div class="calc-result-actions">
                 <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>
+                <button id="btnGenerateProposal" class="btn btn-outline-primary" type="button">Generar propuesta</button>
                 <button id="btnProvisioning" class="btn btn-primary" type="button">Solicitar Aprovisionamiento</button>
             </div>
             <div id="actionValidationMessage" class="small calc-action-warning mt-2" style="display:none;"></div>
@@ -537,6 +538,7 @@
 
     const btnCalculate = document.getElementById("btnCalculate");
     const btnExport = document.getElementById("btnExport");
+    const btnGenerateProposal = document.getElementById("btnGenerateProposal");
     const btnProvisioning = document.getElementById("btnProvisioning");
     const btnCloseProvisioning = document.getElementById("btnCloseProvisioning");
     const btnCancelProvisioning = document.getElementById("btnCancelProvisioning");
@@ -771,7 +773,7 @@ const showDebugCalcModal = false;
                 ? `la linea ${lineNumbers[0]}`
                 : `las lineas ${lineNumbers.join(", ")}`;
 
-            return `Completa el nombre del producto en ${lineLabel} antes de exportar o solicitar aprovisionamiento.`;
+            return `Completa el nombre del producto en ${lineLabel} antes de exportar, generar propuesta o solicitar aprovisionamiento.`;
         }
 
         const lineNumbers = issues.map(issue => issue.lineNumber);
@@ -779,7 +781,7 @@ const showDebugCalcModal = false;
             ? `la linea ${lineNumbers[0]}`
             : `las lineas ${lineNumbers.join(", ")}`;
 
-        return `Debes seleccionar un producto valido de la lista en ${lineLabel} antes de exportar o solicitar aprovisionamiento.`;
+        return `Debes seleccionar un producto valido de la lista en ${lineLabel} antes de exportar, generar propuesta o solicitar aprovisionamiento.`;
     }
 
     function syncScenarioActionButtons() {
@@ -790,10 +792,12 @@ const showDebugCalcModal = false;
         const disableActions = !hasLines || issues.length > 0;
 
         btnExport.disabled = disableActions;
+        btnGenerateProposal.disabled = disableActions;
         btnProvisioning.disabled = disableActions;
 
         const actionTitle = issues.length > 0 ? blockingMessage : "";
         btnExport.title = actionTitle;
+        btnGenerateProposal.title = actionTitle;
         btnProvisioning.title = actionTitle;
 
         if (!actionValidationMessage) {
@@ -1749,6 +1753,46 @@ async function saveScenarioToDataverse(scenario, lines) {
         }
     }
 
+    async function generateProposal() {
+        const payload = buildPayload({
+            requireSelectedProducts: true,
+            actionLabel: "generar la propuesta"
+        });
+        if (!payload) return;
+
+        btnGenerateProposal.disabled = true;
+        btnGenerateProposal.innerText = "Generando...";
+
+        try {
+            const res = await fetch("/Calculator/GenerateProposal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "text/html" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const message = await readErrorResponseMessage(res, "Error generando la propuesta.");
+                throw new Error(message);
+            }
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            const safeName = (payload.scenarioName || "propuesta").trim().replace(/[^a-zA-Z0-9-_ ]/g, "") || "propuesta";
+            a.href = url;
+            a.download = `${safeName.replace(/\s+/g, "_")}_propuesta.html`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            alert("Error: " + (err?.message || err));
+        } finally {
+            btnGenerateProposal.innerText = "Generar propuesta";
+            syncScenarioActionButtons();
+        }
+    }
+
     function setProvisioningStatus(message, type = "error") {
         provisioningStatus.classList.remove("status-success", "status-error");
         if (!message) {
@@ -2356,6 +2400,7 @@ if (attachmentInput) {
 
     btnCalculate.addEventListener("click", calculate);
     btnExport.addEventListener("click", exportExcel);
+    btnGenerateProposal.addEventListener("click", generateProposal);
     // Init
     renderTypeChips();
     if (Array.isArray(storedScenarios) && storedScenarios.length > 0) {
