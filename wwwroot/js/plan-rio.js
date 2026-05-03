@@ -264,6 +264,9 @@
       const entry = getEntry(item);
       const key = getStateKey(item);
       const dateLabel = formatDate(item.date);
+      const tagsHtml = dateLabel
+        ? `<div class="plan-rio__tags"><span>${escapeHtml(dateLabel)}</span></div>`
+        : '';
       const meta = [
         escapeHtml(item.discipline),
         escapeHtml(item.type),
@@ -275,10 +278,7 @@
       const status = entry.done ? 'Completado' : (item.status || 'Pendiente');
 
       return `<article class="plan-rio__day ${entry.active ? 'is-active' : ''}">
-          <div class="plan-rio__tags">
-            <span>${escapeHtml(item.weekLabel)}</span>
-            ${dateLabel ? `<span>${escapeHtml(dateLabel)}</span>` : ''}
-          </div>
+          ${tagsHtml}
           <h3>${escapeHtml(item.day || 'Día sin definir')}</h3>
           <div class="plan-rio__meta">${meta}</div>
           <div class="plan-rio__detail">${buildDetailRows(item)}</div>
