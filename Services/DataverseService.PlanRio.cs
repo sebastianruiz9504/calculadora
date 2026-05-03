@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.PlanRio;
+using Microsoft.Extensions.Logging;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -34,7 +36,43 @@ public sealed partial class DataverseService
     private const string PlanRioSourceSheetField = "cr07a_origenhoja";
     private const string PlanRioSourceRowField = "cr07a_filaorigen";
 
+    private readonly ConcurrentDictionary<string, IReadOnlySet<string>> _planRioAttributeCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly CultureInfo PlanRioCulture = CultureInfo.GetCultureInfo("es-CO");
+    private static readonly string[] PlanRioExpectedFields =
+    {
+        PlanRioPrimaryIdField,
+        PlanRioPrimaryNameField,
+        PlanRioDateField,
+        PlanRioDayField,
+        PlanRioWeekField,
+        PlanRioWeekStartField,
+        PlanRioPhaseField,
+        PlanRioDisciplineField,
+        PlanRioSessionField,
+        PlanRioMinutesField,
+        PlanRioHoursField,
+        PlanRioVolumeField,
+        PlanRioIntensityField,
+        PlanRioDetailField,
+        PlanRioNutritionField,
+        PlanRioObjectiveField,
+        PlanRioStatusField,
+        PlanRioActualMinutesField,
+        PlanRioActualDistanceField,
+        PlanRioAverageHeartRateField,
+        PlanRioAveragePowerField,
+        PlanRioNotesField,
+        PlanRioSourceSheetField,
+        PlanRioSourceRowField
+    };
+    private static readonly string[] PlanRioRequiredSaveFields =
+    {
+        PlanRioActualMinutesField,
+        PlanRioActualDistanceField,
+        PlanRioAverageHeartRateField,
+        PlanRioAveragePowerField,
+        PlanRioNotesField
+    };
 
     public async Task<PlanRioPageViewModel> GetPlanRioPageAsync(CancellationToken ct = default)
     {
@@ -49,7 +87,8 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
-        var rows = await LoadPlanRioRowsAsync(metadata, httpContext.User, ct);
+        var availableFields = await ResolvePlanRioAvailableFieldsAsync(metadata, httpContext.User, ct);
+        var rows = await LoadPlanRioRowsAsync(metadata, availableFields, httpContext.User, ct);
         ApplyPlanRioWeekLabels(rows);
 
         var weeks = rows
@@ -72,6 +111,12 @@ public sealed partial class DataverseService
             ?? rows.FirstOrDefault()?.WeekLabel
             ?? "Semana no disponible";
         var sourceSheet = ResolveMostCommonValue(rows.Select(row => row.SourceSheet), "Dataverse");
+        var missingFields = ResolvePlanRioMissingFields(availableFields);
+        var sourceStatus = rows.Count == 0
+            ? "La tabla de Dataverse no tiene entrenos cargados."
+            : $"Dataverse cargó {rows.Count} entreno(s) desde {metadata.EntitySetName}.";
+        if (missingFields.Count > 0)
+            sourceStatus += $" Columnas no encontradas: {string.Join(", ", missingFields)}.";
 
         return new PlanRioPageViewModel
         {
@@ -80,12 +125,10 @@ public sealed partial class DataverseService
             Weeks = weeks,
             SourceSheet = sourceSheet,
             SourcePath = $"Dataverse: {metadata.EntitySetName}",
-            SourceStatus = rows.Count == 0
-                ? "La tabla de Dataverse no tiene entrenos cargados."
-                : $"Dataverse cargó {rows.Count} entreno(s) desde {metadata.EntitySetName}.",
-            DetailColumnName = PlanRioDetailField,
-            WorkoutColumnName = PlanRioSessionField,
-            WeekColumnName = PlanRioWeekField
+            SourceStatus = sourceStatus,
+            DetailColumnName = ResolvePlanRioColumnName(availableFields, PlanRioDetailField),
+            WorkoutColumnName = ResolvePlanRioColumnName(availableFields, PlanRioSessionField),
+            WeekColumnName = ResolvePlanRioColumnName(availableFields, PlanRioWeekField)
         };
     }
 
@@ -107,6 +150,8 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
+        var availableFields = await ResolvePlanRioAvailableFieldsAsync(metadata, httpContext.User, ct);
+        EnsurePlanRioSaveFields(availableFields);
         var recordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
         var payload = BuildPlanRioSavePayload(request);
         await CallDataverseSendAsync(
@@ -116,7 +161,7 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
-        var record = await LoadPlanRioWorkoutByIdAsync(metadata, recordId, httpContext.User, ct);
+        var record = await LoadPlanRioWorkoutByIdAsync(metadata, availableFields, recordId, httpContext.User, ct);
         if (record is not null)
             ApplyPlanRioWeekLabels(new[] { record });
 
@@ -129,15 +174,28 @@ public sealed partial class DataverseService
 
     private async Task<List<PlanRioWorkoutDto>> LoadPlanRioRowsAsync(
         RhEntityMetadata metadata,
+        IReadOnlySet<string> availableFields,
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var selectFields = BuildPlanRioSelectFields(metadata);
+        var selectFields = BuildPlanRioSelectFields(metadata, availableFields);
+        var orderBy = BuildPlanRioOrderBy(availableFields);
 
-        var relativeUrl =
-            $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields)}" +
-            $"&$orderby={PlanRioDateField} asc,{PlanRioSourceRowField} asc";
-        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields)}";
+        if (!string.IsNullOrWhiteSpace(orderBy))
+            relativeUrl += $"&$orderby={orderBy}";
+        List<JsonElement> items;
+        try
+        {
+            items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        }
+        catch (InvalidOperationException ex) when (selectFields.Count > 2)
+        {
+            _logger.LogWarning(ex, "La consulta completa de Plan Rio fallo. Se reintentara con columnas minimas.");
+            var minimalFields = BuildPlanRioMinimalSelectFields(metadata, availableFields);
+            var minimalUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", minimalFields)}";
+            items = await GetDataverseEntitiesAsync(minimalUrl, user, ct, AddFormattedValueHeaders);
+        }
 
         return items
             .Select((item, index) => BuildPlanRioWorkout(item, metadata, index + 1))
@@ -148,20 +206,80 @@ public sealed partial class DataverseService
 
     private async Task<PlanRioWorkoutDto?> LoadPlanRioWorkoutByIdAsync(
         RhEntityMetadata metadata,
+        IReadOnlySet<string> availableFields,
         string recordId,
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var selectFields = BuildPlanRioSelectFields(metadata);
+        var selectFields = BuildPlanRioSelectFields(metadata, availableFields);
         var relativeUrl =
             $"/api/data/v9.2/{metadata.EntitySetName}({recordId})?$select={string.Join(",", selectFields)}";
-        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        string json;
+        try
+        {
+            json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        }
+        catch (InvalidOperationException ex) when (selectFields.Count > 2)
+        {
+            _logger.LogWarning(ex, "La recarga completa del entreno Plan Rio fallo. Se reintentara con columnas minimas.");
+            var minimalFields = BuildPlanRioMinimalSelectFields(metadata, availableFields);
+            var minimalUrl =
+                $"/api/data/v9.2/{metadata.EntitySetName}({recordId})?$select={string.Join(",", minimalFields)}";
+            json = await CallDataverseGetJsonAsync(minimalUrl, user, ct, AddFormattedValueHeaders);
+        }
 
         using var doc = JsonDocument.Parse(json);
         return BuildPlanRioWorkout(doc.RootElement, metadata, 1);
     }
 
-    private static IReadOnlyList<string> BuildPlanRioSelectFields(RhEntityMetadata metadata)
+    private async Task<IReadOnlySet<string>> ResolvePlanRioAvailableFieldsAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var cacheKey = string.IsNullOrWhiteSpace(metadata.LogicalName)
+            ? PlanRioLogicalName
+            : metadata.LogicalName;
+        if (_planRioAttributeCache.TryGetValue(cacheKey, out var cachedFields))
+            return cachedFields;
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(cacheKey)}')/Attributes?$select=LogicalName";
+            var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct);
+            var fields = items
+                .Select(item => ReadString(item, "LogicalName").Trim())
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(metadata.PrimaryIdField))
+                fields.Add(metadata.PrimaryIdField);
+            if (!string.IsNullOrWhiteSpace(metadata.PrimaryNameField))
+                fields.Add(metadata.PrimaryNameField);
+
+            if (fields.Count > 0)
+            {
+                _planRioAttributeCache[cacheKey] = fields;
+                return fields;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible leer las columnas de Plan Rio en Dataverse. Se usara el esquema esperado.");
+        }
+
+        var fallbackFields = PlanRioExpectedFields
+            .Concat(new[] { metadata.PrimaryIdField, metadata.PrimaryNameField })
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _planRioAttributeCache[cacheKey] = fallbackFields;
+        return fallbackFields;
+    }
+
+    private static IReadOnlyList<string> BuildPlanRioSelectFields(
+        RhEntityMetadata metadata,
+        IReadOnlySet<string> availableFields)
     {
         return new[]
             {
@@ -192,7 +310,77 @@ public sealed partial class DataverseService
             }
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(field => IsPlanRioFieldAvailable(availableFields, field))
             .ToList();
+    }
+
+    private static IReadOnlyList<string> BuildPlanRioMinimalSelectFields(
+        RhEntityMetadata metadata,
+        IReadOnlySet<string> availableFields)
+    {
+        var fields = new[]
+            {
+                metadata.PrimaryIdField,
+                metadata.PrimaryNameField,
+                PlanRioPrimaryIdField,
+                PlanRioPrimaryNameField
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(field => IsPlanRioFieldAvailable(availableFields, field))
+            .ToList();
+
+        if (fields.Count == 0 && !string.IsNullOrWhiteSpace(metadata.PrimaryIdField))
+            fields.Add(metadata.PrimaryIdField);
+
+        return fields;
+    }
+
+    private static string BuildPlanRioOrderBy(IReadOnlySet<string> availableFields)
+    {
+        var orderFields = new List<string>();
+        if (IsPlanRioFieldAvailable(availableFields, PlanRioDateField))
+            orderFields.Add($"{PlanRioDateField} asc");
+        if (IsPlanRioFieldAvailable(availableFields, PlanRioSourceRowField))
+            orderFields.Add($"{PlanRioSourceRowField} asc");
+
+        return string.Join(",", orderFields);
+    }
+
+    private static bool IsPlanRioFieldAvailable(IReadOnlySet<string> availableFields, string fieldName)
+    {
+        return string.IsNullOrWhiteSpace(fieldName)
+            || availableFields.Count == 0
+            || availableFields.Contains(fieldName);
+    }
+
+    private static IReadOnlyList<string> ResolvePlanRioMissingFields(IReadOnlySet<string> availableFields)
+    {
+        if (availableFields.Count == 0)
+            return Array.Empty<string>();
+
+        return PlanRioExpectedFields
+            .Where(field => !availableFields.Contains(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string ResolvePlanRioColumnName(IReadOnlySet<string> availableFields, string fieldName)
+    {
+        return IsPlanRioFieldAvailable(availableFields, fieldName) ? fieldName : "";
+    }
+
+    private static void EnsurePlanRioSaveFields(IReadOnlySet<string> availableFields)
+    {
+        var missingFields = PlanRioRequiredSaveFields
+            .Where(field => !IsPlanRioFieldAvailable(availableFields, field))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (missingFields.Count == 0)
+            return;
+
+        throw new InvalidOperationException(
+            $"La tabla de Plan Rio no tiene las columnas requeridas para registrar entrenos: {string.Join(", ", missingFields)}.");
     }
 
     private static PlanRioWorkoutDto? BuildPlanRioWorkout(JsonElement item, RhEntityMetadata metadata, int fallbackId)

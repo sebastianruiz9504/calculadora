@@ -22,8 +22,8 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
     private readonly ILogger<M365TenantConnectionService> _logger;
     private readonly string _dataverseBaseUrl;
     private readonly string _azureAuthorityInstance;
-    private readonly string _azureTenantId;
-    private readonly string _azureClientId;
+    private readonly string _dataverseTenantId;
+    private readonly string _dataverseClientId;
     private readonly string _dataverseClientSecret;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -45,8 +45,12 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         _logger = logger;
         _dataverseBaseUrl = (configuration["Dataverse:BaseUrl"] ?? "").TrimEnd('/');
         _azureAuthorityInstance = configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/";
-        _azureTenantId = configuration["AzureAd:TenantId"] ?? "";
-        _azureClientId = configuration["AzureAd:ClientId"] ?? "";
+        _dataverseTenantId = configuration["Dataverse:TenantId"]
+            ?? configuration["AzureAd:TenantId"]
+            ?? "";
+        _dataverseClientId = configuration["Dataverse:ClientId"]
+            ?? configuration["AzureAd:ClientId"]
+            ?? "";
         _dataverseClientSecret = configuration["Dataverse:ClientSecret"]
             ?? configuration["AzureAd:ClientSecret"]
             ?? "";
@@ -436,21 +440,21 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
     private async Task<string> GetDataverseAppAccessTokenAsync(CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_dataverseBaseUrl)
-            || string.IsNullOrWhiteSpace(_azureTenantId)
-            || string.IsNullOrWhiteSpace(_azureClientId)
+            || string.IsNullOrWhiteSpace(_dataverseTenantId)
+            || string.IsNullOrWhiteSpace(_dataverseClientId)
             || string.IsNullOrWhiteSpace(_dataverseClientSecret))
         {
             throw new InvalidOperationException(
-                "La persistencia M365 requiere configurar Dataverse:BaseUrl, AzureAd:TenantId, AzureAd:ClientId y Dataverse:ClientSecret o AzureAd:ClientSecret.");
+                "La persistencia M365 requiere configurar Dataverse:BaseUrl, Dataverse:TenantId, Dataverse:ClientId y Dataverse:ClientSecret. Si no se configuran TenantId o ClientId en Dataverse, se usan AzureAd:TenantId y AzureAd:ClientId.");
         }
 
         var authorityBase = _azureAuthorityInstance.EndsWith("/", StringComparison.Ordinal)
             ? _azureAuthorityInstance
             : $"{_azureAuthorityInstance}/";
         var app = ConfidentialClientApplicationBuilder
-            .Create(_azureClientId)
+            .Create(_dataverseClientId)
             .WithClientSecret(_dataverseClientSecret)
-            .WithAuthority($"{authorityBase}{_azureTenantId}")
+            .WithAuthority($"{authorityBase}{_dataverseTenantId}")
             .Build();
 
         var result = await app
@@ -468,7 +472,7 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         using var response = await CallDataverseAppResponseAsync(relativeUrl, "GET", ct, customizeRequest: customizeRequest);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+            throw BuildDataverseAppException(response, body);
 
         return body;
     }
@@ -484,9 +488,25 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         using var response = await CallDataverseAppResponseAsync(relativeUrl, method, ct, content, customizeRequest);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+            throw BuildDataverseAppException(response, body);
 
         return body;
+    }
+
+    private InvalidOperationException BuildDataverseAppException(HttpResponseMessage response, string body)
+    {
+        var baseMessage = $"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}";
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden
+            && (body.Contains("0x80072560", StringComparison.OrdinalIgnoreCase)
+                || body.Contains("not a member of the organization", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new InvalidOperationException(
+                "La app configurada para persistir M365 no es miembro del entorno Dataverse. " +
+                "Crea o activa un Application User en el entorno de Dataverse para la App Registration indicada en Dataverse:ClientId (o AzureAd:ClientId si no esta configurado) y asignale un rol con permisos sobre la tabla de conexiones M365 y clientes.",
+                new InvalidOperationException(baseMessage));
+        }
+
+        return new InvalidOperationException(baseMessage);
     }
 
     private async Task<HttpResponseMessage> CallDataverseAppResponseAsync(

@@ -13,18 +13,28 @@ public class PlanRioController : Controller
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
 
     private readonly IDataverseService _dataverse;
+    private readonly ILogger<PlanRioController> _logger;
 
-    public PlanRioController(IDataverseService dataverse)
+    public PlanRioController(IDataverseService dataverse, ILogger<PlanRioController> logger)
     {
         _dataverse = dataverse;
+        _logger = logger;
     }
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var model = await _dataverse.GetPlanRioPageAsync(ct);
-        return View(model);
+        try
+        {
+            var model = await _dataverse.GetPlanRioPageAsync(ct);
+            return View(model);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "No fue posible cargar el modulo Plan Rio.");
+            return View(CreateLoadErrorModel(ex));
+        }
     }
 
     [HttpPost]
@@ -56,6 +66,22 @@ public class PlanRioController : Controller
             message,
             detail = string.Equals(detail, message, StringComparison.Ordinal) ? "" : detail,
             traceId = HttpContext.TraceIdentifier
+        };
+    }
+
+    private static PlanRioPageViewModel CreateLoadErrorModel(Exception ex)
+    {
+        var detail = BuildExceptionDetail(ex);
+        return new PlanRioPageViewModel
+        {
+            WeekLabel = "Semana no disponible",
+            Workouts = Array.Empty<PlanRioWorkoutDto>(),
+            Weeks = Array.Empty<PlanRioWeekDto>(),
+            SourceSheet = "",
+            SourcePath = "Dataverse: Plan Rio",
+            SourceStatus = string.IsNullOrWhiteSpace(detail)
+                ? "No fue posible cargar Plan Rio desde Dataverse."
+                : $"No fue posible cargar Plan Rio desde Dataverse: {detail}"
         };
     }
 
