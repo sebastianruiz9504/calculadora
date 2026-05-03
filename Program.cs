@@ -29,6 +29,8 @@ builder.Services.AddScoped<CotizadorInterno.Web.Services.Calculator.IQuoteCalcul
 builder.Services.AddHttpClient();
 builder.Services.Configure<SiigoOptions>(builder.Configuration.GetSection("Siigo"));
 builder.Services.Configure<M365Options>(builder.Configuration.GetSection("M365"));
+builder.Services.Configure<AzureOpenAIOptions>(builder.Configuration.GetSection("AzureOpenAI"));
+builder.Services.Configure<ReportesOptions>(builder.Configuration.GetSection("Reportes"));
 builder.Services.AddHttpClient<ISiigoService, SiigoService>((serviceProvider, client) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -56,6 +58,8 @@ builder.Services.AddScoped<IM365TenantConnectionService, M365TenantConnectionSer
 builder.Services.AddScoped<IM365SecurityGraphClient, M365SecurityGraphClient>();
 builder.Services.AddScoped<IM365SecuritySnapshotRepository, M365SecuritySnapshotRepository>();
 builder.Services.AddScoped<IM365SecuritySnapshotService, M365SecuritySnapshotService>();
+builder.Services.AddScoped<IReportesDataverseRepository, ReportesDataverseRepository>();
+builder.Services.AddScoped<IAzureOpenAIReportService, AzureOpenAIReportService>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));

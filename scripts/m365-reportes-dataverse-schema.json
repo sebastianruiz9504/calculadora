@@ -56,6 +56,40 @@
         { "logicalName": "cr07a_estadoconsulta", "displayName": "Estado consulta", "type": "Text", "maxLength": 120, "required": false },
         { "logicalName": "cr07a_errorconsulta", "displayName": "Error consulta", "type": "MultilineText", "maxLength": 4000, "required": false }
       ]
+    },
+    {
+      "displayName": "Cliente",
+      "displayCollectionName": "Clientes",
+      "logicalName": "cr07a_cliente",
+      "entitySetName": "cr07a_clientes",
+      "primaryIdAttribute": "cr07a_clienteid",
+      "primaryNameAttribute": "cr07a_nombre",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_nombre", "displayName": "Nombre empresa", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_logocliente", "displayName": "Logo cliente", "type": "MultilineText", "maxLength": 1048576, "required": false },
+        { "logicalName": "cr07a_colorcorporativo", "displayName": "Color corporativo", "type": "Text", "maxLength": 30, "required": false }
+      ]
+    },
+    {
+      "displayName": "Informe HTML Microsoft 365",
+      "displayCollectionName": "Informes HTML Microsoft 365",
+      "logicalName": "cr07a_m365generatedreport",
+      "entitySetName": "cr07a_m365generatedreports",
+      "primaryIdAttribute": "cr07a_m365generatedreportid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": false },
+        { "logicalName": "cr07a_clienteidinterno", "displayName": "Cliente interno", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_periodo", "displayName": "Periodo", "type": "Text", "maxLength": 20, "required": true },
+        { "logicalName": "cr07a_htmlgenerado", "displayName": "HTML generado", "type": "MultilineText", "maxLength": 1048576, "required": false },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_fechageneracion", "displayName": "Fecha generacion", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false },
+        { "logicalName": "cr07a_promptversion", "displayName": "Prompt version", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_errores", "displayName": "Errores", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
     }
   ]
 }
