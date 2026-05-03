@@ -502,7 +502,8 @@
      id="soporteCloudReports"
      data-clients-url="@Url.Action("ReportClients", "SoporteCloud")"
      data-connect-url="@Url.Content("~/api/m365/connect-url")"
-     data-test-url="@Url.Content("~/api/m365/test-connection")">
+     data-test-url="@Url.Content("~/api/m365/test-connection")"
+     data-snapshot-url="@Url.Content("~/api/m365/security-snapshot")">
     <section class="support-cloud-hero">
         <div>
             <div class="support-cloud-kicker">Reportes</div>
@@ -550,6 +551,7 @@
             <div class="support-cloud-modal__meta" data-scr-selection-meta>Selecciona un cliente</div>
             <div class="support-cloud-modal__actions">
                 <button type="button" class="btn btn-outline-secondary" data-scr-test>Probar conexion</button>
+                <button type="button" class="btn btn-outline-primary" data-scr-collect>Recolectar datos</button>
                 <button type="button" class="btn btn-primary" data-scr-connect>Generar consentimiento</button>
             </div>
         </div>
@@ -571,6 +573,18 @@
         <article class="support-cloud-summary__card">
             <span class="support-cloud-summary__label">Alcance</span>
             <strong class="support-cloud-summary__value support-cloud-summary__value--compact">M365</strong>
+        </article>
+        <article class="support-cloud-summary__card">
+            <span class="support-cloud-summary__label">Secure Score</span>
+            <strong class="support-cloud-summary__value support-cloud-summary__value--compact" data-scr-secure-score>-</strong>
+        </article>
+        <article class="support-cloud-summary__card">
+            <span class="support-cloud-summary__label">Alertas high</span>
+            <strong class="support-cloud-summary__value" data-scr-alerts-high>0</strong>
+        </article>
+        <article class="support-cloud-summary__card">
+            <span class="support-cloud-summary__label">Incidentes activos</span>
+            <strong class="support-cloud-summary__value" data-scr-incidents-active>0</strong>
         </article>
     </section>
 
@@ -605,8 +619,10 @@
                     <h2 class="support-cloud-section-title">Datos Microsoft 365</h2>
                 </div>
             </div>
-            <div class="support-cloud-placeholder support-cloud-placeholder--compact">
-                La conexion guardada se usara para consultar Graph con client credentials por tenant.
+            <div class="support-cloud-breakdown" data-scr-snapshot-summary>
+                <div class="support-cloud-placeholder support-cloud-placeholder--compact">
+                    Sin snapshot mensual recolectado en esta sesion.
+                </div>
             </div>
         </article>
     </section>

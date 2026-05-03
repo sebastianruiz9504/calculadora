@@ -14,11 +14,16 @@ public sealed class M365Controller : ControllerBase
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private readonly IM365TenantConnectionService _m365;
+    private readonly IM365SecuritySnapshotService _securitySnapshots;
     private readonly ILogger<M365Controller> _logger;
 
-    public M365Controller(IM365TenantConnectionService m365, ILogger<M365Controller> logger)
+    public M365Controller(
+        IM365TenantConnectionService m365,
+        IM365SecuritySnapshotService securitySnapshots,
+        ILogger<M365Controller> logger)
     {
         _m365 = m365;
+        _securitySnapshots = securitySnapshots;
         _logger = logger;
     }
 
@@ -69,6 +74,36 @@ public sealed class M365Controller : ControllerBase
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
                 CreateErrorPayload("No fue posible probar la conexion Microsoft 365.", ex));
+        }
+    }
+
+    [HttpPost("security-snapshot")]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CollectSecuritySnapshot([FromBody] M365SecuritySnapshotRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar el cliente para recolectar el snapshot mensual."));
+
+        try
+        {
+            return Ok(await _securitySnapshots.CollectMonthlySnapshotAsync(request, ct));
+        }
+        catch (M365PersistenceConfigurationException ex)
+        {
+            _logger.LogWarning(ex, "Persistencia M365 no configurada para snapshot de seguridad.");
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "No fue posible recolectar el snapshot mensual M365.");
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error inesperado recolectando snapshot mensual M365.");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible recolectar el snapshot mensual Microsoft 365.", ex));
         }
     }
 

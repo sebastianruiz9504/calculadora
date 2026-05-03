@@ -9,6 +9,11 @@
         maximumFractionDigits: 0
     });
 
+    const scoreFormatter = new Intl.NumberFormat("es-CO", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+    });
+
     const monthFormatter = new Intl.DateTimeFormat("es-CO", {
         month: "long",
         year: "numeric"
@@ -17,7 +22,8 @@
     const urls = {
         clients: root.dataset.clientsUrl || "",
         connect: root.dataset.connectUrl || "",
-        test: root.dataset.testUrl || ""
+        test: root.dataset.testUrl || "",
+        snapshot: root.dataset.snapshotUrl || ""
     };
 
     const els = {
@@ -27,14 +33,19 @@
         tenant: root.querySelector("[data-scr-tenant]"),
         connect: root.querySelector("[data-scr-connect]"),
         test: root.querySelector("[data-scr-test]"),
+        collect: root.querySelector("[data-scr-collect]"),
         selectionMeta: root.querySelector("[data-scr-selection-meta]"),
         totalClients: root.querySelector("[data-scr-total-clients]"),
         selectedMonth: root.querySelector("[data-scr-selected-month]"),
         connectionState: root.querySelector("[data-scr-connection-state]"),
+        secureScore: root.querySelector("[data-scr-secure-score]"),
+        alertsHigh: root.querySelector("[data-scr-alerts-high]"),
+        incidentsActive: root.querySelector("[data-scr-incidents-active]"),
         consentCard: root.querySelector("[data-scr-consent-card]"),
         consentLink: root.querySelector("[data-scr-consent-link]"),
         consentUrl: root.querySelector("[data-scr-consent-url]"),
-        permissions: root.querySelector("[data-scr-permissions]")
+        permissions: root.querySelector("[data-scr-permissions]"),
+        snapshotSummary: root.querySelector("[data-scr-snapshot-summary]")
     };
 
     const state = {
@@ -116,6 +127,35 @@
             if (els.connectionState) {
                 els.connectionState.textContent = "Error prueba";
             }
+            setStatus("error", buildErrorMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    });
+
+    els.collect?.addEventListener("click", async () => {
+        const clienteId = els.client?.value || "";
+        const periodo = els.month?.value || "";
+        if (!clienteId) {
+            setStatus("error", "Selecciona un cliente para recolectar el snapshot mensual.");
+            return;
+        }
+
+        setBusy(true);
+        setStatus("info", "Recolectando datos de seguridad Microsoft 365...");
+        try {
+            const result = await fetchJson(urls.snapshot, {
+                method: "POST",
+                body: JSON.stringify({
+                    clienteId,
+                    tenantId: els.tenant?.value || "",
+                    periodo
+                })
+            });
+
+            renderSnapshot(result);
+            setStatus(result?.success ? "success" : "error", result?.message || "Recoleccion finalizada.");
+        } catch (error) {
             setStatus("error", buildErrorMessage(error));
         } finally {
             setBusy(false);
@@ -242,13 +282,77 @@
         }
     }
 
+    function renderSnapshot(result) {
+        const currentScore = Number(result?.secureScoreActual || 0);
+        const maxScore = Number(result?.secureScoreMaximo || 0);
+        const highAlerts = Number(result?.alertasHigh || 0);
+        const mediumAlerts = Number(result?.alertasMedium || 0);
+        const lowAlerts = Number(result?.alertasLow || 0);
+        const activeIncidents = Number(result?.incidentesActivos || 0);
+        const resolvedIncidents = Number(result?.incidentesResueltos || 0);
+        const scoreLabel = maxScore > 0
+            ? `${scoreFormatter.format(currentScore)} / ${scoreFormatter.format(maxScore)}`
+            : scoreFormatter.format(currentScore);
+        const scoreWidth = maxScore > 0
+            ? Math.max(0, Math.min(100, (currentScore / maxScore) * 100))
+            : 0;
+        const totalAlerts = highAlerts + mediumAlerts + lowAlerts;
+        const totalIncidents = activeIncidents + resolvedIncidents;
+
+        if (els.secureScore) {
+            els.secureScore.textContent = scoreLabel || "-";
+        }
+        if (els.alertsHigh) {
+            els.alertsHigh.textContent = numberFormatter.format(highAlerts);
+        }
+        if (els.incidentsActive) {
+            els.incidentsActive.textContent = numberFormatter.format(activeIncidents);
+        }
+        if (els.connectionState) {
+            els.connectionState.textContent = result?.estadoConsulta || (result?.success ? "Completado" : "Error consulta");
+        }
+        if (!els.snapshotSummary) {
+            return;
+        }
+
+        els.snapshotSummary.innerHTML = `
+            ${renderMetricRow("Secure Score", scoreLabel, scoreWidth)}
+            ${renderMetricRow("Alertas high", numberFormatter.format(highAlerts), totalAlerts ? (highAlerts * 100) / totalAlerts : 0)}
+            ${renderMetricRow("Alertas medium", numberFormatter.format(mediumAlerts), totalAlerts ? (mediumAlerts * 100) / totalAlerts : 0)}
+            ${renderMetricRow("Alertas low", numberFormatter.format(lowAlerts), totalAlerts ? (lowAlerts * 100) / totalAlerts : 0)}
+            ${renderMetricRow("Incidentes activos", numberFormatter.format(activeIncidents), totalIncidents ? (activeIncidents * 100) / totalIncidents : 0)}
+            ${renderMetricRow("Incidentes resueltos", numberFormatter.format(resolvedIncidents), totalIncidents ? (resolvedIncidents * 100) / totalIncidents : 0)}
+            <div class="support-cloud-breakdown__row">
+                <div class="support-cloud-breakdown__head">
+                    <span class="support-cloud-breakdown__label">${escapeHtml(result?.periodo || "")}</span>
+                    <span class="support-cloud-breakdown__value">${escapeHtml(result?.estadoConsulta || "")}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderMetricRow(label, value, width) {
+        const normalizedWidth = Math.max(0, Math.min(100, Number(width || 0)));
+        return `
+            <div class="support-cloud-breakdown__row">
+                <div class="support-cloud-breakdown__head">
+                    <span class="support-cloud-breakdown__label">${escapeHtml(label)}</span>
+                    <span class="support-cloud-breakdown__value">${escapeHtml(value)}</span>
+                </div>
+                <div class="support-cloud-breakdown__track">
+                    <span class="support-cloud-breakdown__fill" style="width:${normalizedWidth}%"></span>
+                </div>
+            </div>
+        `;
+    }
+
     function getSelectedClientName() {
         return els.client?.selectedOptions?.[0]?.textContent?.trim() || "";
     }
 
     function setBusy(isBusy) {
         state.busy = isBusy;
-        [els.client, els.month, els.tenant, els.connect, els.test].forEach(element => {
+        [els.client, els.month, els.tenant, els.connect, els.test, els.collect].forEach(element => {
             if (element) {
                 element.disabled = isBusy;
             }

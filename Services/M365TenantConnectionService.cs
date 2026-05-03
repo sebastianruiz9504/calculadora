@@ -177,7 +177,7 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
             throw new ArgumentNullException(nameof(request));
 
         EnsureGraphCredentialConfiguration();
-        var connection = await FindConnectionAsync(request.ClienteId, request.TenantId, ct)
+        var connection = await FindConnectionForTestAsync(request.ClienteId, request.TenantId, ct)
             ?? throw new InvalidOperationException("No hay una conexion Microsoft 365 guardada para el cliente o tenant indicado.");
         if (string.IsNullOrWhiteSpace(connection.TenantId))
             throw new InvalidOperationException("La conexion guardada no tiene tenantId.");
@@ -369,6 +369,39 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
         return await FindConnectionByFilterAsync(
             $"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}'",
             ct);
+    }
+
+    private async Task<M365TenantConnectionRecord?> FindConnectionForTestAsync(string clienteId, string tenantIdOrHint, CancellationToken ct)
+    {
+        var table = _options.Dataverse;
+        var normalizedClienteId = NormalizeOptionalGuid(clienteId);
+        var normalizedTenant = tenantIdOrHint?.Trim() ?? "";
+
+        if (!string.IsNullOrWhiteSpace(normalizedClienteId)
+            && !string.IsNullOrWhiteSpace(normalizedTenant))
+        {
+            var match = await FindConnectionByFilterAsync(
+                $"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}' and ({BuildTenantIdOrHintFilter(table, normalizedTenant)})",
+                ct);
+            if (match is not null)
+                return match;
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedClienteId))
+        {
+            var match = await FindConnectionByFilterAsync(
+                $"{table.InternalClientIdField} eq '{EscapeOdataLiteral(normalizedClienteId)}'",
+                ct);
+            if (match is not null)
+                return match;
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedTenant))
+        {
+            return await FindConnectionByFilterAsync(BuildTenantIdOrHintFilter(table, normalizedTenant), ct);
+        }
+
+        return null;
     }
 
     private async Task<M365TenantConnectionRecord?> FindConnectionByFilterAsync(string filter, CancellationToken ct)
@@ -857,6 +890,12 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
 
     private static string EscapeOdataLiteral(string value) =>
         (value ?? string.Empty).Replace("'", "''");
+
+    private static string BuildTenantIdOrHintFilter(M365DataverseOptions table, string tenantIdOrHint)
+    {
+        var value = EscapeOdataLiteral(tenantIdOrHint.Trim());
+        return $"{table.TenantIdField} eq '{value}' or {table.TenantHintField} eq '{value}'";
+    }
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";

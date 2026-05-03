@@ -27,6 +27,35 @@
         { "logicalName": "cr07a_ultimapruebaexitosa", "displayName": "Ultima prueba exitosa", "type": "TwoOptions", "required": false, "defaultValue": false },
         { "logicalName": "cr07a_resultadoultimaprueba", "displayName": "Resultado ultima prueba", "type": "MultilineText", "maxLength": 4000, "required": false }
       ]
+    },
+    {
+      "displayName": "Snapshot seguridad Microsoft 365",
+      "displayCollectionName": "Snapshots seguridad Microsoft 365",
+      "logicalName": "cr07a_m365securitysnapshot",
+      "entitySetName": "cr07a_m365securitysnapshots",
+      "primaryIdAttribute": "cr07a_m365securitysnapshotid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": false },
+        { "logicalName": "cr07a_clienteidinterno", "displayName": "Cliente interno", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_tenantid", "displayName": "Tenant ID", "type": "Text", "maxLength": 120, "required": true },
+        { "logicalName": "cr07a_periodo", "displayName": "Periodo", "type": "Text", "maxLength": 20, "required": true },
+        { "logicalName": "cr07a_securescoreactual", "displayName": "Secure Score actual", "type": "Decimal", "minValue": 0, "maxValue": 1000000, "precision": 2, "required": false },
+        { "logicalName": "cr07a_securescoremaximo", "displayName": "Secure Score maximo", "type": "Decimal", "minValue": 0, "maxValue": 1000000, "precision": 2, "required": false },
+        { "logicalName": "cr07a_alertashigh", "displayName": "Alertas high", "type": "WholeNumber", "minValue": 0, "maxValue": 2147483647, "required": false },
+        { "logicalName": "cr07a_alertasmedium", "displayName": "Alertas medium", "type": "WholeNumber", "minValue": 0, "maxValue": 2147483647, "required": false },
+        { "logicalName": "cr07a_alertaslow", "displayName": "Alertas low", "type": "WholeNumber", "minValue": 0, "maxValue": 2147483647, "required": false },
+        { "logicalName": "cr07a_incidentesactivos", "displayName": "Incidentes activos", "type": "WholeNumber", "minValue": 0, "maxValue": 2147483647, "required": false },
+        { "logicalName": "cr07a_incidentesresueltos", "displayName": "Incidentes resueltos", "type": "WholeNumber", "minValue": 0, "maxValue": 2147483647, "required": false },
+        { "logicalName": "cr07a_recomendacionestopjson", "displayName": "Recomendaciones top JSON", "type": "MultilineText", "maxLength": 1048576, "required": false },
+        { "logicalName": "cr07a_alertasjson", "displayName": "Alertas JSON", "type": "MultilineText", "maxLength": 1048576, "required": false },
+        { "logicalName": "cr07a_incidentesjson", "displayName": "Incidentes JSON", "type": "MultilineText", "maxLength": 1048576, "required": false },
+        { "logicalName": "cr07a_fechaconsulta", "displayName": "Fecha consulta", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false },
+        { "logicalName": "cr07a_estadoconsulta", "displayName": "Estado consulta", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_errorconsulta", "displayName": "Error consulta", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
     }
   ]
 }
