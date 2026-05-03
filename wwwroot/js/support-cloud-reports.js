@@ -541,6 +541,10 @@
                 } catch {
                     message = rawBody;
                 }
+            } else if (isHtmlGatewayError(response.status, rawBody)) {
+                message = "El App Service corto la generacion del informe por tiempo de espera. Vuelve a intentarlo; si persiste, revisa el estado guardado del reporte en Dataverse.";
+            } else if (rawBody && rawBody.trimStart().startsWith("<")) {
+                message = stripHtml(rawBody) || `El servidor devolvio un error HTTP ${response.status}.`;
             }
 
             throw new Error(message || "No fue posible completar la solicitud.");
@@ -551,6 +555,19 @@
         }
 
         return rawBody ? JSON.parse(rawBody) : null;
+    }
+
+    function isHtmlGatewayError(status, body) {
+        const text = body || "";
+        return (status === 502 || status === 503 || status === 504)
+            && (text.includes("<html") || text.includes("<!DOCTYPE"))
+            && (text.includes("gateway") || text.includes("proxy server") || text.includes("Server Error"));
+    }
+
+    function stripHtml(value) {
+        const element = document.createElement("div");
+        element.innerHTML = value;
+        return (element.textContent || element.innerText || "").replace(/\s+/g, " ").trim();
     }
 
     function setStatus(type, message) {

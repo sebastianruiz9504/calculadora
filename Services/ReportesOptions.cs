@@ -5,14 +5,14 @@ public sealed class AzureOpenAIOptions
     public string Endpoint { get; set; } = "";
     public string ApiKey { get; set; } = "";
     public string DeploymentName { get; set; } = "";
-    public string ApiVersion { get; set; } = "2024-02-15-preview";
-    public int TimeoutSeconds { get; set; } = 180;
+    public string ApiVersion { get; set; } = "2025-01-01-preview";
+    public int TimeoutSeconds { get; set; } = 150;
     public decimal Temperature { get; set; } = 0.2m;
-    public int MaxTokens { get; set; } = 7000;
-    public string TokenParameterName { get; set; } = "max_tokens";
-    public bool IncludeTemperature { get; set; } = true;
-    public string ReasoningEffort { get; set; } = "";
-    public string Verbosity { get; set; } = "";
+    public int MaxTokens { get; set; } = 16000;
+    public string TokenParameterName { get; set; } = "max_completion_tokens";
+    public bool IncludeTemperature { get; set; } = false;
+    public string ReasoningEffort { get; set; } = "medium";
+    public string Verbosity { get; set; } = "high";
 }
 
 public sealed class ReportesOptions
