@@ -541,9 +541,9 @@ public sealed class M365TenantConnectionService : IM365TenantConnectionService
             && (body.Contains("0x80072560", StringComparison.OrdinalIgnoreCase)
                 || body.Contains("not a member of the organization", StringComparison.OrdinalIgnoreCase)))
         {
-            return new InvalidOperationException(
+            return new M365PersistenceConfigurationException(
                 "La app configurada para persistir M365 no es miembro del entorno Dataverse. " +
-                "Crea o activa un Application User en el entorno de Dataverse para la App Registration indicada en Dataverse:ClientId (o AzureAd:ClientId si no esta configurado) y asignale un rol con permisos sobre la tabla de conexiones M365 y clientes.",
+                "Crea o activa un Application User en el entorno de Dataverse para la App Registration indicada en Dataverse:ClientId, AzureAd:ClientId o M365:ClientId y asignale un rol con permisos sobre la tabla de conexiones M365 y clientes.",
                 new InvalidOperationException(baseMessage));
         }
 
@@ -983,6 +983,11 @@ public sealed class M365PersistenceConfigurationException : InvalidOperationExce
 {
     public M365PersistenceConfigurationException(string message)
         : base(message)
+    {
+    }
+
+    public M365PersistenceConfigurationException(string message, Exception innerException)
+        : base(message, innerException)
     {
     }
 }

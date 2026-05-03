@@ -5452,6 +5452,7 @@
             updateHeroForCopiers(state.copiersEquipmentDashboard);
         }
     });
+    wireCopiersLookupInput(copiersCountersClientNameFilter, copiersCountersClientIdFilter, copiersCountersClientOptions, "copiersCountersClientSuggestions", "name", buildCopiersClientSearchUrl);
     copiersCountersMonthFilter?.addEventListener("change", () => {
         handleCopiersCountersFilterChanged("Mes actualizado. Aplica el filtro para consultar Dataverse.");
     });
