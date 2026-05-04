@@ -4115,6 +4115,13 @@
         return `<span class="dashboard-badge ${tone}">${escapeHtml(status)}</span>`;
     }
 
+    function renderBillingCategoryChip(value, category) {
+        const label = (value || "").toString().trim() || "Sin dato";
+        const normalized = normalizeText(label).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const toneClass = normalized ? `dashboard-billing-chip--${category}-${normalized}` : "";
+        return `<span class="dashboard-billing-chip ${toneClass}">${escapeHtml(label)}</span>`;
+    }
+
     function normalizeInvoiceNumber(value) {
         return normalizeText(value).replace(/[^a-z0-9]/g, "");
     }
@@ -4150,127 +4157,29 @@
     }
 
     const billingInvoiceColumns = [
-        { key: "recordId", label: "ID registro" },
         { key: "invoiceNumber", label: "Factura" },
         { key: "clientName", label: "Cliente" },
-        { key: "clientId", label: "ID cliente" },
-        { key: "companyTaxId", label: "NIT empresa" },
-        { key: "verticalLabel", label: "Vertical" },
-        { key: "contractTypeLabel", label: "Contrato" },
+        {
+            key: "verticalLabel",
+            label: "Vertical",
+            render: row => renderBillingCategoryChip(row.verticalLabel, "vertical")
+        },
+        {
+            key: "contractTypeLabel",
+            label: "Contrato",
+            render: row => renderBillingCategoryChip(row.contractTypeLabel, "contract")
+        },
         {
             key: "emissionDateValue",
-            label: "Emision",
+            label: "Fecha de emision",
             type: "date",
             displayValue: row => row.emissionDateDisplay || "Sin fecha",
             sortValue: row => row.emissionDateValue || ""
         },
         {
-            key: "dueDateValue",
-            label: "Vencimiento",
-            type: "date",
-            displayValue: row => row.dueDateDisplay || "Sin fecha",
-            sortValue: row => row.dueDateValue || ""
-        },
-        {
-            key: "paymentDateValue",
-            label: "Pago",
-            type: "date",
-            displayValue: row => row.paymentDateDisplay || "Sin pago",
-            sortValue: row => row.paymentDateValue || ""
-        },
-        {
             key: "paymentStatusLabel",
             label: "Estado",
             render: renderPortfolioStatusBadge
-        },
-        {
-            key: "ageDays",
-            label: "Dias vencida",
-            type: "number",
-            align: "end",
-            displayValue: row => `${numberFormatter.format(Number(row.ageDays || 0))} dias`,
-            render: row => `${renderPortfolioNumber(row.ageDays)} dias`
-        },
-        {
-            key: "totalInvoice",
-            label: "Total factura",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.totalInvoice || 0)),
-            render: row => renderPortfolioCurrency(row.totalInvoice)
-        },
-        {
-            key: "vatPercent",
-            label: "IVA %",
-            type: "number",
-            align: "end",
-            displayValue: row => `${numberFormatter.format(Number(row.vatPercent || 0))}%`,
-            render: row => renderPortfolioPercent(row.vatPercent)
-        },
-        {
-            key: "vatValue",
-            label: "IVA valor",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.vatValue || 0)),
-            render: row => renderPortfolioCurrency(row.vatValue)
-        },
-        {
-            key: "paymentValue",
-            label: "Valor pago",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.paymentValue || 0)),
-            render: row => renderPortfolioCurrency(row.paymentValue)
-        },
-        {
-            key: "reteIcaValue",
-            label: "ReteICA",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.reteIcaValue || 0)),
-            render: row => renderPortfolioCurrency(row.reteIcaValue)
-        },
-        {
-            key: "rteIvaValue",
-            label: "RteIVA",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.rteIvaValue || 0)),
-            render: row => renderPortfolioCurrency(row.rteIvaValue)
-        },
-        {
-            key: "rteFteValue",
-            label: "RteFte",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.rteFteValue || 0)),
-            render: row => renderPortfolioCurrency(row.rteFteValue)
-        },
-        {
-            key: "retentionsTotal",
-            label: "Retenciones",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.retentionsTotal || 0)),
-            render: row => renderPortfolioCurrency(row.retentionsTotal)
-        },
-        {
-            key: "differenceValue",
-            label: "Diferencia",
-            type: "number",
-            align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.differenceValue || 0)),
-            render: row => renderPortfolioCurrency(row.differenceValue)
-        },
-        {
-            key: "publicUrl",
-            label: "URL factura",
-            displayValue: row => row.publicUrl ? "Con URL" : "Sin URL",
-            sortValue: row => row.publicUrl || "",
-            render: row => row.publicUrl
-                ? `<a href="${escapeHtml(row.publicUrl)}" target="_blank" rel="noopener noreferrer" class="dashboard-table-link" data-billing-invoice-ignore-click>Abrir</a>`
-                : "-"
         }
     ];
 
@@ -5519,7 +5428,7 @@
             state.billingInvoiceDuplicateNumbers = new Set();
             state.billingInvoiceSelectedIds.clear();
             if (billingInvoicesBody) {
-                billingInvoicesBody.innerHTML = '<tr><td colspan="24" class="dashboard-table__empty">No pudimos consultar la tabla de facturacion.</td></tr>';
+                billingInvoicesBody.innerHTML = '<tr><td colspan="7" class="dashboard-table__empty">No pudimos consultar la tabla de facturacion.</td></tr>';
             }
             syncBillingInvoicesSelectionSummary();
             setStatus(billingInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible cargar la tabla de facturacion.");

@@ -113,7 +113,7 @@
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Facturaci&oacute;n</div>
-                        <h2 class="dashboard-panel__title">Tabla completa de facturaci&oacute;n</h2>
+                        <h2 class="dashboard-panel__title">Tabla de facturaci&oacute;n</h2>
                     </div>
                     <div class="dashboard-panel__actions dashboard-panel__actions--table">
                         <label class="dashboard-search dashboard-search--customer" for="billingInvoicesSearch">
@@ -139,20 +139,22 @@
                     <div class="dashboard-table-meta">Seleccionadas: <strong id="billingInvoicesSelectedCount">0</strong></div>
                 </div>
 
-                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                <div class="dashboard-table-wrap dashboard-table-wrap--billing-fit">
                     <table class="table dashboard-table dashboard-billing-invoices-table">
                         <thead id="billingInvoicesHead">
                             <tr>
                                 <th>Sel.</th>
                                 <th>Factura</th>
                                 <th>Cliente</th>
+                                <th>Vertical</th>
+                                <th>Contrato</th>
                                 <th>Emisi&oacute;n</th>
-                                <th class="text-end">Total</th>
+                                <th>Estado</th>
                             </tr>
                         </thead>
                         <tbody id="billingInvoicesBody">
                             <tr>
-                                <td colspan="5" class="dashboard-table__empty">Cargando facturas...</td>
+                                <td colspan="7" class="dashboard-table__empty">Cargando facturas...</td>
                             </tr>
                         </tbody>
                     </table>
