@@ -223,6 +223,155 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<BillingInvoicesTableDto> GetBillingInvoicesAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var today = GetBogotaToday();
+        var rows = await GetAllBillingRecordsAsync(metadata, httpContext.User, ct);
+
+        return new BillingInvoicesTableDto
+        {
+            HasData = rows.Count > 0,
+            RecordsCount = rows.Count,
+            EmptyStateTitle = "No encontramos facturas registradas.",
+            EmptyStateMessage = "Cuando existan registros en cr07a_facturacion apareceran aqui.",
+            VerticalOptions = BuildBillingVerticalOptions(),
+            ContractTypeOptions = BuildBillingContractTypeOptions(),
+            Invoices = BuildBillingInvoiceRows(rows, today)
+        };
+    }
+
+    public async Task<BillingInvoiceSaveResultDto> SaveBillingInvoiceAsync(BillingInvoiceSaveRequestDto request, CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var recordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
+        var current = await GetBillingRecordByIdAsync(metadata, recordId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("No encontramos la factura que quieres editar.");
+
+        var payload = await BuildBillingInvoiceSavePayloadAsync(metadata, request, current, httpContext.User, ct);
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({recordId})";
+        await CallDataverseSendAsync(relativeUrl, "PATCH", payload, httpContext.User, ct);
+
+        var updated = await GetBillingRecordByIdAsync(metadata, recordId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("La factura se actualizo, pero no pudimos reconstruirla desde Dataverse.");
+        var invoice = BuildBillingInvoiceRows(new[] { updated }, GetBogotaToday()).First();
+
+        return new BillingInvoiceSaveResultDto
+        {
+            Message = $"Factura {invoice.InvoiceNumber} actualizada correctamente.",
+            Invoice = invoice
+        };
+    }
+
+    public async Task<BillingInvoicesDeleteResultDto> DeleteBillingInvoicesAsync(BillingInvoicesDeleteRequestDto request, CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordIds = NormalizeBillingRecordIds(request.RecordIds);
+        if (recordIds.Count == 0)
+            throw new InvalidOperationException("Selecciona al menos una factura para eliminar.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        foreach (var recordId in recordIds)
+        {
+            var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({recordId})";
+            await CallDataverseDeleteAsync(relativeUrl, httpContext.User, ct);
+        }
+
+        return new BillingInvoicesDeleteResultDto
+        {
+            DeletedCount = recordIds.Count,
+            Message = recordIds.Count == 1
+                ? "Factura eliminada correctamente."
+                : $"{recordIds.Count:N0} facturas eliminadas correctamente."
+        };
+    }
+
+    public async Task<BillingInvoicesContractTypeUpdateResultDto> UpdateBillingInvoicesContractTypeAsync(
+        BillingInvoicesContractTypeUpdateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordIds = NormalizeBillingRecordIds(request.RecordIds);
+        if (recordIds.Count == 0)
+            throw new InvalidOperationException("Selecciona al menos una factura para cambiar el tipo de contrato.");
+
+        var contractType = NormalizeRequiredBillingOptionValue(
+            request.ContractTypeOptionValue,
+            BuildBillingContractTypeOptions(),
+            "tipo de contrato");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var payload = new Dictionary<string, object?>
+        {
+            [_dashboardBillingContractTypeField] = contractType
+        };
+
+        foreach (var recordId in recordIds)
+        {
+            var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({recordId})";
+            await CallDataverseSendAsync(relativeUrl, "PATCH", payload, httpContext.User, ct);
+        }
+
+        var label = BuildBillingContractTypeOptions()
+            .FirstOrDefault(option => option.Value == contractType)?.Label
+            ?? "seleccionado";
+
+        return new BillingInvoicesContractTypeUpdateResultDto
+        {
+            UpdatedCount = recordIds.Count,
+            Message = recordIds.Count == 1
+                ? $"Tipo de contrato actualizado a {label}."
+                : $"{recordIds.Count:N0} facturas actualizadas a {label}."
+        };
+    }
+
     public async Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default)
     {
         if (request is null)
@@ -281,11 +430,14 @@ public sealed partial class DataverseService
             _dashboardBillingPrimaryNameField,
             httpContext.User,
             ct);
+        var ytdEndExclusive = ResolveBillingYtdEndExclusive(period.Year, today);
+        var billingFetchStart = new DateOnly(period.CompareYear, 1, 1);
+        var billingFetchEnd = MaxDateOnly(period.CurrentEndExclusive, ytdEndExclusive);
 
         var emissionRecords = await GetBillingRecordsAsync(
             metadata,
-            period.CompareStartInclusive,
-            period.CurrentEndExclusive,
+            billingFetchStart,
+            billingFetchEnd,
             _dashboardBillingEmissionDateField,
             _dashboardBillingEmissionDateFieldKind,
             httpContext.User,
@@ -293,8 +445,8 @@ public sealed partial class DataverseService
 
         var paymentRecords = await GetBillingRecordsAsync(
             metadata,
-            period.CompareStartInclusive,
-            period.CurrentEndExclusive,
+            billingFetchStart,
+            billingFetchEnd,
             _dashboardBillingPaymentDateField,
             _dashboardBillingPaymentDateFieldKind,
             httpContext.User,
@@ -377,7 +529,7 @@ public sealed partial class DataverseService
                 previousUnpaidAmount,
                 differenceInvoices,
                 previousDifferenceAmount),
-            Trend = BuildBillingTrend(period, currentEmission, compareEmission, currentPayments, comparePayments),
+            Trend = BuildBillingYtdTrend(period.Year, period.CompareYear, ytdEndExclusive, emissionRecords, paymentRecords),
             Verticals = BuildVerticalSummaries(currentEmission, compareEmission),
             TopClients = BuildClientSummaries(currentEmission, compareEmission),
             Retentions = BuildRetentionSummaries(currentPayments, comparePayments),
@@ -973,6 +1125,71 @@ public sealed partial class DataverseService
             lastError);
     }
 
+    private async Task<List<BillingRecordRow>> GetAllBillingRecordsAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var select = BuildBillingSelectClause(metadata);
+        var orderBy = Uri.EscapeDataString($"{_dashboardBillingEmissionDateField} desc");
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={orderBy}";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(item => ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
+            .Where(static item => item is not null)
+            .Cast<BillingRecordRow>()
+            .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(static item => item.EmissionDate)
+            .ThenBy(static item => item.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<BillingRecordRow?> GetBillingRecordByIdAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var select = BuildBillingSelectClause(metadata);
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})?$select={select}";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        using var doc = JsonDocument.Parse(json);
+        return ParseBillingRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
+    }
+
+    private string BuildBillingSelectClause(RhEntityMetadata metadata)
+    {
+        return string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            _dashboardBillingInvoiceNumberField,
+            _dashboardBillingCompanyTaxIdField,
+            _dashboardBillingClientField,
+            BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
+            _dashboardBillingVerticalField,
+            _dashboardBillingContractTypeField,
+            _dashboardBillingDueDateField,
+            _dashboardBillingEmissionDateField,
+            _dashboardBillingTotalField,
+            _dashboardBillingVatPercentField,
+            _dashboardBillingVatField,
+            _dashboardBillingPublicUrlField,
+            _dashboardBillingPaymentDateField,
+            _dashboardBillingPaymentValueField,
+            _dashboardBillingReteIcaField,
+            _dashboardBillingRteIvaField,
+            _dashboardBillingRteFteField,
+            _dashboardBillingDifferenceField
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
     private async Task<List<BillingRecordRow>> GetBillingRecordsByClientCoreAsync(
         RhEntityMetadata metadata,
         string clientId,
@@ -981,27 +1198,7 @@ public sealed partial class DataverseService
         CancellationToken ct,
         bool copiersOnly)
     {
-        var select = string.Join(",", new[]
-        {
-            metadata.PrimaryIdField,
-            metadata.PrimaryNameField,
-            _dashboardBillingInvoiceNumberField,
-            _dashboardBillingClientField,
-            BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
-            _dashboardBillingEmissionDateField,
-            _dashboardBillingVerticalField,
-            _dashboardBillingContractTypeField,
-            _dashboardBillingCompanyTaxIdField,
-            _dashboardBillingDueDateField,
-            _dashboardBillingTotalField,
-            _dashboardBillingVatPercentField,
-            _dashboardBillingVatField,
-            _dashboardBillingPublicUrlField,
-            _dashboardBillingPaymentDateField,
-            _dashboardBillingPaymentValueField
-        }
-        .Where(static field => !string.IsNullOrWhiteSpace(field))
-        .Distinct(StringComparer.OrdinalIgnoreCase));
+        var select = BuildBillingSelectClause(metadata);
 
         var filter = copiersOnly
             ? $"{lookupField} eq {clientId} and {_dashboardBillingEmissionDateField} ne null"
@@ -1021,6 +1218,214 @@ public sealed partial class DataverseService
             .OrderByDescending(static item => item.EmissionDate)
             .ThenBy(static item => item.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private async Task<Dictionary<string, object?>> BuildBillingInvoiceSavePayloadAsync(
+        RhEntityMetadata metadata,
+        BillingInvoiceSaveRequestDto request,
+        BillingRecordRow current,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var invoiceNumber = (request.InvoiceNumber ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(invoiceNumber))
+            throw new InvalidOperationException("El numero de factura es obligatorio.");
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [_dashboardBillingInvoiceNumberField] = invoiceNumber,
+            [_dashboardBillingCompanyTaxIdField] = NormalizeBillingTextValue(request.CompanyTaxId),
+            [_dashboardBillingVerticalField] = NormalizeBillingOptionValue(request.VerticalOptionValue, BuildBillingVerticalOptions(), "vertical"),
+            [_dashboardBillingContractTypeField] = NormalizeBillingOptionValue(request.ContractTypeOptionValue, BuildBillingContractTypeOptions(), "tipo de contrato"),
+            [_dashboardBillingEmissionDateField] = NormalizeBillingDateValue(request.EmissionDateValue, "fecha de emision"),
+            [_dashboardBillingDueDateField] = NormalizeBillingDateValue(request.DueDateValue, "fecha de vencimiento"),
+            [_dashboardBillingPaymentDateField] = NormalizeBillingDateValue(request.PaymentDateValue, "fecha de pago"),
+            [_dashboardBillingTotalField] = NormalizeBillingAmount(request.TotalInvoice, "total factura"),
+            [_dashboardBillingVatPercentField] = NormalizeBillingAmount(request.VatPercent, "porcentaje de IVA"),
+            [_dashboardBillingVatField] = NormalizeBillingAmount(request.VatValue, "valor IVA"),
+            [_dashboardBillingPaymentValueField] = NormalizeBillingAmount(request.PaymentValue, "valor pago"),
+            [_dashboardBillingReteIcaField] = NormalizeBillingAmount(request.ReteIcaValue, "ReteICA"),
+            [_dashboardBillingRteIvaField] = NormalizeBillingAmount(request.RteIvaValue, "RteIVA"),
+            [_dashboardBillingRteFteField] = NormalizeBillingAmount(request.RteFteValue, "RteFte"),
+            [_dashboardBillingDifferenceField] = RoundCurrency(request.DifferenceValue),
+            [_dashboardBillingPublicUrlField] = NormalizeBillingTextValue(request.PublicUrl)
+        };
+
+        if (!string.IsNullOrWhiteSpace(metadata.PrimaryNameField)
+            && !payload.ContainsKey(metadata.PrimaryNameField))
+        {
+            payload[metadata.PrimaryNameField] = invoiceNumber;
+        }
+
+        await ApplyBillingClientPayloadAsync(payload, request.ClientName, request.ClientId, current, user, ct);
+        return payload;
+    }
+
+    private async Task ApplyBillingClientPayloadAsync(
+        IDictionary<string, object?> payload,
+        string? rawClientName,
+        string? rawClientId,
+        BillingRecordRow current,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var clientName = (rawClientName ?? "").Trim();
+        if (await IsBillingLookupFieldAsync(_dashboardBillingClientField, user, ct))
+        {
+            var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+                _dashboardBillingTableLogicalName,
+                _dashboardBillingClientField,
+                _dashboardBillingClientField,
+                user,
+                ct);
+
+            if (string.IsNullOrWhiteSpace(clientName))
+            {
+                payload[$"{navigationProperty}@odata.bind"] = null;
+                return;
+            }
+
+            var requestedClientId = NormalizeOptionalGuid(rawClientId);
+            var currentClientId = NormalizeOptionalGuid(current.ClientId);
+            var resolvedClientId = !string.IsNullOrWhiteSpace(requestedClientId)
+                ? requestedClientId
+                : string.Equals(
+                    NormalizeCopiersComparableValue(clientName),
+                    NormalizeCopiersComparableValue(current.ClientName),
+                    StringComparison.Ordinal)
+                    ? currentClientId
+                    : await ResolveBillingClientIdAsync(clientName, ct);
+
+            if (string.IsNullOrWhiteSpace(resolvedClientId))
+                throw new InvalidOperationException("No encontramos un cliente valido para la factura. Selecciona una sugerencia o escribe el nombre exacto del cliente.");
+
+            payload[$"{navigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({resolvedClientId})";
+            return;
+        }
+
+        payload[_dashboardBillingClientField] = NormalizeBillingTextValue(clientName);
+    }
+
+    private async Task<string> ResolveBillingClientIdAsync(string clientName, CancellationToken ct)
+    {
+        var matches = (await SearchClientsAsync(clientName, top: 25, ct: ct))
+            .Where(item => string.Equals(
+                NormalizeCopiersComparableValue(item.Name),
+                NormalizeCopiersComparableValue(clientName),
+                StringComparison.Ordinal))
+            .Select(item => NormalizeOptionalGuid(item.Id))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count > 1)
+            throw new InvalidOperationException("Hay varios clientes con el mismo nombre. Selecciona una opcion sugerida para continuar.");
+
+        return matches.FirstOrDefault() ?? "";
+    }
+
+    private async Task<bool> IsBillingLookupFieldAsync(string fieldName, ClaimsPrincipal user, CancellationToken ct)
+    {
+        var attributeType = await ResolveDashboardAttributeTypeAsync(_dashboardBillingTableLogicalName, fieldName, user, ct);
+        return string.Equals(attributeType, "Lookup", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(attributeType, "Customer", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(attributeType, "Owner", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<string> ResolveDashboardAttributeTypeAsync(
+        string entityLogicalName,
+        string fieldName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var cacheKey = $"{entityLogicalName}|{fieldName}";
+        if (_dashboardAttributeTypeCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(entityLogicalName)}')" +
+                $"/Attributes(LogicalName='{EscapeOdataLiteral(fieldName)}')?$select=LogicalName,AttributeType";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+            using var doc = JsonDocument.Parse(json);
+            var attributeType = ReadString(doc.RootElement, "AttributeType").Trim();
+            if (!string.IsNullOrWhiteSpace(attributeType))
+            {
+                _dashboardAttributeTypeCache[cacheKey] = attributeType;
+                return attributeType;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible resolver el tipo del atributo {FieldName} en la entidad {EntityLogicalName}.",
+                fieldName,
+                entityLogicalName);
+        }
+
+        var fallback = string.Equals(entityLogicalName, _dashboardBillingTableLogicalName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(fieldName, _dashboardBillingClientField, StringComparison.OrdinalIgnoreCase)
+                ? "Lookup"
+                : "";
+        _dashboardAttributeTypeCache[cacheKey] = fallback;
+        return fallback;
+    }
+
+    private static List<string> NormalizeBillingRecordIds(IEnumerable<string>? recordIds)
+    {
+        return (recordIds ?? Array.Empty<string>())
+            .Select(NormalizeOptionalGuid)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static object? NormalizeBillingTextValue(string? value)
+    {
+        var trimmed = (value ?? "").Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static string? NormalizeBillingDateValue(string? rawValue, string label)
+    {
+        var trimmed = (rawValue ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return null;
+
+        if (!TryParseDateOnly(trimmed, out var parsedDate))
+            throw new InvalidOperationException($"El valor de {label} debe ser una fecha valida.");
+
+        return parsedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static decimal NormalizeBillingAmount(decimal value, string label)
+    {
+        if (value < 0m)
+            throw new InvalidOperationException($"El valor de {label} no puede ser negativo.");
+
+        return RoundCurrency(value);
+    }
+
+    private static int? NormalizeBillingOptionValue(int? value, IReadOnlyList<BillingOptionDto> options, string label)
+    {
+        if (!value.HasValue)
+            return null;
+
+        if (!options.Any(option => option.Value == value.Value))
+            throw new InvalidOperationException($"El valor seleccionado para {label} no es valido.");
+
+        return value.Value;
+    }
+
+    private static int NormalizeRequiredBillingOptionValue(int? value, IReadOnlyList<BillingOptionDto> options, string label)
+    {
+        var normalizedValue = NormalizeBillingOptionValue(value, options, label);
+        if (!normalizedValue.HasValue)
+            throw new InvalidOperationException($"Selecciona un valor valido para {label}.");
+
+        return normalizedValue.Value;
     }
 
     private static bool IsDashboardCopiersVertical(BillingRecordRow row)
@@ -1329,31 +1734,7 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var select = string.Join(",", new[]
-        {
-            metadata.PrimaryIdField,
-            metadata.PrimaryNameField,
-            _dashboardBillingInvoiceNumberField,
-            _dashboardBillingCompanyTaxIdField,
-            _dashboardBillingClientField,
-            BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
-            _dashboardBillingVerticalField,
-            _dashboardBillingContractTypeField,
-            _dashboardBillingDueDateField,
-            _dashboardBillingEmissionDateField,
-            _dashboardBillingTotalField,
-            _dashboardBillingVatPercentField,
-            _dashboardBillingVatField,
-            _dashboardBillingPublicUrlField,
-            _dashboardBillingPaymentDateField,
-            _dashboardBillingPaymentValueField,
-            _dashboardBillingReteIcaField,
-            _dashboardBillingRteIvaField,
-            _dashboardBillingRteFteField,
-            _dashboardBillingDifferenceField
-        }
-        .Where(static field => !string.IsNullOrWhiteSpace(field))
-        .Distinct(StringComparer.OrdinalIgnoreCase));
+        var select = BuildBillingSelectClause(metadata);
 
         var filter = BuildBillingDateFilter(filterField, filterFieldKind, startInclusive, endExclusive);
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={filterField} asc";
@@ -1851,6 +2232,76 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private IReadOnlyList<BillingTrendPointDto> BuildBillingYtdTrend(
+        int year,
+        int compareYear,
+        DateOnly ytdEndExclusive,
+        IReadOnlyList<BillingRecordRow> emissionRecords,
+        IReadOnlyList<BillingRecordRow> paymentRecords)
+    {
+        var maxMonth = Math.Clamp(ytdEndExclusive.AddDays(-1).Month, 1, 12);
+        var currentStart = new DateOnly(year, 1, 1);
+        var currentEnd = new DateOnly(year, maxMonth, 1).AddMonths(1);
+        var compareStart = new DateOnly(compareYear, 1, 1);
+        var compareEnd = new DateOnly(compareYear, maxMonth, 1).AddMonths(1);
+
+        return Enumerable.Range(1, maxMonth)
+            .Select(month =>
+            {
+                var currentEmission = emissionRecords
+                    .Where(record => record.EmissionDate is not null
+                        && record.EmissionDate.Value >= currentStart
+                        && record.EmissionDate.Value < currentEnd
+                        && record.EmissionDate.Value.Year == year
+                        && record.EmissionDate.Value.Month == month)
+                    .ToList();
+                var compareEmission = emissionRecords
+                    .Where(record => record.EmissionDate is not null
+                        && record.EmissionDate.Value >= compareStart
+                        && record.EmissionDate.Value < compareEnd
+                        && record.EmissionDate.Value.Year == compareYear
+                        && record.EmissionDate.Value.Month == month)
+                    .ToList();
+                var currentPayments = paymentRecords
+                    .Where(record => record.PaymentDate is not null
+                        && record.PaymentDate.Value >= currentStart
+                        && record.PaymentDate.Value < currentEnd
+                        && record.PaymentDate.Value.Year == year
+                        && record.PaymentDate.Value.Month == month)
+                    .ToList();
+                var comparePayments = paymentRecords
+                    .Where(record => record.PaymentDate is not null
+                        && record.PaymentDate.Value >= compareStart
+                        && record.PaymentDate.Value < compareEnd
+                        && record.PaymentDate.Value.Year == compareYear
+                        && record.PaymentDate.Value.Month == month)
+                    .ToList();
+
+                var billingCurrent = SumCurrency(currentEmission, static record => record.TotalInvoice);
+                var billingPrevious = SumCurrency(compareEmission, static record => record.TotalInvoice);
+                var collectionsCurrent = SumCurrency(currentPayments, static record => record.PaymentValue);
+                var collectionsPrevious = SumCurrency(comparePayments, static record => record.PaymentValue);
+                var retentionsCurrent = SumCurrency(currentPayments, static record => record.RetentionsTotal);
+                var retentionsPrevious = SumCurrency(comparePayments, static record => record.RetentionsTotal);
+
+                return new BillingTrendPointDto
+                {
+                    Key = month.ToString(CultureInfo.InvariantCulture),
+                    Label = ToTitleCase(new DateOnly(year, month, 1).ToString("MMM", DashboardCulture)),
+                    BillingCurrent = billingCurrent,
+                    BillingPrevious = billingPrevious,
+                    BillingGrowthPercent = CalculateGrowthPercent(billingCurrent, billingPrevious),
+                    CollectionsCurrent = collectionsCurrent,
+                    CollectionsPrevious = collectionsPrevious,
+                    CollectionsGrowthPercent = CalculateGrowthPercent(collectionsCurrent, collectionsPrevious),
+                    RetentionsCurrent = retentionsCurrent,
+                    RetentionsPrevious = retentionsPrevious,
+                    RetentionsGrowthPercent = CalculateGrowthPercent(retentionsCurrent, retentionsPrevious)
+                };
+            })
+            .ToList();
+    }
+
     private IReadOnlyList<BillingVerticalSummaryDto> BuildVerticalSummaries(
         IReadOnlyList<BillingRecordRow> currentEmission,
         IReadOnlyList<BillingRecordRow> compareEmission)
@@ -2251,7 +2702,9 @@ public sealed partial class DataverseService
                     ClientId = record.ClientId,
                     ClientName = record.ClientName,
                     CompanyTaxId = record.CompanyTaxId,
+                    VerticalOptionValue = record.VerticalOptionValue > 0 ? record.VerticalOptionValue : null,
                     VerticalLabel = record.VerticalLabel,
+                    ContractTypeOptionValue = record.ContractTypeOptionValue > 0 ? record.ContractTypeOptionValue : null,
                     ContractTypeLabel = record.ContractTypeLabel,
                     EmissionDateValue = record.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                     EmissionDateDisplay = record.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
@@ -2318,6 +2771,15 @@ public sealed partial class DataverseService
             _ => BuildMonthPeriod(resolvedYear, compareYear, periodValue ?? (resolvedYear == today.Year ? today.Month : 1))
         };
     }
+
+    private static DateOnly ResolveBillingYtdEndExclusive(int year, DateOnly today)
+    {
+        var lastVisibleMonth = year == today.Year ? today.Month : 12;
+        return new DateOnly(year, Math.Clamp(lastVisibleMonth, 1, 12), 1).AddMonths(1);
+    }
+
+    private static DateOnly MaxDateOnly(DateOnly left, DateOnly right) =>
+        left.DayNumber >= right.DayNumber ? left : right;
 
     private static int ResolveTaxReferenceMonth(
         int resolvedYear,
@@ -2559,6 +3021,24 @@ public sealed partial class DataverseService
             DashboardContractTypeMonthlyOption => "Mensual",
             DashboardContractTypeOneTimeOption => "OneTime",
             _ => "Sin contrato"
+        };
+    }
+
+    private static IReadOnlyList<BillingOptionDto> BuildBillingVerticalOptions()
+    {
+        return new[]
+        {
+            new BillingOptionDto { Value = DashboardVerticalCloudOption, Label = "Cloud" },
+            new BillingOptionDto { Value = DashboardVerticalCopiersOption, Label = "Copiers" }
+        };
+    }
+
+    private static IReadOnlyList<BillingOptionDto> BuildBillingContractTypeOptions()
+    {
+        return new[]
+        {
+            new BillingOptionDto { Value = DashboardContractTypeMonthlyOption, Label = "Mensual" },
+            new BillingOptionDto { Value = DashboardContractTypeOneTimeOption, Label = "OneTime" }
         };
     }
 

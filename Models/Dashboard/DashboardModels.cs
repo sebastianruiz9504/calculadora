@@ -523,10 +523,13 @@ public sealed class BillingTrendPointDto
     public string Label { get; set; } = "";
     public decimal BillingCurrent { get; set; }
     public decimal BillingPrevious { get; set; }
+    public decimal? BillingGrowthPercent { get; set; }
     public decimal CollectionsCurrent { get; set; }
     public decimal CollectionsPrevious { get; set; }
+    public decimal? CollectionsGrowthPercent { get; set; }
     public decimal RetentionsCurrent { get; set; }
     public decimal RetentionsPrevious { get; set; }
+    public decimal? RetentionsGrowthPercent { get; set; }
 }
 
 public sealed class BillingVerticalSummaryDto
@@ -593,7 +596,9 @@ public sealed class BillingInvoiceRowDto
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string CompanyTaxId { get; set; } = "";
+    public int? VerticalOptionValue { get; set; }
     public string VerticalLabel { get; set; } = "";
+    public int? ContractTypeOptionValue { get; set; }
     public string ContractTypeLabel { get; set; } = "";
     public string EmissionDateValue { get; set; } = "";
     public string EmissionDateDisplay { get; set; } = "";
@@ -613,6 +618,75 @@ public sealed class BillingInvoiceRowDto
     public string PaymentStatusLabel { get; set; } = "";
     public int AgeDays { get; set; }
     public string PublicUrl { get; set; } = "";
+}
+
+public sealed class BillingInvoicesTableDto
+{
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public IReadOnlyList<BillingOptionDto> VerticalOptions { get; set; } = Array.Empty<BillingOptionDto>();
+    public IReadOnlyList<BillingOptionDto> ContractTypeOptions { get; set; } = Array.Empty<BillingOptionDto>();
+    public IReadOnlyList<BillingInvoiceRowDto> Invoices { get; set; } = Array.Empty<BillingInvoiceRowDto>();
+}
+
+public sealed class BillingOptionDto
+{
+    public int Value { get; set; }
+    public string Label { get; set; } = "";
+}
+
+public sealed class BillingInvoiceSaveRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string CompanyTaxId { get; set; } = "";
+    public int? VerticalOptionValue { get; set; }
+    public int? ContractTypeOptionValue { get; set; }
+    public string EmissionDateValue { get; set; } = "";
+    public string DueDateValue { get; set; } = "";
+    public string PaymentDateValue { get; set; } = "";
+    public decimal TotalInvoice { get; set; }
+    public decimal VatPercent { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal PaymentValue { get; set; }
+    public decimal ReteIcaValue { get; set; }
+    public decimal RteIvaValue { get; set; }
+    public decimal RteFteValue { get; set; }
+    public decimal DifferenceValue { get; set; }
+    public string PublicUrl { get; set; } = "";
+}
+
+public sealed class BillingInvoiceSaveResultDto
+{
+    public string Message { get; set; } = "";
+    public BillingInvoiceRowDto Invoice { get; set; } = new();
+}
+
+public sealed class BillingInvoicesDeleteRequestDto
+{
+    public IReadOnlyList<string> RecordIds { get; set; } = Array.Empty<string>();
+}
+
+public sealed class BillingInvoicesDeleteResultDto
+{
+    public int DeletedCount { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class BillingInvoicesContractTypeUpdateRequestDto
+{
+    public IReadOnlyList<string> RecordIds { get; set; } = Array.Empty<string>();
+    public int? ContractTypeOptionValue { get; set; }
+}
+
+public sealed class BillingInvoicesContractTypeUpdateResultDto
+{
+    public int UpdatedCount { get; set; }
+    public string Message { get; set; } = "";
 }
 
 public sealed class BillingDifferenceInvoiceDto

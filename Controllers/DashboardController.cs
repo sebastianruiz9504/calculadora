@@ -68,6 +68,78 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingInvoices(CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.GetBillingInvoicesAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la tabla completa de facturacion.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingInvoice([FromBody] BillingInvoiceSaveRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.SaveBillingInvoiceAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible actualizar la factura en Dataverse.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingInvoicesDelete([FromBody] BillingInvoicesDeleteRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.DeleteBillingInvoicesAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible eliminar las facturas seleccionadas.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingInvoicesContractType([FromBody] BillingInvoicesContractTypeUpdateRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.UpdateBillingInvoicesContractTypeAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cambiar el tipo de contrato.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> BillingClientReport([FromQuery] string clientId, [FromQuery] string? clientName, CancellationToken ct)
     {
         try

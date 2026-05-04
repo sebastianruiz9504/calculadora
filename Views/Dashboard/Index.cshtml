@@ -12,6 +12,10 @@
 <div class="dashboard-shell"
      id="billingDashboardApp"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
+     data-billing-invoices-url="@Url.Action("BillingInvoices", "Dashboard")"
+     data-billing-invoice-save-url="@Url.Action("BillingInvoice", "Dashboard")"
+     data-billing-invoices-delete-url="@Url.Action("BillingInvoicesDelete", "Dashboard")"
+     data-billing-invoices-contract-url="@Url.Action("BillingInvoicesContractType", "Dashboard")"
      data-billing-client-report-url="@Url.Action("BillingClientReport", "Dashboard")"
      data-billing-client-report-export-url="@Url.Action("BillingClientReportExport", "Dashboard")"
      data-siigo-customers-url="@Url.Action("SiigoCustomers", "Dashboard")"
@@ -89,18 +93,73 @@
 
         <section class="dashboard-kpis dashboard-kpis--billing" id="billingKpisContainer"></section>
 
+        <section class="dashboard-billing-actions" aria-label="Acciones de facturaci&oacute;n">
+            <button type="button" class="btn btn-outline-secondary" id="billingReportToggleBtn" aria-expanded="false" aria-controls="billingReportSection">Mostrar reportes</button>
+            <button type="button" class="btn btn-outline-secondary" id="siigoToggleBtn" aria-expanded="false" aria-controls="siigoApiSection">Mostrar Siigo API</button>
+        </section>
+
         <section class="dashboard-grid">
             <article class="dashboard-panel dashboard-panel--full">
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Tendencias</div>
-                        <h2 class="dashboard-panel__title">Facturacion y recaudo</h2>
+                        <h2 class="dashboard-panel__title">Facturacion y recaudo YTD</h2>
                     </div>
                 </div>
                 <div class="dashboard-trends" id="billingTrendsContainer"></div>
             </article>
 
             <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Facturaci&oacute;n</div>
+                        <h2 class="dashboard-panel__title">Tabla completa de facturaci&oacute;n</h2>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <label class="dashboard-search dashboard-search--customer" for="billingInvoicesSearch">
+                            <span class="dashboard-search__label">Buscar</span>
+                            <input type="search"
+                                   id="billingInvoicesSearch"
+                                   class="form-control dashboard-search__input"
+                                   autocomplete="off"
+                                   placeholder="Consultar facturas..." />
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary" id="billingInvoicesRefreshBtn">Actualizar facturas</button>
+                        <button type="button" class="btn btn-outline-secondary" id="billingInvoicesDuplicatesBtn">Buscar duplicados</button>
+                        <button type="button" class="btn btn-outline-secondary" id="billingInvoicesClearFiltersBtn">Limpiar filtros</button>
+                        <button type="button" class="btn btn-outline-primary" id="billingInvoicesContractBtn" disabled>Cambiar tipo de contrato</button>
+                        <button type="button" class="btn btn-outline-danger" id="billingInvoicesDeleteBtn" disabled>Eliminar</button>
+                    </div>
+                </div>
+
+                <div id="billingInvoicesStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+                <div class="dashboard-table-toolbar">
+                    <div class="dashboard-table-meta" id="billingInvoicesResultsCount">Mostrando 0 facturas</div>
+                    <div class="dashboard-table-meta">Seleccionadas: <strong id="billingInvoicesSelectedCount">0</strong></div>
+                </div>
+
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table dashboard-billing-invoices-table">
+                        <thead id="billingInvoicesHead">
+                            <tr>
+                                <th>Sel.</th>
+                                <th>Factura</th>
+                                <th>Cliente</th>
+                                <th>Emisi&oacute;n</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="billingInvoicesBody">
+                            <tr>
+                                <td colspan="5" class="dashboard-table__empty">Cargando facturas...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--full" id="billingReportSection" hidden>
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Reportes</div>
@@ -182,7 +241,7 @@
                 </div>
             </article>
 
-            <article class="dashboard-panel dashboard-panel--full">
+            <article class="dashboard-panel dashboard-panel--full" id="siigoApiSection" hidden>
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Siigo API</div>
@@ -1229,6 +1288,149 @@
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="billingInvoiceEditorModal" hidden>
+    <div class="dashboard-modal__backdrop" data-billing-invoice-editor-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="billingInvoiceEditorTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Facturaci&oacute;n</div>
+                <h2 class="dashboard-modal__title" id="billingInvoiceEditorTitle">Editar factura</h2>
+                <p class="dashboard-modal__subtitle" id="billingInvoiceEditorSubtitle">Actualiza los campos de la factura seleccionada.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="billingInvoiceEditorCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="billingInvoiceEditorStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <form id="billingInvoiceEditorForm" class="dashboard-billing-form">
+            <input type="hidden" id="billingInvoiceRecordIdInput" />
+            <input type="hidden" id="billingInvoiceClientIdInput" />
+
+            <div class="dashboard-billing-form__grid">
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Factura</span>
+                    <input type="text" class="form-control" id="billingInvoiceNumberInput" data-billing-invoice-field="invoiceNumber" />
+                </label>
+
+                <label class="dashboard-copiers-form__field dashboard-billing-form__field--span-2">
+                    <span class="dashboard-copiers-form__label">Cliente</span>
+                    <input type="text" class="form-control" id="billingInvoiceClientNameInput" list="billingInvoiceClientOptions" autocomplete="off" data-billing-invoice-field="clientName" />
+                    <datalist id="billingInvoiceClientOptions"></datalist>
+                    <span class="dashboard-copiers-form__hint">Escribe al menos 2 caracteres y selecciona una coincidencia si aparece.</span>
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">NIT empresa</span>
+                    <input type="text" class="form-control" id="billingInvoiceCompanyTaxIdInput" data-billing-invoice-field="companyTaxId" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Vertical</span>
+                    <select class="form-select" id="billingInvoiceVerticalInput" data-billing-invoice-field="verticalOptionValue"></select>
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Contrato</span>
+                    <select class="form-select" id="billingInvoiceContractTypeInput" data-billing-invoice-field="contractTypeOptionValue"></select>
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Fecha emisi&oacute;n</span>
+                    <input type="date" class="form-control" id="billingInvoiceEmissionDateInput" data-billing-invoice-field="emissionDateValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Fecha vencimiento</span>
+                    <input type="date" class="form-control" id="billingInvoiceDueDateInput" data-billing-invoice-field="dueDateValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Fecha pago</span>
+                    <input type="date" class="form-control" id="billingInvoicePaymentDateInput" data-billing-invoice-field="paymentDateValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Total factura</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoiceTotalInput" data-billing-invoice-field="totalInvoice" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">% IVA</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoiceVatPercentInput" data-billing-invoice-field="vatPercent" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">IVA valor</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoiceVatValueInput" data-billing-invoice-field="vatValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Valor pago</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoicePaymentValueInput" data-billing-invoice-field="paymentValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">ReteICA</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoiceReteIcaInput" data-billing-invoice-field="reteIcaValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">RteIVA</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoiceRteIvaInput" data-billing-invoice-field="rteIvaValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">RteFte</span>
+                    <input type="number" min="0" step="0.01" class="form-control" id="billingInvoiceRteFteInput" data-billing-invoice-field="rteFteValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field">
+                    <span class="dashboard-copiers-form__label">Diferencia</span>
+                    <input type="number" step="0.01" class="form-control" id="billingInvoiceDifferenceInput" data-billing-invoice-field="differenceValue" />
+                </label>
+
+                <label class="dashboard-copiers-form__field dashboard-billing-form__field--span-2">
+                    <span class="dashboard-copiers-form__label">URL factura</span>
+                    <input type="url" class="form-control" id="billingInvoicePublicUrlInput" data-billing-invoice-field="publicUrl" />
+                </label>
+            </div>
+
+            <div class="dashboard-copiers-form__actions">
+                <button type="button" class="btn btn-outline-secondary" id="billingInvoiceEditorCancelBtn">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="billingInvoiceEditorSaveBtn">Guardar en Dataverse</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="billingContractTypeModal" hidden>
+    <div class="dashboard-modal__backdrop" data-billing-contract-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--medium" role="dialog" aria-modal="true" aria-labelledby="billingContractTypeTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Facturaci&oacute;n</div>
+                <h2 class="dashboard-modal__title" id="billingContractTypeTitle">Cambiar tipo de contrato</h2>
+                <p class="dashboard-modal__subtitle" id="billingContractTypeSubtitle">Facturas seleccionadas: <strong id="billingContractTypeSelectedCount">0</strong></p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="billingContractTypeCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="billingContractTypeStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <form id="billingContractTypeForm" class="dashboard-billing-form">
+            <label class="dashboard-copiers-form__field">
+                <span class="dashboard-copiers-form__label">Nuevo contrato</span>
+                <select class="form-select" id="billingContractTypeBulkInput"></select>
+            </label>
+
+            <div class="dashboard-copiers-form__actions">
+                <button type="button" class="btn btn-outline-secondary" id="billingContractTypeCancelBtn">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="billingContractTypeSaveBtn">Aplicar cambio</button>
+            </div>
+        </form>
     </div>
 </div>
 

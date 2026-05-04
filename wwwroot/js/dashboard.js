@@ -21,6 +21,57 @@
 
     const billingKpisContainer = document.getElementById("billingKpisContainer");
     const trendsContainer = document.getElementById("billingTrendsContainer");
+    const billingReportToggleButton = document.getElementById("billingReportToggleBtn");
+    const siigoToggleButton = document.getElementById("siigoToggleBtn");
+    const billingReportSection = document.getElementById("billingReportSection");
+    const siigoApiSection = document.getElementById("siigoApiSection");
+    const billingInvoicesSearch = document.getElementById("billingInvoicesSearch");
+    const billingInvoicesRefreshButton = document.getElementById("billingInvoicesRefreshBtn");
+    const billingInvoicesDuplicatesButton = document.getElementById("billingInvoicesDuplicatesBtn");
+    const billingInvoicesClearFiltersButton = document.getElementById("billingInvoicesClearFiltersBtn");
+    const billingInvoicesContractButton = document.getElementById("billingInvoicesContractBtn");
+    const billingInvoicesDeleteButton = document.getElementById("billingInvoicesDeleteBtn");
+    const billingInvoicesStatus = document.getElementById("billingInvoicesStatus");
+    const billingInvoicesResultsCount = document.getElementById("billingInvoicesResultsCount");
+    const billingInvoicesSelectedCount = document.getElementById("billingInvoicesSelectedCount");
+    const billingInvoicesHead = document.getElementById("billingInvoicesHead");
+    const billingInvoicesBody = document.getElementById("billingInvoicesBody");
+    const billingInvoiceEditorModal = document.getElementById("billingInvoiceEditorModal");
+    const billingInvoiceEditorCloseButton = document.getElementById("billingInvoiceEditorCloseBtn");
+    const billingInvoiceEditorCancelButton = document.getElementById("billingInvoiceEditorCancelBtn");
+    const billingInvoiceEditorForm = document.getElementById("billingInvoiceEditorForm");
+    const billingInvoiceEditorTitle = document.getElementById("billingInvoiceEditorTitle");
+    const billingInvoiceEditorSubtitle = document.getElementById("billingInvoiceEditorSubtitle");
+    const billingInvoiceEditorStatus = document.getElementById("billingInvoiceEditorStatus");
+    const billingInvoiceEditorSaveButton = document.getElementById("billingInvoiceEditorSaveBtn");
+    const billingInvoiceRecordIdInput = document.getElementById("billingInvoiceRecordIdInput");
+    const billingInvoiceNumberInput = document.getElementById("billingInvoiceNumberInput");
+    const billingInvoiceClientIdInput = document.getElementById("billingInvoiceClientIdInput");
+    const billingInvoiceClientNameInput = document.getElementById("billingInvoiceClientNameInput");
+    const billingInvoiceClientOptions = document.getElementById("billingInvoiceClientOptions");
+    const billingInvoiceCompanyTaxIdInput = document.getElementById("billingInvoiceCompanyTaxIdInput");
+    const billingInvoiceVerticalInput = document.getElementById("billingInvoiceVerticalInput");
+    const billingInvoiceContractTypeInput = document.getElementById("billingInvoiceContractTypeInput");
+    const billingInvoiceEmissionDateInput = document.getElementById("billingInvoiceEmissionDateInput");
+    const billingInvoiceDueDateInput = document.getElementById("billingInvoiceDueDateInput");
+    const billingInvoicePaymentDateInput = document.getElementById("billingInvoicePaymentDateInput");
+    const billingInvoiceTotalInput = document.getElementById("billingInvoiceTotalInput");
+    const billingInvoiceVatPercentInput = document.getElementById("billingInvoiceVatPercentInput");
+    const billingInvoiceVatValueInput = document.getElementById("billingInvoiceVatValueInput");
+    const billingInvoicePaymentValueInput = document.getElementById("billingInvoicePaymentValueInput");
+    const billingInvoiceReteIcaInput = document.getElementById("billingInvoiceReteIcaInput");
+    const billingInvoiceRteIvaInput = document.getElementById("billingInvoiceRteIvaInput");
+    const billingInvoiceRteFteInput = document.getElementById("billingInvoiceRteFteInput");
+    const billingInvoiceDifferenceInput = document.getElementById("billingInvoiceDifferenceInput");
+    const billingInvoicePublicUrlInput = document.getElementById("billingInvoicePublicUrlInput");
+    const billingContractTypeModal = document.getElementById("billingContractTypeModal");
+    const billingContractTypeCloseButton = document.getElementById("billingContractTypeCloseBtn");
+    const billingContractTypeCancelButton = document.getElementById("billingContractTypeCancelBtn");
+    const billingContractTypeForm = document.getElementById("billingContractTypeForm");
+    const billingContractTypeStatus = document.getElementById("billingContractTypeStatus");
+    const billingContractTypeSelectedCount = document.getElementById("billingContractTypeSelectedCount");
+    const billingContractTypeBulkInput = document.getElementById("billingContractTypeBulkInput");
+    const billingContractTypeSaveButton = document.getElementById("billingContractTypeSaveBtn");
     const billingReportClientSearch = document.getElementById("billingReportClientSearch");
     const billingReportClientIdInput = document.getElementById("billingReportClientIdInput");
     const billingReportClientOptions = document.getElementById("billingReportClientOptions");
@@ -236,6 +287,22 @@
         period: currentPeriod,
         value: currentValue,
         billingDashboard: null,
+        billingInvoicesDetail: null,
+        billingInvoicesLoading: false,
+        billingInvoicesSaving: false,
+        billingInvoicesDeleting: false,
+        billingInvoicesContractSaving: false,
+        billingInvoicesSearchTerm: "",
+        billingInvoicesGrid: {
+            sortKey: "emissionDateValue",
+            sortDirection: "desc",
+            filters: {},
+            duplicatesOnly: false
+        },
+        billingInvoiceDuplicateNumbers: new Set(),
+        billingInvoiceSelectedIds: new Set(),
+        billingInvoiceClientSuggestions: [],
+        billingInvoiceEditorOriginal: null,
         billingReportDetail: null,
         billingReportLoading: false,
         billingReportExporting: false,
@@ -421,6 +488,58 @@
         syncBillingReportSelectionSummary();
     }
 
+    function setBillingInvoicesLoading(loading) {
+        state.billingInvoicesLoading = loading;
+        [
+            billingInvoicesSearch,
+            billingInvoicesRefreshButton,
+            billingInvoicesDuplicatesButton,
+            billingInvoicesClearFiltersButton
+        ].forEach(element => {
+            if (element) {
+                element.disabled = loading || state.billingInvoicesDeleting || state.billingInvoicesContractSaving;
+            }
+        });
+
+        syncBillingInvoicesSelectionSummary();
+    }
+
+    function setBillingInvoiceSaving(saving) {
+        state.billingInvoicesSaving = saving;
+        [
+            billingInvoiceEditorSaveButton,
+            billingInvoiceEditorCancelButton,
+            billingInvoiceEditorCloseButton
+        ].forEach(element => {
+            if (element) {
+                element.disabled = saving;
+            }
+        });
+    }
+
+    function setBillingInvoicesDeleting(deleting) {
+        state.billingInvoicesDeleting = deleting;
+        setBillingInvoicesLoading(state.billingInvoicesLoading);
+        syncBillingInvoicesSelectionSummary();
+    }
+
+    function setBillingInvoicesContractSaving(saving) {
+        state.billingInvoicesContractSaving = saving;
+        [
+            billingContractTypeSaveButton,
+            billingContractTypeCancelButton,
+            billingContractTypeCloseButton,
+            billingContractTypeBulkInput
+        ].forEach(element => {
+            if (element) {
+                element.disabled = saving;
+            }
+        });
+
+        setBillingInvoicesLoading(state.billingInvoicesLoading);
+        syncBillingInvoicesSelectionSummary();
+    }
+
     function setSiigoInvoicesLoading(loading) {
         state.siigoInvoicesLoading = loading;
         [siigoStartDateInput, siigoEndDateInput, siigoUseActivePeriodButton, siigoInvoicesLoadButton].forEach(element => {
@@ -567,6 +686,53 @@
 
     function isPnlDetailOpen() {
         return Boolean(pnlDetailModal && !pnlDetailModal.hidden);
+    }
+
+    function setBillingSectionExpanded(section, button, expanded, expandedLabel, collapsedLabel) {
+        if (section) {
+            section.hidden = !expanded;
+        }
+
+        if (button) {
+            button.setAttribute("aria-expanded", expanded ? "true" : "false");
+            button.textContent = expanded ? expandedLabel : collapsedLabel;
+        }
+    }
+
+    function toggleBillingSection(section, button, expandedLabel, collapsedLabel) {
+        const expanded = Boolean(section?.hidden);
+        setBillingSectionExpanded(section, button, expanded, expandedLabel, collapsedLabel);
+    }
+
+    function isBillingInvoiceEditorOpen() {
+        return Boolean(billingInvoiceEditorModal && !billingInvoiceEditorModal.hidden);
+    }
+
+    function isBillingContractTypeModalOpen() {
+        return Boolean(billingContractTypeModal && !billingContractTypeModal.hidden);
+    }
+
+    function closeBillingInvoiceEditorModal() {
+        if (!billingInvoiceEditorModal) {
+            return;
+        }
+
+        billingInvoiceEditorModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        state.billingInvoiceEditorOriginal = null;
+        setBillingInvoiceSaving(false);
+        setStatus(billingInvoiceEditorStatus, "", "");
+    }
+
+    function closeBillingContractTypeModal() {
+        if (!billingContractTypeModal) {
+            return;
+        }
+
+        billingContractTypeModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        setBillingInvoicesContractSaving(false);
+        setStatus(billingContractTypeStatus, "", "");
     }
 
     function openPnlDetailModal() {
@@ -1984,6 +2150,22 @@
         return `${app.dataset.billingUrl}?${params.toString()}`;
     }
 
+    function buildBillingInvoicesUrl() {
+        return app.dataset.billingInvoicesUrl || "";
+    }
+
+    function buildBillingInvoiceSaveUrl() {
+        return app.dataset.billingInvoiceSaveUrl || "";
+    }
+
+    function buildBillingInvoicesDeleteUrl() {
+        return app.dataset.billingInvoicesDeleteUrl || "";
+    }
+
+    function buildBillingInvoicesContractUrl() {
+        return app.dataset.billingInvoicesContractUrl || "";
+    }
+
     function buildTaxesUrl() {
         const params = new URLSearchParams({
             year: String(state.year),
@@ -3020,6 +3202,39 @@
         `;
     }
 
+    function renderTrendBars(trend, currentKey, previousKey, growthKey, accentColor) {
+        const currentValues = trend.map(item => Number(item[currentKey] || 0));
+        const previousValues = trend.map(item => Number(item[previousKey] || 0));
+        const maxValue = Math.max(1, ...currentValues, ...previousValues);
+
+        return `
+            <div class="dashboard-trend-bars">
+                ${trend.map(point => {
+                    const currentValue = Number(point[currentKey] || 0);
+                    const previousValue = Number(point[previousKey] || 0);
+                    const currentHeight = Math.max(4, (currentValue / maxValue) * 100);
+                    const previousHeight = Math.max(4, (previousValue / maxValue) * 100);
+                    const growth = point[growthKey];
+                    const growthClass = growth === null || growth === undefined || Number(growth || 0) >= 0
+                        ? "is-positive"
+                        : "is-negative";
+
+                    return `
+                        <div class="dashboard-trend-bar" title="${escapeHtml(`${point.label}: ${currencyFormatter.format(currentValue)} vs ${currencyFormatter.format(previousValue)}`)}">
+                            <span class="dashboard-growth ${growthClass}">${escapeHtml(formatGrowth(growth))}</span>
+                            <div class="dashboard-trend-bar__plot" aria-hidden="true">
+                                <span class="dashboard-trend-bar__bar dashboard-trend-bar__bar--previous" style="height:${previousHeight}%"></span>
+                                <span class="dashboard-trend-bar__bar" style="height:${currentHeight}%; background:${accentColor}"></span>
+                            </div>
+                            <strong>${escapeHtml(point.label || "")}</strong>
+                            <small>${escapeHtml(currencyFormatter.format(currentValue))}</small>
+                        </div>
+                    `;
+                }).join("")}
+            </div>
+        `;
+    }
+
     function renderTrends(dashboard) {
         const trend = Array.isArray(dashboard?.trend) ? dashboard.trend : [];
         if (!trendsContainer) {
@@ -3032,9 +3247,9 @@
         }
 
         const cards = [
-            { title: "Facturacion emitida", currentKey: "billingCurrent", previousKey: "billingPrevious", color: "#0f766e" },
-            { title: "Recaudo", currentKey: "collectionsCurrent", previousKey: "collectionsPrevious", color: "#1d4ed8" },
-            { title: "Retenciones", currentKey: "retentionsCurrent", previousKey: "retentionsPrevious", color: "#f97316" }
+            { title: "Facturacion emitida", currentKey: "billingCurrent", previousKey: "billingPrevious", growthKey: "billingGrowthPercent", color: "#0f766e" },
+            { title: "Recaudo", currentKey: "collectionsCurrent", previousKey: "collectionsPrevious", growthKey: "collectionsGrowthPercent", color: "#1d4ed8" },
+            { title: "Retenciones", currentKey: "retentionsCurrent", previousKey: "retentionsPrevious", growthKey: "retentionsGrowthPercent", color: "#f97316" }
         ];
 
         trendsContainer.innerHTML = cards.map(card => {
@@ -3047,7 +3262,7 @@
                         <span class="dashboard-growth ${currentTotal >= previousTotal ? "is-positive" : "is-negative"}">${escapeHtml(formatGrowth(previousTotal === 0 && currentTotal > 0 ? null : ((currentTotal - previousTotal) / (previousTotal || 1)) * 100))}</span>
                     </div>
                     <div class="dashboard-trend-card__value">${escapeHtml(currencyFormatter.format(currentTotal))}</div>
-                    ${renderTrendChart(trend, card.currentKey, card.previousKey, card.color)}
+                    ${renderTrendBars(trend, card.currentKey, card.previousKey, card.growthKey, card.color)}
                     <div class="dashboard-trend-legend">
                         <span class="dashboard-legend-chip" style="color:${card.color}">Actual</span>
                         <span class="dashboard-legend-chip dashboard-legend-chip--muted">Ano anterior</span>
@@ -3900,6 +4115,165 @@
         return `<span class="dashboard-badge ${tone}">${escapeHtml(status)}</span>`;
     }
 
+    function normalizeInvoiceNumber(value) {
+        return normalizeText(value).replace(/[^a-z0-9]/g, "");
+    }
+
+    function getBillingInvoiceDuplicateNumbers(rows) {
+        const counts = new Map();
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+            const key = normalizeInvoiceNumber(row?.invoiceNumber || "");
+            if (key) {
+                counts.set(key, (counts.get(key) || 0) + 1);
+            }
+        });
+
+        return new Set(Array.from(counts.entries())
+            .filter(([, count]) => count > 1)
+            .map(([key]) => key));
+    }
+
+    function isBillingInvoiceDuplicate(row) {
+        return state.billingInvoiceDuplicateNumbers.has(normalizeInvoiceNumber(row?.invoiceNumber || ""));
+    }
+
+    function getBillingInvoiceContractTypeOptions() {
+        return Array.isArray(state.billingInvoicesDetail?.contractTypeOptions)
+            ? state.billingInvoicesDetail.contractTypeOptions
+            : [];
+    }
+
+    function getBillingInvoiceVerticalOptions() {
+        return Array.isArray(state.billingInvoicesDetail?.verticalOptions)
+            ? state.billingInvoicesDetail.verticalOptions
+            : [];
+    }
+
+    const billingInvoiceColumns = [
+        { key: "recordId", label: "ID registro" },
+        { key: "invoiceNumber", label: "Factura" },
+        { key: "clientName", label: "Cliente" },
+        { key: "clientId", label: "ID cliente" },
+        { key: "companyTaxId", label: "NIT empresa" },
+        { key: "verticalLabel", label: "Vertical" },
+        { key: "contractTypeLabel", label: "Contrato" },
+        {
+            key: "emissionDateValue",
+            label: "Emision",
+            type: "date",
+            displayValue: row => row.emissionDateDisplay || "Sin fecha",
+            sortValue: row => row.emissionDateValue || ""
+        },
+        {
+            key: "dueDateValue",
+            label: "Vencimiento",
+            type: "date",
+            displayValue: row => row.dueDateDisplay || "Sin fecha",
+            sortValue: row => row.dueDateValue || ""
+        },
+        {
+            key: "paymentDateValue",
+            label: "Pago",
+            type: "date",
+            displayValue: row => row.paymentDateDisplay || "Sin pago",
+            sortValue: row => row.paymentDateValue || ""
+        },
+        {
+            key: "paymentStatusLabel",
+            label: "Estado",
+            render: renderPortfolioStatusBadge
+        },
+        {
+            key: "ageDays",
+            label: "Dias vencida",
+            type: "number",
+            align: "end",
+            displayValue: row => `${numberFormatter.format(Number(row.ageDays || 0))} dias`,
+            render: row => `${renderPortfolioNumber(row.ageDays)} dias`
+        },
+        {
+            key: "totalInvoice",
+            label: "Total factura",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.totalInvoice || 0)),
+            render: row => renderPortfolioCurrency(row.totalInvoice)
+        },
+        {
+            key: "vatPercent",
+            label: "IVA %",
+            type: "number",
+            align: "end",
+            displayValue: row => `${numberFormatter.format(Number(row.vatPercent || 0))}%`,
+            render: row => renderPortfolioPercent(row.vatPercent)
+        },
+        {
+            key: "vatValue",
+            label: "IVA valor",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.vatValue || 0)),
+            render: row => renderPortfolioCurrency(row.vatValue)
+        },
+        {
+            key: "paymentValue",
+            label: "Valor pago",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.paymentValue || 0)),
+            render: row => renderPortfolioCurrency(row.paymentValue)
+        },
+        {
+            key: "reteIcaValue",
+            label: "ReteICA",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.reteIcaValue || 0)),
+            render: row => renderPortfolioCurrency(row.reteIcaValue)
+        },
+        {
+            key: "rteIvaValue",
+            label: "RteIVA",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.rteIvaValue || 0)),
+            render: row => renderPortfolioCurrency(row.rteIvaValue)
+        },
+        {
+            key: "rteFteValue",
+            label: "RteFte",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.rteFteValue || 0)),
+            render: row => renderPortfolioCurrency(row.rteFteValue)
+        },
+        {
+            key: "retentionsTotal",
+            label: "Retenciones",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.retentionsTotal || 0)),
+            render: row => renderPortfolioCurrency(row.retentionsTotal)
+        },
+        {
+            key: "differenceValue",
+            label: "Diferencia",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.differenceValue || 0)),
+            render: row => renderPortfolioCurrency(row.differenceValue)
+        },
+        {
+            key: "publicUrl",
+            label: "URL factura",
+            displayValue: row => row.publicUrl ? "Con URL" : "Sin URL",
+            sortValue: row => row.publicUrl || "",
+            render: row => row.publicUrl
+                ? `<a href="${escapeHtml(row.publicUrl)}" target="_blank" rel="noopener noreferrer" class="dashboard-table-link" data-billing-invoice-ignore-click>Abrir</a>`
+                : "-"
+        }
+    ];
+
     const portfolioOverdueColumns = [
         { key: "invoiceNumber", label: "Factura" },
         { key: "clientName", label: "Cliente" },
@@ -4055,6 +4429,24 @@
     ];
 
     function getPortfolioGridConfig(tableKey) {
+        if (tableKey === "billingInvoices") {
+            return {
+                key: "billingInvoices",
+                columns: billingInvoiceColumns,
+                rows: Array.isArray(state.billingInvoicesDetail?.invoices) ? state.billingInvoicesDetail.invoices : [],
+                head: billingInvoicesHead,
+                body: billingInvoicesBody,
+                counter: billingInvoicesResultsCount,
+                searchTerm: state.billingInvoicesSearchTerm,
+                emptyMessage: state.billingInvoicesGrid.duplicatesOnly
+                    ? "No encontramos facturas duplicadas por numero."
+                    : "No hay facturas registradas en facturacion.",
+                includeSelection: true,
+                rowId: row => row.recordId || "",
+                rowClass: row => isBillingInvoiceDuplicate(row) ? "dashboard-billing-invoice-row is-duplicate" : "dashboard-billing-invoice-row"
+            };
+        }
+
         if (tableKey === "invoices") {
             return {
                 key: "invoices",
@@ -4081,6 +4473,10 @@
     }
 
     function getPortfolioGridState(tableKey) {
+        if (tableKey === "billingInvoices") {
+            return state.billingInvoicesGrid;
+        }
+
         if (!state.portfolioGrids[tableKey]) {
             state.portfolioGrids[tableKey] = {
                 sortKey: "",
@@ -4124,6 +4520,12 @@
     function rowMatchesPortfolioFilters(row, config) {
         const gridState = getPortfolioGridState(config.key);
         const globalTerm = normalizeText(config.searchTerm);
+
+        if (config.key === "billingInvoices"
+            && state.billingInvoicesGrid.duplicatesOnly
+            && !isBillingInvoiceDuplicate(row)) {
+            return false;
+        }
 
         if (globalTerm) {
             const rowSearchText = normalizeText(config.columns
@@ -4204,7 +4606,15 @@
             return;
         }
 
-        config.head.innerHTML = config.columns.map(column => {
+        const selectionHeader = config.includeSelection
+            ? `
+                <th class="dashboard-selection-cell">
+                    <input type="checkbox" class="form-check-input" data-billing-invoices-select-all aria-label="Seleccionar facturas visibles" />
+                </th>
+            `
+            : "";
+
+        config.head.innerHTML = selectionHeader + config.columns.map(column => {
             const isSorted = gridState.sortKey === column.key;
             const sortLabel = isSorted ? (gridState.sortDirection === "desc" ? "Desc" : "Asc") : "";
             const thClass = column.align === "end" ? "text-end" : "";
@@ -4246,16 +4656,38 @@
         }
 
         config.body.innerHTML = filteredRows.length
-            ? filteredRows.map(row => `
-                <tr>
+            ? filteredRows.map(row => {
+                const rowId = typeof config.rowId === "function" ? config.rowId(row) : "";
+                const rowClass = typeof config.rowClass === "function" ? config.rowClass(row) : "";
+                const selectionCell = config.includeSelection
+                    ? `
+                        <td class="dashboard-selection-cell">
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   data-billing-invoice-select
+                                   data-record-id="${escapeHtml(rowId)}"
+                                   aria-label="Seleccionar factura ${escapeHtml(row.invoiceNumber || "")}"
+                                   ${state.billingInvoiceSelectedIds.has(rowId) ? "checked" : ""} />
+                        </td>
+                    `
+                    : "";
+
+                return `
+                <tr ${rowId ? `data-billing-invoice-id="${escapeHtml(rowId)}"` : ""} class="${escapeHtml(rowClass)}">
+                    ${selectionCell}
                     ${config.columns.map(column => `
                         <td class="${column.align === "end" ? "text-end" : ""}">
                             ${getPortfolioColumnCell(row, column)}
                         </td>
                     `).join("")}
                 </tr>
-            `).join("")
-            : `<tr><td colspan="${config.columns.length}" class="dashboard-table__empty">${escapeHtml(config.emptyMessage)}</td></tr>`;
+            `;
+            }).join("")
+            : `<tr><td colspan="${config.columns.length + (config.includeSelection ? 1 : 0)}" class="dashboard-table__empty">${escapeHtml(config.emptyMessage)}</td></tr>`;
+
+        if (config.includeSelection) {
+            syncBillingInvoicesSelectionSummary();
+        }
     }
 
     function buildPortfolioColumnFilterValues(tableKey, columnKey) {
@@ -4282,6 +4714,15 @@
         document.querySelectorAll("[data-portfolio-column][aria-expanded='true']").forEach(button => {
             button.setAttribute("aria-expanded", "false");
         });
+    }
+
+    function renderGridByKey(tableKey) {
+        if (tableKey === "billingInvoices") {
+            renderBillingInvoicesTable();
+            return;
+        }
+
+        renderPortfolioTable();
     }
 
     function openPortfolioColumnMenu(tableKey, columnKey, anchorButton) {
@@ -4377,7 +4818,7 @@
             gridState.sortKey = columnKey;
             gridState.sortDirection = action === "sort-desc" ? "desc" : "asc";
             closePortfolioColumnMenu();
-            renderPortfolioTable();
+            renderGridByKey(tableKey);
             return;
         }
 
@@ -4391,7 +4832,7 @@
         if (action === "clear") {
             delete gridState.filters[columnKey];
             closePortfolioColumnMenu();
-            renderPortfolioTable();
+            renderGridByKey(tableKey);
             return;
         }
 
@@ -4407,17 +4848,21 @@
 
             setPortfolioColumnFilter(tableKey, columnKey, { query, selected });
             closePortfolioColumnMenu();
-            renderPortfolioTable();
+            renderGridByKey(tableKey);
         }
     }
 
     function resetPortfolioGrid(tableKey) {
         const gridState = getPortfolioGridState(tableKey);
         gridState.filters = {};
-        gridState.sortKey = tableKey === "invoices" ? "emissionDateValue" : "ageDays";
+        gridState.sortKey = tableKey === "invoices" || tableKey === "billingInvoices" ? "emissionDateValue" : "ageDays";
         gridState.sortDirection = "desc";
 
-        if (tableKey === "invoices") {
+        if (tableKey === "billingInvoices") {
+            state.billingInvoicesSearchTerm = "";
+            state.billingInvoicesGrid.duplicatesOnly = false;
+            billingInvoicesSearch && (billingInvoicesSearch.value = "");
+        } else if (tableKey === "invoices") {
             state.portfolioInvoicesSearchTerm = "";
             portfolioInvoicesSearch && (portfolioInvoicesSearch.value = "");
         } else {
@@ -4426,7 +4871,316 @@
         }
 
         closePortfolioColumnMenu();
-        renderPortfolioTable();
+        renderGridByKey(tableKey);
+    }
+
+    function renderBillingInvoicesTable() {
+        renderPortfolioGrid("billingInvoices");
+        syncBillingInvoicesSelectionSummary();
+    }
+
+    function getFilteredBillingInvoiceRows() {
+        return getFilteredPortfolioGridRows("billingInvoices");
+    }
+
+    function pruneBillingInvoiceSelections() {
+        const rows = Array.isArray(state.billingInvoicesDetail?.invoices)
+            ? state.billingInvoicesDetail.invoices
+            : [];
+        const availableIds = new Set(rows.map(row => row?.recordId || "").filter(Boolean));
+        state.billingInvoiceSelectedIds = new Set(
+            Array.from(state.billingInvoiceSelectedIds).filter(id => availableIds.has(id))
+        );
+    }
+
+    function getSelectedBillingInvoiceIds() {
+        return Array.from(state.billingInvoiceSelectedIds).filter(Boolean);
+    }
+
+    function syncBillingInvoicesSelectionSummary() {
+        const selectedIds = getSelectedBillingInvoiceIds();
+        const visibleRows = getFilteredBillingInvoiceRows();
+        const visibleIds = visibleRows.map(row => row?.recordId || "").filter(Boolean);
+        const visibleSelectedCount = visibleIds.filter(id => state.billingInvoiceSelectedIds.has(id)).length;
+        const selectAll = billingInvoicesHead?.querySelector("[data-billing-invoices-select-all]");
+
+        if (billingInvoicesSelectedCount) {
+            billingInvoicesSelectedCount.textContent = numberFormatter.format(selectedIds.length);
+        }
+
+        if (selectAll) {
+            selectAll.checked = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+            selectAll.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleIds.length;
+        }
+
+        if (billingInvoicesDeleteButton) {
+            billingInvoicesDeleteButton.disabled = state.billingInvoicesLoading
+                || state.billingInvoicesDeleting
+                || selectedIds.length === 0
+                || !buildBillingInvoicesDeleteUrl();
+        }
+
+        if (billingInvoicesContractButton) {
+            billingInvoicesContractButton.disabled = state.billingInvoicesLoading
+                || state.billingInvoicesContractSaving
+                || selectedIds.length === 0
+                || !buildBillingInvoicesContractUrl();
+        }
+    }
+
+    function getBillingInvoiceById(recordId) {
+        const rows = Array.isArray(state.billingInvoicesDetail?.invoices)
+            ? state.billingInvoicesDetail.invoices
+            : [];
+
+        return rows.find(row => (row?.recordId || "") === recordId) || null;
+    }
+
+    function renderBillingOptionSelect(select, options, selectedValue, includeEmpty = true) {
+        if (!select) {
+            return;
+        }
+
+        const items = Array.isArray(options) ? options : [];
+        select.innerHTML = [
+            includeEmpty ? '<option value="">Sin seleccionar</option>' : "",
+            ...items.map(option => `
+                <option value="${escapeHtml(String(option?.value ?? ""))}" ${Number(option?.value) === Number(selectedValue) ? "selected" : ""}>
+                    ${escapeHtml(option?.label || "")}
+                </option>
+            `)
+        ].join("");
+    }
+
+    function fillBillingInvoiceEditor(row) {
+        state.billingInvoiceEditorOriginal = row ? { ...row } : null;
+        billingInvoiceRecordIdInput && (billingInvoiceRecordIdInput.value = row?.recordId || "");
+        billingInvoiceNumberInput && (billingInvoiceNumberInput.value = row?.invoiceNumber || "");
+        billingInvoiceClientIdInput && (billingInvoiceClientIdInput.value = row?.clientId || "");
+        billingInvoiceClientNameInput && (billingInvoiceClientNameInput.value = row?.clientName || "");
+        billingInvoiceCompanyTaxIdInput && (billingInvoiceCompanyTaxIdInput.value = row?.companyTaxId || "");
+        renderBillingOptionSelect(billingInvoiceVerticalInput, getBillingInvoiceVerticalOptions(), row?.verticalOptionValue);
+        renderBillingOptionSelect(billingInvoiceContractTypeInput, getBillingInvoiceContractTypeOptions(), row?.contractTypeOptionValue);
+        billingInvoiceEmissionDateInput && (billingInvoiceEmissionDateInput.value = row?.emissionDateValue || "");
+        billingInvoiceDueDateInput && (billingInvoiceDueDateInput.value = row?.dueDateValue || "");
+        billingInvoicePaymentDateInput && (billingInvoicePaymentDateInput.value = row?.paymentDateValue || "");
+        billingInvoiceTotalInput && (billingInvoiceTotalInput.value = formatEditableDecimalValue(row?.totalInvoice || 0));
+        billingInvoiceVatPercentInput && (billingInvoiceVatPercentInput.value = formatEditableDecimalValue(row?.vatPercent || 0));
+        billingInvoiceVatValueInput && (billingInvoiceVatValueInput.value = formatEditableDecimalValue(row?.vatValue || 0));
+        billingInvoicePaymentValueInput && (billingInvoicePaymentValueInput.value = formatEditableDecimalValue(row?.paymentValue || 0));
+        billingInvoiceReteIcaInput && (billingInvoiceReteIcaInput.value = formatEditableDecimalValue(row?.reteIcaValue || 0));
+        billingInvoiceRteIvaInput && (billingInvoiceRteIvaInput.value = formatEditableDecimalValue(row?.rteIvaValue || 0));
+        billingInvoiceRteFteInput && (billingInvoiceRteFteInput.value = formatEditableDecimalValue(row?.rteFteValue || 0));
+        billingInvoiceDifferenceInput && (billingInvoiceDifferenceInput.value = formatEditableDecimalValue(row?.differenceValue || 0));
+        billingInvoicePublicUrlInput && (billingInvoicePublicUrlInput.value = row?.publicUrl || "");
+    }
+
+    function openBillingInvoiceEditorModal(row) {
+        if (!billingInvoiceEditorModal || !row) {
+            return;
+        }
+
+        fillBillingInvoiceEditor(row);
+        setBillingInvoiceSaving(false);
+        setStatus(billingInvoiceEditorStatus, "", "");
+        document.body.classList.add("dashboard-modal-open");
+        billingInvoiceEditorModal.hidden = false;
+
+        if (billingInvoiceEditorTitle) {
+            billingInvoiceEditorTitle.textContent = row.invoiceNumber
+                ? `Factura ${row.invoiceNumber}`
+                : "Editar factura";
+        }
+
+        if (billingInvoiceEditorSubtitle) {
+            billingInvoiceEditorSubtitle.textContent = row.clientName
+                ? row.clientName
+                : "Actualiza los campos de la factura seleccionada.";
+        }
+
+        window.setTimeout(() => billingInvoiceNumberInput?.focus(), 30);
+    }
+
+    function parseBillingInvoiceDecimalInput(input, label, allowNegative = false) {
+        const rawValue = input?.value ?? "";
+        if (!rawValue.toString().trim()) {
+            return 0;
+        }
+
+        const numericValue = parseEditableDecimalValue(rawValue);
+        if (Number.isNaN(numericValue) || (!allowNegative && numericValue < 0)) {
+            throw new Error(`El valor de ${label} debe ser numerico${allowNegative ? "" : " y no puede ser negativo"}.`);
+        }
+
+        return numericValue;
+    }
+
+    function readBillingOptionValue(select) {
+        const rawValue = (select?.value || "").trim();
+        if (!rawValue) {
+            return null;
+        }
+
+        const numericValue = Number(rawValue);
+        return Number.isFinite(numericValue) ? numericValue : null;
+    }
+
+    function buildBillingInvoiceSavePayload() {
+        const invoiceNumber = (billingInvoiceNumberInput?.value || "").trim();
+        if (!invoiceNumber) {
+            throw new Error("El numero de factura es obligatorio.");
+        }
+
+        return {
+            recordId: billingInvoiceRecordIdInput?.value || "",
+            invoiceNumber,
+            clientId: billingInvoiceClientIdInput?.value || "",
+            clientName: (billingInvoiceClientNameInput?.value || "").trim(),
+            companyTaxId: (billingInvoiceCompanyTaxIdInput?.value || "").trim(),
+            verticalOptionValue: readBillingOptionValue(billingInvoiceVerticalInput),
+            contractTypeOptionValue: readBillingOptionValue(billingInvoiceContractTypeInput),
+            emissionDateValue: billingInvoiceEmissionDateInput?.value || "",
+            dueDateValue: billingInvoiceDueDateInput?.value || "",
+            paymentDateValue: billingInvoicePaymentDateInput?.value || "",
+            totalInvoice: parseBillingInvoiceDecimalInput(billingInvoiceTotalInput, "Total factura"),
+            vatPercent: parseBillingInvoiceDecimalInput(billingInvoiceVatPercentInput, "% IVA"),
+            vatValue: parseBillingInvoiceDecimalInput(billingInvoiceVatValueInput, "IVA valor"),
+            paymentValue: parseBillingInvoiceDecimalInput(billingInvoicePaymentValueInput, "Valor pago"),
+            reteIcaValue: parseBillingInvoiceDecimalInput(billingInvoiceReteIcaInput, "ReteICA"),
+            rteIvaValue: parseBillingInvoiceDecimalInput(billingInvoiceRteIvaInput, "RteIVA"),
+            rteFteValue: parseBillingInvoiceDecimalInput(billingInvoiceRteFteInput, "RteFte"),
+            differenceValue: parseBillingInvoiceDecimalInput(billingInvoiceDifferenceInput, "Diferencia", true),
+            publicUrl: (billingInvoicePublicUrlInput?.value || "").trim()
+        };
+    }
+
+    async function saveBillingInvoiceEditor() {
+        if (state.billingInvoicesSaving) {
+            return;
+        }
+
+        let payload;
+        try {
+            payload = buildBillingInvoiceSavePayload();
+        } catch (error) {
+            setStatus(billingInvoiceEditorStatus, "error", error instanceof Error ? error.message : "Revisa los datos de la factura.");
+            return;
+        }
+
+        const url = buildBillingInvoiceSaveUrl();
+        if (!url) {
+            setStatus(billingInvoiceEditorStatus, "error", "No hay una URL configurada para guardar facturas.");
+            return;
+        }
+
+        setBillingInvoiceSaving(true);
+        setStatus(billingInvoiceEditorStatus, "info", "Guardando factura en Dataverse...");
+
+        try {
+            const result = await fetchJson(url, {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            closeBillingInvoiceEditorModal();
+            await loadBillingInvoices({ silent: true });
+            setStatus(billingInvoicesStatus, "success", result?.message || "Factura actualizada correctamente.");
+        } catch (error) {
+            setStatus(billingInvoiceEditorStatus, "error", error instanceof Error ? error.message : "No fue posible actualizar la factura.");
+        } finally {
+            setBillingInvoiceSaving(false);
+        }
+    }
+
+    function openBillingContractTypeModal() {
+        const selectedIds = getSelectedBillingInvoiceIds();
+        if (!selectedIds.length || !billingContractTypeModal) {
+            setStatus(billingInvoicesStatus, "error", "Selecciona al menos una factura.");
+            return;
+        }
+
+        renderBillingOptionSelect(billingContractTypeBulkInput, getBillingInvoiceContractTypeOptions(), null, false);
+        if (billingContractTypeSelectedCount) {
+            billingContractTypeSelectedCount.textContent = numberFormatter.format(selectedIds.length);
+        }
+
+        setStatus(billingContractTypeStatus, "", "");
+        setBillingInvoicesContractSaving(false);
+        document.body.classList.add("dashboard-modal-open");
+        billingContractTypeModal.hidden = false;
+        window.setTimeout(() => billingContractTypeBulkInput?.focus(), 30);
+    }
+
+    async function saveBillingContractTypeChange() {
+        if (state.billingInvoicesContractSaving) {
+            return;
+        }
+
+        const selectedIds = getSelectedBillingInvoiceIds();
+        const contractTypeOptionValue = readBillingOptionValue(billingContractTypeBulkInput);
+        if (!selectedIds.length) {
+            setStatus(billingContractTypeStatus, "error", "Selecciona al menos una factura.");
+            return;
+        }
+
+        if (!contractTypeOptionValue) {
+            setStatus(billingContractTypeStatus, "error", "Selecciona el nuevo tipo de contrato.");
+            return;
+        }
+
+        setBillingInvoicesContractSaving(true);
+        setStatus(billingContractTypeStatus, "info", "Aplicando cambio masivo en Dataverse...");
+
+        try {
+            const result = await fetchJson(buildBillingInvoicesContractUrl(), {
+                method: "POST",
+                body: JSON.stringify({
+                    recordIds: selectedIds,
+                    contractTypeOptionValue
+                })
+            });
+            closeBillingContractTypeModal();
+            state.billingInvoiceSelectedIds.clear();
+            await loadBillingInvoices({ silent: true });
+            setStatus(billingInvoicesStatus, "success", result?.message || "Tipo de contrato actualizado.");
+        } catch (error) {
+            setStatus(billingContractTypeStatus, "error", error instanceof Error ? error.message : "No fue posible cambiar el tipo de contrato.");
+        } finally {
+            setBillingInvoicesContractSaving(false);
+        }
+    }
+
+    async function deleteSelectedBillingInvoices() {
+        if (state.billingInvoicesDeleting) {
+            return;
+        }
+
+        const selectedIds = getSelectedBillingInvoiceIds();
+        if (!selectedIds.length) {
+            setStatus(billingInvoicesStatus, "error", "Selecciona al menos una factura para eliminar.");
+            return;
+        }
+
+        const confirmed = window.confirm(`Vas a eliminar ${selectedIds.length} factura(s) de Dataverse. Esta accion no se puede deshacer.`);
+        if (!confirmed) {
+            return;
+        }
+
+        setBillingInvoicesDeleting(true);
+        setStatus(billingInvoicesStatus, "info", "Eliminando facturas seleccionadas...");
+
+        try {
+            const result = await fetchJson(buildBillingInvoicesDeleteUrl(), {
+                method: "POST",
+                body: JSON.stringify({ recordIds: selectedIds })
+            });
+            state.billingInvoiceSelectedIds.clear();
+            await loadBillingInvoices({ silent: true });
+            setStatus(billingInvoicesStatus, "success", result?.message || "Facturas eliminadas correctamente.");
+        } catch (error) {
+            setStatus(billingInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible eliminar las facturas.");
+        } finally {
+            setBillingInvoicesDeleting(false);
+        }
     }
 
     function renderPortfolioTable() {
@@ -4653,6 +5407,14 @@
             closePnlDetailModal();
         }
 
+        if (tabKey !== "billing" && isBillingInvoiceEditorOpen()) {
+            closeBillingInvoiceEditorModal();
+        }
+
+        if (tabKey !== "billing" && isBillingContractTypeModalOpen()) {
+            closeBillingContractTypeModal();
+        }
+
         if (tabKey !== "copiers" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
         }
@@ -4727,6 +5489,63 @@
         }
 
         loadBilling();
+    }
+
+    async function loadBillingInvoices(options = {}) {
+        const url = buildBillingInvoicesUrl();
+        if (!url || !billingInvoicesBody) {
+            return false;
+        }
+
+        setBillingInvoicesLoading(true);
+        if (!options.silent) {
+            setStatus(billingInvoicesStatus, "info", "Consultando facturas en Dataverse...");
+        }
+
+        try {
+            const detail = await fetchJson(url);
+            const rows = Array.isArray(detail?.invoices) ? detail.invoices : [];
+            state.billingInvoicesDetail = detail || null;
+            state.billingInvoiceDuplicateNumbers = getBillingInvoiceDuplicateNumbers(rows);
+            pruneBillingInvoiceSelections();
+            renderBillingInvoicesTable();
+            setStatus(
+                billingInvoicesStatus,
+                detail?.hasData ? "" : "info",
+                detail?.hasData ? "" : (detail?.emptyStateMessage || "No encontramos facturas registradas."));
+            return true;
+        } catch (error) {
+            state.billingInvoicesDetail = null;
+            state.billingInvoiceDuplicateNumbers = new Set();
+            state.billingInvoiceSelectedIds.clear();
+            if (billingInvoicesBody) {
+                billingInvoicesBody.innerHTML = '<tr><td colspan="24" class="dashboard-table__empty">No pudimos consultar la tabla de facturacion.</td></tr>';
+            }
+            syncBillingInvoicesSelectionSummary();
+            setStatus(billingInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible cargar la tabla de facturacion.");
+            return false;
+        } finally {
+            setBillingInvoicesLoading(false);
+        }
+    }
+
+    async function findDuplicateBillingInvoices() {
+        const loaded = await loadBillingInvoices({ silent: true });
+        if (!loaded) {
+            return;
+        }
+
+        const duplicateCount = Array.isArray(state.billingInvoicesDetail?.invoices)
+            ? state.billingInvoicesDetail.invoices.filter(isBillingInvoiceDuplicate).length
+            : 0;
+        state.billingInvoicesGrid.duplicatesOnly = true;
+        renderBillingInvoicesTable();
+        setStatus(
+            billingInvoicesStatus,
+            duplicateCount ? "success" : "info",
+            duplicateCount
+                ? `Encontramos ${numberFormatter.format(duplicateCount)} factura(s) con numero duplicado.`
+                : "No encontramos numeros de factura duplicados.");
     }
 
     async function loadBillingReportInvoices() {
@@ -4900,6 +5719,9 @@
             updateBillingContext(dashboard);
             renderComparativeKpis(billingKpisContainer, dashboard?.kpis, dashboard?.compareYear);
             renderTrends(dashboard);
+            if (!state.billingInvoicesDetail) {
+                loadBillingInvoices().catch(() => {});
+            }
             setStatus(billingStatusBanner, "", "");
         } catch (error) {
             setStatus(billingStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard.");
@@ -5173,6 +5995,98 @@
     });
 
     refreshButton?.addEventListener("click", loadActivePeriodTab);
+    billingReportToggleButton?.addEventListener("click", () => {
+        toggleBillingSection(billingReportSection, billingReportToggleButton, "Ocultar reportes", "Mostrar reportes");
+    });
+    siigoToggleButton?.addEventListener("click", () => {
+        toggleBillingSection(siigoApiSection, siigoToggleButton, "Ocultar Siigo API", "Mostrar Siigo API");
+    });
+    billingInvoicesRefreshButton?.addEventListener("click", () => {
+        state.billingInvoicesGrid.duplicatesOnly = false;
+        loadBillingInvoices();
+    });
+    billingInvoicesDuplicatesButton?.addEventListener("click", () => {
+        findDuplicateBillingInvoices().catch(() => {});
+    });
+    billingInvoicesClearFiltersButton?.addEventListener("click", () => resetPortfolioGrid("billingInvoices"));
+    billingInvoicesContractButton?.addEventListener("click", openBillingContractTypeModal);
+    billingInvoicesDeleteButton?.addEventListener("click", () => {
+        deleteSelectedBillingInvoices().catch(() => {});
+    });
+    billingInvoicesSearch?.addEventListener("input", () => {
+        state.billingInvoicesSearchTerm = billingInvoicesSearch.value || "";
+        renderBillingInvoicesTable();
+    });
+    billingInvoicesHead?.addEventListener("change", event => {
+        const checkbox = event.target.closest("[data-billing-invoices-select-all]");
+        if (!checkbox) {
+            return;
+        }
+
+        const checked = Boolean(checkbox.checked);
+        getFilteredBillingInvoiceRows().forEach(row => {
+            const recordId = row?.recordId || "";
+            if (!recordId) {
+                return;
+            }
+
+            if (checked) {
+                state.billingInvoiceSelectedIds.add(recordId);
+            } else {
+                state.billingInvoiceSelectedIds.delete(recordId);
+            }
+        });
+
+        renderBillingInvoicesTable();
+    });
+    billingInvoicesBody?.addEventListener("change", event => {
+        const checkbox = event.target.closest("[data-billing-invoice-select]");
+        if (!checkbox) {
+            return;
+        }
+
+        const recordId = checkbox.dataset.recordId || "";
+        if (!recordId) {
+            return;
+        }
+
+        if (checkbox.checked) {
+            state.billingInvoiceSelectedIds.add(recordId);
+        } else {
+            state.billingInvoiceSelectedIds.delete(recordId);
+        }
+
+        syncBillingInvoicesSelectionSummary();
+    });
+    billingInvoicesBody?.addEventListener("click", event => {
+        if (event.target.closest("[data-billing-invoice-select], [data-billing-invoice-ignore-click], a, button, input, select, textarea")) {
+            return;
+        }
+
+        const row = event.target.closest("[data-billing-invoice-id]");
+        const invoice = getBillingInvoiceById(row?.dataset.billingInvoiceId || "");
+        if (invoice) {
+            openBillingInvoiceEditorModal(invoice);
+        }
+    });
+    billingInvoiceEditorForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        saveBillingInvoiceEditor();
+    });
+    billingInvoiceEditorCloseButton?.addEventListener("click", closeBillingInvoiceEditorModal);
+    billingInvoiceEditorCancelButton?.addEventListener("click", closeBillingInvoiceEditorModal);
+    billingInvoiceEditorModal?.querySelectorAll("[data-billing-invoice-editor-close]").forEach(element => {
+        element.addEventListener("click", closeBillingInvoiceEditorModal);
+    });
+    billingContractTypeForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        saveBillingContractTypeChange();
+    });
+    billingContractTypeCloseButton?.addEventListener("click", closeBillingContractTypeModal);
+    billingContractTypeCancelButton?.addEventListener("click", closeBillingContractTypeModal);
+    billingContractTypeModal?.querySelectorAll("[data-billing-contract-close]").forEach(element => {
+        element.addEventListener("click", closeBillingContractTypeModal);
+    });
     billingReportLoadButton?.addEventListener("click", loadBillingReportInvoices);
     billingReportExportButton?.addEventListener("click", exportBillingReport);
     billingReportClientSearch?.addEventListener("keydown", event => {
@@ -5491,6 +6405,16 @@
         savePnlDetailRecord(saveButton);
     });
     document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && isBillingContractTypeModalOpen()) {
+            closeBillingContractTypeModal();
+            return;
+        }
+
+        if (event.key === "Escape" && isBillingInvoiceEditorOpen()) {
+            closeBillingInvoiceEditorModal();
+            return;
+        }
+
         if (event.key === "Escape" && isCopiersClientInvoicesOpen()) {
             closeCopiersClientInvoicesModal();
             return;
@@ -5532,6 +6456,7 @@
     buildPnlYearOptions();
     periodFilter && (periodFilter.value = state.period);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
+    wireCopiersLookupInput(billingInvoiceClientNameInput, billingInvoiceClientIdInput, billingInvoiceClientOptions, "billingInvoiceClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(billingReportClientSearch, billingReportClientIdInput, billingReportClientOptions, "billingReportClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersClientNameInput, copiersClientIdInput, copiersClientOptions, "copiersClientSuggestions", "name", buildCopiersClientSearchUrl);
     wireCopiersLookupInput(copiersProductNameInput, copiersProductIdInput, copiersProductOptions, "copiersProductSuggestions", "description", buildCopiersProductSearchUrl);
@@ -5544,8 +6469,11 @@
     buildCopiersCountersPeriodOptions();
     renderCopiersCountersPending();
     renderCopiersMaintenanceTable();
+    setBillingSectionExpanded(billingReportSection, billingReportToggleButton, false, "Ocultar reportes", "Mostrar reportes");
+    setBillingSectionExpanded(siigoApiSection, siigoToggleButton, false, "Ocultar Siigo API", "Mostrar Siigo API");
     resetBillingReportReference();
     syncBillingReportSelectionSummary();
+    syncBillingInvoicesSelectionSummary();
     syncPeriodScopeVisibility();
     syncCopiersSubtabVisibility();
     loadBilling();
