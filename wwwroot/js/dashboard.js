@@ -4827,6 +4827,18 @@
         renderGridByKey(tableKey);
     }
 
+    function showBillingDuplicateRows() {
+        state.billingInvoicesSearchTerm = "";
+        state.billingInvoicesGrid.filters = {};
+        state.billingInvoicesGrid.sortKey = "invoiceNumber";
+        state.billingInvoicesGrid.sortDirection = "asc";
+        state.billingInvoicesGrid.duplicatesOnly = true;
+        state.billingInvoiceSelectedIds.clear();
+        billingInvoicesSearch && (billingInvoicesSearch.value = "");
+        closePortfolioColumnMenu();
+        renderBillingInvoicesTable();
+    }
+
     function renderBillingInvoicesTable() {
         renderPortfolioGrid("billingInvoices");
         syncBillingInvoicesSelectionSummary();
@@ -5491,13 +5503,13 @@
         const duplicateCount = Array.isArray(state.billingInvoicesDetail?.invoices)
             ? state.billingInvoicesDetail.invoices.filter(isBillingInvoiceDuplicate).length
             : 0;
-        state.billingInvoicesGrid.duplicatesOnly = true;
-        renderBillingInvoicesTable();
+        const duplicateNumberCount = state.billingInvoiceDuplicateNumbers.size;
+        showBillingDuplicateRows();
         setStatus(
             billingInvoicesStatus,
             duplicateCount ? "success" : "info",
             duplicateCount
-                ? `Encontramos ${numberFormatter.format(duplicateCount)} factura(s) con numero duplicado.`
+                ? `Encontramos ${numberFormatter.format(duplicateCount)} registros en ${numberFormatter.format(duplicateNumberCount)} numero(s) de factura duplicados. Selecciona manualmente los que quieras eliminar.`
                 : "No encontramos numeros de factura duplicados.");
     }
 
