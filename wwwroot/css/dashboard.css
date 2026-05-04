@@ -1036,29 +1036,40 @@
 
 .dashboard-billing-invoices-table thead th:nth-child(2),
 .dashboard-billing-invoices-table tbody td:nth-child(2) {
-    width: 13%;
+    width: 11%;
 }
 
 .dashboard-billing-invoices-table thead th:nth-child(3),
 .dashboard-billing-invoices-table tbody td:nth-child(3) {
-    width: 30%;
+    width: 25%;
 }
 
 .dashboard-billing-invoices-table thead th:nth-child(4),
 .dashboard-billing-invoices-table tbody td:nth-child(4),
 .dashboard-billing-invoices-table thead th:nth-child(5),
 .dashboard-billing-invoices-table tbody td:nth-child(5) {
-    width: 14%;
+    width: 11%;
 }
 
 .dashboard-billing-invoices-table thead th:nth-child(6),
 .dashboard-billing-invoices-table tbody td:nth-child(6) {
-    width: 15%;
+    width: 12%;
 }
 
 .dashboard-billing-invoices-table thead th:nth-child(7),
 .dashboard-billing-invoices-table tbody td:nth-child(7) {
-    width: 10%;
+    width: 12%;
+}
+
+.dashboard-billing-invoices-table thead th:nth-child(8),
+.dashboard-billing-invoices-table tbody td:nth-child(8) {
+    width: 9%;
+}
+
+.dashboard-billing-invoices-table thead th:nth-child(9),
+.dashboard-billing-invoices-table tbody td:nth-child(9) {
+    width: 52px;
+    text-align: center;
 }
 
 .dashboard-copiers-counters-equipment-table {
@@ -1314,6 +1325,45 @@
 .dashboard-billing-chip--contract-onetime {
     background: #fff4d8;
     color: #8a5a00;
+}
+
+.dashboard-icon-link {
+    display: inline-flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(15, 108, 189, .22);
+    border-radius: 999px;
+    background: #edf6ff;
+    color: var(--dashboard-brand);
+    text-decoration: none;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.dashboard-icon-link svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+}
+
+.dashboard-icon-link:hover,
+.dashboard-icon-link:focus-visible {
+    border-color: var(--dashboard-brand);
+    background: var(--dashboard-brand);
+    color: #ffffff;
+    outline: none;
+}
+
+.dashboard-icon-link.is-disabled {
+    border-color: rgba(148, 163, 184, .22);
+    background: #f1f5f9;
+    color: #94a3b8;
+    cursor: not-allowed;
 }
 
 .dashboard-billing-invoice-row {

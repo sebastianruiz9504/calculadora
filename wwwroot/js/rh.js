@@ -169,7 +169,15 @@
             }
 
             const isCreate = !state.currentId;
-            const values = collectValues();
+            const values = collectValues(isCreate);
+            if (!isCreate && Object.keys(values).length === 0) {
+                showResultDialog(
+                    "warning",
+                    "Sin cambios",
+                    "No hay cambios pendientes para guardar.");
+                return;
+            }
+
             setBusy(true);
 
             const response = await fetch(saveUrl, {
@@ -436,7 +444,7 @@
         `;
     }
 
-    function collectValues() {
+    function collectValues(includeUnchanged) {
         const values = {};
         formBody.querySelectorAll("[data-rh-input]").forEach((element) => {
             if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLSelectElement) && !(element instanceof HTMLTextAreaElement)) {
@@ -448,10 +456,33 @@
                 return;
             }
 
-            values[fieldName] = element.value || "";
+            const value = element.value || "";
+            if (includeUnchanged || isFieldChanged(fieldName, value)) {
+                values[fieldName] = value;
+            }
         });
 
         return values;
+    }
+
+    function isFieldChanged(fieldName, value) {
+        const record = getCurrentRecord();
+        if (!record) {
+            return true;
+        }
+
+        const field = getFields().find((item) => item.logicalName === fieldName) || { logicalName: fieldName, editorType: "" };
+        const originalValue = getFieldValue(record, field);
+        return normalizeFieldComparisonValue(value, field) !== normalizeFieldComparisonValue(originalValue, field);
+    }
+
+    function normalizeFieldComparisonValue(value, field) {
+        const text = String(value ?? "").trim();
+        if (field.editorType === "date") {
+            return text.slice(0, 10);
+        }
+
+        return text;
     }
 
     function validateLookupInputs() {

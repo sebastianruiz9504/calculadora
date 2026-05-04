@@ -45,15 +45,23 @@ public sealed partial class DataverseService
 
         var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
         var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
+        var existingRecord = isCreate
+            ? null
+            : await GetRhRecordByIdAsync(table, metadata, normalizedRecordId, httpContext.User, ct);
         var employeeNameById = await LoadRhEmployeeNameMapAsync(httpContext.User, ct);
         var payload = await BuildRhPayloadAsync(
             table,
             metadata,
             request.Values,
+            existingRecord,
             employeeNameById,
             httpContext.User,
             clearEmptyLookups: !isCreate,
+            includeMissingFields: isCreate,
             ct: ct);
+        if (!isCreate && payload.Count == 0)
+            throw new InvalidOperationException("No hay cambios para guardar en este registro de RH.");
+
         var relativeUrl = isCreate
             ? $"/api/data/v9.2/{metadata.EntitySetName}"
             : $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})";
@@ -75,7 +83,9 @@ public sealed partial class DataverseService
             ? ExtractRhRecordId(response, body, metadata.PrimaryIdField)
             : normalizedRecordId;
 
-        var record = await ResolveRhSavedRecordAsync(table, metadata, response, body, recordId, ct);
+        var record = isCreate
+            ? await ResolveRhSavedRecordAsync(table, metadata, response, body, recordId, ct)
+            : await GetRhRecordByIdAsync(table, metadata, recordId, httpContext.User, ct);
         return new RhSaveResultDto
         {
             Message = isCreate ? "Registro creado correctamente." : "Registro actualizado correctamente.",
@@ -282,9 +292,11 @@ public sealed partial class DataverseService
         RhTableDefinition table,
         RhEntityMetadata metadata,
         IReadOnlyDictionary<string, string?>? values,
+        RhRecordDto? existingRecord,
         IReadOnlyDictionary<string, string> employeeNameById,
         ClaimsPrincipal user,
         bool clearEmptyLookups,
+        bool includeMissingFields,
         CancellationToken ct)
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -298,8 +310,15 @@ public sealed partial class DataverseService
                 continue;
             }
 
+            var hasInputValue = sourceValues.ContainsKey(field.LogicalName);
+            if (!hasInputValue && !includeMissingFields)
+                continue;
+
             sourceValues.TryGetValue(field.LogicalName, out var rawValue);
             rawValue = rawValue?.Trim();
+
+            if (!includeMissingFields && IsRhFieldValueUnchanged(field, rawValue, existingRecord))
+                continue;
 
             if (field.Required && string.IsNullOrWhiteSpace(rawValue))
                 throw new InvalidOperationException($"El campo {field.Label} es obligatorio.");
@@ -340,10 +359,50 @@ public sealed partial class DataverseService
             payload[field.LogicalName] = ConvertRhFieldValue(field, rawValue);
         }
 
-        if (!string.IsNullOrWhiteSpace(metadata.PrimaryNameField))
+        if (includeMissingFields && !string.IsNullOrWhiteSpace(metadata.PrimaryNameField))
             payload[metadata.PrimaryNameField] = BuildRhPrimaryName(table, metadata.PrimaryNameField, sourceValues, employeeNameById);
 
         return payload;
+    }
+
+    private static bool IsRhFieldValueUnchanged(RhFieldDefinition field, string? rawValue, RhRecordDto? existingRecord)
+    {
+        if (existingRecord?.Cells is null
+            || !existingRecord.Cells.TryGetValue(field.LogicalName, out var cell))
+        {
+            return false;
+        }
+
+        var currentValue = string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase)
+            ? FirstNonEmpty(cell.LookupId, cell.Value)
+            : cell.Value;
+
+        return string.Equals(
+            NormalizeRhFieldComparisonValue(field, rawValue),
+            NormalizeRhFieldComparisonValue(field, currentValue),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeRhFieldComparisonValue(RhFieldDefinition field, string? value)
+    {
+        var trimmed = value?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return "";
+
+        if (string.Equals(field.EditorType, "date", StringComparison.OrdinalIgnoreCase)
+            && TryParseDateOnly(trimmed, out var parsedDate))
+        {
+            return parsedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if ((string.Equals(field.EditorType, "number", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(field.EditorType, "currency", StringComparison.OrdinalIgnoreCase))
+            && decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var number))
+        {
+            return number.ToString("0.########", CultureInfo.InvariantCulture);
+        }
+
+        return trimmed;
     }
 
     private static object? ConvertRhFieldValue(RhFieldDefinition field, string? rawValue)

@@ -191,20 +191,20 @@ public static class AppModuleCatalog
     public static readonly AppModuleDefinition Hardware = new()
     {
         Key = AppModule.Hardware,
-        Label = "Hardware",
+        Label = "Ventas Hardware",
         Category = "Area comercial",
         Description = "Administra el ciclo comercial y documental de las lineas de hardware.",
-        OptionValue = 645250014,
+        OptionValue = 645250015,
         Controller = "Hardware"
     };
 
     public static readonly AppModuleDefinition SoporteCloud = new()
     {
         Key = AppModule.SoporteCloud,
-        Label = "Cloud",
+        Label = "Soporte Cloud",
         Category = "Soporte",
         Description = "Gestiona tickets de soporte cloud, su clasificacion, cliente, horas y adjuntos.",
-        OptionValue = 645250008,
+        OptionValue = 645250014,
         Controller = "SoporteCloud"
     };
 
@@ -241,28 +241,28 @@ public static class AppModuleCatalog
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
-        Hardware,
         Renovaciones,
         Puntajes,
         Nomina,
-        Metricas,
-        Licenciamiento,
         Rh,
         PortalProveedores,
-        CuentasCobro,
-        Inventario,
         GestionHumana,
+        Permissions,
+        Dashboard,
+        Metricas,
+        CuentasCobro,
         Copiers,
+        Inventario,
+        Licenciamiento,
+        SoporteCloud,
+        Hardware,
+        PlanRio,
         Envios,
         Transportador,
-        Dashboard,
-        PlanRio,
-        Permissions
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
         PermissionModules
-            .Concat(new[] { SoporteCloud })
             .Where(static module => module.IsNavigable)
             .ToList();
 

@@ -4122,6 +4122,35 @@
         return `<span class="dashboard-billing-chip ${toneClass}">${escapeHtml(label)}</span>`;
     }
 
+    function renderBillingInvoiceDownloadLink(row) {
+        const url = (row?.publicUrl || "").trim();
+        const invoiceNumber = (row?.invoiceNumber || "").trim();
+        const label = invoiceNumber
+            ? `Abrir factura ${invoiceNumber}`
+            : "Abrir factura";
+        const icon = `
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+            </svg>
+        `;
+
+        if (!url) {
+            return `<span class="dashboard-icon-link is-disabled" title="Sin link de factura">${icon}</span>`;
+        }
+
+        return `
+            <a href="${escapeHtml(url)}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="dashboard-icon-link"
+               title="${escapeHtml(label)}"
+               aria-label="${escapeHtml(label)}"
+               data-billing-invoice-ignore-click>
+                ${icon}
+            </a>
+        `;
+    }
+
     function normalizeInvoiceNumber(value) {
         return normalizeText(value).replace(/[^a-z0-9]/g, "");
     }
@@ -4177,9 +4206,24 @@
             sortValue: row => row.emissionDateValue || ""
         },
         {
+            key: "paymentValue",
+            label: "Total pago",
+            type: "number",
+            align: "end",
+            displayValue: row => currencyFormatter.format(Number(row.paymentValue || 0)),
+            render: row => renderPortfolioCurrency(row.paymentValue)
+        },
+        {
             key: "paymentStatusLabel",
             label: "Estado",
             render: renderPortfolioStatusBadge
+        },
+        {
+            key: "publicUrl",
+            label: "Link",
+            displayValue: row => row.publicUrl ? "Con link" : "Sin link",
+            sortValue: row => row.publicUrl || "",
+            render: renderBillingInvoiceDownloadLink
         }
     ];
 
@@ -5428,7 +5472,7 @@
             state.billingInvoiceDuplicateNumbers = new Set();
             state.billingInvoiceSelectedIds.clear();
             if (billingInvoicesBody) {
-                billingInvoicesBody.innerHTML = '<tr><td colspan="7" class="dashboard-table__empty">No pudimos consultar la tabla de facturacion.</td></tr>';
+                billingInvoicesBody.innerHTML = '<tr><td colspan="9" class="dashboard-table__empty">No pudimos consultar la tabla de facturacion.</td></tr>';
             }
             syncBillingInvoicesSelectionSummary();
             setStatus(billingInvoicesStatus, "error", error instanceof Error ? error.message : "No fue posible cargar la tabla de facturacion.");
