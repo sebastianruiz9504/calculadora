@@ -64,7 +64,8 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresIdField = "cr07a_contractrecord1id";
     private const string DefaultScoresContractStartDateField = "cr07a_contractstartdate";
     private const string DefaultScoresScoreField = "cr07a_score";
-    private const string DefaultScoresDescriptionField = "cr07a_description";
+    private const string DefaultScoresDescriptionField = "cr07a_aprovisionamientodetallelargo";
+    private const string DefaultScoresLegacyDescriptionField = "cr07a_description";
     private const string DefaultScoresCommissionField = "cr07a_commission";
     private const string DefaultScoresClientField = "cr07a_cliente";
     private const string DefaultScoresSalesPersonField = "cr07a_vendedor";
@@ -195,6 +196,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresContractStartDateField;
     private readonly string _scoresScoreField;
     private readonly string _scoresDescriptionField;
+    private readonly string _scoresLegacyDescriptionField;
     private readonly string _scoresCommissionField;
     private readonly string _scoresClientField;
     private readonly string _scoresSalesPersonField;
@@ -359,6 +361,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresScoreField;
         _scoresDescriptionField = configuration["Scores:DescriptionField"]
             ?? DefaultScoresDescriptionField;
+        _scoresLegacyDescriptionField = configuration["Scores:LegacyDescriptionField"]
+            ?? DefaultScoresLegacyDescriptionField;
         _scoresCommissionField = configuration["Scores:CommissionField"]
             ?? DefaultScoresCommissionField;
         _scoresClientField = configuration["Scores:ClientField"]

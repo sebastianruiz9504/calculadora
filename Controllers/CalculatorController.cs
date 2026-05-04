@@ -30,6 +30,9 @@ public sealed class CalculatorController : Controller
     private readonly ILogger<CalculatorController> _logger;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private const int ProvisioningDescriptionMaxLength = 4000;
+    private const int ProvisioningLongDescriptionMaxLength = 1048576;
+    private const string ProvisioningDescriptionField = "cr07a_aprovisionamientodetallelargo";
+    private const string ProvisioningLegacyDescriptionField = "cr07a_description";
     private const int ProvisioningContractKindNewBusinessValue = 645250000;
     private const int ProvisioningContractKindRenewalValue = 645250001;
     private static readonly JsonSerializerOptions ProvisioningDescriptionJsonOptions = new()
@@ -570,7 +573,8 @@ public sealed class CalculatorController : Controller
             Inicio = normalizedScenarioStartDate,
             Final = normalizedScenarioEndDate
         }).ToList();
-        var descriptionText = BuildProvisioningDescription(cliente, aprovisionamiento, scenario, resultado, lineItems, dealTypeLabel);
+        var descriptionText = BuildFullProvisioningDescription(cliente, aprovisionamiento, scenario, resultado, lineItems, dealTypeLabel);
+        var legacyDescriptionText = BuildLimitedProvisioningDescription(cliente, aprovisionamiento, scenario, resultado, lineItems, dealTypeLabel);
 
         return new
         {
@@ -622,6 +626,14 @@ public sealed class CalculatorController : Controller
                 ventaTotalAnual = RoundWholeNumber(resultado.VentaTotalAnual)
             },
             descriptionText,
+            legacyDescriptionText,
+            descriptionTextLength = descriptionText.Length,
+            legacyDescriptionTextLength = legacyDescriptionText.Length,
+            dataverseFields = new
+            {
+                description = ProvisioningDescriptionField,
+                legacyDescription = ProvisioningLegacyDescriptionField
+            },
             lineItems = lineItems.Select(item => new
             {
                 lineId = item.LineId,
@@ -651,7 +663,7 @@ public sealed class CalculatorController : Controller
         };
     }
 
-    private static string BuildProvisioningDescription(
+    private static string BuildFullProvisioningDescription(
         ProvisioningClient? cliente,
         ProvisioningAprovisionamiento? aprovisionamiento,
         ProvisioningScenarioContext? scenario,
@@ -659,26 +671,21 @@ public sealed class CalculatorController : Controller
         IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
         string dealTypeLabel)
     {
-        var builder = new StringBuilder();
-        var normalizedProvisioningDate = NormalizeDateLikeValue(aprovisionamiento?.Fecha, preferIsoWhenPossible: true);
-        var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
-        var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
-        var requiresProration = scenario?.RequiresProration == true;
+        var description = BuildProvisioningDescriptionText(
+            BuildProvisioningDescriptionHeader(cliente, aprovisionamiento, scenario, resultado, dealTypeLabel),
+            SerializeDetailedProvisioningLines(lineItems));
+        return TruncateTextForDescription(description, ProvisioningLongDescriptionMaxLength);
+    }
 
-        builder.AppendLine($"Cliente: {cliente?.Nombre?.Trim() ?? ""}");
-        builder.AppendLine($"Fecha aprovisionamiento: {normalizedProvisioningDate}");
-        builder.AppendLine($"Tipo negocio: {dealTypeLabel}");
-        builder.AppendLine($"Requiere prorrateo: {(requiresProration ? "Si" : "No")}");
-        if (!string.IsNullOrWhiteSpace(normalizedScenarioStartDate))
-            builder.AppendLine($"Inicio: {normalizedScenarioStartDate}");
-        if (!string.IsNullOrWhiteSpace(normalizedScenarioEndDate))
-            builder.AppendLine($"Final: {normalizedScenarioEndDate}");
-        builder.AppendLine($"Puntaje: {FormatDecimalText(resultado?.Puntaje ?? 0m)}");
-        builder.AppendLine($"Comisión: {FormatDecimalText(resultado?.Comision ?? 0m)}");
-        builder.AppendLine($"Prorrateo: {(resultado?.ProrrateoTexto?.Trim() ?? (requiresProration ? "Si" : "No"))}");
-        builder.AppendLine($"Venta mensual total: {FormatDecimalText(resultado?.VentaMensualTotal ?? 0m)}");
-        builder.AppendLine($"Venta total anual: {FormatDecimalText(resultado?.VentaTotalAnual ?? resultado?.VentaTotal ?? 0m)}");
-        var headerText = builder.ToString();
+    private static string BuildLimitedProvisioningDescription(
+        ProvisioningClient? cliente,
+        ProvisioningAprovisionamiento? aprovisionamiento,
+        ProvisioningScenarioContext? scenario,
+        ProvisioningResultado? resultado,
+        IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
+        string dealTypeLabel)
+    {
+        var headerText = BuildProvisioningDescriptionHeader(cliente, aprovisionamiento, scenario, resultado, dealTypeLabel);
         var detailedDescription = BuildProvisioningDescriptionText(
             headerText,
             SerializeDetailedProvisioningLines(lineItems));
@@ -707,6 +714,35 @@ public sealed class CalculatorController : Controller
             return compactDescription;
 
         return BuildProvisioningDescriptionWithLineBudget(headerText, lineItems);
+    }
+
+    private static string BuildProvisioningDescriptionHeader(
+        ProvisioningClient? cliente,
+        ProvisioningAprovisionamiento? aprovisionamiento,
+        ProvisioningScenarioContext? scenario,
+        ProvisioningResultado? resultado,
+        string dealTypeLabel)
+    {
+        var builder = new StringBuilder();
+        var normalizedProvisioningDate = NormalizeDateLikeValue(aprovisionamiento?.Fecha, preferIsoWhenPossible: true);
+        var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
+        var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
+        var requiresProration = scenario?.RequiresProration == true;
+
+        builder.AppendLine($"Cliente: {cliente?.Nombre?.Trim() ?? ""}");
+        builder.AppendLine($"Fecha aprovisionamiento: {normalizedProvisioningDate}");
+        builder.AppendLine($"Tipo negocio: {dealTypeLabel}");
+        builder.AppendLine($"Requiere prorrateo: {(requiresProration ? "Si" : "No")}");
+        if (!string.IsNullOrWhiteSpace(normalizedScenarioStartDate))
+            builder.AppendLine($"Inicio: {normalizedScenarioStartDate}");
+        if (!string.IsNullOrWhiteSpace(normalizedScenarioEndDate))
+            builder.AppendLine($"Final: {normalizedScenarioEndDate}");
+        builder.AppendLine($"Puntaje: {FormatDecimalText(resultado?.Puntaje ?? 0m)}");
+        builder.AppendLine($"Comisión: {FormatDecimalText(resultado?.Comision ?? 0m)}");
+        builder.AppendLine($"Prorrateo: {(resultado?.ProrrateoTexto?.Trim() ?? (requiresProration ? "Si" : "No"))}");
+        builder.AppendLine($"Venta mensual total: {FormatDecimalText(resultado?.VentaMensualTotal ?? 0m)}");
+        builder.AppendLine($"Venta total anual: {FormatDecimalText(resultado?.VentaTotalAnual ?? resultado?.VentaTotal ?? 0m)}");
+        return builder.ToString();
     }
 
     private static string BuildProvisioningDescriptionText(string headerText, string linesJson, string? extraMetadataLine = null)

@@ -1148,7 +1148,9 @@ public sealed partial class DataverseService
         if (!contractStartDate.HasValue)
             return null;
 
-        var rawDescription = ReadString(item, _scoresDescriptionField);
+        var rawDescription = FirstNonEmpty(
+            ReadString(item, _scoresDescriptionField),
+            ReadString(item, _scoresLegacyDescriptionField));
         var parsedDescription = ParseScoreDescription(rawDescription);
         var rawAdditional = ReadString(item, _scoresAdditionalField);
         var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(rawAdditional) ?? new ScoreAdditionalDataSnapshot();
