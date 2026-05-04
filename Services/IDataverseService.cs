@@ -35,6 +35,7 @@ public interface IDataverseService
     Task<ScoreVerificationComputedResultDto> RecalculateScoreRecordAsync(ScoreVerificationRequest request, CancellationToken ct = default);
     Task<ScoreVerificationSaveResultDto> VerifyScoreRecordAsync(ScoreVerificationRequest request, CancellationToken ct = default);
     Task<ScoreRecordDeleteResultDto> DeleteScoreRecordAsync(string recordId, CancellationToken ct = default);
+    Task<ScoreMoveToRenewalResultDto> MoveScoreBusinessToRenewalAsync(ScoreMoveToRenewalRequest request, CancellationToken ct = default);
     Task<ScoreMonthClosePreviewResultDto> PreviewScoreMonthCloseAsync(ScorePeriodFilter filter, CancellationToken ct = default);
     Task<ScoreMonthCloseResultDto> CloseScoreMonthAsync(ScoreMonthCloseRequest request, CancellationToken ct = default);
     Task<ScoreMonthUndoResultDto> UndoScoreMonthCloseAsync(ScorePeriodFilter filter, CancellationToken ct = default);

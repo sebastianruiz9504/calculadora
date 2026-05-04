@@ -58,6 +58,7 @@ public sealed class PuntajesPageViewModel
     public IReadOnlyList<ScoreOptionItem> AutoBillOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> ProductLineOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> ContractTypeOptions { get; set; } = Array.Empty<ScoreOptionItem>();
+    public IReadOnlyList<ScoreOptionItem> ContractKindOptions { get; set; } = Array.Empty<ScoreOptionItem>();
 }
 
 public sealed class ScoreBoardDto
@@ -86,6 +87,8 @@ public sealed class ScoreClientGroupDto
 {
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
     public string SalesPerson { get; set; } = "";
     public bool AllVerified { get; set; }
     public int RecordCount { get; set; }
@@ -103,6 +106,8 @@ public sealed class ScoreRecordDto
     public string RecordId { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
     public string ContractStartDateValue { get; set; } = "";
     public string ContractStartDateDisplay { get; set; } = "";
     public decimal Score { get; set; }
@@ -137,6 +142,8 @@ public sealed class ScoreRecordDto
     public int AutoBillOptionValue { get; set; }
     public int ProductLineOptionValue { get; set; }
     public int ContractTypeOptionValue { get; set; }
+    public int ContractKindOptionValue { get; set; }
+    public string ContractKindLabel { get; set; } = "";
     public int DealTypeValue { get; set; }
     public bool RequiresProration { get; set; }
     public string ScenarioStartDateValue { get; set; } = "";
@@ -187,6 +194,7 @@ public class ScoreVerificationRequest
     public int AutoBillOptionValue { get; set; }
     public int ProductLineOptionValue { get; set; }
     public int ContractTypeOptionValue { get; set; }
+    public int ContractKindOptionValue { get; set; }
     public List<ScoreVerificationLineInput> Lines { get; set; } = new();
 }
 
@@ -226,6 +234,8 @@ public sealed class ScoreVerificationDetailDto : ScoreVerificationRequest
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string SalesPerson { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public string OwnerName { get; set; } = "";
     public string Offer { get; set; } = "";
     public string OfferFileName { get; set; } = "";
     public bool HasOffer { get; set; }
@@ -235,6 +245,7 @@ public sealed class ScoreVerificationDetailDto : ScoreVerificationRequest
     public string ProvisioningDateValue { get; set; } = "";
     public string ProvisioningDateDisplay { get; set; } = "";
     public string ContractTypeLabel { get; set; } = "";
+    public string ContractKindLabel { get; set; } = "";
     public string ProrationSummary { get; set; } = "";
     public bool IsClosedForActivePeriod { get; set; }
     public string ActivePeriodKey { get; set; } = "";
@@ -259,6 +270,19 @@ public sealed class ScoreRecordDeleteResultDto
 {
     public bool Ok { get; set; }
     public string RecordId { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class ScoreMoveToRenewalRequest
+{
+    public List<string> RecordIds { get; set; } = new();
+}
+
+public sealed class ScoreMoveToRenewalResultDto
+{
+    public bool Ok { get; set; }
+    public int UpdatedCount { get; set; }
+    public IReadOnlyList<string> RecordIds { get; set; } = Array.Empty<string>();
     public string Message { get; set; } = "";
 }
 
@@ -289,6 +313,8 @@ public sealed class ScoreMonthClosePreviewLineDto
     public int BillingDay { get; set; }
     public int ProductLineOptionValue { get; set; }
     public int ContractTypeOptionValue { get; set; }
+    public int ContractKindOptionValue { get; set; }
+    public string ContractKindLabel { get; set; } = "";
     public int HasVatOptionValue { get; set; }
     public string RenewalDateValue { get; set; } = "";
     public string RenewalDateDisplay { get; set; } = "";
@@ -440,5 +466,11 @@ public static class PuntajesOptionCatalog
     {
         new ScoreOptionItem { Value = 0, Label = "Monthly" },
         new ScoreOptionItem { Value = 1, Label = "Annual" }
+    };
+
+    public static IReadOnlyList<ScoreOptionItem> ContractKindOptions { get; } = new[]
+    {
+        new ScoreOptionItem { Value = 645250000, Label = "Negocio nuevo" },
+        new ScoreOptionItem { Value = 645250001, Label = "Renovacion" }
     };
 }

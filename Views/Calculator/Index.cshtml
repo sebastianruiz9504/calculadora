@@ -461,8 +461,8 @@
                 <label class="form-label fw-bold">Tipo de contrato</label>
                 <select id="provisioningContractType" class="form-select">
                     <option value="">Seleccione</option>
-                    <option value="645250000">Nuevo</option>
-                    <option value="645250001">Contrato existente</option>
+                    <option value="645250000">Negocio nuevo</option>
+                    <option value="645250001">Renovacion</option>
                 </select>
             </div>
 
@@ -492,8 +492,8 @@
     const requestedScenarioId = new URLSearchParams(window.location.search).get("scenarioId") || "";
 
     const contractTypeLabels = {
-        "645250000": "Nuevo",
-        "645250001": "Contrato existente"
+        "645250000": "Negocio nuevo",
+        "645250001": "Renovacion"
     };
 
     const sourceSystem = "pricing-calculator";

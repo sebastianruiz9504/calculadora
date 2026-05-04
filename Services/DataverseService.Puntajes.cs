@@ -24,6 +24,9 @@ public sealed partial class DataverseService
     private static readonly HashSet<int> AllowedBinaryOptionValues = new() { 0, 1 };
     private static readonly HashSet<int> AllowedProductLineOptionValues = new() { 0, 1, 2, 3 };
     private static readonly HashSet<int> AllowedContractTypeOptionValues = new() { 0, 1 };
+    private static readonly HashSet<int> AllowedContractKindOptionValues = new() { ScoreContractKindNewBusinessValue, ScoreContractKindRenewalValue };
+    private const int ScoreContractKindNewBusinessValue = 645250000;
+    private const int ScoreContractKindRenewalValue = 645250001;
 
     public async Task<ScoreBoardDto> GetScoreBoardAsync(ScorePeriodFilter filter, CancellationToken ct = default)
     {
@@ -73,6 +76,8 @@ public sealed partial class DataverseService
                 {
                     ClientId = first.ClientId,
                     ClientName = first.ClientName,
+                    OwnerId = first.OwnerId,
+                    OwnerName = first.OwnerName,
                     SalesPerson = orderedRecords
                         .Select(item => item.SalesPerson)
                         .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
@@ -223,6 +228,57 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<ScoreMoveToRenewalResultDto> MoveScoreBusinessToRenewalAsync(ScoreMoveToRenewalRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var recordIds = (request.RecordIds ?? new List<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => NormalizeGuid(value, nameof(request.RecordIds)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (recordIds.Count == 0)
+            throw new InvalidOperationException("Debes indicar al menos un registro valido para mover.");
+
+        var updatedRecordIds = new List<string>();
+        foreach (var recordId in recordIds)
+        {
+            var existingItem = await GetScoreRecordJsonAsync(recordId, httpContext.User, ct);
+            var existingContext = ParseScoreRecordContext(existingItem, activePeriodKey: null)
+                ?? throw new InvalidOperationException("No se encontro uno de los registros seleccionados.");
+
+            if (existingContext.Additional.MonthlyClosures.Any())
+                throw new InvalidOperationException($"El negocio de {existingContext.Record.ClientName} ya tiene cierres mensuales asociados y no se puede mover desde esta vista.");
+
+            if (IsRenewalContractKind(existingContext.Record.ContractKindOptionValue))
+                continue;
+
+            existingContext.Additional.ContractKindOptionValue = ScoreContractKindRenewalValue;
+            var payload = new Dictionary<string, object?>
+            {
+                [_scoresContractKindField] = ScoreContractKindRenewalValue,
+                [_scoresAdditionalField] = SerializeAdditionalForDataverse(existingContext.Additional)
+            };
+
+            await CallDataverseSendAsync($"/api/data/v9.2/{_scoresTableSetName}({recordId})", "PATCH", payload, httpContext.User, ct);
+            updatedRecordIds.Add(recordId);
+        }
+
+        return new ScoreMoveToRenewalResultDto
+        {
+            Ok = true,
+            UpdatedCount = updatedRecordIds.Count,
+            RecordIds = updatedRecordIds,
+            Message = updatedRecordIds.Count == 0
+                ? "El negocio ya estaba marcado como renovacion."
+                : $"Se movieron {updatedRecordIds.Count} registro(s) a renovacion."
+        };
+    }
+
     public async Task<ScoreMonthCloseResultDto> CloseScoreMonthAsync(ScorePeriodFilter filter, CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -271,6 +327,13 @@ public sealed partial class DataverseService
             {
                 skippedCount++;
                 logs.Add(BuildMonthCloseLog("info", context.Record.RecordId, context.Record.ClientName, "", $"Registro ya consolidado para {monthInfo.PeriodLabel}."));
+                continue;
+            }
+
+            if (IsRenewalContractKind(context.Record.ContractKindOptionValue))
+            {
+                skippedCount++;
+                logs.Add(BuildMonthCloseLog("info", context.Record.RecordId, context.Record.ClientName, "", "Registro marcado como renovacion; no se envia a sales performance/productos cloud."));
                 continue;
             }
 
@@ -802,7 +865,8 @@ public sealed partial class DataverseService
                 var lineKey = BuildMonthCloseLineKey(context.Record.RecordId, line.LineId, index + 1);
                 var existingSnapshot = ResolveMonthlyClosureLine(context.Additional, monthInfo.PeriodKey, lineKey);
                 var isAlreadyClosed = existingSnapshot is not null;
-                var selectedByDefault = !isAlreadyClosed && detail.AutoBillOptionValue == 1;
+                var isRenewalContract = IsRenewalContractKind(context.Record.ContractKindOptionValue);
+                var selectedByDefault = !isAlreadyClosed && !isRenewalContract && detail.AutoBillOptionValue == 1;
 
                 List<SalesPerformanceCompactRecord> clientRecords = new();
                 if (!string.IsNullOrWhiteSpace(context.Record.ClientId))
@@ -832,11 +896,12 @@ public sealed partial class DataverseService
                     ExistingMatch = existingMatch,
                     ExistingClosure = existingSnapshot,
                     IsAlreadyClosed = isAlreadyClosed,
+                    IsRenewalContract = isRenewalContract,
                     SelectedByDefault = selectedByDefault,
-                    CanChangeSelection = !isAlreadyClosed,
-                    Reason = ResolveMonthCloseLineReason(detail.AutoBillOptionValue, isAlreadyClosed),
-                    PredictedAction = existingMatch is not null ? "increment" : "create",
-                    Warnings = BuildMonthCloseWarnings(context.Record, detail, line)
+                    CanChangeSelection = !isAlreadyClosed && !isRenewalContract,
+                    Reason = ResolveMonthCloseLineReason(detail.AutoBillOptionValue, isAlreadyClosed, isRenewalContract),
+                    PredictedAction = isRenewalContract ? "skip-renewal" : existingMatch is not null ? "increment" : "create",
+                    Warnings = isRenewalContract ? new List<string>() : BuildMonthCloseWarnings(context.Record, detail, line)
                 });
             }
 
@@ -875,6 +940,8 @@ public sealed partial class DataverseService
                 BillingDay = ResolveSalesPerformanceBillingDay(linePlan.Detail),
                 ProductLineOptionValue = ResolveSalesPerformanceProductLineOptionValue(linePlan.Detail, linePlan.Line),
                 ContractTypeOptionValue = linePlan.Detail.ContractTypeOptionValue,
+                ContractKindOptionValue = linePlan.Record.ContractKindOptionValue,
+                ContractKindLabel = linePlan.Record.ContractKindLabel,
                 HasVatOptionValue = ResolveSalesPerformanceHasVatOptionValue(linePlan.Line),
                 RenewalDateValue = ResolveSalesPerformanceRenewalDate(linePlan.Detail),
                 RenewalDateDisplay = FormatDateDisplay(ResolveSalesPerformanceRenewalDate(linePlan.Detail)),
@@ -1106,6 +1173,8 @@ public sealed partial class DataverseService
         var score = RoundCurrency(ReadDecimal(item, _scoresScoreField) ?? additional.LastResult?.Points ?? parsedDescription.Score ?? 0m);
         var commission = RoundCurrency(ReadDecimal(item, _scoresCommissionField) ?? additional.LastResult?.Commission ?? parsedDescription.Commission ?? 0m);
         var salesPerson = ReadDataverseDisplayValue(item, _scoresSalesPersonField, "vendedor");
+        var ownerId = ReadDataverseLookupId(item, "ownerid", "owner", "propietario");
+        var ownerName = FirstNonEmpty(ReadDataverseDisplayValue(item, "ownerid", "owner", "propietario"), "Sin propietario");
         var offer = ReadDataverseDisplayValue(item, _scoresOfferField, "oferta");
         var isVerified = ReadYesNoOptionFlexible(item, _scoresVerifiedField);
         var monthlyValue = RoundCurrency(additional.LastResult?.TotalMonthlySale ?? parsedDescription.TotalMonthlyValue ?? productLines.Sum(line => line.MonthlyValue));
@@ -1113,6 +1182,11 @@ public sealed partial class DataverseService
         var renewalDate = ParseAdditionalDateOnly(additional.RenewalDateValue);
         var alignmentDate = ParseAdditionalDateOnly(additional.AlignmentDateValue);
         var lastClosure = ResolveLastClosure(additional);
+        var dealTypeValue = ResolveStoredDealTypeValue(additional, parsedDescription, isVerified);
+        var contractKindOptionValue = ResolveScoreContractKindOptionValue(
+            ReadOptionValue(item, _scoresContractKindField),
+            additional.ContractKindOptionValue,
+            dealTypeValue);
 
         return new ScoreRecordContext
         {
@@ -1121,6 +1195,8 @@ public sealed partial class DataverseService
                 RecordId = recordId,
                 ClientId = clientId,
                 ClientName = clientName,
+                OwnerId = ownerId,
+                OwnerName = ownerName,
                 ContractStartDateValue = contractStartDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 ContractStartDateDisplay = contractStartDate.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
                 Score = score,
@@ -1155,7 +1231,9 @@ public sealed partial class DataverseService
                 AutoBillOptionValue = additional.AutoBillOptionValue,
                 ProductLineOptionValue = additional.ProductLineOptionValue > 0 ? additional.ProductLineOptionValue : (productLines.FirstOrDefault()?.LineOptionValue ?? 0),
                 ContractTypeOptionValue = additional.ContractTypeOptionValue,
-                DealTypeValue = ResolveStoredDealTypeValue(additional, parsedDescription),
+                ContractKindOptionValue = contractKindOptionValue,
+                ContractKindLabel = ResolveScoreContractKindLabel(contractKindOptionValue),
+                DealTypeValue = dealTypeValue,
                 RequiresProration = ResolveStoredRequiresProration(additional, parsedDescription),
                 ScenarioStartDateValue = FirstNonEmpty(additional.ScenarioStartDateValue, parsedDescription.ScenarioStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 ScenarioEndDateValue = FirstNonEmpty(additional.ScenarioEndDateValue, parsedDescription.ScenarioEndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
@@ -1201,10 +1279,13 @@ public sealed partial class DataverseService
             AutoBillOptionValue = record.IsVerified ? record.AutoBillOptionValue : (record.AutoBillOptionValue > 0 ? record.AutoBillOptionValue : -1),
             ProductLineOptionValue = record.ProductLineOptionValue,
             ContractTypeOptionValue = record.IsVerified ? record.ContractTypeOptionValue : (record.ContractTypeOptionValue > 0 ? record.ContractTypeOptionValue : -1),
+            ContractKindOptionValue = ResolveScoreContractKindOptionValue(record.ContractKindOptionValue, additional.ContractKindOptionValue, ResolveDealTypeValue(record, additional, scenario)),
             Lines = lines,
             ClientId = record.ClientId,
             ClientName = record.ClientName,
             SalesPerson = record.SalesPerson,
+            OwnerId = record.OwnerId,
+            OwnerName = record.OwnerName,
             Offer = record.Offer,
             OfferFileName = record.OfferFileName,
             HasOffer = record.HasOffer,
@@ -1214,6 +1295,7 @@ public sealed partial class DataverseService
             ProvisioningDateValue = record.ProvisioningDateValue,
             ProvisioningDateDisplay = record.ProvisioningDateDisplay,
             ContractTypeLabel = record.ContractType,
+            ContractKindLabel = ResolveScoreContractKindLabel(ResolveScoreContractKindOptionValue(record.ContractKindOptionValue, additional.ContractKindOptionValue, ResolveDealTypeValue(record, additional, scenario))),
             ProrationSummary = record.ProrationText,
             IsClosedForActivePeriod = record.IsClosedForActivePeriod,
             ActivePeriodKey = record.ActivePeriodKey,
@@ -1508,6 +1590,7 @@ public sealed partial class DataverseService
         existing.AutoBillOptionValue = request.AutoBillOptionValue;
         existing.ProductLineOptionValue = ResolvePrimaryLineOptionValue(computation.Lines, existing.ProductLineOptionValue);
         existing.ContractTypeOptionValue = request.ContractTypeOptionValue;
+        existing.ContractKindOptionValue = ResolveScoreContractKindOptionValue(request.ContractKindOptionValue, existing.ContractKindOptionValue, computation.DealTypeValue);
         existing.Lines = computation.Lines;
         existing.LastResult = computation.Result;
         existing.VerifiedAt = DateTimeOffset.UtcNow;
@@ -1537,6 +1620,7 @@ public sealed partial class DataverseService
         {
             [_scoresFirstContractField] = firstContractValue,
             [_scoresVerticalField] = request.VerticalOptionValue,
+            [_scoresContractKindField] = ResolveScoreContractKindOptionValue(request.ContractKindOptionValue, 0, request.DealTypeValue),
             [_scoresScoreField] = result.Points,
             [_scoresCommissionField] = result.Commission,
             [_scoresAdditionalField] = additionalJson,
@@ -2244,10 +2328,13 @@ public sealed partial class DataverseService
             .FirstOrDefault();
     }
 
-    private static string ResolveMonthCloseLineReason(int autoBillOptionValue, bool isAlreadyClosed)
+    private static string ResolveMonthCloseLineReason(int autoBillOptionValue, bool isAlreadyClosed, bool isRenewalContract)
     {
         if (isAlreadyClosed)
             return "La linea ya fue consolidada en un cierre anterior.";
+
+        if (isRenewalContract)
+            return "Se excluye porque el tipo de contrato del puntaje es Renovacion.";
 
         return autoBillOptionValue == 1
             ? "La linea quedara incluida porque tiene facturacion automatica habilitada."
@@ -2335,6 +2422,9 @@ public sealed partial class DataverseService
 
     private static string BuildPreviewLineState(ScoreMonthCloseLinePlan linePlan)
     {
+        if (linePlan.IsRenewalContract)
+            return "Accion prevista: no se envia por estar marcado como renovacion.";
+
         var finalQuantity = linePlan.ExistingMatch is null
             ? Math.Max(linePlan.Line.Quantity, 0)
             : Math.Max(linePlan.ExistingMatch.Quantity, 0) + Math.Max(linePlan.Line.Quantity, 0);
@@ -2457,10 +2547,12 @@ public sealed partial class DataverseService
                 value = (int)DealType.Renovacion1;
                 return true;
             case "renovacion2veces":
+            case "renovacion2vez":
             case "renovacion2":
                 value = (int)DealType.Renovacion2;
                 return true;
             case "renovacion3vecesomas":
+            case "renovacion3vezomas":
             case "renovacion3omas":
             case "renovacion3":
                 value = (int)DealType.Renovacion3Plus;
@@ -2569,6 +2661,28 @@ public sealed partial class DataverseService
     private static int DeriveFirstContractOptionValue(int dealTypeValue) =>
         dealTypeValue == (int)DealType.ClienteNuevo ? 1 : 2;
 
+    private static int ResolveScoreContractKindOptionValue(int directValue, int fallbackValue, int dealTypeValue)
+    {
+        if (AllowedContractKindOptionValues.Contains(directValue))
+            return directValue;
+
+        if (AllowedContractKindOptionValues.Contains(fallbackValue))
+            return fallbackValue;
+
+        return IsRenewalDealTypeValue(dealTypeValue)
+            ? ScoreContractKindRenewalValue
+            : ScoreContractKindNewBusinessValue;
+    }
+
+    private static bool IsRenewalContractKind(int contractKindOptionValue) =>
+        contractKindOptionValue == ScoreContractKindRenewalValue;
+
+    private static bool IsRenewalDealTypeValue(int dealTypeValue) =>
+        dealTypeValue is (int)DealType.Renovacion1 or (int)DealType.Renovacion2 or (int)DealType.Renovacion3Plus;
+
+    private static string ResolveScoreContractKindLabel(int contractKindOptionValue) =>
+        ResolveOptionLabel(PuntajesOptionCatalog.ContractKindOptions, contractKindOptionValue);
+
     private static BusinessType ResolveBusinessTypeForLine(ScoreVerificationLineInput line)
     {
         if (string.Equals(NormalizeLookupToken(line.LineType), "hardware", StringComparison.OrdinalIgnoreCase))
@@ -2601,10 +2715,13 @@ public sealed partial class DataverseService
             _ => 645250004
         };
 
-    private static int ResolveStoredDealTypeValue(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription)
+    private static int ResolveStoredDealTypeValue(ScoreAdditionalDataSnapshot additional, ScoreDescriptionParseResult parsedDescription, bool isVerified)
     {
-        if (additional.Version > 0 && additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
-            return additional.DealTypeValue;
+        if (!isVerified && TryResolveDealTypeValue(parsedDescription.DealTypeText, out var pendingParsedDealTypeValue))
+            return pendingParsedDealTypeValue;
+
+        if (additional.Version > 0 && additional.DealTypeValue.HasValue && Enum.IsDefined(typeof(DealType), additional.DealTypeValue.Value))
+            return additional.DealTypeValue.Value;
 
         if (TryResolveDealTypeValue(parsedDescription.DealTypeText, out var parsedDealTypeValue))
             return parsedDealTypeValue;
@@ -2625,8 +2742,8 @@ public sealed partial class DataverseService
 
     private static int ResolveDealTypeValue(ScoreRecordDto record, ScoreAdditionalDataSnapshot additional, ScenarioStoredDto? scenario)
     {
-        if (additional.Version > 0 && additional.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), additional.DealTypeValue))
-            return additional.DealTypeValue;
+        if (additional.Version > 0 && additional.DealTypeValue.HasValue && Enum.IsDefined(typeof(DealType), additional.DealTypeValue.Value))
+            return additional.DealTypeValue.Value;
 
         if (record.DealTypeValue >= 0 && Enum.IsDefined(typeof(DealType), record.DealTypeValue))
             return record.DealTypeValue;
@@ -2690,6 +2807,7 @@ public sealed partial class DataverseService
             AutoBillOptionValue = request.AutoBillOptionValue,
             ProductLineOptionValue = request.ProductLineOptionValue,
             ContractTypeOptionValue = request.ContractTypeOptionValue,
+            ContractKindOptionValue = ResolveScoreContractKindOptionValue(request.ContractKindOptionValue, 0, request.DealTypeValue),
             Lines = (request.Lines ?? new List<ScoreVerificationLineInput>())
                 .Select(line => new ScoreVerificationLineInput
                 {
@@ -3015,11 +3133,13 @@ public sealed partial class DataverseService
                         result.ProvisioningDate = provisioningDate;
                     break;
                 case "tipocontrato":
-                case "tiponegocio":
                     if (string.IsNullOrWhiteSpace(result.ContractType))
                         result.ContractType = value;
-                    if (string.IsNullOrWhiteSpace(result.DealTypeText))
+                    if (string.IsNullOrWhiteSpace(result.DealTypeText) && TryResolveDealTypeValue(value, out _))
                         result.DealTypeText = value;
+                    break;
+                case "tiponegocio":
+                    result.DealTypeText = value;
                     break;
                 case "requiereprorrateo":
                 case "requiereprorateo":
@@ -3556,7 +3676,7 @@ public sealed partial class DataverseService
     {
         public int Version { get; set; }
         public string? BusinessId { get; set; } = "";
-        public int DealTypeValue { get; set; }
+        public int? DealTypeValue { get; set; }
         public bool RequiresProration { get; set; }
         public string? ScenarioStartDateValue { get; set; } = "";
         public string? ScenarioEndDateValue { get; set; } = "";
@@ -3568,6 +3688,7 @@ public sealed partial class DataverseService
         public int AutoBillOptionValue { get; set; }
         public int ProductLineOptionValue { get; set; }
         public int ContractTypeOptionValue { get; set; }
+        public int ContractKindOptionValue { get; set; }
         public List<ScoreVerificationLineInput> Lines { get; set; } = new();
         public ScoreVerificationComputedResultDto? LastResult { get; set; }
         public DateTimeOffset? VerifiedAt { get; set; }
@@ -3658,6 +3779,7 @@ public sealed partial class DataverseService
         public SalesPerformanceCompactRecord? ExistingMatch { get; set; }
         public ScoreMonthlyClosureLineSnapshot? ExistingClosure { get; set; }
         public bool IsAlreadyClosed { get; set; }
+        public bool IsRenewalContract { get; set; }
         public bool SelectedByDefault { get; set; }
         public bool CanChangeSelection { get; set; }
         public string Reason { get; set; } = "";

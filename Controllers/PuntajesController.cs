@@ -36,7 +36,8 @@ public sealed class PuntajesController : Controller
             HasVatOptions = PuntajesOptionCatalog.HasVatOptions,
             AutoBillOptions = PuntajesOptionCatalog.AutoBillOptions,
             ProductLineOptions = PuntajesOptionCatalog.ProductLineOptions,
-            ContractTypeOptions = PuntajesOptionCatalog.ContractTypeOptions
+            ContractTypeOptions = PuntajesOptionCatalog.ContractTypeOptions,
+            ContractKindOptions = PuntajesOptionCatalog.ContractKindOptions
         };
 
         return View(model);
@@ -92,6 +93,28 @@ public sealed class PuntajesController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible eliminar el registro.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> MoveToRenewal([FromBody] ScoreMoveToRenewalRequest? request, CancellationToken ct)
+    {
+        if (request is null || request.RecordIds is null || request.RecordIds.Count == 0)
+            return BadRequest("Debes indicar los registros a mover.");
+
+        try
+        {
+            var result = await _dataverse.MoveScoreBusinessToRenewalAsync(request, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible mover el negocio a renovacion.", ex));
         }
     }
 

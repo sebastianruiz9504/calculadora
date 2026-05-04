@@ -78,7 +78,8 @@
         hasVat: buildOptionMap(options.hasVatOptions),
         autoBill: buildOptionMap(options.autoBillOptions),
         productLine: buildOptionMap(options.productLineOptions),
-        contractType: buildOptionMap(options.contractTypeOptions)
+        contractType: buildOptionMap(options.contractTypeOptions),
+        contractKind: buildOptionMap(options.contractKindOptions)
     };
 
     const numberFormatter = new Intl.NumberFormat("es-CO", {
@@ -93,6 +94,8 @@
 
     const CROSS_SALE_DEAL_TYPE = 1;
     const RENEWAL_DEAL_TYPES = new Set([2, 3, 4]);
+    const CONTRACT_KIND_NEW_BUSINESS_VALUE = 645250000;
+    const CONTRACT_KIND_RENEWAL_VALUE = 645250001;
     const AUTO_BILL_YES_VALUE = 1;
     const MODERN_WORK_LINE_OPTION_VALUE = 645250000;
 
@@ -507,6 +510,8 @@
             draft.dealTypeValue = CROSS_SALE_DEAL_TYPE;
         }
         draft.firstContractOptionValue = Number(draft.firstContractOptionValue || 0) || deriveFirstContractValue(draft.dealTypeValue);
+        draft.contractKindOptionValue = Number(draft.contractKindOptionValue || 0) || (RENEWAL_DEAL_TYPES.has(draft.dealTypeValue) ? CONTRACT_KIND_RENEWAL_VALUE : CONTRACT_KIND_NEW_BUSINESS_VALUE);
+        draft.contractKindLabel = draft.contractKindLabel || optionLabel(optionMaps.contractKind, draft.contractKindOptionValue);
         const renewalSuggestion = buildRenewalSuggestion(draft);
         if (!draft.renewalDateValue || draft.renewalDateValue === draft.renewalAutoValue) {
             draft.renewalDateValue = renewalSuggestion.value || "";
@@ -747,7 +752,7 @@
         filterButtons.forEach(button => {
             button.disabled = saving || state.isLoading || state.isClosingMonth;
         });
-        groupsContainer?.querySelectorAll(".verify-record-btn, .delete-record-btn, .toggle-group-btn").forEach(button => {
+        groupsContainer?.querySelectorAll(".verify-record-btn, .delete-record-btn, .move-to-renewal-btn, .toggle-group-btn").forEach(button => {
             button.disabled = saving || state.isLoading || state.isClosingMonth;
         });
         renderCloseMonthPanel();
@@ -784,7 +789,8 @@
     function getGroupKey(group) {
         const baseKey = group.clientId ? `id:${group.clientId}` : `name:${group.clientName}`;
         const sectionKey = group._sectionKey || group.sectionKey || "";
-        return sectionKey ? `${sectionKey}:${baseKey}` : baseKey;
+        const ownerKey = group.ownerId ? `owner:${group.ownerId}` : `owner-name:${group.ownerName || "Sin propietario"}`;
+        return sectionKey ? `${sectionKey}:${ownerKey}:${baseKey}` : `${ownerKey}:${baseKey}`;
     }
 
     function rebuildIndexes(board) {
@@ -818,6 +824,14 @@
     }
 
     function isRenewalRecord(record) {
+        const contractKindValue = Number(record?.contractKindOptionValue || 0);
+        if (contractKindValue === CONTRACT_KIND_RENEWAL_VALUE) {
+            return true;
+        }
+        if (contractKindValue === CONTRACT_KIND_NEW_BUSINESS_VALUE) {
+            return false;
+        }
+
         return RENEWAL_DEAL_TYPES.has(Number(record?.dealTypeValue || 0));
     }
 
@@ -841,11 +855,38 @@
         return records.reduce((total, record) => total + toNumber(selector(record), 0), 0);
     }
 
-    function cloneGroupForSection(group, records, sectionKey) {
+    function getOwnerInfo(record, group) {
+        const ownerId = (record?.ownerId || group?.ownerId || "").toString();
+        const ownerName = (record?.ownerName || group?.ownerName || "Sin propietario").toString();
+        return {
+            ownerId,
+            ownerName: ownerName.trim() || "Sin propietario",
+            key: ownerId ? `id:${ownerId}` : `name:${ownerName.trim() || "Sin propietario"}`
+        };
+    }
+
+    function splitRecordsByOwner(records, group) {
+        const ownerMap = new Map();
+        records.forEach(record => {
+            const owner = getOwnerInfo(record, group);
+            if (!ownerMap.has(owner.key)) {
+                ownerMap.set(owner.key, { ...owner, records: [] });
+            }
+
+            ownerMap.get(owner.key).records.push(record);
+        });
+
+        return [...ownerMap.values()].sort((a, b) =>
+            (a.ownerName || "").localeCompare(b.ownerName || "", "es", { sensitivity: "base" }));
+    }
+
+    function cloneGroupForSection(group, records, sectionKey, ownerInfo) {
         const orderedRecords = sortScoreRecords(records);
         return {
             ...group,
             _sectionKey: sectionKey,
+            ownerId: ownerInfo?.ownerId || group.ownerId || "",
+            ownerName: ownerInfo?.ownerName || group.ownerName || "Sin propietario",
             recordCount: orderedRecords.length,
             productLinesCount: sumRecords(orderedRecords, record => record.productLinesCount),
             totalCommission: sumRecords(orderedRecords, record => record.commission),
@@ -860,8 +901,9 @@
     }
 
     function summarizeSection(section) {
-        const groups = section.groups || [];
+        const groups = (section.ownerGroups || []).flatMap(owner => owner.groups || []);
         return {
+            ownersCount: section.ownerGroups?.length || 0,
             clientsCount: groups.length,
             recordsCount: sumRecords(groups, group => group.recordCount),
             productLinesCount: sumRecords(groups, group => group.productLinesCount),
@@ -889,21 +931,49 @@
         const newBusinessSection = sections[0];
         const renewalsSection = sections[1];
 
+        function addRecordsToSection(section, group, records) {
+            splitRecordsByOwner(records, group).forEach(owner => {
+                if (!owner.records.length) {
+                    return;
+                }
+
+                let ownerGroup = section.groups.find(item => item.key === owner.key);
+                if (!ownerGroup) {
+                    ownerGroup = {
+                        key: owner.key,
+                        ownerId: owner.ownerId,
+                        ownerName: owner.ownerName,
+                        groups: []
+                    };
+                    section.groups.push(ownerGroup);
+                }
+
+                ownerGroup.groups.push(cloneGroupForSection(group, owner.records, section.key, owner));
+            });
+        }
+
         (Array.isArray(board?.groups) ? board.groups : []).forEach(group => {
             const records = Array.isArray(group.records) ? group.records : [];
             const newBusinessRecords = records.filter(record => !isRenewalRecord(record));
             const renewalRecords = records.filter(isRenewalRecord);
 
             if (newBusinessRecords.length) {
-                newBusinessSection.groups.push(cloneGroupForSection(group, newBusinessRecords, newBusinessSection.key));
+                addRecordsToSection(newBusinessSection, group, newBusinessRecords);
             }
 
             if (renewalRecords.length) {
-                renewalsSection.groups.push(cloneGroupForSection(group, renewalRecords, renewalsSection.key));
+                addRecordsToSection(renewalsSection, group, renewalRecords);
             }
         });
 
         sections.forEach(section => {
+            section.ownerGroups = section.groups
+                .map(owner => ({
+                    ...owner,
+                    groups: (owner.groups || []).sort((a, b) =>
+                        (a.clientName || "").localeCompare(b.clientName || "", "es", { sensitivity: "base" }))
+                }))
+                .sort((a, b) => (a.ownerName || "").localeCompare(b.ownerName || "", "es", { sensitivity: "base" }));
             section.summary = summarizeSection(section);
         });
 
@@ -996,7 +1066,7 @@
             <tr class="scores-record-row" data-record-id="${escapeHtml(record.recordId)}">
                 <td>
                     <div class="scores-cell-main">${escapeHtml(record.contractStartDateDisplay || "")}</div>
-                    <div class="scores-cell-sub">${escapeHtml(record.contractType || "Sin tipo")}</div>
+                    <div class="scores-cell-sub">${escapeHtml(record.contractKindLabel || optionLabel(optionMaps.contractKind, record.contractKindOptionValue) || record.contractType || "Sin tipo")}</div>
                 </td>
                 <td class="text-center">${renderOfferCell(record)}</td>
                 <td>
@@ -1078,32 +1148,68 @@
         `;
     }
 
+    function canMoveGroupToRenewal(group) {
+        const records = Array.isArray(group.records) ? group.records : [];
+        return group._sectionKey === "new-business"
+            && records.length > 0
+            && records.every(record => !record.isClosedForActivePeriod);
+    }
+
     function renderGroupArticle(group) {
         const groupKey = getGroupKey(group);
         const isExpanded = state.expandedGroups.has(groupKey);
+        const recordIds = (Array.isArray(group.records) ? group.records : [])
+            .map(record => record.recordId)
+            .filter(Boolean);
+        const moveButton = canMoveGroupToRenewal(group)
+            ? `<button type="button" class="btn btn-sm btn-outline-primary move-to-renewal-btn" data-record-ids="${escapeHtml(recordIds.join(","))}" data-client-name="${escapeHtml(group.clientName || "este cliente")}">Mover a renovacion</button>`
+            : "";
         return `
             <article class="scores-group ${isExpanded ? "scores-group--expanded" : "scores-group--collapsed"}" data-group-key="${escapeHtml(groupKey)}">
                 <div class="scores-group__header">
                     <div class="scores-group__header-main">
                         <h2 class="scores-group__title">${escapeHtml(group.clientName || "Cliente sin asignar")}</h2>
                         <div class="scores-group__compact-line">
-                            <span class="scores-group__salesperson">${escapeHtml(group.salesPerson || "Sin vendedor")}</span>
+                            <span class="scores-group__salesperson">Propietario: ${escapeHtml(group.ownerName || "Sin propietario")}</span>
+                            <span class="scores-group__salesperson">Vendedor: ${escapeHtml(group.salesPerson || "Sin vendedor")}</span>
                             ${group.allVerified ? '<span class="scores-group__complete">Verificado completo</span>' : ""}
                         </div>
                         ${isExpanded ? `<p class="scores-group__subtitle">${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos.</p>` : ""}
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
-                        ${isExpanded ? "Resumir" : "Desplegar"}
-                    </button>
+                    <div class="scores-group__actions">
+                        ${moveButton}
+                        <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
+                            ${isExpanded ? "Resumir" : "Desplegar"}
+                        </button>
+                    </div>
                 </div>
                 ${isExpanded ? renderGroupMetrics(group) : ""}
             </article>
         `;
     }
 
+    function renderOwnerSection(owner) {
+        const groups = Array.isArray(owner.groups) ? owner.groups : [];
+        const recordCount = sumRecords(groups, group => group.recordCount);
+        const productCount = sumRecords(groups, group => group.productLinesCount);
+        return `
+            <section class="scores-owner-section" data-owner-key="${escapeHtml(owner.key || "")}">
+                <div class="scores-owner-section__header">
+                    <h3>${escapeHtml(owner.ownerName || "Sin propietario")}</h3>
+                    <span>${formatNumber(groups.length)} clientes</span>
+                    <span>${formatNumber(recordCount)} aprovisionamientos</span>
+                    <span>${formatNumber(productCount)} productos</span>
+                </div>
+                <div class="scores-owner-section__groups">
+                    ${groups.map(renderGroupArticle).join("")}
+                </div>
+            </section>
+        `;
+    }
+
     function renderScoreSection(section) {
         const summary = section.summary || {};
-        const groups = Array.isArray(section.groups) ? section.groups : [];
+        const ownerGroups = Array.isArray(section.ownerGroups) ? section.ownerGroups : [];
         return `
             <section class="scores-section" data-section-key="${escapeHtml(section.key)}">
                 <div class="scores-section__header">
@@ -1112,6 +1218,7 @@
                         <p class="scores-section__subtitle">${escapeHtml(section.description)}</p>
                     </div>
                     <div class="scores-section__meta">
+                        <span>${formatNumber(summary.ownersCount)} propietarios</span>
                         <span>${formatNumber(summary.recordsCount)} aprovisionamientos</span>
                         <span>${formatNumber(summary.productLinesCount)} productos</span>
                         <span>Puntaje ${formatScoreValue(summary.totalScore)}</span>
@@ -1119,8 +1226,8 @@
                     </div>
                 </div>
                 <div class="scores-section__groups">
-                    ${groups.length
-                        ? groups.map(renderGroupArticle).join("")
+                    ${ownerGroups.length
+                        ? ownerGroups.map(renderOwnerSection).join("")
                         : '<div class="scores-section__empty">No hay registros en esta seccion.</div>'}
                 </div>
             </section>
@@ -1264,9 +1371,11 @@
         container.innerHTML = lines.map(line => {
             const locked = line.canChangeSelection === false;
             const warnings = Array.isArray(line.warnings) ? line.warnings : [];
-            const predictedAction = line.predictedAction === "increment"
-                ? `Incremento a ${formatNumber(line.finalQuantity)}`
-                : `Nueva linea con ${formatNumber(line.finalQuantity)}`;
+            const predictedAction = line.predictedAction === "skip-renewal"
+                ? "Renovacion excluida"
+                : line.predictedAction === "increment"
+                    ? `Incremento a ${formatNumber(line.finalQuantity)}`
+                    : `Nueva linea con ${formatNumber(line.finalQuantity)}`;
 
             return `
                 <article class="close-review-item ${warnings.length ? "close-review-item--warning" : ""} ${locked ? "close-review-item--locked" : ""}">
@@ -1275,10 +1384,11 @@
                             <input type="checkbox" class="close-review-toggle" data-line-key="${escapeHtml(line.lineKey || "")}" ${line.selected ? "checked" : ""} ${locked ? "disabled" : ""} />
                             <span>${escapeHtml(line.clientName || "Cliente")} | ${escapeHtml(line.productName || "Producto")}</span>
                         </label>
-                        <span class="close-review-chip ${line.predictedAction === "increment" ? "close-review-chip--muted" : "close-review-chip--success"}">${escapeHtml(predictedAction)}</span>
+                        <span class="close-review-chip ${line.predictedAction === "create" ? "close-review-chip--success" : "close-review-chip--muted"}">${escapeHtml(predictedAction)}</span>
                     </div>
                     <div class="close-review-item__meta">
                         <span class="close-review-chip">Cantidad: ${escapeHtml(formatNumber(line.quantity))}</span>
+                        <span class="close-review-chip">Tipo: ${escapeHtml(line.contractKindLabel || optionLabel(optionMaps.contractKind, line.contractKindOptionValue) || "Negocio nuevo")}</span>
                         <span class="close-review-chip">AutoBill: ${escapeHtml(optionLabel(optionMaps.autoBill, line.autoBillOptionValue))}</span>
                         <span class="close-review-chip">Contrato: ${escapeHtml(optionLabel(optionMaps.contractType, line.contractTypeOptionValue))}</span>
                         <span class="close-review-chip">Linea: ${escapeHtml(productLineLabel(line.productLineOptionValue))}</span>
@@ -1378,6 +1488,29 @@
             });
         });
 
+        groupsContainer.querySelectorAll(".move-to-renewal-btn").forEach(button => {
+            button.addEventListener("click", async event => {
+                const rawRecordIds = event.currentTarget.dataset.recordIds || "";
+                const recordIds = rawRecordIds.split(",").map(value => value.trim()).filter(Boolean);
+                if (!recordIds.length || state.isLoading || state.isSaving || state.isClosingMonth) {
+                    return;
+                }
+
+                const clientName = event.currentTarget.dataset.clientName || "este cliente";
+                if (!window.confirm(`Mover ${recordIds.length} registro(s) de ${clientName} a renovacion? No se enviaran en el cierre como negocio nuevo.`)) {
+                    return;
+                }
+
+                const button = event.currentTarget;
+                button.disabled = true;
+                try {
+                    await moveBusinessToRenewal(recordIds);
+                } finally {
+                    button.disabled = false;
+                }
+            });
+        });
+
         groupsContainer.querySelectorAll(".delete-record-btn").forEach(button => {
             button.addEventListener("click", async event => {
                 const recordId = event.currentTarget.dataset.recordId;
@@ -1426,6 +1559,32 @@
         } catch (error) {
             console.error(error);
             setStatus("error", formatErrorMessage(error, "No fue posible eliminar el registro."));
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function moveBusinessToRenewal(recordIds) {
+        if (!app.dataset.moveToRenewalUrl) {
+            setStatus("error", "No se encontro la ruta para mover negocios a renovacion.");
+            return;
+        }
+
+        setSaving(true);
+        setStatus("info", "Moviendo negocio a renovacion...");
+
+        try {
+            const result = await fetchJson(app.dataset.moveToRenewalUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recordIds })
+            });
+
+            await loadBoard();
+            setStatus("success", result?.message || "El negocio se movio a renovacion.");
+        } catch (error) {
+            console.error(error);
+            setStatus("error", formatErrorMessage(error, "No fue posible mover el negocio a renovacion."));
         } finally {
             setSaving(false);
         }
@@ -1493,6 +1652,8 @@
             clientName,
             billingDay: Number(detail.billingDay || 0),
             dealTypeValue: Number(detail.dealTypeValue || 0),
+            contractKindOptionValue: Number(detail.contractKindOptionValue || CONTRACT_KIND_NEW_BUSINESS_VALUE),
+            contractKindLabel: detail.contractKindLabel || optionLabel(optionMaps.contractKind, detail.contractKindOptionValue),
             requiresProration: detail.requiresProration === true || detail.requiresProration === "true",
             autoBillOptionValue: normalizeSelectValue(detail.autoBillOptionValue, -1),
             contractTypeOptionValue: normalizeSelectValue(detail.contractTypeOptionValue, -1),
@@ -1608,8 +1769,16 @@
                         <div class="scores-verify-meta__value">${escapeHtml(optionLabel(optionMaps.dealType, draft.dealTypeValue) || "Sin definir")}</div>
                     </div>
                     <div>
+                        <span class="scores-verify-meta__label">Cierre</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(draft.contractKindLabel || optionLabel(optionMaps.contractKind, draft.contractKindOptionValue) || "Negocio nuevo")}</div>
+                    </div>
+                    <div>
                         <span class="scores-verify-meta__label">Vendedor</span>
                         <div class="scores-verify-meta__value">${escapeHtml(draft.salesPerson || "Sin vendedor")}</div>
+                    </div>
+                    <div>
+                        <span class="scores-verify-meta__label">Propietario</span>
+                        <div class="scores-verify-meta__value">${escapeHtml(draft.ownerName || "Sin propietario")}</div>
                     </div>
                     <div>
                         <span class="scores-verify-meta__label">Oferta</span>
@@ -1945,6 +2114,7 @@
             autoBillOptionValue: Number(draft.autoBillOptionValue),
             productLineOptionValue: Number(draft.productLineOptionValue || 0),
             contractTypeOptionValue: Number(draft.contractTypeOptionValue),
+            contractKindOptionValue: Number(draft.contractKindOptionValue || CONTRACT_KIND_NEW_BUSINESS_VALUE),
             lines: (draft.lines || []).map(line => ({
                 lineId: line.lineId || "",
                 productId: line.productId || "",

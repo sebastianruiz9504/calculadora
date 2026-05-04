@@ -30,6 +30,8 @@ public sealed class CalculatorController : Controller
     private readonly ILogger<CalculatorController> _logger;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private const int ProvisioningDescriptionMaxLength = 4000;
+    private const int ProvisioningContractKindNewBusinessValue = 645250000;
+    private const int ProvisioningContractKindRenewalValue = 645250001;
     private static readonly JsonSerializerOptions ProvisioningDescriptionJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -437,6 +439,16 @@ public sealed class CalculatorController : Controller
         if (!string.IsNullOrWhiteSpace(productValidation))
             return productValidation;
 
+        if (input.Scenario is null)
+            return "No se recibio el tipo de negocio del escenario.";
+
+        if (!Enum.IsDefined(typeof(DealType), input.Scenario.DealTypeValue))
+            return "El tipo de negocio del escenario no es valido.";
+
+        var contractKindCode = ResolveProvisioningContractKindCode(input.Aprovisionamiento);
+        if (contractKindCode is not ProvisioningContractKindNewBusinessValue and not ProvisioningContractKindRenewalValue)
+            return "Selecciona si el contrato es negocio nuevo o renovacion.";
+
         var attachment = input.Attachment;
         if (attachment is null)
             return "Debes adjuntar la oferta autorizada o correo de aprobaciÃ³n.";
@@ -532,7 +544,11 @@ public sealed class CalculatorController : Controller
         var scenario = input.Scenario;
         var resultado = input.Resultado;
         var attachment = input.Attachment;
+        var dealTypeValue = ResolveDealTypeValue(scenario);
         var dealTypeLabel = ResolveDealTypeLabel(scenario);
+        var contractKindCode = ResolveProvisioningContractKindCode(aprovisionamiento);
+        var contractKindLabel = ResolveProvisioningContractKindLabel(contractKindCode, aprovisionamiento);
+        var isNewBusinessContract = contractKindCode == ProvisioningContractKindNewBusinessValue;
         var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
         var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
         var lineItems = input.LineItems.Select(item => new ProvisioningFlowLinePayload
@@ -576,12 +592,20 @@ public sealed class CalculatorController : Controller
             {
                 fecha = aprovisionamiento.Fecha?.Trim() ?? "",
                 tipoContratoCode = aprovisionamiento.TipoContratoCode?.Trim() ?? "",
-                tipoContratoLabel = aprovisionamiento.TipoContratoLabel?.Trim() ?? ""
+                tipoContratoLabel = aprovisionamiento.TipoContratoLabel?.Trim() ?? "",
+                tipoContratoPuntajeCode = contractKindCode,
+                tipoContratoPuntajeLabel = contractKindLabel,
+                cr07a_tipodecontrato = contractKindCode,
+                esNegocioNuevo = isNewBusinessContract,
+                esRenovacion = contractKindCode == ProvisioningContractKindRenewalValue
             },
             scenario = scenario is null ? null : new
             {
-                dealTypeValue = scenario.DealTypeValue,
+                dealTypeValue,
                 dealTypeLabel,
+                contractKindCode,
+                contractKindLabel,
+                shouldProvisionCloudProduct = isNewBusinessContract,
                 requiresProration = scenario.RequiresProration,
                 startDate = normalizedScenarioStartDate,
                 endDate = normalizedScenarioEndDate
@@ -658,13 +682,13 @@ public sealed class CalculatorController : Controller
         var detailedDescription = BuildProvisioningDescriptionText(
             headerText,
             SerializeDetailedProvisioningLines(lineItems));
-        if (detailedDescription.Length <= ProvisioningDescriptionMaxLength)
+        if (FitsProvisioningDescriptionLimit(detailedDescription))
             return detailedDescription;
 
         var compactDescription = BuildProvisioningDescriptionText(
             headerText,
             SerializeCompactProvisioningLines(lineItems, maxProductNameLength: null, includeCommercialFields: true));
-        if (compactDescription.Length <= ProvisioningDescriptionMaxLength)
+        if (FitsProvisioningDescriptionLimit(compactDescription))
             return compactDescription;
 
         foreach (var maxProductNameLength in new[] { 120, 80, 50, 30 })
@@ -672,14 +696,14 @@ public sealed class CalculatorController : Controller
             compactDescription = BuildProvisioningDescriptionText(
                 headerText,
                 SerializeCompactProvisioningLines(lineItems, maxProductNameLength, includeCommercialFields: true));
-            if (compactDescription.Length <= ProvisioningDescriptionMaxLength)
+            if (FitsProvisioningDescriptionLimit(compactDescription))
                 return compactDescription;
         }
 
         compactDescription = BuildProvisioningDescriptionText(
             headerText,
             SerializeCompactProvisioningLines(lineItems, maxProductNameLength: 30, includeCommercialFields: false));
-        if (compactDescription.Length <= ProvisioningDescriptionMaxLength)
+        if (FitsProvisioningDescriptionLimit(compactDescription))
             return compactDescription;
 
         return BuildProvisioningDescriptionWithLineBudget(headerText, lineItems);
@@ -771,8 +795,8 @@ public sealed class CalculatorController : Controller
             "[]",
             $"Lineas incluidas en descripcion: 0/{lineItems.Count}");
 
-        if (lastAcceptedDescription.Length > ProvisioningDescriptionMaxLength)
-            return TruncateTextForDescription(lastAcceptedDescription, ProvisioningDescriptionMaxLength);
+        if (!FitsProvisioningDescriptionLimit(lastAcceptedDescription))
+            return TruncateProvisioningDescription(lastAcceptedDescription);
 
         foreach (var item in lineItems)
         {
@@ -789,7 +813,7 @@ public sealed class CalculatorController : Controller
                 headerText,
                 JsonSerializer.Serialize(includedLines, ProvisioningDescriptionJsonOptions),
                 $"Lineas incluidas en descripcion: {includedLines.Count}/{lineItems.Count}");
-            if (candidate.Length <= ProvisioningDescriptionMaxLength)
+            if (FitsProvisioningDescriptionLimit(candidate))
             {
                 lastAcceptedDescription = candidate;
                 continue;
@@ -799,9 +823,40 @@ public sealed class CalculatorController : Controller
             break;
         }
 
-        return lastAcceptedDescription.Length <= ProvisioningDescriptionMaxLength
+        return FitsProvisioningDescriptionLimit(lastAcceptedDescription)
             ? lastAcceptedDescription
-            : TruncateTextForDescription(lastAcceptedDescription, ProvisioningDescriptionMaxLength);
+            : TruncateProvisioningDescription(lastAcceptedDescription);
+    }
+
+    private static bool FitsProvisioningDescriptionLimit(string value) =>
+        value.Length <= ProvisioningDescriptionMaxLength
+        && JsonSerializer.Serialize(value).Length <= ProvisioningDescriptionMaxLength;
+
+    private static string TruncateProvisioningDescription(string value)
+    {
+        var truncated = TruncateTextForDescription(value, ProvisioningDescriptionMaxLength);
+        if (FitsProvisioningDescriptionLimit(truncated))
+            return truncated;
+
+        var low = 0;
+        var high = Math.Min(value.Length, ProvisioningDescriptionMaxLength);
+        var best = "";
+        while (low <= high)
+        {
+            var mid = low + ((high - low) / 2);
+            var candidate = TruncateTextForDescription(value, mid);
+            if (FitsProvisioningDescriptionLimit(candidate))
+            {
+                best = candidate;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return best;
     }
 
     private static string TrimTextForDescription(string value, int? maxLength) =>
@@ -825,10 +880,7 @@ public sealed class CalculatorController : Controller
 
     private static string ResolveDealTypeLabel(ProvisioningScenarioContext? scenario)
     {
-        if (!string.IsNullOrWhiteSpace(scenario?.DealTypeLabel))
-            return scenario.DealTypeLabel.Trim();
-
-        return scenario?.DealTypeValue switch
+        return ResolveDealTypeValue(scenario) switch
         {
             0 => "ClienteNuevo",
             1 => "CrossSale",
@@ -837,6 +889,66 @@ public sealed class CalculatorController : Controller
             4 => "Renovacion 3 veces o mas",
             _ => "ClienteNuevo"
         };
+    }
+
+    private static int ResolveDealTypeValue(ProvisioningScenarioContext? scenario)
+    {
+        if (scenario?.RequiresProration == true)
+            return (int)DealType.CrossSale;
+
+        if (scenario is not null && Enum.IsDefined(typeof(DealType), scenario.DealTypeValue))
+            return scenario.DealTypeValue;
+
+        return (int)DealType.ClienteNuevo;
+    }
+
+    private static int ResolveProvisioningContractKindCode(ProvisioningAprovisionamiento? aprovisionamiento)
+    {
+        var rawCode = aprovisionamiento?.TipoContratoCode?.Trim();
+        if (int.TryParse(rawCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCode)
+            && parsedCode is ProvisioningContractKindNewBusinessValue or ProvisioningContractKindRenewalValue)
+        {
+            return parsedCode;
+        }
+
+        var normalizedLabel = NormalizeContractKindToken(aprovisionamiento?.TipoContratoLabel);
+        return normalizedLabel switch
+        {
+            "negocionuevo" or "nuevo" => ProvisioningContractKindNewBusinessValue,
+            "renovacion" or "renovación" or "contratoexistente" => ProvisioningContractKindRenewalValue,
+            _ => 0
+        };
+    }
+
+    private static string ResolveProvisioningContractKindLabel(int contractKindCode, ProvisioningAprovisionamiento? aprovisionamiento)
+    {
+        if (!string.IsNullOrWhiteSpace(aprovisionamiento?.TipoContratoLabel))
+            return aprovisionamiento.TipoContratoLabel.Trim();
+
+        return contractKindCode switch
+        {
+            ProvisioningContractKindNewBusinessValue => "Negocio nuevo",
+            ProvisioningContractKindRenewalValue => "Renovacion",
+            _ => ""
+        };
+    }
+
+    private static string NormalizeContractKindToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var normalized = value
+            .Trim()
+            .Normalize(NormalizationForm.FormD)
+            .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+            .ToArray();
+
+        return new string(normalized)
+            .ToLowerInvariant()
+            .Replace(" ", "")
+            .Replace("-", "")
+            .Replace("_", "");
     }
 
     private static string NormalizeDateLikeValue(string? raw, bool preferIsoWhenPossible = false)

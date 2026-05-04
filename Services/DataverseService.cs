@@ -71,6 +71,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresOfferField = "cr07a_oferta";
     private const string DefaultScoresVerifiedField = "cr07a_verificado";
     private const string DefaultScoresFirstContractField = "cr07a_esprimercontratoconelcliente";
+    private const string DefaultScoresContractKindField = "cr07a_tipodecontrato";
     private const string DefaultScoresLineField = "cr07a_linea";
     private const string DefaultScoresVerticalField = "cr07a_vertical";
     private const string DefaultScoresAdditionalField = "cr07a_adicionales";
@@ -200,6 +201,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresOfferField;
     private readonly string _scoresVerifiedField;
     private readonly string _scoresFirstContractField;
+    private readonly string _scoresContractKindField;
     private readonly string _scoresLineField;
     private readonly string _scoresVerticalField;
     private readonly string _scoresAdditionalField;
@@ -369,6 +371,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresVerifiedField;
         _scoresFirstContractField = configuration["Scores:FirstContractField"]
             ?? DefaultScoresFirstContractField;
+        _scoresContractKindField = configuration["Scores:ContractKindField"]
+            ?? DefaultScoresContractKindField;
         _scoresLineField = configuration["Scores:LineField"]
             ?? DefaultScoresLineField;
         _scoresVerticalField = configuration["Scores:VerticalField"]

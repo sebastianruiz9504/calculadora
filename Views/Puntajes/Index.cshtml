@@ -11,7 +11,8 @@
         hasVatOptions = Model.HasVatOptions,
         autoBillOptions = Model.AutoBillOptions,
         productLineOptions = Model.ProductLineOptions,
-        contractTypeOptions = Model.ContractTypeOptions
+        contractTypeOptions = Model.ContractTypeOptions,
+        contractKindOptions = Model.ContractKindOptions
     });
 }
 
@@ -29,6 +30,7 @@
      data-preview-close-month-url="@Url.Action("PreviewCloseMonth", "Puntajes")"
      data-close-month-url="@Url.Action("CloseMonth", "Puntajes")"
      data-undo-close-month-url="@Url.Action("UndoCloseMonth", "Puntajes")"
+     data-move-to-renewal-url="@Url.Action("MoveToRenewal", "Puntajes")"
      data-offer-url="@Url.Action("Offer", "Puntajes")"
      data-product-search-url="@Url.Action("ProductSearch", "Calculator")"
      data-initial-filter="@Model.InitialFilter.ToKey()">
