@@ -24,6 +24,11 @@ public sealed class NominaConfirmRequest : NominaPreviewRequest
 public sealed class NominaAdjustmentInput
 {
     public string EmployeeId { get; set; } = "";
+    public decimal? WorkedDays { get; set; }
+    public string AbsenceReason { get; set; } = "";
+    public decimal? AbsencePayment { get; set; }
+    public decimal? FactorCopiers { get; set; }
+    public decimal? FactorCloud { get; set; }
     public decimal BonusCompliance { get; set; }
     public decimal OtherDeductions { get; set; }
     public decimal Loan { get; set; }
@@ -42,11 +47,20 @@ public sealed class NominaRowDto
     public string Operation { get; set; } = "";
     public string ExistingPayrollRecordId { get; set; } = "";
     public int ExistingPayrollRecordCount { get; set; }
+    public int PeriodDays { get; set; }
+    public decimal WorkedDays { get; set; }
+    public decimal AbsenceDays { get; set; }
+    public string AbsenceReason { get; set; } = "";
+    public string AbsenceReasonLabel { get; set; } = "";
+    public decimal AbsencePayment { get; set; }
+    public decimal MonthlySalaryBase { get; set; }
+    public decimal MonthlyAuxilio { get; set; }
     public decimal SalaryBase { get; set; }
     public decimal Auxilio { get; set; }
     public decimal BonusCompliance { get; set; }
     public decimal CommissionsCopiers { get; set; }
     public decimal CommissionsCloud { get; set; }
+    public decimal CommissionsUnassigned { get; set; }
     public decimal Commissions { get; set; }
     public decimal CommissionCap { get; set; }
     public decimal AppliedCommissionBase { get; set; }

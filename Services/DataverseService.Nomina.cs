@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Nomina;
 
@@ -9,6 +10,7 @@ public sealed partial class DataverseService
 {
     private const int NominaCloudVerticalOptionValue = 645250000;
     private const int NominaCopiersVerticalOptionValue = 645250001;
+    private const int NominaCopiersLineOptionValue = 645250003;
 
     public async Task<NominaPreviewResultDto> PreviewNominaAsync(NominaPreviewRequest request, CancellationToken ct = default)
     {
@@ -109,7 +111,7 @@ public sealed partial class DataverseService
         var paymentDate = ParseNominaPaymentDate(request.PaymentDateValue);
         var adjustmentsByEmployee = NormalizeNominaAdjustments(request.Adjustments);
         var employees = await GetNominaEmployeesAsync(user, ct);
-        var commissionsByEmployee = await GetNominaCommissionTotalsAsync(period, user, ct);
+        var commissionsByEmployee = await GetNominaCommissionTotalsAsync(period, employees, user, ct);
         var existingRecordsByEmployee = await GetNominaExistingRecordsAsync(period, user, ct);
         var rows = new List<NominaRowContext>();
         var logs = new List<NominaProcessLogEntryDto>();
@@ -180,7 +182,8 @@ public sealed partial class DataverseService
             _nominaEmployeeConnectivityAllowanceField,
             _nominaEmployeeCommissionCapField,
             _nominaEmployeeCopiersFactorField,
-            _nominaEmployeeCloudFactorField
+            _nominaEmployeeCloudFactorField,
+            $"_{_nominaEmployeeUserLookupField}_value"
         }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
 
         var relativeUrl = string.IsNullOrWhiteSpace(employeeNameField)
@@ -196,38 +199,47 @@ public sealed partial class DataverseService
 
     private async Task<Dictionary<string, NominaCommissionBucket>> GetNominaCommissionTotalsAsync(
         NominaPeriodInfo period,
+        IReadOnlyList<NominaEmployeeInfo> employees,
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var employeeLookupProperty = $"_{_nominaScoresEmployeeLookupField}_value";
-        var select = string.Join(",", new[]
-        {
-            _scoresIdField,
-            _scoresContractStartDateField,
-            _scoresCommissionField,
-            _scoresVerticalField,
-            employeeLookupProperty
-        });
+        var employeesById = employees
+            .Where(item => !string.IsNullOrWhiteSpace(item.EmployeeId))
+            .GroupBy(item => item.EmployeeId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var employeeIdByUserId = employees
+            .Where(item => !string.IsNullOrWhiteSpace(item.UserId))
+            .GroupBy(item => item.UserId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().EmployeeId, StringComparer.OrdinalIgnoreCase);
+        var employeeIdByName = employees
+            .Select(item => new
+            {
+                Key = NormalizeNominaPersonName(item.EmployeeName),
+                item.EmployeeId
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Key))
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().EmployeeId, StringComparer.OrdinalIgnoreCase);
 
         var filter = string.Join(" and ", new[]
         {
             $"{_scoresContractStartDateField} ge {period.StartDate:yyyy-MM-dd}",
             $"{_scoresContractStartDateField} lt {period.EndExclusiveDate:yyyy-MM-dd}",
-            $"{employeeLookupProperty} ne null"
+            $"({_scoresCommissionField} ne null or {_scoresAdditionalField} ne null or {_scoresDescriptionField} ne null or {_scoresLegacyDescriptionField} ne null)"
         });
 
-        var relativeUrl = $"/api/data/v9.2/{_scoresTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+        var relativeUrl = $"/api/data/v9.2/{_scoresTableSetName}?$filter={Uri.EscapeDataString(filter)}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         var result = new Dictionary<string, NominaCommissionBucket>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in items)
         {
-            var employeeId = ReadDataverseLookupId(item, _nominaScoresEmployeeLookupField, "comercial", "empleado");
+            var employeeId = ResolveNominaCommissionEmployeeId(item, employeesById, employeeIdByUserId, employeeIdByName);
             if (string.IsNullOrWhiteSpace(employeeId))
                 continue;
 
-            var verticalValue = ReadOptionValue(item, _scoresVerticalField);
-            var commission = RoundCurrency(ReadDecimal(item, _scoresCommissionField) ?? 0m);
+            var verticalKey = ResolveNominaCommissionVerticalKey(item);
+            var commission = ResolveNominaCommissionValue(item);
             if (commission == 0m)
                 continue;
 
@@ -237,13 +249,108 @@ public sealed partial class DataverseService
                 result[employeeId] = bucket;
             }
 
-            if (verticalValue == NominaCopiersVerticalOptionValue)
+            if (string.Equals(verticalKey, "copiers", StringComparison.OrdinalIgnoreCase))
                 bucket.Copiers = RoundCurrency(bucket.Copiers + commission);
-            else if (verticalValue == NominaCloudVerticalOptionValue)
+            else if (string.Equals(verticalKey, "cloud", StringComparison.OrdinalIgnoreCase))
                 bucket.Cloud = RoundCurrency(bucket.Cloud + commission);
+            else
+                bucket.Unassigned = RoundCurrency(bucket.Unassigned + commission);
         }
 
         return result;
+    }
+
+    private string ResolveNominaCommissionVerticalKey(JsonElement item)
+    {
+        var verticalValue = ReadOptionValue(item, _scoresVerticalField);
+        if (verticalValue == NominaCopiersVerticalOptionValue)
+            return "copiers";
+
+        if (verticalValue == NominaCloudVerticalOptionValue)
+            return "cloud";
+
+        var verticalLabel = ReadString(item, $"{_scoresVerticalField}{FormattedValueAnnotationSuffix}");
+        if (verticalLabel.Contains("copiers", StringComparison.OrdinalIgnoreCase))
+            return "copiers";
+
+        if (verticalLabel.Contains("cloud", StringComparison.OrdinalIgnoreCase))
+            return "cloud";
+
+        var lineValue = ReadOptionValue(item, _scoresLineField);
+        return lineValue == NominaCopiersLineOptionValue ? "copiers" : "";
+    }
+
+    private string ResolveNominaCommissionEmployeeId(
+        JsonElement item,
+        IReadOnlyDictionary<string, NominaEmployeeInfo> employeesById,
+        IReadOnlyDictionary<string, string> employeeIdByUserId,
+        IReadOnlyDictionary<string, string> employeeIdByName)
+    {
+        var directEmployeeId = ReadDataverseLookupId(item, _nominaScoresEmployeeLookupField, "comercial", "empleado");
+        if (!string.IsNullOrWhiteSpace(directEmployeeId))
+        {
+            if (employeesById.ContainsKey(directEmployeeId))
+                return directEmployeeId;
+
+            if (employeeIdByUserId.TryGetValue(directEmployeeId, out var employeeIdByDirectUser))
+                return employeeIdByDirectUser;
+
+            var directEmployeeName = ReadDataverseDisplayValue(item, _nominaScoresEmployeeLookupField, "comercial", "empleado");
+            if (TryResolveNominaEmployeeByName(directEmployeeName, employeeIdByName, out var directEmployeeIdByName))
+                return directEmployeeIdByName;
+        }
+
+        var salesPersonUserId = ReadDataverseLookupId(item, _scoresSalesPersonField, "vendedor", "usuario", "systemuser");
+        if (!string.IsNullOrWhiteSpace(salesPersonUserId)
+            && employeeIdByUserId.TryGetValue(salesPersonUserId, out var employeeIdByUser))
+        {
+            return employeeIdByUser;
+        }
+
+        var salesPersonName = ReadDataverseDisplayValue(item, _scoresSalesPersonField, "vendedor", "usuario", "systemuser");
+        return TryResolveNominaEmployeeByName(salesPersonName, employeeIdByName, out var employeeId)
+            ? employeeId
+            : "";
+    }
+
+    private decimal ResolveNominaCommissionValue(JsonElement item)
+    {
+        var rawAdditional = ReadString(item, _scoresAdditionalField);
+        var additional = DeserializeJsonOrDefault<ScoreAdditionalDataSnapshot>(rawAdditional) ?? new ScoreAdditionalDataSnapshot();
+        NormalizeAdditionalSnapshot(additional);
+
+        var rawDescription = FirstNonEmpty(
+            ReadString(item, _scoresDescriptionField),
+            ReadString(item, _scoresLegacyDescriptionField));
+        var parsedDescription = ParseScoreDescription(rawDescription);
+
+        return RoundCurrency(ReadDecimal(item, _scoresCommissionField)
+            ?? additional.LastResult?.Commission
+            ?? parsedDescription.Commission
+            ?? 0m);
+    }
+
+    private static bool TryResolveNominaEmployeeByName(
+        string? rawName,
+        IReadOnlyDictionary<string, string> employeeIdByName,
+        out string employeeId)
+    {
+        return employeeIdByName.TryGetValue(NormalizeNominaPersonName(rawName), out employeeId!);
+    }
+
+    private static string NormalizeNominaPersonName(string? rawName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName))
+            return "";
+
+        var normalized = rawName
+            .Trim()
+            .Normalize(NormalizationForm.FormD)
+            .Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+            .ToArray();
+
+        return string.Join(" ", new string(normalized).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .ToLowerInvariant();
     }
 
     private async Task<Dictionary<string, List<NominaExistingRecordInfo>>> GetNominaExistingRecordsAsync(
@@ -259,6 +366,11 @@ public sealed partial class DataverseService
             payrollNameField,
             _nominaPayrollPaymentDateField,
             employeeLookupProperty,
+            _nominaPayrollPeriodDaysField,
+            _nominaPayrollWorkedDaysField,
+            _nominaPayrollAbsenceDaysField,
+            _nominaPayrollAbsenceReasonField,
+            _nominaPayrollAbsencePaymentField,
             _nominaPayrollBonusComplianceField,
             _nominaPayrollOtherDeductionsField,
             _nominaPayrollLoanField,
@@ -294,6 +406,11 @@ public sealed partial class DataverseService
             [_nominaPayrollPaymentDateField] = row.PaymentDateValue,
             [_nominaPayrollSalaryBaseField] = row.SalaryBase,
             [_nominaPayrollConnectivityAllowanceField] = row.Auxilio,
+            [_nominaPayrollPeriodDaysField] = row.PeriodDays,
+            [_nominaPayrollWorkedDaysField] = row.WorkedDays,
+            [_nominaPayrollAbsenceDaysField] = row.AbsenceDays,
+            [_nominaPayrollAbsenceReasonField] = row.AbsenceReason,
+            [_nominaPayrollAbsencePaymentField] = row.AbsencePayment,
             [_nominaPayrollBonusComplianceField] = row.BonusCompliance,
             [_nominaPayrollCommissionsCopiersField] = row.CommissionsCopiers,
             [_nominaPayrollCommissionsCloudField] = row.CommissionsCloud,
@@ -337,10 +454,11 @@ public sealed partial class DataverseService
 
         var startDate = new DateOnly(year, month, 1);
         var endExclusiveDate = startDate.AddMonths(1);
+        var periodDays = DateTime.DaysInMonth(year, month);
         var culture = CultureInfo.GetCultureInfo("es-CO");
         var label = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(startDate.ToString("MMMM yyyy", culture));
 
-        return new NominaPeriodInfo(normalized, label, startDate, endExclusiveDate);
+        return new NominaPeriodInfo(normalized, label, startDate, endExclusiveDate, periodDays);
     }
 
     private static DateOnly ParseNominaPaymentDate(string? paymentDateValue)
@@ -363,6 +481,11 @@ public sealed partial class DataverseService
             result[employeeId] = new NominaAdjustmentInput
             {
                 EmployeeId = employeeId,
+                WorkedDays = item.WorkedDays.HasValue ? RoundCurrency(Math.Max(item.WorkedDays.Value, 0m)) : null,
+                AbsenceReason = NormalizeNominaAbsenceReason(item.AbsenceReason),
+                AbsencePayment = item.AbsencePayment.HasValue ? RoundCurrency(Math.Max(item.AbsencePayment.Value, 0m)) : null,
+                FactorCopiers = item.FactorCopiers.HasValue ? RoundCurrency(Math.Max(item.FactorCopiers.Value, 0m)) : null,
+                FactorCloud = item.FactorCloud.HasValue ? RoundCurrency(Math.Max(item.FactorCloud.Value, 0m)) : null,
                 BonusCompliance = RoundCurrency(Math.Max(item.BonusCompliance, 0m)),
                 OtherDeductions = RoundCurrency(Math.Max(item.OtherDeductions, 0m)),
                 Loan = RoundCurrency(Math.Max(item.Loan, 0m)),
@@ -388,6 +511,11 @@ public sealed partial class DataverseService
         return new NominaAdjustmentInput
         {
             EmployeeId = employeeId,
+            WorkedDays = existingRecord.WorkedDays,
+            AbsenceReason = existingRecord.AbsenceReason,
+            AbsencePayment = existingRecord.AbsencePayment,
+            FactorCopiers = null,
+            FactorCloud = null,
             BonusCompliance = existingRecord.BonusCompliance,
             OtherDeductions = existingRecord.OtherDeductions,
             Loan = existingRecord.Loan,
@@ -408,6 +536,11 @@ public sealed partial class DataverseService
             || totalCommissions > 0m
             || existingRecord is not null
             || adjustment is not null && (adjustment.BonusCompliance > 0m
+                || adjustment.WorkedDays.HasValue
+                || !string.IsNullOrWhiteSpace(adjustment.AbsenceReason)
+                || adjustment.AbsencePayment > 0m
+                || adjustment.FactorCopiers.HasValue
+                || adjustment.FactorCloud.HasValue
                 || adjustment.OtherDeductions > 0m
                 || adjustment.Loan > 0m
                 || adjustment.PayrollWithholding > 0m
@@ -428,7 +561,63 @@ public sealed partial class DataverseService
         if (employee.CommissionCap <= 0m && totalCommissions > 0m)
             warnings.Add("El empleado tiene comisiones pero no tiene tope comisional configurado; se tomara toda la comision como base prestacional.");
 
+        if (commissionBucket is { Unassigned: > 0m })
+            warnings.Add("El empleado tiene comisiones sin vertical reconocida; se sumaran a la liquidacion, pero no al reparto Copiers/Cloud.");
+
         return warnings;
+    }
+
+    private static decimal ClampNominaDays(decimal value, int periodDays)
+    {
+        if (value <= 0m)
+            return 0m;
+
+        return value > periodDays ? periodDays : value;
+    }
+
+    private static decimal CalculateNominaAbsencePayment(
+        string absenceReason,
+        decimal monthlySalaryBase,
+        int periodDays,
+        decimal absenceDays)
+    {
+        if (absenceDays <= 0m || monthlySalaryBase <= 0m || periodDays <= 0)
+            return 0m;
+
+        var dailySalary = monthlySalaryBase / periodDays;
+        return NormalizeNominaAbsenceReason(absenceReason) switch
+        {
+            "incapacidad" => RoundCurrency(
+                (Math.Min(absenceDays, 2m) * dailySalary)
+                + (Math.Max(absenceDays - 2m, 0m) * dailySalary * (2m / 3m))),
+            "vacaciones" or "calamidad" => RoundCurrency(absenceDays * dailySalary),
+            _ => 0m
+        };
+    }
+
+    private static string NormalizeNominaAbsenceReason(string? value)
+    {
+        var normalized = (value ?? "").Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "ingreso" => "ingreso",
+            "incapacidad" => "incapacidad",
+            "vacaciones" => "vacaciones",
+            "calamidad" => "calamidad",
+            _ => ""
+        };
+    }
+
+    private static string GetNominaAbsenceReasonLabel(string? value)
+    {
+        return NormalizeNominaAbsenceReason(value) switch
+        {
+            "ingreso" => "Ingreso",
+            "incapacidad" => "Incapacidad",
+            "vacaciones" => "Vacaciones",
+            "calamidad" => "Calamidad",
+            _ => ""
+        };
     }
 
     private NominaRowDto BuildNominaRow(
@@ -441,11 +630,31 @@ public sealed partial class DataverseService
         int existingRecordCount,
         IReadOnlyList<string> warnings)
     {
+        var rowWarnings = warnings.ToList();
+        var periodDays = Math.Max(period.PeriodDays, 1);
+        var workedDays = ClampNominaDays(adjustment.WorkedDays ?? periodDays, periodDays);
+        var absenceDays = RoundCurrency(Math.Max(periodDays - workedDays, 0m));
+        var absenceReason = absenceDays > 0m
+            ? NormalizeNominaAbsenceReason(adjustment.AbsenceReason)
+            : "";
+        if (absenceDays > 0m && string.IsNullOrWhiteSpace(absenceReason))
+            rowWarnings.Add("Hay dias no trabajados sin motivo; el pago sugerido queda en 0 hasta seleccionar uno.");
+
+        var salaryBase = RoundCurrency(employee.SalaryBase * workedDays / periodDays);
+        var auxilio = RoundCurrency(employee.Auxilio * workedDays / periodDays);
+        var absencePayment = absenceDays > 0m
+            ? RoundCurrency(Math.Max(
+                adjustment.AbsencePayment
+                    ?? CalculateNominaAbsencePayment(absenceReason, employee.SalaryBase, periodDays, absenceDays),
+                0m))
+            : 0m;
         var bonusCompliance = RoundCurrency(Math.Max(adjustment.BonusCompliance, 0m));
         var otherDeductions = RoundCurrency(Math.Max(adjustment.OtherDeductions, 0m));
         var loan = RoundCurrency(Math.Max(adjustment.Loan, 0m));
         var payrollWithholding = RoundCurrency(Math.Max(adjustment.PayrollWithholding, 0m));
         var externalWithholding = RoundCurrency(Math.Max(adjustment.ExternalWithholding, 0m));
+        var factorCopiers = RoundCurrency(Math.Max(adjustment.FactorCopiers ?? employee.FactorCopiers, 0m));
+        var factorCloud = RoundCurrency(Math.Max(adjustment.FactorCloud ?? employee.FactorCloud, 0m));
         var totalCommissions = RoundCurrency(commissionBucket.Total);
         var appliedCommissionBase = employee.CommissionCap > 0m
             ? RoundCurrency(Math.Min(totalCommissions, employee.CommissionCap))
@@ -453,14 +662,14 @@ public sealed partial class DataverseService
         var cuentaDeCobro = employee.CommissionCap > 0m
             ? RoundCurrency(Math.Max(totalCommissions - employee.CommissionCap, 0m))
             : 0m;
-        var contributionBase = RoundCurrency(employee.SalaryBase + bonusCompliance + appliedCommissionBase);
+        var contributionBase = RoundCurrency(salaryBase + absencePayment + bonusCompliance + appliedCommissionBase);
         var health = RoundCurrency(contributionBase * _nominaHealthRate);
         var pension = RoundCurrency(contributionBase * _nominaPensionRate);
-        var grossSalary = RoundCurrency(employee.SalaryBase + employee.Auxilio + bonusCompliance + totalCommissions);
+        var grossSalary = RoundCurrency(salaryBase + auxilio + absencePayment + bonusCompliance + totalCommissions);
         var netPayroll = RoundCurrency(grossSalary - (health + pension + otherDeductions + loan + payrollWithholding));
         var netCuentaDeCobro = RoundCurrency(cuentaDeCobro - externalWithholding);
-        var totalCopiers = RoundCurrency((employee.FactorCopiers / 100m * employee.SalaryBase) + commissionBucket.Copiers);
-        var totalCloud = RoundCurrency((employee.FactorCloud / 100m * employee.SalaryBase) + commissionBucket.Cloud);
+        var totalCopiers = RoundCurrency((factorCopiers / 100m * salaryBase) + commissionBucket.Copiers);
+        var totalCloud = RoundCurrency((factorCloud / 100m * salaryBase) + commissionBucket.Cloud);
 
         return new NominaRowDto
         {
@@ -473,11 +682,20 @@ public sealed partial class DataverseService
             Operation = existingRecord is null ? "create" : "update",
             ExistingPayrollRecordId = existingRecord?.RecordId ?? "",
             ExistingPayrollRecordCount = existingRecordCount,
-            SalaryBase = employee.SalaryBase,
-            Auxilio = employee.Auxilio,
+            PeriodDays = periodDays,
+            WorkedDays = workedDays,
+            AbsenceDays = absenceDays,
+            AbsenceReason = absenceReason,
+            AbsenceReasonLabel = GetNominaAbsenceReasonLabel(absenceReason),
+            AbsencePayment = absencePayment,
+            MonthlySalaryBase = employee.SalaryBase,
+            MonthlyAuxilio = employee.Auxilio,
+            SalaryBase = salaryBase,
+            Auxilio = auxilio,
             BonusCompliance = bonusCompliance,
             CommissionsCopiers = commissionBucket.Copiers,
             CommissionsCloud = commissionBucket.Cloud,
+            CommissionsUnassigned = commissionBucket.Unassigned,
             Commissions = totalCommissions,
             CommissionCap = employee.CommissionCap,
             AppliedCommissionBase = appliedCommissionBase,
@@ -494,11 +712,11 @@ public sealed partial class DataverseService
             GrossSalary = grossSalary,
             NetPayroll = netPayroll,
             NetCuentaDeCobro = netCuentaDeCobro,
-            FactorCopiers = employee.FactorCopiers,
-            FactorCloud = employee.FactorCloud,
+            FactorCopiers = factorCopiers,
+            FactorCloud = factorCloud,
             TotalCopiers = totalCopiers,
             TotalCloud = totalCloud,
-            Warnings = warnings.ToArray()
+            Warnings = rowWarnings.ToArray()
         };
     }
 
@@ -593,6 +811,7 @@ public sealed partial class DataverseService
         {
             EmployeeId = employeeId,
             EmployeeName = employeeName.Trim(),
+            UserId = ReadDataverseLookupId(item, _nominaEmployeeUserLookupField, "usuario", "systemuser"),
             SalaryBase = RoundCurrency(Math.Max(ReadDecimal(item, _nominaEmployeeSalaryField) ?? 0m, 0m)),
             Auxilio = RoundCurrency(Math.Max(ReadDecimal(item, _nominaEmployeeConnectivityAllowanceField) ?? 0m, 0m)),
             CommissionCap = RoundCurrency(Math.Max(ReadDecimal(item, _nominaEmployeeCommissionCapField) ?? 0m, 0m)),
@@ -617,6 +836,11 @@ public sealed partial class DataverseService
             EmployeeId = employeeId,
             RecordName = ReadString(item, payrollNameField).Trim(),
             PaymentDateValue = ReadDateOnly(item, _nominaPayrollPaymentDateField)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            PeriodDays = ReadInt(item, _nominaPayrollPeriodDaysField),
+            WorkedDays = ReadDecimal(item, _nominaPayrollWorkedDaysField),
+            AbsenceDays = RoundCurrency(Math.Max(ReadDecimal(item, _nominaPayrollAbsenceDaysField) ?? 0m, 0m)),
+            AbsenceReason = NormalizeNominaAbsenceReason(ReadString(item, _nominaPayrollAbsenceReasonField)),
+            AbsencePayment = ReadDecimal(item, _nominaPayrollAbsencePaymentField),
             BonusCompliance = RoundCurrency(Math.Max(ReadDecimal(item, _nominaPayrollBonusComplianceField) ?? 0m, 0m)),
             OtherDeductions = RoundCurrency(Math.Max(ReadDecimal(item, _nominaPayrollOtherDeductionsField) ?? 0m, 0m)),
             Loan = RoundCurrency(Math.Max(ReadDecimal(item, _nominaPayrollLoanField) ?? 0m, 0m)),
@@ -674,6 +898,9 @@ public sealed partial class DataverseService
             _nominaPayrollEmployeeLookupField,
             _nominaPayrollPaymentDateField,
             _nominaPayrollSalaryBaseField,
+            _nominaPayrollWorkedDaysField,
+            _nominaPayrollAbsenceReasonField,
+            _nominaPayrollAbsencePaymentField,
             _nominaPayrollBonusComplianceField,
             _nominaPayrollNetAmountField
         })
@@ -761,7 +988,7 @@ public sealed partial class DataverseService
 
     private sealed class NominaBuildContext
     {
-        public NominaPeriodInfo Period { get; set; } = new("", "", default, default);
+        public NominaPeriodInfo Period { get; set; } = new("", "", default, default, 0);
         public DateOnly PaymentDate { get; set; }
         public List<NominaRowContext> Rows { get; set; } = new();
         public List<NominaProcessLogEntryDto> Logs { get; set; } = new();
@@ -777,6 +1004,7 @@ public sealed partial class DataverseService
     {
         public string EmployeeId { get; set; } = "";
         public string EmployeeName { get; set; } = "";
+        public string UserId { get; set; } = "";
         public decimal SalaryBase { get; set; }
         public decimal Auxilio { get; set; }
         public decimal CommissionCap { get; set; }
@@ -788,7 +1016,8 @@ public sealed partial class DataverseService
     {
         public decimal Copiers { get; set; }
         public decimal Cloud { get; set; }
-        public decimal Total => RoundCurrency(Copiers + Cloud);
+        public decimal Unassigned { get; set; }
+        public decimal Total => RoundCurrency(Copiers + Cloud + Unassigned);
     }
 
     private sealed class NominaExistingRecordInfo
@@ -797,6 +1026,11 @@ public sealed partial class DataverseService
         public string EmployeeId { get; set; } = "";
         public string RecordName { get; set; } = "";
         public string PaymentDateValue { get; set; } = "";
+        public int PeriodDays { get; set; }
+        public decimal? WorkedDays { get; set; }
+        public decimal AbsenceDays { get; set; }
+        public string AbsenceReason { get; set; } = "";
+        public decimal? AbsencePayment { get; set; }
         public decimal BonusCompliance { get; set; }
         public decimal OtherDeductions { get; set; }
         public decimal Loan { get; set; }
@@ -808,5 +1042,6 @@ public sealed partial class DataverseService
         string Key,
         string Label,
         DateOnly StartDate,
-        DateOnly EndExclusiveDate);
+        DateOnly EndExclusiveDate,
+        int PeriodDays);
 }

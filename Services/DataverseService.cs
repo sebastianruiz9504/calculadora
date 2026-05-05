@@ -85,6 +85,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaEmployeeCommissionCapField = "cr07a_topecomisional";
     private const string DefaultNominaEmployeeCopiersFactorField = "cr07a_factorcopiers";
     private const string DefaultNominaEmployeeCloudFactorField = "cr07a_factorcloud";
+    private const string DefaultNominaEmployeeUserLookupField = "cr07a_usuario";
     private const string DefaultNominaPayrollTableSetName = "cr07a_nominas";
     private const string DefaultNominaPayrollTableName = "cr07a_nomina";
     private const string DefaultNominaPayrollIdField = "cr07a_nominaid";
@@ -94,6 +95,11 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaPayrollPaymentDateField = "cr07a_fechapago";
     private const string DefaultNominaPayrollSalaryBaseField = "cr07a_sueldobase";
     private const string DefaultNominaPayrollConnectivityAllowanceField = "cr07a_auxilio";
+    private const string DefaultNominaPayrollPeriodDaysField = "cr07a_diasdelmes";
+    private const string DefaultNominaPayrollWorkedDaysField = "cr07a_diastrabajados";
+    private const string DefaultNominaPayrollAbsenceDaysField = "cr07a_diasnotrabajados";
+    private const string DefaultNominaPayrollAbsenceReasonField = "cr07a_motivodiasnotrabajados";
+    private const string DefaultNominaPayrollAbsencePaymentField = "cr07a_valordiasnotrabajados";
     private const string DefaultNominaPayrollBonusComplianceField = "cr07a_bonocumplimiento";
     private const string DefaultNominaPayrollCommissionsCopiersField = "cr07a_comisionescopiers";
     private const string DefaultNominaPayrollCommissionsCloudField = "cr07a_comisionescloud";
@@ -218,6 +224,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaEmployeeCommissionCapField;
     private readonly string _nominaEmployeeCopiersFactorField;
     private readonly string _nominaEmployeeCloudFactorField;
+    private readonly string _nominaEmployeeUserLookupField;
     private readonly string _nominaPayrollTableSetName;
     private readonly string _nominaPayrollTableName;
     private readonly string _nominaPayrollIdField;
@@ -227,6 +234,11 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaPayrollPaymentDateField;
     private readonly string _nominaPayrollSalaryBaseField;
     private readonly string _nominaPayrollConnectivityAllowanceField;
+    private readonly string _nominaPayrollPeriodDaysField;
+    private readonly string _nominaPayrollWorkedDaysField;
+    private readonly string _nominaPayrollAbsenceDaysField;
+    private readonly string _nominaPayrollAbsenceReasonField;
+    private readonly string _nominaPayrollAbsencePaymentField;
     private readonly string _nominaPayrollBonusComplianceField;
     private readonly string _nominaPayrollCommissionsCopiersField;
     private readonly string _nominaPayrollCommissionsCloudField;
@@ -403,6 +415,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaEmployeeCopiersFactorField;
         _nominaEmployeeCloudFactorField = configuration["Nomina:EmployeeCloudFactorField"]
             ?? DefaultNominaEmployeeCloudFactorField;
+        _nominaEmployeeUserLookupField = configuration["Nomina:EmployeeUserLookupField"]
+            ?? DefaultNominaEmployeeUserLookupField;
         _nominaPayrollTableSetName = configuration["Nomina:PayrollTableSetName"]
             ?? DefaultNominaPayrollTableSetName;
         _nominaPayrollTableName = configuration["Nomina:PayrollTableName"]
@@ -421,6 +435,16 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaPayrollSalaryBaseField;
         _nominaPayrollConnectivityAllowanceField = configuration["Nomina:PayrollConnectivityAllowanceField"]
             ?? DefaultNominaPayrollConnectivityAllowanceField;
+        _nominaPayrollPeriodDaysField = configuration["Nomina:PayrollPeriodDaysField"]
+            ?? DefaultNominaPayrollPeriodDaysField;
+        _nominaPayrollWorkedDaysField = configuration["Nomina:PayrollWorkedDaysField"]
+            ?? DefaultNominaPayrollWorkedDaysField;
+        _nominaPayrollAbsenceDaysField = configuration["Nomina:PayrollAbsenceDaysField"]
+            ?? DefaultNominaPayrollAbsenceDaysField;
+        _nominaPayrollAbsenceReasonField = configuration["Nomina:PayrollAbsenceReasonField"]
+            ?? DefaultNominaPayrollAbsenceReasonField;
+        _nominaPayrollAbsencePaymentField = configuration["Nomina:PayrollAbsencePaymentField"]
+            ?? DefaultNominaPayrollAbsencePaymentField;
         _nominaPayrollBonusComplianceField = configuration["Nomina:PayrollBonusComplianceField"]
             ?? DefaultNominaPayrollBonusComplianceField;
         _nominaPayrollCommissionsCopiersField = configuration["Nomina:PayrollCommissionsCopiersField"]

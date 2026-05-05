@@ -111,6 +111,13 @@
     min-width: 0;
 }
 
+.payroll-field-hint {
+    color: #64748b;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    margin-top: 0.35rem;
+}
+
 .payroll-toolbar__actions {
     display: grid;
     gap: 0.55rem;
@@ -223,7 +230,7 @@
 
 .payroll-table {
     margin-bottom: 0;
-    min-width: 680px;
+    min-width: 920px;
 }
 
 .payroll-vertical-table {
@@ -469,6 +476,17 @@ body.payroll-modal-open {
 
 .payroll-detail-input {
     min-width: 0;
+}
+
+.payroll-percent-cell {
+    min-width: 7.5rem;
+    width: 7.5rem;
+}
+
+.payroll-table-input {
+    display: inline-block;
+    min-width: 6.4rem;
+    width: 6.4rem;
 }
 
 .payroll-logs {

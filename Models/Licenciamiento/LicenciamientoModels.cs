@@ -89,6 +89,8 @@ public sealed class LicenciamientoPreviewRowDto
     public decimal ValorTotalUsd { get; set; }
     public decimal UnidadUsd { get; set; }
     public decimal Cantidad { get; set; }
+    public decimal SalesPriceUsd { get; set; }
+    public bool HasSalesPrice { get; set; }
     public int ContractTypeValue { get; set; }
     public string ContractTypeLabel { get; set; } = "";
     public bool RequiresBreakdown { get; set; }
@@ -179,4 +181,31 @@ public sealed class LicenciamientoUpdateContractTypeResultDto
     public int UpdatedCount { get; set; }
     public int ContractTypeValue { get; set; }
     public string ContractTypeLabel { get; set; } = "";
+}
+
+public sealed class LicenciamientoUpdateSalesPriceRequestDto
+{
+    public int SourceRowNumber { get; set; }
+    public string CompanyAccountLookupId { get; set; } = "";
+    public string CompanyAccountId { get; set; } = "";
+    public string ProductLookupId { get; set; } = "";
+    public string ProductDescription { get; set; } = "";
+    public decimal SalesPriceUsd { get; set; }
+    public decimal Quantity { get; set; }
+}
+
+public sealed class LicenciamientoUpdateSalesPriceResultDto
+{
+    public string Message { get; set; } = "";
+    public string SalesPerformanceRecordId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public decimal SalesPriceUsd { get; set; }
+    public decimal AppliedQuantity { get; set; }
+    public decimal PreviousUnitSaleUsd { get; set; }
+    public decimal NewUnitSaleUsd { get; set; }
+    public decimal PreviousMonthlySaleUsd { get; set; }
+    public decimal NewMonthlySaleUsd { get; set; }
 }

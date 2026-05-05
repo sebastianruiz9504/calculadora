@@ -14,6 +14,7 @@
     const importUrl = app.dataset.importUrl || "";
     const adjustTrmUrl = app.dataset.adjustTrmUrl || "";
     const updateContractUrl = app.dataset.updateContractUrl || "";
+    const updateSalesPriceUrl = app.dataset.updateSalesPriceUrl || "";
     const breakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
 
     const statusBanner = document.getElementById("licStatus");
@@ -47,6 +48,9 @@
     const previewProductSection = document.getElementById("licPreviewProductSection");
     const previewProductCount = document.getElementById("licPreviewProductCount");
     const previewBody = document.getElementById("licPreviewBody");
+    const previewAzureSection = document.getElementById("licPreviewAzureSection");
+    const previewAzureCount = document.getElementById("licPreviewAzureCount");
+    const previewAzureBody = document.getElementById("licPreviewAzureBody");
     const previewDataSection = document.getElementById("licPreviewDataSection");
     const previewDataCount = document.getElementById("licPreviewDataCount");
     const previewDataBody = document.getElementById("licPreviewDataBody");
@@ -69,6 +73,18 @@
     const productAceleradorInput = document.getElementById("licProductAceleradorInput");
     const productServiceIdentifierInput = document.getElementById("licProductServiceIdentifierInput");
     const productRegistrationSaveBtn = document.getElementById("licProductRegistrationSaveBtn");
+
+    const salesPriceModal = document.getElementById("licSalesPriceModal");
+    const salesPriceStatus = document.getElementById("licSalesPriceStatus");
+    const salesPriceForm = document.getElementById("licSalesPriceForm");
+    const salesPriceRow = document.getElementById("licSalesPriceRow");
+    const salesPriceExcel = document.getElementById("licSalesPriceExcel");
+    const salesPriceUnit = document.getElementById("licSalesPriceUnit");
+    const salesPriceClient = document.getElementById("licSalesPriceClient");
+    const salesPriceAccount = document.getElementById("licSalesPriceAccount");
+    const salesPriceProduct = document.getElementById("licSalesPriceProduct");
+    const salesPriceQuantity = document.getElementById("licSalesPriceQuantity");
+    const salesPriceSaveBtn = document.getElementById("licSalesPriceSaveBtn");
 
     const breakdownModal = document.getElementById("licBreakdownModal");
     const breakdownStatus = document.getElementById("licBreakdownStatus");
@@ -130,6 +146,7 @@
         accountClientLookupRequestSeq: 0,
         accountClientLookupActiveRequest: 0,
         productRegistrationIndex: -1,
+        salesPriceUpdateIndex: -1,
         breakdownSourceIndex: -1,
         breakdownDraftRows: [],
         breakdownDraftSeq: 0,
@@ -163,6 +180,11 @@
     productRegistrationForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await registerProduct();
+    });
+
+    salesPriceForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await updateSalesPrice();
     });
 
     trmForm?.addEventListener("submit", async (event) => {
@@ -306,6 +328,8 @@
             closeAccountRegistrationModal();
         } else if (target.hasAttribute("data-lic-product-close")) {
             closeProductRegistrationModal();
+        } else if (target.hasAttribute("data-lic-sales-price-close")) {
+            closeSalesPriceModal();
         } else if (target.hasAttribute("data-lic-breakdown-close")) {
             closeBreakdownModal();
         } else if (target.hasAttribute("data-lic-trm-close")) {
@@ -316,6 +340,8 @@
             openAccountRegistrationModal(target.getAttribute("data-preview-register-account") || "");
         } else if (target.hasAttribute("data-preview-register-product")) {
             openProductRegistrationModal(Number.parseInt(target.getAttribute("data-preview-register-product") || "-1", 10));
+        } else if (target.hasAttribute("data-preview-update-sales-price")) {
+            openSalesPriceModal(Number.parseInt(target.getAttribute("data-preview-update-sales-price") || "-1", 10));
         } else if (target.hasAttribute("data-preview-breakdown")) {
             openBreakdownModal(Number.parseInt(target.getAttribute("data-preview-breakdown") || "-1", 10));
         } else if (target.hasAttribute("data-breakdown-remove")) {
@@ -331,6 +357,8 @@
 
         if (productRegistrationModal && !productRegistrationModal.hidden) {
             closeProductRegistrationModal();
+        } else if (salesPriceModal && !salesPriceModal.hidden) {
+            closeSalesPriceModal();
         } else if (accountRegistrationModal && !accountRegistrationModal.hidden) {
             closeAccountRegistrationModal();
         } else if (breakdownModal && !breakdownModal.hidden) {
@@ -446,6 +474,7 @@
     }
 
     function closeUploadModal() {
+        closeSalesPriceModal();
         closeBreakdownModal({ preserveStatus: false });
         uploadModal.hidden = true;
     }
@@ -496,6 +525,7 @@
         const useServerSummary = Boolean(result);
         const accountGroups = buildAccountIssueGroups(rows);
         const productRows = getProductIssueRows(rows);
+        const azureRows = getAzureSalesPriceRows(rows);
         const dataRows = getDataIssueRows(rows);
         const hiddenRows = rows.filter((row) => isPreviewRowReadyToHide(row)).length;
 
@@ -570,6 +600,46 @@
                 </tr>`;
         }).join("");
 
+        if (previewAzureSection) {
+            previewAzureSection.hidden = azureRows.length === 0;
+        }
+
+        if (previewAzureCount) {
+            previewAzureCount.textContent = `${numberFormatter.format(azureRows.length)} fila${azureRows.length === 1 ? "" : "s"}`;
+        }
+
+        if (previewAzureBody) {
+            previewAzureBody.innerHTML = azureRows.map(({ row, index }) => {
+                const validation = getSalesPriceUpdateValidationMessage(row);
+                const updated = row.salesPriceUpdateSucceeded === true;
+                return `
+                    <tr data-preview-azure-index="${index}">
+                        <td data-label="Fila">${numberFormatter.format(Number(row.sourceRowNumber || 0))}</td>
+                        <td data-label="Cliente">${escapeHtml(row.nombreCliente)}</td>
+                        <td data-label="Cuenta">
+                            <div>${escapeHtml(row.companyAccountLookupLabel || row.companyAccountId || "Sin cuenta")}</div>
+                            ${renderLookupHelper(row.companyAccountLookupFound, row.companyAccountLookupRequired, row.companyAccountLookupLabel, row.companyAccountLookupFailureReason)}
+                        </td>
+                        <td data-label="Producto">${escapeHtml(row.productLookupLabel || row.productDescription || "Sin producto")}</td>
+                        <td class="text-end" data-label="Sales Price">${hasSalesPrice(row) ? usdFormatter.format(Number(row.salesPriceUsd || 0)) : "-"}</td>
+                        <td class="text-end" data-label="Cantidad">${numberFormatter.format(Number(row.cantidad || 0))}</td>
+                        <td data-label="Estado">
+                            <span class="lic-badge ${updated ? "is-good" : (validation ? "is-warning" : "")}">
+                                ${escapeHtml(updated ? "Actualizado" : (validation || "Listo"))}
+                            </span>
+                        </td>
+                        <td data-label="Accion">
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm"
+                                    data-preview-update-sales-price="${index}"
+                                    ${validation || !updateSalesPriceUrl ? "disabled" : ""}>
+                                Actualizar precio de venta
+                            </button>
+                        </td>
+                    </tr>`;
+            }).join("");
+        }
+
         if (previewDataSection) {
             previewDataSection.hidden = dataRows.length === 0;
         }
@@ -593,7 +663,7 @@
         }
 
         if (previewClean) {
-            previewClean.hidden = rows.length === 0 || accountGroups.length > 0 || productRows.length > 0 || dataRows.length > 0;
+            previewClean.hidden = rows.length === 0 || accountGroups.length > 0 || productRows.length > 0 || azureRows.length > 0 || dataRows.length > 0;
         }
     }
 
@@ -641,6 +711,12 @@
             .filter((item) => shouldSkipPreviewRow(item.row) || requiresBreakdown(item.row));
     }
 
+    function getAzureSalesPriceRows(rows) {
+        return rows
+            .map((row, index) => ({ row, index }))
+            .filter((item) => isAzureSalesPriceRow(item.row));
+    }
+
     function getDataIssueRows(rows) {
         return rows
             .map((row, index) => ({ row, index }))
@@ -651,7 +727,8 @@
         return Boolean(row?.isValid)
             && !hasAccountLookupIssue(row)
             && !shouldSkipPreviewRow(row)
-            && !requiresBreakdown(row);
+            && !requiresBreakdown(row)
+            && !isAzureSalesPriceRow(row);
     }
 
     function hasAccountLookupIssue(row) {
@@ -662,6 +739,47 @@
 
     function normalizeLookupGroupKey(value) {
         return (value || "").trim().toLowerCase() || "__empty__";
+    }
+
+    function isAzureSalesPriceRow(row) {
+        const productText = `${row?.productDescription || ""} ${row?.productLookupLabel || ""}`;
+        return productText.toLowerCase().includes("azure");
+    }
+
+    function hasSalesPrice(row) {
+        return Boolean(row?.hasSalesPrice) && Number(row?.salesPriceUsd || 0) > 0;
+    }
+
+    function getSalesPriceUpdateValidationMessage(row) {
+        if (!updateSalesPriceUrl) {
+            return "Endpoint no configurado";
+        }
+
+        if (!row?.isValid) {
+            return "Corrige los datos de la fila";
+        }
+
+        if (hasAccountLookupIssue(row)) {
+            return "Account ID sin lookup";
+        }
+
+        if (shouldSkipPreviewRow(row)) {
+            return "Producto sin lookup";
+        }
+
+        if (requiresBreakdown(row)) {
+            return "Requiere desglose";
+        }
+
+        if (!hasSalesPrice(row)) {
+            return "Sin Sales Price";
+        }
+
+        if (!Number.isFinite(Number(row.cantidad)) || Number(row.cantidad) <= 0) {
+            return "Cantidad invalida";
+        }
+
+        return "";
     }
 
     function renderPreviewProductCell(row, index) {
@@ -1333,6 +1451,111 @@
         });
     }
 
+    function openSalesPriceModal(index) {
+        const row = state.previewRows[index];
+        if (!row || !isAzureSalesPriceRow(row)) {
+            showStatus(uploadStatus, "warning", "No encontramos la fila Azure para actualizar.");
+            return;
+        }
+
+        const validation = getSalesPriceUpdateValidationMessage(row);
+        if (validation) {
+            showStatus(uploadStatus, "warning", validation);
+            return;
+        }
+
+        state.salesPriceUpdateIndex = index;
+        renderSalesPriceModal(row);
+        clearStatus(salesPriceStatus);
+        salesPriceModal.hidden = false;
+        salesPriceSaveBtn?.focus();
+    }
+
+    function closeSalesPriceModal() {
+        if (salesPriceModal) {
+            salesPriceModal.hidden = true;
+        }
+        clearStatus(salesPriceStatus);
+        state.salesPriceUpdateIndex = -1;
+    }
+
+    function renderSalesPriceModal(row) {
+        const quantity = Number(row.cantidad || 0);
+        const salesPrice = Number(row.salesPriceUsd || 0);
+        const unit = quantity > 0 ? roundCurrency(salesPrice / quantity) : 0;
+        if (salesPriceRow) {
+            salesPriceRow.textContent = numberFormatter.format(Number(row.sourceRowNumber || 0));
+        }
+        if (salesPriceExcel) {
+            salesPriceExcel.textContent = usdFormatter.format(salesPrice);
+        }
+        if (salesPriceUnit) {
+            salesPriceUnit.textContent = usdFormatter.format(unit);
+        }
+        if (salesPriceClient) {
+            salesPriceClient.value = row.nombreCliente || row.companyAccountLookupLabel || "";
+        }
+        if (salesPriceAccount) {
+            salesPriceAccount.value = row.companyAccountLookupLabel || row.companyAccountId || "";
+        }
+        if (salesPriceProduct) {
+            salesPriceProduct.value = row.productLookupLabel || row.productDescription || "";
+        }
+        if (salesPriceQuantity) {
+            salesPriceQuantity.value = numberFormatter.format(quantity);
+        }
+        if (salesPriceSaveBtn) {
+            salesPriceSaveBtn.disabled = state.busy || Boolean(getSalesPriceUpdateValidationMessage(row));
+        }
+    }
+
+    async function updateSalesPrice() {
+        const row = state.previewRows[state.salesPriceUpdateIndex];
+        const validation = getSalesPriceUpdateValidationMessage(row);
+        if (!row || validation) {
+            showStatus(salesPriceStatus, "warning", validation || "No encontramos la fila Azure para actualizar.");
+            return;
+        }
+
+        try {
+            setBusy(true);
+            salesPriceSaveBtn.disabled = true;
+            showStatus(salesPriceStatus, "info", "Actualizando precio de venta...");
+            const result = await fetchJson(updateSalesPriceUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sourceRowNumber: row.sourceRowNumber || 0,
+                    companyAccountLookupId: row.companyAccountLookupId || "",
+                    companyAccountId: row.companyAccountId || "",
+                    productLookupId: row.productLookupId || "",
+                    productDescription: row.productLookupLabel || row.productDescription || "",
+                    salesPriceUsd: Number(row.salesPriceUsd || 0),
+                    quantity: Number(row.cantidad || 0)
+                })
+            });
+
+            row.salesPriceUpdateSucceeded = true;
+            row.salesPriceUpdateResult = result;
+            renderPreview();
+            const message = result.message || "Precio de venta actualizado.";
+            showStatus(salesPriceStatus, "success", message);
+            showStatus(uploadStatus, "success", `${message} Unitario: ${usdFormatter.format(Number(result.newUnitSaleUsd || 0))}.`);
+            window.setTimeout(() => {
+                if (salesPriceModal && !salesPriceModal.hidden) {
+                    closeSalesPriceModal();
+                }
+            }, 1100);
+        } catch (error) {
+            showStatus(salesPriceStatus, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+            if (salesPriceSaveBtn) {
+                salesPriceSaveBtn.disabled = state.busy || Boolean(getSalesPriceUpdateValidationMessage(row));
+            }
+        }
+    }
+
     function resetBreakdownState() {
         state.breakdownLookupTimers.forEach((timerId) => window.clearTimeout(timerId));
         state.breakdownLookupTimers.clear();
@@ -1998,6 +2221,10 @@
         trmBtn.disabled = value;
         if (productRegistrationSaveBtn) {
             productRegistrationSaveBtn.disabled = value;
+        }
+        if (salesPriceSaveBtn) {
+            const row = state.salesPriceUpdateIndex >= 0 ? state.previewRows[state.salesPriceUpdateIndex] : null;
+            salesPriceSaveBtn.disabled = value || Boolean(row && getSalesPriceUpdateValidationMessage(row));
         }
         refreshAccountRegistrationState();
         renderSelectionState();

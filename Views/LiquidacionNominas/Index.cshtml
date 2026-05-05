@@ -96,7 +96,9 @@
                     <tr>
                         <th>Empleado</th>
                         <th class="text-end">Monto pagado</th>
+                        <th class="text-end">% copiers</th>
                         <th class="text-end">Total copiers</th>
+                        <th class="text-end">% cloud</th>
                         <th class="text-end">Total cloud</th>
                     </tr>
                 </thead>
@@ -128,12 +130,40 @@
                             <strong data-detail-output="operation">-</strong>
                         </div>
                         <div class="payroll-detail-item">
-                            <span>Sueldo base</span>
+                            <span>Dias mes</span>
+                            <strong data-detail-output="periodDays">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Dias trabajados</span>
+                            <strong data-detail-output="workedDays">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Dias no trabajados</span>
+                            <strong data-detail-output="absenceDays">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Motivo</span>
+                            <strong data-detail-output="absenceReason">-</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Sueldo mensual</span>
+                            <strong data-detail-output="monthlySalaryBase">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Auxilio mensual</span>
+                            <strong data-detail-output="monthlyAuxilio">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Sueldo base proporcional</span>
                             <strong data-detail-output="salaryBase">0</strong>
                         </div>
                         <div class="payroll-detail-item">
-                            <span>Auxilio</span>
+                            <span>Auxilio proporcional</span>
                             <strong data-detail-output="auxilio">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Pago dias no trabajados</span>
+                            <strong data-detail-output="absencePayment">0</strong>
                         </div>
                         <div class="payroll-detail-item">
                             <span>Comisiones</span>
@@ -146,6 +176,10 @@
                         <div class="payroll-detail-item">
                             <span>Comis. cloud</span>
                             <strong data-detail-output="commissionsCloud">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Comis. sin vertical</span>
+                            <strong data-detail-output="commissionsUnassigned">0</strong>
                         </div>
                         <div class="payroll-detail-item">
                             <span>Tope comisional</span>
@@ -161,6 +195,25 @@
                 <section class="payroll-detail-section">
                     <h3 class="payroll-detail-section__title">Ajustes de liquidacion</h3>
                     <div class="payroll-detail-form-grid">
+                        <div class="payroll-field">
+                            <label class="form-label" for="detailWorkedDays">Dias trabajados</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailWorkedDays" type="number" min="0" step="0.01" data-detail-field="workedDays" />
+                        </div>
+                        <div class="payroll-field" id="detailAbsenceReasonWrap" hidden>
+                            <label class="form-label" for="detailAbsenceReason">Motivo dias no trabajados</label>
+                            <select class="form-select payroll-detail-input" id="detailAbsenceReason" data-detail-field="absenceReason">
+                                <option value="">Selecciona motivo</option>
+                                <option value="ingreso">Ingreso</option>
+                                <option value="incapacidad">Incapacidad</option>
+                                <option value="vacaciones">Vacaciones</option>
+                                <option value="calamidad">Calamidad</option>
+                            </select>
+                        </div>
+                        <div class="payroll-field" id="detailAbsencePaymentWrap" hidden>
+                            <label class="form-label" for="detailAbsencePayment" id="detailAbsencePaymentLabel">Valor dias no trabajados</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailAbsencePayment" type="number" min="0" step="0.01" data-detail-field="absencePayment" />
+                            <div class="payroll-field-hint" id="detailAbsencePaymentHint"></div>
+                        </div>
                         <div class="payroll-field">
                             <label class="form-label" for="detailBonusCompliance">Bono</label>
                             <input class="form-control payroll-detail-input text-end" id="detailBonusCompliance" type="number" min="0" step="0.01" data-detail-field="bonusCompliance" />

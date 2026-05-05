@@ -18,7 +18,8 @@
      data-register-product-url="@Url.Action("RegisterProduct", "Licenciamiento")"
      data-import-url="@Url.Action("Import", "Licenciamiento")"
      data-adjust-trm-url="@Url.Action("AdjustTrm", "Licenciamiento")"
-     data-update-contract-url="@Url.Action("UpdateContractType", "Licenciamiento")">
+     data-update-contract-url="@Url.Action("UpdateContractType", "Licenciamiento")"
+     data-update-sales-price-url="@Url.Action("UpdateSalesPrice", "Licenciamiento")">
     <section class="lic-hero">
         <div>
             <div class="lic-kicker">Gerencia</div>
@@ -170,6 +171,30 @@
                     </div>
                 </section>
 
+                <section class="lic-preview-section" id="licPreviewAzureSection" hidden>
+                    <div class="lic-preview-section__header">
+                        <h3>Azure</h3>
+                        <span class="lic-counter" id="licPreviewAzureCount">0 filas</span>
+                    </div>
+                    <div class="lic-table-wrap lic-table-wrap--preview">
+                        <table class="table align-middle lic-table lic-table--azure">
+                            <thead>
+                                <tr>
+                                    <th>Fila</th>
+                                    <th>Cliente</th>
+                                    <th>Cuenta</th>
+                                    <th>Producto</th>
+                                    <th class="text-end">Sales Price</th>
+                                    <th class="text-end">Cantidad</th>
+                                    <th>Estado</th>
+                                    <th>Accion</th>
+                                </tr>
+                            </thead>
+                            <tbody id="licPreviewAzureBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <section class="lic-preview-section" id="licPreviewDataSection" hidden>
                     <div class="lic-preview-section__header">
                         <h3>Errores de datos</h3>
@@ -270,6 +295,56 @@
             <div class="lic-modal__footer">
                 <button type="button" class="btn btn-outline-secondary" data-lic-product-close>Cancelar</button>
                 <button type="submit" class="btn btn-primary" id="licProductRegistrationSaveBtn">Enviar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licSalesPriceModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-sales-price-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="licSalesPriceTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Azure</div>
+                <h2 class="lic-modal__title" id="licSalesPriceTitle">Actualizar precio de venta</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-sales-price-close>Cerrar</button>
+        </div>
+        <div id="licSalesPriceStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licSalesPriceForm">
+            <div class="lic-breakdown-summary">
+                <div>
+                    <span>Fila Excel</span>
+                    <strong id="licSalesPriceRow">-</strong>
+                </div>
+                <div>
+                    <span>Sales Price</span>
+                    <strong id="licSalesPriceExcel">USD 0</strong>
+                </div>
+                <div>
+                    <span>Unitario calculado</span>
+                    <strong id="licSalesPriceUnit">USD 0</strong>
+                </div>
+            </div>
+            <label class="lic-field">
+                <span>Cliente</span>
+                <input class="form-control" id="licSalesPriceClient" type="text" readonly />
+            </label>
+            <label class="lic-field">
+                <span>Cuenta</span>
+                <input class="form-control" id="licSalesPriceAccount" type="text" readonly />
+            </label>
+            <label class="lic-field">
+                <span>Producto</span>
+                <textarea class="form-control" id="licSalesPriceProduct" rows="3" readonly></textarea>
+            </label>
+            <label class="lic-field">
+                <span>Cantidad Excel</span>
+                <input class="form-control" id="licSalesPriceQuantity" type="text" readonly />
+            </label>
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-sales-price-close>Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="licSalesPriceSaveBtn">Confirmar</button>
             </div>
         </form>
     </div>

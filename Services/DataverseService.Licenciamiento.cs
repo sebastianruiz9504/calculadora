@@ -42,6 +42,7 @@ public sealed partial class DataverseService
     private const string LicensingProductDescriptionLookupField = "cr07a_priceableitemdescription";
     private const string LicensingProductServiceIdentifierField = "cr07a_serviceidentifier";
     private const string LicensingModifiedOnField = "modifiedon";
+    private const int LicensingSalesPriceFallbackColumn = 20;
     private const string LicensingManualBreakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
 
     private static readonly CultureInfo LicensingCulture = CultureInfo.GetCultureInfo("es-CO");
@@ -527,6 +528,73 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<LicenciamientoUpdateSalesPriceResultDto> UpdateLicenciamientoSalesPriceAsync(
+        LicenciamientoUpdateSalesPriceRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var accountLookupId = NormalizeOptionalGuid(request.CompanyAccountLookupId);
+        if (string.IsNullOrWhiteSpace(accountLookupId))
+            throw new InvalidOperationException("La fila no tiene Account ID resuelto en cr07a_accountidicp.");
+
+        var productLookupId = NormalizeOptionalGuid(request.ProductLookupId);
+        if (string.IsNullOrWhiteSpace(productLookupId))
+            throw new InvalidOperationException("La fila no tiene producto resuelto en cr07a_precioscloud.");
+
+        var salesPriceUsd = RoundCurrency(request.SalesPriceUsd);
+        if (salesPriceUsd <= 0m)
+            throw new InvalidOperationException("Sales Price debe ser mayor a cero.");
+
+        var excelQuantity = RoundCurrency(request.Quantity);
+        if (excelQuantity <= 0m)
+            throw new InvalidOperationException("La cantidad de la fila debe ser mayor a cero.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var accountClient = await ResolveLicensingClientFromAccountAsync(metadata, accountLookupId, httpContext.User, ct);
+        var clientRecords = await GetSalesPerformanceRecordsByClientAsync(accountClient.ClientId, httpContext.User, ct);
+        var match = clientRecords.FirstOrDefault(item =>
+            string.Equals(item.ProductId, productLookupId, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null || string.IsNullOrWhiteSpace(match.RecordId))
+        {
+            throw new InvalidOperationException(
+                $"No se encontro una linea en cr07a_salesperformancerecord para el cliente \"{accountClient.ClientName}\" y el producto \"{FirstNonEmpty(request.ProductDescription, productLookupId)}\".");
+        }
+
+        var appliedQuantity = match.Quantity > 0
+            ? (decimal)match.Quantity
+            : excelQuantity;
+        if (appliedQuantity <= 0m)
+            throw new InvalidOperationException("La linea de sales performance no tiene cantidad valida para calcular el precio unitario.");
+
+        var newUnitSaleUsd = RoundCurrency(salesPriceUsd / appliedQuantity);
+        var previousUnitSaleUsd = RoundCurrency(match.UnitSaleUsd);
+        await UpdateSalesPerformanceUnitSaleAsync(match.RecordId, newUnitSaleUsd, httpContext.User, ct);
+
+        match.UnitSaleUsd = newUnitSaleUsd;
+
+        return new LicenciamientoUpdateSalesPriceResultDto
+        {
+            SalesPerformanceRecordId = match.RecordId,
+            ClientId = accountClient.ClientId,
+            ClientName = accountClient.ClientName,
+            ProductId = productLookupId,
+            ProductName = (request.ProductDescription ?? "").Trim(),
+            SalesPriceUsd = salesPriceUsd,
+            AppliedQuantity = RoundCurrency(appliedQuantity),
+            PreviousUnitSaleUsd = previousUnitSaleUsd,
+            NewUnitSaleUsd = newUnitSaleUsd,
+            PreviousMonthlySaleUsd = RoundCurrency(previousUnitSaleUsd * appliedQuantity),
+            NewMonthlySaleUsd = RoundCurrency(newUnitSaleUsd * appliedQuantity),
+            Message = $"Precio de venta actualizado para {accountClient.ClientName}: {FirstNonEmpty(request.ProductDescription, productLookupId)}."
+        };
+    }
+
     private async Task<LicensingMetadata> ResolveLicensingMetadataAsync(ClaimsPrincipal user, CancellationToken ct)
     {
         const string cacheKey = LicensingConsumptionLogicalName;
@@ -602,6 +670,65 @@ public sealed partial class DataverseService
 
         _licensingMetadataCache[cacheKey] = metadata;
         return metadata;
+    }
+
+    private async Task<LicensingAccountClientResolution> ResolveLicensingClientFromAccountAsync(
+        LicensingMetadata metadata,
+        string accountLookupId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedAccountLookupId = NormalizeGuid(accountLookupId, nameof(accountLookupId));
+        var clientLookupProperty = BuildLookupValueProperty(LicensingAccountClientLookupField);
+        var select = string.Join(",",
+            new[]
+            {
+                clientLookupProperty,
+                metadata.AccountMetadata.PrimaryNameField,
+                LicensingAccountLookupTargetFallbackPrimaryNameField
+            }
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+        var relativeUrl = $"/api/data/v9.2/{metadata.AccountMetadata.EntitySetName}({normalizedAccountLookupId})?$select={select}";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var clientId = ReadString(root, clientLookupProperty).Trim();
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            var accountLabel = FirstNonEmpty(
+                ReadString(root, metadata.AccountMetadata.PrimaryNameField),
+                ReadString(root, LicensingAccountLookupTargetFallbackPrimaryNameField),
+                accountLookupId);
+            throw new InvalidOperationException($"El Account ID \"{accountLabel}\" no tiene cliente asociado en {LicensingAccountClientLookupField}.");
+        }
+
+        return new LicensingAccountClientResolution
+        {
+            ClientId = clientId,
+            ClientName = FirstNonEmpty(
+                ReadLookupFormattedValue(root, clientLookupProperty),
+                clientId)
+        };
+    }
+
+    private async Task UpdateSalesPerformanceUnitSaleAsync(
+        string recordId,
+        decimal unitSaleUsd,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var payload = new Dictionary<string, object?>
+        {
+            [DefaultSalesPerformanceUnitSaleUsdField] = RoundCurrency(unitSaleUsd)
+        };
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{_salesPerformanceTableSetName}({normalizedRecordId})",
+            "PATCH",
+            payload,
+            user,
+            ct);
     }
 
     private async Task<Dictionary<string, string>> LoadLicensingAttributeTypesAsync(
@@ -870,6 +997,12 @@ public sealed partial class DataverseService
             return 0;
         }
 
+        int Optional(string header)
+        {
+            var key = NormalizeLicensingHeader(header);
+            return headerMap.TryGetValue(key, out var columnNumber) ? columnNumber : 0;
+        }
+
         var columns = new LicensingExcelColumns
         {
             CompanyAccountId = Required("CompanyAccountid"),
@@ -880,7 +1013,10 @@ public sealed partial class DataverseService
             BillingInterval = Required("Billing Interval"),
             TotalUsd = Required("Costs"),
             UnitUsd = Required("Costs of Unit"),
-            Quantity = Required("UDRC Value")
+            Quantity = Required("UDRC Value"),
+            SalesPrice = Optional("Sales Price") is var salesPriceColumn && salesPriceColumn > 0
+                ? salesPriceColumn
+                : LicensingSalesPriceFallbackColumn
         };
 
         if (missing.Count > 0)
@@ -921,6 +1057,21 @@ public sealed partial class DataverseService
         if (!TryReadLicensingExcelDecimal(row.Cell(columns.Quantity), out var quantity))
             result.Errors.Add("UDRC Value no es un numero valido.");
         result.Cantidad = RoundCurrency(quantity);
+
+        var salesPriceCell = row.Cell(columns.SalesPrice);
+        if (!salesPriceCell.IsEmpty() || !string.IsNullOrWhiteSpace(ReadLicensingExcelText(salesPriceCell)))
+        {
+            if (!TryReadLicensingExcelDecimal(salesPriceCell, out var salesPrice))
+            {
+                result.Warnings.Add("Sales Price no es un numero valido.");
+            }
+            else
+            {
+                result.SalesPriceUsd = RoundCurrency(salesPrice);
+                result.HasSalesPrice = true;
+            }
+        }
+
         result.RequiresBreakdown = IsLicensingBreakdownProduct(result.ProductDescription);
 
         if (string.IsNullOrWhiteSpace(result.BillingInterval)
@@ -1036,6 +1187,12 @@ public sealed partial class DataverseService
             if (row.RequiresBreakdown && !row.BreakdownGenerated)
             {
                 row.Warnings.Add("Este producto requiere desglose antes de procesar.");
+            }
+
+            if (IsLicensingAzureProduct(FirstNonEmpty(row.ProductDescription, row.ProductLookupLabel))
+                && !row.HasSalesPrice)
+            {
+                row.Warnings.Add("La fila Azure no trae Sales Price en el encabezado Sales Price ni en la columna T.");
             }
         }
     }
@@ -1326,6 +1483,8 @@ public sealed partial class DataverseService
         row.BillingInterval = (row.BillingInterval ?? "").Trim();
         row.FacturaValue = (row.FacturaValue ?? "").Trim();
         row.FacturaDisplay = (row.FacturaDisplay ?? "").Trim();
+        row.SalesPriceUsd = RoundCurrency(row.SalesPriceUsd);
+        row.HasSalesPrice = row.HasSalesPrice || row.SalesPriceUsd > 0m;
         row.ContractTypeValue = NormalizeLicensingContractTypeValue(row.ContractTypeValue);
         row.ContractTypeLabel = ResolveLicensingContractTypeLabel(row.ContractTypeValue);
         row.RequiresBreakdown = row.RequiresBreakdown && !row.BreakdownGenerated;
@@ -1450,6 +1609,9 @@ public sealed partial class DataverseService
             (productDescription ?? "").Trim(),
             LicensingManualBreakdownProductName,
             StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLicensingAzureProduct(string? productDescription) =>
+        (productDescription ?? "").Contains("azure", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildLicensingPrimaryName(LicenciamientoPreviewRowDto row)
     {
@@ -1769,6 +1931,12 @@ public sealed partial class DataverseService
         public IReadOnlyList<string> ProductSearchFields { get; init; } = Array.Empty<string>();
     }
 
+    private sealed class LicensingAccountClientResolution
+    {
+        public string ClientId { get; init; } = "";
+        public string ClientName { get; init; } = "";
+    }
+
     private sealed class LicensingLookupResolution
     {
         public string Id { get; init; } = "";
@@ -1802,5 +1970,6 @@ public sealed partial class DataverseService
         public int TotalUsd { get; init; }
         public int UnitUsd { get; init; }
         public int Quantity { get; init; }
+        public int SalesPrice { get; init; }
     }
 }

@@ -33,6 +33,10 @@
     const detailSubtitle = document.getElementById("nominaDetailSubtitle");
     const detailWarnings = document.getElementById("nominaDetailWarnings");
     const detailMeta = document.getElementById("nominaDetailMeta");
+    const detailAbsenceReasonWrap = document.getElementById("detailAbsenceReasonWrap");
+    const detailAbsencePaymentWrap = document.getElementById("detailAbsencePaymentWrap");
+    const detailAbsencePaymentLabel = document.getElementById("detailAbsencePaymentLabel");
+    const detailAbsencePaymentHint = document.getElementById("detailAbsencePaymentHint");
     const detailInputs = detailModal ? Array.from(detailModal.querySelectorAll("[data-detail-field]")) : [];
     const detailCloseButtons = detailModal ? Array.from(detailModal.querySelectorAll("[data-nomina-detail-close]")) : [];
     const detailOutputs = detailModal
@@ -41,6 +45,12 @@
             return map;
         }, {})
         : {};
+    const absenceReasonLabels = {
+        ingreso: "Ingreso",
+        incapacidad: "Incapacidad",
+        vacaciones: "Vacaciones",
+        calamidad: "Calamidad"
+    };
 
     const state = {
         rows: [],
@@ -72,6 +82,10 @@
 
     rowsBody.addEventListener("click", (event) => {
         const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-row-edit]")) {
+            return;
+        }
+
         const rowElement = target ? target.closest("tr[data-row-id]") : null;
         if (!rowElement) {
             return;
@@ -86,6 +100,10 @@
         }
 
         const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-row-edit]")) {
+            return;
+        }
+
         const rowElement = target ? target.closest("tr[data-row-id]") : null;
         if (!rowElement) {
             return;
@@ -95,9 +113,39 @@
         openDetail(rowElement.dataset.rowId);
     });
 
-    detailForm?.addEventListener("input", (event) => {
+    rowsBody.addEventListener("input", handleRowEditChange);
+    rowsBody.addEventListener("change", handleRowEditChange);
+
+    detailForm?.addEventListener("input", handleDetailFieldChange);
+    detailForm?.addEventListener("change", handleDetailFieldChange);
+
+    function handleRowEditChange(event) {
         const input = event.target;
         if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const field = input.dataset.rowField;
+        if (field !== "factorCopiers" && field !== "factorCloud") {
+            return;
+        }
+
+        const rowElement = input.closest("tr[data-row-id]");
+        const row = rowElement ? state.rows.find((item) => item.employeeId === rowElement.dataset.rowId) : null;
+        if (!row) {
+            return;
+        }
+
+        row[field] = toPositiveNumber(input.value);
+        recalculateRow(row);
+        updateRowOutputs(row, field);
+        renderSummary();
+        renderVerticals();
+    }
+
+    function handleDetailFieldChange(event) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLSelectElement)) {
             return;
         }
 
@@ -111,14 +159,35 @@
             return;
         }
 
-        row[field] = toPositiveNumber(input.value);
+        if (input instanceof HTMLSelectElement) {
+            row[field] = normalizeAbsenceReason(input.value);
+            row.absencePayment = calculateAbsencePayment(row);
+        } else if (field === "absenceReason") {
+            row[field] = normalizeAbsenceReason(input.value);
+            row.absencePayment = calculateAbsencePayment(row);
+        } else if (field === "workedDays") {
+            row[field] = clampDays(toPositiveNumber(input.value), getPeriodDays(row));
+            if (row[field] >= getPeriodDays(row)) {
+                row.absenceReason = "";
+                row.absencePayment = 0;
+            } else if (!row.absenceReason) {
+                row.absenceReason = "ingreso";
+                row.absencePayment = calculateAbsencePayment(row);
+            } else {
+                row.absencePayment = calculateAbsencePayment(row);
+            }
+        } else {
+            row[field] = toPositiveNumber(input.value);
+        }
+
         recalculateRow(row);
         updateRowOutputs(row);
+        renderDetailInputs(row, field);
         renderDetailValues(row);
         renderDetailWarnings(row);
         renderSummary();
         renderVerticals();
-    });
+    }
 
     detailForm?.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -210,6 +279,11 @@
             confirmed,
             adjustments: state.rows.map((row) => ({
                 employeeId: row.employeeId,
+                workedDays: row.workedDays,
+                absenceReason: row.absenceReason || "",
+                absencePayment: row.absencePayment,
+                factorCopiers: row.factorCopiers,
+                factorCloud: row.factorCloud,
                 bonusCompliance: row.bonusCompliance,
                 otherDeductions: row.otherDeductions,
                 loan: row.loan,
@@ -249,6 +323,16 @@
             warnings: Array.isArray(row.warnings) ? row.warnings.slice() : []
         };
 
+        normalized.periodDays = Math.max(Math.round(toPositiveNumber(normalized.periodDays)) || getDaysInPeriod(normalized.periodKey), 1);
+        normalized.monthlySalaryBase = toPositiveNumber(normalized.monthlySalaryBase || normalized.salaryBase);
+        normalized.monthlyAuxilio = toPositiveNumber(normalized.monthlyAuxilio || normalized.auxilio);
+        normalized.workedDays = clampDays(
+            normalized.workedDays === undefined || normalized.workedDays === null || normalized.workedDays === ""
+                ? normalized.periodDays
+                : toPositiveNumber(normalized.workedDays),
+            normalized.periodDays);
+        normalized.absenceReason = normalizeAbsenceReason(normalized.absenceReason);
+        normalized.absencePayment = toPositiveNumber(normalized.absencePayment);
         normalized.bonusCompliance = toPositiveNumber(normalized.bonusCompliance);
         normalized.otherDeductions = toPositiveNumber(normalized.otherDeductions);
         normalized.loan = toPositiveNumber(normalized.loan);
@@ -259,22 +343,37 @@
     }
 
     function recalculateRow(row) {
-        row.salaryBase = toPositiveNumber(row.salaryBase);
-        row.auxilio = toPositiveNumber(row.auxilio);
+        row.periodDays = getPeriodDays(row);
+        row.monthlySalaryBase = toPositiveNumber(row.monthlySalaryBase || row.salaryBase);
+        row.monthlyAuxilio = toPositiveNumber(row.monthlyAuxilio || row.auxilio);
+        row.workedDays = clampDays(row.workedDays, row.periodDays);
+        row.absenceDays = roundMoney(Math.max(row.periodDays - row.workedDays, 0));
+        if (row.absenceDays <= 0) {
+            row.absenceReason = "";
+            row.absencePayment = 0;
+        } else {
+            row.absenceReason = normalizeAbsenceReason(row.absenceReason);
+            row.absencePayment = toPositiveNumber(row.absencePayment);
+        }
+        row.absenceReasonLabel = getAbsenceReasonLabel(row.absenceReason);
+
+        row.salaryBase = roundMoney(row.monthlySalaryBase * row.workedDays / row.periodDays);
+        row.auxilio = roundMoney(row.monthlyAuxilio * row.workedDays / row.periodDays);
         row.commissionsCopiers = toPositiveNumber(row.commissionsCopiers);
         row.commissionsCloud = toPositiveNumber(row.commissionsCloud);
+        row.commissionsUnassigned = toPositiveNumber(row.commissionsUnassigned);
         row.commissionCap = toPositiveNumber(row.commissionCap);
         row.factorCopiers = toPositiveNumber(row.factorCopiers);
         row.factorCloud = toPositiveNumber(row.factorCloud);
         row.healthRate = toPositiveNumber(row.healthRate);
         row.pensionRate = toPositiveNumber(row.pensionRate);
-        row.commissions = roundMoney(row.commissionsCopiers + row.commissionsCloud);
+        row.commissions = roundMoney(row.commissionsCopiers + row.commissionsCloud + row.commissionsUnassigned);
         row.appliedCommissionBase = roundMoney(row.commissionCap > 0 ? Math.min(row.commissions, row.commissionCap) : row.commissions);
         row.cuentaDeCobro = roundMoney(row.commissionCap > 0 ? Math.max(row.commissions - row.commissionCap, 0) : 0);
-        row.contributionBase = roundMoney(row.salaryBase + row.bonusCompliance + row.appliedCommissionBase);
+        row.contributionBase = roundMoney(row.salaryBase + row.absencePayment + row.bonusCompliance + row.appliedCommissionBase);
         row.health = roundMoney(row.contributionBase * row.healthRate);
         row.pension = roundMoney(row.contributionBase * row.pensionRate);
-        row.grossSalary = roundMoney(row.salaryBase + row.auxilio + row.bonusCompliance + row.commissions);
+        row.grossSalary = roundMoney(row.salaryBase + row.auxilio + row.absencePayment + row.bonusCompliance + row.commissions);
         row.netPayroll = roundMoney(row.grossSalary - (row.health + row.pension + row.otherDeductions + row.loan + row.payrollWithholding));
         row.netCuentaDeCobro = roundMoney(row.cuentaDeCobro - row.externalWithholding);
         row.totalCopiers = roundMoney((row.salaryBase * (row.factorCopiers / 100)) + row.commissionsCopiers);
@@ -289,14 +388,20 @@
                         <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
                     </td>
                     <td class="text-end" data-role="netPayroll">${formatMoney(row.netPayroll)}</td>
+                    <td class="payroll-percent-cell">
+                        <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCopiers)}" data-row-edit data-row-field="factorCopiers" aria-label="Porcentaje Copiers de ${escapeHtml(row.employeeName || "empleado")}" />
+                    </td>
                     <td class="text-end" data-role="totalCopiers">${formatMoney(row.totalCopiers)}</td>
+                    <td class="payroll-percent-cell">
+                        <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCloud)}" data-row-edit data-row-field="factorCloud" aria-label="Porcentaje Cloud de ${escapeHtml(row.employeeName || "empleado")}" />
+                    </td>
                     <td class="text-end" data-role="totalCloud">${formatMoney(row.totalCloud)}</td>
                 </tr>
             `;
         }).join("");
     }
 
-    function updateRowOutputs(row) {
+    function updateRowOutputs(row, skipField) {
         const tr = rowsBody.querySelector(`tr[data-row-id="${cssEscape(row.employeeId)}"]`);
         if (!tr) {
             return;
@@ -306,6 +411,8 @@
         setCellText(tr, "netPayroll", formatMoney(row.netPayroll));
         setCellText(tr, "totalCopiers", formatMoney(row.totalCopiers));
         setCellText(tr, "totalCloud", formatMoney(row.totalCloud));
+        setRowInputValue(tr, "factorCopiers", row.factorCopiers, skipField);
+        setRowInputValue(tr, "factorCloud", row.factorCloud, skipField);
     }
 
     function openDetail(rowId) {
@@ -365,24 +472,64 @@
                 : "Sin registro previo";
         }
 
-        detailInputs.forEach((input) => {
-            const field = input.dataset.detailField;
-            if (field) {
-                input.value = toInputValue(row[field]);
-            }
-        });
-
+        renderDetailInputs(row);
         renderDetailValues(row);
         renderDetailWarnings(row);
     }
 
+    function renderDetailInputs(row, skipField) {
+        detailInputs.forEach((input) => {
+            const field = input.dataset.detailField;
+            if (!field) {
+                return;
+            }
+
+            if (skipField && field === skipField) {
+                return;
+            }
+
+            if (input instanceof HTMLSelectElement) {
+                input.value = normalizeAbsenceReason(row[field]);
+            } else {
+                input.value = toInputValue(row[field]);
+            }
+        });
+
+        const hasAbsence = toPositiveNumber(row.absenceDays) > 0;
+        if (detailAbsenceReasonWrap) {
+            detailAbsenceReasonWrap.hidden = !hasAbsence;
+        }
+
+        if (detailAbsencePaymentWrap) {
+            detailAbsencePaymentWrap.hidden = !hasAbsence || !row.absenceReason;
+        }
+
+        if (detailAbsencePaymentLabel) {
+            detailAbsencePaymentLabel.textContent = row.absenceReason
+                ? `Valor ${getAbsenceReasonLabel(row.absenceReason).toLowerCase()}`
+                : "Valor dias no trabajados";
+        }
+
+        if (detailAbsencePaymentHint) {
+            detailAbsencePaymentHint.textContent = getAbsencePaymentHint(row);
+        }
+    }
+
     function renderDetailValues(row) {
         setDetailOutput("operation", row.operation === "update" ? "Actualizar" : "Crear");
+        setDetailOutput("periodDays", formatNumber(row.periodDays));
+        setDetailOutput("workedDays", formatNumber(row.workedDays));
+        setDetailOutput("absenceDays", formatNumber(row.absenceDays));
+        setDetailOutput("absenceReason", row.absenceReasonLabel || getAbsenceReasonLabel(row.absenceReason) || "-");
+        setDetailOutput("absencePayment", formatMoney(row.absencePayment));
+        setDetailOutput("monthlySalaryBase", formatMoney(row.monthlySalaryBase));
+        setDetailOutput("monthlyAuxilio", formatMoney(row.monthlyAuxilio));
         setDetailOutput("salaryBase", formatMoney(row.salaryBase));
         setDetailOutput("auxilio", formatMoney(row.auxilio));
         setDetailOutput("commissions", formatMoney(row.commissions));
         setDetailOutput("commissionsCopiers", formatMoney(row.commissionsCopiers));
         setDetailOutput("commissionsCloud", formatMoney(row.commissionsCloud));
+        setDetailOutput("commissionsUnassigned", formatMoney(row.commissionsUnassigned));
         setDetailOutput("commissionCap", formatMoney(row.commissionCap));
         setDetailOutput("appliedCommissionBase", formatMoney(row.appliedCommissionBase));
         setDetailOutput("contributionBase", formatMoney(row.contributionBase));
@@ -503,6 +650,10 @@
             warnings.push("El monto de cuenta de cobro quedo negativo.");
         }
 
+        if (toPositiveNumber(row.absenceDays) > 0 && !normalizeAbsenceReason(row.absenceReason)) {
+            warnings.push("Hay dias no trabajados sin motivo.");
+        }
+
         return warnings;
     }
 
@@ -601,6 +752,17 @@
         }
     }
 
+    function setRowInputValue(tr, field, value, skipField) {
+        if (skipField === field) {
+            return;
+        }
+
+        const input = tr.querySelector(`[data-row-field="${field}"]`);
+        if (input instanceof HTMLInputElement) {
+            input.value = toInputValue(value);
+        }
+    }
+
     function resolveLogBadge(level) {
         const normalized = String(level || "").toLowerCase();
         if (normalized === "error") {
@@ -636,8 +798,81 @@
         return numeric;
     }
 
+    function clampDays(value, periodDays) {
+        return Math.min(Math.max(toPositiveNumber(value), 0), Math.max(toPositiveNumber(periodDays), 1));
+    }
+
+    function getPeriodDays(row) {
+        return Math.max(Math.round(toPositiveNumber(row.periodDays)) || getDaysInPeriod(row.periodKey), 1);
+    }
+
+    function getDaysInPeriod(periodValue) {
+        if (!periodValue || !/^\d{4}-\d{2}$/.test(periodValue)) {
+            return 30;
+        }
+
+        const year = Number.parseInt(periodValue.substring(0, 4), 10);
+        const month = Number.parseInt(periodValue.substring(5, 7), 10);
+        return new Date(year, month, 0).getDate();
+    }
+
+    function normalizeAbsenceReason(value) {
+        const normalized = String(value || "").trim().toLowerCase();
+        return Object.prototype.hasOwnProperty.call(absenceReasonLabels, normalized) ? normalized : "";
+    }
+
+    function calculateAbsencePayment(row) {
+        const absenceDays = Math.max(getPeriodDays(row) - clampDays(row.workedDays, getPeriodDays(row)), 0);
+        if (absenceDays <= 0) {
+            return 0;
+        }
+
+        const dailySalary = getPeriodDays(row) > 0 ? toPositiveNumber(row.monthlySalaryBase || row.salaryBase) / getPeriodDays(row) : 0;
+        switch (normalizeAbsenceReason(row.absenceReason)) {
+            case "incapacidad":
+                return roundMoney((Math.min(absenceDays, 2) * dailySalary) + (Math.max(absenceDays - 2, 0) * dailySalary * (2 / 3)));
+            case "vacaciones":
+            case "calamidad":
+                return roundMoney(absenceDays * dailySalary);
+            default:
+                return 0;
+        }
+    }
+
+    function getAbsenceReasonLabel(value) {
+        return absenceReasonLabels[normalizeAbsenceReason(value)] || "";
+    }
+
+    function getAbsencePaymentHint(row) {
+        if (toPositiveNumber(row.absenceDays) <= 0 || !row.absenceReason) {
+            return "";
+        }
+
+        const reason = normalizeAbsenceReason(row.absenceReason);
+        if (reason === "incapacidad") {
+            return "Sugerido: primeros 2 dias al 100% y desde el dia 3 al 66.67% del salario diario.";
+        }
+
+        if (reason === "vacaciones") {
+            return "Sugerido: salario ordinario diario por los dias de vacaciones.";
+        }
+
+        if (reason === "calamidad") {
+            return "Sugerido: salario ordinario diario; ajusta el valor segun el caso aprobado.";
+        }
+
+        return "Sugerido: 0 para dias previos al ingreso.";
+    }
+
     function toInputValue(value) {
         return toPositiveNumber(value).toFixed(2);
+    }
+
+    function formatNumber(value) {
+        return toNumber(value).toLocaleString("es-CO", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2
+        });
     }
 
     function formatMoney(value) {

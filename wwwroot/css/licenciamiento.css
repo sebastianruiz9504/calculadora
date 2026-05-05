@@ -192,6 +192,10 @@
     min-width: 900px;
 }
 
+.lic-table--azure {
+    min-width: 1120px;
+}
+
 .lic-table thead th {
     position: sticky;
     top: 0;
