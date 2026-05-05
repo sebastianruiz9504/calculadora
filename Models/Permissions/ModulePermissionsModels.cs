@@ -23,7 +23,8 @@ public enum AppModule
     SoporteCloud = 16,
     PlanRio = 17,
     Envios = 18,
-    Transportador = 19
+    Transportador = 19,
+    RebatesInversiones = 20
 }
 
 public sealed class AppModuleDefinition
@@ -238,6 +239,16 @@ public static class AppModuleCatalog
         Controller = "Transportador"
     };
 
+    public static readonly AppModuleDefinition RebatesInversiones = new()
+    {
+        Key = AppModule.RebatesInversiones,
+        Label = "Rebates/Inversiones",
+        Category = "Admin",
+        Description = "Carga registros manuales de rebates e ingresos financieros para alimentar el P&L.",
+        OptionValue = 645250019,
+        Controller = "RebatesInversiones"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -259,6 +270,7 @@ public static class AppModuleCatalog
         PlanRio,
         Envios,
         Transportador,
+        RebatesInversiones,
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
@@ -283,7 +295,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Admin",
-            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario },
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario, RebatesInversiones },
             IsDropdown = true
         },
         new AppModuleNavigationGroup

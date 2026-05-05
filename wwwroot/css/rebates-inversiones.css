@@ -1,0 +1,361 @@
+.rbi-shell {
+    display: grid;
+    gap: 1rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.rbi-hero,
+.rbi-toolbar,
+.rbi-summary-card,
+.rbi-panel,
+.rbi-modal__dialog {
+    border: 1px solid #dbe3ee;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+}
+
+.rbi-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1.25rem;
+    background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.10), transparent 42%),
+        linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+}
+
+.rbi-kicker,
+.rbi-user__label,
+.rbi-summary-card span,
+.rbi-form__field span {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.rbi-title,
+.rbi-section-title,
+.rbi-modal__title {
+    margin: 0.25rem 0 0;
+    color: #111827;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.rbi-title {
+    font-size: clamp(1.65rem, 3vw, 2.25rem);
+}
+
+.rbi-section-title {
+    font-size: 1.15rem;
+}
+
+.rbi-subtitle,
+.rbi-modal__subtitle,
+.rbi-toolbar__summary {
+    margin: 0.45rem 0 0;
+    color: #526071;
+}
+
+.rbi-user {
+    min-width: 16rem;
+    max-width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    background: #f8fafc;
+    overflow-wrap: anywhere;
+}
+
+.rbi-user strong {
+    display: block;
+    margin-top: 0.2rem;
+    color: #111827;
+}
+
+.rbi-status {
+    display: none;
+    padding: 0.8rem 0.95rem;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+.rbi-status.is-visible {
+    display: block;
+}
+
+.rbi-status.is-info {
+    background: #e0f2fe;
+    color: #075985;
+}
+
+.rbi-status.is-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.rbi-status.is-error {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.rbi-toolbar,
+.rbi-panel__header,
+.rbi-modal__header,
+.rbi-modal__footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.rbi-toolbar {
+    align-items: flex-end;
+    padding: 1rem 1.25rem;
+}
+
+.rbi-field {
+    min-width: 11rem;
+}
+
+.rbi-toolbar__summary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.rbi-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.rbi-summary-card {
+    display: grid;
+    gap: 0.35rem;
+    padding: 1rem;
+    border-left: 5px solid #64748b;
+}
+
+.rbi-summary-card--rebate {
+    border-left-color: #f59e0b;
+    background: linear-gradient(180deg, #fff 0%, #fffaf0 100%);
+}
+
+.rbi-summary-card--income {
+    border-left-color: #0f766e;
+    background: linear-gradient(180deg, #fff 0%, #f0fdfa 100%);
+}
+
+.rbi-summary-card strong {
+    color: #111827;
+    font-size: 1.45rem;
+    line-height: 1.1;
+}
+
+.rbi-summary-card small {
+    color: #64748b;
+    font-weight: 700;
+}
+
+.rbi-month-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+
+.rbi-month {
+    display: grid;
+    gap: 0.25rem;
+    min-height: 5rem;
+    padding: 0.7rem;
+    border: 1px solid #e5eaf1;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.rbi-month strong {
+    color: #111827;
+    font-size: 0.86rem;
+}
+
+.rbi-month span {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.rbi-month.has-rebate {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.rbi-month.has-income {
+    border-color: #99f6e4;
+    background: #f0fdfa;
+}
+
+.rbi-month.has-rebate.has-income {
+    border-color: #bfdbfe;
+    background: #f8fbff;
+}
+
+.rbi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.rbi-panel {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.rbi-panel__header {
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e5eaf1;
+    background: #fbfcfe;
+}
+
+.rbi-panel--rebate .rbi-kicker {
+    color: #b45309;
+}
+
+.rbi-panel--income .rbi-kicker {
+    color: #0f766e;
+}
+
+.rbi-table-wrap {
+    overflow-x: auto;
+}
+
+.rbi-table {
+    min-width: 680px;
+    margin: 0;
+}
+
+.rbi-table thead th {
+    border: 0;
+    padding: 0.8rem 0.85rem;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.rbi-table tbody td {
+    padding: 0.85rem;
+    border-color: #e5eaf1;
+    vertical-align: middle;
+}
+
+.rbi-row {
+    cursor: pointer;
+}
+
+.rbi-row:hover {
+    background: #f8fafc;
+}
+
+.rbi-row__value {
+    font-weight: 800;
+}
+
+.rbi-empty {
+    padding: 1.5rem;
+    color: #64748b;
+    text-align: center;
+}
+
+.rbi-action-btn {
+    white-space: nowrap;
+}
+
+.rbi-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    display: grid;
+    place-items: center;
+    padding: 1.25rem;
+}
+
+.rbi-modal[hidden] {
+    display: none;
+}
+
+.rbi-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(3px);
+}
+
+.rbi-modal__dialog {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 1rem;
+    width: min(560px, 100%);
+    padding: 1.25rem;
+}
+
+.rbi-modal__header {
+    align-items: flex-start;
+}
+
+.rbi-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.rbi-form__field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.rbi-modal__footer {
+    align-items: center;
+    margin-top: 0.25rem;
+}
+
+.rbi-modal__actions {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 992px) {
+    .rbi-summary,
+    .rbi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .rbi-month-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .rbi-month-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .rbi-toolbar__summary,
+    .rbi-toolbar__summary .btn,
+    .rbi-panel__header .btn {
+        width: 100%;
+    }
+}

@@ -2264,6 +2264,31 @@
     text-transform: uppercase;
 }
 
+.dashboard-pnl-row--group-income.dashboard-pnl-row--section td {
+    background: #eafaf4;
+    color: #0f766e;
+}
+
+.dashboard-pnl-row--group-cogs.dashboard-pnl-row--section td {
+    background: #fff4df;
+    color: #a65f00;
+}
+
+.dashboard-pnl-row--group-expenses.dashboard-pnl-row--section td {
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.dashboard-pnl-row--group-profit.dashboard-pnl-row--section td {
+    background: #eef4ff;
+    color: #1d4ed8;
+}
+
+.dashboard-pnl-row--group-other.dashboard-pnl-row--section td {
+    background: #f4f0ff;
+    color: #6d28d9;
+}
+
 .dashboard-pnl-row--subtotal td {
     background: #f8fbff;
     font-weight: 700;
@@ -2279,6 +2304,26 @@
     background: #fffaf3;
 }
 
+.dashboard-pnl-row--group-income:not(.dashboard-pnl-row--section) td {
+    background: #fbfffd;
+}
+
+.dashboard-pnl-row--group-cogs:not(.dashboard-pnl-row--section) td {
+    background: #fffdf8;
+}
+
+.dashboard-pnl-row--group-expenses:not(.dashboard-pnl-row--section) td {
+    background: #fffafa;
+}
+
+.dashboard-pnl-row--group-profit:not(.dashboard-pnl-row--section) td {
+    background: #fbfdff;
+}
+
+.dashboard-pnl-row--group-other:not(.dashboard-pnl-row--section) td {
+    background: #fdfbff;
+}
+
 .dashboard-pnl-row__label--level-1 {
     padding-left: 18px;
 }
@@ -2292,6 +2337,8 @@
 }
 
 .dashboard-pnl-cell-btn {
+    display: inline-grid;
+    gap: 2px;
     width: 100%;
     padding: 0;
     border: none;
@@ -2306,6 +2353,30 @@
 .dashboard-pnl-cell-btn:focus-visible {
     color: var(--dashboard-brand);
     outline: none;
+}
+
+.dashboard-pnl-cell-value {
+    font-weight: inherit;
+    line-height: 1.2;
+}
+
+.dashboard-pnl-cell-percent {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.dashboard-pnl-cell-btn--positive .dashboard-pnl-cell-percent {
+    color: #0f766e;
+}
+
+.dashboard-pnl-cell-btn--negative .dashboard-pnl-cell-percent {
+    color: #be123c;
+}
+
+.dashboard-pnl-cell-btn--zero .dashboard-pnl-cell-percent {
+    color: #94a3b8;
 }
 
 .dashboard-pnl-cell-btn--count {

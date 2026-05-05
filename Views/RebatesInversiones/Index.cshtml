@@ -1,0 +1,154 @@
+@model RebatesInversionesPageViewModel
+@{
+    ViewData["Title"] = "Rebates/Inversiones";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/rebates-inversiones.css" asp-append-version="true" />
+}
+
+<div class="rbi-shell"
+     id="rebatesInversionesApp"
+     data-load-url="@Url.Action("Data", "RebatesInversiones")"
+     data-save-url="@Url.Action("Save", "RebatesInversiones")"
+     data-delete-url="@Url.Action("Delete", "RebatesInversiones")"
+     data-initial-year="@Model.InitialYear">
+    <section class="rbi-hero">
+        <div>
+            <div class="rbi-kicker">Admin</div>
+            <h1 class="rbi-title">Rebates/Inversiones</h1>
+            <p class="rbi-subtitle">Carga los registros manuales que alimentan Rebates e Ingresos financieros en el P&amp;L.</p>
+        </div>
+        <div class="rbi-user">
+            <span class="rbi-user__label">Usuario</span>
+            <strong>@Model.CurrentUser.Email</strong>
+        </div>
+    </section>
+
+    <div id="rbiStatus" class="rbi-status" role="status" aria-live="polite"></div>
+
+    <section class="rbi-toolbar">
+        <div class="rbi-field">
+            <label class="form-label" for="rbiYearSelect">A&ntilde;o</label>
+            <select class="form-select" id="rbiYearSelect"></select>
+        </div>
+        <div class="rbi-toolbar__summary">
+            <span id="rbiBoardMessage">Cargando registros...</span>
+            <button type="button" class="btn btn-outline-secondary" id="rbiRefreshBtn">Actualizar</button>
+        </div>
+    </section>
+
+    <section class="rbi-summary" aria-label="Resumen anual">
+        <article class="rbi-summary-card rbi-summary-card--rebate">
+            <span>Rebates</span>
+            <strong id="rbiRebatesTotal">$0</strong>
+            <small id="rbiRebatesCount">0 registros</small>
+        </article>
+        <article class="rbi-summary-card rbi-summary-card--income">
+            <span>Ingresos financieros</span>
+            <strong id="rbiFinancialIncomeTotal">$0</strong>
+            <small id="rbiFinancialIncomeCount">0 registros</small>
+        </article>
+        <article class="rbi-summary-card">
+            <span>Total manual</span>
+            <strong id="rbiCombinedTotal">$0</strong>
+            <small id="rbiCombinedCount">0 registros</small>
+        </article>
+    </section>
+
+    <section class="rbi-month-strip" id="rbiMonthStrip" aria-label="Totales por mes"></section>
+
+    <section class="rbi-grid">
+        <article class="rbi-panel rbi-panel--rebate">
+            <div class="rbi-panel__header">
+                <div>
+                    <div class="rbi-kicker">COGS</div>
+                    <h2 class="rbi-section-title">Rebates</h2>
+                </div>
+                <button type="button" class="btn btn-primary" data-rbi-add="rebate">Nuevo rebate</button>
+            </div>
+            <div class="rbi-table-wrap">
+                <table class="table rbi-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Mes</th>
+                            <th class="text-end">Valor</th>
+                            <th>Actualizado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rbiRebatesBody"></tbody>
+                </table>
+            </div>
+            <div class="rbi-empty" id="rbiRebatesEmpty" hidden>No hay rebates para el a&ntilde;o seleccionado.</div>
+        </article>
+
+        <article class="rbi-panel rbi-panel--income">
+            <div class="rbi-panel__header">
+                <div>
+                    <div class="rbi-kicker">Otros ingresos</div>
+                    <h2 class="rbi-section-title">Ingresos financieros</h2>
+                </div>
+                <button type="button" class="btn btn-primary" data-rbi-add="financial-income">Nuevo ingreso</button>
+            </div>
+            <div class="rbi-table-wrap">
+                <table class="table rbi-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Mes</th>
+                            <th class="text-end">Valor</th>
+                            <th>Actualizado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rbiFinancialIncomeBody"></tbody>
+                </table>
+            </div>
+            <div class="rbi-empty" id="rbiFinancialIncomeEmpty" hidden>No hay ingresos financieros para el a&ntilde;o seleccionado.</div>
+        </article>
+    </section>
+</div>
+
+<div class="rbi-modal" id="rbiEditorModal" hidden>
+    <div class="rbi-modal__backdrop" data-rbi-close></div>
+    <div class="rbi-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="rbiEditorTitle">
+        <div class="rbi-modal__header">
+            <div>
+                <div class="rbi-kicker">Registro manual</div>
+                <h2 class="rbi-modal__title" id="rbiEditorTitle">Nuevo registro</h2>
+                <p class="rbi-modal__subtitle" id="rbiEditorSubtitle">Indica fecha y valor. El mes se toma de la fecha.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="rbiCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="rbiModalStatus" class="rbi-status" role="status" aria-live="polite"></div>
+
+        <form class="rbi-form" id="rbiEditorForm">
+            <input type="hidden" id="rbiRecordIdInput" />
+            <input type="hidden" id="rbiTypeInput" />
+
+            <label class="rbi-form__field">
+                <span>Fecha</span>
+                <input type="date" class="form-control" id="rbiDateInput" required />
+            </label>
+            <label class="rbi-form__field">
+                <span>Valor</span>
+                <input type="number" class="form-control" id="rbiValueInput" step="0.01" required />
+            </label>
+
+            <div class="rbi-modal__footer">
+                <button type="button" class="btn btn-outline-danger" id="rbiDeleteBtn" hidden>Eliminar</button>
+                <div class="rbi-modal__actions">
+                    <button type="button" class="btn btn-outline-secondary" id="rbiCancelBtn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="rbiSaveBtn">Guardar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/rebates-inversiones.js" asp-append-version="true"></script>
+}

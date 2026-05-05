@@ -1,0 +1,56 @@
+{
+  "table": {
+    "displayName": "Registro P&L manual",
+    "displayCollectionName": "Registros P&L manuales",
+    "logicalName": "cr07a_pnlmanualitem",
+    "entitySetName": "cr07a_pnlmanualitems",
+    "primaryIdAttribute": "cr07a_pnlmanualitemid",
+    "primaryNameAttribute": "cr07a_name",
+    "ownership": "UserOwned"
+  },
+  "moduleOptions": [
+    {
+      "label": "Rebates/Inversiones",
+      "value": 645250019,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    }
+  ],
+  "typeOptions": [
+    {
+      "label": "Rebates",
+      "value": 645250000
+    },
+    {
+      "label": "Ingresos financieros",
+      "value": 645250001
+    }
+  ],
+  "columns": [
+    {
+      "logicalName": "cr07a_name",
+      "displayName": "Nombre",
+      "type": "Text",
+      "maxLength": 200,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_tipo",
+      "displayName": "Tipo",
+      "type": "Choice",
+      "required": true,
+      "optionsRef": "typeOptions"
+    },
+    {
+      "logicalName": "cr07a_fecha",
+      "displayName": "Fecha",
+      "type": "DateOnly",
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_valor",
+      "displayName": "Valor",
+      "type": "Currency",
+      "required": true
+    }
+  ]
+}

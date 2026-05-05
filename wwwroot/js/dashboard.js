@@ -2196,6 +2196,7 @@
         const cellValueFormat = detail?.valueFormat || "currency";
         pnlDetailBody.innerHTML = records.map(record => {
             const isSaving = state.pnlDetailSavingRecordId && state.pnlDetailSavingRecordId === record.recordId;
+            const canEditRecord = Boolean(record.canEditVertical || record.canEditCategory || record.canEditAllocation);
             return `
                 <tr
                     data-record-id="${escapeHtml(record.recordId || "")}"
@@ -2219,9 +2220,9 @@
                     <td class="text-end">${renderPnlAllocationEditor(record, "copiersValue")}</td>
                     <td class="text-end"><strong>${escapeHtml(formatMetric(record.cellValue || 0, cellValueFormat))}</strong></td>
                     <td>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-pnl-detail-save ${isSaving ? "disabled" : ""}>
-                            ${isSaving ? "Guardando..." : "Guardar"}
-                        </button>
+                        ${canEditRecord
+                            ? `<button type="button" class="btn btn-sm btn-outline-primary" data-pnl-detail-save ${isSaving ? "disabled" : ""}>${isSaving ? "Guardando..." : "Guardar"}</button>`
+                            : '<span class="dashboard-pnl-detail__static">Solo lectura</span>'}
                     </td>
                 </tr>
             `;
@@ -4460,6 +4461,67 @@
         return rows.find(row => (row?.recordId || "") === (recordId || "")) || null;
     }
 
+    function getPnlRowGroup(rowKey) {
+        const key = rowKey || "";
+        if (key.includes("income") && !key.includes("before-taxes")) {
+            return "income";
+        }
+
+        if (key.includes("cogs") || key.includes("supplies") || key.includes("machines") || key.includes("technical-service")) {
+            return "cogs";
+        }
+
+        if (key.includes("personal") || key.includes("admin") || key.includes("commercial")) {
+            return "expenses";
+        }
+
+        if (key.includes("gross-profit") || key.includes("ebitda") || key.includes("net-income") || key.includes("before-taxes")) {
+            return "profit";
+        }
+
+        if (key.includes("other") || key.includes("financial")) {
+            return "other";
+        }
+
+        return "neutral";
+    }
+
+    function getPnlCellTone(value) {
+        const numericValue = Number(value || 0);
+        if (numericValue > 0) {
+            return "positive";
+        }
+
+        if (numericValue < 0) {
+            return "negative";
+        }
+
+        return "zero";
+    }
+
+    function renderPnlCellButton(row, value, percentage, cellMonth) {
+        const monthAttribute = Number.isFinite(Number(cellMonth))
+            ? `data-pnl-cell-month="${Number(cellMonth)}"`
+            : "";
+        const tone = getPnlCellTone(value);
+        const percentValue = Number(percentage || 0);
+        const percentLabel = row.valueFormat === "currency"
+            ? `<span class="dashboard-pnl-cell-percent">${escapeHtml(formatMetric(percentValue, "percent"))}</span>`
+            : "";
+
+        return `
+            <button
+                type="button"
+                class="dashboard-pnl-cell-btn dashboard-pnl-cell-btn--${tone}"
+                data-pnl-row-key="${escapeHtml(row.key || "")}"
+                data-pnl-row-label="${escapeHtml(row.label || "")}"
+                ${monthAttribute}>
+                <span class="dashboard-pnl-cell-value">${escapeHtml(formatMetric(value, row.valueFormat))}</span>
+                ${percentLabel}
+            </button>
+        `;
+    }
+
     function renderPnlTable(dashboard) {
         if (!pnlTableContainer) {
             return;
@@ -4483,9 +4545,10 @@
             .join("");
 
         const bodyRows = rows.map(row => {
+            const rowGroup = getPnlRowGroup(row.key || "");
             if ((row.rowType || "").toLowerCase() === "section") {
                 return `
-                    <tr class="dashboard-pnl-row dashboard-pnl-row--section">
+                    <tr class="dashboard-pnl-row dashboard-pnl-row--section dashboard-pnl-row--group-${escapeHtml(rowGroup)}">
                         <td colspan="${months.length + 2}">${escapeHtml(row.label)}</td>
                     </tr>
                 `;
@@ -4494,33 +4557,21 @@
             const valueCells = (Array.isArray(row.values) ? row.values : [])
                 .map((value, index) => {
                     const month = Number(months[index]?.month || index + 1);
+                    const percentage = Array.isArray(row.percentages) ? row.percentages[index] : 0;
                     return `
                         <td class="text-end">
-                            <button
-                                type="button"
-                                class="dashboard-pnl-cell-btn"
-                                data-pnl-row-key="${escapeHtml(row.key || "")}"
-                                data-pnl-row-label="${escapeHtml(row.label || "")}"
-                                data-pnl-cell-month="${month}">
-                                ${escapeHtml(formatMetric(value, row.valueFormat))}
-                            </button>
+                            ${renderPnlCellButton(row, value, percentage, month)}
                         </td>
                     `;
                 })
                 .join("");
 
             return `
-                <tr class="dashboard-pnl-row dashboard-pnl-row--${escapeHtml(row.rowType || "detail")}">
+                <tr class="dashboard-pnl-row dashboard-pnl-row--${escapeHtml(row.rowType || "detail")} dashboard-pnl-row--group-${escapeHtml(rowGroup)}">
                     <td class="dashboard-pnl-row__label dashboard-pnl-row__label--level-${Number(row.level || 0)}">${escapeHtml(row.label)}</td>
                     ${valueCells}
                     <td class="text-end dashboard-pnl-row__total">
-                        <button
-                            type="button"
-                            class="dashboard-pnl-cell-btn dashboard-pnl-cell-btn--total"
-                            data-pnl-row-key="${escapeHtml(row.key || "")}"
-                            data-pnl-row-label="${escapeHtml(row.label || "")}">
-                            ${escapeHtml(formatMetric(row.total, row.valueFormat))}
-                        </button>
+                        ${renderPnlCellButton(row, row.total, row.totalPercentage, null)}
                     </td>
                 </tr>
             `;

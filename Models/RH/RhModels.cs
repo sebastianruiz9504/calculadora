@@ -94,6 +94,7 @@ public sealed class RhFieldDefinitionDto
     public string Accept { get; set; } = "";
     public bool Required { get; set; }
     public bool ShowInList { get; set; } = true;
+    public bool ShowInForm { get; set; } = true;
     public IReadOnlyList<RhOptionDto> Options { get; set; } = Array.Empty<RhOptionDto>();
 }
 

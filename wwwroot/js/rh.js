@@ -318,7 +318,7 @@
     }
 
     function renderForm() {
-        const fields = getFields();
+        const fields = getFormFields();
         const record = getCurrentRecord();
         const isNew = !record;
 
@@ -593,6 +593,10 @@
 
     function getListFields() {
         return getFields().filter((field) => field.showInList);
+    }
+
+    function getFormFields() {
+        return getFields().filter((field) => field.showInForm !== false);
     }
 
     function getCurrentRecord() {

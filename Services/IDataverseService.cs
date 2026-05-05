@@ -13,6 +13,7 @@ using CotizadorInterno.Web.Models.PlanRio;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.PublicDataExport;
 using CotizadorInterno.Web.Models.Puntajes;
+using CotizadorInterno.Web.Models.RebatesInversiones;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Models.Renovaciones;
 using CotizadorInterno.Web.Models.SoporteCloud;
@@ -103,6 +104,9 @@ public interface IDataverseService
     Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default);
     Task<IReadOnlyList<EmployeeModulePermissionRowDto>> GetEmployeeModulePermissionsAsync(CancellationToken ct = default);
     Task<EmployeeModulePermissionSaveResult> SaveEmployeeModulePermissionsAsync(EmployeeModulePermissionSaveRequest request, CancellationToken ct = default);
+    Task<RebatesInversionesBoardDto> GetRebatesInversionesBoardAsync(int year, CancellationToken ct = default);
+    Task<RebatesInversionesSaveResultDto> SaveRebatesInversionesRecordAsync(RebatesInversionesSaveRequest request, CancellationToken ct = default);
+    Task<RebatesInversionesDeleteResultDto> DeleteRebatesInversionesRecordAsync(RebatesInversionesDeleteRequest request, CancellationToken ct = default);
     Task<CuentaCobroBoardDto> GetCuentasCobroBoardAsync(int year, int month, CancellationToken ct = default);
     Task<CuentaCobroSaveResultDto> SaveCuentaCobroAsync(CuentaCobroSaveRequest request, CancellationToken ct = default);
     Task<CuentaCobroFileUploadResultDto> UploadCuentaCobroAttachmentAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);

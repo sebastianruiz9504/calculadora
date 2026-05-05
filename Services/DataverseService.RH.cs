@@ -14,6 +14,7 @@ public sealed partial class DataverseService
     private readonly ConcurrentDictionary<string, RhEntityMetadata> _rhEntityMetadataCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _rhLookupNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly CultureInfo RhMoneyCulture = CultureInfo.GetCultureInfo("es-CO");
+    private const string RhEmployeeVacationAvailableDaysField = "rh_diasvacacionesdisponiblescalculados";
     private static readonly IReadOnlyDictionary<string, RhTableDefinition> RhTables =
         BuildRhTableDefinitions().ToDictionary(item => item.Key, item => item, StringComparer.OrdinalIgnoreCase);
 
@@ -225,6 +226,15 @@ public sealed partial class DataverseService
             lookupOptionsByField[lookupField.LogicalName] = await LoadRhLookupOptionsAsync(lookupField, user, ct);
         }
 
+        var records = items
+            .Select(item => BuildRhRecordDto(table, metadata, item))
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .ToList();
+
+        if (string.Equals(table.Key, RhModuleKeys.Employees, StringComparison.OrdinalIgnoreCase))
+            await EnrichRhEmployeeVacationBalanceCellsAsync(records, user, ct);
+
         return new RhTableDataResultDto
         {
             TableKey = table.Key,
@@ -237,11 +247,7 @@ public sealed partial class DataverseService
                 lookupOptionsByField.TryGetValue(field.LogicalName, out var options)
                     ? options
                     : Array.Empty<RhOptionDto>())).ToList(),
-            Records = items
-                .Select(item => BuildRhRecordDto(table, metadata, item))
-                .Where(item => item is not null)
-                .Select(item => item!)
-                .ToList()
+            Records = records
         };
     }
 
@@ -304,6 +310,9 @@ public sealed partial class DataverseService
 
         foreach (var field in table.Fields)
         {
+            if (field.IsVirtual)
+                continue;
+
             if (string.Equals(field.EditorType, "file", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(field.EditorType, "image", StringComparison.OrdinalIgnoreCase))
             {
@@ -536,6 +545,96 @@ public sealed partial class DataverseService
             .ToDictionary(item => item.Value, item => item.Label, StringComparer.OrdinalIgnoreCase);
     }
 
+    private async Task EnrichRhEmployeeVacationBalanceCellsAsync(
+        IReadOnlyList<RhRecordDto> records,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (records.Count == 0)
+            return;
+
+        var requestedDaysByEmployee = await LoadRhVacationRequestedDaysByEmployeeAsync(user, ct);
+        foreach (var record in records)
+        {
+            var accruedDays = ReadRhCellDecimal(record.Cells, VacationEmployeeAccruedDaysField);
+            requestedDaysByEmployee.TryGetValue(record.RecordId, out var registeredDays);
+            var availableDays = RoundVacationDays(accruedDays - registeredDays);
+            record.Cells[RhEmployeeVacationAvailableDaysField] = BuildRhNumberCell(availableDays);
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, decimal>> LoadRhVacationRequestedDaysByEmployeeAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveRhEntityMetadataAsync(
+            VacationRequestTableLogicalName,
+            VacationRequestTableSetName,
+            VacationRequestIdField,
+            VacationRequestPrimaryNameField,
+            user,
+            ct);
+
+        var selectFields = new[]
+        {
+            $"_{VacationRequestEmployeeLookupField}_value",
+            VacationRequestDaysField,
+            VacationRequestStartDateField,
+            VacationRequestEndDateField
+        };
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields)}";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        var totals = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items)
+        {
+            var employeeId = ReadDataverseLookupId(item, VacationRequestEmployeeLookupField, "idempleado", "empleado");
+            if (string.IsNullOrWhiteSpace(employeeId))
+                continue;
+
+            var requestedDays = RoundVacationDays(ReadDecimal(item, VacationRequestDaysField) ?? 0m);
+            if (requestedDays <= 0m)
+            {
+                var startDate = ReadDateOnly(item, VacationRequestStartDateField);
+                var endDate = ReadDateOnly(item, VacationRequestEndDateField);
+                if (startDate.HasValue && endDate.HasValue)
+                    requestedDays = CountVacationBusinessDays(startDate.Value, endDate.Value);
+            }
+
+            if (requestedDays <= 0m)
+                continue;
+
+            totals[employeeId] = RoundVacationDays(
+                totals.TryGetValue(employeeId, out var currentTotal)
+                    ? currentTotal + requestedDays
+                    : requestedDays);
+        }
+
+        return totals;
+    }
+
+    private static decimal ReadRhCellDecimal(
+        IReadOnlyDictionary<string, RhCellValueDto> cells,
+        string logicalName)
+    {
+        if (!cells.TryGetValue(logicalName, out var cell))
+            return 0m;
+
+        return decimal.TryParse(cell.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0m;
+    }
+
+    private static RhCellValueDto BuildRhNumberCell(decimal value)
+    {
+        var rounded = RoundVacationDays(value);
+        return new RhCellValueDto
+        {
+            Value = rounded.ToString("0.##", CultureInfo.InvariantCulture),
+            DisplayValue = rounded.ToString("N2", RhMoneyCulture)
+        };
+    }
+
     private RhRecordDto? BuildRhRecordDto(RhTableDefinition table, RhEntityMetadata metadata, JsonElement item)
     {
         var recordId = ReadString(item, metadata.PrimaryIdField);
@@ -707,6 +806,7 @@ public sealed partial class DataverseService
             Accept = field.Accept,
             Required = field.Required,
             ShowInList = field.ShowInList,
+            ShowInForm = field.ShowInForm,
             Options = string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase)
                 ? lookupOptions
                 : field.Options
@@ -723,6 +823,9 @@ public sealed partial class DataverseService
 
         foreach (var field in table.Fields)
         {
+            if (field.IsVirtual)
+                continue;
+
             if (string.Equals(field.EditorType, "lookup", StringComparison.OrdinalIgnoreCase))
             {
                 fields.Add($"_{field.LogicalName}_value");
@@ -1118,7 +1221,21 @@ public sealed partial class DataverseService
                         LookupTargetFallbackPrimaryNameField = "fullname"
                     },
                     new RhFieldDefinition { LogicalName = "cr07a_cargo", Label = "Cargo", EditorType = "text" },
-                    new RhFieldDefinition { LogicalName = "cr07a_diasdevacacionesdisponibles", Label = "Dias de vacaciones disponibles", EditorType = "number" },
+                    new RhFieldDefinition
+                    {
+                        LogicalName = "cr07a_diasdevacacionesdisponibles",
+                        Label = "Dias acumulados/base de vacaciones",
+                        EditorType = "number",
+                        HelpText = "Base usada para calcular el saldo disponible. El sistema resta las solicitudes registradas."
+                    },
+                    new RhFieldDefinition
+                    {
+                        LogicalName = RhEmployeeVacationAvailableDaysField,
+                        Label = "Dias disponibles calculados",
+                        EditorType = "number",
+                        ShowInForm = false,
+                        IsVirtual = true
+                    },
                     new RhFieldDefinition { LogicalName = "cr07a_cedula", Label = "Cedula", EditorType = "text" },
                     new RhFieldDefinition { LogicalName = "cr07a_tel", Label = "Telefono alterno", EditorType = "phone" },
                     new RhFieldDefinition
@@ -1255,6 +1372,8 @@ public sealed partial class DataverseService
         public string Accept { get; init; } = "";
         public bool Required { get; init; }
         public bool ShowInList { get; init; } = true;
+        public bool ShowInForm { get; init; } = true;
+        public bool IsVirtual { get; init; }
         public IReadOnlyList<RhOptionDto> Options { get; init; } = Array.Empty<RhOptionDto>();
         public IReadOnlyList<string> LookupFallbackTokens { get; init; } = Array.Empty<string>();
         public string LookupNavigationPropertyFallback { get; init; } = "";

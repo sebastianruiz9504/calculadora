@@ -48,7 +48,9 @@ public sealed class PnlRowDto
     public int Level { get; set; }
     public string ValueFormat { get; set; } = "currency";
     public IReadOnlyList<decimal> Values { get; set; } = Array.Empty<decimal>();
+    public IReadOnlyList<decimal> Percentages { get; set; } = Array.Empty<decimal>();
     public decimal Total { get; set; }
+    public decimal TotalPercentage { get; set; }
 }
 
 public sealed class PnlOrphanRowDto
