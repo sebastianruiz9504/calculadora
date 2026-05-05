@@ -423,6 +423,15 @@
         </div>
     </div>
 </div>
+<div id="proposalLoadingModal" class="modal-overlay calc-loading-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="proposalLoadingTitle">
+    <div class="modal-card calc-loading-modal__card">
+        <div class="calc-loading-modal__spinner" aria-hidden="true"></div>
+        <div>
+            <h6 class="mb-1" id="proposalLoadingTitle">Generando propuesta</h6>
+            <p class="mb-0 text-muted">Estamos preparando la propuesta comercial. Este proceso puede tardar unos minutos.</p>
+        </div>
+    </div>
+</div>
 <!-- Modal detalle cálculo (debug/test) -->
 <div id="debugCalcModal" class="modal-overlay" aria-hidden="true">
     <div class="modal-card" style="max-width: 820px;">
@@ -562,6 +571,7 @@
     const attachmentFileName = document.getElementById("attachmentFileName");
     const btnCloseAttachment = document.getElementById("btnCloseAttachment");
     const btnCancelAttachment = document.getElementById("btnCancelAttachment");
+    const proposalLoadingModal = document.getElementById("proposalLoadingModal");
 
     const resultPoints = document.getElementById("resultPoints");
     const resultCommission = document.getElementById("resultCommission");
@@ -634,6 +644,18 @@ const showDebugCalcModal = false;
         if (!debugCalcModal) return;
         debugCalcModal.style.display = "none";
         debugCalcModal.setAttribute("aria-hidden", "true");
+    }
+
+    function showProposalLoadingModal() {
+        if (!proposalLoadingModal) return;
+        proposalLoadingModal.style.display = "flex";
+        proposalLoadingModal.setAttribute("aria-hidden", "false");
+    }
+
+    function hideProposalLoadingModal() {
+        if (!proposalLoadingModal) return;
+        proposalLoadingModal.style.display = "none";
+        proposalLoadingModal.setAttribute("aria-hidden", "true");
     }
 
     function buildDebugCalcHtml(payload, data) {
@@ -1762,6 +1784,7 @@ async function saveScenarioToDataverse(scenario, lines) {
 
         btnGenerateProposal.disabled = true;
         btnGenerateProposal.innerText = "Generando...";
+        showProposalLoadingModal();
 
         try {
             const res = await fetch("/Calculator/GenerateProposal", {
@@ -1788,6 +1811,7 @@ async function saveScenarioToDataverse(scenario, lines) {
         } catch (err) {
             alert("Error: " + (err?.message || err));
         } finally {
+            hideProposalLoadingModal();
             btnGenerateProposal.innerText = "Generar propuesta";
             syncScenarioActionButtons();
         }

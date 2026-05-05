@@ -68,7 +68,9 @@
         historyYear: root.querySelector("[data-scr-history-year]"),
         loadHistory: root.querySelector("[data-scr-load-history]"),
         historyRows: root.querySelector("[data-scr-history-rows]"),
-        historyEmpty: root.querySelector("[data-scr-history-empty]")
+        historyEmpty: root.querySelector("[data-scr-history-empty]"),
+        loadingModal: root.querySelector("[data-scr-loading-modal]"),
+        loadingMessage: root.querySelector("[data-scr-loading-message]")
     };
 
     const state = {
@@ -292,6 +294,7 @@
         }
 
         setBusy(true);
+        showLoadingModal("Recolectando datos Microsoft 365 antes de generar el informe...");
         clearGeneratedReport();
         setReportState("Recolectando");
         renderProgress("collecting");
@@ -309,6 +312,9 @@
             renderSnapshot(snapshot);
 
             renderProgress("generating", snapshot?.success
+                ? "Snapshot recolectado. Generando informe HTML con Azure OpenAI..."
+                : "Snapshot guardado con advertencias. Generando informe con la evidencia disponible...");
+            showLoadingModal(snapshot?.success
                 ? "Snapshot recolectado. Generando informe HTML con Azure OpenAI..."
                 : "Snapshot guardado con advertencias. Generando informe con la evidencia disponible...");
             setReportState("Generando");
@@ -342,6 +348,7 @@
             });
             setStatus("error", buildErrorMessage(error));
         } finally {
+            hideLoadingModal();
             setBusy(false);
         }
     }
@@ -580,6 +587,23 @@
             document.body.classList.remove("support-cloud-modal-open");
         }
         loadConnectedClients({ force: true });
+    }
+
+    function showLoadingModal(message) {
+        if (els.loadingMessage) {
+            els.loadingMessage.textContent = message || "Procesando la solicitud. Este proceso puede tardar unos minutos.";
+        }
+        if (els.loadingModal) {
+            els.loadingModal.hidden = false;
+            document.body.classList.add("support-cloud-modal-open");
+        }
+    }
+
+    function hideLoadingModal() {
+        if (els.loadingModal) {
+            els.loadingModal.hidden = true;
+            document.body.classList.remove("support-cloud-modal-open");
+        }
     }
 
     function populateMonthOptions() {

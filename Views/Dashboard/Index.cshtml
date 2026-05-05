@@ -825,7 +825,7 @@
                         <div>
                             <div class="dashboard-panel__kicker">Copiers</div>
                             <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
-                            <p class="dashboard-panel__description">Vista operativa de la tabla <span class="dashboard-highlight">cr07a_productoscopiers</span>. Haz clic sobre <strong>Cliente</strong> para ver sus facturas emitidas y sobre cualquier otra celda para editar el registro en un popup.</p>
+                            <p class="dashboard-panel__description">Vista agrupada por cliente y d&iacute;a de facturaci&oacute;n. Desglosa cada grupo para revisar sus l&iacute;neas de productos Copiers, equipos asignados y estado del contador del mes vigente.</p>
                         </div>
                         <div class="dashboard-panel__actions dashboard-panel__actions--table">
                             <span id="copiersResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
@@ -839,13 +839,11 @@
                                 <tr>
                                     <th>Dia fact.</th>
                                     <th>Cliente</th>
-                                    <th>Producto</th>
-                                    <th class="text-end">Cantidad</th>
-                                    <th class="text-end">Oper. incluidas</th>
-                                    <th class="text-end">cr07a_operacionadicional</th>
-                                    <th class="text-end">Valor unit. antes IVA</th>
-                                    <th class="text-end">Valor unit. con IVA</th>
+                                    <th>L&iacute;neas</th>
+                                    <th class="text-end">Equipos</th>
+                                    <th>Contadores</th>
                                     <th class="text-end">Total con IVA</th>
+                                    <th class="text-end">Detalle</th>
                                 </tr>
                             </thead>
                             <tbody id="copiersBillingBody"></tbody>

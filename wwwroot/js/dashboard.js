@@ -325,6 +325,7 @@
         pnlSignature: "",
         copiersSubtab: "billing",
         copiersLoading: false,
+        copiersExpandedGroups: new Set(),
         copiersEquipmentLoading: false,
         copiersCountersLoading: false,
         copiersEditorSaving: false,
@@ -3428,85 +3429,238 @@
             : '<tr><td colspan="8" class="dashboard-table__empty">No hay retenciones de retefuente para este mes.</td></tr>';
     }
 
-    function renderCopiersTable(dashboard) {
-        const rows = Array.isArray(dashboard?.rows)
-            ? [...dashboard.rows]
-            : [];
+    function buildFallbackCopiersGroups(rows) {
+        const groups = new Map();
+        rows.forEach(row => {
+            const billingDay = Number(row.billingDay || 0);
+            const clientKey = row.clientId || normalizeText(row.clientName || "sin-cliente");
+            const groupId = `${clientKey}|day:${billingDay}`;
+            if (!groups.has(groupId)) {
+                groups.set(groupId, {
+                    groupId,
+                    clientId: row.clientId || "",
+                    clientName: row.clientName || "Sin cliente",
+                    billingDay,
+                    billingDayDisplay: row.billingDayDisplay || (billingDay > 0 ? `Dia ${billingDay}` : "Sin dia"),
+                    productLinesCount: 0,
+                    equipmentCount: 0,
+                    countersRegisteredCount: 0,
+                    pendingCountersCount: 0,
+                    quantity: 0,
+                    includedOperations: 0,
+                    additionalOperation: 0,
+                    totalWithVat: 0,
+                    counterSummary: "Sin equipos asignados",
+                    lines: [],
+                    equipment: []
+                });
+            }
 
-        rows.sort((left, right) => {
+            const group = groups.get(groupId);
+            group.lines.push(row);
+            group.productLinesCount += 1;
+            group.quantity += Number(row.quantity || 0);
+            group.includedOperations += Number(row.includedOperations || 0);
+            group.additionalOperation += Number(row.additionalOperation || 0);
+            group.totalWithVat += Number(row.totalWithVat || 0);
+        });
+
+        return Array.from(groups.values());
+    }
+
+    function getCopiersGroups(dashboard) {
+        const groups = Array.isArray(dashboard?.groups) && dashboard.groups.length
+            ? [...dashboard.groups]
+            : buildFallbackCopiersGroups(Array.isArray(dashboard?.rows) ? dashboard.rows : []);
+
+        return groups.sort((left, right) => {
             const leftDay = Number(left.billingDay || 0) > 0 ? Number(left.billingDay || 0) : Number.MAX_SAFE_INTEGER;
             const rightDay = Number(right.billingDay || 0) > 0 ? Number(right.billingDay || 0) : Number.MAX_SAFE_INTEGER;
             if (leftDay !== rightDay) {
                 return leftDay - rightDay;
             }
 
-            const clientCompare = normalizeText(left.clientName).localeCompare(normalizeText(right.clientName), "es");
-            if (clientCompare !== 0) {
-                return clientCompare;
-            }
-
-            return normalizeText(left.productName).localeCompare(normalizeText(right.productName), "es");
+            return normalizeText(left.clientName).localeCompare(normalizeText(right.clientName), "es");
         });
+    }
+
+    function getCopiersGroupById(groupId) {
+        const groups = getCopiersGroups(state.copiersDashboard);
+        return groups.find(group => (group?.groupId || "") === (groupId || "")) || null;
+    }
+
+    function renderCopiersCounterSummary(group) {
+        const equipmentCount = Number(group?.equipmentCount || 0);
+        const registered = Number(group?.countersRegisteredCount || 0);
+        const pending = Number(group?.pendingCountersCount || 0);
+
+        if (!equipmentCount) {
+            return '<span class="dashboard-counter-chip dashboard-counter-chip--neutral"><strong>Sin equipos</strong><small>0 asociados</small></span>';
+        }
+
+        const tone = pending > 0 ? "pending" : "ok";
+        const label = pending > 0
+            ? `${numberFormatter.format(pending)} pendiente(s)`
+            : "Al dia";
+
+        return `
+            <span class="dashboard-counter-chip dashboard-counter-chip--${tone}">
+                <strong>${escapeHtml(label)}</strong>
+                <small>${escapeHtml(`${registered}/${equipmentCount} con contador`)}</small>
+            </span>
+        `;
+    }
+
+    function renderCopiersProductLines(lines) {
+        const items = Array.isArray(lines) ? lines : [];
+        if (!items.length) {
+            return '<div class="dashboard-table__empty">No hay lineas de productos para este grupo.</div>';
+        }
+
+        return `
+            <div class="dashboard-copiers-lines">
+                <div class="dashboard-copiers-line dashboard-copiers-line--header">
+                    <span>Producto</span>
+                    <span>Cant.</span>
+                    <span>Oper. incl.</span>
+                    <span>Oper. adic.</span>
+                    <span>Unit. antes IVA</span>
+                    <span>Unit. con IVA</span>
+                    <span>Total con IVA</span>
+                </div>
+                ${items.map(row => `
+                    <div class="dashboard-copiers-line">
+                        <button type="button" class="dashboard-copiers-cell-btn dashboard-copiers-cell-btn--link" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="productName">
+                            ${escapeHtml(row.productName || "Producto sin nombre")}
+                        </button>
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="quantity" title="Cantidad">
+                            ${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}
+                        </button>
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="includedOperations" title="Operaciones incluidas">
+                            ${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}
+                        </button>
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="additionalOperation" title="Operacion adicional">
+                            ${escapeHtml(numberFormatter.format(Number(row.additionalOperation || 0)))}
+                        </button>
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="unitValueBeforeVat" title="Valor unitario antes IVA">
+                            ${escapeHtml(currencyFormatter.format(Number(row.unitValueBeforeVat || 0)))}
+                        </button>
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="unitValueWithVat" title="Valor unitario con IVA">
+                            ${escapeHtml(currencyFormatter.format(Number(row.unitValueWithVat || 0)))}
+                        </button>
+                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="totalWithVat">
+                            ${escapeHtml(currencyFormatter.format(Number(row.totalWithVat || 0)))}
+                        </button>
+                    </div>
+                `).join("")}
+            </div>
+        `;
+    }
+
+    function renderCopiersEquipmentDetails(equipment) {
+        const items = Array.isArray(equipment) ? equipment : [];
+        if (!items.length) {
+            return '<div class="dashboard-table__empty">Este cliente no tiene equipos asignados en la tabla de equipos.</div>';
+        }
+
+        return `
+            <div class="dashboard-copiers-equipment-list">
+                ${items.map(row => {
+                    const hasCounter = Boolean(row.hasCurrentCounter);
+                    const statusClass = hasCounter ? "dashboard-counter-chip--ok" : "dashboard-counter-chip--pending";
+                    const statusLabel = row.counterStatusLabel || (hasCounter ? "Contador registrado" : "Pendiente de contador");
+                    const meta = [row.categoryLabel, row.reference, row.site, row.area]
+                        .filter(value => value && String(value).trim())
+                        .join(" · ");
+
+                    return `
+                        <button type="button" class="dashboard-copiers-equipment-item" data-copiers-equipment-id="${escapeHtml(row.recordId || "")}">
+                            <span class="dashboard-copiers-equipment-item__main">
+                                <strong>${escapeHtml(row.serial || "Equipo sin serial")}</strong>
+                                <small>${escapeHtml(meta || "Sin detalle adicional")}</small>
+                            </span>
+                            <span class="dashboard-counter-chip ${statusClass}">
+                                <strong>${escapeHtml(statusLabel)}</strong>
+                                <small>${escapeHtml(row.counterDateDisplay || "Mes vigente")}</small>
+                            </span>
+                        </button>
+                    `;
+                }).join("")}
+            </div>
+        `;
+    }
+
+    function renderCopiersGroupDetail(group) {
+        const lines = Array.isArray(group?.lines) ? group.lines : [];
+        const equipment = Array.isArray(group?.equipment) ? group.equipment : [];
+
+        return `
+            <tr class="dashboard-copiers-detail-row">
+                <td colspan="7">
+                    <div class="dashboard-copiers-detail">
+                        <section class="dashboard-copiers-detail__section">
+                            <div class="dashboard-copiers-detail__header">
+                                <strong>Lineas de productos Copiers</strong>
+                                <span>${escapeHtml(numberFormatter.format(lines.length))} linea(s)</span>
+                            </div>
+                            ${renderCopiersProductLines(lines)}
+                        </section>
+                        <section class="dashboard-copiers-detail__section">
+                            <div class="dashboard-copiers-detail__header">
+                                <strong>Equipos y contador del mes</strong>
+                                <span>${escapeHtml(group?.counterSummary || "")}</span>
+                            </div>
+                            ${renderCopiersEquipmentDetails(equipment)}
+                        </section>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    function renderCopiersTable(dashboard) {
+        const groups = getCopiersGroups(dashboard);
+        const rowCount = Array.isArray(dashboard?.rows) ? dashboard.rows.length : groups.reduce((sum, group) => sum + Number(group.productLinesCount || 0), 0);
 
         if (copiersResultsCount) {
-            copiersResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} registros`;
+            copiersResultsCount.textContent = `Mostrando ${numberFormatter.format(groups.length)} grupo(s) · ${numberFormatter.format(rowCount)} linea(s)`;
         }
 
         if (!copiersBillingBody) {
             return;
         }
 
-        copiersBillingBody.innerHTML = rows.length
-            ? rows.map(row => `
-                <tr>
-                    <td>
-                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="billingDay">
-                            ${escapeHtml(row.billingDayDisplay || "Sin dia")}
-                        </button>
-                    </td>
-                    <td>
-                        <button type="button" class="dashboard-copiers-cell-btn dashboard-copiers-cell-btn--link" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="clientName">
-                            ${escapeHtml(row.clientName)}
-                        </button>
-                    </td>
-                    <td>
-                        <button type="button" class="dashboard-copiers-cell-btn" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="productName">
-                            ${escapeHtml(row.productName)}
-                        </button>
-                    </td>
-                    <td class="text-end">
-                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="quantity">
-                            ${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}
-                        </button>
-                    </td>
-                    <td class="text-end">
-                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="includedOperations">
-                            ${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}
-                        </button>
-                    </td>
-                    <td class="text-end">
-                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="additionalOperation">
-                            ${escapeHtml(numberFormatter.format(Number(row.additionalOperation || 0)))}
-                        </button>
-                    </td>
-                    <td class="text-end">
-                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="unitValueBeforeVat">
-                            ${escapeHtml(currencyFormatter.format(Number(row.unitValueBeforeVat || 0)))}
-                        </button>
-                    </td>
-                    <td class="text-end">
-                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="unitValueWithVat">
-                            ${escapeHtml(currencyFormatter.format(Number(row.unitValueWithVat || 0)))}
-                        </button>
-                    </td>
-                    <td class="text-end">
-                        <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="totalWithVat">
-                            ${escapeHtml(currencyFormatter.format(Number(row.totalWithVat || 0)))}
-                        </button>
-                    </td>
-                </tr>
-            `).join("")
-            : '<tr><td colspan="9" class="dashboard-table__empty">No hay registros de facturacion copiers disponibles.</td></tr>';
+        copiersBillingBody.innerHTML = groups.length
+            ? groups.map(group => {
+                const groupId = group.groupId || "";
+                const expanded = state.copiersExpandedGroups.has(groupId);
+                return `
+                    <tr class="dashboard-copiers-group-row ${expanded ? "is-expanded" : ""}">
+                        <td>
+                            <button type="button" class="dashboard-copiers-group-toggle" data-copiers-group-toggle="${escapeHtml(groupId)}" aria-expanded="${expanded ? "true" : "false"}">
+                                <span>${expanded ? "-" : "+"}</span>
+                                ${escapeHtml(group.billingDayDisplay || "Sin dia")}
+                            </button>
+                        </td>
+                        <td>
+                            <button type="button" class="dashboard-copiers-cell-btn dashboard-copiers-cell-btn--link" data-copiers-group-client="${escapeHtml(groupId)}">
+                                ${escapeHtml(group.clientName || "Sin cliente")}
+                            </button>
+                        </td>
+                        <td>${escapeHtml(numberFormatter.format(Number(group.productLinesCount || 0)))} linea(s)</td>
+                        <td class="text-end">${escapeHtml(numberFormatter.format(Number(group.equipmentCount || 0)))}</td>
+                        <td>${renderCopiersCounterSummary(group)}</td>
+                        <td class="text-end">${escapeHtml(currencyFormatter.format(Number(group.totalWithVat || 0)))}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-secondary dashboard-copiers-detail-btn" data-copiers-group-toggle="${escapeHtml(groupId)}">
+                                ${expanded ? "Ocultar" : "Desglosar"}
+                            </button>
+                        </td>
+                    </tr>
+                    ${expanded ? renderCopiersGroupDetail(group) : ""}
+                `;
+            }).join("")
+            : '<tr><td colspan="7" class="dashboard-table__empty">No hay registros de facturacion copiers disponibles.</td></tr>';
     }
 
     function getCopiersRowById(recordId) {
@@ -6259,6 +6413,34 @@
         saveCopiersEquipmentAssignment();
     });
     copiersBillingBody?.addEventListener("click", event => {
+        const toggleButton = event.target.closest("[data-copiers-group-toggle]");
+        if (toggleButton) {
+            const groupId = toggleButton.dataset.copiersGroupToggle || "";
+            if (state.copiersExpandedGroups.has(groupId)) {
+                state.copiersExpandedGroups.delete(groupId);
+            } else {
+                state.copiersExpandedGroups.add(groupId);
+            }
+
+            renderCopiersTable(state.copiersDashboard);
+            return;
+        }
+
+        const clientButton = event.target.closest("[data-copiers-group-client]");
+        if (clientButton) {
+            const group = getCopiersGroupById(clientButton.dataset.copiersGroupClient || "");
+            if (group) {
+                loadCopiersClientInvoices(group);
+            }
+            return;
+        }
+
+        const equipmentButton = event.target.closest("[data-copiers-equipment-id]");
+        if (equipmentButton) {
+            loadCopiersEquipmentDetail(equipmentButton.dataset.copiersEquipmentId || "");
+            return;
+        }
+
         const button = event.target.closest("[data-copiers-row-id]");
         if (!button) {
             return;

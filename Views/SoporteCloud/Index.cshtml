@@ -688,6 +688,20 @@
         </article>
     </section>
 
+    <div class="support-cloud-modal support-cloud-loading-modal" data-scr-loading-modal hidden>
+        <div class="support-cloud-modal__backdrop"></div>
+        <div class="support-cloud-modal__dialog support-cloud-loading-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudReportLoadingTitle" aria-describedby="supportCloudReportLoadingMessage">
+            <div class="support-cloud-loading-modal__spinner" aria-hidden="true"></div>
+            <div>
+                <div class="support-cloud-kicker">Procesando</div>
+                <h2 class="support-cloud-modal__title" id="supportCloudReportLoadingTitle">Generando informe</h2>
+                <p class="support-cloud-modal__subtitle" id="supportCloudReportLoadingMessage" data-scr-loading-message>
+                    Recolectando datos y preparando el reporte. Este proceso puede tardar unos minutos.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div class="support-cloud-modal" data-scr-consent-modal hidden>
         <div class="support-cloud-modal__backdrop" data-scr-close-consent></div>
         <div class="support-cloud-modal__dialog support-cloud-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudConsentTitle">

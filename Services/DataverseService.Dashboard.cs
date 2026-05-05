@@ -101,17 +101,32 @@ public sealed partial class DataverseService
             ct);
 
         var rows = await GetCopiersRecordsAsync(metadata, httpContext.User, ct);
+        var billingRows = BuildCopiersRows(rows);
+        var counterPeriodStart = new DateOnly(today.Year, today.Month, 1);
+        var counterPeriodEnd = counterPeriodStart.AddMonths(1);
+        var counterPeriodLabel = ToTitleCase(counterPeriodStart.ToString("MMMM yyyy", DashboardCulture));
+        var equipmentRows = await BuildCopiersBillingEquipmentRowsAsync(
+            rows,
+            httpContext.User,
+            counterPeriodStart,
+            counterPeriodEnd,
+            counterPeriodLabel,
+            ct);
+        var groups = BuildCopiersBillingGroups(billingRows, equipmentRows);
 
         return new CopiersDashboardDto
         {
             AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
-            FocusLabel = "Ordenado por dia de facturacion, cliente y producto",
+            FocusLabel = $"Agrupado por cliente y dia de facturacion. Contadores: {counterPeriodLabel}",
+            CounterPeriodValue = counterPeriodStart.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            CounterPeriodLabel = counterPeriodLabel,
             HasData = rows.Count > 0,
-            RecordsCount = rows.Count,
+            RecordsCount = groups.Count,
             EmptyStateTitle = "No encontramos registros de facturacion copiers.",
             EmptyStateMessage = "Cuando Dataverse tenga filas en cr07a_productoscopiers las veras aqui.",
             Kpis = BuildCopiersKpis(rows),
-            Rows = BuildCopiersRows(rows)
+            Groups = groups,
+            Rows = billingRows
         };
     }
 
@@ -2229,6 +2244,184 @@ public sealed partial class DataverseService
                         && string.Equals(GetBillingCategoryKey(record.PaymentDate.Value, period.CompareStartInclusive, period.TrendGranularity), category.Key, StringComparison.OrdinalIgnoreCase)),
                     static record => record.RetentionsTotal)
             })
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<CopiersBillingEquipmentDto>> BuildCopiersBillingEquipmentRowsAsync(
+        IReadOnlyList<CopiersBillingRecordRow> billingRows,
+        ClaimsPrincipal user,
+        DateOnly periodStart,
+        DateOnly periodEnd,
+        string counterPeriodLabel,
+        CancellationToken ct)
+    {
+        if (billingRows.Count == 0)
+            return Array.Empty<CopiersBillingEquipmentDto>();
+
+        var clientIds = billingRows
+            .Select(static row => NormalizeOptionalGuid(row.ClientId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var clientNames = billingRows
+            .Select(static row => NormalizeCopiersComparableValue(row.ClientName))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var equipmentMetadata = await ResolveRhEntityMetadataAsync(
+                DashboardEquipmentTableLogicalName,
+                DashboardEquipmentTableSetName,
+                DashboardEquipmentIdField,
+                DashboardEquipmentPrimaryNameField,
+                user,
+                ct);
+            var equipmentRows = (await GetEquipmentRecordsAsync(equipmentMetadata, user, ct))
+                .Where(static row => !row.InStock)
+                .Where(row => CopiersBillingClientMatches(row, clientIds, clientNames))
+                .ToList();
+
+            if (equipmentRows.Count == 0)
+                return Array.Empty<CopiersBillingEquipmentDto>();
+
+            var semaphore = new SemaphoreSlim(8);
+            var tasks = equipmentRows.Select(async equipment =>
+            {
+                await semaphore.WaitAsync(ct);
+                try
+                {
+                    var counter = await GetCopiersLastCounterReadingAsync(
+                        equipment.RecordId,
+                        equipment.Serial,
+                        periodStart,
+                        periodEnd,
+                        user,
+                        ct);
+                    var hasCurrentCounter = counter.Date.HasValue;
+                    var counterDateDisplay = FormatCopiersCounterDateDisplay(counter.Date);
+
+                    return new CopiersBillingEquipmentDto
+                    {
+                        RecordId = equipment.RecordId,
+                        Serial = equipment.Serial,
+                        ClientId = NormalizeOptionalGuid(equipment.ClientId),
+                        ClientName = FirstNonEmpty(equipment.ClientName, "Sin cliente"),
+                        CategoryLabel = equipment.CategoryLabel,
+                        Reference = equipment.Reference,
+                        Area = equipment.Area,
+                        Site = equipment.Site,
+                        HasCurrentCounter = hasCurrentCounter,
+                        CounterDateValue = FormatCopiersCounterDateValue(counter.Date),
+                        CounterDateDisplay = counterDateDisplay,
+                        CounterStatusLabel = hasCurrentCounter
+                            ? $"Contador registrado el {counterDateDisplay}"
+                            : $"Pendiente de contador - {counterPeriodLabel}",
+                        CounterStatusTone = hasCurrentCounter ? "ok" : "pending"
+                    };
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            return (await Task.WhenAll(tasks))
+                .OrderBy(static row => row.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static row => row.Serial, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible enriquecer la facturacion copiers con equipos y contadores del mes vigente.");
+            return Array.Empty<CopiersBillingEquipmentDto>();
+        }
+    }
+
+    private static bool CopiersBillingClientMatches(
+        CopiersEquipmentRecordRow equipment,
+        IReadOnlySet<string> clientIds,
+        IReadOnlySet<string> clientNames)
+    {
+        var equipmentClientId = NormalizeOptionalGuid(equipment.ClientId);
+        if (!string.IsNullOrWhiteSpace(equipmentClientId) && clientIds.Contains(equipmentClientId))
+            return true;
+
+        var equipmentClientName = NormalizeCopiersComparableValue(equipment.ClientName);
+        return !string.IsNullOrWhiteSpace(equipmentClientName) && clientNames.Contains(equipmentClientName);
+    }
+
+    private IReadOnlyList<CopiersBillingGroupDto> BuildCopiersBillingGroups(
+        IReadOnlyList<CopiersBillingRowDto> rows,
+        IReadOnlyList<CopiersBillingEquipmentDto> equipmentRows)
+    {
+        return rows
+            .GroupBy(
+                row => $"{BuildDashboardGroupKey(row.ClientId, row.ClientName)}|day:{row.BillingDay}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var lines = group
+                    .OrderBy(static row => row.ProductName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                var first = lines[0];
+                var equipment = FindCopiersBillingEquipment(first, equipmentRows);
+                var countersRegistered = equipment.Count(static row => row.HasCurrentCounter);
+                var pendingCounters = equipment.Count - countersRegistered;
+
+                return new CopiersBillingGroupDto
+                {
+                    GroupId = group.Key,
+                    ClientId = first.ClientId,
+                    ClientName = first.ClientName,
+                    BillingDay = first.BillingDay,
+                    BillingDayDisplay = first.BillingDayDisplay,
+                    ProductLinesCount = lines.Count,
+                    EquipmentCount = equipment.Count,
+                    CountersRegisteredCount = countersRegistered,
+                    PendingCountersCount = pendingCounters,
+                    Quantity = RoundCurrency(lines.Sum(static row => row.Quantity)),
+                    IncludedOperations = RoundCurrency(lines.Sum(static row => row.IncludedOperations)),
+                    AdditionalOperation = RoundCurrency(lines.Sum(static row => row.AdditionalOperation)),
+                    TotalWithVat = RoundCurrency(lines.Sum(static row => row.TotalWithVat)),
+                    CounterSummary = equipment.Count == 0
+                        ? "Sin equipos asignados"
+                        : pendingCounters == 0
+                            ? "Contadores al dia"
+                            : $"{pendingCounters.ToString("N0", DashboardCulture)} pendiente(s)",
+                    Lines = lines,
+                    Equipment = equipment
+                };
+            })
+            .OrderBy(static group => group.BillingDay is >= 1 and <= 31 ? group.BillingDay : int.MaxValue)
+            .ThenBy(static group => group.ClientName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<CopiersBillingEquipmentDto> FindCopiersBillingEquipment(
+        CopiersBillingRowDto row,
+        IReadOnlyList<CopiersBillingEquipmentDto> equipmentRows)
+    {
+        var clientId = NormalizeOptionalGuid(row.ClientId);
+        var clientName = NormalizeCopiersComparableValue(row.ClientName);
+
+        return equipmentRows
+            .Where(equipment =>
+            {
+                var equipmentClientId = NormalizeOptionalGuid(equipment.ClientId);
+                if (!string.IsNullOrWhiteSpace(clientId)
+                    && string.Equals(equipmentClientId, clientId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                var equipmentClientName = NormalizeCopiersComparableValue(equipment.ClientName);
+                return !string.IsNullOrWhiteSpace(clientName)
+                    && string.Equals(equipmentClientName, clientName, StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderBy(static equipment => equipment.Serial, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

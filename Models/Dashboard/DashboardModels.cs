@@ -100,12 +100,52 @@ public sealed class CopiersDashboardDto
 {
     public string AsOfDateLabel { get; set; } = "";
     public string FocusLabel { get; set; } = "";
+    public string CounterPeriodValue { get; set; } = "";
+    public string CounterPeriodLabel { get; set; } = "";
     public bool HasData { get; set; }
     public int RecordsCount { get; set; }
     public string EmptyStateTitle { get; set; } = "";
     public string EmptyStateMessage { get; set; } = "";
     public IReadOnlyList<PortfolioKpiDto> Kpis { get; set; } = Array.Empty<PortfolioKpiDto>();
+    public IReadOnlyList<CopiersBillingGroupDto> Groups { get; set; } = Array.Empty<CopiersBillingGroupDto>();
     public IReadOnlyList<CopiersBillingRowDto> Rows { get; set; } = Array.Empty<CopiersBillingRowDto>();
+}
+
+public sealed class CopiersBillingGroupDto
+{
+    public string GroupId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public int BillingDay { get; set; }
+    public string BillingDayDisplay { get; set; } = "";
+    public int ProductLinesCount { get; set; }
+    public int EquipmentCount { get; set; }
+    public int CountersRegisteredCount { get; set; }
+    public int PendingCountersCount { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal IncludedOperations { get; set; }
+    public decimal AdditionalOperation { get; set; }
+    public decimal TotalWithVat { get; set; }
+    public string CounterSummary { get; set; } = "";
+    public IReadOnlyList<CopiersBillingRowDto> Lines { get; set; } = Array.Empty<CopiersBillingRowDto>();
+    public IReadOnlyList<CopiersBillingEquipmentDto> Equipment { get; set; } = Array.Empty<CopiersBillingEquipmentDto>();
+}
+
+public sealed class CopiersBillingEquipmentDto
+{
+    public string RecordId { get; set; } = "";
+    public string Serial { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string CategoryLabel { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public string Area { get; set; } = "";
+    public string Site { get; set; } = "";
+    public bool HasCurrentCounter { get; set; }
+    public string CounterDateValue { get; set; } = "";
+    public string CounterDateDisplay { get; set; } = "";
+    public string CounterStatusLabel { get; set; } = "";
+    public string CounterStatusTone { get; set; } = "";
 }
 
 public sealed class CopiersBillingRowDto
