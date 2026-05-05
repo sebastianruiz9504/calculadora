@@ -372,28 +372,23 @@ public sealed partial class DataverseService
         if (rows.Count == 0)
             throw new InvalidOperationException("No hay filas para procesar.");
 
-        var normalizedRows = rows
-            .Select(NormalizeLicensingImportRow)
-            .ToList();
-        var pendingBreakdownRows = normalizedRows
-            .Count(static row => row.RequiresBreakdown && !row.BreakdownGenerated);
+        var pendingBreakdownRows = rows
+            .Count(IsPendingLicensingBreakdown);
         if (pendingBreakdownRows > 0)
             throw new InvalidOperationException(pendingBreakdownRows == 1
                 ? "Hay 1 fila de cargo manual pendiente por desglosar."
                 : $"Hay {pendingBreakdownRows} filas de cargo manual pendientes por desglosar.");
 
-        var invalidRows = normalizedRows
-            .Where(static row => !row.IsValid || row.Errors.Count > 0)
+        var normalizedRows = rows
+            .Where(IsLicensingImportRowProcessable)
+            .Select(NormalizeLicensingImportRow)
             .ToList();
-        if (invalidRows.Count > 0)
-            throw new InvalidOperationException($"La vista previa tiene {invalidRows.Count} fila(s) con errores. Corrige el Excel y vuelve a cargarlo.");
 
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
         var rowsToCreate = normalizedRows
-            .Where(row => !ShouldSkipLicensingImportRow(metadata, row))
             .ToList();
         if (rowsToCreate.Count == 0)
-            throw new InvalidOperationException("No hay filas con lookup de producto para procesar. Selecciona al menos un producto valido en la vista previa.");
+            throw new InvalidOperationException("No hay filas listas para procesar.");
 
         var created = 0;
         foreach (var row in rowsToCreate)
@@ -1181,7 +1176,7 @@ public sealed partial class DataverseService
                 var reason = FirstNonEmpty(
                     row.ProductLookupFailureReason,
                     "PriceableItem description no se encontro en el lookup.");
-                row.Warnings.Add($"{reason} Selecciona un producto en la vista previa o esta fila se omitira al procesar.");
+                row.Warnings.Add($"{reason} Puedes seleccionar un producto en la vista previa o procesar la fila sin producto asociado.");
             }
 
             if (row.RequiresBreakdown && !row.BreakdownGenerated)
@@ -1447,9 +1442,6 @@ public sealed partial class DataverseService
         return payload;
     }
 
-    private static bool ShouldSkipLicensingImportRow(LicensingMetadata metadata, LicenciamientoPreviewRowDto row) =>
-        metadata.ProductFieldIsLookup && string.IsNullOrWhiteSpace(row.ProductLookupId);
-
     private static string BuildLicensingImportMessage(int created, int skipped)
     {
         var createdMessage = created == 1
@@ -1460,8 +1452,8 @@ public sealed partial class DataverseService
             return createdMessage;
 
         var skippedMessage = skipped == 1
-            ? "Se omitio 1 fila sin lookup de producto."
-            : $"Se omitieron {skipped} filas sin lookup de producto.";
+            ? "Se omitio 1 fila no procesable."
+            : $"Se omitieron {skipped} filas no procesables.";
 
         return $"{createdMessage} {skippedMessage}";
     }
@@ -1487,13 +1479,22 @@ public sealed partial class DataverseService
         row.HasSalesPrice = row.HasSalesPrice || row.SalesPriceUsd > 0m;
         row.ContractTypeValue = NormalizeLicensingContractTypeValue(row.ContractTypeValue);
         row.ContractTypeLabel = ResolveLicensingContractTypeLabel(row.ContractTypeValue);
-        row.RequiresBreakdown = row.RequiresBreakdown && !row.BreakdownGenerated;
+        row.RequiresBreakdown = IsPendingLicensingBreakdown(row);
 
         if (!TryParseDateOnly(row.FacturaValue, out _))
             throw new InvalidOperationException($"La fila {row.SourceRowNumber} no tiene una fecha de factura valida.");
 
         return row;
     }
+
+    private static bool IsPendingLicensingBreakdown(LicenciamientoPreviewRowDto row) =>
+        !row.BreakdownGenerated
+        && (row.RequiresBreakdown || IsLicensingBreakdownProduct(FirstNonEmpty(row.ProductDescription, row.ProductLookupLabel)));
+
+    private static bool IsLicensingImportRowProcessable(LicenciamientoPreviewRowDto row) =>
+        row.IsValid
+        && (row.Errors?.Count ?? 0) == 0
+        && !IsPendingLicensingBreakdown(row);
 
     private static object? ConvertLicensingPayloadValue(
         LicensingMetadata metadata,

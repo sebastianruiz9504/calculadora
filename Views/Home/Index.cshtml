@@ -124,6 +124,22 @@
         </section>
     }
 
+    @if (Model.CanManagePublicDataExport)
+    {
+        <section class="home-card">
+            <div class="home-card__header">
+                <div>
+                    <div class="home-kicker">Portal publico</div>
+                    <h2 class="home-section-title">Descargas aprobadas</h2>
+                    <p class="home-section-subtitle">
+                        Define la contrasena publica y las columnas disponibles para descargar Gastos Digital Tech y Facturacion Digital Tech.
+                    </p>
+                </div>
+                <a class="btn btn-primary" asp-controller="DescargasPublicas" asp-action="Admin">Administrar portal</a>
+            </div>
+        </section>
+    }
+
     @if (planRioModule is not null)
     {
         <section class="home-card">

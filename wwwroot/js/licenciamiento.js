@@ -799,7 +799,7 @@
         const helperClass = row.productLookupId ? "lic-muted" : "lic-lookup-note is-warning";
         const helperText = row.productLookupId
             ? `Lookup encontrado${row.productLookupLabel ? ": " + row.productLookupLabel : ""}`
-            : (row.productLookupFailureReason || "Sin lookup de producto. Esta fila se omitira al procesar si no seleccionas uno.");
+            : (row.productLookupFailureReason || "Sin lookup de producto. Esta fila se procesara sin producto asociado.");
 
         return `
             <div class="lic-lookup">
@@ -837,7 +837,7 @@
         }
 
         if (shouldSkipPreviewRow(row)) {
-            messages.push(row.productLookupFailureReason || "Se omitira al procesar porque no tiene lookup de producto.");
+            messages.push(row.productLookupFailureReason || "Se procesara sin lookup de producto.");
         }
 
         return Array.from(new Set(messages.filter(Boolean)));
@@ -864,7 +864,7 @@
     }
 
     function getImportablePreviewRows() {
-        return state.previewRows.filter((row) => row.isValid && !shouldSkipPreviewRow(row) && !requiresBreakdown(row));
+        return state.previewRows.filter((row) => row.isValid && !requiresBreakdown(row));
     }
 
     function updatePreviewImportState() {
@@ -873,7 +873,6 @@
         }
 
         importBtn.disabled = state.previewRows.length === 0
-            || state.previewRows.some((row) => !row.isValid)
             || state.previewRows.some((row) => requiresBreakdown(row))
             || getImportablePreviewRows().length === 0;
     }
@@ -894,7 +893,7 @@
             helper.className = row.productLookupId ? "lic-muted" : "lic-lookup-note is-warning";
             helper.textContent = row.productLookupId
                 ? `Lookup encontrado${row.productLookupLabel ? ": " + row.productLookupLabel : ""}`
-                : (row.productLookupFailureReason || "Sin lookup de producto. Esta fila se omitira al procesar si no seleccionas uno.");
+                : (row.productLookupFailureReason || "Sin lookup de producto. Esta fila se procesara sin producto asociado.");
         }
 
         const status = previewBody.querySelector(`[data-preview-status="${index}"]`);
@@ -1805,7 +1804,7 @@
         }
 
         const url = kind === "client"
-            ? buildAccountSearchUrl(query)
+            ? buildClientSearchUrl(query)
             : buildProductSearchUrl(query);
         if (!url) {
             return;
@@ -1830,18 +1829,30 @@
                 return;
             }
 
-            menu.innerHTML = items.map((item) => `
+            menu.innerHTML = items.map((item) => {
+                const label = kind === "client"
+                    ? (item.name || item.label || "")
+                    : (item.label || item.name || "");
+                const matchedValue = kind === "client"
+                    ? (item.id || "")
+                    : (item.matchedValue || "");
+                const secondary = kind === "client"
+                    ? (item.id || "")
+                    : (item.matchedValue || item.searchField || "");
+
+                return `
                 <button type="button"
                         class="lic-lookup-option"
                         data-breakdown-${kind}-option
                         data-breakdown-id="${escapeHtml(draftId)}"
                         data-id="${escapeHtml(item.id || "")}"
-                        data-label="${escapeHtml(item.label || "")}"
-                        data-matched-value="${escapeHtml(item.matchedValue || "")}">
-                    <span>${escapeHtml(item.label || (kind === "client" ? "Cliente sin nombre" : "Producto sin nombre"))}</span>
-                    <small>${escapeHtml(item.matchedValue || item.searchField || "")}</small>
+                        data-label="${escapeHtml(label)}"
+                        data-matched-value="${escapeHtml(matchedValue)}">
+                    <span>${escapeHtml(label || (kind === "client" ? "Cliente sin nombre" : "Producto sin nombre"))}</span>
+                    <small>${escapeHtml(secondary)}</small>
                 </button>
-            `).join("");
+            `;
+            }).join("");
             menu.classList.add("is-open");
         } catch (error) {
             if (state.breakdownLookupRequests.get(requestKey) !== requestId) {
@@ -1869,7 +1880,7 @@
             draft.clientQuery = selectedLabel;
             draft.clientMatchedValue = matchedValue;
             draft.clientFailureReason = "";
-            draft.companyAccountId = matchedValue || selectedLabel;
+            draft.companyAccountId = "";
         } else {
             draft.productLookupId = selectedId;
             draft.productLabel = selectedLabel;
@@ -2027,10 +2038,10 @@
         const productLabel = draft.productLabel || draft.productMatchedValue || sourceRow.productDescription || "";
         return {
             ...sourceRow,
-            companyAccountId: draft.companyAccountId || draft.clientMatchedValue || clientLabel,
-            companyAccountLookupId: draft.clientLookupId,
-            companyAccountLookupLabel: clientLabel,
-            companyAccountLookupFound: Boolean(draft.clientLookupId),
+            companyAccountId: "",
+            companyAccountLookupId: "",
+            companyAccountLookupLabel: "",
+            companyAccountLookupFound: false,
             companyAccountLookupFailureReason: "",
             nombreCliente: clientLabel,
             productDescription: productLabel,
@@ -2050,7 +2061,7 @@
     }
 
     async function importPreviewRows() {
-        if (state.previewRows.length === 0 || state.previewRows.some((row) => !row.isValid)) {
+        if (state.previewRows.length === 0) {
             showStatus(uploadStatus, "warning", "La vista previa tiene filas pendientes.");
             return;
         }
@@ -2062,7 +2073,7 @@
 
         const importableRows = getImportablePreviewRows();
         if (importableRows.length === 0) {
-            showStatus(uploadStatus, "warning", "Selecciona al menos un producto con lookup antes de procesar.");
+            showStatus(uploadStatus, "warning", "No hay filas listas para procesar.");
             return;
         }
 
@@ -2073,7 +2084,7 @@
             const result = await fetchJson(importUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ rows: state.previewRows })
+                body: JSON.stringify({ rows: importableRows })
             });
 
             closeUploadModal();

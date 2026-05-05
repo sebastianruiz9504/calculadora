@@ -5,6 +5,7 @@ using System.Security.Claims;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Home;
 using CotizadorInterno.Web.Models.Permissions;
+using CotizadorInterno.Web.Models.PublicDataExport;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -36,7 +37,8 @@ public class HomeController : Controller
         {
             CurrentUser = currentUser,
             UserDisplayName = ResolveUserDisplayName(currentUser),
-            AvailableModules = availableModules
+            AvailableModules = availableModules,
+            CanManagePublicDataExport = PublicDataExportAuthorization.IsAdmin(currentUser, HttpContext.User)
         };
 
         return View(model);

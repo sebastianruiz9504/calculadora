@@ -141,11 +141,13 @@ public sealed class PublicDataExportAdminViewModel
             return selected;
 
         var dataset = Catalog.FindDataset(datasetKey);
-        return dataset?.Columns
+        if (dataset is null)
+            return Array.Empty<string>();
+
+        return dataset.Columns
             .Where(static column => column.DefaultSelected)
             .Select(static column => column.Key)
-            .ToList()
-            ?? Array.Empty<string>();
+            .ToList();
     }
 }
 
