@@ -773,8 +773,8 @@
                 <td data-label="Contador escaner" class="text-end">${escapeHtml(formatNullableNumber(row.counterScans))}</td>
                 <td data-label="Acciones" class="text-end">
                     <div class="copiers-inline-actions">
-                        <button type="button" class="btn btn-sm ${getPreventiveButtonClass(row.maintenanceButtonTone || "outline-primary")}" data-preventive-maintenance-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">${escapeHtml(maintenanceButtonLabel)}</button>
-                        <button type="button" class="btn btn-sm ${getPreventiveButtonClass(row.counterButtonTone || "outline-secondary")}" data-preventive-counter-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">${escapeHtml(counterButtonLabel)}</button>
+                        <button type="button" class="btn btn-sm copiers-preventive-equipment-action ${getPreventiveActionClass(row.maintenanceButtonTone || "outline-primary")}" data-preventive-maintenance-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">${escapeHtml(maintenanceButtonLabel)}</button>
+                        <button type="button" class="btn btn-sm copiers-preventive-equipment-action ${getPreventiveActionClass(row.counterButtonTone || "outline-secondary")}" data-preventive-counter-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">${escapeHtml(counterButtonLabel)}</button>
                     </div>
                 </td>
             </tr>
@@ -1952,17 +1952,6 @@
     function findPreventiveEquipment(client, equipmentId) {
         const equipment = Array.isArray(client?.equipment) ? client.equipment : [];
         return equipment.find((row) => (row.recordId || "") === (equipmentId || "")) || null;
-    }
-
-    function getPreventiveButtonClass(tone) {
-        const normalized = (tone || "").trim();
-        if (normalized.startsWith("outline-")) {
-            return `btn-${normalized}`;
-        }
-        if (["primary", "secondary", "success", "warning", "danger"].includes(normalized)) {
-            return `btn-${normalized}`;
-        }
-        return "btn-primary";
     }
 
     function getPreventiveActionClass(tone) {

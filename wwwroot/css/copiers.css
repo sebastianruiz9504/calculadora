@@ -151,7 +151,8 @@
     font-weight: 700;
 }
 
-.copiers-preventive-action.btn {
+.copiers-preventive-action.btn,
+.copiers-preventive-equipment-action.btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -170,18 +171,34 @@
     transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
 }
 
+.copiers-preventive-equipment-action.btn {
+    min-width: 142px;
+    min-height: 36px;
+    max-width: 180px;
+    padding: 7px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .copiers-preventive-action.btn:hover,
-.copiers-preventive-action.btn:focus-visible {
+.copiers-preventive-action.btn:focus-visible,
+.copiers-preventive-equipment-action.btn:hover,
+.copiers-preventive-equipment-action.btn:focus-visible {
     transform: translateY(-1px);
     box-shadow: 0 10px 22px rgba(15, 23, 42, .10);
 }
 
-.copiers-preventive-action.btn:focus-visible {
+.copiers-preventive-action.btn:focus-visible,
+.copiers-preventive-equipment-action.btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 .18rem rgba(15, 108, 189, .18), 0 10px 22px rgba(15, 23, 42, .10);
 }
 
-.copiers-preventive-action.btn:disabled {
+.copiers-preventive-action.btn:disabled,
+.copiers-preventive-equipment-action.btn:disabled {
     opacity: 1;
     cursor: default;
     transform: none;

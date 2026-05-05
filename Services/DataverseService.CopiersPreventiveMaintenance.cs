@@ -94,8 +94,7 @@ public sealed partial class DataverseService
                 var clientState = ResolvePreventiveClientState(
                     equipment.Count,
                     maintenanceRegistered,
-                    countersRegistered,
-                    schedule is not null);
+                    countersRegistered);
 
                 return new CopiersPreventiveMaintenanceClientDto
                 {
@@ -473,8 +472,7 @@ public sealed partial class DataverseService
     private static CopiersPreventiveClientState ResolvePreventiveClientState(
         int equipmentCount,
         int maintenanceRegistered,
-        int countersRegistered,
-        bool scheduled)
+        int countersRegistered)
     {
         if (equipmentCount > 0 && maintenanceRegistered >= equipmentCount && countersRegistered >= equipmentCount)
         {
@@ -486,28 +484,8 @@ public sealed partial class DataverseService
                 true);
         }
 
-        if (maintenanceRegistered > 0 || countersRegistered > 0)
-        {
-            return new CopiersPreventiveClientState(
-                "En proceso",
-                "warning",
-                "En proceso",
-                "warning",
-                true);
-        }
-
-        if (scheduled)
-        {
-            return new CopiersPreventiveClientState(
-                "Mantenimiento programado",
-                "good",
-                "Mantenimiento programado",
-                "success",
-                true);
-        }
-
         return new CopiersPreventiveClientState(
-            "Pendiente",
+            "Programar mantenimiento",
             "pending",
             "Programar mantenimiento",
             "primary",
