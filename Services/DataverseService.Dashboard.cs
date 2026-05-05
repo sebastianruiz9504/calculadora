@@ -101,7 +101,6 @@ public sealed partial class DataverseService
             ct);
 
         var rows = await GetCopiersRecordsAsync(metadata, httpContext.User, ct);
-        var billingRows = BuildCopiersRows(rows);
         var counterPeriodEnd = today.AddDays(1);
         var counterPeriodStart = counterPeriodEnd.AddDays(-35);
         var counterPeriodLabel = "Ultimos 35 dias";
@@ -112,6 +111,11 @@ public sealed partial class DataverseService
             counterPeriodEnd,
             counterPeriodLabel,
             ct);
+        var assignmentRows = await TryLoadCopiersLineEquipmentAssignmentRecordsForLinesAsync(
+            rows.Select(static row => row.RecordId),
+            httpContext.User,
+            ct);
+        var billingRows = BuildCopiersRows(rows, equipmentRows, assignmentRows);
         var groups = BuildCopiersBillingGroups(billingRows, equipmentRows);
 
         return new CopiersDashboardDto
@@ -836,8 +840,11 @@ public sealed partial class DataverseService
         {
             return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup: false);
         }
-        catch (InvalidOperationException ex) when (ShouldRetryCopiersQueryWithProductLookup(ex))
+        catch (InvalidOperationException ex)
         {
+            if (!await ShouldRetryCopiersQueryWithProductLookupAsync(ex, user, ct))
+                throw;
+
             return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup: true);
         }
     }
@@ -874,8 +881,8 @@ public sealed partial class DataverseService
             metadata.PrimaryNameField,
             _dashboardCopiersQuantityField,
             preferProductLookup
-                ? BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField)
-                : _dashboardCopiersProductField,
+                ? BuildDashboardLookupValuePropertyName(NormalizeDashboardLookupLogicalName(_dashboardCopiersProductField))
+                : NormalizeDashboardLookupLogicalName(_dashboardCopiersProductField),
             _dashboardCopiersUnitValueBeforeVatField,
             _dashboardCopiersBillingDayField,
             _dashboardCopiersIncludedOperationsField,
@@ -888,18 +895,23 @@ public sealed partial class DataverseService
         .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
-    private bool ShouldRetryCopiersQueryWithProductLookup(InvalidOperationException exception)
+    private async Task<bool> ShouldRetryCopiersQueryWithProductLookupAsync(
+        InvalidOperationException exception,
+        ClaimsPrincipal user,
+        CancellationToken ct)
     {
-        var lookupField = BuildDashboardLookupValuePropertyName(_dashboardCopiersProductField);
-        if (string.IsNullOrWhiteSpace(_dashboardCopiersProductField)
-            || string.Equals(lookupField, _dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase))
-        {
+        var productField = NormalizeDashboardLookupLogicalName(_dashboardCopiersProductField);
+        if (string.IsNullOrWhiteSpace(productField))
             return false;
-        }
 
-        return exception.Message.Contains(_dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase)
-            || exception.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase)
-            || exception.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase);
+        var lookupField = BuildDashboardLookupValuePropertyName(productField);
+        if (exception.Message.Contains(lookupField, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!exception.Message.Contains(productField, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return await IsCopiersLookupFieldAsync(productField, user, ct);
     }
 
     private async Task<CopiersBillingRecordRow?> GetCopiersRecordByIdAsync(
@@ -912,8 +924,11 @@ public sealed partial class DataverseService
         {
             return await GetCopiersRecordByIdCoreAsync(metadata, recordId, user, ct, preferProductLookup: false);
         }
-        catch (InvalidOperationException ex) when (ShouldRetryCopiersQueryWithProductLookup(ex))
+        catch (InvalidOperationException ex)
         {
+            if (!await ShouldRetryCopiersQueryWithProductLookupAsync(ex, user, ct))
+                throw;
+
             return await GetCopiersRecordByIdCoreAsync(metadata, recordId, user, ct, preferProductLookup: true);
         }
     }
@@ -933,9 +948,10 @@ public sealed partial class DataverseService
 
     private CopiersBillingRecordRow? ParseCopiersRecord(JsonElement item, string primaryIdField, string primaryNameField)
     {
+        var productField = NormalizeDashboardLookupLogicalName(_dashboardCopiersProductField);
         var productName = ReadCopiersFieldDisplayValue(
             item,
-            _dashboardCopiersProductField,
+            productField,
             "producto",
             FirstNonEmpty(ReadString(item, primaryNameField).Trim(), "Producto sin nombre"));
         var clientName = ReadCopiersFieldDisplayValue(
@@ -956,7 +972,7 @@ public sealed partial class DataverseService
         {
             RecordId = recordId.Trim(),
             ClientId = ReadCopiersLookupId(item, _dashboardCopiersClientField, "cliente"),
-            ProductId = ReadCopiersLookupId(item, _dashboardCopiersProductField, "producto"),
+            ProductId = ReadCopiersLookupId(item, productField, "producto"),
             ClientName = clientName,
             ProductName = productName,
             Quantity = RoundCurrency(ReadDecimal(item, _dashboardCopiersQuantityField) ?? 0m),
@@ -1041,24 +1057,51 @@ public sealed partial class DataverseService
         };
     }
 
-    private IReadOnlyList<CopiersBillingRowDto> BuildCopiersRows(IReadOnlyList<CopiersBillingRecordRow> rows)
+    private IReadOnlyList<CopiersBillingRowDto> BuildCopiersRows(
+        IReadOnlyList<CopiersBillingRecordRow> rows,
+        IReadOnlyList<CopiersBillingEquipmentDto> equipmentRows,
+        IReadOnlyList<CopiersLineEquipmentAssignmentRecordRow> assignmentRows)
     {
         return rows
-            .Select(row => new CopiersBillingRowDto
+            .Select(row =>
             {
-                RecordId = row.RecordId,
-                ClientId = row.ClientId,
-                ProductId = row.ProductId,
-                ClientName = row.ClientName,
-                ProductName = row.ProductName,
-                Quantity = row.Quantity,
-                IncludedOperations = row.IncludedOperations,
-                AdditionalOperation = row.AdditionalOperation,
-                UnitValueBeforeVat = row.UnitValueBeforeVat,
-                UnitValueWithVat = row.UnitValueWithVat,
-                TotalWithVat = row.TotalWithVat,
-                BillingDay = row.BillingDay,
-                BillingDayDisplay = row.BillingDay is >= 1 and <= 31 ? $"Dia {row.BillingDay}" : "Sin dia"
+                var equipment = FindCopiersBillingEquipment(row, equipmentRows);
+                var capacity = NormalizeCopiersLineEquipmentAssignmentCapacity(row.Quantity);
+                var assignedCount = assignmentRows
+                    .Where(assignment => string.Equals(assignment.LineId, row.RecordId, StringComparison.OrdinalIgnoreCase))
+                    .Select(static assignment => assignment.EquipmentId)
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+                var assignedAnyCount = assignmentRows
+                    .Where(assignment => CopiersBillingAssignmentClientMatches(assignment, row))
+                    .Select(static assignment => assignment.EquipmentId)
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+                var availableCount = Math.Max(equipment.Count - assignedAnyCount, 0);
+
+                return new CopiersBillingRowDto
+                {
+                    RecordId = row.RecordId,
+                    ClientId = row.ClientId,
+                    ProductId = row.ProductId,
+                    ClientName = row.ClientName,
+                    ProductName = row.ProductName,
+                    Quantity = row.Quantity,
+                    IncludedOperations = row.IncludedOperations,
+                    AdditionalOperation = row.AdditionalOperation,
+                    UnitValueBeforeVat = row.UnitValueBeforeVat,
+                    UnitValueWithVat = row.UnitValueWithVat,
+                    TotalWithVat = row.TotalWithVat,
+                    BillingDay = row.BillingDay,
+                    BillingDayDisplay = row.BillingDay is >= 1 and <= 31 ? $"Dia {row.BillingDay}" : "Sin dia",
+                    EquipmentAssignmentCapacity = capacity,
+                    AssignedEquipmentCount = assignedCount,
+                    AvailableEquipmentCount = availableCount,
+                    EquipmentAssignmentSummary = BuildCopiersLineEquipmentAssignmentSummary(assignedCount, capacity, availableCount),
+                    HasAssignmentOverflow = assignedCount > capacity
+                };
             })
             .ToList();
     }
@@ -1487,10 +1530,11 @@ public sealed partial class DataverseService
         await ApplyCopiersProductPayloadAsync(payload, productName, request.ProductId, current, user, ct);
 
         var primaryNameField = metadata.PrimaryNameField?.Trim() ?? "";
+        var productField = NormalizeDashboardLookupLogicalName(_dashboardCopiersProductField);
         if (!string.IsNullOrWhiteSpace(primaryNameField)
             && !payload.ContainsKey(primaryNameField)
             && !string.Equals(primaryNameField, _dashboardCopiersClientField, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(primaryNameField, _dashboardCopiersProductField, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(primaryNameField, productField, StringComparison.OrdinalIgnoreCase))
         {
             payload[primaryNameField] = productName;
         }
@@ -1543,11 +1587,12 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
+        var productField = NormalizeDashboardLookupLogicalName(_dashboardCopiersProductField);
         var requestedProductId = NormalizeOptionalGuid(rawProductId);
         var currentProductId = NormalizeOptionalGuid(current?.ProductId);
         var useLookup = !string.IsNullOrWhiteSpace(requestedProductId)
             || !string.IsNullOrWhiteSpace(currentProductId)
-            || await IsCopiersLookupFieldAsync(_dashboardCopiersProductField, user, ct);
+            || await IsCopiersLookupFieldAsync(productField, user, ct);
 
         if (useLookup)
         {
@@ -1565,8 +1610,8 @@ public sealed partial class DataverseService
 
             var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
                 _dashboardCopiersTableLogicalName,
-                _dashboardCopiersProductField,
-                _dashboardCopiersProductField,
+                productField,
+                productField,
                 user,
                 ct);
 
@@ -1574,7 +1619,7 @@ public sealed partial class DataverseService
             return;
         }
 
-        payload[_dashboardCopiersProductField] = productName;
+        payload[productField] = productName;
     }
 
     private async Task<string> ResolveCopiersClientIdAsync(string clientName, CancellationToken ct)
@@ -1623,6 +1668,7 @@ public sealed partial class DataverseService
 
     private async Task<string> ResolveCopiersAttributeTypeAsync(string fieldName, ClaimsPrincipal user, CancellationToken ct)
     {
+        fieldName = NormalizeDashboardLookupLogicalName(fieldName);
         var cacheKey = $"{_dashboardCopiersTableLogicalName}|{fieldName}";
         if (_dashboardAttributeTypeCache.TryGetValue(cacheKey, out var cached))
             return cached;
@@ -2393,6 +2439,12 @@ public sealed partial class DataverseService
                         : pendingCounters == 0
                             ? "Contadores al dia"
                             : $"{pendingCounters.ToString("N0", DashboardCulture)} pendiente(s)",
+                    EquipmentAssignedToLinesCount = lines.Sum(static row => row.AssignedEquipmentCount),
+                    EquipmentAvailableForLinesCount = Math.Max(equipment.Count - lines.Sum(static row => row.AssignedEquipmentCount), 0),
+                    EquipmentAssignmentSummary = BuildCopiersLineEquipmentAssignmentSummary(
+                        lines.Sum(static row => row.AssignedEquipmentCount),
+                        lines.Sum(static row => row.EquipmentAssignmentCapacity),
+                        Math.Max(equipment.Count - lines.Sum(static row => row.AssignedEquipmentCount), 0)),
                     Lines = lines,
                     Equipment = equipment
                 };
@@ -2406,8 +2458,23 @@ public sealed partial class DataverseService
         CopiersBillingRowDto row,
         IReadOnlyList<CopiersBillingEquipmentDto> equipmentRows)
     {
-        var clientId = NormalizeOptionalGuid(row.ClientId);
-        var clientName = NormalizeCopiersComparableValue(row.ClientName);
+        return FindCopiersBillingEquipment(row.ClientId, row.ClientName, equipmentRows);
+    }
+
+    private static IReadOnlyList<CopiersBillingEquipmentDto> FindCopiersBillingEquipment(
+        CopiersBillingRecordRow row,
+        IReadOnlyList<CopiersBillingEquipmentDto> equipmentRows)
+    {
+        return FindCopiersBillingEquipment(row.ClientId, row.ClientName, equipmentRows);
+    }
+
+    private static IReadOnlyList<CopiersBillingEquipmentDto> FindCopiersBillingEquipment(
+        string clientIdValue,
+        string clientNameValue,
+        IReadOnlyList<CopiersBillingEquipmentDto> equipmentRows)
+    {
+        var clientId = NormalizeOptionalGuid(clientIdValue);
+        var clientName = NormalizeCopiersComparableValue(clientNameValue);
 
         return equipmentRows
             .Where(equipment =>
@@ -2425,6 +2492,26 @@ public sealed partial class DataverseService
             })
             .OrderBy(static equipment => equipment.Serial, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static bool CopiersBillingAssignmentClientMatches(
+        CopiersLineEquipmentAssignmentRecordRow assignment,
+        CopiersBillingRecordRow row)
+    {
+        var assignmentClientId = NormalizeOptionalGuid(assignment.ClientId);
+        var rowClientId = NormalizeOptionalGuid(row.ClientId);
+        if (!string.IsNullOrWhiteSpace(assignmentClientId)
+            && !string.IsNullOrWhiteSpace(rowClientId)
+            && string.Equals(assignmentClientId, rowClientId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var assignmentClientName = NormalizeCopiersComparableValue(assignment.ClientName);
+        var rowClientName = NormalizeCopiersComparableValue(row.ClientName);
+        return !string.IsNullOrWhiteSpace(assignmentClientName)
+            && !string.IsNullOrWhiteSpace(rowClientName)
+            && string.Equals(assignmentClientName, rowClientName, StringComparison.OrdinalIgnoreCase);
     }
 
     private IReadOnlyList<BillingTrendPointDto> BuildBillingYtdTrend(
@@ -3290,6 +3377,20 @@ public sealed partial class DataverseService
         return trimmed.StartsWith("_", StringComparison.OrdinalIgnoreCase) && trimmed.EndsWith("_value", StringComparison.OrdinalIgnoreCase)
             ? trimmed
             : $"_{trimmed}_value";
+    }
+
+    private static string NormalizeDashboardLookupLogicalName(string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName))
+            return "";
+
+        var trimmed = fieldName.Trim();
+        const string lookupSuffix = "_value";
+        return trimmed.StartsWith("_", StringComparison.OrdinalIgnoreCase)
+            && trimmed.EndsWith(lookupSuffix, StringComparison.OrdinalIgnoreCase)
+            && trimmed.Length > lookupSuffix.Length + 1
+                ? trimmed.Substring(1, trimmed.Length - lookupSuffix.Length - 1)
+                : trimmed;
     }
 
     private static decimal SumCurrency(IEnumerable<BillingRecordRow> rows, Func<BillingRecordRow, decimal> selector) =>

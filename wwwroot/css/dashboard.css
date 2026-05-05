@@ -1521,10 +1521,10 @@
 
 .dashboard-copiers-line {
     display: grid;
-    grid-template-columns: minmax(170px, 1.35fr) repeat(3, minmax(84px, .58fr)) repeat(3, minmax(112px, .8fr));
+    grid-template-columns: minmax(170px, 1.25fr) minmax(72px, .45fr) minmax(132px, .75fr) repeat(2, minmax(84px, .58fr)) repeat(3, minmax(112px, .8fr));
     gap: 8px;
     align-items: center;
-    min-width: 880px;
+    min-width: 1040px;
     padding: 8px;
     border: 1px solid rgba(217, 227, 238, .75);
     border-radius: 8px;
@@ -1625,6 +1625,24 @@
     color: var(--dashboard-muted);
 }
 
+.dashboard-equipment-assignment-inline {
+    display: inline-grid;
+    gap: 2px;
+    min-width: 132px;
+    text-align: left;
+}
+
+.dashboard-equipment-assignment-inline strong {
+    color: var(--dashboard-ink);
+    font-size: 13px;
+}
+
+.dashboard-equipment-assignment-inline small {
+    color: var(--dashboard-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
 .dashboard-counter-chip--button {
     cursor: pointer;
     transition: box-shadow .16s ease, transform .16s ease;
@@ -1664,6 +1682,45 @@
     text-underline-offset: 3px;
 }
 
+.dashboard-copiers-assignment-btn {
+    display: inline-grid;
+    gap: 2px;
+    width: 100%;
+    min-height: 42px;
+    padding: 7px 9px;
+    border: 1px solid rgba(15, 108, 189, .2);
+    border-radius: 8px;
+    background: #edf6ff;
+    color: var(--dashboard-brand-deep);
+    font-family: inherit;
+    font-size: 12px;
+    text-align: left;
+}
+
+.dashboard-copiers-assignment-btn strong,
+.dashboard-copiers-assignment-btn small {
+    overflow-wrap: anywhere;
+}
+
+.dashboard-copiers-assignment-btn small {
+    color: var(--dashboard-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.dashboard-copiers-assignment-btn:hover,
+.dashboard-copiers-assignment-btn:focus-visible {
+    border-color: var(--dashboard-brand);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, .1);
+    outline: none;
+}
+
+.dashboard-copiers-assignment-btn.is-warning {
+    border-color: rgba(220, 38, 38, .3);
+    background: #fdebee;
+    color: var(--dashboard-danger);
+}
+
 .dashboard-client-invoices-table {
     width: 100%;
     min-width: 100%;
@@ -1672,6 +1729,77 @@
 
 .dashboard-copiers-billing-counters-table {
     min-width: 980px;
+}
+
+.dashboard-line-assignment-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.dashboard-line-assignment-summary__item {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(217, 227, 238, .9);
+    border-radius: 8px;
+    background: #f8fbff;
+}
+
+.dashboard-line-assignment-summary__item span {
+    color: var(--dashboard-muted);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.dashboard-line-assignment-summary__item strong {
+    color: var(--dashboard-ink);
+    font-size: 20px;
+}
+
+.dashboard-line-assignment-summary__item.is-warning {
+    border-color: rgba(220, 38, 38, .28);
+    background: #fff1f2;
+}
+
+.dashboard-line-assignment-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    min-height: 0;
+}
+
+.dashboard-line-assignment-list {
+    display: grid;
+    min-width: 0;
+    gap: 10px;
+}
+
+.dashboard-line-assignment-list__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.dashboard-line-assignment-list__header div {
+    display: grid;
+    gap: 2px;
+}
+
+.dashboard-line-assignment-list__header strong {
+    color: var(--dashboard-ink);
+}
+
+.dashboard-line-assignment-list__header span {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.dashboard-line-assignment-table {
+    min-width: 620px;
 }
 
 .dashboard-client-invoices-table thead th,
@@ -2567,9 +2695,14 @@
     .dashboard-grid--copiers-equipment,
     .dashboard-copiers-detail,
     .dashboard-equipment-detail__summary,
+    .dashboard-line-assignment-grid,
     .dashboard-report-summary,
     .dashboard-equipment-detail__assignment-grid {
         grid-template-columns: 1fr;
+    }
+
+    .dashboard-line-assignment-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .dashboard-equipment-detail__card--wide {

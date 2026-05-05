@@ -127,6 +127,9 @@ public sealed class CopiersBillingGroupDto
     public decimal AdditionalOperation { get; set; }
     public decimal TotalWithVat { get; set; }
     public string CounterSummary { get; set; } = "";
+    public int EquipmentAssignedToLinesCount { get; set; }
+    public int EquipmentAvailableForLinesCount { get; set; }
+    public string EquipmentAssignmentSummary { get; set; } = "";
     public IReadOnlyList<CopiersBillingRowDto> Lines { get; set; } = Array.Empty<CopiersBillingRowDto>();
     public IReadOnlyList<CopiersBillingEquipmentDto> Equipment { get; set; } = Array.Empty<CopiersBillingEquipmentDto>();
 }
@@ -165,6 +168,53 @@ public sealed class CopiersBillingRowDto
     public decimal TotalWithVat { get; set; }
     public int BillingDay { get; set; }
     public string BillingDayDisplay { get; set; } = "";
+    public int EquipmentAssignmentCapacity { get; set; }
+    public int AssignedEquipmentCount { get; set; }
+    public int AvailableEquipmentCount { get; set; }
+    public string EquipmentAssignmentSummary { get; set; } = "";
+    public bool HasAssignmentOverflow { get; set; }
+}
+
+public sealed class CopiersLineEquipmentAssignmentDetailDto
+{
+    public string LineId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal IncludedOperations { get; set; }
+    public int AssignmentCapacity { get; set; }
+    public int AssignedCount { get; set; }
+    public int AvailableCount { get; set; }
+    public string Summary { get; set; } = "";
+    public IReadOnlyList<CopiersLineEquipmentAssignmentItemDto> AssignedEquipment { get; set; } = Array.Empty<CopiersLineEquipmentAssignmentItemDto>();
+    public IReadOnlyList<CopiersLineEquipmentAssignmentItemDto> AvailableEquipment { get; set; } = Array.Empty<CopiersLineEquipmentAssignmentItemDto>();
+}
+
+public sealed class CopiersLineEquipmentAssignmentItemDto
+{
+    public string AssignmentId { get; set; } = "";
+    public string EquipmentId { get; set; } = "";
+    public string Serial { get; set; } = "";
+    public string CategoryLabel { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public string Area { get; set; } = "";
+    public string Site { get; set; } = "";
+    public string AssignedLineId { get; set; } = "";
+    public string AssignedLineName { get; set; } = "";
+}
+
+public sealed class CopiersLineEquipmentAssignmentSaveRequestDto
+{
+    public string LineId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public List<string> EquipmentIds { get; set; } = new();
+}
+
+public sealed class CopiersLineEquipmentAssignmentSaveResultDto
+{
+    public string Message { get; set; } = "";
+    public CopiersLineEquipmentAssignmentDetailDto Detail { get; set; } = new();
 }
 
 public sealed class CopiersRecordSaveRequestDto

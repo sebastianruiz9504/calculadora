@@ -496,6 +496,25 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersLineEquipmentAssignment([FromQuery] string lineId, [FromQuery] string? clientId, CancellationToken ct)
+    {
+        try
+        {
+            var detail = await _dataverse.GetCopiersLineEquipmentAssignmentAsync(lineId, clientId, ct);
+            return Json(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la asignacion de equipos de la linea.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> CopiersClientSearch([FromQuery] string q, CancellationToken ct)
     {
         var items = await _dataverse.SearchClientsAsync(q, top: 12, ct: ct);
@@ -526,6 +545,25 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar el registro de facturacion copiers.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersLineEquipmentAssignment([FromBody] CopiersLineEquipmentAssignmentSaveRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _dataverse.SaveCopiersLineEquipmentAssignmentAsync(request, ct);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar la asignacion de equipos a la linea.");
         }
     }
 

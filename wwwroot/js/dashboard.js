@@ -181,6 +181,18 @@
     const copiersClientInvoicesSubtitle = document.getElementById("copiersClientInvoicesSubtitle");
     const copiersClientInvoicesResultsCount = document.getElementById("copiersClientInvoicesResultsCount");
     const copiersClientInvoicesBody = document.getElementById("copiersClientInvoicesBody");
+    const copiersLineEquipmentModal = document.getElementById("copiersLineEquipmentModal");
+    const copiersLineEquipmentCloseBtn = document.getElementById("copiersLineEquipmentCloseBtn");
+    const copiersLineEquipmentCancelBtn = document.getElementById("copiersLineEquipmentCancelBtn");
+    const copiersLineEquipmentSaveBtn = document.getElementById("copiersLineEquipmentSaveBtn");
+    const copiersLineEquipmentTitle = document.getElementById("copiersLineEquipmentTitle");
+    const copiersLineEquipmentSubtitle = document.getElementById("copiersLineEquipmentSubtitle");
+    const copiersLineEquipmentStatus = document.getElementById("copiersLineEquipmentStatus");
+    const copiersLineEquipmentSummary = document.getElementById("copiersLineEquipmentSummary");
+    const copiersLineEquipmentAssignedCount = document.getElementById("copiersLineEquipmentAssignedCount");
+    const copiersLineEquipmentAvailableCount = document.getElementById("copiersLineEquipmentAvailableCount");
+    const copiersLineEquipmentAssignedBody = document.getElementById("copiersLineEquipmentAssignedBody");
+    const copiersLineEquipmentAvailableBody = document.getElementById("copiersLineEquipmentAvailableBody");
     const copiersBillingCountersModal = document.getElementById("copiersBillingCountersModal");
     const copiersBillingCountersCloseBtn = document.getElementById("copiersBillingCountersCloseBtn");
     const copiersBillingCountersTitle = document.getElementById("copiersBillingCountersTitle");
@@ -340,6 +352,10 @@
         copiersProductSuggestions: [],
         copiersClientInvoicesLoading: false,
         copiersClientInvoicesRequestSequence: 0,
+        copiersLineEquipmentDetail: null,
+        copiersLineEquipmentDraftIds: new Set(),
+        copiersLineEquipmentLoading: false,
+        copiersLineEquipmentSaving: false,
         copiersEquipmentDetail: null,
         copiersEquipmentDetailLoading: false,
         copiersEquipmentAssignmentSaving: false,
@@ -682,6 +698,35 @@
         });
     }
 
+    function setCopiersLineEquipmentBusy(busy) {
+        state.copiersLineEquipmentLoading = busy && !state.copiersLineEquipmentSaving;
+        [
+            copiersLineEquipmentCloseBtn,
+            copiersLineEquipmentCancelBtn
+        ].forEach(element => {
+            if (element) {
+                element.disabled = busy;
+            }
+        });
+
+        if (copiersLineEquipmentSaveBtn) {
+            copiersLineEquipmentSaveBtn.disabled = busy || !state.copiersLineEquipmentDetail;
+        }
+    }
+
+    function setCopiersLineEquipmentSaving(saving) {
+        state.copiersLineEquipmentSaving = saving;
+        [
+            copiersLineEquipmentCloseBtn,
+            copiersLineEquipmentCancelBtn,
+            copiersLineEquipmentSaveBtn
+        ].forEach(element => {
+            if (element) {
+                element.disabled = saving;
+            }
+        });
+    }
+
     function setPnlLoading(loading) {
         state.pnlLoading = loading;
         [pnlYearFilter, pnlMonthFilter, pnlVerticalFilter, pnlRefreshButton].forEach(element => {
@@ -1002,6 +1047,234 @@
                 </tr>
             `).join("")
             : `<tr><td colspan="6" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas Copiers para este cliente.")}</td></tr>`;
+    }
+
+    function isCopiersLineEquipmentOpen() {
+        return Boolean(copiersLineEquipmentModal && !copiersLineEquipmentModal.hidden);
+    }
+
+    function resetCopiersLineEquipmentModal() {
+        state.copiersLineEquipmentDetail = null;
+        state.copiersLineEquipmentDraftIds = new Set();
+        state.copiersLineEquipmentLoading = false;
+        state.copiersLineEquipmentSaving = false;
+        setStatus(copiersLineEquipmentStatus, "", "");
+        setCopiersLineEquipmentSaving(false);
+
+        if (copiersLineEquipmentTitle) {
+            copiersLineEquipmentTitle.textContent = "Equipos de la linea";
+        }
+
+        if (copiersLineEquipmentSubtitle) {
+            copiersLineEquipmentSubtitle.textContent = "Asigna equipos del cliente a esta linea de producto Copiers.";
+        }
+
+        if (copiersLineEquipmentSummary) {
+            copiersLineEquipmentSummary.innerHTML = "";
+        }
+
+        if (copiersLineEquipmentAssignedCount) {
+            copiersLineEquipmentAssignedCount.textContent = "0 equipos";
+        }
+
+        if (copiersLineEquipmentAvailableCount) {
+            copiersLineEquipmentAvailableCount.textContent = "0 equipos";
+        }
+
+        if (copiersLineEquipmentAssignedBody) {
+            copiersLineEquipmentAssignedBody.innerHTML = '<tr><td colspan="3" class="dashboard-table__empty">No hay equipos asignados a esta linea.</td></tr>';
+        }
+
+        if (copiersLineEquipmentAvailableBody) {
+            copiersLineEquipmentAvailableBody.innerHTML = '<tr><td colspan="3" class="dashboard-table__empty">No hay equipos disponibles para asignar.</td></tr>';
+        }
+    }
+
+    function closeCopiersLineEquipmentModal() {
+        if (!copiersLineEquipmentModal) {
+            return;
+        }
+
+        copiersLineEquipmentModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        resetCopiersLineEquipmentModal();
+    }
+
+    function renderCopiersLineEquipmentLoading(row) {
+        if (!copiersLineEquipmentModal) {
+            return;
+        }
+
+        resetCopiersLineEquipmentModal();
+        document.body.classList.add("dashboard-modal-open");
+        copiersLineEquipmentModal.hidden = false;
+        state.copiersLineEquipmentLoading = true;
+        setCopiersLineEquipmentBusy(true);
+
+        if (copiersLineEquipmentTitle) {
+            copiersLineEquipmentTitle.textContent = row?.productName || "Equipos de la linea";
+        }
+
+        if (copiersLineEquipmentSubtitle) {
+            copiersLineEquipmentSubtitle.textContent = "Cargando equipos asignados y disponibles del cliente...";
+        }
+
+        setStatus(copiersLineEquipmentStatus, "info", "Consultando asignacion de equipos...");
+        window.setTimeout(() => copiersLineEquipmentCloseBtn?.focus(), 30);
+    }
+
+    function getCopiersLineEquipmentPool(detail) {
+        const byId = new Map();
+        [...(detail?.assignedEquipment || []), ...(detail?.availableEquipment || [])].forEach(item => {
+            const id = item?.equipmentId || "";
+            if (id && !byId.has(id)) {
+                byId.set(id, item);
+            }
+        });
+
+        return Array.from(byId.values()).sort((left, right) =>
+            String(left?.serial || "").localeCompare(String(right?.serial || ""), "es", { numeric: true, sensitivity: "base" }));
+    }
+
+    function renderCopiersLineEquipmentSummary(detail, assignedCount, availableCount) {
+        if (!copiersLineEquipmentSummary) {
+            return;
+        }
+
+        const capacity = Number(detail?.assignmentCapacity || 0);
+        const overflow = assignedCount > capacity;
+        copiersLineEquipmentSummary.innerHTML = `
+            <div class="dashboard-line-assignment-summary__item ${overflow ? "is-warning" : ""}">
+                <span>Cupos de la linea</span>
+                <strong>${escapeHtml(numberFormatter.format(capacity))}</strong>
+            </div>
+            <div class="dashboard-line-assignment-summary__item">
+                <span>Asignados</span>
+                <strong>${escapeHtml(numberFormatter.format(assignedCount))}</strong>
+            </div>
+            <div class="dashboard-line-assignment-summary__item">
+                <span>Disponibles del cliente</span>
+                <strong>${escapeHtml(numberFormatter.format(availableCount))}</strong>
+            </div>
+            <div class="dashboard-line-assignment-summary__item">
+                <span>Oper. incluidas</span>
+                <strong>${escapeHtml(numberFormatter.format(Number(detail?.includedOperations || 0)))}</strong>
+            </div>
+        `;
+    }
+
+    function buildCopiersLineEquipmentDetailText(item) {
+        return [item?.categoryLabel, item?.reference, item?.site, item?.area]
+            .filter(value => value && String(value).trim())
+            .join(" · ") || "Sin detalle";
+    }
+
+    function renderCopiersLineEquipmentRow(item, action) {
+        const isAssign = action === "assign";
+        return `
+            <tr>
+                <td><strong>${escapeHtml(item?.serial || "Equipo sin serial")}</strong></td>
+                <td>${escapeHtml(buildCopiersLineEquipmentDetailText(item))}</td>
+                <td class="text-end">
+                    <button type="button"
+                            class="btn btn-sm ${isAssign ? "btn-outline-primary" : "btn-outline-secondary"}"
+                            data-copiers-line-equipment-${isAssign ? "assign" : "remove"}="${escapeHtml(item?.equipmentId || "")}">
+                        ${isAssign ? "Asignar" : "Quitar"}
+                    </button>
+                </td>
+            </tr>
+        `;
+    }
+
+    function renderCopiersLineEquipmentDetail(detail) {
+        state.copiersLineEquipmentDetail = detail || null;
+        state.copiersLineEquipmentDraftIds = new Set(
+            (detail?.assignedEquipment || [])
+                .map(item => item?.equipmentId || "")
+                .filter(Boolean)
+        );
+        renderCopiersLineEquipmentDraft();
+    }
+
+    function renderCopiersLineEquipmentDraft() {
+        const detail = state.copiersLineEquipmentDetail;
+        const pool = getCopiersLineEquipmentPool(detail);
+        const assignedIds = state.copiersLineEquipmentDraftIds || new Set();
+        const assigned = pool.filter(item => assignedIds.has(item?.equipmentId || ""));
+        const available = pool.filter(item => !assignedIds.has(item?.equipmentId || ""));
+        const capacity = Number(detail?.assignmentCapacity || 0);
+
+        if (copiersLineEquipmentTitle) {
+            copiersLineEquipmentTitle.textContent = detail?.productName || "Equipos de la linea";
+        }
+
+        if (copiersLineEquipmentSubtitle) {
+            copiersLineEquipmentSubtitle.textContent = [
+                detail?.clientName || "",
+                `${numberFormatter.format(assigned.length)}/${numberFormatter.format(capacity)} asignados`
+            ].filter(Boolean).join(" · ");
+        }
+
+        if (copiersLineEquipmentAssignedCount) {
+            copiersLineEquipmentAssignedCount.textContent = `${numberFormatter.format(assigned.length)} equipo(s)`;
+        }
+
+        if (copiersLineEquipmentAvailableCount) {
+            copiersLineEquipmentAvailableCount.textContent = `${numberFormatter.format(available.length)} equipo(s)`;
+        }
+
+        renderCopiersLineEquipmentSummary(detail, assigned.length, available.length);
+
+        if (copiersLineEquipmentAssignedBody) {
+            copiersLineEquipmentAssignedBody.innerHTML = assigned.length
+                ? assigned.map(item => renderCopiersLineEquipmentRow(item, "remove")).join("")
+                : '<tr><td colspan="3" class="dashboard-table__empty">No hay equipos asignados a esta linea.</td></tr>';
+        }
+
+        if (copiersLineEquipmentAvailableBody) {
+            copiersLineEquipmentAvailableBody.innerHTML = available.length
+                ? available.map(item => renderCopiersLineEquipmentRow(item, "assign")).join("")
+                : '<tr><td colspan="3" class="dashboard-table__empty">No hay equipos disponibles para asignar.</td></tr>';
+        }
+
+        if (copiersLineEquipmentSaveBtn) {
+            copiersLineEquipmentSaveBtn.disabled = state.copiersLineEquipmentSaving || assigned.length > capacity;
+        }
+
+        if (assigned.length > capacity) {
+            setStatus(copiersLineEquipmentStatus, "error", `Esta linea permite maximo ${numberFormatter.format(capacity)} equipo(s).`);
+        } else if (!state.copiersLineEquipmentSaving && !copiersLineEquipmentStatus?.classList.contains("success")) {
+            setStatus(copiersLineEquipmentStatus, "", "");
+        }
+    }
+
+    function assignCopiersLineEquipment(equipmentId) {
+        const detail = state.copiersLineEquipmentDetail;
+        const capacity = Number(detail?.assignmentCapacity || 0);
+        const normalizedId = equipmentId || "";
+        if (!normalizedId) {
+            return;
+        }
+
+        if (state.copiersLineEquipmentDraftIds.size >= capacity) {
+            setStatus(copiersLineEquipmentStatus, "error", `Esta linea permite maximo ${numberFormatter.format(capacity)} equipo(s).`);
+            return;
+        }
+
+        state.copiersLineEquipmentDraftIds.add(normalizedId);
+        setStatus(copiersLineEquipmentStatus, "", "");
+        renderCopiersLineEquipmentDraft();
+    }
+
+    function removeCopiersLineEquipment(equipmentId) {
+        const normalizedId = equipmentId || "";
+        if (!normalizedId) {
+            return;
+        }
+
+        state.copiersLineEquipmentDraftIds.delete(normalizedId);
+        setStatus(copiersLineEquipmentStatus, "", "");
+        renderCopiersLineEquipmentDraft();
     }
 
     function isCopiersBillingCountersOpen() {
@@ -2532,6 +2805,20 @@
         return app.dataset.copiersEquipmentAssignmentUrl || "";
     }
 
+    function buildCopiersLineEquipmentAssignmentUrl(lineId, clientId) {
+        const baseUrl = app.dataset.copiersLineEquipmentAssignmentUrl || "";
+        const params = new URLSearchParams({
+            lineId: lineId || "",
+            clientId: clientId || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
+    function buildCopiersLineEquipmentAssignmentSaveUrl() {
+        return app.dataset.copiersLineEquipmentAssignmentSaveUrl || "";
+    }
+
     function buildCopiersMaintenanceFileUrl(maintenanceId) {
         const baseUrl = app.dataset.copiersMaintenanceFileUrl || "";
         const params = new URLSearchParams({
@@ -3636,6 +3923,7 @@
                 <div class="dashboard-copiers-line dashboard-copiers-line--header">
                     <span>Producto</span>
                     <span>Cant.</span>
+                    <span>Equipos</span>
                     <span>Oper. incl.</span>
                     <span>Oper. adic.</span>
                     <span>Unit. antes IVA</span>
@@ -3649,6 +3937,10 @@
                         </button>
                         <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="quantity" title="Cantidad">
                             ${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}
+                        </button>
+                        <button type="button" class="dashboard-copiers-assignment-btn ${row.hasAssignmentOverflow ? "is-warning" : ""}" data-copiers-line-assignment="${escapeHtml(row.recordId || "")}" title="Asignar equipos a esta linea">
+                            <strong>${escapeHtml(`${numberFormatter.format(Number(row.assignedEquipmentCount || 0))}/${numberFormatter.format(Number(row.equipmentAssignmentCapacity || 0))}`)}</strong>
+                            <small>${escapeHtml(row.equipmentAssignmentSummary || "Sin asignacion")}</small>
                         </button>
                         <button type="button" class="dashboard-copiers-cell-btn text-end" data-copiers-row-id="${escapeHtml(row.recordId || "")}" data-copiers-field="includedOperations" title="Operaciones incluidas">
                             ${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}
@@ -3714,7 +4006,7 @@
                         <section class="dashboard-copiers-detail__section">
                             <div class="dashboard-copiers-detail__header">
                                 <strong>Lineas de productos Copiers</strong>
-                                <span>${escapeHtml(numberFormatter.format(lines.length))} linea(s)</span>
+                                <span>${escapeHtml(group?.equipmentAssignmentSummary || `${numberFormatter.format(lines.length)} linea(s)`)}</span>
                             </div>
                             ${renderCopiersProductLines(lines)}
                         </section>
@@ -3754,7 +4046,12 @@
                             </button>
                         </td>
                         <td>${escapeHtml(numberFormatter.format(Number(group.productLinesCount || 0)))} linea(s)</td>
-                        <td class="text-end">${escapeHtml(numberFormatter.format(Number(group.equipmentCount || 0)))}</td>
+                        <td class="text-end">
+                            <span class="dashboard-equipment-assignment-inline">
+                                <strong>${escapeHtml(numberFormatter.format(Number(group.equipmentCount || 0)))}</strong>
+                                <small>${escapeHtml(group.equipmentAssignmentSummary || "Sin asignacion")}</small>
+                            </span>
+                        </td>
                         <td>${renderCopiersCounterSummary(group)}</td>
                         <td class="text-end">${escapeHtml(currencyFormatter.format(Number(group.totalWithVat || 0)))}</td>
                         <td class="text-end">
@@ -5584,6 +5881,10 @@
             closeCopiersClientInvoicesModal();
         }
 
+        if (state.copiersSubtab !== "billing" && isCopiersLineEquipmentOpen()) {
+            closeCopiersLineEquipmentModal();
+        }
+
         if (state.copiersSubtab !== "billing" && isCopiersBillingCountersOpen()) {
             closeCopiersBillingCountersModal();
         }
@@ -5650,6 +5951,10 @@
 
         if (tabKey !== "copiers" && isCopiersClientInvoicesOpen()) {
             closeCopiersClientInvoicesModal();
+        }
+
+        if (tabKey !== "copiers" && isCopiersLineEquipmentOpen()) {
+            closeCopiersLineEquipmentModal();
         }
 
         if (tabKey !== "copiers" && isCopiersBillingCountersOpen()) {
@@ -6050,6 +6355,65 @@
             if (requestSequence === state.copiersClientInvoicesRequestSequence) {
                 state.copiersClientInvoicesLoading = false;
             }
+        }
+    }
+
+    async function loadCopiersLineEquipmentAssignment(row) {
+        if (!row) {
+            return;
+        }
+
+        renderCopiersLineEquipmentLoading(row);
+
+        try {
+            const detail = await fetchJson(buildCopiersLineEquipmentAssignmentUrl(row.recordId || "", row.clientId || ""));
+            renderCopiersLineEquipmentDetail(detail);
+            setStatus(copiersLineEquipmentStatus, "", "");
+        } catch (error) {
+            if (copiersLineEquipmentSubtitle) {
+                copiersLineEquipmentSubtitle.textContent = "No fue posible cargar la asignacion de equipos de esta linea.";
+            }
+
+            setStatus(copiersLineEquipmentStatus, "error", error instanceof Error ? error.message : "No fue posible cargar la asignacion.");
+        } finally {
+            setCopiersLineEquipmentBusy(false);
+            state.copiersLineEquipmentLoading = false;
+        }
+    }
+
+    async function saveCopiersLineEquipmentAssignment() {
+        const detail = state.copiersLineEquipmentDetail;
+        if (!detail || state.copiersLineEquipmentSaving) {
+            return;
+        }
+
+        const url = buildCopiersLineEquipmentAssignmentSaveUrl();
+        if (!url) {
+            setStatus(copiersLineEquipmentStatus, "error", "No hay una URL configurada para guardar la asignacion.");
+            return;
+        }
+
+        setCopiersLineEquipmentSaving(true);
+        setStatus(copiersLineEquipmentStatus, "info", "Guardando asignacion...");
+
+        try {
+            const result = await fetchJson(url, {
+                method: "POST",
+                body: JSON.stringify({
+                    lineId: detail.lineId || "",
+                    clientId: detail.clientId || "",
+                    equipmentIds: Array.from(state.copiersLineEquipmentDraftIds || [])
+                })
+            });
+
+            renderCopiersLineEquipmentDetail(result?.detail || detail);
+            setStatus(copiersLineEquipmentStatus, "success", result?.message || "Asignacion actualizada correctamente.");
+            await loadCopiers();
+        } catch (error) {
+            setStatus(copiersLineEquipmentStatus, "error", error instanceof Error ? error.message : "No fue posible guardar la asignacion.");
+        } finally {
+            setCopiersLineEquipmentSaving(false);
+            renderCopiersLineEquipmentDraft();
         }
     }
 
@@ -6513,6 +6877,24 @@
     copiersClientInvoicesModal?.querySelectorAll("[data-copiers-client-invoices-close]").forEach(element => {
         element.addEventListener("click", closeCopiersClientInvoicesModal);
     });
+    copiersLineEquipmentCloseBtn?.addEventListener("click", closeCopiersLineEquipmentModal);
+    copiersLineEquipmentCancelBtn?.addEventListener("click", closeCopiersLineEquipmentModal);
+    copiersLineEquipmentSaveBtn?.addEventListener("click", saveCopiersLineEquipmentAssignment);
+    copiersLineEquipmentModal?.querySelectorAll("[data-copiers-line-equipment-close]").forEach(element => {
+        element.addEventListener("click", closeCopiersLineEquipmentModal);
+    });
+    copiersLineEquipmentAssignedBody?.addEventListener("click", event => {
+        const button = event.target.closest("[data-copiers-line-equipment-remove]");
+        if (button) {
+            removeCopiersLineEquipment(button.dataset.copiersLineEquipmentRemove || "");
+        }
+    });
+    copiersLineEquipmentAvailableBody?.addEventListener("click", event => {
+        const button = event.target.closest("[data-copiers-line-equipment-assign]");
+        if (button) {
+            assignCopiersLineEquipment(button.dataset.copiersLineEquipmentAssign || "");
+        }
+    });
     copiersBillingCountersCloseBtn?.addEventListener("click", closeCopiersBillingCountersModal);
     copiersBillingCountersModal?.querySelectorAll("[data-copiers-billing-counters-close]").forEach(element => {
         element.addEventListener("click", closeCopiersBillingCountersModal);
@@ -6558,6 +6940,15 @@
             const group = getCopiersGroupById(counterButton.dataset.copiersCounterSummary || "");
             if (group) {
                 openCopiersBillingCountersModal(group);
+            }
+            return;
+        }
+
+        const lineAssignmentButton = event.target.closest("[data-copiers-line-assignment]");
+        if (lineAssignmentButton) {
+            const row = getCopiersRowById(lineAssignmentButton.dataset.copiersLineAssignment || "");
+            if (row) {
+                loadCopiersLineEquipmentAssignment(row);
             }
             return;
         }
@@ -6691,6 +7082,11 @@
 
         if (event.key === "Escape" && isCopiersClientInvoicesOpen()) {
             closeCopiersClientInvoicesModal();
+            return;
+        }
+
+        if (event.key === "Escape" && isCopiersLineEquipmentOpen()) {
+            closeCopiersLineEquipmentModal();
             return;
         }
 

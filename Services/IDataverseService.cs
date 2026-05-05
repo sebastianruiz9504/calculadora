@@ -62,6 +62,8 @@ public interface IDataverseService
     Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default);
     Task<CopiersDashboardDto> GetCopiersDashboardAsync(CancellationToken ct = default);
     Task<CopiersClientInvoicesDetailDto> GetCopiersClientInvoicesAsync(string clientId, string? clientName = null, CancellationToken ct = default);
+    Task<CopiersLineEquipmentAssignmentDetailDto> GetCopiersLineEquipmentAssignmentAsync(string lineId, string? clientId = null, CancellationToken ct = default);
+    Task<CopiersLineEquipmentAssignmentSaveResultDto> SaveCopiersLineEquipmentAssignmentAsync(CopiersLineEquipmentAssignmentSaveRequestDto request, CancellationToken ct = default);
     Task<BillingClientReportDto> GetBillingClientReportAsync(string clientId, string? clientName = null, CancellationToken ct = default);
     Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentDashboardDto> GetCopiersEquipmentDashboardAsync(CancellationToken ct = default);

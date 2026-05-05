@@ -29,6 +29,8 @@
      data-copiers-counters-url="@Url.Action("CopiersCounters", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
      data-copiers-equipment-assignment-url="@Url.Action("CopiersEquipmentAssignment", "Dashboard")"
+     data-copiers-line-equipment-assignment-url="@Url.Action("CopiersLineEquipmentAssignment", "Dashboard")"
+     data-copiers-line-equipment-assignment-save-url="@Url.Action("CopiersLineEquipmentAssignment", "Dashboard")"
      data-copiers-maintenance-file-url="@Url.Action("CopiersMaintenanceAttachment", "Dashboard")"
      data-copiers-client-search-url="@Url.Action("CopiersClientSearch", "Dashboard")"
      data-copiers-product-search-url="@Url.Action("CopiersProductSearch", "Dashboard")"
@@ -1548,6 +1550,80 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="copiersLineEquipmentModal" hidden>
+    <div class="dashboard-modal__backdrop" data-copiers-line-equipment-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersLineEquipmentTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Asignaci&oacute;n de equipos</div>
+                <h2 class="dashboard-modal__title" id="copiersLineEquipmentTitle">Equipos de la l&iacute;nea</h2>
+                <p class="dashboard-modal__subtitle" id="copiersLineEquipmentSubtitle">Asigna equipos del cliente a esta l&iacute;nea de producto Copiers.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="copiersLineEquipmentCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="copiersLineEquipmentStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+        <div class="dashboard-line-assignment-summary" id="copiersLineEquipmentSummary"></div>
+
+        <div class="dashboard-line-assignment-grid">
+            <section class="dashboard-line-assignment-list">
+                <div class="dashboard-line-assignment-list__header">
+                    <div>
+                        <strong>Asignados a esta l&iacute;nea</strong>
+                        <span id="copiersLineEquipmentAssignedCount">0 equipos</span>
+                    </div>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+                    <table class="table dashboard-table dashboard-line-assignment-table">
+                        <thead>
+                            <tr>
+                                <th>Equipo</th>
+                                <th>Detalle</th>
+                                <th class="text-end">Acci&oacute;n</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersLineEquipmentAssignedBody">
+                            <tr>
+                                <td colspan="3" class="dashboard-table__empty">No hay equipos asignados a esta l&iacute;nea.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="dashboard-line-assignment-list">
+                <div class="dashboard-line-assignment-list__header">
+                    <div>
+                        <strong>Disponibles del cliente</strong>
+                        <span id="copiersLineEquipmentAvailableCount">0 equipos</span>
+                    </div>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+                    <table class="table dashboard-table dashboard-line-assignment-table">
+                        <thead>
+                            <tr>
+                                <th>Equipo</th>
+                                <th>Detalle</th>
+                                <th class="text-end">Acci&oacute;n</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersLineEquipmentAvailableBody">
+                            <tr>
+                                <td colspan="3" class="dashboard-table__empty">No hay equipos disponibles para asignar.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="dashboard-copiers-form__actions">
+            <button type="button" class="btn btn-outline-secondary" id="copiersLineEquipmentCancelBtn">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="copiersLineEquipmentSaveBtn">Guardar asignaci&oacute;n</button>
         </div>
     </div>
 </div>

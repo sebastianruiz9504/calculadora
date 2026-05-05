@@ -157,6 +157,13 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardCopiersClientField = "cr07a_cliente";
     private const string DefaultDashboardCopiersUnitValueWithVatField = "cr07a_valorunidadconiva";
     private const string DefaultDashboardCopiersTotalWithVatField = "cr07a_totalconiva";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentLogicalName = "cr07a_asignacionequipolineacopiers";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentTableSetName = "cr07a_asignacionequipolineacopierses";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentIdField = "cr07a_asignacionequipolineacopiersid";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentPrimaryNameField = "cr07a_name";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentClientField = "cr07a_cliente";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentLineField = "cr07a_lineaproductocopiers";
+    private const string DefaultDashboardCopiersLineEquipmentAssignmentEquipmentField = "cr07a_equipo";
     private const string DefaultSalesPerformanceClientCreateLookupLogicalName = "cr07a_clientelookup";
     private const string ClientsEntitySetName = "cr07a_clientes";
     private const string ProductsEntityLogicalName = "cr07a_precioscloud";
@@ -300,6 +307,13 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardCopiersClientField;
     private readonly string _dashboardCopiersUnitValueWithVatField;
     private readonly string _dashboardCopiersTotalWithVatField;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentLogicalName;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentTableSetName;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentIdField;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentPrimaryNameField;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentClientField;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentLineField;
+    private readonly string _dashboardCopiersLineEquipmentAssignmentEquipmentField;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
@@ -557,6 +571,20 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardCopiersUnitValueWithVatField;
         _dashboardCopiersTotalWithVatField = configuration["Dashboard:CopiersTotalWithVatField"]
             ?? DefaultDashboardCopiersTotalWithVatField;
+        _dashboardCopiersLineEquipmentAssignmentLogicalName = configuration["Dashboard:CopiersLineEquipmentAssignmentLogicalName"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentLogicalName;
+        _dashboardCopiersLineEquipmentAssignmentTableSetName = configuration["Dashboard:CopiersLineEquipmentAssignmentTableSetName"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentTableSetName;
+        _dashboardCopiersLineEquipmentAssignmentIdField = configuration["Dashboard:CopiersLineEquipmentAssignmentIdField"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentIdField;
+        _dashboardCopiersLineEquipmentAssignmentPrimaryNameField = configuration["Dashboard:CopiersLineEquipmentAssignmentPrimaryNameField"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentPrimaryNameField;
+        _dashboardCopiersLineEquipmentAssignmentClientField = configuration["Dashboard:CopiersLineEquipmentAssignmentClientField"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentClientField;
+        _dashboardCopiersLineEquipmentAssignmentLineField = configuration["Dashboard:CopiersLineEquipmentAssignmentLineField"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentLineField;
+        _dashboardCopiersLineEquipmentAssignmentEquipmentField = configuration["Dashboard:CopiersLineEquipmentAssignmentEquipmentField"]
+            ?? DefaultDashboardCopiersLineEquipmentAssignmentEquipmentField;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)
