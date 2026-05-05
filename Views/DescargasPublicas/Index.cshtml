@@ -1,0 +1,95 @@
+@model PublicDataExportPublicViewModel
+@{
+    Layout = null;
+    var firstDataset = Model.AvailableDatasets.FirstOrDefault();
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Descargas Digital Tech</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/public-data-export.css" asp-append-version="true" />
+</head>
+<body class="pde-public-body">
+    <main class="pde-public"
+          id="publicDataExportApp"
+          data-preview-url="@Url.Action("Preview", "DescargasPublicas")"
+          data-download-url="@Url.Action("Descargar", "DescargasPublicas")"
+          data-default-dataset="@(firstDataset?.Key ?? "")">
+        <section class="pde-hero">
+            <div>
+                <div class="pde-kicker">Digital Tech</div>
+                <h1>Descargas aprobadas</h1>
+                <p>Consulta y descarga los archivos habilitados por el administrador.</p>
+            </div>
+            @if (Model.IsCurrentUserAdmin)
+            {
+                <a class="btn btn-outline-dark" asp-controller="DescargasPublicas" asp-action="Admin">Administrar</a>
+            }
+        </section>
+
+        @if (!Model.IsConfigured)
+        {
+            <section class="pde-panel">
+                <h2>Portal pendiente</h2>
+                <p>@Model.Message</p>
+            </section>
+        }
+        else if (!Model.IsAuthorized)
+        {
+            <section class="pde-panel pde-login-panel">
+                <h2>Ingreso publico</h2>
+                @if (!string.IsNullOrWhiteSpace(Model.LoginError))
+                {
+                    <div class="alert alert-danger">@Model.LoginError</div>
+                }
+                <form asp-controller="DescargasPublicas" asp-action="Entrar" method="post" class="pde-login-form">
+                    @Html.AntiForgeryToken()
+                    <label class="form-label" for="pdePassword">Contrasena</label>
+                    <div class="pde-login-form__row">
+                        <input class="form-control form-control-lg" id="pdePassword" name="password" type="password" autocomplete="current-password" required />
+                        <button type="submit" class="btn btn-dark btn-lg">Entrar</button>
+                    </div>
+                </form>
+            </section>
+        }
+        else
+        {
+            <section class="pde-panel">
+                <div class="pde-toolbar">
+                    <div class="pde-field">
+                        <label class="form-label" for="pdeDataset">Tabla</label>
+                        <select class="form-select" id="pdeDataset" data-pde-dataset>
+                            @foreach (var dataset in Model.AvailableDatasets)
+                            {
+                                <option value="@dataset.Key">@dataset.Label</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="pde-actions">
+                        <button type="button" class="btn btn-outline-dark" data-pde-preview>Consultar</button>
+                        <a class="btn btn-dark" href="#" data-pde-download>Descargar Excel</a>
+                    </div>
+                </div>
+
+                <div class="pde-status" data-pde-status></div>
+                <div class="pde-table-wrap">
+                    <table class="pde-table" data-pde-table>
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <form asp-controller="DescargasPublicas" asp-action="Salir" method="post" class="pde-exit-form">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-link">Salir del portal</button>
+            </form>
+        }
+    </main>
+
+    <script src="~/js/public-data-export.js" asp-append-version="true"></script>
+</body>
+</html>

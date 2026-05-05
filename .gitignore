@@ -482,3 +482,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local runtime settings with password hashes
+App_Data/public-data-export-settings.json

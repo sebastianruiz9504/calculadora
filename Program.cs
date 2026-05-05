@@ -62,6 +62,7 @@ builder.Services.AddScoped<IUserCalendarService, UserCalendarService>();
 builder.Services.AddScoped<IReportesDataverseRepository, ReportesDataverseRepository>();
 builder.Services.AddScoped<IAzureOpenAIReportService, AzureOpenAIReportService>();
 builder.Services.AddScoped<IAzureOpenAIQuoteProposalService, AzureOpenAIQuoteProposalService>();
+builder.Services.AddSingleton<IPublicDataExportSettingsStore, PublicDataExportSettingsStore>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));

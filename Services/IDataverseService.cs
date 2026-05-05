@@ -11,6 +11,7 @@ using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.PlanRio;
 using CotizadorInterno.Web.Models.PortalProveedores;
+using CotizadorInterno.Web.Models.PublicDataExport;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Models.Renovaciones;
@@ -150,4 +151,6 @@ public interface IDataverseService
     Task<EnvioSaveResultDto> ConfirmEnvioDeliveryAsync(string recordId, CancellationToken ct = default);
     Task<EnvioFileUploadResultDto> ApproveEnvioDeliverySatisfactionAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<EnvioFileDownloadResult?> DownloadEnvioDeliveryActAsync(string recordId, CancellationToken ct = default);
+    PublicDataExportCatalogDto GetPublicDataExportCatalog();
+    Task<PublicDataExportTableDto> GetPublicDataExportTableAsync(string datasetKey, IReadOnlyList<string> columnKeys, int? top = null, CancellationToken ct = default);
 }

@@ -1,0 +1,98 @@
+@model PublicDataExportAdminViewModel
+@{
+    ViewData["Title"] = "Descargas publicas";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/public-data-export.css" asp-append-version="true" />
+}
+
+<div class="pde-admin" id="publicDataExportAdmin">
+    <section class="pde-admin-hero">
+        <div>
+            <div class="pde-kicker">Portal publico</div>
+            <h1>Descargas aprobadas</h1>
+            <p>Define la contrasena de ingreso y las columnas disponibles para cada Excel.</p>
+        </div>
+        <a class="btn btn-outline-dark" asp-controller="DescargasPublicas" asp-action="Index" target="_blank" rel="noopener">Abrir portal</a>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert alert-success">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+
+    <form asp-controller="DescargasPublicas" asp-action="Admin" method="post" class="pde-admin-form">
+        @Html.AntiForgeryToken()
+        <section class="pde-admin-panel">
+            <div class="pde-admin-panel__header">
+                <div>
+                    <h2>Acceso</h2>
+                    <p>@(Model.Settings.HasPassword ? "La contrasena ya esta configurada. Escribe una nueva solo si deseas cambiarla." : "El portal publico queda bloqueado hasta que definas una contrasena.")</p>
+                </div>
+            </div>
+            <div class="pde-admin-grid">
+                <label class="pde-field">
+                    <span>Nueva contrasena</span>
+                    <input class="form-control" name="NewPassword" type="password" autocomplete="new-password" minlength="8" />
+                </label>
+                <label class="pde-field">
+                    <span>Confirmar contrasena</span>
+                    <input class="form-control" name="ConfirmPassword" type="password" autocomplete="new-password" minlength="8" />
+                </label>
+            </div>
+        </section>
+
+        <section class="pde-admin-panel">
+            <div class="pde-admin-panel__header">
+                <div>
+                    <h2>Columnas aprobadas</h2>
+                    <p>Los usuarios publicos solo veran y descargaran las columnas marcadas aqui.</p>
+                </div>
+            </div>
+
+            <div class="pde-dataset-list">
+                @foreach (var dataset in Model.Catalog.Datasets)
+                {
+                    var selected = Model.GetSelectedColumnKeys(dataset.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var inputName = dataset.Key == PublicDataExportDatasetKeys.Billing ? "BillingColumns" : "ExpensesColumns";
+                    var selectedCount = dataset.Columns.Count(column => selected.Contains(column.Key));
+                    <article class="pde-dataset-row" data-pde-admin-dropdown>
+                        <div>
+                            <h3>@dataset.Label</h3>
+                            <p>@dataset.Description</p>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-outline-dark dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span data-pde-selected-count>@selectedCount</span> columnas
+                            </button>
+                            <div class="dropdown-menu pde-column-menu" data-bs-auto-close="outside">
+                                @foreach (var column in dataset.Columns)
+                                {
+                                    var id = $"{dataset.Key}_{column.Key}";
+                                    <label class="pde-column-option" for="@id">
+                                        <input class="form-check-input" id="@id" type="checkbox" name="@inputName" value="@column.Key" checked="@selected.Contains(column.Key)" />
+                                        <span>@column.Label</span>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <div class="pde-admin-actions">
+            <button type="submit" class="btn btn-dark btn-lg">Guardar configuracion</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script src="~/js/public-data-export.js" asp-append-version="true"></script>
+}

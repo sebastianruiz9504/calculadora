@@ -1766,7 +1766,7 @@
 
 .dashboard-line-assignment-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
     gap: 16px;
     min-height: 0;
 }
@@ -1799,7 +1799,56 @@
 }
 
 .dashboard-line-assignment-table {
-    min-width: 620px;
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    white-space: normal;
+}
+
+.dashboard-line-assignment-list .dashboard-table-wrap--compact {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.dashboard-line-assignment-table thead th,
+.dashboard-line-assignment-table tbody td {
+    padding-right: 10px;
+    padding-left: 10px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.dashboard-line-assignment-table thead th:nth-child(1),
+.dashboard-line-assignment-table tbody td:nth-child(1) {
+    width: 32%;
+}
+
+.dashboard-line-assignment-table thead th:nth-child(2),
+.dashboard-line-assignment-table tbody td:nth-child(2) {
+    width: auto;
+}
+
+.dashboard-line-assignment-table thead th:nth-child(3),
+.dashboard-line-assignment-table tbody td:nth-child(3) {
+    width: 92px;
+    white-space: nowrap;
+}
+
+.dashboard-line-assignment-table tbody td:nth-child(3) {
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+.dashboard-line-assignment-table tbody td:first-child strong {
+    display: block;
+    line-height: 1.25;
+}
+
+.dashboard-line-assignment-table .btn-sm {
+    min-width: 72px;
+    padding-right: 8px;
+    padding-left: 8px;
 }
 
 .dashboard-client-invoices-table thead th,

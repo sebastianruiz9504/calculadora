@@ -1,0 +1,309 @@
+.pde-public-body {
+    min-height: 100vh;
+    margin: 0;
+    background: #f5f7fb;
+    color: #172033;
+}
+
+.pde-public,
+.pde-admin {
+    width: min(1120px, calc(100% - 32px));
+    margin: 0 auto;
+}
+
+.pde-public {
+    padding: 32px 0;
+}
+
+.pde-admin {
+    display: grid;
+    gap: 18px;
+}
+
+.pde-hero,
+.pde-admin-hero,
+.pde-panel,
+.pde-admin-panel {
+    border: 1px solid #d8e0eb;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 14px 30px rgba(21, 33, 52, 0.08);
+}
+
+.pde-hero,
+.pde-admin-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 24px;
+    margin-bottom: 18px;
+}
+
+.pde-admin-hero {
+    margin-bottom: 0;
+}
+
+.pde-kicker {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 9px;
+    border: 1px solid #bed1f1;
+    border-radius: 6px;
+    background: #edf4ff;
+    color: #174ea6;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.pde-hero h1,
+.pde-admin-hero h1 {
+    margin: 12px 0 6px;
+    color: #111827;
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.pde-hero p,
+.pde-admin-hero p,
+.pde-panel p,
+.pde-admin-panel p,
+.pde-dataset-row p {
+    margin: 0;
+    color: #5d6b82;
+    line-height: 1.55;
+}
+
+.pde-panel,
+.pde-admin-panel {
+    padding: 22px;
+}
+
+.pde-panel h2,
+.pde-admin-panel h2 {
+    margin: 0 0 8px;
+    color: #111827;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.pde-login-panel {
+    max-width: 720px;
+}
+
+.pde-login-form {
+    margin-top: 18px;
+}
+
+.pde-login-form__row,
+.pde-toolbar,
+.pde-admin-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.pde-login-form__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.pde-toolbar {
+    grid-template-columns: minmax(240px, 1fr) auto;
+    align-items: end;
+}
+
+.pde-field {
+    display: grid;
+    gap: 7px;
+}
+
+.pde-field span,
+.pde-field .form-label {
+    margin: 0;
+    color: #263247;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.pde-actions,
+.pde-admin-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.pde-status {
+    display: none;
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid #d8e0eb;
+    border-radius: 8px;
+    background: #f8fbff;
+    color: #263247;
+}
+
+.pde-status.is-visible {
+    display: block;
+}
+
+.pde-status.is-error {
+    border-color: #f3c3c3;
+    background: #fff5f5;
+    color: #a11b1b;
+}
+
+.pde-table-wrap {
+    margin-top: 16px;
+    overflow-x: auto;
+    border: 1px solid #d8e0eb;
+    border-radius: 8px;
+}
+
+.pde-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+    background: #ffffff;
+}
+
+.pde-table th,
+.pde-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid #e8edf4;
+    color: #263247;
+    font-size: 14px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.pde-table th {
+    background: #f3f7fc;
+    color: #172033;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.pde-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.pde-table td {
+    max-width: 320px;
+    overflow-wrap: anywhere;
+}
+
+.pde-exit-form {
+    margin-top: 14px;
+    text-align: right;
+}
+
+.pde-exit-form .btn-link {
+    color: #5d6b82;
+    text-decoration: none;
+}
+
+.pde-admin-form {
+    display: grid;
+    gap: 18px;
+}
+
+.pde-admin-panel__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.pde-admin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pde-dataset-list {
+    display: grid;
+    gap: 12px;
+}
+
+.pde-dataset-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid #d8e0eb;
+    border-radius: 8px;
+    background: #fbfcfe;
+}
+
+.pde-dataset-row h3 {
+    margin: 0 0 4px;
+    color: #172033;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.pde-column-menu {
+    width: min(360px, calc(100vw - 48px));
+    max-height: 380px;
+    padding: 8px;
+    overflow-y: auto;
+    border-radius: 8px;
+}
+
+.pde-column-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 6px;
+    color: #263247;
+    cursor: pointer;
+}
+
+.pde-column-option:hover {
+    background: #eef6f1;
+}
+
+.pde-column-option span {
+    line-height: 1.3;
+}
+
+@media (max-width: 760px) {
+    .pde-public,
+    .pde-admin {
+        width: min(100% - 20px, 1120px);
+    }
+
+    .pde-hero,
+    .pde-admin-hero,
+    .pde-toolbar,
+    .pde-login-form__row,
+    .pde-dataset-row,
+    .pde-admin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pde-hero,
+    .pde-admin-hero {
+        display: grid;
+        padding: 18px;
+    }
+
+    .pde-hero h1,
+    .pde-admin-hero h1 {
+        font-size: 28px;
+    }
+
+    .pde-actions,
+    .pde-admin-actions {
+        justify-content: stretch;
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
