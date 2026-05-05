@@ -702,16 +702,12 @@
                 <tr class="copiers-preventive-client-row ${expanded ? "is-expanded" : ""}">
                     <td data-label="Cliente">
                         <button type="button" class="copiers-preventive-toggle" data-preventive-toggle="${escapeHtml(clientKey)}" aria-expanded="${expanded ? "true" : "false"}">
-                            <span>${expanded ? "-" : "+"}</span>
+                            <span class="copiers-preventive-toggle__icon">${expanded ? "-" : "+"}</span>
                             <strong>${escapeHtml(client.clientName || "Sin cliente")}</strong>
-                            <small class="copiers-preventive-client-status">
-                                <span class="copiers-badge ${getPreventiveBadgeClass(client.monthlyStatusTone)}">${escapeHtml(statusLabel)}</span>
-                                ${client.scheduledDateDisplay ? `<span>${escapeHtml(client.scheduledDateDisplay)}</span>` : ""}
-                            </small>
                         </button>
                     </td>
                     <td data-label="Acciones" class="text-end">
-                        <button type="button" class="btn btn-sm ${getPreventiveButtonClass(client.scheduleButtonTone || "primary")}" data-preventive-schedule="${escapeHtml(clientKey)}" title="${escapeHtml(statusLabel + scheduledHint)}" ${scheduleDisabled ? "disabled" : ""}>${escapeHtml(scheduleLabel)}</button>
+                        <button type="button" class="btn btn-sm copiers-preventive-action ${getPreventiveActionClass(client.scheduleButtonTone || "primary")}" data-preventive-schedule="${escapeHtml(clientKey)}" title="${escapeHtml(statusLabel + scheduledHint)}" ${scheduleDisabled ? "disabled" : ""}>${escapeHtml(scheduleLabel)}</button>
                     </td>
                 </tr>
                 ${expanded ? renderPreventiveClientDetail(client, clientKey) : ""}
@@ -1958,19 +1954,6 @@
         return equipment.find((row) => (row.recordId || "") === (equipmentId || "")) || null;
     }
 
-    function getPreventiveBadgeClass(tone) {
-        if (tone === "good" || tone === "success") {
-            return "is-good";
-        }
-        if (tone === "warning") {
-            return "is-warning";
-        }
-        if (tone === "danger") {
-            return "is-danger";
-        }
-        return "";
-    }
-
     function getPreventiveButtonClass(tone) {
         const normalized = (tone || "").trim();
         if (normalized.startsWith("outline-")) {
@@ -1980,6 +1963,23 @@
             return `btn-${normalized}`;
         }
         return "btn-primary";
+    }
+
+    function getPreventiveActionClass(tone) {
+        const normalized = (tone || "").trim().replace(/^outline-/, "");
+        if (normalized === "success" || normalized === "good") {
+            return "copiers-preventive-action--success";
+        }
+        if (normalized === "warning" || normalized === "pending") {
+            return "copiers-preventive-action--warning";
+        }
+        if (normalized === "danger") {
+            return "copiers-preventive-action--danger";
+        }
+        if (normalized === "secondary") {
+            return "copiers-preventive-action--secondary";
+        }
+        return "copiers-preventive-action--primary";
     }
 
     function buildDownloadUrl(baseUrl, key, value) {

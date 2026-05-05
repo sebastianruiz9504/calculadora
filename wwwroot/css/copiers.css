@@ -133,17 +133,14 @@
     text-align: left;
 }
 
-.copiers-preventive-client-status {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    color: var(--copiers-muted);
-    font-size: 12px;
-    font-weight: 600;
+.copiers-preventive-toggle strong {
+    min-width: 0;
+    font-weight: 700;
+    line-height: 1.2;
 }
 
-.copiers-preventive-toggle span {
+.copiers-preventive-toggle__icon {
+    flex: 0 0 auto;
     display: inline-grid;
     place-items: center;
     width: 28px;
@@ -152,6 +149,79 @@
     background: var(--copiers-brand-soft);
     color: var(--copiers-brand);
     font-weight: 700;
+}
+
+.copiers-preventive-action.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 128px;
+    min-height: 40px;
+    max-width: 100%;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+    box-shadow: none;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
+}
+
+.copiers-preventive-action.btn:hover,
+.copiers-preventive-action.btn:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, .10);
+}
+
+.copiers-preventive-action.btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 .18rem rgba(15, 108, 189, .18), 0 10px 22px rgba(15, 23, 42, .10);
+}
+
+.copiers-preventive-action.btn:disabled {
+    opacity: 1;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+}
+
+.copiers-preventive-action--primary.btn {
+    background: linear-gradient(180deg, #1677d2 0%, var(--copiers-brand) 100%);
+    color: #ffffff;
+    box-shadow: 0 12px 24px rgba(15, 108, 189, .18);
+}
+
+.copiers-preventive-action--primary.btn:hover,
+.copiers-preventive-action--primary.btn:focus-visible {
+    background: linear-gradient(180deg, #1c82df 0%, #0b61ad 100%);
+    color: #ffffff;
+}
+
+.copiers-preventive-action--warning.btn {
+    border-color: #f4d27a;
+    background: #fff8e5;
+    color: #8a5a00;
+}
+
+.copiers-preventive-action--success.btn {
+    border-color: #bfe1ca;
+    background: var(--copiers-good-soft);
+    color: var(--copiers-good);
+}
+
+.copiers-preventive-action--danger.btn {
+    border-color: #f2b8c2;
+    background: var(--copiers-danger-soft);
+    color: var(--copiers-danger);
+}
+
+.copiers-preventive-action--secondary.btn {
+    border-color: var(--copiers-line);
+    background: #f6f9fc;
+    color: var(--copiers-muted);
 }
 
 .copiers-preventive-detail {
