@@ -49,6 +49,7 @@ public sealed partial class DataverseService
     private const string SurveySessionStateField = "cr07a_estado";
     private const string SurveySessionClosedOnField = "cr07a_cerradaen";
     private const string SurveySessionCreatedOnField = "createdon";
+    private const string SurveySessionScanCountField = "cr07a_escaneos";
 
     private const string SurveyParticipantLogicalName = "cr07a_capacitacionparticipante";
     private const string SurveyParticipantFallbackEntitySetName = "cr07a_capacitacionparticipantes";
@@ -85,6 +86,8 @@ public sealed partial class DataverseService
     private const int SurveyInputText = 645250002;
     private const int SurveySessionStateOpen = 645250001;
     private const int SurveySessionStateClosed = 645250002;
+    private const string SurveySatisfactionTopicName = "Satisfaccion";
+    private const string SurveySatisfactionTopicDescription = "Tema fijo para todas las sesiones de capacitacion.";
 
     private static readonly IReadOnlyDictionary<int, string> SurveyComponentLabels = new Dictionary<int, string>
     {
@@ -105,12 +108,22 @@ public sealed partial class DataverseService
         [SurveySessionStateClosed] = "Cerrada"
     };
 
+    private static readonly IReadOnlyList<SurveySatisfactionQuestionSeed> SurveySatisfactionQuestionSeeds =
+        new[]
+        {
+            new SurveySatisfactionQuestionSeed("Nombre Completo", SurveyInputText, 1),
+            new SurveySatisfactionQuestionSeed("Empresa", SurveyInputText, 2),
+            new SurveySatisfactionQuestionSeed("De 1 a 5 cuanto califica la sesion", SurveyInputRating, 3),
+            new SurveySatisfactionQuestionSeed("Comentarios y sugerencias", SurveyInputText, 4)
+        };
+
     public async Task<SoporteCloudSurveyBoardDto> GetSoporteCloudSurveyBoardAsync(CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var metadata = await ResolveSoporteCloudSurveyMetadataAsync(httpContext.User, ct);
+        await EnsureSurveySatisfactionDefaultsAsync(metadata, httpContext.User, ct);
         var context = await LoadSurveyContextAsync(metadata, httpContext.User, ct);
         return BuildSurveyBoard(context, BuildSurveyPublicUrl);
     }
@@ -144,6 +157,13 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
         var metadata = await ResolveSoporteCloudSurveyMetadataAsync(httpContext.User, ct);
         var topicId = NormalizeOptionalGuid(request.TopicId);
+        var existingTopics = await LoadSurveyTopicsAsync(metadata, httpContext.User, ct);
+        var existingTopic = string.IsNullOrWhiteSpace(topicId)
+            ? null
+            : existingTopics.FirstOrDefault(item => string.Equals(item.TopicId, topicId, StringComparison.OrdinalIgnoreCase));
+        if (IsSatisfactionTopicName(name) || (existingTopic is not null && IsSatisfactionTopic(existingTopic)))
+            throw new InvalidOperationException("El tema Satisfaccion es fijo y no se puede editar.");
+
         var isCreate = string.IsNullOrWhiteSpace(topicId);
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -199,6 +219,25 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
         var metadata = await ResolveSoporteCloudSurveyMetadataAsync(httpContext.User, ct);
         var questionId = NormalizeOptionalGuid(request.QuestionId);
+        var existingQuestion = string.IsNullOrWhiteSpace(questionId)
+            ? null
+            : (await LoadSurveyQuestionsAsync(metadata, httpContext.User, ct))
+                .FirstOrDefault(item => string.Equals(item.QuestionId, questionId, StringComparison.OrdinalIgnoreCase));
+        if (request.ComponentValue == SurveyComponentSatisfaction
+            || existingQuestion?.ComponentValue == SurveyComponentSatisfaction)
+        {
+            throw new InvalidOperationException("Las preguntas de Satisfaccion son fijas y no se pueden editar.");
+        }
+
+        var requestedTopicId = NormalizeOptionalGuid(request.TopicId);
+        if (!string.IsNullOrWhiteSpace(requestedTopicId))
+        {
+            var topic = (await LoadSurveyTopicsAsync(metadata, httpContext.User, ct))
+                .FirstOrDefault(item => string.Equals(item.TopicId, requestedTopicId, StringComparison.OrdinalIgnoreCase));
+            if (topic is not null && IsSatisfactionTopic(topic))
+                throw new InvalidOperationException("El tema Satisfaccion es fijo y no acepta preguntas editables.");
+        }
+
         var isCreate = string.IsNullOrWhiteSpace(questionId);
         var component = NormalizeSurveyComponent(request.ComponentValue);
         var inputType = NormalizeSurveyInputType(request.InputTypeValue);
@@ -282,6 +321,22 @@ public sealed partial class DataverseService
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
         var metadata = await ResolveSoporteCloudSurveyMetadataAsync(httpContext.User, ct);
+        var topics = await LoadSurveyTopicsAsync(metadata, httpContext.User, ct);
+        var selectedTopic = topics.FirstOrDefault(item => string.Equals(item.TopicId, topicId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("No encontramos el tema seleccionado.");
+        if (IsSatisfactionTopic(selectedTopic))
+            throw new InvalidOperationException("Selecciona un tema de conocimiento. Satisfaccion se agrega automaticamente a todas las sesiones.");
+        if (!selectedTopic.IsActive)
+            throw new InvalidOperationException("El tema seleccionado esta inactivo.");
+
+        var topicQuestions = await LoadSurveyQuestionsAsync(metadata, httpContext.User, ct);
+        var hasKnowledgeQuestions = topicQuestions.Any(question =>
+            question.ComponentValue == SurveyComponentKnowledge
+            && question.IsActive
+            && string.Equals(question.TopicId, topicId, StringComparison.OrdinalIgnoreCase));
+        if (!hasKnowledgeQuestions)
+            throw new InvalidOperationException("El tema seleccionado debe tener al menos una pregunta activa de conocimiento.");
+
         var sessionId = NormalizeOptionalGuid(request.SessionId);
         var isCreate = string.IsNullOrWhiteSpace(sessionId);
         var clientId = FirstNonEmpty(
@@ -296,7 +351,11 @@ public sealed partial class DataverseService
         };
 
         if (isCreate)
+        {
             payload[SurveySessionCodeField] = GenerateSurveyCode();
+            if (metadata.HasSessionScanCountField)
+                payload[SurveySessionScanCountField] = 0;
+        }
 
         payload[$"{metadata.SessionTopicNavigationProperty}@odata.bind"] =
             $"/{metadata.Topic.EntitySetName}({topicId})";
@@ -359,8 +418,11 @@ public sealed partial class DataverseService
         var context = await LoadPublicSurveyContextAsync(metadata, code, ct);
         var session = context.Sessions.FirstOrDefault()
             ?? throw new InvalidOperationException("No encontramos una encuesta activa para el codigo indicado.");
-        var detail = BuildSessionDetail(session, context, codeValue => BuildSurveyPublicUrl(codeValue));
         var isClosed = session.StateValue == SurveySessionStateClosed;
+        if (!isClosed)
+            await TrackSurveyScanAsync(metadata, session, ct);
+
+        var detail = BuildSessionDetail(session, context, codeValue => BuildSurveyPublicUrl(codeValue));
 
         return new SoporteCloudPublicSurveyViewModel
         {
@@ -660,6 +722,189 @@ public sealed partial class DataverseService
         };
     }
 
+    private async Task EnsureSurveySatisfactionDefaultsAsync(
+        SoporteCloudSurveyMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            var topics = await LoadSurveyTopicsAsync(metadata, user, ct);
+            var satisfactionTopic = topics.FirstOrDefault(IsSatisfactionTopic);
+            var satisfactionTopicId = satisfactionTopic?.TopicId ?? "";
+            if (string.IsNullOrWhiteSpace(satisfactionTopicId))
+            {
+                satisfactionTopicId = await CreateSurveySatisfactionTopicAsync(metadata, user, ct);
+            }
+            else
+            {
+                var topicPatch = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                if (!string.Equals(satisfactionTopic!.Name, SurveySatisfactionTopicName, StringComparison.Ordinal))
+                    topicPatch[metadata.Topic.PrimaryNameField] = SurveySatisfactionTopicName;
+                if (!string.Equals(satisfactionTopic.Description, SurveySatisfactionTopicDescription, StringComparison.Ordinal))
+                    topicPatch[SurveyTopicDescriptionField] = SurveySatisfactionTopicDescription;
+                if (!satisfactionTopic.IsActive)
+                    topicPatch[SurveyTopicActiveField] = true;
+
+                if (topicPatch.Count > 0)
+                {
+                    await CallDataverseSendAsync(
+                        $"/api/data/v9.2/{metadata.Topic.EntitySetName}({satisfactionTopicId})",
+                        "PATCH",
+                        topicPatch,
+                        user,
+                        ct);
+                }
+            }
+
+            var questions = await LoadSurveyQuestionsAsync(metadata, user, ct);
+            var satisfactionQuestions = questions
+                .Where(question => question.ComponentValue == SurveyComponentSatisfaction)
+                .ToList();
+            var questionsByKey = satisfactionQuestions
+                .GroupBy(question => NormalizeSurveyTextKey(question.Text), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            var defaultKeys = SurveySatisfactionQuestionSeeds
+                .Select(seed => NormalizeSurveyTextKey(seed.Text))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var seed in SurveySatisfactionQuestionSeeds)
+            {
+                var key = NormalizeSurveyTextKey(seed.Text);
+                if (!questionsByKey.TryGetValue(key, out var existingQuestion))
+                {
+                    await SaveSurveySatisfactionQuestionSeedAsync(metadata, satisfactionTopicId, seed, user, ct);
+                    continue;
+                }
+
+                var patch = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                if (!string.Equals(existingQuestion.Text, seed.Text, StringComparison.Ordinal))
+                {
+                    patch[metadata.Question.PrimaryNameField] = TruncateSurveyName(seed.Text);
+                    patch[SurveyQuestionTextField] = seed.Text;
+                }
+                if (existingQuestion.InputTypeValue != seed.InputTypeValue)
+                    patch[SurveyQuestionInputTypeField] = seed.InputTypeValue;
+                if (existingQuestion.SortOrder != seed.SortOrder)
+                    patch[SurveyQuestionSortOrderField] = seed.SortOrder;
+                if (existingQuestion.MaxPoints != 0m)
+                    patch[SurveyQuestionMaxPointsField] = 0m;
+                if (!existingQuestion.IsActive)
+                    patch[SurveyQuestionActiveField] = true;
+                if (!string.Equals(existingQuestion.TopicId, satisfactionTopicId, StringComparison.OrdinalIgnoreCase))
+                {
+                    patch[$"{metadata.QuestionTopicNavigationProperty}@odata.bind"] =
+                        $"/{metadata.Topic.EntitySetName}({satisfactionTopicId})";
+                }
+
+                if (patch.Count > 0)
+                {
+                    await CallDataverseSendAsync(
+                        $"/api/data/v9.2/{metadata.Question.EntitySetName}({existingQuestion.QuestionId})",
+                        "PATCH",
+                        patch,
+                        user,
+                        ct);
+                }
+            }
+
+            foreach (var extraQuestion in satisfactionQuestions.Where(question => !defaultKeys.Contains(NormalizeSurveyTextKey(question.Text)) && question.IsActive))
+            {
+                await CallDataverseSendAsync(
+                    $"/api/data/v9.2/{metadata.Question.EntitySetName}({extraQuestion.QuestionId})",
+                    "PATCH",
+                    new Dictionary<string, object?> { [SurveyQuestionActiveField] = false },
+                    user,
+                    ct);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible verificar los valores fijos de Satisfaccion para las encuestas.");
+        }
+    }
+
+    private async Task<string> CreateSurveySatisfactionTopicAsync(
+        SoporteCloudSurveyMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [metadata.Topic.PrimaryNameField] = SurveySatisfactionTopicName,
+            [SurveyTopicDescriptionField] = SurveySatisfactionTopicDescription,
+            [SurveyTopicActiveField] = true
+        };
+        using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        using var response = await CallRhDataverseResponseAsync(
+            $"/api/data/v9.2/{metadata.Topic.EntitySetName}",
+            "POST",
+            user,
+            ct,
+            content,
+            AddRhReturnRepresentationHeaders);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+
+        var topicId = ExtractRhRecordId(response, body, metadata.Topic.PrimaryIdField);
+        if (string.IsNullOrWhiteSpace(topicId))
+            throw new InvalidOperationException("Dataverse guardo el tema Satisfaccion, pero no devolvio el identificador.");
+
+        return topicId;
+    }
+
+    private async Task SaveSurveySatisfactionQuestionSeedAsync(
+        SoporteCloudSurveyMetadata metadata,
+        string satisfactionTopicId,
+        SurveySatisfactionQuestionSeed seed,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [metadata.Question.PrimaryNameField] = TruncateSurveyName(seed.Text),
+            [SurveyQuestionTextField] = seed.Text,
+            [SurveyQuestionComponentField] = SurveyComponentSatisfaction,
+            [SurveyQuestionInputTypeField] = seed.InputTypeValue,
+            [SurveyQuestionSortOrderField] = seed.SortOrder,
+            [SurveyQuestionMaxPointsField] = 0m,
+            [SurveyQuestionActiveField] = true,
+            [$"{metadata.QuestionTopicNavigationProperty}@odata.bind"] = $"/{metadata.Topic.EntitySetName}({satisfactionTopicId})"
+        };
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{metadata.Question.EntitySetName}",
+            "POST",
+            payload,
+            user,
+            ct);
+    }
+
+    private async Task TrackSurveyScanAsync(
+        SoporteCloudSurveyMetadata metadata,
+        SoporteCloudSurveySessionDto session,
+        CancellationToken ct)
+    {
+        if (!metadata.HasSessionScanCountField || string.IsNullOrWhiteSpace(session.SessionId))
+            return;
+
+        var nextScanCount = Math.Max(session.ScanCount, 0) + 1;
+        try
+        {
+            await CallDataverseAppSendAsync(
+                $"/api/data/v9.2/{metadata.Session.EntitySetName}({session.SessionId})",
+                "PATCH",
+                new Dictionary<string, object?> { [SurveySessionScanCountField] = nextScanCount },
+                ct);
+            session.ScanCount = nextScanCount;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogDebug(ex, "No fue posible registrar escaneo para la sesion {SessionId}.", session.SessionId);
+        }
+    }
+
     private async Task<SoporteCloudSurveyMetadata> ResolveSoporteCloudSurveyMetadataAsync(ClaimsPrincipal user, CancellationToken ct)
     {
         var topic = await ResolveRhEntityMetadataAsync(SurveyTopicLogicalName, SurveyTopicFallbackEntitySetName, SurveyTopicFallbackIdField, SurveyTopicPrimaryNameField, user, ct);
@@ -677,6 +922,7 @@ public sealed partial class DataverseService
             Session = session,
             Participant = participant,
             Answer = answer,
+            HasSessionScanCountField = await SurveyAttributeExistsAsync(SurveySessionLogicalName, SurveySessionScanCountField, user, ct),
             QuestionTopicNavigationProperty = await ResolveSurveyLookupNavigationPropertyAsync(SurveyQuestionLogicalName, SurveyQuestionTopicField, user, ct),
             OptionQuestionNavigationProperty = await ResolveSurveyLookupNavigationPropertyAsync(SurveyOptionLogicalName, SurveyOptionQuestionField, user, ct),
             SessionTopicNavigationProperty = await ResolveSurveyLookupNavigationPropertyAsync(SurveySessionLogicalName, SurveySessionTopicField, user, ct),
@@ -706,6 +952,7 @@ public sealed partial class DataverseService
             Session = session,
             Participant = participant,
             Answer = answer,
+            HasSessionScanCountField = await SurveyAppAttributeExistsAsync(SurveySessionLogicalName, SurveySessionScanCountField, ct),
             QuestionTopicNavigationProperty = await ResolveSurveyAppLookupNavigationPropertyAsync(SurveyQuestionLogicalName, SurveyQuestionTopicField, ct),
             OptionQuestionNavigationProperty = await ResolveSurveyAppLookupNavigationPropertyAsync(SurveyOptionLogicalName, SurveyOptionQuestionField, ct),
             SessionTopicNavigationProperty = await ResolveSurveyAppLookupNavigationPropertyAsync(SurveySessionLogicalName, SurveySessionTopicField, ct),
@@ -716,6 +963,47 @@ public sealed partial class DataverseService
             AnswerQuestionNavigationProperty = await ResolveSurveyAppLookupNavigationPropertyAsync(SurveyAnswerLogicalName, SurveyAnswerQuestionField, ct),
             AnswerOptionNavigationProperty = await ResolveSurveyAppLookupNavigationPropertyAsync(SurveyAnswerLogicalName, SurveyAnswerOptionField, ct)
         };
+    }
+
+    private async Task<bool> SurveyAttributeExistsAsync(
+        string entityLogicalName,
+        string attributeLogicalName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(entityLogicalName)}')" +
+                $"/Attributes(LogicalName='{EscapeOdataLiteral(attributeLogicalName)}')?$select=LogicalName";
+            await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogDebug(ex, "No se encontro la columna opcional {AttributeLogicalName} en {EntityLogicalName}.", attributeLogicalName, entityLogicalName);
+            return false;
+        }
+    }
+
+    private async Task<bool> SurveyAppAttributeExistsAsync(
+        string entityLogicalName,
+        string attributeLogicalName,
+        CancellationToken ct)
+    {
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(entityLogicalName)}')" +
+                $"/Attributes(LogicalName='{EscapeOdataLiteral(attributeLogicalName)}')?$select=LogicalName";
+            await CallDataverseAppGetJsonAsync(relativeUrl, ct);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogDebug(ex, "No se encontro la columna opcional app-only {AttributeLogicalName} en {EntityLogicalName}.", attributeLogicalName, entityLogicalName);
+            return false;
+        }
     }
 
     private async Task<string> ResolveSurveyLookupNavigationPropertyAsync(
@@ -1003,8 +1291,9 @@ public sealed partial class DataverseService
             SurveySessionDateField,
             SurveySessionCodeField,
             SurveySessionStateField,
-            SurveySessionCreatedOnField
-        }.Distinct(StringComparer.OrdinalIgnoreCase));
+            SurveySessionCreatedOnField,
+            metadata.HasSessionScanCountField ? SurveySessionScanCountField : ""
+        }.Where(field => !string.IsNullOrWhiteSpace(field)).Distinct(StringComparer.OrdinalIgnoreCase));
 
     private static string BuildSurveyParticipantSelectClause(SoporteCloudSurveyMetadata metadata) =>
         string.Join(",", new[]
@@ -1104,7 +1393,8 @@ public sealed partial class DataverseService
             DateValue = date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             DateDisplay = date?.ToString("dd/MM/yyyy", SoporteCloudCulture) ?? "Sin fecha",
             StateValue = state,
-            StateLabel = SurveySessionStateLabels.TryGetValue(state, out var label) ? label : "Abierta"
+            StateLabel = SurveySessionStateLabels.TryGetValue(state, out var label) ? label : "Abierta",
+            ScanCount = metadata.HasSessionScanCountField ? Math.Max(ReadIntFlexible(item, SurveySessionScanCountField), 0) : 0
         };
     }
 
@@ -1176,7 +1466,9 @@ public sealed partial class DataverseService
                 {
                     QuestionId = question.QuestionId,
                     TopicId = question.TopicId,
-                    TopicName = FirstNonEmpty(question.TopicName, topic?.Name),
+                    TopicName = question.ComponentValue == SurveyComponentSatisfaction
+                        ? FirstNonEmpty(question.TopicName, topic?.Name, SurveySatisfactionTopicName)
+                        : FirstNonEmpty(question.TopicName, topic?.Name),
                     ComponentValue = question.ComponentValue,
                     ComponentLabel = SurveyComponentLabels.TryGetValue(question.ComponentValue, out var componentLabel) ? componentLabel : "",
                     InputTypeValue = question.InputTypeValue,
@@ -1185,6 +1477,7 @@ public sealed partial class DataverseService
                     SortOrder = question.SortOrder,
                     MaxPoints = question.MaxPoints,
                     IsActive = question.IsActive,
+                    IsLocked = question.ComponentValue == SurveyComponentSatisfaction,
                     Options = (questionOptions ?? new List<SurveyOptionRaw>())
                         .Select(option => new SoporteCloudSurveyOptionDto
                         {
@@ -1210,6 +1503,7 @@ public sealed partial class DataverseService
                 Name = topic.Name,
                 Description = topic.Description,
                 IsActive = topic.IsActive,
+                IsLocked = IsSatisfactionTopic(topic),
                 KnowledgeQuestionCount = questionDtos.Count(question => question.ComponentValue == SurveyComponentKnowledge
                     && string.Equals(question.TopicId, topic.TopicId, StringComparison.OrdinalIgnoreCase)
                     && question.IsActive)
@@ -1288,10 +1582,32 @@ public sealed partial class DataverseService
             .ToList();
         var applicableKnowledgeQuestions = context.Questions
             .Where(question => question.ComponentValue == SurveyComponentKnowledge
+                && question.IsActive
                 && string.Equals(question.TopicId, session.TopicId, StringComparison.OrdinalIgnoreCase))
             .ToList();
         var satisfactionQuestions = context.Questions
-            .Where(question => question.ComponentValue == SurveyComponentSatisfaction)
+            .Where(question => question.ComponentValue == SurveyComponentSatisfaction && question.IsActive)
+            .ToList();
+        var requiredQuestionIds = applicableKnowledgeQuestions
+            .Concat(satisfactionQuestions)
+            .Select(question => question.QuestionId)
+            .Where(questionId => !string.IsNullOrWhiteSpace(questionId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var completedParticipantIds = requiredQuestionIds.Count == 0
+            ? participants.Select(participant => participant.ParticipantId).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : answers
+                .GroupBy(answer => answer.ParticipantId, StringComparer.OrdinalIgnoreCase)
+                .Where(group =>
+                {
+                    var answeredQuestionIds = group
+                        .Select(answer => answer.QuestionId)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    return requiredQuestionIds.All(answeredQuestionIds.Contains);
+                })
+                .Select(group => group.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var completedParticipants = participants
+            .Where(participant => completedParticipantIds.Contains(participant.ParticipantId))
             .ToList();
         var knowledgeStats = applicableKnowledgeQuestions
             .Select(question => BuildQuestionStats(question, answers))
@@ -1320,8 +1636,8 @@ public sealed partial class DataverseService
                 };
             })
             .ToList();
-        var avgScorePercent = participants.Count == 0 ? 0m : RoundCurrency(participants.Average(item => item.ScorePercent));
-        var avgScore = participants.Count == 0 ? 0m : RoundCurrency(participants.Average(item => item.Score));
+        var avgScorePercent = completedParticipants.Count == 0 ? 0m : RoundCurrency(completedParticipants.Average(item => item.ScorePercent));
+        var avgScore = completedParticipants.Count == 0 ? 0m : RoundCurrency(completedParticipants.Average(item => item.Score));
         var avgSatisfaction = satisfactionStats.Count == 0 ? 0m : RoundCurrency(satisfactionStats.Average(item => item.AverageRating));
 
         var detailedSession = new SoporteCloudSurveySessionDto
@@ -1338,8 +1654,9 @@ public sealed partial class DataverseService
             StateValue = session.StateValue,
             StateLabel = session.StateLabel,
             PublicUrl = publicUrlBuilder(session.Code),
+            ScanCount = session.ScanCount,
             RegisteredCount = participants.Count,
-            CompletedCount = participants.Count,
+            CompletedCount = completedParticipants.Count,
             AverageScore = avgScore,
             AverageScorePercent = avgScorePercent,
             AverageSatisfaction = avgSatisfaction
@@ -1349,7 +1666,7 @@ public sealed partial class DataverseService
         {
             Session = detailedSession,
             Participants = participants,
-            Leaderboard = participants.Take(10).ToList(),
+            Leaderboard = completedParticipants.Take(10).ToList(),
             KnowledgeQuestionStats = knowledgeStats,
             SatisfactionQuestionStats = satisfactionStats,
             KnowledgeAnswers = knowledgeAnswers
@@ -1406,6 +1723,28 @@ public sealed partial class DataverseService
 
     private static string NormalizeSurveyCode(string? code) =>
         (code ?? "").Trim().ToUpperInvariant();
+
+    private static bool IsSatisfactionTopic(SurveyTopicRaw topic) =>
+        IsSatisfactionTopicName(topic.Name);
+
+    private static bool IsSatisfactionTopicName(string? value) =>
+        string.Equals(NormalizeSurveyTextKey(value), NormalizeSurveyTextKey(SurveySatisfactionTopicName), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeSurveyTextKey(string? value)
+    {
+        var normalized = (value ?? "").Trim().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (char.IsLetterOrDigit(character))
+                builder.Append(char.ToLowerInvariant(character));
+        }
+
+        return builder.ToString();
+    }
 
     private static int NormalizeSurveyComponent(int value) =>
         value == SurveyComponentSatisfaction ? SurveyComponentSatisfaction : SurveyComponentKnowledge;
@@ -1474,6 +1813,7 @@ public sealed partial class DataverseService
         public RhEntityMetadata Session { get; init; } = new();
         public RhEntityMetadata Participant { get; init; } = new();
         public RhEntityMetadata Answer { get; init; } = new();
+        public bool HasSessionScanCountField { get; init; }
         public string QuestionTopicNavigationProperty { get; init; } = SurveyQuestionTopicField;
         public string OptionQuestionNavigationProperty { get; init; } = SurveyOptionQuestionField;
         public string SessionTopicNavigationProperty { get; init; } = SurveySessionTopicField;
@@ -1550,5 +1890,19 @@ public sealed partial class DataverseService
         public decimal Points { get; init; }
         public decimal MaxPoints { get; init; }
         public bool IsCorrect { get; init; }
+    }
+
+    private sealed class SurveySatisfactionQuestionSeed
+    {
+        public SurveySatisfactionQuestionSeed(string text, int inputTypeValue, int sortOrder)
+        {
+            Text = text;
+            InputTypeValue = inputTypeValue;
+            SortOrder = sortOrder;
+        }
+
+        public string Text { get; }
+        public int InputTypeValue { get; }
+        public int SortOrder { get; }
     }
 }

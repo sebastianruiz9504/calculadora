@@ -3581,7 +3581,7 @@
                             </span>
                             <span class="dashboard-counter-chip ${statusClass}">
                                 <strong>${escapeHtml(statusLabel)}</strong>
-                                <small>${escapeHtml(row.counterDateDisplay || "Mes vigente")}</small>
+                                <small>${escapeHtml(row.counterDateDisplay || "Ultimos 35 dias")}</small>
                             </span>
                         </button>
                     `;
@@ -3607,7 +3607,7 @@
                         </section>
                         <section class="dashboard-copiers-detail__section">
                             <div class="dashboard-copiers-detail__header">
-                                <strong>Equipos y contador del mes</strong>
+                                <strong>Equipos y contador reciente</strong>
                                 <span>${escapeHtml(group?.counterSummary || "")}</span>
                             </div>
                             ${renderCopiersEquipmentDetails(equipment)}

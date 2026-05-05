@@ -102,9 +102,9 @@ public sealed partial class DataverseService
 
         var rows = await GetCopiersRecordsAsync(metadata, httpContext.User, ct);
         var billingRows = BuildCopiersRows(rows);
-        var counterPeriodStart = new DateOnly(today.Year, today.Month, 1);
-        var counterPeriodEnd = counterPeriodStart.AddMonths(1);
-        var counterPeriodLabel = ToTitleCase(counterPeriodStart.ToString("MMMM yyyy", DashboardCulture));
+        var counterPeriodEnd = today.AddDays(1);
+        var counterPeriodStart = counterPeriodEnd.AddDays(-35);
+        var counterPeriodLabel = "Ultimos 35 dias";
         var equipmentRows = await BuildCopiersBillingEquipmentRowsAsync(
             rows,
             httpContext.User,
@@ -118,7 +118,7 @@ public sealed partial class DataverseService
         {
             AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
             FocusLabel = $"Agrupado por cliente y dia de facturacion. Contadores: {counterPeriodLabel}",
-            CounterPeriodValue = counterPeriodStart.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            CounterPeriodValue = counterPeriodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             CounterPeriodLabel = counterPeriodLabel,
             HasData = rows.Count > 0,
             RecordsCount = groups.Count,
@@ -2336,7 +2336,7 @@ public sealed partial class DataverseService
         {
             _logger.LogWarning(
                 ex,
-                "No fue posible enriquecer la facturacion copiers con equipos y contadores del mes vigente.");
+                "No fue posible enriquecer la facturacion copiers con equipos y contadores de los ultimos 35 dias.");
             return Array.Empty<CopiersBillingEquipmentDto>();
         }
     }

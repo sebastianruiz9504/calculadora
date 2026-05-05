@@ -1,0 +1,25 @@
+{
+  "optionSets": {},
+  "tables": [
+    {
+      "displayName": "Agenda de mantenimiento preventivo",
+      "displayCollectionName": "Agenda de mantenimientos preventivos",
+      "logicalName": "cr07a_mantenimientopreventivoagenda",
+      "entitySetName": "cr07a_mantenimientopreventivoagendas",
+      "primaryIdAttribute": "cr07a_mantenimientopreventivoagendaid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": false },
+        { "logicalName": "cr07a_clienteidtexto", "displayName": "Id cliente texto", "type": "Text", "maxLength": 100, "required": false },
+        { "logicalName": "cr07a_nombrecliente", "displayName": "Nombre cliente", "type": "Text", "maxLength": 300, "required": true },
+        { "logicalName": "cr07a_periodo", "displayName": "Periodo", "type": "Text", "maxLength": 7, "required": true },
+        { "logicalName": "cr07a_fechaprogramada", "displayName": "Fecha programada", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": true },
+        { "logicalName": "cr07a_duracionminutos", "displayName": "Duracion minutos", "type": "WholeNumber", "required": false, "minValue": 15, "maxValue": 480 },
+        { "logicalName": "cr07a_eventographid", "displayName": "Id evento Graph", "type": "Text", "maxLength": 500, "required": false },
+        { "logicalName": "cr07a_eventoweblink", "displayName": "Link evento", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
+    }
+  ]
+}

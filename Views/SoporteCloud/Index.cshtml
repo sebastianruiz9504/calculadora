@@ -295,14 +295,47 @@
         </article>
     </section>
 
-    <section class="support-cloud-survey-grid">
-        <article class="support-cloud-card">
-            <div class="support-cloud-section-header">
-                <div>
-                    <div class="support-cloud-kicker">QR</div>
-                    <h2 class="support-cloud-section-title">Sesion activa</h2>
-                </div>
+    <section class="support-cloud-survey-actions">
+        <article class="support-cloud-card support-cloud-survey-action">
+            <div>
+                <div class="support-cloud-kicker">QR</div>
+                <h2 class="support-cloud-section-title">Sesion de encuesta</h2>
+                <p class="support-cloud-section-subtitle">
+                    Crea una encuesta con el bloque fijo de Satisfaccion y el tema de conocimiento de la capacitacion.
+                </p>
+            </div>
+            <div class="support-cloud-modal__actions">
                 <button type="button" class="btn btn-outline-secondary" data-scs-refresh>Actualizar</button>
+                <button type="button" class="btn btn-primary" data-scs-open-session>Generar nueva encuesta</button>
+            </div>
+        </article>
+
+        <article class="support-cloud-card support-cloud-survey-action">
+            <div>
+                <div class="support-cloud-kicker">Banco</div>
+                <h2 class="support-cloud-section-title">Temas y preguntas</h2>
+                <p class="support-cloud-section-subtitle">
+                    Administra los temas editables y sus preguntas de conocimiento.
+                </p>
+            </div>
+            <div class="support-cloud-modal__actions">
+                <button type="button" class="btn btn-primary" data-scs-open-topics>Encuestas</button>
+            </div>
+        </article>
+    </section>
+
+    <div class="support-cloud-modal" data-scs-session-modal hidden>
+        <div class="support-cloud-modal__backdrop" data-scs-close-session-modal></div>
+        <div class="support-cloud-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudSurveySessionTitle">
+            <div class="support-cloud-modal__header">
+                <div>
+                    <div class="support-cloud-kicker">Nueva encuesta</div>
+                    <h2 class="support-cloud-modal__title" id="supportCloudSurveySessionTitle">Generar nueva encuesta</h2>
+                    <p class="support-cloud-modal__subtitle">
+                        La sesion incluye Satisfaccion y el tema de conocimiento seleccionado.
+                    </p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-scs-close-session-modal>Cerrar</button>
             </div>
 
             <form class="support-cloud-form" data-scs-session-form>
@@ -327,6 +360,20 @@
                         <datalist id="supportCloudSurveyClientOptions" data-scs-client-options></datalist>
                     </label>
                 </div>
+
+                <div class="support-cloud-survey-compose">
+                    <article>
+                        <div class="support-cloud-kicker">Tema fijo</div>
+                        <h3>Satisfaccion</h3>
+                        <div class="support-cloud-survey-mini-list" data-scs-satisfaction-preview></div>
+                    </article>
+                    <article>
+                        <div class="support-cloud-kicker">Tema seleccionado</div>
+                        <h3 data-scs-selected-topic-title>Conocimiento</h3>
+                        <div class="support-cloud-survey-mini-list" data-scs-selected-topic-preview></div>
+                    </article>
+                </div>
+
                 <div class="support-cloud-modal__footer">
                     <div class="support-cloud-modal__meta" data-scs-session-meta>Nueva sesion</div>
                     <div class="support-cloud-modal__actions">
@@ -335,116 +382,185 @@
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="support-cloud-modal" data-scs-qr-modal hidden>
+        <div class="support-cloud-modal__backdrop" data-scs-close-qr-modal></div>
+        <div class="support-cloud-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudSurveyQrTitle">
+            <div class="support-cloud-modal__header">
+                <div>
+                    <div class="support-cloud-kicker">QR activo</div>
+                    <h2 class="support-cloud-modal__title" id="supportCloudSurveyQrTitle" data-scs-qr-session-title>Encuesta</h2>
+                    <p class="support-cloud-modal__subtitle">Comparte este codigo durante la capacitacion.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-scs-close-qr-modal>Cerrar</button>
+            </div>
 
             <div class="support-cloud-qr-panel" data-scs-qr-panel hidden>
                 <img alt="Codigo QR de encuesta" data-scs-qr-image />
                 <div class="support-cloud-qr-panel__content">
                     <span class="support-cloud-summary__label">Enlace publico</span>
                     <a href="#" target="_blank" rel="noopener" data-scs-public-link></a>
+                    <div class="support-cloud-qr-counters">
+                        <article>
+                            <span class="support-cloud-summary__label">Escaneos</span>
+                            <strong data-scs-scan-count>0</strong>
+                        </article>
+                        <article>
+                            <span class="support-cloud-summary__label">Respondieron todo</span>
+                            <strong data-scs-completed-count>0</strong>
+                        </article>
+                    </div>
                     <div class="support-cloud-qr-panel__actions">
                         <button type="button" class="btn btn-outline-danger" data-scs-close-session>Cerrar encuesta</button>
                         <a class="btn btn-outline-primary" href="#" data-scs-export>Exportar reporte</a>
                     </div>
                 </div>
             </div>
-        </article>
+        </div>
+    </div>
 
-        <article class="support-cloud-card">
-            <div class="support-cloud-section-header">
+    <div class="support-cloud-modal" data-scs-winners-modal hidden>
+        <div class="support-cloud-modal__backdrop" data-scs-close-winners></div>
+        <div class="support-cloud-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudSurveyWinnersTitle">
+            <div class="support-cloud-modal__header">
                 <div>
-                    <div class="support-cloud-kicker">Banco</div>
-                    <h2 class="support-cloud-section-title">Temas y preguntas</h2>
+                    <div class="support-cloud-kicker">Encuesta cerrada</div>
+                    <h2 class="support-cloud-modal__title" id="supportCloudSurveyWinnersTitle">Ganadores</h2>
+                    <p class="support-cloud-modal__subtitle">Ranking de participantes para la sesion cerrada.</p>
                 </div>
+                <button type="button" class="btn btn-outline-secondary" data-scs-close-winners>Cerrar</button>
             </div>
 
-            <form class="support-cloud-form" data-scs-topic-form>
-                <input type="hidden" data-scs-topic-id />
-                <div class="support-cloud-form__grid">
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Tema</span>
-                        <input type="text" class="form-control" data-scs-topic-name />
-                    </label>
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Activo</span>
-                        <select class="form-select" data-scs-topic-active>
-                            <option value="true">Si</option>
-                            <option value="false">No</option>
-                        </select>
-                    </label>
-                    <label class="support-cloud-form__field support-cloud-form__field--span-2">
-                        <span class="support-cloud-form__label">Descripcion</span>
-                        <textarea class="form-control" rows="2" data-scs-topic-description></textarea>
-                    </label>
+            <div class="support-cloud-table-wrap">
+                <table class="table align-middle support-cloud-table">
+                    <thead>
+                        <tr>
+                            <th>Posicion</th>
+                            <th>Participante</th>
+                            <th>Empresa</th>
+                            <th class="text-end">Puntaje</th>
+                            <th class="text-end">Porcentaje</th>
+                        </tr>
+                    </thead>
+                    <tbody data-scs-winners-rows></tbody>
+                </table>
+            </div>
+
+            <div class="support-cloud-modal__footer">
+                <div class="support-cloud-modal__meta">Resultados finales</div>
+                <div class="support-cloud-modal__actions">
+                    <button type="button" class="btn btn-primary" data-scs-close-winners>Cerrar la sesion</button>
                 </div>
-                <div class="support-cloud-modal__footer">
-                    <div class="support-cloud-modal__meta" data-scs-topic-meta>Nuevo tema</div>
-                    <div class="support-cloud-modal__actions">
-                        <button type="button" class="btn btn-outline-secondary" data-scs-reset-topic>Limpiar</button>
-                        <button type="submit" class="btn btn-primary">Guardar tema</button>
-                    </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="support-cloud-modal" data-scs-topics-modal hidden>
+        <div class="support-cloud-modal__backdrop" data-scs-close-topics-modal></div>
+        <div class="support-cloud-modal__dialog support-cloud-survey-topics-dialog" role="dialog" aria-modal="true" aria-labelledby="supportCloudSurveyTopicsTitle">
+            <div class="support-cloud-modal__header">
+                <div>
+                    <div class="support-cloud-kicker">Encuestas</div>
+                    <h2 class="support-cloud-modal__title" id="supportCloudSurveyTopicsTitle">Temas y preguntas</h2>
+                    <p class="support-cloud-modal__subtitle">Selecciona un tema para editarlo o crea uno nuevo.</p>
                 </div>
-            </form>
+                <button type="button" class="btn btn-outline-secondary" data-scs-close-topics-modal>Cerrar</button>
+            </div>
 
-            <div class="support-cloud-survey-pick-list" data-scs-topics-list></div>
+            <div class="support-cloud-survey-topic-layout">
+                <aside>
+                    <button type="button" class="btn btn-primary w-100" data-scs-new-topic>Nuevo tema</button>
+                    <div class="support-cloud-survey-pick-list" data-scs-topics-list></div>
+                </aside>
 
-            <form class="support-cloud-form support-cloud-survey-question-form" data-scs-question-form>
-                <input type="hidden" data-scs-question-id />
-                <div class="support-cloud-form__grid">
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Componente</span>
-                        <select class="form-select" data-scs-question-component>
-                            <option value="645250000">Conocimiento</option>
-                            <option value="645250001">Satisfaccion</option>
-                        </select>
-                    </label>
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Tema</span>
-                        <select class="form-select" data-scs-question-topic></select>
-                    </label>
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Tipo</span>
-                        <select class="form-select" data-scs-question-type>
-                            <option value="645250000">Seleccion unica</option>
-                            <option value="645250001">Escala 1 a 5</option>
-                            <option value="645250002">Texto abierto</option>
-                        </select>
-                    </label>
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Puntos</span>
-                        <input type="number" min="0" step="0.01" class="form-control" data-scs-question-points />
-                    </label>
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Orden</span>
-                        <input type="number" min="0" step="1" class="form-control" data-scs-question-order />
-                    </label>
-                    <label class="support-cloud-form__field">
-                        <span class="support-cloud-form__label">Activa</span>
-                        <select class="form-select" data-scs-question-active>
-                            <option value="true">Si</option>
-                            <option value="false">No</option>
-                        </select>
-                    </label>
-                    <label class="support-cloud-form__field support-cloud-form__field--span-2">
-                        <span class="support-cloud-form__label">Pregunta</span>
-                        <textarea class="form-control" rows="2" data-scs-question-text></textarea>
-                    </label>
+                <div class="support-cloud-survey-topic-editor">
+                    <form class="support-cloud-form" data-scs-topic-form>
+                        <input type="hidden" data-scs-topic-id />
+                        <div class="support-cloud-form__grid">
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Tema</span>
+                                <input type="text" class="form-control" data-scs-topic-name />
+                            </label>
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Activo</span>
+                                <select class="form-select" data-scs-topic-active>
+                                    <option value="true">Si</option>
+                                    <option value="false">No</option>
+                                </select>
+                            </label>
+                            <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Descripcion</span>
+                                <textarea class="form-control" rows="2" data-scs-topic-description></textarea>
+                            </label>
+                        </div>
+                        <div class="support-cloud-placeholder support-cloud-placeholder--compact" data-scs-topic-lock-notice hidden>
+                            Satisfaccion es un tema fijo y no se puede editar.
+                        </div>
+                        <div class="support-cloud-modal__footer">
+                            <div class="support-cloud-modal__meta" data-scs-topic-meta>Nuevo tema</div>
+                            <div class="support-cloud-modal__actions">
+                                <button type="button" class="btn btn-outline-secondary" data-scs-reset-topic>Limpiar</button>
+                                <button type="submit" class="btn btn-primary" data-scs-save-topic>Guardar tema</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <form class="support-cloud-form support-cloud-survey-question-form" data-scs-question-form hidden>
+                        <input type="hidden" data-scs-question-id />
+                        <input type="hidden" data-scs-question-component value="645250000" />
+                        <div class="support-cloud-form__grid">
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Tema</span>
+                                <select class="form-select" data-scs-question-topic></select>
+                            </label>
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Tipo</span>
+                                <select class="form-select" data-scs-question-type>
+                                    <option value="645250000">Seleccion unica</option>
+                                    <option value="645250001">Escala 1 a 5</option>
+                                    <option value="645250002">Texto abierto</option>
+                                </select>
+                            </label>
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Puntos</span>
+                                <input type="number" min="0" step="0.01" class="form-control" data-scs-question-points />
+                            </label>
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Orden</span>
+                                <input type="number" min="0" step="1" class="form-control" data-scs-question-order />
+                            </label>
+                            <label class="support-cloud-form__field">
+                                <span class="support-cloud-form__label">Activa</span>
+                                <select class="form-select" data-scs-question-active>
+                                    <option value="true">Si</option>
+                                    <option value="false">No</option>
+                                </select>
+                            </label>
+                            <label class="support-cloud-form__field support-cloud-form__field--span-2">
+                                <span class="support-cloud-form__label">Pregunta</span>
+                                <textarea class="form-control" rows="2" data-scs-question-text></textarea>
+                            </label>
+                        </div>
+
+                        <div class="support-cloud-survey-options" data-scs-options></div>
+                        <button type="button" class="btn btn-outline-secondary" data-scs-add-option>Agregar opcion</button>
+
+                        <div class="support-cloud-modal__footer">
+                            <div class="support-cloud-modal__meta" data-scs-question-meta>Nueva pregunta</div>
+                            <div class="support-cloud-modal__actions">
+                                <button type="button" class="btn btn-outline-secondary" data-scs-reset-question>Limpiar</button>
+                                <button type="submit" class="btn btn-primary">Guardar pregunta</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="support-cloud-survey-pick-list" data-scs-questions-list></div>
                 </div>
-
-                <div class="support-cloud-survey-options" data-scs-options></div>
-                <button type="button" class="btn btn-outline-secondary" data-scs-add-option>Agregar opcion</button>
-
-                <div class="support-cloud-modal__footer">
-                    <div class="support-cloud-modal__meta" data-scs-question-meta>Nueva pregunta</div>
-                    <div class="support-cloud-modal__actions">
-                        <button type="button" class="btn btn-outline-secondary" data-scs-reset-question>Limpiar</button>
-                        <button type="submit" class="btn btn-primary">Guardar pregunta</button>
-                    </div>
-                </div>
-            </form>
-
-            <div class="support-cloud-survey-pick-list" data-scs-questions-list></div>
-        </article>
-    </section>
+            </div>
+        </div>
+    </div>
 
     <section class="support-cloud-card">
         <div class="support-cloud-section-header">

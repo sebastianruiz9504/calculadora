@@ -149,7 +149,7 @@ public sealed class CopiersController : Controller
     }
 
     [HttpPost]
-    [AuthorizeForScopes(Scopes = new[] { GraphCalendarScope })]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope, GraphCalendarScope })]
     public async Task<IActionResult> SchedulePreventiveMaintenance([FromBody] CopiersPreventiveMaintenanceScheduleRequestDto? request, CancellationToken ct)
     {
         if (request is null)
@@ -157,7 +157,9 @@ public sealed class CopiersController : Controller
 
         try
         {
-            return Ok(await _calendar.SchedulePreventiveMaintenanceAsync(request, User, ct));
+            var result = await _calendar.SchedulePreventiveMaintenanceAsync(request, User, ct);
+            await _dataverse.SaveCopiersPreventiveMaintenanceScheduleAsync(request, result, ct);
+            return Ok(result);
         }
         catch (MicrosoftIdentityWebChallengeUserException)
         {

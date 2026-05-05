@@ -82,7 +82,8 @@
         { "logicalName": "cr07a_fecha", "displayName": "Fecha", "type": "DateTime", "behavior": "UserLocal", "format": "DateOnly", "required": true },
         { "logicalName": "cr07a_codigo", "displayName": "Codigo publico", "type": "Text", "maxLength": 40, "required": true },
         { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Choice", "required": true, "optionsRef": "sessionStateOptions" },
-        { "logicalName": "cr07a_cerradaen", "displayName": "Cerrada en", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false }
+        { "logicalName": "cr07a_cerradaen", "displayName": "Cerrada en", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false },
+        { "logicalName": "cr07a_escaneos", "displayName": "Escaneos", "type": "WholeNumber", "required": false, "minValue": 0, "maxValue": 2147483647 }
       ]
     },
     {

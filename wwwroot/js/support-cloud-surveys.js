@@ -104,6 +104,24 @@
             sessionDetail: root.querySelector("[data-scs-session-detail]"),
             bestQuestions: root.querySelector("[data-scs-best-questions]"),
             weakQuestions: root.querySelector("[data-scs-weak-questions]"),
+            openSession: root.querySelector("[data-scs-open-session]"),
+            sessionModal: root.querySelector("[data-scs-session-modal]"),
+            closeSessionModal: Array.from(root.querySelectorAll("[data-scs-close-session-modal]")),
+            openTopics: root.querySelector("[data-scs-open-topics]"),
+            topicsModal: root.querySelector("[data-scs-topics-modal]"),
+            closeTopicsModal: Array.from(root.querySelectorAll("[data-scs-close-topics-modal]")),
+            newTopic: root.querySelector("[data-scs-new-topic]"),
+            qrModal: root.querySelector("[data-scs-qr-modal]"),
+            closeQrModal: Array.from(root.querySelectorAll("[data-scs-close-qr-modal]")),
+            qrSessionTitle: root.querySelector("[data-scs-qr-session-title]"),
+            scanCount: root.querySelector("[data-scs-scan-count]"),
+            completedCount: root.querySelector("[data-scs-completed-count]"),
+            winnersModal: root.querySelector("[data-scs-winners-modal]"),
+            closeWinners: Array.from(root.querySelectorAll("[data-scs-close-winners]")),
+            winnersRows: root.querySelector("[data-scs-winners-rows]"),
+            satisfactionPreview: root.querySelector("[data-scs-satisfaction-preview]"),
+            selectedTopicTitle: root.querySelector("[data-scs-selected-topic-title]"),
+            selectedTopicPreview: root.querySelector("[data-scs-selected-topic-preview]"),
             qrPanel: root.querySelector("[data-scs-qr-panel]"),
             qrImage: root.querySelector("[data-scs-qr-image]"),
             publicLink: root.querySelector("[data-scs-public-link]"),
@@ -126,6 +144,8 @@
             topicActive: root.querySelector("[data-scs-topic-active]"),
             topicMeta: root.querySelector("[data-scs-topic-meta]"),
             resetTopic: root.querySelector("[data-scs-reset-topic]"),
+            saveTopicButton: root.querySelector("[data-scs-save-topic]"),
+            topicLockNotice: root.querySelector("[data-scs-topic-lock-notice]"),
             topicsList: root.querySelector("[data-scs-topics-list]"),
             questionForm: root.querySelector("[data-scs-question-form]"),
             questionId: root.querySelector("[data-scs-question-id]"),
@@ -146,13 +166,33 @@
         const state = {
             board: null,
             selectedSessionId: "",
+            selectedTopicId: "",
             detail: null,
             optionsDraft: [],
             clientSuggestions: [],
-            clientTimer: 0
+            clientTimer: 0,
+            qrRefreshTimer: 0
         };
 
         els.refresh?.addEventListener("click", () => loadBoard());
+        els.openSession?.addEventListener("click", () => {
+            resetSessionForm();
+            openModal(els.sessionModal);
+        });
+        els.closeSessionModal.forEach(button => button.addEventListener("click", () => closeModal(els.sessionModal)));
+        els.openTopics?.addEventListener("click", () => {
+            renderPickLists();
+            openModal(els.topicsModal);
+        });
+        els.closeTopicsModal.forEach(button => button.addEventListener("click", () => closeModal(els.topicsModal)));
+        els.closeQrModal.forEach(button => button.addEventListener("click", () => closeQrModal()));
+        els.closeWinners.forEach(button => button.addEventListener("click", () => closeModal(els.winnersModal)));
+        els.newTopic?.addEventListener("click", () => {
+            state.selectedTopicId = "";
+            resetTopicForm();
+            resetQuestionForm();
+            renderPickLists();
+        });
         els.sessionForm?.addEventListener("submit", event => {
             event.preventDefault();
             saveSession();
@@ -174,6 +214,7 @@
         });
         els.questionComponent?.addEventListener("change", syncQuestionControls);
         els.questionType?.addEventListener("change", syncQuestionControls);
+        els.sessionTopic?.addEventListener("change", renderQuestionPreviews);
         els.closeSession?.addEventListener("click", closeSelectedSession);
         els.sessionRows?.addEventListener("click", event => {
             const row = event.target instanceof HTMLElement ? event.target.closest("[data-scs-session-row]") : null;
@@ -198,7 +239,11 @@
             if (!button) {
                 return;
             }
-            fillTopicForm(button.dataset.scsEditTopic || "");
+            state.selectedTopicId = button.dataset.scsEditTopic || "";
+            fillTopicForm(state.selectedTopicId);
+            setValue(els.questionTopic, state.selectedTopicId);
+            resetQuestionForm({ preserveTopic: true });
+            renderPickLists();
         });
         els.questionsList?.addEventListener("click", event => {
             const button = event.target instanceof HTMLElement ? event.target.closest("[data-scs-edit-question]") : null;
@@ -216,18 +261,24 @@
         resetQuestionForm();
         loadBoard();
 
-        async function loadBoard() {
+        async function loadBoard(options = {}) {
             if (!urls.board) {
                 return;
             }
 
-            setStatus("info", "Cargando encuestas de capacitacion...");
+            if (!options.silent) {
+                setStatus("info", "Cargando encuestas de capacitacion...");
+            }
             try {
                 state.board = await fetchJson(urls.board);
                 renderBoard();
-                setStatus("success", state.board?.message || "Encuestas cargadas.");
+                if (!options.silent) {
+                    setStatus("success", state.board?.message || "Encuestas cargadas.");
+                }
             } catch (error) {
-                setStatus("error", buildErrorMessage(error));
+                if (!options.silent) {
+                    setStatus("error", buildErrorMessage(error));
+                }
             }
         }
 
@@ -239,11 +290,15 @@
             setText(els.averageScore, `${percentFormatter.format(Number(board.averageScorePercent || 0))}%`);
             renderTopicSelects();
             renderPickLists();
+            renderQuestionPreviews();
             renderSessions();
             renderQuestionBreakdown(els.bestQuestions, board.bestQuestions, "Sin preguntas calificadas.");
             renderQuestionBreakdown(els.weakQuestions, board.weakQuestions, "Sin preguntas calificadas.");
 
             const sessions = Array.isArray(board.sessions) ? board.sessions : [];
+            if (state.selectedSessionId && !sessions.some(session => session.sessionId === state.selectedSessionId)) {
+                state.selectedSessionId = "";
+            }
             if (!state.selectedSessionId && sessions.length) {
                 state.selectedSessionId = sessions[0].sessionId || "";
             }
@@ -254,9 +309,10 @@
 
         function renderTopicSelects() {
             const topics = Array.isArray(state.board?.topics) ? state.board.topics : [];
+            const editableTopics = topics.filter(topic => topic.isActive !== false && topic.isLocked !== true);
             const options = [
                 '<option value="">Selecciona...</option>',
-                ...topics.filter(topic => topic.isActive !== false).map(topic => `<option value="${escapeHtml(topic.topicId)}">${escapeHtml(topic.name)}</option>`)
+                ...editableTopics.map(topic => `<option value="${escapeHtml(topic.topicId)}">${escapeHtml(topic.name)}</option>`)
             ].join("");
             if (els.sessionTopic) {
                 const current = els.sessionTopic.value;
@@ -275,9 +331,9 @@
             if (els.topicsList) {
                 els.topicsList.innerHTML = topics.length
                     ? topics.map(topic => `
-                        <button type="button" class="support-cloud-survey-pick" data-scs-edit-topic="${escapeHtml(topic.topicId)}">
+                        <button type="button" class="support-cloud-survey-pick ${topic.topicId === state.selectedTopicId ? "is-selected" : ""}" data-scs-edit-topic="${escapeHtml(topic.topicId)}">
                             <strong>${escapeHtml(topic.name || "Tema")}</strong>
-                            <span>${escapeHtml(numberFormatter.format(Number(topic.knowledgeQuestionCount || 0)))} preguntas · ${topic.isActive === false ? "Inactivo" : "Activo"}</span>
+                            <span>${escapeHtml(numberFormatter.format(Number(topic.knowledgeQuestionCount || 0)))} preguntas · ${topic.isLocked ? "Fijo" : topic.isActive === false ? "Inactivo" : "Activo"}</span>
                         </button>
                     `).join("")
                     : '<div class="support-cloud-placeholder support-cloud-placeholder--compact">Sin temas.</div>';
@@ -285,15 +341,60 @@
 
             const questions = Array.isArray(state.board?.questions) ? state.board.questions : [];
             if (els.questionsList) {
-                els.questionsList.innerHTML = questions.length
-                    ? questions.map(question => `
+                const selectedTopic = findTopic(state.selectedTopicId);
+                const visibleQuestions = selectedTopic
+                    ? questions.filter(question => selectedTopic.isLocked
+                        ? question.isLocked === true
+                        : question.isLocked !== true && question.topicId === selectedTopic.topicId)
+                    : questions.filter(question => question.isLocked !== true);
+                els.questionsList.innerHTML = visibleQuestions.length
+                    ? visibleQuestions.map(question => question.isLocked ? `
+                        <div class="support-cloud-survey-pick is-locked">
+                            <strong>${escapeHtml(question.text || "Pregunta")}</strong>
+                            <span>${escapeHtml(question.componentLabel || "")} · ${escapeHtml(question.topicName || "Estandar")} · Fija</span>
+                        </div>
+                    ` : `
                         <button type="button" class="support-cloud-survey-pick" data-scs-edit-question="${escapeHtml(question.questionId)}">
                             <strong>${escapeHtml(question.text || "Pregunta")}</strong>
                             <span>${escapeHtml(question.componentLabel || "")} · ${escapeHtml(question.topicName || "Estandar")} · ${question.isActive === false ? "Inactiva" : "Activa"}</span>
                         </button>
                     `).join("")
-                    : '<div class="support-cloud-placeholder support-cloud-placeholder--compact">Sin preguntas.</div>';
+                    : '<div class="support-cloud-placeholder support-cloud-placeholder--compact">Sin preguntas para este tema.</div>';
             }
+        }
+
+        function renderQuestionPreviews() {
+            const questions = Array.isArray(state.board?.questions) ? state.board.questions : [];
+            const satisfactionQuestions = questions
+                .filter(question => question.isLocked === true || Number(question.componentValue || 0) === 645250001)
+                .sort(bySortOrder);
+            if (els.satisfactionPreview) {
+                els.satisfactionPreview.innerHTML = renderMiniQuestionList(satisfactionQuestions, "Sin preguntas fijas.");
+            }
+
+            const selectedTopic = findTopic(els.sessionTopic?.value || "");
+            if (els.selectedTopicTitle) {
+                els.selectedTopicTitle.textContent = selectedTopic?.name || "Conocimiento";
+            }
+            const selectedQuestions = selectedTopic
+                ? questions.filter(question => question.isLocked !== true && question.isActive !== false && question.topicId === selectedTopic.topicId).sort(bySortOrder)
+                : [];
+            if (els.selectedTopicPreview) {
+                els.selectedTopicPreview.innerHTML = renderMiniQuestionList(selectedQuestions, "Selecciona un tema para ver sus preguntas.");
+            }
+        }
+
+        function renderMiniQuestionList(items, emptyMessage) {
+            if (!items.length) {
+                return `<div class="support-cloud-placeholder support-cloud-placeholder--compact">${escapeHtml(emptyMessage)}</div>`;
+            }
+
+            return items.map(item => `
+                <div class="support-cloud-survey-mini-list__item">
+                    <strong>${escapeHtml(item.text || "Pregunta")}</strong>
+                    <span>${escapeHtml(item.inputTypeLabel || "")}</span>
+                </div>
+            `).join("");
         }
 
         function renderSessions() {
@@ -351,6 +452,9 @@
             els.publicLink.href = publicUrl || "#";
             els.publicLink.textContent = publicUrl || "Sin enlace";
             els.exportLink.href = buildUrl(urls.export, { sessionId: session.sessionId });
+            setText(els.qrSessionTitle, session.name || "Encuesta");
+            setText(els.scanCount, numberFormatter.format(Number(session.scanCount || 0)));
+            setText(els.completedCount, numberFormatter.format(Number(session.completedCount || 0)));
             if (els.closeSession) {
                 els.closeSession.disabled = Number(session.stateValue || 0) === 645250002;
             }
@@ -493,7 +597,7 @@
                 isActive: (els.questionActive?.value || "true") === "true",
                 options: typeValue === 645250000 ? readOptionsDraft() : []
             };
-            await saveAndRefresh(urls.saveQuestion, payload, resetQuestionForm);
+            await saveAndRefresh(urls.saveQuestion, payload, () => resetQuestionForm({ preserveTopic: true }));
         }
 
         async function saveSession() {
@@ -505,7 +609,33 @@
                 clientName: (els.clientName?.value || "").trim(),
                 dateValue: els.sessionDate?.value || ""
             };
-            await saveAndRefresh(urls.saveSession, payload, resetSessionForm);
+            if (!urls.saveSession) {
+                return;
+            }
+
+            setStatus("info", "Guardando sesion...");
+            try {
+                const result = await fetchJson(urls.saveSession, {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+                state.board = result?.board || state.board;
+                const session = findSavedSession(payload);
+                if (session) {
+                    state.selectedSessionId = session.sessionId || "";
+                }
+                resetSessionForm();
+                renderBoard();
+                closeModal(els.sessionModal);
+                const selected = findSession(state.selectedSessionId);
+                if (selected) {
+                    await selectSession(selected.sessionId, { preserveForm: true });
+                    openQrModal();
+                }
+                setStatus("success", result?.message || "Sesion guardada correctamente.");
+            } catch (error) {
+                setStatus("error", buildErrorMessage(error));
+            }
         }
 
         async function saveAndRefresh(url, payload, reset) {
@@ -539,6 +669,9 @@
                 const result = await fetchJson(buildUrl(urls.closeSession, { sessionId: session.sessionId }), { method: "POST" });
                 state.board = result?.board || state.board;
                 renderBoard();
+                await selectSession(session.sessionId, { preserveForm: true });
+                closeQrModal();
+                openWinnersModal();
                 setStatus("success", result?.message || "Encuesta cerrada.");
             } catch (error) {
                 setStatus("error", buildErrorMessage(error));
@@ -566,11 +699,16 @@
         }
 
         function resetTopicForm() {
+            state.selectedTopicId = "";
             setValue(els.topicId, "");
             setValue(els.topicName, "");
             setValue(els.topicDescription, "");
             setValue(els.topicActive, "true");
             setText(els.topicMeta, "Nuevo tema");
+            setTopicFormLocked(false);
+            if (els.questionForm) {
+                els.questionForm.hidden = true;
+            }
         }
 
         function fillTopicForm(topicId) {
@@ -584,13 +722,17 @@
             setValue(els.topicName, topic.name || "");
             setValue(els.topicDescription, topic.description || "");
             setValue(els.topicActive, topic.isActive === false ? "false" : "true");
-            setText(els.topicMeta, "Editando tema");
+            setText(els.topicMeta, topic.isLocked ? "Tema fijo" : "Editando tema");
+            setTopicFormLocked(topic.isLocked === true);
+            if (els.questionForm) {
+                els.questionForm.hidden = topic.isLocked === true;
+            }
         }
 
-        function resetQuestionForm() {
+        function resetQuestionForm(options = {}) {
             setValue(els.questionId, "");
             setValue(els.questionComponent, "645250000");
-            setValue(els.questionTopic, "");
+            setValue(els.questionTopic, options.preserveTopic ? state.selectedTopicId : "");
             setValue(els.questionType, "645250000");
             setValue(els.questionPoints, "1");
             setValue(els.questionOrder, "0");
@@ -600,6 +742,10 @@
             state.optionsDraft = [createEmptyOption(true), createEmptyOption(false)];
             renderOptionsDraft();
             syncQuestionControls();
+            if (els.questionForm) {
+                const selectedTopic = findTopic(state.selectedTopicId);
+                els.questionForm.hidden = !selectedTopic || selectedTopic.isLocked === true;
+            }
         }
 
         function fillQuestionForm(questionId) {
@@ -608,7 +754,12 @@
             if (!question) {
                 return;
             }
+            if (question.isLocked) {
+                setStatus("info", "Las preguntas de Satisfaccion son fijas.");
+                return;
+            }
 
+            state.selectedTopicId = question.topicId || state.selectedTopicId;
             setValue(els.questionId, question.questionId || "");
             setValue(els.questionComponent, String(question.componentValue || 645250000));
             setValue(els.questionTopic, question.topicId || "");
@@ -729,9 +880,107 @@
             setValue(els.clientId, match?.id || "");
         }
 
+        function openQrModal() {
+            const session = findSession(state.selectedSessionId);
+            if (session) {
+                renderQr(session);
+            }
+            openModal(els.qrModal);
+            window.clearInterval(state.qrRefreshTimer);
+            state.qrRefreshTimer = window.setInterval(() => {
+                if (!els.qrModal || els.qrModal.hidden) {
+                    window.clearInterval(state.qrRefreshTimer);
+                    return;
+                }
+                loadBoard({ silent: true });
+            }, 10000);
+        }
+
+        function closeQrModal() {
+            window.clearInterval(state.qrRefreshTimer);
+            closeModal(els.qrModal);
+        }
+
+        function openWinnersModal() {
+            renderWinners();
+            openModal(els.winnersModal);
+        }
+
+        function renderWinners() {
+            if (!els.winnersRows) {
+                return;
+            }
+
+            const winners = Array.isArray(state.detail?.leaderboard) ? state.detail.leaderboard : [];
+            els.winnersRows.innerHTML = winners.length
+                ? winners.map((item, index) => `
+                    <tr>
+                        <td data-label="Posicion">${index + 1}</td>
+                        <td data-label="Participante">${escapeHtml(item.fullName || "Participante")}</td>
+                        <td data-label="Empresa">${escapeHtml(item.company || "-")}</td>
+                        <td data-label="Puntaje" class="text-end support-cloud-table__hours">${escapeHtml(numberFormatter.format(Number(item.score || 0)))}</td>
+                        <td data-label="Porcentaje" class="text-end support-cloud-table__hours">${escapeHtml(percentFormatter.format(Number(item.scorePercent || 0)))}%</td>
+                    </tr>
+                `).join("")
+                : '<tr><td colspan="5" class="support-cloud-table__empty">Sin ganadores para mostrar.</td></tr>';
+        }
+
+        function openModal(modal) {
+            if (!modal) {
+                return;
+            }
+
+            modal.hidden = false;
+            document.body.classList.add("support-cloud-modal-open");
+        }
+
+        function closeModal(modal) {
+            if (!modal) {
+                return;
+            }
+
+            modal.hidden = true;
+            if (!root.querySelector(".support-cloud-modal:not([hidden])")) {
+                document.body.classList.remove("support-cloud-modal-open");
+            }
+        }
+
+        function setTopicFormLocked(isLocked) {
+            [els.topicName, els.topicDescription, els.topicActive].forEach(element => {
+                if (element) {
+                    element.disabled = isLocked;
+                }
+            });
+            if (els.saveTopicButton) {
+                els.saveTopicButton.disabled = isLocked;
+            }
+            if (els.topicLockNotice) {
+                els.topicLockNotice.hidden = !isLocked;
+            }
+        }
+
+        function findTopic(topicId) {
+            return (Array.isArray(state.board?.topics) ? state.board.topics : [])
+                .find(topic => topic.topicId === topicId);
+        }
+
         function findSession(sessionId) {
             return (Array.isArray(state.board?.sessions) ? state.board.sessions : [])
                 .find(session => session.sessionId === sessionId);
+        }
+
+        function findSavedSession(payload) {
+            if (payload.sessionId) {
+                return findSession(payload.sessionId);
+            }
+
+            const sessions = Array.isArray(state.board?.sessions) ? state.board.sessions : [];
+            return sessions.find(session =>
+                normalizeText(session.name || "") === normalizeText(payload.name || "")
+                && session.topicId === payload.topicId
+                && (!payload.dateValue || session.dateValue === payload.dateValue))
+                || sessions[0]
+                || null;
         }
 
         function createEmptyOption(isCorrect) {
@@ -743,6 +992,16 @@
                 sortOrder: 0,
                 isActive: true
             };
+        }
+
+        function bySortOrder(left, right) {
+            const leftOrder = Number(left?.sortOrder || 0);
+            const rightOrder = Number(right?.sortOrder || 0);
+            if (leftOrder !== rightOrder) {
+                return leftOrder - rightOrder;
+            }
+
+            return String(left?.text || "").localeCompare(String(right?.text || ""), "es");
         }
 
         function setStatus(type, message) {
@@ -795,14 +1054,15 @@
                 return { questionId, optionId: checked?.value || "" };
             }
             if (type === "rating") {
+                const checked = question.querySelector("input[type='radio']:checked");
                 return {
                     questionId,
-                    numericValue: Number(question.querySelector("select")?.value || 0)
+                    numericValue: Number(checked?.value || question.querySelector("select")?.value || 0)
                 };
             }
             return {
                 questionId,
-                textValue: question.querySelector("textarea")?.value || ""
+                textValue: question.querySelector("input[type='text'], textarea")?.value || ""
             };
         });
     }

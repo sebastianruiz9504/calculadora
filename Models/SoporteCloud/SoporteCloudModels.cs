@@ -193,6 +193,7 @@ public sealed class SoporteCloudSurveyTopicDto
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
     public bool IsActive { get; set; } = true;
+    public bool IsLocked { get; set; }
     public int KnowledgeQuestionCount { get; set; }
 }
 
@@ -209,6 +210,7 @@ public sealed class SoporteCloudSurveyQuestionDto
     public int SortOrder { get; set; }
     public decimal MaxPoints { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsLocked { get; set; }
     public IReadOnlyList<SoporteCloudSurveyOptionDto> Options { get; set; } = Array.Empty<SoporteCloudSurveyOptionDto>();
 }
 
@@ -226,6 +228,7 @@ public sealed class SoporteCloudSurveySessionDto
     public int StateValue { get; set; }
     public string StateLabel { get; set; } = "";
     public string PublicUrl { get; set; } = "";
+    public int ScanCount { get; set; }
     public int RegisteredCount { get; set; }
     public int CompletedCount { get; set; }
     public decimal AverageScore { get; set; }

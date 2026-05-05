@@ -588,6 +588,64 @@
     grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
 }
 
+.support-cloud-survey-actions {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.support-cloud-survey-action {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.support-cloud-survey-compose {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.support-cloud-survey-compose article {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: var(--support-cloud-soft);
+}
+
+.support-cloud-survey-compose h3 {
+    margin: 0;
+    color: var(--support-cloud-ink);
+    font-size: 16px;
+}
+
+.support-cloud-survey-mini-list {
+    display: grid;
+    gap: 8px;
+}
+
+.support-cloud-survey-mini-list__item {
+    display: grid;
+    gap: 2px;
+    padding: 9px 10px;
+    border: 1px solid #d6e1ec;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.support-cloud-survey-mini-list__item strong {
+    color: var(--support-cloud-ink);
+    font-size: 13px;
+}
+
+.support-cloud-survey-mini-list__item span {
+    color: var(--support-cloud-muted);
+    font-size: 12px;
+}
+
 .support-cloud-qr-panel {
     display: grid;
     gap: 16px;
@@ -628,6 +686,43 @@
 .support-cloud-qr-panel__actions {
     grid-template-columns: repeat(2, minmax(0, max-content));
     align-items: center;
+}
+
+.support-cloud-qr-counters {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.support-cloud-qr-counters article {
+    display: grid;
+    gap: 2px;
+    padding: 12px;
+    border: 1px solid var(--support-cloud-line);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.support-cloud-qr-counters strong {
+    color: var(--support-cloud-ink);
+    font-size: 1.45rem;
+}
+
+.support-cloud-survey-topics-dialog {
+    width: min(1120px, 100%);
+}
+
+.support-cloud-survey-topic-layout {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(220px, .32fr) minmax(0, 1fr);
+    align-items: start;
+}
+
+.support-cloud-survey-topic-layout aside,
+.support-cloud-survey-topic-editor {
+    display: grid;
+    gap: 12px;
 }
 
 .support-cloud-survey-detail,
@@ -684,6 +779,15 @@
     background: #ffffff;
     color: var(--support-cloud-ink);
     text-align: left;
+}
+
+.support-cloud-survey-pick.is-selected {
+    border-color: var(--support-cloud-brand);
+    background: var(--support-cloud-brand-soft);
+}
+
+.support-cloud-survey-pick.is-locked {
+    cursor: default;
 }
 
 .support-cloud-survey-pick strong {
@@ -831,6 +935,56 @@
     border-radius: 8px;
     background: #ffffff;
     color: var(--support-cloud-ink);
+}
+
+.support-cloud-star-rating {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(5, minmax(42px, max-content));
+    align-items: center;
+}
+
+.support-cloud-star-rating label {
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    min-width: 42px;
+    padding: 8px;
+    border: 1px solid #d6e1ec;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--support-cloud-muted);
+    cursor: pointer;
+}
+
+.support-cloud-star-rating input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.support-cloud-star-rating span {
+    color: #b8c4d1;
+    font-size: 24px;
+    line-height: 1;
+}
+
+.support-cloud-star-rating em {
+    color: var(--support-cloud-muted);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.support-cloud-star-rating label:has(input:checked),
+.support-cloud-star-rating label:hover {
+    border-color: var(--support-cloud-brand);
+    background: var(--support-cloud-brand-soft);
+}
+
+.support-cloud-star-rating label:has(input:checked) span,
+.support-cloud-star-rating label:hover span {
+    color: var(--support-cloud-brand);
 }
 
 .support-cloud-public-actions {
@@ -1334,6 +1488,9 @@ body.support-cloud-modal-open {
     }
 
     .support-cloud-survey-grid,
+    .support-cloud-survey-actions,
+    .support-cloud-survey-compose,
+    .support-cloud-survey-topic-layout,
     .support-cloud-survey-stat-columns {
         grid-template-columns: 1fr;
     }
@@ -1347,6 +1504,7 @@ body.support-cloud-modal-open {
     .support-cloud-section-header,
     .support-cloud-modal__header,
     .support-cloud-modal__footer,
+    .support-cloud-survey-action,
     .support-cloud-file-card,
     .support-cloud-file-card__actions {
         flex-direction: column;
@@ -1370,7 +1528,9 @@ body.support-cloud-modal-open {
     }
 
     .support-cloud-qr-panel,
+    .support-cloud-qr-counters,
     .support-cloud-survey-option,
+    .support-cloud-star-rating,
     .support-cloud-public-hero {
         grid-template-columns: 1fr;
     }

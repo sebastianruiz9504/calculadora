@@ -4,6 +4,7 @@ public sealed class CopiersPreventiveMaintenanceBoardDto
 {
     public string AsOfDateLabel { get; set; } = "";
     public string CounterPeriodLabel { get; set; } = "";
+    public string PeriodValue { get; set; } = "";
     public int RecordsCount { get; set; }
     public IReadOnlyList<CopiersPreventiveMaintenanceClientDto> Clients { get; set; } = Array.Empty<CopiersPreventiveMaintenanceClientDto>();
 }
@@ -14,6 +15,15 @@ public sealed class CopiersPreventiveMaintenanceClientDto
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public int EquipmentCount { get; set; }
+    public bool IsScheduledThisMonth { get; set; }
+    public string ScheduledDateDisplay { get; set; } = "";
+    public string MonthlyStatusLabel { get; set; } = "";
+    public string MonthlyStatusTone { get; set; } = "";
+    public string ScheduleButtonLabel { get; set; } = "";
+    public string ScheduleButtonTone { get; set; } = "";
+    public bool ScheduleButtonDisabled { get; set; }
+    public int MaintenanceRegisteredCount { get; set; }
+    public int PendingMaintenanceCount { get; set; }
     public int CountersRegisteredCount { get; set; }
     public int PendingCountersCount { get; set; }
     public IReadOnlyList<CopiersPreventiveMaintenanceEquipmentDto> Equipment { get; set; } = Array.Empty<CopiersPreventiveMaintenanceEquipmentDto>();
@@ -30,6 +40,12 @@ public sealed class CopiersPreventiveMaintenanceEquipmentDto
     public string Area { get; set; } = "";
     public string Site { get; set; } = "";
     public bool HasCurrentCounter { get; set; }
+    public bool HasMonthlyMaintenance { get; set; }
+    public bool HasMonthlyCounter { get; set; }
+    public string MaintenanceButtonLabel { get; set; } = "";
+    public string MaintenanceButtonTone { get; set; } = "";
+    public string CounterButtonLabel { get; set; } = "";
+    public string CounterButtonTone { get; set; } = "";
     public string CounterDateValue { get; set; } = "";
     public string CounterDateDisplay { get; set; } = "";
     public long? CounterCopies { get; set; }

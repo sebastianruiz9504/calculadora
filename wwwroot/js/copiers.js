@@ -694,16 +694,24 @@
         preventiveBody.innerHTML = clients.length ? clients.map((client) => {
             const clientKey = client.clientKey || client.clientId || client.clientName || "";
             const expanded = state.preventiveExpandedClients.has(clientKey);
+            const statusLabel = client.monthlyStatusLabel || "Pendiente";
+            const scheduleLabel = client.scheduleButtonLabel || "Programar mantenimiento";
+            const scheduleDisabled = Boolean(client.scheduleButtonDisabled);
+            const scheduledHint = client.scheduledDateDisplay ? ` - ${client.scheduledDateDisplay}` : "";
             return `
                 <tr class="copiers-preventive-client-row ${expanded ? "is-expanded" : ""}">
                     <td data-label="Cliente">
                         <button type="button" class="copiers-preventive-toggle" data-preventive-toggle="${escapeHtml(clientKey)}" aria-expanded="${expanded ? "true" : "false"}">
                             <span>${expanded ? "-" : "+"}</span>
                             <strong>${escapeHtml(client.clientName || "Sin cliente")}</strong>
+                            <small class="copiers-preventive-client-status">
+                                <span class="copiers-badge ${getPreventiveBadgeClass(client.monthlyStatusTone)}">${escapeHtml(statusLabel)}</span>
+                                ${client.scheduledDateDisplay ? `<span>${escapeHtml(client.scheduledDateDisplay)}</span>` : ""}
+                            </small>
                         </button>
                     </td>
                     <td data-label="Acciones" class="text-end">
-                        <button type="button" class="btn btn-sm btn-primary" data-preventive-schedule="${escapeHtml(clientKey)}">Programar mantenimiento</button>
+                        <button type="button" class="btn btn-sm ${getPreventiveButtonClass(client.scheduleButtonTone || "primary")}" data-preventive-schedule="${escapeHtml(clientKey)}" title="${escapeHtml(statusLabel + scheduledHint)}" ${scheduleDisabled ? "disabled" : ""}>${escapeHtml(scheduleLabel)}</button>
                     </td>
                 </tr>
                 ${expanded ? renderPreventiveClientDetail(client, clientKey) : ""}
@@ -721,6 +729,7 @@
                     <div class="copiers-preventive-detail">
                         <div class="copiers-preventive-detail__summary">
                             <span>${numberFormatter.format(Number(equipment.length || 0))} equipo${equipment.length === 1 ? "" : "s"}</span>
+                            <span>${numberFormatter.format(Number(client?.maintenanceRegisteredCount || 0))} con mantenimiento</span>
                             <span>${numberFormatter.format(Number(client?.countersRegisteredCount || 0))} con contador</span>
                             <span>${escapeHtml(periodLabel)}</span>
                         </div>
@@ -754,6 +763,8 @@
         const hasCounter = Boolean(row.hasCurrentCounter);
         const statusTone = hasCounter ? "is-good" : "is-warning";
         const statusLabel = row.counterDateDisplay || (hasCounter ? "Registrado" : "Pendiente");
+        const maintenanceButtonLabel = row.maintenanceButtonLabel || (row.hasMonthlyMaintenance ? "Mantenimiento registrado" : "Registrar mantenimiento");
+        const counterButtonLabel = row.counterButtonLabel || (row.hasMonthlyCounter ? "Contador registrado" : "Registrar contador");
         return `
             <tr>
                 <td data-label="Equipo"><strong>${escapeHtml(row.serial || "Equipo sin serial")}</strong></td>
@@ -766,8 +777,8 @@
                 <td data-label="Contador escaner" class="text-end">${escapeHtml(formatNullableNumber(row.counterScans))}</td>
                 <td data-label="Acciones" class="text-end">
                     <div class="copiers-inline-actions">
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-preventive-maintenance-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">Registrar mantenimiento</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" data-preventive-counter-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">Registrar contador</button>
+                        <button type="button" class="btn btn-sm ${getPreventiveButtonClass(row.maintenanceButtonTone || "outline-primary")}" data-preventive-maintenance-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">${escapeHtml(maintenanceButtonLabel)}</button>
+                        <button type="button" class="btn btn-sm ${getPreventiveButtonClass(row.counterButtonTone || "outline-secondary")}" data-preventive-counter-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">${escapeHtml(counterButtonLabel)}</button>
                     </div>
                 </td>
             </tr>
@@ -809,6 +820,7 @@
             });
 
             closeModal(preventiveScheduleModal);
+            await loadPreventiveMaintenance();
             showStatus(statusBanner, "success", result.message || "Mantenimiento preventivo programado.");
         } catch (error) {
             showStatus(preventiveScheduleStatus, "error", getErrorMessage(error));
@@ -1641,6 +1653,9 @@
 
             closeModal(maintenanceModal);
             await loadMaintenance();
+            if (state.preventiveMaintenance) {
+                await loadPreventiveMaintenance();
+            }
             showStatus(statusBanner, "success", result.message || "Mantenimiento guardado.");
         } catch (error) {
             showStatus(maintenanceModalStatus, "error", getErrorMessage(error));
@@ -1941,6 +1956,30 @@
     function findPreventiveEquipment(client, equipmentId) {
         const equipment = Array.isArray(client?.equipment) ? client.equipment : [];
         return equipment.find((row) => (row.recordId || "") === (equipmentId || "")) || null;
+    }
+
+    function getPreventiveBadgeClass(tone) {
+        if (tone === "good" || tone === "success") {
+            return "is-good";
+        }
+        if (tone === "warning") {
+            return "is-warning";
+        }
+        if (tone === "danger") {
+            return "is-danger";
+        }
+        return "";
+    }
+
+    function getPreventiveButtonClass(tone) {
+        const normalized = (tone || "").trim();
+        if (normalized.startsWith("outline-")) {
+            return `btn-${normalized}`;
+        }
+        if (["primary", "secondary", "success", "warning", "danger"].includes(normalized)) {
+            return `btn-${normalized}`;
+        }
+        return "btn-primary";
     }
 
     function buildDownloadUrl(baseUrl, key, value) {
