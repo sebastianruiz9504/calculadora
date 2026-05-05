@@ -78,6 +78,9 @@ public interface IDataverseService
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> SaveCopiersMaintenanceAsync(CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveRequestDto request, CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> UploadCopiersMaintenanceAttachmentAsync(string maintenanceId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
+    Task<CopiersPreventiveMaintenanceBoardDto> GetCopiersPreventiveMaintenanceBoardAsync(CancellationToken ct = default);
+    Task<CopiersCounterSaveResultDto> SaveCopiersCounterAsync(CopiersCounterSaveRequestDto request, CancellationToken ct = default);
+    Task<CopiersCounterSaveResultDto> UploadCopiersCounterAttachmentAsync(string counterId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<CopiersSupplyInventoryDto> GetCopiersSupplyInventoryAsync(CancellationToken ct = default);
     Task<CopiersSupplyQuantityUpdateResultDto> UpdateCopiersSupplyQuantityAsync(CopiersSupplyQuantityUpdateRequestDto request, CancellationToken ct = default);
     Task<IReadOnlyList<CopiersLookupItemDto>> GetCopiersSupplyLookupAsync(string? query = null, int top = 100, CancellationToken ct = default);

@@ -4360,12 +4360,12 @@
             sortValue: row => row.emissionDateValue || ""
         },
         {
-            key: "paymentValue",
-            label: "Total pago",
+            key: "totalInvoice",
+            label: "Total factura",
             type: "number",
             align: "end",
-            displayValue: row => currencyFormatter.format(Number(row.paymentValue || 0)),
-            render: row => renderPortfolioCurrency(row.paymentValue)
+            displayValue: row => currencyFormatter.format(Number(row.totalInvoice || 0)),
+            render: row => renderPortfolioCurrency(row.totalInvoice)
         },
         {
             key: "paymentStatusLabel",

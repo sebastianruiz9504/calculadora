@@ -9,6 +9,10 @@
         saveMaintenance: app.dataset.saveMaintenanceUrl || "",
         uploadMaintenance: app.dataset.uploadMaintenanceUrl || "",
         downloadMaintenance: app.dataset.downloadMaintenanceUrl || "",
+        preventiveMaintenance: app.dataset.preventiveMaintenanceUrl || "",
+        schedulePreventiveMaintenance: app.dataset.schedulePreventiveMaintenanceUrl || "",
+        saveCounter: app.dataset.saveCounterUrl || "",
+        uploadCounter: app.dataset.uploadCounterUrl || "",
         equipment: app.dataset.equipmentUrl || "",
         equipmentDetail: app.dataset.equipmentDetailUrl || "",
         equipmentInventory: app.dataset.equipmentInventoryUrl || "",
@@ -52,6 +56,32 @@
     const maintenanceStatusSelect = document.getElementById("copiersMaintenanceStatus");
     const maintenanceDescriptionInput = document.getElementById("copiersMaintenanceDescription");
     const maintenanceFileInput = document.getElementById("copiersMaintenanceFile");
+
+    const preventiveRefreshBtn = document.getElementById("copiersPreventiveRefreshBtn");
+    const preventiveBody = document.getElementById("copiersPreventiveBody");
+    const preventiveCount = document.getElementById("copiersPreventiveCount");
+    const preventiveEmpty = document.getElementById("copiersPreventiveEmpty");
+    const preventiveScheduleModal = document.getElementById("copiersPreventiveScheduleModal");
+    const preventiveScheduleForm = document.getElementById("copiersPreventiveScheduleForm");
+    const preventiveScheduleSubtitle = document.getElementById("copiersPreventiveScheduleSubtitle");
+    const preventiveScheduleStatus = document.getElementById("copiersPreventiveScheduleStatus");
+    const preventiveScheduleClientIdInput = document.getElementById("copiersPreventiveScheduleClientId");
+    const preventiveScheduleClientNameInput = document.getElementById("copiersPreventiveScheduleClientName");
+    const preventiveScheduleClientDisplayInput = document.getElementById("copiersPreventiveScheduleClientDisplay");
+    const preventiveScheduleDateInput = document.getElementById("copiersPreventiveScheduleDate");
+    const preventiveScheduleTimeInput = document.getElementById("copiersPreventiveScheduleTime");
+    const preventiveScheduleDurationInput = document.getElementById("copiersPreventiveScheduleDuration");
+    const preventiveScheduleSaveBtn = document.getElementById("copiersPreventiveScheduleSaveBtn");
+    const counterModal = document.getElementById("copiersCounterModal");
+    const counterForm = document.getElementById("copiersCounterForm");
+    const counterStatus = document.getElementById("copiersCounterStatus");
+    const counterEquipmentIdInput = document.getElementById("copiersCounterEquipmentId");
+    const counterEquipmentNameInput = document.getElementById("copiersCounterEquipmentName");
+    const counterCopiesInput = document.getElementById("copiersCounterCopies");
+    const counterScansInput = document.getElementById("copiersCounterScans");
+    const counterDateInput = document.getElementById("copiersCounterDate");
+    const counterFileInput = document.getElementById("copiersCounterFile");
+    const counterSaveBtn = document.getElementById("copiersCounterSaveBtn");
 
     const equipmentRefreshBtn = document.getElementById("copiersEquipmentRefreshBtn");
     const equipmentCount = document.getElementById("copiersEquipmentCount");
@@ -173,6 +203,10 @@
         activeTab: "maintenance",
         busy: false,
         maintenance: null,
+        preventiveMaintenance: null,
+        preventiveExpandedClients: new Set(),
+        counterSaving: false,
+        scheduleSaving: false,
         equipment: null,
         equipmentSerialSearch: "",
         equipmentDetail: null,
@@ -194,6 +228,7 @@
 
     const maintenanceStatusPending = 645250001;
     const maintenanceStatusCompleted = 645250000;
+    const maintenanceTypePreventive = 645250001;
     const fallbackMaintenanceStatusOptions = [
         { value: maintenanceStatusCompleted, label: "Completado" },
         { value: maintenanceStatusPending, label: "Pendiente" }
@@ -208,6 +243,7 @@
     });
 
     maintenanceRefreshBtn?.addEventListener("click", () => loadMaintenance());
+    preventiveRefreshBtn?.addEventListener("click", () => loadPreventiveMaintenance());
     equipmentRefreshBtn?.addEventListener("click", () => loadEquipment());
     inventoryLoadBtn?.addEventListener("click", () => loadEquipmentInventory());
     inventoryClearBtn?.addEventListener("click", clearEquipmentInventory);
@@ -241,6 +277,54 @@
         const row = findById(state.maintenance?.records, rowElement.dataset.recordId);
         if (row) {
             await openMaintenanceModal(row);
+        }
+    });
+
+    preventiveBody?.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const toggleButton = target.closest("[data-preventive-toggle]");
+        if (toggleButton instanceof HTMLElement) {
+            const clientKey = toggleButton.dataset.preventiveToggle || "";
+            if (state.preventiveExpandedClients.has(clientKey)) {
+                state.preventiveExpandedClients.delete(clientKey);
+            } else {
+                state.preventiveExpandedClients.add(clientKey);
+            }
+
+            renderPreventiveMaintenance();
+            return;
+        }
+
+        const scheduleButton = target.closest("[data-preventive-schedule]");
+        if (scheduleButton instanceof HTMLElement) {
+            const client = findPreventiveClient(scheduleButton.dataset.preventiveSchedule || "");
+            if (client) {
+                openPreventiveScheduleModal(client);
+            }
+            return;
+        }
+
+        const maintenanceButton = target.closest("[data-preventive-maintenance-equipment]");
+        if (maintenanceButton instanceof HTMLElement) {
+            const client = findPreventiveClient(maintenanceButton.dataset.preventiveClient || "");
+            const equipment = findPreventiveEquipment(client, maintenanceButton.dataset.preventiveMaintenanceEquipment || "");
+            if (client && equipment) {
+                await openPreventiveMaintenanceModal(client, equipment);
+            }
+            return;
+        }
+
+        const counterButton = target.closest("[data-preventive-counter-equipment]");
+        if (counterButton instanceof HTMLElement) {
+            const client = findPreventiveClient(counterButton.dataset.preventiveClient || "");
+            const equipment = findPreventiveEquipment(client, counterButton.dataset.preventiveCounterEquipment || "");
+            if (client && equipment) {
+                openCounterModal(client, equipment);
+            }
         }
     });
 
@@ -372,6 +456,16 @@
         await saveMaintenance();
     });
 
+    preventiveScheduleForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await schedulePreventiveMaintenance();
+    });
+
+    counterForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveCounter();
+    });
+
     equipmentAssignmentForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveEquipmentAssignment();
@@ -406,6 +500,10 @@
         const closeTarget = target.getAttribute("data-copiers-close");
         if (closeTarget === "maintenance") {
             closeModal(maintenanceModal);
+        } else if (closeTarget === "preventiveSchedule") {
+            closeModal(preventiveScheduleModal);
+        } else if (closeTarget === "counter") {
+            closeModal(counterModal);
         } else if (closeTarget === "equipmentDetail") {
             closeModal(equipmentDetailModal);
         } else if (closeTarget === "equipmentMovement") {
@@ -428,7 +526,7 @@
             return;
         }
 
-        [confirmIngresoModal, ingresoModal, supplyModal, equipmentMovementModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
+        [confirmIngresoModal, ingresoModal, supplyModal, counterModal, preventiveScheduleModal, equipmentMovementModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
             if (modal && !modal.hidden) {
                 closeModal(modal);
             }
@@ -501,6 +599,8 @@
     async function ensureTabData(tab) {
         if (tab === "maintenance" && !state.maintenance) {
             await loadMaintenance();
+        } else if (tab === "preventiveMaintenance" && !state.preventiveMaintenance) {
+            await loadPreventiveMaintenance();
         } else if (tab === "equipment" && !state.equipment) {
             await loadEquipment();
         } else if (tab === "equipmentInventory" && !state.equipmentInventory) {
@@ -561,6 +661,222 @@
                     <td data-label="Descripcion">${escapeHtml(row.description || "")}</td>
                 </tr>`;
         }).join("");
+    }
+
+    async function loadPreventiveMaintenance() {
+        try {
+            setBusy(true);
+            showStatus(statusBanner, "info", "Cargando mantenimientos preventivos...");
+            state.preventiveMaintenance = await fetchJson(urls.preventiveMaintenance);
+            renderPreventiveMaintenance();
+            clearStatus(statusBanner);
+        } catch (error) {
+            showStatus(statusBanner, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function renderPreventiveMaintenance() {
+        const clients = Array.isArray(state.preventiveMaintenance?.clients) ? state.preventiveMaintenance.clients : [];
+        if (preventiveCount) {
+            preventiveCount.textContent = `${clients.length} cliente${clients.length === 1 ? "" : "s"}`;
+        }
+
+        if (preventiveEmpty) {
+            preventiveEmpty.hidden = clients.length > 0;
+        }
+
+        if (!preventiveBody) {
+            return;
+        }
+
+        preventiveBody.innerHTML = clients.length ? clients.map((client) => {
+            const clientKey = client.clientKey || client.clientId || client.clientName || "";
+            const expanded = state.preventiveExpandedClients.has(clientKey);
+            return `
+                <tr class="copiers-preventive-client-row ${expanded ? "is-expanded" : ""}">
+                    <td data-label="Cliente">
+                        <button type="button" class="copiers-preventive-toggle" data-preventive-toggle="${escapeHtml(clientKey)}" aria-expanded="${expanded ? "true" : "false"}">
+                            <span>${expanded ? "-" : "+"}</span>
+                            <strong>${escapeHtml(client.clientName || "Sin cliente")}</strong>
+                        </button>
+                    </td>
+                    <td data-label="Acciones" class="text-end">
+                        <button type="button" class="btn btn-sm btn-primary" data-preventive-schedule="${escapeHtml(clientKey)}">Programar mantenimiento</button>
+                    </td>
+                </tr>
+                ${expanded ? renderPreventiveClientDetail(client, clientKey) : ""}
+            `;
+        }).join("") : `<tr><td colspan="2" class="text-center copiers-muted">No hay clientes con productos copiers para mostrar.</td></tr>`;
+    }
+
+    function renderPreventiveClientDetail(client, clientKey) {
+        const equipment = Array.isArray(client?.equipment) ? client.equipment : [];
+        const periodLabel = state.preventiveMaintenance?.counterPeriodLabel || "Mes vigente";
+
+        return `
+            <tr class="copiers-preventive-detail-row">
+                <td colspan="2">
+                    <div class="copiers-preventive-detail">
+                        <div class="copiers-preventive-detail__summary">
+                            <span>${numberFormatter.format(Number(equipment.length || 0))} equipo${equipment.length === 1 ? "" : "s"}</span>
+                            <span>${numberFormatter.format(Number(client?.countersRegisteredCount || 0))} con contador</span>
+                            <span>${escapeHtml(periodLabel)}</span>
+                        </div>
+                        <div class="copiers-table-wrap copiers-table-wrap--compact">
+                            <table class="table align-middle copiers-table copiers-table--preventive-equipment">
+                                <thead>
+                                    <tr>
+                                        <th>Equipo</th>
+                                        <th>Tipo</th>
+                                        <th>Referencia</th>
+                                        <th>Sede</th>
+                                        <th>Area</th>
+                                        <th>Ultimo contador</th>
+                                        <th class="text-end">Contador impresora</th>
+                                        <th class="text-end">Contador escaner</th>
+                                        <th class="text-end">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${equipment.length ? equipment.map((row) => renderPreventiveEquipmentRow(clientKey, row)).join("") : `<tr><td colspan="9" class="text-center copiers-muted">Este cliente no tiene equipos asignados.</td></tr>`}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    function renderPreventiveEquipmentRow(clientKey, row) {
+        const hasCounter = Boolean(row.hasCurrentCounter);
+        const statusTone = hasCounter ? "is-good" : "is-warning";
+        const statusLabel = row.counterDateDisplay || (hasCounter ? "Registrado" : "Pendiente");
+        return `
+            <tr>
+                <td data-label="Equipo"><strong>${escapeHtml(row.serial || "Equipo sin serial")}</strong></td>
+                <td data-label="Tipo">${escapeHtml(row.categoryLabel || "")}</td>
+                <td data-label="Referencia">${escapeHtml(row.reference || "")}</td>
+                <td data-label="Sede">${escapeHtml(row.site || "")}</td>
+                <td data-label="Area">${escapeHtml(row.area || "")}</td>
+                <td data-label="Ultimo contador"><span class="copiers-badge ${statusTone}">${escapeHtml(statusLabel)}</span></td>
+                <td data-label="Contador impresora" class="text-end">${escapeHtml(formatNullableNumber(row.counterCopies))}</td>
+                <td data-label="Contador escaner" class="text-end">${escapeHtml(formatNullableNumber(row.counterScans))}</td>
+                <td data-label="Acciones" class="text-end">
+                    <div class="copiers-inline-actions">
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-preventive-maintenance-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">Registrar mantenimiento</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-preventive-counter-equipment="${escapeHtml(row.recordId || "")}" data-preventive-client="${escapeHtml(clientKey)}">Registrar contador</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    function openPreventiveScheduleModal(client) {
+        if (!client) {
+            return;
+        }
+
+        preventiveScheduleClientIdInput.value = client.clientId || "";
+        preventiveScheduleClientNameInput.value = client.clientName || "";
+        preventiveScheduleClientDisplayInput.value = client.clientName || "Sin cliente";
+        preventiveScheduleDateInput.value = todayValue();
+        preventiveScheduleTimeInput.value = defaultTimeValue();
+        preventiveScheduleDurationInput.value = "60";
+        preventiveScheduleSubtitle.textContent = `Reserva un espacio para ${client.clientName || "este cliente"}.`;
+        clearStatus(preventiveScheduleStatus);
+        showModal(preventiveScheduleModal);
+    }
+
+    async function schedulePreventiveMaintenance() {
+        try {
+            state.scheduleSaving = true;
+            setBusy(true);
+            preventiveScheduleSaveBtn.disabled = true;
+            showStatus(preventiveScheduleStatus, "info", "Reservando espacio en tu calendario...");
+            const result = await fetchJson(urls.schedulePreventiveMaintenance, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clientId: preventiveScheduleClientIdInput.value,
+                    clientName: preventiveScheduleClientNameInput.value,
+                    dateValue: preventiveScheduleDateInput.value,
+                    timeValue: preventiveScheduleTimeInput.value,
+                    durationMinutes: Number(preventiveScheduleDurationInput.value || 60)
+                })
+            });
+
+            closeModal(preventiveScheduleModal);
+            showStatus(statusBanner, "success", result.message || "Mantenimiento preventivo programado.");
+        } catch (error) {
+            showStatus(preventiveScheduleStatus, "error", getErrorMessage(error));
+        } finally {
+            preventiveScheduleSaveBtn.disabled = false;
+            state.scheduleSaving = false;
+            setBusy(false);
+        }
+    }
+
+    async function openPreventiveMaintenanceModal(client, equipment) {
+        await openMaintenanceModal({
+            recordId: "",
+            title: `Mantenimiento preventivo - ${equipment.serial || client.clientName || "Cliente"}`,
+            equipmentId: equipment.recordId || "",
+            clientId: client.clientId || equipment.clientId || "",
+            clientName: client.clientName || equipment.clientName || "",
+            dateValue: todayValue(),
+            description: "",
+            maintenanceTypeValue: maintenanceTypePreventive,
+            maintenanceStatusValue: maintenanceStatusPending
+        });
+    }
+
+    function openCounterModal(client, equipment) {
+        counterEquipmentIdInput.value = equipment.recordId || "";
+        counterEquipmentNameInput.value = `${equipment.serial || "Equipo"} - ${client.clientName || equipment.clientName || "Sin cliente"}`;
+        counterCopiesInput.value = "";
+        counterScansInput.value = "";
+        counterDateInput.value = todayValue();
+        counterFileInput.value = "";
+        clearStatus(counterStatus);
+        showModal(counterModal);
+    }
+
+    async function saveCounter() {
+        try {
+            state.counterSaving = true;
+            setBusy(true);
+            counterSaveBtn.disabled = true;
+            showStatus(counterStatus, "info", "Registrando contador...");
+            let result = await fetchJson(urls.saveCounter, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    equipmentId: counterEquipmentIdInput.value,
+                    copiesCounter: parseNullableInt(counterCopiesInput.value),
+                    scansCounter: parseNullableInt(counterScansInput.value),
+                    dateValue: counterDateInput.value
+                })
+            });
+
+            const file = counterFileInput.files?.[0];
+            if (file && result.recordId) {
+                showStatus(counterStatus, "info", "Adjuntando pagina de estado...");
+                result = await uploadFile(urls.uploadCounter, "counterId", result.recordId, file);
+            }
+
+            closeModal(counterModal);
+            await loadPreventiveMaintenance();
+            showStatus(statusBanner, "success", result.message || "Contador registrado.");
+        } catch (error) {
+            showStatus(counterStatus, "error", getErrorMessage(error));
+        } finally {
+            counterSaveBtn.disabled = false;
+            state.counterSaving = false;
+            setBusy(false);
+        }
     }
 
     async function loadEquipment() {
@@ -1617,6 +1933,16 @@
         return (rows || []).find((row) => row.recordId === id);
     }
 
+    function findPreventiveClient(clientKey) {
+        const clients = Array.isArray(state.preventiveMaintenance?.clients) ? state.preventiveMaintenance.clients : [];
+        return clients.find((client) => (client.clientKey || client.clientId || client.clientName || "") === clientKey) || null;
+    }
+
+    function findPreventiveEquipment(client, equipmentId) {
+        const equipment = Array.isArray(client?.equipment) ? client.equipment : [];
+        return equipment.find((row) => (row.recordId || "") === (equipmentId || "")) || null;
+    }
+
     function buildDownloadUrl(baseUrl, key, value) {
         return `${baseUrl}?${encodeURIComponent(key)}=${encodeURIComponent(value || "")}`;
     }
@@ -1636,6 +1962,15 @@
 
         const numeric = Number(value);
         return Number.isFinite(numeric) ? String(numeric) : "";
+    }
+
+    function formatNullableNumber(value) {
+        if (value === null || value === undefined || value === "") {
+            return "-";
+        }
+
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numberFormatter.format(numeric) : "-";
     }
 
     function parseNullableInt(value) {
@@ -1669,6 +2004,13 @@
         const now = new Date();
         const offset = now.getTimezoneOffset();
         return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
+    }
+
+    function defaultTimeValue() {
+        const now = new Date();
+        now.setMinutes(0, 0, 0);
+        now.setHours(now.getHours() + 1);
+        return `${String(now.getHours()).padStart(2, "0")}:00`;
     }
 
     function debounce(callback, delay) {

@@ -2313,6 +2313,8 @@ public sealed partial class DataverseService
                         HasCurrentCounter = hasCurrentCounter,
                         CounterDateValue = FormatCopiersCounterDateValue(counter.Date),
                         CounterDateDisplay = counterDateDisplay,
+                        CounterCopies = counter.Copies,
+                        CounterScans = counter.Scans,
                         CounterStatusLabel = hasCurrentCounter
                             ? $"Contador registrado el {counterDateDisplay}"
                             : $"Pendiente de contador - {counterPeriodLabel}",

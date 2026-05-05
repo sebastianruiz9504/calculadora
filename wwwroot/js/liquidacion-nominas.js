@@ -10,6 +10,7 @@
     const paymentDateInput = document.getElementById("paymentDateInput");
     const previewBtn = document.getElementById("previewNominaBtn");
     const confirmBtn = document.getElementById("confirmNominaBtn");
+    const saveDraftBtn = document.getElementById("saveNominaDraftBtn");
     const resetBtn = document.getElementById("resetNominaBtn");
     const statusBanner = document.getElementById("nominaStatusBanner");
     const summarySection = document.getElementById("nominaSummary");
@@ -51,11 +52,16 @@
         vacaciones: "Vacaciones",
         calamidad: "Calamidad"
     };
+    const draftStorageKey = buildDraftStorageKey(app.dataset.draftOwner || "");
+    const draftVersion = 1;
 
     const state = {
         rows: [],
         logs: [],
-        activeRowId: ""
+        activeRowId: "",
+        busy: false,
+        restoringDraft: false,
+        draftSavedAt: ""
     };
 
     periodInput.value = app.dataset.initialPeriod || "";
@@ -65,6 +71,12 @@
         if (!paymentDateInput.value) {
             paymentDateInput.value = getLastDayOfMonth(periodInput.value);
         }
+
+        handleDraftDateChange(true);
+    });
+
+    paymentDateInput.addEventListener("change", () => {
+        handleDraftDateChange(false);
     });
 
     previewBtn.addEventListener("click", async () => {
@@ -75,8 +87,13 @@
         await confirmPreview();
     });
 
+    saveDraftBtn?.addEventListener("click", () => {
+        saveDraft(true);
+    });
+
     resetBtn.addEventListener("click", () => {
         clearState();
+        clearSavedDraft();
         renderStatus("info", "La vista fue limpiada. Selecciona mes y fecha de pago para preparar una nueva liquidacion.");
     });
 
@@ -119,6 +136,8 @@
     detailForm?.addEventListener("input", handleDetailFieldChange);
     detailForm?.addEventListener("change", handleDetailFieldChange);
 
+    restoreDraft();
+
     function handleRowEditChange(event) {
         const input = event.target;
         if (!(input instanceof HTMLInputElement)) {
@@ -126,21 +145,33 @@
         }
 
         const field = input.dataset.rowField;
-        if (field !== "factorCopiers" && field !== "factorCloud") {
-            return;
-        }
-
         const rowElement = input.closest("tr[data-row-id]");
         const row = rowElement ? state.rows.find((item) => item.employeeId === rowElement.dataset.rowId) : null;
         if (!row) {
             return;
         }
 
+        if (field === "verified") {
+            row.verified = input.checked;
+            updateRowOutputs(row, field);
+            renderSummary();
+            updateConfirmAvailability();
+            saveDraft();
+            return;
+        }
+
+        if (field !== "factorCopiers" && field !== "factorCloud") {
+            return;
+        }
+
+        markRowPendingVerification(row);
         row[field] = toPositiveNumber(input.value);
         recalculateRow(row);
         updateRowOutputs(row, field);
         renderSummary();
         renderVerticals();
+        updateConfirmAvailability();
+        saveDraft();
     }
 
     function handleDetailFieldChange(event) {
@@ -159,6 +190,7 @@
             return;
         }
 
+        markRowPendingVerification(row);
         if (input instanceof HTMLSelectElement) {
             row[field] = normalizeAbsenceReason(input.value);
             row.absencePayment = calculateAbsencePayment(row);
@@ -187,6 +219,23 @@
         renderDetailWarnings(row);
         renderSummary();
         renderVerticals();
+        updateConfirmAvailability();
+        saveDraft();
+    }
+
+    function handleDraftDateChange(periodChanged) {
+        if (!state.rows.length) {
+            return;
+        }
+
+        if (periodChanged) {
+            state.rows.forEach((row) => markRowPendingVerification(row));
+            renderRows();
+            updateConfirmAvailability();
+            renderStatus("info", "El periodo cambio. Vuelve a preparar la liquidacion y verifica las filas antes de confirmar.");
+        }
+
+        saveDraft();
     }
 
     detailForm?.addEventListener("submit", (event) => {
@@ -241,6 +290,12 @@
                 return;
             }
 
+            if (!areAllRowsVerified()) {
+                renderStatus("warning", "Marca todas las filas como Verificado antes de confirmar y enviar.");
+                updateConfirmAvailability();
+                return;
+            }
+
             setBusy(true);
             renderStatus("info", "Confirmando la liquidacion y enviando a Dataverse...");
 
@@ -279,6 +334,7 @@
             confirmed,
             adjustments: state.rows.map((row) => ({
                 employeeId: row.employeeId,
+                verified: Boolean(row.verified),
                 workedDays: row.workedDays,
                 absenceReason: row.absenceReason || "",
                 absencePayment: row.absencePayment,
@@ -302,7 +358,7 @@
         rowsCard.hidden = state.rows.length === 0;
         verticalsCard.hidden = state.rows.length === 0;
         logsCard.hidden = state.logs.length === 0 && !fromConfirm;
-        confirmBtn.disabled = state.rows.length === 0;
+        updateConfirmAvailability();
         periodLabel.textContent = payload.periodLabel
             ? `${payload.periodLabel} | Pago: ${payload.paymentDateDisplay || payload.paymentDateValue || ""}`
             : "";
@@ -314,6 +370,14 @@
 
         if (fromConfirm && state.logs.length > 0) {
             logsCard.hidden = false;
+        }
+
+        if (!state.restoringDraft) {
+            if (fromConfirm && !payload.hasErrors) {
+                clearSavedDraft();
+            } else {
+                saveDraft();
+            }
         }
     }
 
@@ -338,6 +402,7 @@
         normalized.loan = toPositiveNumber(normalized.loan);
         normalized.payrollWithholding = toPositiveNumber(normalized.payrollWithholding);
         normalized.externalWithholding = toPositiveNumber(normalized.externalWithholding);
+        normalized.verified = Boolean(normalized.verified);
         recalculateRow(normalized);
         return normalized;
     }
@@ -384,6 +449,12 @@
         rowsBody.innerHTML = state.rows.map((row) => {
             return `
                 <tr data-row-id="${escapeHtml(row.employeeId)}" class="${buildRowClass(row)}" tabindex="0" role="button" aria-label="Liquidacion de ${escapeHtml(row.employeeName || "empleado")}">
+                    <td class="text-center payroll-verified-cell">
+                        <label class="payroll-verify-toggle" data-row-edit>
+                            <input class="form-check-input" type="checkbox" ${row.verified ? "checked" : ""} data-row-edit data-row-field="verified" aria-label="Verificado ${escapeHtml(row.employeeName || "empleado")}" />
+                            <span>Verificado</span>
+                        </label>
+                    </td>
                     <td>
                         <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
                     </td>
@@ -411,6 +482,7 @@
         setCellText(tr, "netPayroll", formatMoney(row.netPayroll));
         setCellText(tr, "totalCopiers", formatMoney(row.totalCopiers));
         setCellText(tr, "totalCloud", formatMoney(row.totalCloud));
+        setRowCheckboxValue(tr, "verified", row.verified, skipField);
         setRowInputValue(tr, "factorCopiers", row.factorCopiers, skipField);
         setRowInputValue(tr, "factorCloud", row.factorCloud, skipField);
     }
@@ -635,9 +707,16 @@
     }
 
     function buildRowClass(row) {
-        return getRowWarnings(row).length > 0
-            ? "payroll-row payroll-row--warning"
-            : "payroll-row";
+        const classes = ["payroll-row"];
+        if (getRowWarnings(row).length > 0) {
+            classes.push("payroll-row--warning");
+        }
+
+        if (row.verified) {
+            classes.push("payroll-row--verified");
+        }
+
+        return classes.join(" ");
     }
 
     function getRowWarnings(row) {
@@ -715,11 +794,123 @@
         rowsCard.hidden = true;
         verticalsCard.hidden = true;
         logsCard.hidden = true;
-        confirmBtn.disabled = true;
         periodLabel.textContent = "";
         rowsBody.innerHTML = "";
         verticalsBody.innerHTML = "";
         logsList.innerHTML = "";
+        updateConfirmAvailability();
+    }
+
+    function markRowPendingVerification(row) {
+        if (row) {
+            row.verified = false;
+        }
+    }
+
+    function areAllRowsVerified() {
+        return state.rows.length > 0 && state.rows.every((row) => Boolean(row.verified));
+    }
+
+    function updateConfirmAvailability() {
+        const hasRows = state.rows.length > 0;
+        const hasPendingVerification = hasRows && !areAllRowsVerified();
+        confirmBtn.disabled = state.busy || !hasRows || hasPendingVerification;
+        confirmBtn.title = hasPendingVerification
+            ? "Marca todas las filas como Verificado antes de confirmar."
+            : "";
+
+        if (saveDraftBtn) {
+            saveDraftBtn.disabled = state.busy || !hasRows;
+        }
+    }
+
+    function saveDraft(showStatus) {
+        if (!state.rows.length) {
+            clearSavedDraft();
+            return;
+        }
+
+        const savedAt = new Date().toISOString();
+        const draft = {
+            version: draftVersion,
+            savedAt,
+            periodKey: periodInput.value,
+            paymentDateValue: paymentDateInput.value,
+            periodLabel: state.rows[0]?.periodLabel || "",
+            paymentDateDisplay: state.rows[0]?.paymentDateDisplay || "",
+            rows: state.rows,
+            logs: state.logs
+        };
+
+        try {
+            window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+            state.draftSavedAt = savedAt;
+            updateConfirmAvailability();
+            if (showStatus) {
+                renderStatus("success", "Borrador guardado.", `Ultimo guardado: ${formatDraftDate(savedAt)}.`);
+            }
+        } catch (error) {
+            if (showStatus) {
+                renderStatus("warning", "No fue posible guardar el borrador en este navegador.", error?.message || "");
+            }
+        }
+    }
+
+    function restoreDraft() {
+        let rawDraft = "";
+        try {
+            rawDraft = window.localStorage.getItem(draftStorageKey) || "";
+        } catch {
+            return;
+        }
+
+        if (!rawDraft) {
+            updateConfirmAvailability();
+            return;
+        }
+
+        let draft;
+        try {
+            draft = JSON.parse(rawDraft);
+        } catch {
+            clearSavedDraft();
+            return;
+        }
+
+        if (!draft || draft.version !== draftVersion || !Array.isArray(draft.rows) || draft.rows.length === 0) {
+            clearSavedDraft();
+            return;
+        }
+
+        periodInput.value = draft.periodKey || periodInput.value;
+        paymentDateInput.value = draft.paymentDateValue || paymentDateInput.value;
+        state.draftSavedAt = draft.savedAt || "";
+
+        try {
+            state.restoringDraft = true;
+            loadResult({
+                periodLabel: draft.periodLabel || draft.rows[0]?.periodLabel || "",
+                paymentDateValue: draft.paymentDateValue || "",
+                paymentDateDisplay: draft.paymentDateDisplay || draft.rows[0]?.paymentDateDisplay || "",
+                rows: draft.rows,
+                logs: Array.isArray(draft.logs) ? draft.logs : []
+            }, false);
+        } finally {
+            state.restoringDraft = false;
+        }
+
+        renderStatus("info", "Borrador de preliquidacion restaurado.", state.draftSavedAt ? `Ultimo guardado: ${formatDraftDate(state.draftSavedAt)}.` : "");
+    }
+
+    function clearSavedDraft() {
+        try {
+            window.localStorage.removeItem(draftStorageKey);
+        } catch {
+            // El borrador es una ayuda local; si el navegador lo bloquea, la vista puede seguir funcionando.
+        }
+
+        state.draftSavedAt = "";
+        updateConfirmAvailability();
     }
 
     function renderStatus(type, message, detail) {
@@ -737,12 +928,13 @@
     }
 
     function setBusy(isBusy) {
+        state.busy = isBusy;
         previewBtn.disabled = isBusy;
-        confirmBtn.disabled = isBusy || state.rows.length === 0;
         resetBtn.disabled = isBusy;
         detailInputs.forEach((input) => {
             input.disabled = isBusy;
         });
+        updateConfirmAvailability();
     }
 
     function setCellText(tr, role, value) {
@@ -760,6 +952,17 @@
         const input = tr.querySelector(`[data-row-field="${field}"]`);
         if (input instanceof HTMLInputElement) {
             input.value = toInputValue(value);
+        }
+    }
+
+    function setRowCheckboxValue(tr, field, value, skipField) {
+        if (skipField === field) {
+            return;
+        }
+
+        const input = tr.querySelector(`[data-row-field="${field}"]`);
+        if (input instanceof HTMLInputElement) {
+            input.checked = Boolean(value);
         }
     }
 
@@ -891,6 +1094,18 @@
         })}%`;
     }
 
+    function formatDraftDate(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return "";
+        }
+
+        return date.toLocaleString("es-CO", {
+            dateStyle: "medium",
+            timeStyle: "short"
+        });
+    }
+
     function getLastDayOfMonth(periodValue) {
         if (!periodValue || !/^\d{4}-\d{2}$/.test(periodValue)) {
             return "";
@@ -918,5 +1133,15 @@
         }
 
         return String(value).replaceAll("\"", "\\\"");
+    }
+
+    function buildDraftStorageKey(owner) {
+        const normalizedOwner = String(owner || "anonimo")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9@._-]+/g, "-")
+            .slice(0, 120) || "anonimo";
+
+        return `cotizador.nomina.preliquidacion.${normalizedOwner}`;
     }
 })();

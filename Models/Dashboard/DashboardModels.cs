@@ -144,6 +144,8 @@ public sealed class CopiersBillingEquipmentDto
     public bool HasCurrentCounter { get; set; }
     public string CounterDateValue { get; set; } = "";
     public string CounterDateDisplay { get; set; } = "";
+    public long? CounterCopies { get; set; }
+    public long? CounterScans { get; set; }
     public string CounterStatusLabel { get; set; } = "";
     public string CounterStatusTone { get; set; } = "";
 }

@@ -13,6 +13,10 @@
      data-save-maintenance-url="@Url.Action("SaveMaintenance", "Copiers")"
      data-upload-maintenance-url="@Url.Action("UploadMaintenanceAttachment", "Copiers")"
      data-download-maintenance-url="@Url.Action("DownloadMaintenanceAttachment", "Copiers")"
+     data-preventive-maintenance-url="@Url.Action("PreventiveMaintenance", "Copiers")"
+     data-schedule-preventive-maintenance-url="@Url.Action("SchedulePreventiveMaintenance", "Copiers")"
+     data-save-counter-url="@Url.Action("SaveCounter", "Copiers")"
+     data-upload-counter-url="@Url.Action("UploadCounterAttachment", "Copiers")"
      data-equipment-url="@Url.Action("Equipment", "Copiers")"
      data-equipment-detail-url="@Url.Action("EquipmentDetail", "Copiers")"
      data-equipment-inventory-url="@Url.Action("EquipmentInventory", "Copiers")"
@@ -45,6 +49,7 @@
 
     <nav class="copiers-tabs" aria-label="Submodulos Copiers">
         <button type="button" class="copiers-tab is-active" data-copiers-tab="maintenance">Mantenimientos</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="preventiveMaintenance">Mantenimientos Preventivos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="equipment" hidden>Equipos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="equipmentInventory">Inventario equipos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="supplies">Inventario suministros</button>
@@ -81,6 +86,31 @@
             </table>
         </div>
         <div class="copiers-empty" id="copiersMaintenanceEmpty" hidden>No hay mantenimientos propios para mostrar.</div>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="preventiveMaintenance" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Preventivos</div>
+                <h2 class="copiers-section-title">Mantenimientos Preventivos</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersPreventiveCount">0 clientes</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersPreventiveRefreshBtn">Actualizar</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table copiers-table--preventive">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersPreventiveBody"></tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersPreventiveEmpty" hidden>No hay clientes con productos copiers para mostrar.</div>
     </section>
 
     <section class="copiers-panel" data-copiers-panel="equipment" hidden>
@@ -465,6 +495,90 @@
                     <button type="submit" class="btn btn-primary" id="copiersClientDetailSaveBtn">Guardar cliente</button>
                 </div>
             </section>
+        </form>
+    </div>
+</div>
+
+<div class="copiers-modal" id="copiersPreventiveScheduleModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="preventiveSchedule"></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--small" role="dialog" aria-modal="true" aria-labelledby="copiersPreventiveScheduleTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Agenda</div>
+                <h2 class="copiers-modal__title" id="copiersPreventiveScheduleTitle">Programar mantenimiento</h2>
+                <p class="copiers-modal__text" id="copiersPreventiveScheduleSubtitle"></p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="preventiveSchedule">Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersPreventiveScheduleStatus" role="status" aria-live="polite"></div>
+        <form class="copiers-form" id="copiersPreventiveScheduleForm">
+            <input type="hidden" id="copiersPreventiveScheduleClientId" />
+            <input type="hidden" id="copiersPreventiveScheduleClientName" />
+            <div class="copiers-form__grid copiers-form__grid--single">
+                <label class="copiers-field">
+                    <span>Cliente</span>
+                    <input class="form-control" id="copiersPreventiveScheduleClientDisplay" type="text" readonly />
+                </label>
+                <label class="copiers-field">
+                    <span>Fecha</span>
+                    <input class="form-control" id="copiersPreventiveScheduleDate" type="date" required />
+                </label>
+                <label class="copiers-field">
+                    <span>Hora</span>
+                    <input class="form-control" id="copiersPreventiveScheduleTime" type="time" required />
+                </label>
+                <label class="copiers-field">
+                    <span>Duracion (min)</span>
+                    <input class="form-control" id="copiersPreventiveScheduleDuration" type="number" min="15" max="480" step="15" value="60" />
+                </label>
+            </div>
+            <div class="copiers-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-copiers-close="preventiveSchedule">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersPreventiveScheduleSaveBtn">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="copiers-modal" id="copiersCounterModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="counter"></div>
+    <div class="copiers-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="copiersCounterTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Contadores</div>
+                <h2 class="copiers-modal__title" id="copiersCounterTitle">Registrar contador</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="counter">Cerrar</button>
+        </div>
+        <div class="copiers-status" id="copiersCounterStatus" role="status" aria-live="polite"></div>
+        <form class="copiers-form" id="copiersCounterForm">
+            <input type="hidden" id="copiersCounterEquipmentId" />
+            <div class="copiers-form__grid">
+                <label class="copiers-field copiers-field--span-2">
+                    <span>Equipo</span>
+                    <input class="form-control" id="copiersCounterEquipmentName" type="text" readonly />
+                </label>
+                <label class="copiers-field">
+                    <span>Contador impresora</span>
+                    <input class="form-control" id="copiersCounterCopies" type="number" min="0" step="1" inputmode="numeric" />
+                </label>
+                <label class="copiers-field">
+                    <span>Contador escaner</span>
+                    <input class="form-control" id="copiersCounterScans" type="number" min="0" step="1" inputmode="numeric" />
+                </label>
+                <label class="copiers-field">
+                    <span>Fecha de toma</span>
+                    <input class="form-control" id="copiersCounterDate" type="date" required />
+                </label>
+                <label class="copiers-field">
+                    <span>Pagina de estado</span>
+                    <input class="form-control" id="copiersCounterFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                </label>
+            </div>
+            <div class="copiers-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-copiers-close="counter">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="copiersCounterSaveBtn">Guardar</button>
+            </div>
         </form>
     </div>
 </div>

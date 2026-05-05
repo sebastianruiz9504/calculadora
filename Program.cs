@@ -58,6 +58,7 @@ builder.Services.AddScoped<IM365TenantConnectionService, M365TenantConnectionSer
 builder.Services.AddScoped<IM365SecurityGraphClient, M365SecurityGraphClient>();
 builder.Services.AddScoped<IM365SecuritySnapshotRepository, M365SecuritySnapshotRepository>();
 builder.Services.AddScoped<IM365SecuritySnapshotService, M365SecuritySnapshotService>();
+builder.Services.AddScoped<IUserCalendarService, UserCalendarService>();
 builder.Services.AddScoped<IReportesDataverseRepository, ReportesDataverseRepository>();
 builder.Services.AddScoped<IAzureOpenAIReportService, AzureOpenAIReportService>();
 builder.Services.AddScoped<IAzureOpenAIQuoteProposalService, AzureOpenAIQuoteProposalService>();

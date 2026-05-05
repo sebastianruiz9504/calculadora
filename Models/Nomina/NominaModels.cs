@@ -24,6 +24,7 @@ public sealed class NominaConfirmRequest : NominaPreviewRequest
 public sealed class NominaAdjustmentInput
 {
     public string EmployeeId { get; set; } = "";
+    public bool Verified { get; set; }
     public decimal? WorkedDays { get; set; }
     public string AbsenceReason { get; set; } = "";
     public decimal? AbsencePayment { get; set; }
@@ -47,6 +48,7 @@ public sealed class NominaRowDto
     public string Operation { get; set; } = "";
     public string ExistingPayrollRecordId { get; set; } = "";
     public int ExistingPayrollRecordCount { get; set; }
+    public bool Verified { get; set; }
     public int PeriodDays { get; set; }
     public decimal WorkedDays { get; set; }
     public decimal AbsenceDays { get; set; }

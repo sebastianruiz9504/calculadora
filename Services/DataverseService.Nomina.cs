@@ -481,6 +481,7 @@ public sealed partial class DataverseService
             result[employeeId] = new NominaAdjustmentInput
             {
                 EmployeeId = employeeId,
+                Verified = item.Verified,
                 WorkedDays = item.WorkedDays.HasValue ? RoundCurrency(Math.Max(item.WorkedDays.Value, 0m)) : null,
                 AbsenceReason = NormalizeNominaAbsenceReason(item.AbsenceReason),
                 AbsencePayment = item.AbsencePayment.HasValue ? RoundCurrency(Math.Max(item.AbsencePayment.Value, 0m)) : null,
@@ -511,6 +512,7 @@ public sealed partial class DataverseService
         return new NominaAdjustmentInput
         {
             EmployeeId = employeeId,
+            Verified = false,
             WorkedDays = existingRecord.WorkedDays,
             AbsenceReason = existingRecord.AbsenceReason,
             AbsencePayment = existingRecord.AbsencePayment,
@@ -537,6 +539,7 @@ public sealed partial class DataverseService
             || existingRecord is not null
             || adjustment is not null && (adjustment.BonusCompliance > 0m
                 || adjustment.WorkedDays.HasValue
+                || adjustment.Verified
                 || !string.IsNullOrWhiteSpace(adjustment.AbsenceReason)
                 || adjustment.AbsencePayment > 0m
                 || adjustment.FactorCopiers.HasValue
@@ -682,6 +685,7 @@ public sealed partial class DataverseService
             Operation = existingRecord is null ? "create" : "update",
             ExistingPayrollRecordId = existingRecord?.RecordId ?? "",
             ExistingPayrollRecordCount = existingRecordCount,
+            Verified = adjustment.Verified,
             PeriodDays = periodDays,
             WorkedDays = workedDays,
             AbsenceDays = absenceDays,

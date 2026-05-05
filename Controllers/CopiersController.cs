@@ -13,11 +13,14 @@ namespace CotizadorInterno.Web.Controllers;
 public sealed class CopiersController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
+    private const string GraphCalendarScope = UserCalendarService.CalendarWriteScope;
     private readonly IDataverseService _dataverse;
+    private readonly IUserCalendarService _calendar;
 
-    public CopiersController(IDataverseService dataverse)
+    public CopiersController(IDataverseService dataverse, IUserCalendarService calendar)
     {
         _dataverse = dataverse;
+        _calendar = calendar;
     }
 
     [HttpGet]
@@ -124,6 +127,102 @@ public sealed class CopiersController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el reporte del mantenimiento.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> PreventiveMaintenance(CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.GetCopiersPreventiveMaintenanceBoardAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar los mantenimientos preventivos.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { GraphCalendarScope })]
+    public async Task<IActionResult> SchedulePreventiveMaintenance([FromBody] CopiersPreventiveMaintenanceScheduleRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar la fecha y hora del mantenimiento preventivo."));
+
+        try
+        {
+            return Ok(await _calendar.SchedulePreventiveMaintenanceAsync(request, User, ct));
+        }
+        catch (MicrosoftIdentityWebChallengeUserException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible reservar el espacio en la agenda.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SaveCounter([FromBody] CopiersCounterSaveRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar los datos del contador."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveCopiersCounterAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar el contador.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [RequestSizeLimit(134217728)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 134217728)]
+    public async Task<IActionResult> UploadCounterAttachment(string counterId, IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length <= 0)
+            return BadRequest(CreateErrorPayload("Debes seleccionar un archivo valido."));
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ct);
+
+            return Ok(await _dataverse.UploadCopiersCounterAttachmentAsync(
+                counterId,
+                file.FileName,
+                file.ContentType,
+                buffer.ToArray(),
+                ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible adjuntar la pagina de estado.", ex));
         }
     }
 

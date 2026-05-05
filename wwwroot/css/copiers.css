@@ -120,6 +120,61 @@
     box-shadow: 0 10px 22px rgba(15, 108, 189, .18);
 }
 
+.copiers-preventive-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--copiers-ink);
+    font: inherit;
+    text-align: left;
+}
+
+.copiers-preventive-toggle span {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--copiers-brand-soft);
+    color: var(--copiers-brand);
+    font-weight: 700;
+}
+
+.copiers-preventive-detail {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--copiers-line);
+    border-radius: 18px;
+    background: var(--copiers-soft);
+}
+
+.copiers-preventive-detail__summary,
+.copiers-inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.copiers-preventive-detail__summary {
+    justify-content: flex-start;
+}
+
+.copiers-preventive-detail__summary span {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--copiers-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .copiers-panel,
 .copiers-subpanel {
     display: grid;

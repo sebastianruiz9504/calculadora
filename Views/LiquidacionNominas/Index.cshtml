@@ -11,6 +11,7 @@
      id="nominaApp"
      data-preview-url="@Url.Action("Preview", "LiquidacionNominas")"
      data-confirm-url="@Url.Action("Confirm", "LiquidacionNominas")"
+     data-draft-owner="@Model.CurrentUser.Email"
      data-initial-period="@Model.InitialPeriodKey"
      data-suggested-payment-date="@Model.SuggestedPaymentDateValue">
     <section class="payroll-hero">
@@ -45,6 +46,7 @@
                 </p>
                 <div class="payroll-toolbar__buttons">
                     <button type="button" class="btn btn-outline-secondary" id="resetNominaBtn">Limpiar vista</button>
+                    <button type="button" class="btn btn-outline-secondary" id="saveNominaDraftBtn" disabled>Guardar borrador</button>
                     <button type="button" class="btn btn-primary" id="previewNominaBtn">Preparar liquidacion</button>
                     <button type="button" class="btn btn-success" id="confirmNominaBtn" disabled>Confirmar y enviar</button>
                 </div>
@@ -94,6 +96,7 @@
             <table class="table align-middle payroll-table">
                 <thead>
                     <tr>
+                        <th class="text-center">Verificado</th>
                         <th>Empleado</th>
                         <th class="text-end">Monto pagado</th>
                         <th class="text-end">% copiers</th>
