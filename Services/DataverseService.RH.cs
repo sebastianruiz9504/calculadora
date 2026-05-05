@@ -14,7 +14,8 @@ public sealed partial class DataverseService
     private readonly ConcurrentDictionary<string, RhEntityMetadata> _rhEntityMetadataCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _rhLookupNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly CultureInfo RhMoneyCulture = CultureInfo.GetCultureInfo("es-CO");
-    private const string RhEmployeeVacationAvailableDaysField = "rh_diasvacacionesdisponiblescalculados";
+    private const string RhEmployeeVacationTakenDaysField = "cr07a_diastomadoscalculados";
+    private const string RhEmployeeVacationAvailableDaysField = "cr07a_diasdisponiblescalculados";
     private static readonly IReadOnlyDictionary<string, RhTableDefinition> RhTables =
         BuildRhTableDefinitions().ToDictionary(item => item.Key, item => item, StringComparer.OrdinalIgnoreCase);
 
@@ -559,6 +560,7 @@ public sealed partial class DataverseService
             var accruedDays = ReadRhCellDecimal(record.Cells, VacationEmployeeAccruedDaysField);
             requestedDaysByEmployee.TryGetValue(record.RecordId, out var registeredDays);
             var availableDays = RoundVacationDays(accruedDays - registeredDays);
+            record.Cells[RhEmployeeVacationTakenDaysField] = BuildRhNumberCell(registeredDays);
             record.Cells[RhEmployeeVacationAvailableDaysField] = BuildRhNumberCell(availableDays);
         }
     }
@@ -1227,6 +1229,15 @@ public sealed partial class DataverseService
                         Label = "Dias acumulados/base de vacaciones",
                         EditorType = "number",
                         HelpText = "Base usada para calcular el saldo disponible. El sistema resta las solicitudes registradas."
+                    },
+                    new RhFieldDefinition
+                    {
+                        LogicalName = RhEmployeeVacationTakenDaysField,
+                        Label = "Dias tomados calculados",
+                        EditorType = "number",
+                        ShowInForm = false,
+                        IsVirtual = true,
+                        HelpText = "Suma de la cantidad de dias registrada en solicitudes de vacaciones."
                     },
                     new RhFieldDefinition
                     {

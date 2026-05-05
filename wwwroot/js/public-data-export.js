@@ -136,7 +136,13 @@
             return (payload && (payload.message || payload.detail)) || "La solicitud no fue aceptada.";
         }
 
-        return await response.text() || "La solicitud no fue aceptada.";
+        const body = await response.text();
+        const trimmedBody = (body || "").trim();
+        if (trimmedBody.startsWith("<!DOCTYPE") || trimmedBody.startsWith("<html")) {
+            return "El portal recibio una pagina de error del servidor. Revisa la configuracion de Dataverse o las columnas aprobadas.";
+        }
+
+        return trimmedBody || "La solicitud no fue aceptada.";
     }
 
     function setStatus(message, isError) {

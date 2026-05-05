@@ -35,6 +35,7 @@ public sealed partial class DataverseService
     private const int LicensingContractMonthly = 645250000;
     private const int LicensingContractOnetime = 645250001;
     private const int LicensingContractPrepaid = 645250002;
+    private const string LicensingPrepaidContractMarker = "Pre-paid";
     private const string LicensingProductLookupTargetLogicalName = "cr07a_precioscloud";
     private const string LicensingProductLookupTargetFallbackEntitySetName = "cr07a_preciosclouds";
     private const string LicensingProductLookupTargetFallbackIdField = "cr07a_precioscloudid";
@@ -428,8 +429,9 @@ public sealed partial class DataverseService
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
-        var select = string.Join(",", new[] { metadata.BaseMetadata.PrimaryIdField, LicensingTotalUsdField }.Distinct(StringComparer.OrdinalIgnoreCase));
-        var filter = $"{LicensingInvoiceDateField} eq {invoiceDate:yyyy-MM-dd}";
+        var nextInvoiceDate = invoiceDate.AddDays(1);
+        var select = string.Join(",", new[] { metadata.BaseMetadata.PrimaryIdField, LicensingInvoiceDateField, LicensingTotalUsdField }.Distinct(StringComparer.OrdinalIgnoreCase));
+        var filter = $"{LicensingInvoiceDateField} ge {invoiceDate:yyyy-MM-dd} and {LicensingInvoiceDateField} lt {nextInvoiceDate:yyyy-MM-dd}";
         var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, httpContext.User, ct);
 
@@ -438,6 +440,10 @@ public sealed partial class DataverseService
         var totalCop = 0m;
         foreach (var item in items)
         {
+            var itemInvoiceDate = ReadDateOnly(item, LicensingInvoiceDateField);
+            if (itemInvoiceDate.HasValue && itemInvoiceDate.Value != invoiceDate)
+                continue;
+
             var recordId = ReadString(item, metadata.BaseMetadata.PrimaryIdField);
             if (string.IsNullOrWhiteSpace(recordId))
                 continue;
@@ -1009,6 +1015,7 @@ public sealed partial class DataverseService
             TotalUsd = Required("Costs"),
             UnitUsd = Required("Costs of Unit"),
             Quantity = Required("UDRC Value"),
+            ContractId = Optional("ContractID"),
             SalesPrice = Optional("Sales Price") is var salesPriceColumn && salesPriceColumn > 0
                 ? salesPriceColumn
                 : LicensingSalesPriceFallbackColumn
@@ -1033,9 +1040,10 @@ public sealed partial class DataverseService
             Vendor = ReadLicensingExcelText(row.Cell(columns.Vendor)),
             ProductDescription = ReadLicensingExcelText(row.Cell(columns.ProductDescription)),
             BillingInterval = ReadLicensingExcelText(row.Cell(columns.BillingInterval)),
-            ContractTypeValue = LicensingContractMonthly,
-            ContractTypeLabel = "Monthly"
+            ContractTypeValue = ResolveLicensingExcelContractTypeValue(
+                columns.ContractId > 0 ? ReadLicensingExcelText(row.Cell(columns.ContractId)) : "")
         };
+        result.ContractTypeLabel = ResolveLicensingContractTypeLabel(result.ContractTypeValue);
 
         if (!TryReadLicensingExcelInt(row.Cell(columns.Days), out var days))
             result.Errors.Add("Days Billed no es un numero valido.");
@@ -1913,6 +1921,11 @@ public sealed partial class DataverseService
             .Select(char.ToUpperInvariant)
             .ToArray());
 
+    private static int ResolveLicensingExcelContractTypeValue(string? rawValue) =>
+        string.Equals((rawValue ?? "").Trim(), LicensingPrepaidContractMarker, StringComparison.OrdinalIgnoreCase)
+            ? LicensingContractPrepaid
+            : LicensingContractMonthly;
+
     private static string NormalizeLicensingLookupKey(string? value) =>
         (value ?? "").Trim();
 
@@ -1971,6 +1984,7 @@ public sealed partial class DataverseService
         public int TotalUsd { get; init; }
         public int UnitUsd { get; init; }
         public int Quantity { get; init; }
+        public int ContractId { get; init; }
         public int SalesPrice { get; init; }
     }
 }

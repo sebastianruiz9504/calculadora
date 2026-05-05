@@ -20,14 +20,17 @@ public sealed class DescargasPublicasController : Controller
     private readonly IDataverseService _dataverse;
     private readonly IPublicDataExportSettingsStore _settingsStore;
     private readonly IDataProtector _protector;
+    private readonly ILogger<DescargasPublicasController> _logger;
 
     public DescargasPublicasController(
         IDataverseService dataverse,
         IPublicDataExportSettingsStore settingsStore,
-        IDataProtectionProvider dataProtectionProvider)
+        IDataProtectionProvider dataProtectionProvider,
+        ILogger<DescargasPublicasController> logger)
     {
         _dataverse = dataverse;
         _settingsStore = settingsStore;
+        _logger = logger;
         _protector = dataProtectionProvider.CreateProtector("CotizadorInterno.PublicDataExport.Access.v1");
     }
 
@@ -117,6 +120,14 @@ public sealed class DescargasPublicasController : Controller
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "No fue posible generar la vista previa publica para {DatasetKey}.", dataset);
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "No fue posible cargar la vista previa. Revisa la configuracion de Dataverse y las columnas aprobadas."
+            });
+        }
     }
 
     [AllowAnonymous]
@@ -142,6 +153,13 @@ public sealed class DescargasPublicasController : Controller
         catch (InvalidOperationException ex)
         {
             return BadRequest(ex.Message);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "No fue posible generar la descarga publica para {DatasetKey}.", dataset);
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                "No fue posible generar el Excel. Revisa la configuracion de Dataverse y las columnas aprobadas.");
         }
     }
 

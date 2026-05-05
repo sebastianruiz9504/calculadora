@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net.Http;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.PublicDataExport;
 
@@ -6,6 +8,8 @@ namespace CotizadorInterno.Web.Services;
 
 public sealed partial class DataverseService
 {
+    private readonly ConcurrentDictionary<string, string[]> _publicDataExportAttributeNamesCache = new(StringComparer.OrdinalIgnoreCase);
+
     public PublicDataExportCatalogDto GetPublicDataExportCatalog()
     {
         var billingClientLookupField = BuildDashboardLookupValuePropertyName(_dashboardBillingClientField);
@@ -55,8 +59,20 @@ public sealed partial class DataverseService
         if (columns.Count == 0)
             throw new InvalidOperationException("La tabla seleccionada no tiene columnas aprobadas.");
 
-        var selectFields = columns
-            .SelectMany(GetPublicExportSelectFields)
+        var attributeNames = await GetPublicDataExportAttributeNamesAsync(dataset, ct);
+        var effectiveColumns = new List<EffectivePublicExportColumn>();
+        foreach (var column in columns)
+        {
+            var effectiveColumn = ResolvePublicExportEffectiveColumn(column, attributeNames);
+            if (effectiveColumn is not null)
+                effectiveColumns.Add(effectiveColumn);
+        }
+
+        if (effectiveColumns.Count == 0)
+            throw new InvalidOperationException("Las columnas aprobadas no existen actualmente en la tabla de Dataverse.");
+
+        var selectFields = effectiveColumns
+            .SelectMany(static column => column.SelectFields)
             .Append(dataset.PrimaryIdField)
             .Where(static field => !string.IsNullOrWhiteSpace(field))
             .Select(static field => field.Trim())
@@ -68,8 +84,9 @@ public sealed partial class DataverseService
             $"$select={string.Join(",", selectFields)}"
         };
 
-        if (!string.IsNullOrWhiteSpace(dataset.OrderBy))
-            query.Add($"$orderby={Uri.EscapeDataString(dataset.OrderBy)}");
+        var orderBy = ResolvePublicExportOrderBy(dataset.OrderBy, attributeNames);
+        if (!string.IsNullOrWhiteSpace(orderBy))
+            query.Add($"$orderby={Uri.EscapeDataString(orderBy)}");
 
         if (top.HasValue && top.Value > 0)
             query.Add($"$top={Math.Clamp(top.Value, 1, 5000).ToString(CultureInfo.InvariantCulture)}");
@@ -77,23 +94,20 @@ public sealed partial class DataverseService
         var relativeUrl = $"/api/data/v9.2/{dataset.EntitySetName}?{string.Join("&", query)}";
         var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
         var rows = items
-            .Select(item => BuildPublicExportRow(item, columns))
+            .Select(item => BuildPublicExportRow(item, effectiveColumns))
             .ToList();
+        var skippedColumnCount = columns.Count - effectiveColumns.Count;
 
         return new PublicDataExportTableDto
         {
             DatasetKey = dataset.Key,
             DatasetLabel = dataset.Label,
-            Columns = columns,
+            Columns = effectiveColumns.Select(static column => column.Definition).ToList(),
             Rows = rows,
             RecordsCount = rows.Count,
             IsPreview = top.HasValue,
             PreviewLimit = top,
-            Message = rows.Count == 0
-                ? "No encontramos registros para esta tabla."
-                : top.HasValue
-                    ? $"Vista previa de {rows.Count:N0} registro(s)."
-                    : $"Se prepararon {rows.Count:N0} registro(s)."
+            Message = BuildPublicExportMessage(rows.Count, top, skippedColumnCount)
         };
     }
 
@@ -257,22 +271,131 @@ public sealed partial class DataverseService
             : new[] { column.ValueField };
     }
 
+    private async Task<HashSet<string>> GetPublicDataExportAttributeNamesAsync(
+        PublicDataExportDatasetDefinition dataset,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dataset.EntityLogicalName))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var cacheKey = dataset.EntityLogicalName.Trim();
+        if (!_publicDataExportAttributeNamesCache.TryGetValue(cacheKey, out var cached))
+        {
+            try
+            {
+                var relativeUrl =
+                    $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(cacheKey)}')" +
+                    "/Attributes?$select=LogicalName";
+                var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct);
+                cached = items
+                    .Select(static item => ReadString(item, "LogicalName").Trim())
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException or HttpRequestException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible consultar la metadata publica de {EntityLogicalName}.",
+                    cacheKey);
+                cached = Array.Empty<string>();
+            }
+
+            _publicDataExportAttributeNamesCache[cacheKey] = cached;
+        }
+
+        return new HashSet<string>(cached, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static EffectivePublicExportColumn? ResolvePublicExportEffectiveColumn(
+        PublicDataExportColumnDefinition column,
+        IReadOnlySet<string> attributeNames)
+    {
+        var candidateFields = GetPublicExportValueFields(column)
+            .Where(static field => !string.IsNullOrWhiteSpace(field))
+            .Select(static field => field.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var field in candidateFields)
+        {
+            if (!IsPublicExportFieldAvailable(field, attributeNames))
+                continue;
+
+            return new EffectivePublicExportColumn(
+                column,
+                new[] { field },
+                new[] { field });
+        }
+
+        return null;
+    }
+
+    private static string ResolvePublicExportOrderBy(string orderBy, IReadOnlySet<string> attributeNames)
+    {
+        if (string.IsNullOrWhiteSpace(orderBy) || attributeNames.Count == 0)
+            return orderBy;
+
+        var field = orderBy.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return IsPublicExportFieldAvailable(field, attributeNames)
+            ? orderBy
+            : "";
+    }
+
+    private static bool IsPublicExportFieldAvailable(string? field, IReadOnlySet<string> attributeNames)
+    {
+        if (string.IsNullOrWhiteSpace(field) || attributeNames.Count == 0)
+            return true;
+
+        var attributeName = NormalizePublicExportAttributeName(field);
+        return !string.IsNullOrWhiteSpace(attributeName)
+            && attributeNames.Contains(attributeName);
+    }
+
+    private static string NormalizePublicExportAttributeName(string field)
+    {
+        var trimmed = field.Trim();
+        if (trimmed.StartsWith('_') && trimmed.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+            return trimmed[1..^6];
+
+        return trimmed;
+    }
+
+    private static string BuildPublicExportMessage(int rowCount, int? top, int skippedColumnCount)
+    {
+        var message = rowCount == 0
+            ? "No encontramos registros para esta tabla."
+            : top.HasValue
+                ? $"Vista previa de {rowCount:N0} registro(s)."
+                : $"Se prepararon {rowCount:N0} registro(s).";
+
+        return skippedColumnCount > 0
+            ? $"{message} Se omitieron {skippedColumnCount:N0} columna(s) aprobada(s) porque no existen en Dataverse."
+            : message;
+    }
+
     private PublicDataExportRowDto BuildPublicExportRow(
         JsonElement item,
-        IReadOnlyList<PublicDataExportColumnDefinition> columns)
+        IReadOnlyList<EffectivePublicExportColumn> columns)
     {
         var row = new PublicDataExportRowDto();
         foreach (var column in columns)
         {
-            row.Cells[column.Key] = BuildPublicExportCell(item, column);
+            row.Cells[column.Definition.Key] = BuildPublicExportCell(item, column.Definition, column.ValueFields);
         }
 
         return row;
     }
 
-    private PublicDataExportCellDto BuildPublicExportCell(JsonElement item, PublicDataExportColumnDefinition column)
+    private PublicDataExportCellDto BuildPublicExportCell(
+        JsonElement item,
+        PublicDataExportColumnDefinition column,
+        IReadOnlyList<string>? valueFields = null)
     {
-        var fields = GetPublicExportValueFields(column).ToList();
+        var fields = valueFields is { Count: > 0 }
+            ? valueFields
+            : GetPublicExportValueFields(column).ToList();
         var formattedValue = ReadFirstPublicFormattedValue(item, fields);
         var rawValue = ReadFirstPublicRawValue(item, fields);
         var cell = new PublicDataExportCellDto
@@ -372,4 +495,9 @@ public sealed partial class DataverseService
 
         return null;
     }
+
+    private sealed record EffectivePublicExportColumn(
+        PublicDataExportColumnDefinition Definition,
+        IReadOnlyList<string> ValueFields,
+        IReadOnlyList<string> SelectFields);
 }
