@@ -1480,7 +1480,7 @@
 
 .dashboard-copiers-detail {
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
 }
 
@@ -1591,9 +1591,12 @@
     gap: 2px;
     min-width: 132px;
     padding: 7px 9px;
+    border: 0;
     border-radius: 8px;
+    font-family: inherit;
     font-size: 12px;
     line-height: 1.2;
+    text-align: left;
 }
 
 .dashboard-counter-chip strong,
@@ -1620,6 +1623,19 @@
 .dashboard-counter-chip--neutral {
     background: #eef4fb;
     color: var(--dashboard-muted);
+}
+
+.dashboard-counter-chip--button {
+    cursor: pointer;
+    transition: box-shadow .16s ease, transform .16s ease;
+}
+
+.dashboard-counter-chip--button:hover,
+.dashboard-counter-chip--button:focus-visible {
+    box-shadow: 0 10px 22px rgba(15, 23, 42, .12);
+    outline: 2px solid rgba(15, 108, 189, .22);
+    outline-offset: 2px;
+    transform: translateY(-1px);
 }
 
 .dashboard-copiers-cell-btn {
@@ -1652,6 +1668,10 @@
     width: 100%;
     min-width: 100%;
     table-layout: fixed;
+}
+
+.dashboard-copiers-billing-counters-table {
+    min-width: 980px;
 }
 
 .dashboard-client-invoices-table thead th,

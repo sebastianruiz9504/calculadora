@@ -181,6 +181,12 @@
     const copiersClientInvoicesSubtitle = document.getElementById("copiersClientInvoicesSubtitle");
     const copiersClientInvoicesResultsCount = document.getElementById("copiersClientInvoicesResultsCount");
     const copiersClientInvoicesBody = document.getElementById("copiersClientInvoicesBody");
+    const copiersBillingCountersModal = document.getElementById("copiersBillingCountersModal");
+    const copiersBillingCountersCloseBtn = document.getElementById("copiersBillingCountersCloseBtn");
+    const copiersBillingCountersTitle = document.getElementById("copiersBillingCountersTitle");
+    const copiersBillingCountersSubtitle = document.getElementById("copiersBillingCountersSubtitle");
+    const copiersBillingCountersResultsCount = document.getElementById("copiersBillingCountersResultsCount");
+    const copiersBillingCountersBody = document.getElementById("copiersBillingCountersBody");
     const copiersEquipmentDetailModal = document.getElementById("copiersEquipmentDetailModal");
     const copiersEquipmentDetailCloseBtn = document.getElementById("copiersEquipmentDetailCloseBtn");
     const copiersEquipmentDetailCancelBtn = document.getElementById("copiersEquipmentDetailCancelBtn");
@@ -996,6 +1002,108 @@
                 </tr>
             `).join("")
             : `<tr><td colspan="6" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas Copiers para este cliente.")}</td></tr>`;
+    }
+
+    function isCopiersBillingCountersOpen() {
+        return Boolean(copiersBillingCountersModal && !copiersBillingCountersModal.hidden);
+    }
+
+    function resetCopiersBillingCountersModal() {
+        if (copiersBillingCountersTitle) {
+            copiersBillingCountersTitle.textContent = "Equipos y contador reciente";
+        }
+
+        if (copiersBillingCountersSubtitle) {
+            copiersBillingCountersSubtitle.textContent = "Selecciona un grupo de facturacion Copiers para consultar sus equipos asignados.";
+        }
+
+        if (copiersBillingCountersResultsCount) {
+            copiersBillingCountersResultsCount.textContent = "Mostrando 0 equipos";
+        }
+
+        if (copiersBillingCountersBody) {
+            copiersBillingCountersBody.innerHTML = '<tr><td colspan="7" class="dashboard-table__empty">Selecciona un grupo para consultar sus equipos.</td></tr>';
+        }
+    }
+
+    function closeCopiersBillingCountersModal() {
+        if (!copiersBillingCountersModal) {
+            return;
+        }
+
+        copiersBillingCountersModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        resetCopiersBillingCountersModal();
+    }
+
+    function renderCopiersBillingCountersRows(group) {
+        const items = Array.isArray(group?.equipment) ? group.equipment : [];
+        if (!items.length) {
+            return '<tr><td colspan="7" class="dashboard-table__empty">Este cliente no tiene equipos asignados en la tabla de equipos.</td></tr>';
+        }
+
+        return items.map(row => {
+            const hasCounter = Boolean(row.hasCurrentCounter);
+            const statusClass = hasCounter ? "dashboard-counter-chip--ok" : "dashboard-counter-chip--pending";
+            const statusLabel = row.counterStatusLabel || (hasCounter ? "Contador registrado" : "Pendiente de contador");
+            const detail = [row.categoryLabel, row.reference]
+                .filter(value => value && String(value).trim())
+                .join(" · ");
+            const location = [row.site, row.area]
+                .filter(value => value && String(value).trim())
+                .join(" · ");
+
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(row.serial || "Equipo sin serial")}</strong></td>
+                    <td>${escapeHtml(detail || "Sin detalle")}</td>
+                    <td>${escapeHtml(location || "Sin ubicacion")}</td>
+                    <td>
+                        <span class="dashboard-counter-chip ${statusClass}">
+                            <strong>${escapeHtml(statusLabel)}</strong>
+                            <small>${escapeHtml(row.counterDateDisplay || "Ultimos 35 dias")}</small>
+                        </span>
+                    </td>
+                    <td>${escapeHtml(row.counterDateDisplay || "Sin fecha")}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.counterCopies))}</td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.counterScans))}</td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    function openCopiersBillingCountersModal(group) {
+        if (!copiersBillingCountersModal) {
+            return;
+        }
+
+        const equipment = Array.isArray(group?.equipment) ? group.equipment : [];
+        resetCopiersBillingCountersModal();
+
+        if (copiersBillingCountersTitle) {
+            copiersBillingCountersTitle.textContent = group?.clientName || "Equipos y contador reciente";
+        }
+
+        if (copiersBillingCountersSubtitle) {
+            const parts = [
+                group?.billingDayDisplay || "",
+                group?.counterSummary || "",
+                `${numberFormatter.format(Number(group?.countersRegisteredCount || 0))}/${numberFormatter.format(Number(group?.equipmentCount || 0))} con contador`
+            ].filter(value => value && String(value).trim());
+            copiersBillingCountersSubtitle.textContent = parts.join(" · ");
+        }
+
+        if (copiersBillingCountersResultsCount) {
+            copiersBillingCountersResultsCount.textContent = `Mostrando ${numberFormatter.format(equipment.length)} equipos`;
+        }
+
+        if (copiersBillingCountersBody) {
+            copiersBillingCountersBody.innerHTML = renderCopiersBillingCountersRows(group);
+        }
+
+        document.body.classList.add("dashboard-modal-open");
+        copiersBillingCountersModal.hidden = false;
+        window.setTimeout(() => copiersBillingCountersCloseBtn?.focus(), 30);
     }
 
     function isCopiersEquipmentDetailOpen() {
@@ -3493,9 +3601,15 @@
         const equipmentCount = Number(group?.equipmentCount || 0);
         const registered = Number(group?.countersRegisteredCount || 0);
         const pending = Number(group?.pendingCountersCount || 0);
+        const groupId = group?.groupId || "";
 
         if (!equipmentCount) {
-            return '<span class="dashboard-counter-chip dashboard-counter-chip--neutral"><strong>Sin equipos</strong><small>0 asociados</small></span>';
+            return `
+                <button type="button" class="dashboard-counter-chip dashboard-counter-chip--neutral dashboard-counter-chip--button" data-copiers-counter-summary="${escapeHtml(groupId)}" title="Ver equipos y contador reciente">
+                    <strong>Sin equipos</strong>
+                    <small>0 asociados</small>
+                </button>
+            `;
         }
 
         const tone = pending > 0 ? "pending" : "ok";
@@ -3504,10 +3618,10 @@
             : "Al dia";
 
         return `
-            <span class="dashboard-counter-chip dashboard-counter-chip--${tone}">
+            <button type="button" class="dashboard-counter-chip dashboard-counter-chip--${tone} dashboard-counter-chip--button" data-copiers-counter-summary="${escapeHtml(groupId)}" title="Ver equipos y contador reciente">
                 <strong>${escapeHtml(label)}</strong>
                 <small>${escapeHtml(`${registered}/${equipmentCount} con contador`)}</small>
-            </span>
+            </button>
         `;
     }
 
@@ -3592,7 +3706,6 @@
 
     function renderCopiersGroupDetail(group) {
         const lines = Array.isArray(group?.lines) ? group.lines : [];
-        const equipment = Array.isArray(group?.equipment) ? group.equipment : [];
 
         return `
             <tr class="dashboard-copiers-detail-row">
@@ -3604,13 +3717,6 @@
                                 <span>${escapeHtml(numberFormatter.format(lines.length))} linea(s)</span>
                             </div>
                             ${renderCopiersProductLines(lines)}
-                        </section>
-                        <section class="dashboard-copiers-detail__section">
-                            <div class="dashboard-copiers-detail__header">
-                                <strong>Equipos y contador reciente</strong>
-                                <span>${escapeHtml(group?.counterSummary || "")}</span>
-                            </div>
-                            ${renderCopiersEquipmentDetails(equipment)}
                         </section>
                     </div>
                 </td>
@@ -5478,6 +5584,10 @@
             closeCopiersClientInvoicesModal();
         }
 
+        if (state.copiersSubtab !== "billing" && isCopiersBillingCountersOpen()) {
+            closeCopiersBillingCountersModal();
+        }
+
         if (state.copiersSubtab !== "billing" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
         }
@@ -5540,6 +5650,10 @@
 
         if (tabKey !== "copiers" && isCopiersClientInvoicesOpen()) {
             closeCopiersClientInvoicesModal();
+        }
+
+        if (tabKey !== "copiers" && isCopiersBillingCountersOpen()) {
+            closeCopiersBillingCountersModal();
         }
 
         if (tabKey !== "copiers" && isCopiersEquipmentDetailOpen()) {
@@ -6399,6 +6513,10 @@
     copiersClientInvoicesModal?.querySelectorAll("[data-copiers-client-invoices-close]").forEach(element => {
         element.addEventListener("click", closeCopiersClientInvoicesModal);
     });
+    copiersBillingCountersCloseBtn?.addEventListener("click", closeCopiersBillingCountersModal);
+    copiersBillingCountersModal?.querySelectorAll("[data-copiers-billing-counters-close]").forEach(element => {
+        element.addEventListener("click", closeCopiersBillingCountersModal);
+    });
     copiersEquipmentDetailCloseBtn?.addEventListener("click", closeCopiersEquipmentDetailModal);
     copiersEquipmentDetailCancelBtn?.addEventListener("click", closeCopiersEquipmentDetailModal);
     copiersEquipmentDetailModal?.querySelectorAll("[data-copiers-equipment-close]").forEach(element => {
@@ -6431,6 +6549,15 @@
             const group = getCopiersGroupById(clientButton.dataset.copiersGroupClient || "");
             if (group) {
                 loadCopiersClientInvoices(group);
+            }
+            return;
+        }
+
+        const counterButton = event.target.closest("[data-copiers-counter-summary]");
+        if (counterButton) {
+            const group = getCopiersGroupById(counterButton.dataset.copiersCounterSummary || "");
+            if (group) {
+                openCopiersBillingCountersModal(group);
             }
             return;
         }
@@ -6564,6 +6691,11 @@
 
         if (event.key === "Escape" && isCopiersClientInvoicesOpen()) {
             closeCopiersClientInvoicesModal();
+            return;
+        }
+
+        if (event.key === "Escape" && isCopiersBillingCountersOpen()) {
+            closeCopiersBillingCountersModal();
             return;
         }
 

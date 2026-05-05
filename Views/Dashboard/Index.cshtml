@@ -825,7 +825,7 @@
                         <div>
                             <div class="dashboard-panel__kicker">Copiers</div>
                             <h2 class="dashboard-panel__title">Facturaci&oacute;n Copiers</h2>
-                            <p class="dashboard-panel__description">Vista agrupada por cliente y d&iacute;a de facturaci&oacute;n. Desglosa cada grupo para revisar sus l&iacute;neas de productos Copiers, equipos asignados y estado del contador de los &uacute;ltimos 35 d&iacute;as.</p>
+                            <p class="dashboard-panel__description">Vista agrupada por cliente y d&iacute;a de facturaci&oacute;n, con l&iacute;neas de producto en el desglose y estado de contadores por cliente.</p>
                         </div>
                         <div class="dashboard-panel__actions dashboard-panel__actions--table">
                             <span id="copiersResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
@@ -1545,6 +1545,43 @@
                 <tbody id="copiersClientInvoicesBody">
                     <tr>
                         <td colspan="6" class="dashboard-table__empty">Selecciona un cliente para ver sus facturas emitidas.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="copiersBillingCountersModal" hidden>
+    <div class="dashboard-modal__backdrop" data-copiers-billing-counters-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersBillingCountersTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Contadores</div>
+                <h2 class="dashboard-modal__title" id="copiersBillingCountersTitle">Equipos y contador reciente</h2>
+                <p class="dashboard-modal__subtitle" id="copiersBillingCountersSubtitle">Consulta los equipos asignados al cliente y el estado del contador de los &uacute;ltimos 35 d&iacute;as.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="copiersBillingCountersCloseBtn">Cerrar</button>
+        </div>
+
+        <div class="dashboard-table-meta" id="copiersBillingCountersResultsCount">Mostrando 0 equipos</div>
+
+        <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+            <table class="table dashboard-table dashboard-copiers-billing-counters-table">
+                <thead>
+                    <tr>
+                        <th>Serial</th>
+                        <th>Equipo</th>
+                        <th>Ubicaci&oacute;n</th>
+                        <th>Estado contador</th>
+                        <th>Fecha toma</th>
+                        <th class="text-end">Copias</th>
+                        <th class="text-end">Escaneos</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersBillingCountersBody">
+                    <tr>
+                        <td colspan="7" class="dashboard-table__empty">Selecciona un grupo para consultar sus equipos.</td>
                     </tr>
                 </tbody>
             </table>
