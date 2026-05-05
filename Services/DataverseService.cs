@@ -30,9 +30,10 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IQuoteCalculator _calculator;
     private readonly string _dataverseBaseUrl;
     private readonly string _azureAuthorityInstance;
-    private readonly string _azureTenantId;
-    private readonly string _azureClientId;
+    private readonly string _dataverseAppTenantId;
+    private readonly string _dataverseAppClientId;
     private readonly string _dataverseClientSecret;
+    private readonly string _dataverseCredentialSource;
     private readonly ConcurrentDictionary<string, string[]> _salesPerformanceNavigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _salesPerformancePrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _entityPrimaryNameFieldCache = new(StringComparer.OrdinalIgnoreCase);
@@ -332,11 +333,11 @@ public sealed partial class DataverseService : IDataverseService
         var rh = rhOptions.Value;
         _dataverseBaseUrl = (configuration["Dataverse:BaseUrl"] ?? "").TrimEnd('/');
         _azureAuthorityInstance = configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/";
-        _azureTenantId = configuration["AzureAd:TenantId"] ?? "";
-        _azureClientId = configuration["AzureAd:ClientId"] ?? "";
-        _dataverseClientSecret = configuration["Dataverse:ClientSecret"]
-            ?? configuration["AzureAd:ClientSecret"]
-            ?? "";
+        _dataverseAppTenantId = FirstNonEmpty(configuration["Dataverse:TenantId"], configuration["AzureAd:TenantId"]);
+        var dataverseCredential = ResolveDataverseAppCredential(configuration);
+        _dataverseAppClientId = dataverseCredential.ClientId;
+        _dataverseClientSecret = dataverseCredential.ClientSecret;
+        _dataverseCredentialSource = dataverseCredential.Source;
         _scenariosTableSetName = configuration["Dataverse:ScenariosTableSetName"]
             ?? DefaultScenariosTableSetName;
         _scenariosTableName = configuration["Dataverse:ScenariosTableName"]
@@ -2262,28 +2263,41 @@ public sealed partial class DataverseService : IDataverseService
     private async Task<string> GetDataverseAppAccessTokenAsync(CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_dataverseBaseUrl)
-            || string.IsNullOrWhiteSpace(_azureTenantId)
-            || string.IsNullOrWhiteSpace(_azureClientId)
+            || string.IsNullOrWhiteSpace(_dataverseAppTenantId)
+            || string.IsNullOrWhiteSpace(_dataverseAppClientId)
             || string.IsNullOrWhiteSpace(_dataverseClientSecret))
         {
             throw new InvalidOperationException(
-                "La encuesta publica requiere configurar Dataverse:BaseUrl, AzureAd:TenantId, AzureAd:ClientId y Dataverse:ClientSecret o AzureAd:ClientSecret.");
+                "El portal publico requiere credenciales app-only para Dataverse. Configura Dataverse:BaseUrl, Dataverse:TenantId o AzureAd:TenantId, y una credencial valida: Dataverse:ClientSecret con Dataverse:ClientId o AzureAd:ClientId, o AzureAd:ClientSecret con AzureAd:ClientId.");
         }
 
         var authorityBase = _azureAuthorityInstance.EndsWith("/", StringComparison.Ordinal)
             ? _azureAuthorityInstance
             : $"{_azureAuthorityInstance}/";
         var app = ConfidentialClientApplicationBuilder
-            .Create(_azureClientId)
+            .Create(_dataverseAppClientId)
             .WithClientSecret(_dataverseClientSecret)
-            .WithAuthority($"{authorityBase}{_azureTenantId}")
+            .WithAuthority($"{authorityBase}{_dataverseAppTenantId}")
             .Build();
 
-        var result = await app
-            .AcquireTokenForClient(new[] { $"{_dataverseBaseUrl}/.default" })
-            .ExecuteAsync(ct);
+        try
+        {
+            var result = await app
+                .AcquireTokenForClient(new[] { $"{_dataverseBaseUrl}/.default" })
+                .ExecuteAsync(ct);
 
-        return result.AccessToken;
+            return result.AccessToken;
+        }
+        catch (MsalException ex)
+        {
+            _logger.LogError(
+                ex,
+                "No fue posible obtener token app-only para Dataverse usando credenciales {CredentialSource}.",
+                _dataverseCredentialSource);
+            throw new InvalidOperationException(
+                "No fue posible autenticar la aplicacion que lee Dataverse. Revisa que TenantId, ClientId y ClientSecret correspondan a la misma App Registration y que el secreto no este vencido.",
+                ex);
+        }
     }
 
     private async Task<HttpResponseMessage> CallDataverseAppResponseAsync(
@@ -2327,7 +2341,14 @@ public sealed partial class DataverseService : IDataverseService
         using var response = await CallDataverseAppResponseAsync(relativeUrl, "GET", ct, customizeRequest: customizeRequest);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+        {
+            _logger.LogWarning(
+                "Dataverse app error {StatusCode} {ReasonPhrase}. Body: {Body}",
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                body);
+            throw new InvalidOperationException(BuildDataverseAppFailureMessage(response.StatusCode));
+        }
 
         return body;
     }
@@ -2343,10 +2364,50 @@ public sealed partial class DataverseService : IDataverseService
         using var response = await CallDataverseAppResponseAsync(relativeUrl, method, ct, content, customizeRequest);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Dataverse app error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+        {
+            _logger.LogWarning(
+                "Dataverse app error {StatusCode} {ReasonPhrase}. Body: {Body}",
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                body);
+            throw new InvalidOperationException(BuildDataverseAppFailureMessage(response.StatusCode));
+        }
 
         return body;
     }
+
+    private static DataverseAppCredential ResolveDataverseAppCredential(IConfiguration configuration)
+    {
+        var dataverseClientId = FirstNonEmpty(configuration["Dataverse:ClientId"], configuration["AzureAd:ClientId"]);
+        var dataverseClientSecret = FirstNonEmpty(configuration["Dataverse:ClientSecret"]);
+        if (!string.IsNullOrWhiteSpace(dataverseClientId)
+            && !string.IsNullOrWhiteSpace(dataverseClientSecret))
+        {
+            return new DataverseAppCredential(dataverseClientId, dataverseClientSecret, "Dataverse");
+        }
+
+        var azureClientId = FirstNonEmpty(configuration["AzureAd:ClientId"]);
+        var azureClientSecret = FirstNonEmpty(configuration["AzureAd:ClientSecret"]);
+        if (!string.IsNullOrWhiteSpace(azureClientId)
+            && !string.IsNullOrWhiteSpace(azureClientSecret))
+        {
+            return new DataverseAppCredential(azureClientId, azureClientSecret, "AzureAd");
+        }
+
+        return new DataverseAppCredential(dataverseClientId, "", "");
+    }
+
+    private static string BuildDataverseAppFailureMessage(System.Net.HttpStatusCode statusCode)
+    {
+        if (statusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+        {
+            return "La aplicacion pudo autenticarse, pero Dataverse rechazo la consulta. Crea o activa un Application User para esa App Registration y asignale un rol con lectura sobre Gastos Digital Tech y Facturacion Digital Tech.";
+        }
+
+        return "Dataverse rechazo la consulta app-only del portal publico. Revisa permisos de la aplicacion y configuracion de las tablas.";
+    }
+
+    private sealed record DataverseAppCredential(string ClientId, string ClientSecret, string Source);
 
     private async Task<List<JsonElement>> GetDataverseAppEntitiesAsync(
         string relativeUrl,
@@ -2365,8 +2426,13 @@ public sealed partial class DataverseService : IDataverseService
                 throw new InvalidOperationException("Se alcanzo el limite de paginas consultando registros publicos de Dataverse.");
 
             var json = await CallDataverseAppGetJsonAsync(nextRelativeUrl, ct, customizeRequest);
-            using var doc = JsonDocument.Parse(json);
-            var value = doc.RootElement.GetProperty("value");
+            using var doc = ParseDataverseAppCollectionResponse(json);
+            if (!doc.RootElement.TryGetProperty("value", out var value)
+                || value.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException("Dataverse devolvio una respuesta inesperada para la consulta app-only del portal publico.");
+            }
+
             foreach (var item in value.EnumerateArray())
             {
                 items.Add(item.Clone());
@@ -2378,6 +2444,20 @@ public sealed partial class DataverseService : IDataverseService
         }
 
         return items;
+    }
+
+    private static JsonDocument ParseDataverseAppCollectionResponse(string json)
+    {
+        try
+        {
+            return JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException(
+                "Dataverse devolvio una respuesta no valida para la consulta app-only del portal publico.",
+                ex);
+        }
     }
 
     private async Task<string> CallDataverseGetJsonAsync(
