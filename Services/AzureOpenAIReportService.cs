@@ -124,42 +124,41 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
     {
         ValidateAzureOpenAIOptions();
 
-        var requestBody = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["messages"] = new object[]
-            {
-                new
-                {
-                    role = "system",
-                    content = BuildSystemPrompt()
-                },
-                new
-                {
-                    role = "user",
-                    content =
-                        "Genera el informe HTML mensual usando exclusivamente este JSON consolidado. " +
-                        "La informacion del cliente, periodo, tickets y tenant Microsoft 365 ya viene en el JSON. " +
-                        "No inventes metricas, tickets, datos de seguridad ni datos del cliente. JSON:\n" + payloadJson
-                }
-            },
-        };
-        var tokenParameterName = NormalizeTokenParameterName(_azureOpenAIOptions.TokenParameterName);
-        requestBody[tokenParameterName] = _azureOpenAIOptions.MaxTokens;
-        if (_azureOpenAIOptions.IncludeTemperature)
-            requestBody["temperature"] = _azureOpenAIOptions.Temperature;
-
-        if (!string.IsNullOrWhiteSpace(_azureOpenAIOptions.ReasoningEffort))
-            requestBody["reasoning_effort"] = _azureOpenAIOptions.ReasoningEffort.Trim();
-
-        if (!string.IsNullOrWhiteSpace(_azureOpenAIOptions.Verbosity))
-            requestBody["verbosity"] = _azureOpenAIOptions.Verbosity.Trim();
-
         var endpoint = _azureOpenAIOptions.Endpoint.TrimEnd('/');
         var deployment = Uri.EscapeDataString(_azureOpenAIOptions.DeploymentName.Trim());
         var apiVersion = Uri.EscapeDataString(_azureOpenAIOptions.ApiVersion.Trim());
         var uri = $"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(Math.Clamp(_azureOpenAIOptions.TimeoutSeconds, 30, 600));
+
+        var firstAttempt = await SendHtmlGenerationRequestAsync(client, uri, payloadJson, compactRetry: false, ct);
+        if (IsCompleteHtmlDocument(firstAttempt.Html))
+            return ValidateGeneratedReportHtml(firstAttempt);
+
+        if (ShouldRetryWithCompactPrompt(firstAttempt))
+        {
+            _logger.LogWarning(
+                "Azure OpenAI agoto tokens generando informe HTML antes de devolver contenido visible. Reintentando con prompt compacto. finish_reason={FinishReason}",
+                firstAttempt.FinishReason);
+
+            var retryAttempt = await SendHtmlGenerationRequestAsync(client, uri, payloadJson, compactRetry: true, ct);
+            if (IsCompleteHtmlDocument(retryAttempt.Html))
+                return ValidateGeneratedReportHtml(retryAttempt);
+
+            throw BuildInvalidHtmlResponseException(retryAttempt.RawContent, retryAttempt.Html, retryAttempt.FinishReason, firstAttempt);
+        }
+
+        throw BuildInvalidHtmlResponseException(firstAttempt.RawContent, firstAttempt.Html, firstAttempt.FinishReason);
+    }
+
+    private async Task<OpenAIHtmlGenerationAttempt> SendHtmlGenerationRequestAsync(
+        HttpClient client,
+        string uri,
+        string payloadJson,
+        bool compactRetry,
+        CancellationToken ct)
+    {
+        var requestBody = BuildOpenAIReportRequestBody(payloadJson, compactRetry);
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri);
         httpRequest.Headers.TryAddWithoutValidation("api-key", _azureOpenAIOptions.ApiKey);
@@ -174,17 +173,98 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         var rawContent = ExtractChatCompletionContent(body);
         var finishReason = ExtractFinishReason(body);
         var html = NormalizeHtmlResponse(rawContent);
-        if (string.IsNullOrWhiteSpace(html) || !html.TrimStart().StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase))
-            throw BuildInvalidHtmlResponseException(rawContent, html, finishReason);
 
-        if (html.Contains("<script", StringComparison.OrdinalIgnoreCase))
+        return new OpenAIHtmlGenerationAttempt(rawContent, html, finishReason);
+    }
+
+    private Dictionary<string, object?> BuildOpenAIReportRequestBody(string payloadJson, bool compactRetry)
+    {
+        var requestBody = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["messages"] = new object[]
+            {
+                new
+                {
+                    role = "system",
+                    content = BuildSystemPrompt()
+                },
+                new
+                {
+                    role = "user",
+                    content = BuildUserPrompt(payloadJson, compactRetry)
+                }
+            },
+        };
+        var tokenParameterName = NormalizeTokenParameterName(_azureOpenAIOptions.TokenParameterName);
+        requestBody[tokenParameterName] = _azureOpenAIOptions.MaxTokens;
+        if (_azureOpenAIOptions.IncludeTemperature)
+            requestBody["temperature"] = _azureOpenAIOptions.Temperature;
+
+        var reasoningEffort = ResolveReportReasoningEffort(_azureOpenAIOptions.ReasoningEffort);
+        if (!string.IsNullOrWhiteSpace(reasoningEffort))
+            requestBody["reasoning_effort"] = reasoningEffort;
+
+        var verbosity = ResolveReportVerbosity(_azureOpenAIOptions.Verbosity);
+        if (!string.IsNullOrWhiteSpace(verbosity))
+            requestBody["verbosity"] = verbosity;
+
+        return requestBody;
+    }
+
+    private static string BuildUserPrompt(string payloadJson, bool compactRetry)
+    {
+        var retryInstruction = compactRetry
+            ? """
+
+REINTENTO POR LIMITE DE TOKENS:
+La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. En este intento prioriza entregar un documento completo y cerrado.
+- Usa CSS compacto pero suficiente para mantener el aspecto premium.
+- No generes explicaciones, analisis previo ni texto fuera del HTML.
+- No sobreextiendas parrafos ni tablas.
+- Cierra obligatoriamente con </html>.
+"""
+            : "";
+
+        return
+            "Genera el informe HTML mensual usando exclusivamente este JSON consolidado. " +
+            "La informacion del cliente, periodo, tickets y tenant Microsoft 365 ya viene en el JSON. " +
+            "No inventes metricas, tickets, datos de seguridad ni datos del cliente. " +
+            "Devuelve directamente <!DOCTYPE html> como primer texto visible." +
+            retryInstruction +
+            "\nJSON:\n" + payloadJson;
+    }
+
+    private static string ValidateGeneratedReportHtml(OpenAIHtmlGenerationAttempt attempt)
+    {
+        if (!IsCompleteHtmlDocument(attempt.Html))
+            throw BuildInvalidHtmlResponseException(attempt.RawContent, attempt.Html, attempt.FinishReason);
+
+        if (attempt.Html.Contains("<script", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
                 "Azure OpenAI devolvio HTML con scripts. El informe debe contener solo HTML y CSS embebido. " +
-                $"finish_reason={finishReason}; preview={BuildDiagnosticPreview(html)}");
+                $"finish_reason={attempt.FinishReason}; preview={BuildDiagnosticPreview(attempt.Html)}");
         }
 
-        return html;
+        return attempt.Html;
+    }
+
+    private static bool IsCompleteHtmlDocument(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return false;
+
+        var value = html.TrimStart();
+        return value.StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase)
+            && value.Contains("<html", StringComparison.OrdinalIgnoreCase)
+            && value.Contains("</html>", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldRetryWithCompactPrompt(OpenAIHtmlGenerationAttempt attempt)
+    {
+        return string.Equals(attempt.FinishReason, "length", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(attempt.RawContent)
+            || string.IsNullOrWhiteSpace(attempt.Html);
     }
 
     private ReporteConsolidadoPayload BuildConsolidatedPayload(ReporteMonthlyInput input)
@@ -482,13 +562,22 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
     private static InvalidOperationException BuildInvalidHtmlResponseException(
         string rawContent,
         string normalizedContent,
-        string finishReason)
+        string finishReason,
+        OpenAIHtmlGenerationAttempt? previousAttempt = null)
     {
+        var previousDetail = previousAttempt is null
+            ? ""
+            : $" previous_finish_reason={previousAttempt.FinishReason}; previous_raw_length={(previousAttempt.RawContent ?? "").Length}; previous_normalized_length={(previousAttempt.Html ?? "").Length};";
+        var tokenHint = string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase)
+            ? " causa_probable=max_completion_tokens insuficiente para el HTML solicitado o salida demasiado extensa;"
+            : "";
         var message =
             "Azure OpenAI no devolvio un HTML completo con <!DOCTYPE html>. " +
             $"finish_reason={finishReason}; " +
             $"raw_length={(rawContent ?? "").Length}; " +
             $"normalized_length={(normalizedContent ?? "").Length}; " +
+            previousDetail +
+            tokenHint +
             $"raw_preview={BuildDiagnosticPreview(rawContent)}; " +
             $"normalized_preview={BuildDiagnosticPreview(normalizedContent)}";
 
@@ -510,6 +599,23 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         return normalized.Length <= maxLength
             ? normalized
             : normalized[..maxLength] + "...";
+    }
+
+    private static string ResolveReportReasoningEffort(string? raw)
+    {
+        var value = (raw ?? "").Trim();
+        return string.IsNullOrWhiteSpace(value) ? "" : "low";
+    }
+
+    private static string ResolveReportVerbosity(string? raw)
+    {
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return string.Equals(value, "low", StringComparison.OrdinalIgnoreCase)
+            ? "low"
+            : "medium";
     }
 
     private static string BuildSystemPrompt()
@@ -825,4 +931,9 @@ No agregues secciones nuevas salvo que sean visualmente necesarias y no duplique
         string Value,
         DateOnly StartDate,
         DateOnly EndExclusiveDate);
+
+    private sealed record OpenAIHtmlGenerationAttempt(
+        string RawContent,
+        string Html,
+        string FinishReason);
 }
