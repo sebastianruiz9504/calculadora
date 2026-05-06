@@ -8,3 +8,5 @@ info: Microsoft.Hosting.Lifetime[0]
       Content root path: C:\Users\SebastianRuiz\CotizadorInterno\CotizadorInterno.Web
 warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3]
       Failed to determine the https port for redirect.
+warn: Microsoft.AspNetCore.Server.Kestrel[22]
+      As of "05/06/2026 20:22:36 +00:00", the heartbeat has been running for "00:00:01.8023047" which is longer than "00:00:01". This could be caused by thread pool starvation.
