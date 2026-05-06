@@ -349,7 +349,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
 
     private static string NormalizeHtmlResponse(string html)
     {
-        var value = (html ?? "").Trim();
+        var value = (html ?? "").Trim().Trim('\uFEFF');
         if (value.StartsWith("```", StringComparison.Ordinal))
         {
             var firstLineBreak = value.IndexOf('\n');
@@ -361,7 +361,30 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
                 value = value[..closingFence];
         }
 
-        return value.Trim();
+        var doctypeIndex = value.IndexOf("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase);
+        if (doctypeIndex >= 0)
+        {
+            value = value[doctypeIndex..];
+            var doctypeEnd = value.IndexOf('>');
+            if (doctypeEnd >= 0)
+                value = "<!DOCTYPE html>" + value[(doctypeEnd + 1)..];
+        }
+        else
+        {
+            var htmlIndex = value.IndexOf("<html", StringComparison.OrdinalIgnoreCase);
+            if (htmlIndex >= 0)
+                value = "<!DOCTYPE html>\n" + value[htmlIndex..];
+        }
+
+        var trailingFence = value.LastIndexOf("```", StringComparison.Ordinal);
+        if (trailingFence >= 0)
+            value = value[..trailingFence];
+
+        var htmlEnd = value.LastIndexOf("</html>", StringComparison.OrdinalIgnoreCase);
+        if (htmlEnd >= 0)
+            value = value[..(htmlEnd + "</html>".Length)];
+
+        return value.Trim().Trim('\uFEFF');
     }
 
     private static string BuildSystemPrompt()
