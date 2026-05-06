@@ -11,6 +11,8 @@ public sealed partial class DataverseService
     private const int NominaCloudVerticalOptionValue = 645250000;
     private const int NominaCopiersVerticalOptionValue = 645250001;
     private const int NominaCopiersLineOptionValue = 645250003;
+    private const int NominaEmployeePayrollContractOptionValue = 645250000;
+    private const int NominaEmployeeServiceContractOptionValue = 645250001;
 
     public async Task<NominaPreviewResultDto> PreviewNominaAsync(NominaPreviewRequest request, CancellationToken ct = default)
     {
@@ -183,6 +185,7 @@ public sealed partial class DataverseService
             _nominaEmployeeCommissionCapField,
             _nominaEmployeeCopiersFactorField,
             _nominaEmployeeCloudFactorField,
+            _nominaEmployeeContractTypeField,
             $"_{_nominaEmployeeUserLookupField}_value"
         }.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase));
 
@@ -652,10 +655,11 @@ public sealed partial class DataverseService
                 0m))
             : 0m;
         var bonusCompliance = RoundCurrency(Math.Max(adjustment.BonusCompliance, 0m));
-        var otherDeductions = RoundCurrency(Math.Max(adjustment.OtherDeductions, 0m));
-        var loan = RoundCurrency(Math.Max(adjustment.Loan, 0m));
-        var payrollWithholding = RoundCurrency(Math.Max(adjustment.PayrollWithholding, 0m));
-        var externalWithholding = RoundCurrency(Math.Max(adjustment.ExternalWithholding, 0m));
+        var isServiceContract = employee.IsServiceContract;
+        var otherDeductions = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.OtherDeductions, 0m));
+        var loan = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.Loan, 0m));
+        var payrollWithholding = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.PayrollWithholding, 0m));
+        var externalWithholding = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.ExternalWithholding, 0m));
         var factorCopiers = RoundCurrency(Math.Max(adjustment.FactorCopiers ?? employee.FactorCopiers, 0m));
         var factorCloud = RoundCurrency(Math.Max(adjustment.FactorCloud ?? employee.FactorCloud, 0m));
         var totalCommissions = RoundCurrency(commissionBucket.Total);
@@ -665,9 +669,13 @@ public sealed partial class DataverseService
         var cuentaDeCobro = employee.CommissionCap > 0m
             ? RoundCurrency(Math.Max(totalCommissions - employee.CommissionCap, 0m))
             : 0m;
-        var contributionBase = RoundCurrency(salaryBase + absencePayment + bonusCompliance + appliedCommissionBase);
-        var health = RoundCurrency(contributionBase * _nominaHealthRate);
-        var pension = RoundCurrency(contributionBase * _nominaPensionRate);
+        var contributionBase = isServiceContract
+            ? 0m
+            : RoundCurrency(salaryBase + absencePayment + bonusCompliance + appliedCommissionBase);
+        var healthRate = isServiceContract ? 0m : _nominaHealthRate;
+        var pensionRate = isServiceContract ? 0m : _nominaPensionRate;
+        var health = RoundCurrency(contributionBase * healthRate);
+        var pension = RoundCurrency(contributionBase * pensionRate);
         var grossSalary = RoundCurrency(salaryBase + auxilio + absencePayment + bonusCompliance + totalCommissions);
         var netPayroll = RoundCurrency(grossSalary - (health + pension + otherDeductions + loan + payrollWithholding));
         var netCuentaDeCobro = RoundCurrency(cuentaDeCobro - externalWithholding);
@@ -685,6 +693,9 @@ public sealed partial class DataverseService
             Operation = existingRecord is null ? "create" : "update",
             ExistingPayrollRecordId = existingRecord?.RecordId ?? "",
             ExistingPayrollRecordCount = existingRecordCount,
+            EmployeeContractTypeOptionValue = employee.ContractTypeOptionValue,
+            EmployeeContractTypeLabel = employee.ContractTypeLabel,
+            IsServiceContract = isServiceContract,
             Verified = adjustment.Verified,
             PeriodDays = periodDays,
             WorkedDays = workedDays,
@@ -704,8 +715,8 @@ public sealed partial class DataverseService
             CommissionCap = employee.CommissionCap,
             AppliedCommissionBase = appliedCommissionBase,
             ContributionBase = contributionBase,
-            HealthRate = _nominaHealthRate,
-            PensionRate = _nominaPensionRate,
+            HealthRate = healthRate,
+            PensionRate = pensionRate,
             Health = health,
             Pension = pension,
             OtherDeductions = otherDeductions,
@@ -801,6 +812,33 @@ public sealed partial class DataverseService
         return "";
     }
 
+    private static string ResolveNominaContractTypeLabel(JsonElement item, string contractTypeField, int optionValue)
+    {
+        var formatted = ReadString(item, $"{contractTypeField}{FormattedValueAnnotationSuffix}").Trim();
+        if (!string.IsNullOrWhiteSpace(formatted))
+            return formatted;
+
+        return optionValue switch
+        {
+            NominaEmployeePayrollContractOptionValue => "Nomina",
+            NominaEmployeeServiceContractOptionValue => "Prestacion de servicios",
+            _ => "Nomina"
+        };
+    }
+
+    private static bool IsNominaServiceContract(int optionValue, string? label)
+    {
+        if (optionValue == NominaEmployeeServiceContractOptionValue)
+            return true;
+
+        if (optionValue == NominaEmployeePayrollContractOptionValue)
+            return false;
+
+        var normalizedLabel = NormalizeNominaPersonName(label);
+        return normalizedLabel.Contains("prestacion", StringComparison.OrdinalIgnoreCase)
+            && normalizedLabel.Contains("servicio", StringComparison.OrdinalIgnoreCase);
+    }
+
     private NominaEmployeeInfo? ParseNominaEmployee(JsonElement item, string employeeNameField)
     {
         var employeeId = ReadString(item, _nominaEmployeeIdField).Trim();
@@ -811,11 +849,16 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(employeeName))
             employeeName = $"Empleado {employeeId[..Math.Min(8, employeeId.Length)]}";
 
+        var contractTypeOptionValue = ReadOptionValue(item, _nominaEmployeeContractTypeField);
+        var contractTypeLabel = ResolveNominaContractTypeLabel(item, _nominaEmployeeContractTypeField, contractTypeOptionValue);
         return new NominaEmployeeInfo
         {
             EmployeeId = employeeId,
             EmployeeName = employeeName.Trim(),
             UserId = ReadDataverseLookupId(item, _nominaEmployeeUserLookupField, "usuario", "systemuser"),
+            ContractTypeOptionValue = contractTypeOptionValue,
+            ContractTypeLabel = contractTypeLabel,
+            IsServiceContract = IsNominaServiceContract(contractTypeOptionValue, contractTypeLabel),
             SalaryBase = RoundCurrency(Math.Max(ReadDecimal(item, _nominaEmployeeSalaryField) ?? 0m, 0m)),
             Auxilio = RoundCurrency(Math.Max(ReadDecimal(item, _nominaEmployeeConnectivityAllowanceField) ?? 0m, 0m)),
             CommissionCap = RoundCurrency(Math.Max(ReadDecimal(item, _nominaEmployeeCommissionCapField) ?? 0m, 0m)),
@@ -1009,6 +1052,9 @@ public sealed partial class DataverseService
         public string EmployeeId { get; set; } = "";
         public string EmployeeName { get; set; } = "";
         public string UserId { get; set; } = "";
+        public int ContractTypeOptionValue { get; set; }
+        public string ContractTypeLabel { get; set; } = "Nomina";
+        public bool IsServiceContract { get; set; }
         public decimal SalaryBase { get; set; }
         public decimal Auxilio { get; set; }
         public decimal CommissionCap { get; set; }

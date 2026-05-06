@@ -87,6 +87,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaEmployeeCopiersFactorField = "cr07a_factorcopiers";
     private const string DefaultNominaEmployeeCloudFactorField = "cr07a_factorcloud";
     private const string DefaultNominaEmployeeUserLookupField = "cr07a_usuario";
+    private const string DefaultNominaEmployeeContractTypeField = "cr07a_tipocontrato";
     private const string DefaultNominaPayrollTableSetName = "cr07a_nominas";
     private const string DefaultNominaPayrollTableName = "cr07a_nomina";
     private const string DefaultNominaPayrollIdField = "cr07a_nominaid";
@@ -233,6 +234,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaEmployeeCopiersFactorField;
     private readonly string _nominaEmployeeCloudFactorField;
     private readonly string _nominaEmployeeUserLookupField;
+    private readonly string _nominaEmployeeContractTypeField;
     private readonly string _nominaPayrollTableSetName;
     private readonly string _nominaPayrollTableName;
     private readonly string _nominaPayrollIdField;
@@ -432,6 +434,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaEmployeeCloudFactorField;
         _nominaEmployeeUserLookupField = configuration["Nomina:EmployeeUserLookupField"]
             ?? DefaultNominaEmployeeUserLookupField;
+        _nominaEmployeeContractTypeField = configuration["Nomina:EmployeeContractTypeField"]
+            ?? DefaultNominaEmployeeContractTypeField;
         _nominaPayrollTableSetName = configuration["Nomina:PayrollTableSetName"]
             ?? DefaultNominaPayrollTableSetName;
         _nominaPayrollTableName = configuration["Nomina:PayrollTableName"]

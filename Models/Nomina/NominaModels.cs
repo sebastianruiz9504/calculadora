@@ -48,6 +48,9 @@ public sealed class NominaRowDto
     public string Operation { get; set; } = "";
     public string ExistingPayrollRecordId { get; set; } = "";
     public int ExistingPayrollRecordCount { get; set; }
+    public int EmployeeContractTypeOptionValue { get; set; }
+    public string EmployeeContractTypeLabel { get; set; } = "";
+    public bool IsServiceContract { get; set; }
     public bool Verified { get; set; }
     public int PeriodDays { get; set; }
     public decimal WorkedDays { get; set; }

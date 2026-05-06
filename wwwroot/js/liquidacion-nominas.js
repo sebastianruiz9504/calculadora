@@ -54,6 +54,8 @@
     };
     const draftStorageKey = buildDraftStorageKey(app.dataset.draftOwner || "");
     const draftVersion = 1;
+    const serviceContractTypeOptionValue = 645250001;
+    const deductionFields = new Set(["otherDeductions", "loan", "payrollWithholding", "externalWithholding"]);
 
     const state = {
         rows: [],
@@ -332,20 +334,23 @@
             periodKey: periodInput.value,
             paymentDateValue: paymentDateInput.value,
             confirmed,
-            adjustments: state.rows.map((row) => ({
-                employeeId: row.employeeId,
-                verified: Boolean(row.verified),
-                workedDays: row.workedDays,
-                absenceReason: row.absenceReason || "",
-                absencePayment: row.absencePayment,
-                factorCopiers: row.factorCopiers,
-                factorCloud: row.factorCloud,
-                bonusCompliance: row.bonusCompliance,
-                otherDeductions: row.otherDeductions,
-                loan: row.loan,
-                payrollWithholding: row.payrollWithholding,
-                externalWithholding: row.externalWithholding
-            }))
+            adjustments: state.rows.map((row) => {
+                const serviceContract = isServiceContract(row);
+                return {
+                    employeeId: row.employeeId,
+                    verified: Boolean(row.verified),
+                    workedDays: row.workedDays,
+                    absenceReason: row.absenceReason || "",
+                    absencePayment: row.absencePayment,
+                    factorCopiers: row.factorCopiers,
+                    factorCloud: row.factorCloud,
+                    bonusCompliance: row.bonusCompliance,
+                    otherDeductions: serviceContract ? 0 : row.otherDeductions,
+                    loan: serviceContract ? 0 : row.loan,
+                    payrollWithholding: serviceContract ? 0 : row.payrollWithholding,
+                    externalWithholding: serviceContract ? 0 : row.externalWithholding
+                };
+            })
         };
     }
 
@@ -387,6 +392,9 @@
             warnings: Array.isArray(row.warnings) ? row.warnings.slice() : []
         };
 
+        normalized.employeeContractTypeOptionValue = Number.parseInt(String(normalized.employeeContractTypeOptionValue || 0), 10) || 0;
+        normalized.employeeContractTypeLabel = String(normalized.employeeContractTypeLabel || "").trim();
+        normalized.isServiceContract = isServiceContract(normalized);
         normalized.periodDays = Math.max(Math.round(toPositiveNumber(normalized.periodDays)) || getDaysInPeriod(normalized.periodKey), 1);
         normalized.monthlySalaryBase = toPositiveNumber(normalized.monthlySalaryBase || normalized.salaryBase);
         normalized.monthlyAuxilio = toPositiveNumber(normalized.monthlyAuxilio || normalized.auxilio);
@@ -432,10 +440,19 @@
         row.factorCloud = toPositiveNumber(row.factorCloud);
         row.healthRate = toPositiveNumber(row.healthRate);
         row.pensionRate = toPositiveNumber(row.pensionRate);
+        const serviceContract = isServiceContract(row);
+        if (serviceContract) {
+            applyServiceContractDeductionRule(row);
+            row.healthRate = 0;
+            row.pensionRate = 0;
+        }
+
         row.commissions = roundMoney(row.commissionsCopiers + row.commissionsCloud + row.commissionsUnassigned);
         row.appliedCommissionBase = roundMoney(row.commissionCap > 0 ? Math.min(row.commissions, row.commissionCap) : row.commissions);
         row.cuentaDeCobro = roundMoney(row.commissionCap > 0 ? Math.max(row.commissions - row.commissionCap, 0) : 0);
-        row.contributionBase = roundMoney(row.salaryBase + row.absencePayment + row.bonusCompliance + row.appliedCommissionBase);
+        row.contributionBase = serviceContract
+            ? 0
+            : roundMoney(row.salaryBase + row.absencePayment + row.bonusCompliance + row.appliedCommissionBase);
         row.health = roundMoney(row.contributionBase * row.healthRate);
         row.pension = roundMoney(row.contributionBase * row.pensionRate);
         row.grossSalary = roundMoney(row.salaryBase + row.auxilio + row.absencePayment + row.bonusCompliance + row.commissions);
@@ -457,6 +474,9 @@
                     </td>
                     <td>
                         <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
+                        <div class="payroll-row__meta">
+                            <span class="payroll-contract-pill ${isServiceContract(row) ? "payroll-contract-pill--service" : "payroll-contract-pill--payroll"}">${escapeHtml(resolveContractTypeLabel(row))}</span>
+                        </div>
                     </td>
                     <td class="text-end" data-role="netPayroll">${formatMoney(row.netPayroll)}</td>
                     <td class="payroll-percent-cell">
@@ -535,7 +555,7 @@
         }
 
         if (detailSubtitle) {
-            detailSubtitle.textContent = row.employeeId || "";
+            detailSubtitle.textContent = `${resolveContractTypeLabel(row)} | ${row.employeeId || ""}`;
         }
 
         if (detailMeta) {
@@ -550,12 +570,14 @@
     }
 
     function renderDetailInputs(row, skipField) {
+        const serviceContract = isServiceContract(row);
         detailInputs.forEach((input) => {
             const field = input.dataset.detailField;
             if (!field) {
                 return;
             }
 
+            input.disabled = state.busy || (serviceContract && isServiceDeductionField(field));
             if (skipField && field === skipField) {
                 return;
             }
@@ -589,6 +611,7 @@
 
     function renderDetailValues(row) {
         setDetailOutput("operation", row.operation === "update" ? "Actualizar" : "Crear");
+        setDetailOutput("contractType", resolveContractTypeLabel(row));
         setDetailOutput("periodDays", formatNumber(row.periodDays));
         setDetailOutput("workedDays", formatNumber(row.workedDays));
         setDetailOutput("absenceDays", formatNumber(row.absenceDays));
@@ -931,8 +954,9 @@
         state.busy = isBusy;
         previewBtn.disabled = isBusy;
         resetBtn.disabled = isBusy;
+        const detailRow = getActiveDetailRow();
         detailInputs.forEach((input) => {
-            input.disabled = isBusy;
+            input.disabled = isBusy || (detailRow && isServiceContract(detailRow) && isServiceDeductionField(input.dataset.detailField));
         });
         updateConfirmAvailability();
     }
@@ -981,6 +1005,56 @@
         }
 
         return "info";
+    }
+
+    function isServiceDeductionField(field) {
+        return deductionFields.has(String(field || ""));
+    }
+
+    function applyServiceContractDeductionRule(row) {
+        if (!row || !isServiceContract(row)) {
+            return;
+        }
+
+        row.otherDeductions = 0;
+        row.loan = 0;
+        row.payrollWithholding = 0;
+        row.externalWithholding = 0;
+    }
+
+    function isServiceContract(row) {
+        if (!row) {
+            return false;
+        }
+
+        if (row.isServiceContract === true) {
+            return true;
+        }
+
+        const optionValue = Number.parseInt(String(row.employeeContractTypeOptionValue || row.contractTypeOptionValue || 0), 10) || 0;
+        if (optionValue === serviceContractTypeOptionValue) {
+            return true;
+        }
+
+        const label = normalizeText(row.employeeContractTypeLabel || row.contractTypeLabel || "");
+        return label.includes("prestacion") && label.includes("servicio");
+    }
+
+    function resolveContractTypeLabel(row) {
+        const label = String(row?.employeeContractTypeLabel || row?.contractTypeLabel || "").trim();
+        if (label) {
+            return label;
+        }
+
+        return isServiceContract(row) ? "Prestacion de servicios" : "Nomina";
+    }
+
+    function normalizeText(value) {
+        return String(value || "")
+            .trim()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
     }
 
     function roundMoney(value) {
