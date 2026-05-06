@@ -7,13 +7,19 @@
     const tableKey = app.dataset.tableKey || "";
     const loadUrl = app.dataset.loadUrl || "";
     const saveUrl = app.dataset.saveUrl || "";
+    const exportUrl = app.dataset.exportUrl || "";
     const uploadUrl = app.dataset.uploadUrl || "";
     const downloadUrl = app.dataset.downloadUrl || "";
+    const isVacationTable = tableKey === "vacaciones";
+    const vacationEmployeeField = "cr07a_idempleado";
 
     const statusBanner = document.getElementById("rhStatusBanner");
     const refreshBtn = document.getElementById("rhRefreshBtn");
     const newBtn = document.getElementById("rhNewBtn");
     const saveBtn = document.getElementById("rhSaveBtn");
+    const vacationTools = document.getElementById("rhVacationTools");
+    const vacationEmployeeFilter = document.getElementById("rhVacationEmployeeFilter");
+    const exportBtn = document.getElementById("rhExportBtn");
     const listHead = document.getElementById("rhListHead");
     const listBody = document.getElementById("rhListBody");
     const emptyState = document.getElementById("rhEmptyState");
@@ -36,6 +42,7 @@
     const state = {
         data: null,
         currentId: "",
+        employeeFilterId: "",
         busy: false
     };
 
@@ -49,6 +56,19 @@
 
     saveBtn?.addEventListener("click", async () => {
         await saveCurrentRecord();
+    });
+
+    vacationEmployeeFilter?.addEventListener("change", () => {
+        state.employeeFilterId = vacationEmployeeFilter.value || "";
+        if (state.currentId && !getVisibleRecords().some((item) => item.recordId === state.currentId)) {
+            state.currentId = "";
+        }
+
+        renderAll();
+    });
+
+    exportBtn?.addEventListener("click", async () => {
+        await exportCurrentTable();
     });
 
     listBody?.addEventListener("click", (event) => {
@@ -274,6 +294,47 @@
         }
     }
 
+    async function exportCurrentTable() {
+        try {
+            if (!exportUrl) {
+                return;
+            }
+
+            setBusy(true);
+            renderStatus("info", "Generando archivo de Excel...");
+
+            const params = new URLSearchParams({ tableKey });
+            if (isVacationTable && state.employeeFilterId) {
+                params.set("employeeId", state.employeeFilterId);
+            }
+
+            const response = await fetch(`${exportUrl}?${params.toString()}`, {
+                headers: {
+                    Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                }
+            });
+
+            if (!response.ok) {
+                throw createResponseError(await readPayload(response));
+            }
+
+            const blob = await response.blob();
+            const href = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = href;
+            link.download = resolveDownloadFileName(response, "vacaciones.xlsx");
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(href);
+            renderStatus("success", "Excel generado correctamente.");
+        } catch (error) {
+            renderStatus("error", buildErrorBannerMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    }
+
     function openEditor(recordId) {
         state.currentId = recordId || "";
         hideResultDialog();
@@ -286,13 +347,14 @@
     }
 
     function renderAll() {
+        renderVacationTools();
         renderList();
         updateSummary();
     }
 
     function renderList() {
         const fields = getListFields();
-        const records = getRecords();
+        const records = getVisibleRecords();
 
         listHead.innerHTML = `
             <tr>
@@ -315,6 +377,27 @@
 
         emptyState.hidden = records.length > 0;
         emptyState.textContent = state.data?.emptyStateMessage || "No hay registros todavia.";
+    }
+
+    function renderVacationTools() {
+        if (!vacationTools || !vacationEmployeeFilter || !isVacationTable) {
+            return;
+        }
+
+        vacationTools.hidden = false;
+        const employees = getVacationEmployeeOptions();
+        const selectedValue = employees.some((item) => item.value === state.employeeFilterId)
+            ? state.employeeFilterId
+            : "";
+        state.employeeFilterId = selectedValue;
+        vacationEmployeeFilter.innerHTML = `
+            <option value="">Todos los empleados</option>
+            ${employees.map((employee) => `
+                <option value="${escapeHtml(employee.value)}" ${employee.value === selectedValue ? "selected" : ""}>
+                    ${escapeHtml(employee.label)}
+                </option>
+            `).join("")}
+        `;
     }
 
     function renderForm() {
@@ -561,10 +644,13 @@
     }
 
     function updateSummary() {
-        const records = getRecords();
+        const records = getVisibleRecords();
+        const totalRecords = getRecords().length;
         const title = state.data?.description || state.data?.title || "";
         tableDescription.textContent = title;
-        recordsCount.textContent = `${records.length} ${records.length === 1 ? "registro" : "registros"}`;
+        recordsCount.textContent = isVacationTable && state.employeeFilterId
+            ? `${records.length} de ${totalRecords} registros`
+            : `${records.length} ${records.length === 1 ? "registro" : "registros"}`;
     }
 
     function upsertRecord(record) {
@@ -585,6 +671,34 @@
 
     function getRecords() {
         return Array.isArray(state.data?.records) ? state.data.records : [];
+    }
+
+    function getVisibleRecords() {
+        const records = getRecords();
+        if (!isVacationTable || !state.employeeFilterId) {
+            return records;
+        }
+
+        return records.filter((record) => {
+            const cell = getCell(record, vacationEmployeeField);
+            return cell && (cell.lookupId || cell.value || "") === state.employeeFilterId;
+        });
+    }
+
+    function getVacationEmployeeOptions() {
+        const employees = new Map();
+        getRecords().forEach((record) => {
+            const cell = getCell(record, vacationEmployeeField);
+            const value = cell?.lookupId || cell?.value || "";
+            const label = cell?.lookupLabel || cell?.displayValue || value;
+            if (value && !employees.has(value)) {
+                employees.set(value, label);
+            }
+        });
+
+        return Array.from(employees.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((left, right) => left.label.localeCompare(right.label, "es", { sensitivity: "base" }));
     }
 
     function getFields() {
@@ -675,6 +789,14 @@
 
         if (saveBtn) {
             saveBtn.disabled = isBusy;
+        }
+
+        if (exportBtn) {
+            exportBtn.disabled = isBusy;
+        }
+
+        if (vacationEmployeeFilter) {
+            vacationEmployeeFilter.disabled = isBusy;
         }
 
         formBody.querySelectorAll("button, input, select, textarea").forEach((element) => {
@@ -789,6 +911,17 @@
         return {
             message: await response.text()
         };
+    }
+
+    function resolveDownloadFileName(response, fallback) {
+        const disposition = response.headers.get("content-disposition") || "";
+        const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match) {
+            return decodeURIComponent(utf8Match[1].trim().replaceAll("\"", ""));
+        }
+
+        const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+        return plainMatch ? plainMatch[1].trim() : fallback;
     }
 
     function escapeHtml(value) {

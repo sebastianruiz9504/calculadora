@@ -68,6 +68,25 @@ public sealed class RhController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Export(string tableKey, string? employeeId = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var file = await _dataverse.ExportRhTableAsync(tableKey, employeeId, ct);
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible exportar la tabla de RH.", ex));
+        }
+    }
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Save([FromBody] RhSaveRequest? request, CancellationToken ct)

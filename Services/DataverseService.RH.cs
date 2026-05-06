@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using ClosedXML.Excel;
 using CotizadorInterno.Web.Models.RH;
 
 namespace CotizadorInterno.Web.Services;
@@ -26,6 +27,72 @@ public sealed partial class DataverseService
 
         var table = GetRhTableDefinition(tableKey);
         return await LoadRhTableDataAsync(table, httpContext.User, ct);
+    }
+
+    public async Task<RhFileDownloadResult> ExportRhTableAsync(
+        string tableKey,
+        string? employeeId = null,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var table = GetRhTableDefinition(tableKey);
+        var data = await LoadRhTableDataAsync(table, httpContext.User, ct);
+        var fields = data.Fields
+            .Where(field => field.ShowInList)
+            .ToList();
+        var records = data.Records.AsEnumerable();
+        var normalizedEmployeeId = NormalizeOptionalGuid(employeeId);
+
+        if (string.Equals(table.Key, RhModuleKeys.VacationRequests, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(normalizedEmployeeId))
+        {
+            records = records.Where(record =>
+                record.Cells.TryGetValue("cr07a_idempleado", out var cell)
+                && string.Equals(FirstNonEmpty(cell.LookupId, cell.Value), normalizedEmployeeId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var orderedRecords = records.ToList();
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add(SanitizeRhWorksheetName(data.Title));
+
+        for (var columnIndex = 0; columnIndex < fields.Count; columnIndex++)
+        {
+            var cell = worksheet.Cell(1, columnIndex + 1);
+            cell.Value = fields[columnIndex].Label;
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF2FF");
+        }
+
+        for (var rowIndex = 0; rowIndex < orderedRecords.Count; rowIndex++)
+        {
+            var record = orderedRecords[rowIndex];
+            for (var columnIndex = 0; columnIndex < fields.Count; columnIndex++)
+            {
+                WriteRhExportCell(
+                    worksheet.Cell(rowIndex + 2, columnIndex + 1),
+                    fields[columnIndex],
+                    record.Cells.TryGetValue(fields[columnIndex].LogicalName, out var cell) ? cell : null);
+            }
+        }
+
+        if (fields.Count > 0)
+        {
+            var tableRange = worksheet.Range(1, 1, Math.Max(orderedRecords.Count + 1, 2), fields.Count);
+            tableRange.CreateTable("RhExport");
+            worksheet.Columns(1, fields.Count).AdjustToContents();
+        }
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+
+        return new RhFileDownloadResult
+        {
+            FileName = BuildRhExportFileName(data.Title, normalizedEmployeeId),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Content = stream.ToArray()
+        };
     }
 
     public async Task<RhSaveResultDto> SaveRhRecordAsync(RhSaveRequest request, CancellationToken ct = default)
@@ -250,6 +317,69 @@ public sealed partial class DataverseService
                     : Array.Empty<RhOptionDto>())).ToList(),
             Records = records
         };
+    }
+
+    private static void WriteRhExportCell(IXLCell targetCell, RhFieldDefinitionDto field, RhCellValueDto? cell)
+    {
+        if (cell is null)
+        {
+            targetCell.SetValue("");
+            return;
+        }
+
+        if (string.Equals(field.EditorType, "date", StringComparison.OrdinalIgnoreCase)
+            && TryParseDateOnly(cell.Value, out var parsedDate))
+        {
+            targetCell.SetValue(parsedDate.ToDateTime(TimeOnly.MinValue));
+            targetCell.Style.DateFormat.Format = "yyyy-mm-dd";
+            return;
+        }
+
+        if ((string.Equals(field.EditorType, "number", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(field.EditorType, "currency", StringComparison.OrdinalIgnoreCase))
+            && decimal.TryParse(cell.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedNumber))
+        {
+            targetCell.SetValue(parsedNumber);
+            targetCell.Style.NumberFormat.Format = string.Equals(field.EditorType, "currency", StringComparison.OrdinalIgnoreCase)
+                ? "$ #,##0.00"
+                : "#,##0.00";
+            return;
+        }
+
+        if (string.Equals(field.EditorType, "file", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(field.EditorType, "image", StringComparison.OrdinalIgnoreCase))
+        {
+            targetCell.SetValue(cell.HasContent ? FirstNonEmpty(cell.FileName, cell.DisplayValue, "Cargado") : "");
+            return;
+        }
+
+        targetCell.SetValue(FirstNonEmpty(cell.DisplayValue, cell.LookupLabel, cell.Value));
+    }
+
+    private static string SanitizeRhWorksheetName(string rawName)
+    {
+        var invalidChars = new HashSet<char>(new[] { ':', '\\', '/', '?', '*', '[', ']' });
+        var safeName = new string((rawName ?? "RH")
+            .Where(ch => !invalidChars.Contains(ch))
+            .ToArray())
+            .Trim();
+
+        if (string.IsNullOrWhiteSpace(safeName))
+            safeName = "RH";
+
+        return safeName.Length <= 31 ? safeName : safeName[..31];
+    }
+
+    private static string BuildRhExportFileName(string title, string employeeId)
+    {
+        var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmm", CultureInfo.InvariantCulture);
+        var rawName = $"RH-{FirstNonEmpty(title, "Tabla")}{(string.IsNullOrWhiteSpace(employeeId) ? "" : "-filtrado")}-{timestamp}.xlsx";
+        var invalidChars = Path.GetInvalidFileNameChars().ToHashSet();
+        var safeName = new string(rawName
+            .Select(ch => invalidChars.Contains(ch) ? '-' : ch)
+            .ToArray());
+
+        return safeName;
     }
 
     private async Task<RhRecordDto> ResolveRhSavedRecordAsync(

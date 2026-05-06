@@ -45,6 +45,7 @@ public interface IDataverseService
     Task<NominaPreviewResultDto> PreviewNominaAsync(NominaPreviewRequest request, CancellationToken ct = default);
     Task<NominaConfirmResultDto> ConfirmNominaAsync(NominaConfirmRequest request, CancellationToken ct = default);
     Task<RhTableDataResultDto> GetRhTableDataAsync(string tableKey, CancellationToken ct = default);
+    Task<RhFileDownloadResult> ExportRhTableAsync(string tableKey, string? employeeId = null, CancellationToken ct = default);
     Task<RhSaveResultDto> SaveRhRecordAsync(RhSaveRequest request, CancellationToken ct = default);
     Task<RhFileUploadResultDto> UploadRhFieldFileAsync(string tableKey, string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadRhFieldFileAsync(string tableKey, string recordId, string fieldName, CancellationToken ct = default);

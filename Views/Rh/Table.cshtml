@@ -12,6 +12,7 @@
      data-table-key="@Model.Module.Key"
      data-load-url="@Url.Action("Data", "Rh")"
      data-save-url="@Url.Action("Save", "Rh")"
+     data-export-url="@Url.Action("Export", "Rh")"
      data-upload-url="@Url.Action("UploadFile", "Rh")"
      data-download-url="@Url.Action("DownloadFile", "Rh")">
     <section class="rh-hero">
@@ -51,6 +52,16 @@
                 <p class="rh-section-subtitle" id="rhTableDescription">@Model.Module.Description</p>
             </div>
             <div class="rh-counter" id="rhRecordsCount">0 registros</div>
+        </div>
+
+        <div class="rh-filter-bar" id="rhVacationTools" hidden>
+            <div class="rh-filter-field">
+                <label for="rhVacationEmployeeFilter">Empleado</label>
+                <select class="form-select" id="rhVacationEmployeeFilter">
+                    <option value="">Todos los empleados</option>
+                </select>
+            </div>
+            <button type="button" class="btn btn-outline-success" id="rhExportBtn">Exportar Excel</button>
         </div>
 
         <div class="rh-table-wrap">

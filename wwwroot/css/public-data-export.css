@@ -136,6 +136,20 @@
     gap: 10px;
 }
 
+.pde-download-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.pde-download-button {
+    min-height: 58px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: normal;
+}
+
 .pde-status {
     display: none;
     margin-top: 16px;
@@ -285,7 +299,8 @@
     .pde-toolbar,
     .pde-login-form__row,
     .pde-dataset-row,
-    .pde-admin-grid {
+    .pde-admin-grid,
+    .pde-download-grid {
         grid-template-columns: 1fr;
     }
 

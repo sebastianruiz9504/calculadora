@@ -126,6 +126,29 @@
     flex-wrap: wrap;
 }
 
+.rh-filter-bar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.9rem;
+    margin: 0 0 1rem;
+    padding: 0.85rem 0;
+    border-top: 1px solid #e5edf8;
+    border-bottom: 1px solid #e5edf8;
+}
+
+.rh-filter-field {
+    display: grid;
+    gap: 0.35rem;
+    min-width: min(100%, 320px);
+}
+
+.rh-filter-field label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #42526b;
+}
+
 .rh-module-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -614,13 +637,16 @@
 @media (max-width: 991px) {
     .rh-hero,
     .rh-section-header,
-    .rh-toolbar {
+    .rh-toolbar,
+    .rh-filter-bar {
         flex-direction: column;
     }
 
     .rh-user-pill,
     .rh-record-pill,
-    .rh-counter {
+    .rh-counter,
+    .rh-filter-field,
+    .rh-filter-bar .btn {
         min-width: 0;
         width: 100%;
     }

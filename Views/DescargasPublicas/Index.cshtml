@@ -1,7 +1,8 @@
 @model PublicDataExportPublicViewModel
 @{
     Layout = null;
-    var firstDataset = Model.AvailableDatasets.FirstOrDefault();
+    var billingDataset = Model.Catalog.FindDataset(PublicDataExportDatasetKeys.Billing);
+    var expensesDataset = Model.Catalog.FindDataset(PublicDataExportDatasetKeys.Expenses);
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -13,16 +14,12 @@
     <link rel="stylesheet" href="~/css/public-data-export.css" asp-append-version="true" />
 </head>
 <body class="pde-public-body">
-    <main class="pde-public"
-          id="publicDataExportApp"
-          data-preview-url="@Url.Action("Preview", "DescargasPublicas")"
-          data-download-url="@Url.Action("Descargar", "DescargasPublicas")"
-          data-default-dataset="@(firstDataset?.Key ?? "")">
+    <main class="pde-public">
         <section class="pde-hero">
             <div>
                 <div class="pde-kicker">Digital Tech</div>
                 <h1>Descargas aprobadas</h1>
-                <p>Consulta y descarga los archivos habilitados por el administrador.</p>
+                <p>Descarga los archivos habilitados por el administrador.</p>
             </div>
             @if (Model.IsCurrentUserAdmin)
             {
@@ -58,28 +55,25 @@
         else
         {
             <section class="pde-panel">
-                <div class="pde-toolbar">
-                    <div class="pde-field">
-                        <label class="form-label" for="pdeDataset">Tabla</label>
-                        <select class="form-select" id="pdeDataset" data-pde-dataset>
-                            @foreach (var dataset in Model.AvailableDatasets)
-                            {
-                                <option value="@dataset.Key">@dataset.Label</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="pde-actions">
-                        <button type="button" class="btn btn-outline-dark" data-pde-preview>Consultar</button>
-                        <a class="btn btn-dark" href="#" data-pde-download>Descargar Excel</a>
-                    </div>
-                </div>
-
-                <div class="pde-status" data-pde-status></div>
-                <div class="pde-table-wrap">
-                    <table class="pde-table" data-pde-table>
-                        <thead></thead>
-                        <tbody></tbody>
-                    </table>
+                <div class="pde-download-grid">
+                    @if (billingDataset is not null)
+                    {
+                        <a class="btn btn-dark btn-lg pde-download-button"
+                           asp-controller="DescargasPublicas"
+                           asp-action="Descargar"
+                           asp-route-dataset="@billingDataset.Key">
+                            Descargar Excel Facturacion
+                        </a>
+                    }
+                    @if (expensesDataset is not null)
+                    {
+                        <a class="btn btn-dark btn-lg pde-download-button"
+                           asp-controller="DescargasPublicas"
+                           asp-action="Descargar"
+                           asp-route-dataset="@expensesDataset.Key">
+                            Descargar Excel de gastos
+                        </a>
+                    }
                 </div>
             </section>
 
@@ -89,7 +83,5 @@
             </form>
         }
     </main>
-
-    <script src="~/js/public-data-export.js" asp-append-version="true"></script>
 </body>
 </html>
