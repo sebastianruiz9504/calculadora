@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -170,13 +171,18 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Azure OpenAI error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
 
-        var html = ExtractChatCompletionContent(body);
-        html = NormalizeHtmlResponse(html);
+        var rawContent = ExtractChatCompletionContent(body);
+        var finishReason = ExtractFinishReason(body);
+        var html = NormalizeHtmlResponse(rawContent);
         if (string.IsNullOrWhiteSpace(html) || !html.TrimStart().StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Azure OpenAI no devolvio un HTML completo con <!DOCTYPE html>.");
+            throw BuildInvalidHtmlResponseException(rawContent, html, finishReason);
 
         if (html.Contains("<script", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Azure OpenAI devolvio HTML con scripts. El informe debe contener solo HTML y CSS embebido.");
+        {
+            throw new InvalidOperationException(
+                "Azure OpenAI devolvio HTML con scripts. El informe debe contener solo HTML y CSS embebido. " +
+                $"finish_reason={finishReason}; preview={BuildDiagnosticPreview(html)}");
+        }
 
         return html;
     }
@@ -350,17 +356,80 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
     private static string NormalizeHtmlResponse(string html)
     {
         var value = (html ?? "").Trim().Trim('\uFEFF');
-        if (value.StartsWith("```", StringComparison.Ordinal))
-        {
-            var firstLineBreak = value.IndexOf('\n');
-            if (firstLineBreak >= 0)
-                value = value[(firstLineBreak + 1)..];
+        value = StripMarkdownFence(value);
+        value = UnwrapJsonHtmlContent(value);
+        value = StripMarkdownFence(value);
+        value = WebUtility.HtmlDecode(value).Trim().Trim('\uFEFF');
+        value = StripMarkdownFence(value);
+        value = UnwrapJsonHtmlContent(value);
+        value = StripMarkdownFence(value);
 
-            var closingFence = value.LastIndexOf("```", StringComparison.Ordinal);
-            if (closingFence >= 0)
-                value = value[..closingFence];
+        var extracted = TryExtractHtmlDocument(value);
+        if (!string.IsNullOrWhiteSpace(extracted))
+            return extracted;
+
+        var bodyIndex = value.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
+        if (bodyIndex >= 0)
+            return "<!DOCTYPE html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Informe Mensual</title></head>\n" + value[bodyIndex..];
+
+        var headIndex = value.IndexOf("<head", StringComparison.OrdinalIgnoreCase);
+        if (headIndex >= 0)
+            return "<!DOCTYPE html>\n<html lang=\"es\">\n" + value[headIndex..];
+
+        return value.Trim().Trim('\uFEFF');
+    }
+
+    private static string StripMarkdownFence(string value)
+    {
+        value = (value ?? "").Trim().Trim('\uFEFF');
+        if (!value.StartsWith("```", StringComparison.Ordinal))
+            return value;
+
+        var firstLineBreak = value.IndexOf('\n');
+        if (firstLineBreak >= 0)
+            value = value[(firstLineBreak + 1)..];
+
+        var closingFence = value.LastIndexOf("```", StringComparison.Ordinal);
+        if (closingFence >= 0)
+            value = value[..closingFence];
+
+        return value.Trim().Trim('\uFEFF');
+    }
+
+    private static string UnwrapJsonHtmlContent(string value)
+    {
+        value = (value ?? "").Trim().Trim('\uFEFF');
+        if (string.IsNullOrWhiteSpace(value) || value[0] is not '{')
+            return value;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(value);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return value;
+
+            foreach (var propertyName in new[] { "html", "content", "document", "output" })
+            {
+                if (doc.RootElement.TryGetProperty(propertyName, out var property)
+                    && property.ValueKind == JsonValueKind.String)
+                {
+                    var unwrapped = property.GetString();
+                    if (!string.IsNullOrWhiteSpace(unwrapped))
+                        return unwrapped.Trim();
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return value;
         }
 
+        return value;
+    }
+
+    private static string TryExtractHtmlDocument(string value)
+    {
+        value = (value ?? "").Trim().Trim('\uFEFF');
         var doctypeIndex = value.IndexOf("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase);
         if (doctypeIndex >= 0)
         {
@@ -384,7 +453,63 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         if (htmlEnd >= 0)
             value = value[..(htmlEnd + "</html>".Length)];
 
-        return value.Trim().Trim('\uFEFF');
+        value = value.Trim().Trim('\uFEFF');
+        return value.StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase) ? value : "";
+    }
+
+    private static string ExtractFinishReason(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("choices", out var choices)
+                && choices.ValueKind == JsonValueKind.Array
+                && choices.GetArrayLength() > 0
+                && choices[0].TryGetProperty("finish_reason", out var finishReason)
+                && finishReason.ValueKind == JsonValueKind.String)
+            {
+                return finishReason.GetString() ?? "desconocido";
+            }
+        }
+        catch (JsonException)
+        {
+            return "respuesta-json-invalida";
+        }
+
+        return "no-disponible";
+    }
+
+    private static InvalidOperationException BuildInvalidHtmlResponseException(
+        string rawContent,
+        string normalizedContent,
+        string finishReason)
+    {
+        var message =
+            "Azure OpenAI no devolvio un HTML completo con <!DOCTYPE html>. " +
+            $"finish_reason={finishReason}; " +
+            $"raw_length={(rawContent ?? "").Length}; " +
+            $"normalized_length={(normalizedContent ?? "").Length}; " +
+            $"raw_preview={BuildDiagnosticPreview(rawContent)}; " +
+            $"normalized_preview={BuildDiagnosticPreview(normalizedContent)}";
+
+        return new InvalidOperationException(message);
+    }
+
+    private static string BuildDiagnosticPreview(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "[vacio]";
+
+        var normalized = value
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal)
+            .Trim();
+
+        const int maxLength = 700;
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength] + "...";
     }
 
     private static string BuildSystemPrompt()

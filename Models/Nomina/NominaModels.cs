@@ -70,6 +70,9 @@ public sealed class NominaRowDto
     public decimal CommissionCap { get; set; }
     public decimal AppliedCommissionBase { get; set; }
     public decimal ContributionBase { get; set; }
+    public decimal VerticalBase { get; set; }
+    public decimal BaseCopiers { get; set; }
+    public decimal BaseCloud { get; set; }
     public decimal HealthRate { get; set; }
     public decimal PensionRate { get; set; }
     public decimal Health { get; set; }

@@ -99,10 +99,6 @@
                         <th class="text-center">Verificado</th>
                         <th>Empleado</th>
                         <th class="text-end">Monto pagado</th>
-                        <th class="text-end">% copiers</th>
-                        <th class="text-end">Total copiers</th>
-                        <th class="text-end">% cloud</th>
-                        <th class="text-end">Total cloud</th>
                     </tr>
                 </thead>
                 <tbody id="nominaRowsBody"></tbody>
@@ -286,19 +282,39 @@
                     <h3 class="payroll-detail-section__title">Distribucion por vertical</h3>
                     <div class="payroll-detail-grid">
                         <div class="payroll-detail-item">
-                            <span>Factor copiers</span>
+                            <span>Base reparto</span>
+                            <strong data-detail-output="verticalBase">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>% Copiers</span>
                             <strong data-detail-output="factorCopiers">0</strong>
                         </div>
                         <div class="payroll-detail-item">
-                            <span>Factor cloud</span>
-                            <strong data-detail-output="factorCloud">0</strong>
+                            <span>Base Copiers</span>
+                            <strong data-detail-output="baseCopiers">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Comis. Copiers</span>
+                            <strong data-detail-output="commissionsCopiersVertical">0</strong>
                         </div>
                         <div class="payroll-detail-item payroll-detail-item--strong">
-                            <span>Total copiers</span>
+                            <span>Total Copiers</span>
                             <strong data-detail-output="totalCopiers">0</strong>
                         </div>
+                        <div class="payroll-detail-item">
+                            <span>% Cloud</span>
+                            <strong data-detail-output="factorCloud">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Base Cloud</span>
+                            <strong data-detail-output="baseCloud">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Comis. Cloud</span>
+                            <strong data-detail-output="commissionsCloudVertical">0</strong>
+                        </div>
                         <div class="payroll-detail-item payroll-detail-item--strong">
-                            <span>Total cloud</span>
+                            <span>Total Cloud</span>
                             <strong data-detail-output="totalCloud">0</strong>
                         </div>
                     </div>
@@ -316,16 +332,25 @@
         <div class="payroll-section-header">
             <div>
                 <div class="payroll-kicker">Resumen final</div>
-                <h2 class="payroll-section-title">Totales por vertical</h2>
-                <p class="payroll-section-subtitle">Vista final del reparto por vertical.</p>
+                <h2 class="payroll-section-title">Desglose por vertical</h2>
+                <p class="payroll-section-subtitle">Base neta sin comisiones, porcentaje aplicado, comisiones por vertical y total final por empleado.</p>
             </div>
         </div>
         <div class="table-responsive payroll-vertical-wrap">
             <table class="table align-middle payroll-vertical-table">
                 <thead>
                     <tr>
-                        <th>Vertical</th>
-                        <th class="text-end">Total</th>
+                        <th>Empleado</th>
+                        <th class="text-end">Base reparto</th>
+                        <th class="text-end">% Copiers</th>
+                        <th class="text-end">Base Copiers</th>
+                        <th class="text-end">Comis. Copiers</th>
+                        <th class="text-end">Total Copiers</th>
+                        <th class="text-end">% Cloud</th>
+                        <th class="text-end">Base Cloud</th>
+                        <th class="text-end">Comis. Cloud</th>
+                        <th class="text-end">Total Cloud</th>
+                        <th class="text-end">Comis. sin vertical</th>
                     </tr>
                 </thead>
                 <tbody id="nominaVerticalsBody"></tbody>

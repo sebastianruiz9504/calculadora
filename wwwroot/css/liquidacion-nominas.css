@@ -230,11 +230,12 @@
 
 .payroll-table {
     margin-bottom: 0;
-    min-width: 1040px;
+    min-width: 620px;
 }
 
 .payroll-vertical-table {
     margin-bottom: 0;
+    min-width: 1320px;
 }
 
 .payroll-table th,
@@ -289,6 +290,17 @@
 
 .payroll-row--verified > :first-child {
     box-shadow: inset 3px 0 0 #16a34a;
+}
+
+.payroll-vertical-row--warning > * {
+    background: #fffbeb;
+}
+
+.payroll-vertical-total-row > * {
+    background: #eef5ff;
+    border-top: 2px solid #c8dafd;
+    color: #10213a;
+    font-weight: 700;
 }
 
 .payroll-row__name {

@@ -53,7 +53,7 @@
         calamidad: "Calamidad"
     };
     const draftStorageKey = buildDraftStorageKey(app.dataset.draftOwner || "");
-    const draftVersion = 2;
+    const draftVersion = 3;
     const payrollContractTypeOptionValue = 645250000;
     const serviceContractTypeOptionValue = 645250001;
     const deductionFields = new Set(["otherDeductions", "loan", "payrollWithholding", "externalWithholding"]);
@@ -135,6 +135,8 @@
 
     rowsBody.addEventListener("input", handleRowEditChange);
     rowsBody.addEventListener("change", handleRowEditChange);
+    verticalsBody.addEventListener("input", handleVerticalEditChange);
+    verticalsBody.addEventListener("change", handleVerticalEditChange);
 
     detailForm?.addEventListener("input", handleDetailFieldChange);
     detailForm?.addEventListener("change", handleDetailFieldChange);
@@ -163,16 +165,37 @@
             return;
         }
 
+        return;
+    }
+
+    function handleVerticalEditChange(event) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const field = input.dataset.verticalField;
         if (field !== "factorCopiers" && field !== "factorCloud") {
+            return;
+        }
+
+        const rowElement = input.closest("tr[data-vertical-row-id]");
+        const row = rowElement ? state.rows.find((item) => item.employeeId === rowElement.dataset.verticalRowId) : null;
+        if (!row) {
             return;
         }
 
         markRowPendingVerification(row);
         row[field] = toPositiveNumber(input.value);
         recalculateRow(row);
-        updateRowOutputs(row, field);
+        updateRowOutputs(row);
+        updateVerticalOutputs(row, field);
+        if (state.activeRowId === row.employeeId) {
+            renderDetailValues(row);
+            renderDetailWarnings(row);
+        }
+
         renderSummary();
-        renderVerticals();
         updateConfirmAvailability();
         saveDraft();
     }
@@ -411,6 +434,9 @@
         normalized.loan = toPositiveNumber(normalized.loan);
         normalized.payrollWithholding = toPositiveNumber(normalized.payrollWithholding);
         normalized.externalWithholding = toPositiveNumber(normalized.externalWithholding);
+        normalized.verticalBase = toNumber(normalized.verticalBase);
+        normalized.baseCopiers = toNumber(normalized.baseCopiers);
+        normalized.baseCloud = toNumber(normalized.baseCloud);
         normalized.verified = Boolean(normalized.verified);
         recalculateRow(normalized);
         return normalized;
@@ -459,8 +485,11 @@
         row.grossSalary = roundMoney(row.salaryBase + row.auxilio + row.absencePayment + row.bonusCompliance + row.commissions);
         row.netPayroll = roundMoney(row.grossSalary - (row.health + row.pension + row.otherDeductions + row.loan + row.payrollWithholding));
         row.netCuentaDeCobro = roundMoney(row.cuentaDeCobro - row.externalWithholding);
-        row.totalCopiers = roundMoney((row.salaryBase * (row.factorCopiers / 100)) + row.commissionsCopiers);
-        row.totalCloud = roundMoney((row.salaryBase * (row.factorCloud / 100)) + row.commissionsCloud);
+        row.verticalBase = roundMoney(row.netPayroll - row.commissions);
+        row.baseCopiers = roundMoney(row.verticalBase * (row.factorCopiers / 100));
+        row.baseCloud = roundMoney(row.verticalBase * (row.factorCloud / 100));
+        row.totalCopiers = roundMoney(row.baseCopiers + row.commissionsCopiers);
+        row.totalCloud = roundMoney(row.baseCloud + row.commissionsCloud);
     }
 
     function renderRows() {
@@ -480,14 +509,6 @@
                         </div>
                     </td>
                     <td class="text-end" data-role="netPayroll">${formatMoney(row.netPayroll)}</td>
-                    <td class="payroll-percent-cell">
-                        <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCopiers)}" data-row-edit data-row-field="factorCopiers" aria-label="Porcentaje Copiers de ${escapeHtml(row.employeeName || "empleado")}" />
-                    </td>
-                    <td class="text-end" data-role="totalCopiers">${formatMoney(row.totalCopiers)}</td>
-                    <td class="payroll-percent-cell">
-                        <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCloud)}" data-row-edit data-row-field="factorCloud" aria-label="Porcentaje Cloud de ${escapeHtml(row.employeeName || "empleado")}" />
-                    </td>
-                    <td class="text-end" data-role="totalCloud">${formatMoney(row.totalCloud)}</td>
                 </tr>
             `;
         }).join("");
@@ -501,11 +522,7 @@
 
         tr.className = buildRowClass(row);
         setCellText(tr, "netPayroll", formatMoney(row.netPayroll));
-        setCellText(tr, "totalCopiers", formatMoney(row.totalCopiers));
-        setCellText(tr, "totalCloud", formatMoney(row.totalCloud));
         setRowCheckboxValue(tr, "verified", row.verified, skipField);
-        setRowInputValue(tr, "factorCopiers", row.factorCopiers, skipField);
-        setRowInputValue(tr, "factorCloud", row.factorCloud, skipField);
     }
 
     function openDetail(rowId) {
@@ -636,9 +653,14 @@
         setDetailOutput("netPayroll", formatMoney(row.netPayroll));
         setDetailOutput("netCuentaDeCobro", formatMoney(row.netCuentaDeCobro));
         setDetailOutput("totalDisbursement", formatMoney(roundMoney(row.netPayroll + row.netCuentaDeCobro)));
+        setDetailOutput("verticalBase", formatMoney(row.verticalBase));
         setDetailOutput("factorCopiers", formatPercent(row.factorCopiers));
-        setDetailOutput("factorCloud", formatPercent(row.factorCloud));
+        setDetailOutput("baseCopiers", formatMoney(row.baseCopiers));
+        setDetailOutput("commissionsCopiersVertical", formatMoney(row.commissionsCopiers));
         setDetailOutput("totalCopiers", formatMoney(row.totalCopiers));
+        setDetailOutput("factorCloud", formatPercent(row.factorCloud));
+        setDetailOutput("baseCloud", formatMoney(row.baseCloud));
+        setDetailOutput("commissionsCloudVertical", formatMoney(row.commissionsCloud));
         setDetailOutput("totalCloud", formatMoney(row.totalCloud));
     }
 
@@ -684,19 +706,114 @@
     }
 
     function renderVerticals() {
-        const totalCopiers = roundMoney(state.rows.reduce((sum, row) => sum + row.totalCopiers, 0));
-        const totalCloud = roundMoney(state.rows.reduce((sum, row) => sum + row.totalCloud, 0));
-
-        verticalsBody.innerHTML = `
-            <tr>
-                <td>Copiers</td>
-                <td class="text-end">${formatMoney(totalCopiers)}</td>
+        verticalsBody.innerHTML = state.rows.map((row) => `
+            <tr data-vertical-row-id="${escapeHtml(row.employeeId)}" class="${buildVerticalRowClass(row)}">
+                <td>
+                    <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
+                    <div class="payroll-row__meta">${escapeHtml(resolveContractTypeLabel(row))}</div>
+                </td>
+                <td class="text-end" data-role="verticalBase">${formatMoney(row.verticalBase)}</td>
+                <td class="payroll-percent-cell">
+                    <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCopiers)}" data-vertical-field="factorCopiers" aria-label="Porcentaje Copiers de ${escapeHtml(row.employeeName || "empleado")}" />
+                </td>
+                <td class="text-end" data-role="baseCopiers">${formatMoney(row.baseCopiers)}</td>
+                <td class="text-end" data-role="commissionsCopiers">${formatMoney(row.commissionsCopiers)}</td>
+                <td class="text-end" data-role="totalCopiers">${formatMoney(row.totalCopiers)}</td>
+                <td class="payroll-percent-cell">
+                    <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCloud)}" data-vertical-field="factorCloud" aria-label="Porcentaje Cloud de ${escapeHtml(row.employeeName || "empleado")}" />
+                </td>
+                <td class="text-end" data-role="baseCloud">${formatMoney(row.baseCloud)}</td>
+                <td class="text-end" data-role="commissionsCloud">${formatMoney(row.commissionsCloud)}</td>
+                <td class="text-end" data-role="totalCloud">${formatMoney(row.totalCloud)}</td>
+                <td class="text-end" data-role="commissionsUnassigned">${formatMoney(row.commissionsUnassigned)}</td>
             </tr>
-            <tr>
-                <td>Cloud</td>
-                <td class="text-end">${formatMoney(totalCloud)}</td>
+        `).join("") + renderVerticalTotalsRow();
+    }
+
+    function updateVerticalOutputs(row, skipField) {
+        const tr = verticalsBody.querySelector(`tr[data-vertical-row-id="${cssEscape(row.employeeId)}"]`);
+        if (!tr) {
+            renderVerticals();
+            return;
+        }
+
+        tr.className = buildVerticalRowClass(row);
+        setCellText(tr, "verticalBase", formatMoney(row.verticalBase));
+        setCellText(tr, "baseCopiers", formatMoney(row.baseCopiers));
+        setCellText(tr, "commissionsCopiers", formatMoney(row.commissionsCopiers));
+        setCellText(tr, "totalCopiers", formatMoney(row.totalCopiers));
+        setCellText(tr, "baseCloud", formatMoney(row.baseCloud));
+        setCellText(tr, "commissionsCloud", formatMoney(row.commissionsCloud));
+        setCellText(tr, "totalCloud", formatMoney(row.totalCloud));
+        setCellText(tr, "commissionsUnassigned", formatMoney(row.commissionsUnassigned));
+        setVerticalInputValue(tr, "factorCopiers", row.factorCopiers, skipField);
+        setVerticalInputValue(tr, "factorCloud", row.factorCloud, skipField);
+        updateVerticalTotalsRow();
+    }
+
+    function renderVerticalTotalsRow() {
+        const totals = calculateVerticalTotals();
+        return `
+            <tr class="payroll-vertical-total-row" data-vertical-summary-row>
+                <td>Total</td>
+                <td class="text-end" data-summary-role="verticalBase">${formatMoney(totals.verticalBase)}</td>
+                <td></td>
+                <td class="text-end" data-summary-role="baseCopiers">${formatMoney(totals.baseCopiers)}</td>
+                <td class="text-end" data-summary-role="commissionsCopiers">${formatMoney(totals.commissionsCopiers)}</td>
+                <td class="text-end" data-summary-role="totalCopiers">${formatMoney(totals.totalCopiers)}</td>
+                <td></td>
+                <td class="text-end" data-summary-role="baseCloud">${formatMoney(totals.baseCloud)}</td>
+                <td class="text-end" data-summary-role="commissionsCloud">${formatMoney(totals.commissionsCloud)}</td>
+                <td class="text-end" data-summary-role="totalCloud">${formatMoney(totals.totalCloud)}</td>
+                <td class="text-end" data-summary-role="commissionsUnassigned">${formatMoney(totals.commissionsUnassigned)}</td>
             </tr>
         `;
+    }
+
+    function updateVerticalTotalsRow() {
+        const row = verticalsBody.querySelector("[data-vertical-summary-row]");
+        if (!row) {
+            return;
+        }
+
+        const totals = calculateVerticalTotals();
+        setSummaryCellText(row, "verticalBase", formatMoney(totals.verticalBase));
+        setSummaryCellText(row, "baseCopiers", formatMoney(totals.baseCopiers));
+        setSummaryCellText(row, "commissionsCopiers", formatMoney(totals.commissionsCopiers));
+        setSummaryCellText(row, "totalCopiers", formatMoney(totals.totalCopiers));
+        setSummaryCellText(row, "baseCloud", formatMoney(totals.baseCloud));
+        setSummaryCellText(row, "commissionsCloud", formatMoney(totals.commissionsCloud));
+        setSummaryCellText(row, "totalCloud", formatMoney(totals.totalCloud));
+        setSummaryCellText(row, "commissionsUnassigned", formatMoney(totals.commissionsUnassigned));
+    }
+
+    function calculateVerticalTotals() {
+        const totals = state.rows.reduce((totals, row) => {
+            totals.verticalBase += toNumber(row.verticalBase);
+            totals.baseCopiers += toNumber(row.baseCopiers);
+            totals.commissionsCopiers += toNumber(row.commissionsCopiers);
+            totals.totalCopiers += toNumber(row.totalCopiers);
+            totals.baseCloud += toNumber(row.baseCloud);
+            totals.commissionsCloud += toNumber(row.commissionsCloud);
+            totals.totalCloud += toNumber(row.totalCloud);
+            totals.commissionsUnassigned += toNumber(row.commissionsUnassigned);
+            return totals;
+        }, {
+            verticalBase: 0,
+            baseCopiers: 0,
+            commissionsCopiers: 0,
+            totalCopiers: 0,
+            baseCloud: 0,
+            commissionsCloud: 0,
+            totalCloud: 0,
+            commissionsUnassigned: 0
+        });
+
+        Object.keys(totals).forEach((key) => {
+            totals[key] = roundMoney(totals[key]);
+        });
+
+        return totals;
     }
 
     function renderLogs() {
@@ -743,6 +860,15 @@
         return classes.join(" ");
     }
 
+    function buildVerticalRowClass(row) {
+        const classes = ["payroll-vertical-row"];
+        if (getRowWarnings(row).length > 0) {
+            classes.push("payroll-vertical-row--warning");
+        }
+
+        return classes.join(" ");
+    }
+
     function getRowWarnings(row) {
         const warnings = Array.isArray(row.warnings) ? row.warnings.slice() : [];
         if (row.netPayroll < 0) {
@@ -757,7 +883,13 @@
             warnings.push("Hay dias no trabajados sin motivo.");
         }
 
-        return warnings;
+        const factorTotal = roundMoney(toPositiveNumber(row.factorCopiers) + toPositiveNumber(row.factorCloud));
+        if (Math.abs(factorTotal - 100) > 0.01
+            && !warnings.some((warning) => normalizeText(warning).includes("suma de porcentajes"))) {
+            warnings.push(`La suma de porcentajes Copiers/Cloud es ${formatPercent(factorTotal)}.`);
+        }
+
+        return Array.from(new Set(warnings));
     }
 
     function handleFailure(error) {
@@ -969,12 +1101,30 @@
         }
     }
 
+    function setSummaryCellText(tr, role, value) {
+        const cell = tr.querySelector(`[data-summary-role="${role}"]`);
+        if (cell) {
+            cell.textContent = value;
+        }
+    }
+
     function setRowInputValue(tr, field, value, skipField) {
         if (skipField === field) {
             return;
         }
 
         const input = tr.querySelector(`[data-row-field="${field}"]`);
+        if (input instanceof HTMLInputElement) {
+            input.value = toInputValue(value);
+        }
+    }
+
+    function setVerticalInputValue(tr, field, value, skipField) {
+        if (skipField === field) {
+            return;
+        }
+
+        const input = tr.querySelector(`[data-vertical-field="${field}"]`);
         if (input instanceof HTMLInputElement) {
             input.value = toInputValue(value);
         }

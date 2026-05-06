@@ -682,8 +682,14 @@ public sealed partial class DataverseService
         var grossSalary = RoundCurrency(salaryBase + auxilio + absencePayment + bonusCompliance + totalCommissions);
         var netPayroll = RoundCurrency(grossSalary - (health + pension + otherDeductions + loan + payrollWithholding));
         var netCuentaDeCobro = RoundCurrency(cuentaDeCobro - externalWithholding);
-        var totalCopiers = RoundCurrency((factorCopiers / 100m * salaryBase) + commissionBucket.Copiers);
-        var totalCloud = RoundCurrency((factorCloud / 100m * salaryBase) + commissionBucket.Cloud);
+        var verticalBase = RoundCurrency(netPayroll - totalCommissions);
+        var baseCopiers = RoundCurrency(factorCopiers / 100m * verticalBase);
+        var baseCloud = RoundCurrency(factorCloud / 100m * verticalBase);
+        var totalCopiers = RoundCurrency(baseCopiers + commissionBucket.Copiers);
+        var totalCloud = RoundCurrency(baseCloud + commissionBucket.Cloud);
+        var factorTotal = RoundCurrency(factorCopiers + factorCloud);
+        if (Math.Abs(factorTotal - 100m) > 0.01m)
+            rowWarnings.Add($"La suma de porcentajes Copiers/Cloud es {factorTotal:0.##}%; revisa que el reparto de la base cierre en 100%.");
 
         return new NominaRowDto
         {
@@ -718,6 +724,9 @@ public sealed partial class DataverseService
             CommissionCap = employee.CommissionCap,
             AppliedCommissionBase = appliedCommissionBase,
             ContributionBase = contributionBase,
+            VerticalBase = verticalBase,
+            BaseCopiers = baseCopiers,
+            BaseCloud = baseCloud,
             HealthRate = healthRate,
             PensionRate = pensionRate,
             Health = health,
