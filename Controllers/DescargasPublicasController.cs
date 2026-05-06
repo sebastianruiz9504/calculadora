@@ -229,7 +229,20 @@ public sealed class DescargasPublicasController : Controller
 
         settings.UpdatedBy = FirstNonEmpty(currentUser.Email, currentUser.EmployeeUserEmail, PublicDataExportAuthorization.AdminEmail);
         settings.UpdatedUtc = DateTimeOffset.UtcNow;
-        await _settingsStore.SaveAsync(settings, ct);
+        try
+        {
+            await _settingsStore.SaveAsync(settings, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "No fue posible persistir la configuracion de descargas publicas.");
+            return View(await BuildAdminModelAsync(
+                currentUser,
+                "",
+                "No fue posible guardar la configuracion. Revisa permisos de escritura o la ruta PublicDataExport:SettingsFilePath.",
+                ct,
+                settings));
+        }
 
         return RedirectToAction(nameof(Admin), new { saved = 1 });
     }

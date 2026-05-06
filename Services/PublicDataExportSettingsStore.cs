@@ -12,7 +12,11 @@ public interface IPublicDataExportSettingsStore
 
 public sealed class PublicDataExportSettingsStore : IPublicDataExportSettingsStore
 {
+    private const string SettingsFileName = "public-data-export-settings.json";
+
     private readonly string _filePath;
+    private readonly string _legacyFilePath;
+    private readonly ILogger<PublicDataExportSettingsStore> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,9 +24,14 @@ public sealed class PublicDataExportSettingsStore : IPublicDataExportSettingsSto
         WriteIndented = true
     };
 
-    public PublicDataExportSettingsStore(IWebHostEnvironment environment)
+    public PublicDataExportSettingsStore(
+        IWebHostEnvironment environment,
+        IConfiguration configuration,
+        ILogger<PublicDataExportSettingsStore> logger)
     {
-        _filePath = Path.Combine(environment.ContentRootPath, "App_Data", "public-data-export-settings.json");
+        _legacyFilePath = Path.Combine(environment.ContentRootPath, "App_Data", SettingsFileName);
+        _filePath = ResolveSettingsFilePath(configuration, environment.ContentRootPath, _legacyFilePath);
+        _logger = logger;
     }
 
     public async Task<PublicDataExportSettings> LoadAsync(CancellationToken ct = default)
@@ -30,14 +39,20 @@ public sealed class PublicDataExportSettingsStore : IPublicDataExportSettingsSto
         await _gate.WaitAsync(ct);
         try
         {
-            if (!File.Exists(_filePath))
+            var existingPath = ResolveExistingSettingsPath();
+            if (existingPath is null)
                 return new PublicDataExportSettings();
 
-            var json = await File.ReadAllTextAsync(_filePath, ct);
-            var settings = JsonSerializer.Deserialize<PublicDataExportSettings>(json, JsonOptions)
-                ?? new PublicDataExportSettings();
+            var settings = await ReadSettingsAsync(existingPath, ct);
+            if (!PathsEqual(existingPath, _filePath))
+            {
+                await WriteSettingsAsync(_filePath, settings, ct);
+                _logger.LogInformation(
+                    "Configuracion de descargas publicas migrada desde {LegacyPath} hacia {SettingsPath}.",
+                    existingPath,
+                    _filePath);
+            }
 
-            settings.ApprovedColumnsByDataset = NormalizeColumns(settings.ApprovedColumnsByDataset);
             return settings;
         }
         finally
@@ -51,15 +66,122 @@ public sealed class PublicDataExportSettingsStore : IPublicDataExportSettingsSto
         await _gate.WaitAsync(ct);
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_filePath) ?? ".");
             settings.ApprovedColumnsByDataset = NormalizeColumns(settings.ApprovedColumnsByDataset);
-            var json = JsonSerializer.Serialize(settings, JsonOptions);
-            await File.WriteAllTextAsync(_filePath, json, ct);
+            await WriteSettingsAsync(_filePath, settings, ct);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private string? ResolveExistingSettingsPath()
+    {
+        if (File.Exists(_filePath))
+            return _filePath;
+
+        if (!PathsEqual(_filePath, _legacyFilePath) && File.Exists(_legacyFilePath))
+            return _legacyFilePath;
+
+        return null;
+    }
+
+    private static async Task<PublicDataExportSettings> ReadSettingsAsync(string filePath, CancellationToken ct)
+    {
+        var json = await File.ReadAllTextAsync(filePath, ct);
+        var settings = JsonSerializer.Deserialize<PublicDataExportSettings>(json, JsonOptions)
+            ?? new PublicDataExportSettings();
+
+        settings.ApprovedColumnsByDataset = NormalizeColumns(settings.ApprovedColumnsByDataset);
+        return settings;
+    }
+
+    private static async Task WriteSettingsAsync(
+        string filePath,
+        PublicDataExportSettings settings,
+        CancellationToken ct)
+    {
+        var directory = Path.GetDirectoryName(filePath) ?? ".";
+        Directory.CreateDirectory(directory);
+
+        var json = JsonSerializer.Serialize(settings, JsonOptions);
+        var tempPath = Path.Combine(directory, $"{Path.GetFileName(filePath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, json, ct);
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        catch
+        {
+            TryDeleteTempFile(tempPath);
+            throw;
+        }
+    }
+
+    private static void TryDeleteTempFile(string tempPath)
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+        catch
+        {
+        }
+    }
+
+    private static string ResolveSettingsFilePath(
+        IConfiguration configuration,
+        string contentRootPath,
+        string legacyFilePath)
+    {
+        var configuredPath = FirstNonEmpty(
+            configuration["PublicDataExport:SettingsFilePath"],
+            Environment.GetEnvironmentVariable("PUBLIC_DATA_EXPORT_SETTINGS_PATH"));
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+            return ResolveFullPath(configuredPath, contentRootPath);
+
+        var azureHome = Environment.GetEnvironmentVariable("HOME");
+        if (IsAzureAppService() && !string.IsNullOrWhiteSpace(azureHome))
+        {
+            return Path.Combine(
+                azureHome.Trim(),
+                "data",
+                "CotizadorInterno",
+                SettingsFileName);
+        }
+
+        return legacyFilePath;
+    }
+
+    private static string ResolveFullPath(string configuredPath, string contentRootPath)
+    {
+        var expandedPath = Environment.ExpandEnvironmentVariables(configuredPath.Trim());
+        return Path.IsPathRooted(expandedPath)
+            ? Path.GetFullPath(expandedPath)
+            : Path.GetFullPath(Path.Combine(contentRootPath, expandedPath));
+    }
+
+    private static bool IsAzureAppService()
+    {
+        return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"))
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        return string.Equals(
+            Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values
+            .Select(static value => value?.Trim() ?? "")
+            .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value))
+            ?? "";
     }
 
     private static Dictionary<string, List<string>> NormalizeColumns(Dictionary<string, List<string>>? source)
