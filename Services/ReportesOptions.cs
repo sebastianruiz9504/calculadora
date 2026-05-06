@@ -17,7 +17,7 @@ public sealed class AzureOpenAIOptions
 
 public sealed class ReportesOptions
 {
-    public string PromptVersion { get; set; } = "m365-soporte-cloud-v1";
+    public string PromptVersion { get; set; } = "m365-soporte-cloud-v2-visual";
     public string DefaultCorporateColor { get; set; } = "#0f766e";
     public int MaxTicketsInPrompt { get; set; } = 60;
     public int MaxSecurityItemsInPrompt { get; set; } = 25;

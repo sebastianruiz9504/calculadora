@@ -53,7 +53,8 @@
         calamidad: "Calamidad"
     };
     const draftStorageKey = buildDraftStorageKey(app.dataset.draftOwner || "");
-    const draftVersion = 1;
+    const draftVersion = 2;
+    const payrollContractTypeOptionValue = 645250000;
     const serviceContractTypeOptionValue = 645250001;
     const deductionFields = new Set(["otherDeductions", "loan", "payrollWithholding", "externalWithholding"]);
 
@@ -1046,7 +1047,12 @@
             return label;
         }
 
-        return isServiceContract(row) ? "Prestacion de servicios" : "Nomina";
+        const optionValue = Number.parseInt(String(row?.employeeContractTypeOptionValue || row?.contractTypeOptionValue || 0), 10) || 0;
+        if (optionValue === payrollContractTypeOptionValue) {
+            return "Nomina";
+        }
+
+        return isServiceContract(row) ? "Prestacion de servicios" : "Sin tipo de contrato";
     }
 
     function normalizeText(value) {

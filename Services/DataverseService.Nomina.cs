@@ -564,6 +564,9 @@ public sealed partial class DataverseService
         if (existingMatches is { Count: > 1 })
             warnings.Add($"Se encontraron {existingMatches.Count} registros de nomina previos para el mismo periodo. Se actualizara el mas reciente.");
 
+        if (employee.ContractTypeOptionValue == 0 && string.IsNullOrWhiteSpace(employee.ContractTypeLabel))
+            warnings.Add($"El empleado no trae valor en {_nominaEmployeeContractTypeField}; se liquidara como nomina hasta corregirlo en empleados.");
+
         if (employee.CommissionCap <= 0m && totalCommissions > 0m)
             warnings.Add("El empleado tiene comisiones pero no tiene tope comisional configurado; se tomara toda la comision como base prestacional.");
 
@@ -822,8 +825,43 @@ public sealed partial class DataverseService
         {
             NominaEmployeePayrollContractOptionValue => "Nomina",
             NominaEmployeeServiceContractOptionValue => "Prestacion de servicios",
-            _ => "Nomina"
+            _ => ""
         };
+    }
+
+    private static int ReadNominaContractTypeOptionValue(JsonElement item, string contractTypeField)
+    {
+        var optionValue = ReadOptionValue(item, contractTypeField);
+        if (optionValue != 0)
+            return optionValue;
+
+        var raw = ReadString(item, contractTypeField).Trim();
+        if (TryParseNominaOptionValue(raw, out optionValue))
+            return optionValue;
+
+        foreach (var property in item.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, contractTypeField, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            raw = property.Value.ValueKind switch
+            {
+                JsonValueKind.Number => property.Value.ToString(),
+                JsonValueKind.String => property.Value.GetString()?.Trim() ?? "",
+                _ => ""
+            };
+
+            if (TryParseNominaOptionValue(raw, out optionValue))
+                return optionValue;
+        }
+
+        return 0;
+    }
+
+    private static bool TryParseNominaOptionValue(string? value, out int optionValue)
+    {
+        var normalized = (value ?? "").Trim().Replace(".", "", StringComparison.Ordinal);
+        return int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out optionValue);
     }
 
     private static bool IsNominaServiceContract(int optionValue, string? label)
@@ -849,7 +887,7 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(employeeName))
             employeeName = $"Empleado {employeeId[..Math.Min(8, employeeId.Length)]}";
 
-        var contractTypeOptionValue = ReadOptionValue(item, _nominaEmployeeContractTypeField);
+        var contractTypeOptionValue = ReadNominaContractTypeOptionValue(item, _nominaEmployeeContractTypeField);
         var contractTypeLabel = ResolveNominaContractTypeLabel(item, _nominaEmployeeContractTypeField, contractTypeOptionValue);
         return new NominaEmployeeInfo
         {
@@ -1053,7 +1091,7 @@ public sealed partial class DataverseService
         public string EmployeeName { get; set; } = "";
         public string UserId { get; set; } = "";
         public int ContractTypeOptionValue { get; set; }
-        public string ContractTypeLabel { get; set; } = "Nomina";
+        public string ContractTypeLabel { get; set; } = "";
         public bool IsServiceContract { get; set; }
         public decimal SalaryBase { get; set; }
         public decimal Auxilio { get; set; }
