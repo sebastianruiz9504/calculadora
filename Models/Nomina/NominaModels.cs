@@ -81,6 +81,7 @@ public sealed class NominaRowDto
     public decimal Loan { get; set; }
     public decimal PayrollWithholding { get; set; }
     public decimal CuentaDeCobro { get; set; }
+    public decimal ExternalWithholdingRate { get; set; }
     public decimal ExternalWithholding { get; set; }
     public decimal GrossSalary { get; set; }
     public decimal NetPayroll { get; set; }

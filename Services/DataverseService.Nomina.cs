@@ -662,7 +662,6 @@ public sealed partial class DataverseService
         var otherDeductions = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.OtherDeductions, 0m));
         var loan = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.Loan, 0m));
         var payrollWithholding = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.PayrollWithholding, 0m));
-        var externalWithholding = isServiceContract ? 0m : RoundCurrency(Math.Max(adjustment.ExternalWithholding, 0m));
         var factorCopiers = RoundCurrency(Math.Max(adjustment.FactorCopiers ?? employee.FactorCopiers, 0m));
         var factorCloud = RoundCurrency(Math.Max(adjustment.FactorCloud ?? employee.FactorCloud, 0m));
         var totalCommissions = RoundCurrency(commissionBucket.Total);
@@ -681,6 +680,9 @@ public sealed partial class DataverseService
         var pension = RoundCurrency(contributionBase * pensionRate);
         var grossSalary = RoundCurrency(salaryBase + auxilio + absencePayment + bonusCompliance + totalCommissions);
         var netPayroll = RoundCurrency(grossSalary - (health + pension + otherDeductions + loan + payrollWithholding));
+        var externalWithholding = cuentaDeCobro > 0m
+            ? RoundCurrency(cuentaDeCobro * _nominaExternalWithholdingRate)
+            : 0m;
         var netCuentaDeCobro = RoundCurrency(cuentaDeCobro - externalWithholding);
         var verticalBase = RoundCurrency(netPayroll - totalCommissions);
         var baseCopiers = RoundCurrency(factorCopiers / 100m * verticalBase);
@@ -735,6 +737,7 @@ public sealed partial class DataverseService
             Loan = loan,
             PayrollWithholding = payrollWithholding,
             CuentaDeCobro = cuentaDeCobro,
+            ExternalWithholdingRate = cuentaDeCobro > 0m ? _nominaExternalWithholdingRate : 0m,
             ExternalWithholding = externalWithholding,
             GrossSalary = grossSalary,
             NetPayroll = netPayroll,

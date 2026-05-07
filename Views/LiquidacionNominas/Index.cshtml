@@ -234,8 +234,8 @@
                             <input class="form-control payroll-detail-input text-end" id="detailPayrollWithholding" type="number" min="0" step="0.01" data-detail-field="payrollWithholding" />
                         </div>
                         <div class="payroll-field">
-                            <label class="form-label" for="detailExternalWithholding">Rete externo</label>
-                            <input class="form-control payroll-detail-input text-end" id="detailExternalWithholding" type="number" min="0" step="0.01" data-detail-field="externalWithholding" />
+                            <label class="form-label" for="detailExternalWithholding">Rete fuente cxc</label>
+                            <input class="form-control payroll-detail-input text-end" id="detailExternalWithholding" type="number" min="0" step="0.01" data-detail-field="externalWithholding" readonly />
                         </div>
                     </div>
                 </section>
@@ -258,6 +258,14 @@
                         <div class="payroll-detail-item">
                             <span>Cuenta cobro</span>
                             <strong data-detail-output="cuentaDeCobro">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>% Rete cxc</span>
+                            <strong data-detail-output="externalWithholdingRate">0</strong>
+                        </div>
+                        <div class="payroll-detail-item">
+                            <span>Rete fuente cxc</span>
+                            <strong data-detail-output="externalWithholding">0</strong>
                         </div>
                         <div class="payroll-detail-item">
                             <span>Sueldo bruto</span>

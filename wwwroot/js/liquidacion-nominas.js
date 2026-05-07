@@ -53,10 +53,11 @@
         calamidad: "Calamidad"
     };
     const draftStorageKey = buildDraftStorageKey(app.dataset.draftOwner || "");
-    const draftVersion = 3;
+    const draftVersion = 4;
     const payrollContractTypeOptionValue = 645250000;
     const serviceContractTypeOptionValue = 645250001;
-    const deductionFields = new Set(["otherDeductions", "loan", "payrollWithholding", "externalWithholding"]);
+    const defaultExternalWithholdingRate = 0.04;
+    const deductionFields = new Set(["otherDeductions", "loan", "payrollWithholding"]);
 
     const state = {
         rows: [],
@@ -372,7 +373,7 @@
                     otherDeductions: serviceContract ? 0 : row.otherDeductions,
                     loan: serviceContract ? 0 : row.loan,
                     payrollWithholding: serviceContract ? 0 : row.payrollWithholding,
-                    externalWithholding: serviceContract ? 0 : row.externalWithholding
+                    externalWithholding: row.externalWithholding
                 };
             })
         };
@@ -434,6 +435,7 @@
         normalized.loan = toPositiveNumber(normalized.loan);
         normalized.payrollWithholding = toPositiveNumber(normalized.payrollWithholding);
         normalized.externalWithholding = toPositiveNumber(normalized.externalWithholding);
+        normalized.externalWithholdingRate = normalizeRate(normalized.externalWithholdingRate || defaultExternalWithholdingRate);
         normalized.verticalBase = toNumber(normalized.verticalBase);
         normalized.baseCopiers = toNumber(normalized.baseCopiers);
         normalized.baseCloud = toNumber(normalized.baseCloud);
@@ -477,6 +479,7 @@
         row.commissions = roundMoney(row.commissionsCopiers + row.commissionsCloud + row.commissionsUnassigned);
         row.appliedCommissionBase = roundMoney(row.commissionCap > 0 ? Math.min(row.commissions, row.commissionCap) : row.commissions);
         row.cuentaDeCobro = roundMoney(row.commissionCap > 0 ? Math.max(row.commissions - row.commissionCap, 0) : 0);
+        row.externalWithholdingRate = row.cuentaDeCobro > 0 ? normalizeRate(row.externalWithholdingRate || defaultExternalWithholdingRate) : 0;
         row.contributionBase = serviceContract
             ? 0
             : roundMoney(row.salaryBase + row.absencePayment + row.bonusCompliance + row.appliedCommissionBase);
@@ -484,6 +487,7 @@
         row.pension = roundMoney(row.contributionBase * row.pensionRate);
         row.grossSalary = roundMoney(row.salaryBase + row.auxilio + row.absencePayment + row.bonusCompliance + row.commissions);
         row.netPayroll = roundMoney(row.grossSalary - (row.health + row.pension + row.otherDeductions + row.loan + row.payrollWithholding));
+        row.externalWithholding = row.cuentaDeCobro > 0 ? roundMoney(row.cuentaDeCobro * row.externalWithholdingRate) : 0;
         row.netCuentaDeCobro = roundMoney(row.cuentaDeCobro - row.externalWithholding);
         row.verticalBase = roundMoney(row.netPayroll - row.commissions);
         row.baseCopiers = roundMoney(row.verticalBase * (row.factorCopiers / 100));
@@ -595,7 +599,7 @@
                 return;
             }
 
-            input.disabled = state.busy || (serviceContract && isServiceDeductionField(field));
+            input.disabled = state.busy || field === "externalWithholding" || (serviceContract && isServiceDeductionField(field));
             if (skipField && field === skipField) {
                 return;
             }
@@ -649,6 +653,8 @@
         setDetailOutput("health", formatMoney(row.health));
         setDetailOutput("pension", formatMoney(row.pension));
         setDetailOutput("cuentaDeCobro", formatMoney(row.cuentaDeCobro));
+        setDetailOutput("externalWithholding", formatMoney(row.externalWithholding));
+        setDetailOutput("externalWithholdingRate", formatPercent(row.externalWithholdingRate * 100));
         setDetailOutput("grossSalary", formatMoney(row.grossSalary));
         setDetailOutput("netPayroll", formatMoney(row.netPayroll));
         setDetailOutput("netCuentaDeCobro", formatMoney(row.netCuentaDeCobro));
@@ -1089,7 +1095,8 @@
         resetBtn.disabled = isBusy;
         const detailRow = getActiveDetailRow();
         detailInputs.forEach((input) => {
-            input.disabled = isBusy || (detailRow && isServiceContract(detailRow) && isServiceDeductionField(input.dataset.detailField));
+            const field = input.dataset.detailField;
+            input.disabled = isBusy || field === "externalWithholding" || (detailRow && isServiceContract(detailRow) && isServiceDeductionField(field));
         });
         updateConfirmAvailability();
     }
@@ -1170,7 +1177,6 @@
         row.otherDeductions = 0;
         row.loan = 0;
         row.payrollWithholding = 0;
-        row.externalWithholding = 0;
     }
 
     function isServiceContract(row) {
@@ -1229,6 +1235,15 @@
         }
 
         return numeric;
+    }
+
+    function normalizeRate(value) {
+        const numeric = toPositiveNumber(value);
+        if (numeric <= 0) {
+            return defaultExternalWithholdingRate;
+        }
+
+        return numeric > 1 ? numeric / 100 : numeric;
     }
 
     function clampDays(value, periodDays) {

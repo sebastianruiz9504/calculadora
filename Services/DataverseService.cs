@@ -266,6 +266,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaScoresEmployeeLookupField;
     private readonly decimal _nominaHealthRate;
     private readonly decimal _nominaPensionRate;
+    private readonly decimal _nominaExternalWithholdingRate;
     private readonly string _rhVacationApprovalFlowUrl;
     private readonly string _rhVacationRequestNotesField;
     private readonly string _rhVacationRequestFormatField;
@@ -496,6 +497,7 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaScoresEmployeeLookupField;
         _nominaHealthRate = NormalizeNominaRate(configuration["Nomina:HealthRate"], 0.04m);
         _nominaPensionRate = NormalizeNominaRate(configuration["Nomina:PensionRate"], 0.04m);
+        _nominaExternalWithholdingRate = NormalizeNominaRate(configuration["Nomina:ExternalWithholdingRate"], 0.04m);
         _rhVacationApprovalFlowUrl = rh.VacationApprovalFlowUrl?.Trim() ?? "";
         _rhVacationRequestNotesField = rh.VacationRequestNotesField?.Trim() ?? "";
         _rhVacationRequestFormatField = rh.VacationRequestFormatField?.Trim() ?? "cr07a_formato";
