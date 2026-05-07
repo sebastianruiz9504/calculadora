@@ -6,12 +6,12 @@ public sealed class AzureOpenAIOptions
     public string ApiKey { get; set; } = "";
     public string DeploymentName { get; set; } = "";
     public string ApiVersion { get; set; } = "2025-01-01-preview";
-    public int TimeoutSeconds { get; set; } = 150;
+    public int TimeoutSeconds { get; set; } = 300;
     public decimal Temperature { get; set; } = 0.2m;
-    public int MaxTokens { get; set; } = 16000;
+    public int MaxTokens { get; set; } = 64000;
     public string TokenParameterName { get; set; } = "max_completion_tokens";
     public bool IncludeTemperature { get; set; } = false;
-    public string ReasoningEffort { get; set; } = "medium";
+    public string ReasoningEffort { get; set; } = "high";
     public string Verbosity { get; set; } = "high";
 }
 

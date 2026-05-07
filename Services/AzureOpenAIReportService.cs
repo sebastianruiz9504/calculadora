@@ -145,10 +145,19 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
             if (IsCompleteHtmlDocument(retryAttempt.Html))
                 return ValidateGeneratedReportHtml(retryAttempt);
 
-            throw BuildInvalidHtmlResponseException(retryAttempt.RawContent, retryAttempt.Html, retryAttempt.FinishReason, firstAttempt);
+            throw BuildInvalidHtmlResponseException(
+                retryAttempt.RawContent,
+                retryAttempt.Html,
+                retryAttempt.FinishReason,
+                previousAttempt: firstAttempt,
+                currentMaxTokens: retryAttempt.MaxTokens);
         }
 
-        throw BuildInvalidHtmlResponseException(firstAttempt.RawContent, firstAttempt.Html, firstAttempt.FinishReason);
+        throw BuildInvalidHtmlResponseException(
+            firstAttempt.RawContent,
+            firstAttempt.Html,
+            firstAttempt.FinishReason,
+            currentMaxTokens: firstAttempt.MaxTokens);
     }
 
     private async Task<OpenAIHtmlGenerationAttempt> SendHtmlGenerationRequestAsync(
@@ -158,26 +167,44 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         bool compactRetry,
         CancellationToken ct)
     {
-        var requestBody = BuildOpenAIReportRequestBody(payloadJson, compactRetry);
+        var tokenBudgets = BuildReportTokenBudgets(_azureOpenAIOptions.MaxTokens);
+        for (var index = 0; index < tokenBudgets.Count; index++)
+        {
+            var maxTokens = tokenBudgets[index];
+            var requestBody = BuildOpenAIReportRequestBody(payloadJson, compactRetry, maxTokens);
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri);
-        httpRequest.Headers.TryAddWithoutValidation("api-key", _azureOpenAIOptions.ApiKey);
-        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        httpRequest.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri);
+            httpRequest.Headers.TryAddWithoutValidation("api-key", _azureOpenAIOptions.ApiKey);
+            httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            httpRequest.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
 
-        using var response = await client.SendAsync(httpRequest, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Azure OpenAI error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+            using var response = await client.SendAsync(httpRequest, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (index < tokenBudgets.Count - 1 && IsTokenBudgetRejected(response.StatusCode, body))
+                {
+                    _logger.LogWarning(
+                        "Azure OpenAI rechazo max_completion_tokens={MaxTokens} para informe. Reintentando con presupuesto menor. Status={StatusCode}",
+                        maxTokens,
+                        (int)response.StatusCode);
+                    continue;
+                }
 
-        var rawContent = ExtractChatCompletionContent(body);
-        var finishReason = ExtractFinishReason(body);
-        var html = NormalizeHtmlResponse(rawContent);
+                throw new InvalidOperationException($"Azure OpenAI error {(int)response.StatusCode} {response.ReasonPhrase}. max_completion_tokens={maxTokens}. Body: {body}");
+            }
 
-        return new OpenAIHtmlGenerationAttempt(rawContent, html, finishReason);
+            var rawContent = ExtractChatCompletionContent(body);
+            var finishReason = ExtractFinishReason(body);
+            var html = NormalizeHtmlResponse(rawContent);
+
+            return new OpenAIHtmlGenerationAttempt(rawContent, html, finishReason, maxTokens);
+        }
+
+        throw new InvalidOperationException("Azure OpenAI no acepto ningun presupuesto de max_completion_tokens para generar el informe.");
     }
 
-    private Dictionary<string, object?> BuildOpenAIReportRequestBody(string payloadJson, bool compactRetry)
+    private Dictionary<string, object?> BuildOpenAIReportRequestBody(string payloadJson, bool compactRetry, int maxTokens)
     {
         var requestBody = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -196,7 +223,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
             },
         };
         var tokenParameterName = NormalizeTokenParameterName(_azureOpenAIOptions.TokenParameterName);
-        requestBody[tokenParameterName] = _azureOpenAIOptions.MaxTokens;
+        requestBody[tokenParameterName] = maxTokens;
         if (_azureOpenAIOptions.IncludeTemperature)
             requestBody["temperature"] = _azureOpenAIOptions.Temperature;
 
@@ -204,7 +231,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         if (!string.IsNullOrWhiteSpace(reasoningEffort))
             requestBody["reasoning_effort"] = reasoningEffort;
 
-        var verbosity = ResolveReportVerbosity(_azureOpenAIOptions.Verbosity);
+        var verbosity = ResolveReportVerbosity(_azureOpenAIOptions.Verbosity, compactRetry);
         if (!string.IsNullOrWhiteSpace(verbosity))
             requestBody["verbosity"] = verbosity;
 
@@ -237,7 +264,11 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
     private static string ValidateGeneratedReportHtml(OpenAIHtmlGenerationAttempt attempt)
     {
         if (!IsCompleteHtmlDocument(attempt.Html))
-            throw BuildInvalidHtmlResponseException(attempt.RawContent, attempt.Html, attempt.FinishReason);
+            throw BuildInvalidHtmlResponseException(
+                attempt.RawContent,
+                attempt.Html,
+                attempt.FinishReason,
+                currentMaxTokens: attempt.MaxTokens);
 
         if (attempt.Html.Contains("<script", StringComparison.OrdinalIgnoreCase))
         {
@@ -563,17 +594,19 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
         string rawContent,
         string normalizedContent,
         string finishReason,
-        OpenAIHtmlGenerationAttempt? previousAttempt = null)
+        OpenAIHtmlGenerationAttempt? previousAttempt = null,
+        int? currentMaxTokens = null)
     {
         var previousDetail = previousAttempt is null
             ? ""
-            : $" previous_finish_reason={previousAttempt.FinishReason}; previous_raw_length={(previousAttempt.RawContent ?? "").Length}; previous_normalized_length={(previousAttempt.Html ?? "").Length};";
+            : $" previous_finish_reason={previousAttempt.FinishReason}; previous_max_completion_tokens={previousAttempt.MaxTokens}; previous_raw_length={(previousAttempt.RawContent ?? "").Length}; previous_normalized_length={(previousAttempt.Html ?? "").Length};";
         var tokenHint = string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase)
             ? " causa_probable=max_completion_tokens insuficiente para el HTML solicitado o salida demasiado extensa;"
             : "";
         var message =
             "Azure OpenAI no devolvio un HTML completo con <!DOCTYPE html>. " +
             $"finish_reason={finishReason}; " +
+            $"max_completion_tokens={currentMaxTokens?.ToString(CultureInfo.InvariantCulture) ?? "no-disponible"}; " +
             $"raw_length={(rawContent ?? "").Length}; " +
             $"normalized_length={(normalizedContent ?? "").Length}; " +
             previousDetail +
@@ -604,18 +637,66 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
     private static string ResolveReportReasoningEffort(string? raw)
     {
         var value = (raw ?? "").Trim();
-        return string.IsNullOrWhiteSpace(value) ? "" : "low";
+        if (string.IsNullOrWhiteSpace(value))
+            return "high";
+
+        return string.Equals(value, "low", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "medium", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "high", StringComparison.OrdinalIgnoreCase)
+            ? "high"
+            : value;
     }
 
-    private static string ResolveReportVerbosity(string? raw)
+    private static string ResolveReportVerbosity(string? raw, bool compactRetry)
     {
         var value = (raw ?? "").Trim();
         if (string.IsNullOrWhiteSpace(value))
-            return "";
+            return compactRetry ? "medium" : "high";
 
-        return string.Equals(value, "low", StringComparison.OrdinalIgnoreCase)
-            ? "low"
-            : "medium";
+        if (compactRetry && string.Equals(value, "high", StringComparison.OrdinalIgnoreCase))
+            return "medium";
+
+        return value;
+    }
+
+    private static int ResolveReportMaxTokens(int configuredMaxTokens)
+    {
+        const int minimumReportMaxTokens = 64000;
+        return Math.Max(configuredMaxTokens, minimumReportMaxTokens);
+    }
+
+    private static IReadOnlyList<int> BuildReportTokenBudgets(int configuredMaxTokens)
+    {
+        var candidates = new[]
+        {
+            ResolveReportMaxTokens(configuredMaxTokens),
+            32768,
+            configuredMaxTokens
+        };
+        var budgets = new List<int>();
+        foreach (var candidate in candidates)
+        {
+            if (candidate <= 0 || budgets.Contains(candidate))
+                continue;
+
+            budgets.Add(candidate);
+        }
+
+        return budgets;
+    }
+
+    private static bool IsTokenBudgetRejected(HttpStatusCode statusCode, string body)
+    {
+        if (statusCode != HttpStatusCode.BadRequest && statusCode != HttpStatusCode.UnprocessableEntity)
+            return false;
+
+        var value = (body ?? "").ToLowerInvariant();
+        return value.Contains("max_completion_tokens", StringComparison.Ordinal)
+            || value.Contains("max_tokens", StringComparison.Ordinal)
+            || value.Contains("maximum", StringComparison.Ordinal)
+            || value.Contains("too large", StringComparison.Ordinal)
+            || value.Contains("exceed", StringComparison.Ordinal)
+            || value.Contains("token", StringComparison.Ordinal);
     }
 
     private static string BuildSystemPrompt()
@@ -935,5 +1016,6 @@ No agregues secciones nuevas salvo que sean visualmente necesarias y no duplique
     private sealed record OpenAIHtmlGenerationAttempt(
         string RawContent,
         string Html,
-        string FinishReason);
+        string FinishReason,
+        int MaxTokens);
 }
