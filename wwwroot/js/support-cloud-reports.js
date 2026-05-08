@@ -312,11 +312,11 @@
             renderSnapshot(snapshot);
 
             renderProgress("generating", snapshot?.success
-                ? "Snapshot recolectado. Generando informe HTML con Azure OpenAI..."
-                : "Snapshot guardado con advertencias. Generando informe con la evidencia disponible...");
+                ? "Snapshot recolectado. Analizando datos y renderizando informe..."
+                : "Snapshot guardado con advertencias. Preparando informe con la evidencia disponible...");
             showLoadingModal(snapshot?.success
-                ? "Snapshot recolectado. Generando informe HTML con Azure OpenAI..."
-                : "Snapshot guardado con advertencias. Generando informe con la evidencia disponible...");
+                ? "Snapshot recolectado. Analizando datos y renderizando informe..."
+                : "Snapshot guardado con advertencias. Preparando informe con la evidencia disponible...");
             setReportState("Generando");
 
             const result = await fetchJson(urls.generate, {
@@ -369,7 +369,7 @@
             estado: "Generando",
             error: "La generacion quedo en proceso. Esta pantalla consultara el resultado automaticamente."
         });
-        renderProgress("generating", "Generacion iniciada en segundo plano. Esperando el HTML generado...");
+        renderProgress("generating", "Generacion iniciada en segundo plano. Esperando el informe renderizado...");
         setStatus("info", "Generacion iniciada. Puedes dejar esta pantalla abierta mientras termina el informe.");
 
         while (Date.now() - startedAt < timeoutMs) {
@@ -399,7 +399,7 @@
             renderGeneratedReport({
                 ...lastResult,
                 estado: lastResult.estado || "Generando",
-                error: "El worker aun esta generando el HTML con Azure OpenAI."
+                error: "El worker aun esta analizando datos y renderizando el informe."
             });
             renderProgress("generating", `Informe en proceso (${formatElapsed(Date.now() - startedAt)}). Consultando nuevamente...`);
             await loadGeneratedReports();
@@ -771,7 +771,7 @@
         const config = {
             idle: { visible: false, width: 0, active: -1, message: "" },
             collecting: { visible: true, width: 35, active: 0, message: "Recolectando Secure Score, alertas e incidentes desde Microsoft Graph..." },
-            generating: { visible: true, width: 72, active: 1, message: customMessage || "Generando HTML ejecutivo con Azure OpenAI..." },
+            generating: { visible: true, width: 72, active: 1, message: customMessage || "Analizando datos y renderizando informe..." },
             done: { visible: true, width: 100, active: 2, message: "Informe generado y guardado en Dataverse." },
             error: { visible: true, width: 100, active: 3, message: customMessage || "La generacion no pudo completarse." }
         }[status] || { visible: false, width: 0, active: -1, message: "" };

@@ -1,0 +1,180 @@
+@model CotizadorInterno.Web.Models.Licenciamiento.LicenciamientoCrucePageViewModel
+@{
+    ViewData["Title"] = "Cruce Licenciamiento";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/cruce-licenciamiento.css" asp-append-version="true" />
+}
+
+<div class="licx-shell"
+     id="licCruceApp"
+     data-load-url="@Url.Action("Data", "CruceLicenciamiento")"
+     data-default-year="@Model.DefaultYear"
+     data-default-month="@Model.DefaultMonth"
+     data-default-offset="@Model.DefaultBillingOffsetMonths"
+     data-default-threshold="@Model.DefaultMarginThresholdPercent">
+    <section class="licx-header">
+        <div>
+            <div class="licx-kicker">Gerencia</div>
+            <h1 class="licx-title">Cruce Licenciamiento</h1>
+        </div>
+        <div class="licx-user">
+            <span>Usuario</span>
+            <strong>@Model.CurrentUser.Email</strong>
+        </div>
+    </section>
+
+    <form class="licx-toolbar" id="licCruceFilters">
+        <label class="licx-field">
+            <span>Año cierre</span>
+            <input class="form-control" id="licCruceYear" type="number" min="2000" max="2100" step="1" />
+        </label>
+        <label class="licx-field">
+            <span>Mes cierre</span>
+            <select class="form-select" id="licCruceMonth">
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+            </select>
+        </label>
+        <label class="licx-field">
+            <span>Mes facturacion</span>
+            <select class="form-select" id="licCruceOffset">
+                <option value="1">Mes siguiente</option>
+                <option value="0">Mismo mes</option>
+                <option value="-1">Mes anterior</option>
+            </select>
+        </label>
+        <label class="licx-field">
+            <span>Umbral margen %</span>
+            <input class="form-control" id="licCruceThreshold" type="number" min="-100" max="1000" step="0.01" />
+        </label>
+        <button type="submit" class="btn btn-primary">Actualizar</button>
+    </form>
+
+    <div id="licCruceStatus" class="licx-status" role="status" aria-live="polite"></div>
+
+    <section class="licx-kpis" aria-label="Resumen consolidado">
+        <article class="licx-kpi">
+            <span>Total costos</span>
+            <strong id="licCruceTotalCost">$0</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Facturacion sin IVA</span>
+            <strong id="licCruceTotalBilling">$0</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Margen bruto</span>
+            <strong id="licCruceTotalMargin">$0</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Margen bruto %</span>
+            <strong id="licCruceTotalMarginPct">N/A</strong>
+        </article>
+    </section>
+
+    <section class="licx-grid">
+        <div class="licx-panel">
+            <div class="licx-panel__header">
+                <div>
+                    <div class="licx-kicker">Conciliacion</div>
+                    <h2>Detalle por cliente</h2>
+                </div>
+                <div class="licx-summary-pills" id="licCruceStatusPills"></div>
+            </div>
+            <div class="licx-table-wrap">
+                <table class="table align-middle licx-table">
+                    <thead>
+                        <tr>
+                            <th>Mes cierre</th>
+                            <th>Mes costo</th>
+                            <th>Mes facturacion</th>
+                            <th>Cliente</th>
+                            <th>NIT</th>
+                            <th>Producto/licencia</th>
+                            <th>Vertical</th>
+                            <th class="text-end">Costo</th>
+                            <th class="text-end">Facturacion sin IVA</th>
+                            <th class="text-end">Margen</th>
+                            <th class="text-end">Margen %</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="licCruceRows"></tbody>
+                </table>
+            </div>
+            <div class="licx-empty" id="licCruceEmpty" hidden>No hay registros para este periodo.</div>
+        </div>
+
+        <aside class="licx-side">
+            <section class="licx-panel">
+                <div class="licx-panel__header">
+                    <div>
+                        <div class="licx-kicker">Alertas</div>
+                        <h2>Control mensual</h2>
+                    </div>
+                </div>
+                <div class="licx-alerts" id="licCruceAlerts"></div>
+            </section>
+
+            <section class="licx-panel">
+                <div class="licx-panel__header">
+                    <div>
+                        <div class="licx-kicker">Validaciones</div>
+                        <h2>Fuente y calidad</h2>
+                    </div>
+                </div>
+                <div class="licx-validations" id="licCruceValidations"></div>
+            </section>
+        </aside>
+    </section>
+
+    <section class="licx-grid licx-grid--bottom">
+        <div class="licx-panel">
+            <div class="licx-panel__header">
+                <div>
+                    <div class="licx-kicker">Resumen</div>
+                    <h2>Mes de cierre</h2>
+                </div>
+            </div>
+            <div class="licx-table-wrap licx-table-wrap--compact">
+                <table class="table align-middle licx-table">
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th class="text-end">Costos</th>
+                            <th class="text-end">Facturacion</th>
+                            <th class="text-end">Margen</th>
+                            <th class="text-end">Margen %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="licCruceMonthRows"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="licx-panel">
+            <div class="licx-panel__header">
+                <div>
+                    <div class="licx-kicker">Ranking</div>
+                    <h2>Clientes a revisar</h2>
+                </div>
+            </div>
+            <div class="licx-ranking" id="licCruceRanking"></div>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/cruce-licenciamiento.js" asp-append-version="true"></script>
+}

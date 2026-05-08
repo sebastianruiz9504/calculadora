@@ -8,7 +8,7 @@ public sealed class AzureOpenAIOptions
     public string ApiVersion { get; set; } = "2025-01-01-preview";
     public int TimeoutSeconds { get; set; } = 600;
     public decimal Temperature { get; set; } = 0.2m;
-    public int MaxTokens { get; set; } = 64000;
+    public int MaxTokens { get; set; } = 16000;
     public string TokenParameterName { get; set; } = "max_completion_tokens";
     public bool IncludeTemperature { get; set; } = false;
     public string ReasoningEffort { get; set; } = "high";
@@ -17,10 +17,10 @@ public sealed class AzureOpenAIOptions
 
 public sealed class ReportesOptions
 {
-    public string PromptVersion { get; set; } = "m365-soporte-cloud-v2-visual";
-    public string DefaultCorporateColor { get; set; } = "#0f766e";
-    public int MaxTicketsInPrompt { get; set; } = 60;
-    public int MaxSecurityItemsInPrompt { get; set; } = 25;
+    public string PromptVersion { get; set; } = "m365-soporte-cloud-v3-analysis-template";
+    public string DefaultCorporateColor { get; set; } = "#103975";
+    public int MaxTicketsInPrompt { get; set; } = 40;
+    public int MaxSecurityItemsInPrompt { get; set; } = 15;
     public ReportesClientDataverseOptions Client { get; set; } = new();
     public ReportesTicketDataverseOptions Ticket { get; set; } = new();
     public ReportesGeneratedReportDataverseOptions GeneratedReport { get; set; } = new();

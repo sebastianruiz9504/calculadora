@@ -1,0 +1,135 @@
+{
+  "tables": [
+    {
+      "displayName": "Cruce Licenciamiento",
+      "displayCollectionName": "Cruces Licenciamiento",
+      "logicalName": "cr07a_crucelicenciamiento",
+      "entitySetName": "cr07a_crucelicenciamientos",
+      "primaryIdAttribute": "cr07a_crucelicenciamientoid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        {
+          "logicalName": "cr07a_name",
+          "displayName": "Nombre",
+          "type": "Text",
+          "maxLength": 200,
+          "required": true
+        },
+        {
+          "logicalName": "cr07a_mescierre",
+          "displayName": "Mes cierre",
+          "type": "Text",
+          "maxLength": 20,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_mescosto",
+          "displayName": "Mes costo",
+          "type": "Text",
+          "maxLength": 20,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_mesfacturacion",
+          "displayName": "Mes facturacion",
+          "type": "Text",
+          "maxLength": 20,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_cliente",
+          "displayName": "Cliente",
+          "type": "Text",
+          "maxLength": 250,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_nitcliente",
+          "displayName": "NIT cliente",
+          "type": "Text",
+          "maxLength": 80,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_productolicencia",
+          "displayName": "Producto/licencia",
+          "type": "MultilineText",
+          "maxLength": 4000,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_vertical",
+          "displayName": "Vertical",
+          "type": "Text",
+          "maxLength": 120,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_costolicenciamiento",
+          "displayName": "Costo licenciamiento",
+          "type": "Decimal",
+          "minValue": -100000000000,
+          "maxValue": 100000000000,
+          "precision": 2,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_facturacionsiniva",
+          "displayName": "Facturacion sin IVA",
+          "type": "Decimal",
+          "minValue": -100000000000,
+          "maxValue": 100000000000,
+          "precision": 2,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_margenbruto",
+          "displayName": "Margen bruto",
+          "type": "Decimal",
+          "minValue": -100000000000,
+          "maxValue": 100000000000,
+          "precision": 2,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_margenbrutopct",
+          "displayName": "Margen bruto %",
+          "type": "Decimal",
+          "minValue": -1000,
+          "maxValue": 1000,
+          "precision": 4,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_estadocruce",
+          "displayName": "Estado cruce",
+          "type": "Text",
+          "maxLength": 100,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_fuentecosto",
+          "displayName": "Fuente costo",
+          "type": "Text",
+          "maxLength": 120,
+          "required": false
+        },
+        {
+          "logicalName": "cr07a_fuentefacturacion",
+          "displayName": "Fuente facturacion",
+          "type": "Text",
+          "maxLength": 120,
+          "required": false
+        }
+      ]
+    }
+  ],
+  "moduleOptions": [
+    {
+      "label": "Cruce Licenciamiento",
+      "value": 645250020,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    }
+  ]
+}

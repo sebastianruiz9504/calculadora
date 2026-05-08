@@ -24,7 +24,8 @@ public enum AppModule
     PlanRio = 17,
     Envios = 18,
     Transportador = 19,
-    RebatesInversiones = 20
+    RebatesInversiones = 20,
+    CruceLicenciamiento = 21
 }
 
 public sealed class AppModuleDefinition
@@ -188,6 +189,15 @@ public static class AppModuleCatalog
         Controller = "Licenciamiento"
     };
 
+    public static readonly AppModuleDefinition CruceLicenciamiento = new()
+    {
+        Key = AppModule.CruceLicenciamiento,
+        Label = "Cruce Licenciamiento",
+        Category = "Gerencia",
+        Description = "Cruza costos de licenciamiento con facturacion sin IVA para validar margen y cierre mensual.",
+        OptionValue = 645250020,
+        Controller = "CruceLicenciamiento"
+    };
 
     public static readonly AppModuleDefinition Hardware = new()
     {
@@ -265,6 +275,7 @@ public static class AppModuleCatalog
         Copiers,
         Inventario,
         Licenciamiento,
+        CruceLicenciamiento,
         SoporteCloud,
         Hardware,
         PlanRio,
@@ -289,7 +300,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Gerencia",
-            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas, Licenciamiento },
+            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas, Licenciamiento, CruceLicenciamiento },
             IsDropdown = true
         },
         new AppModuleNavigationGroup

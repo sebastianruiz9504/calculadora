@@ -62,7 +62,8 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
 
         try
         {
-            var html = await GenerateHtmlWithAzureOpenAIAsync(payloadJson, ct);
+            var analysis = await GenerateAnalysisWithAzureOpenAIAsync(payloadJson, ct);
+            var html = ReportesHtmlRenderer.Render(payload, analysis);
             var saved = await _repository.UpsertGeneratedReportAsync(new ReporteHtmlGeneradoRecord
             {
                 ClienteId = clienteId,
@@ -75,7 +76,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
             }, ct);
 
             _logger.LogInformation(
-                "Informe HTML generado para cliente {ClienteId}, periodo {Periodo}.",
+                "Informe HTML renderizado para cliente {ClienteId}, periodo {Periodo}.",
                 clienteId,
                 period.Value);
 
@@ -120,7 +121,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         }
     }
 
-    private async Task<string> GenerateHtmlWithAzureOpenAIAsync(string payloadJson, CancellationToken ct)
+    private async Task<ReporteAnalysisPayload> GenerateAnalysisWithAzureOpenAIAsync(string payloadJson, CancellationToken ct)
     {
         ValidateAzureOpenAIOptions();
 
@@ -131,80 +132,53 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(ResolveReportTimeoutSeconds(_azureOpenAIOptions.TimeoutSeconds));
 
-        var firstAttempt = await SendHtmlGenerationRequestAsync(client, uri, payloadJson, compactRetry: false, ct);
-        if (IsCompleteHtmlDocument(firstAttempt.Html))
-            return ValidateGeneratedReportHtml(firstAttempt);
-
-        if (ShouldRetryWithCompactPrompt(firstAttempt))
-        {
-            _logger.LogWarning(
-                "Azure OpenAI agoto tokens generando informe HTML antes de devolver contenido visible. Reintentando con prompt compacto. finish_reason={FinishReason}",
-                firstAttempt.FinishReason);
-
-            var retryAttempt = await SendHtmlGenerationRequestAsync(client, uri, payloadJson, compactRetry: true, ct);
-            if (IsCompleteHtmlDocument(retryAttempt.Html))
-                return ValidateGeneratedReportHtml(retryAttempt);
-
-            throw BuildInvalidHtmlResponseException(
-                retryAttempt.RawContent,
-                retryAttempt.Html,
-                retryAttempt.FinishReason,
-                previousAttempt: firstAttempt,
-                currentMaxTokens: retryAttempt.MaxTokens);
-        }
-
-        throw BuildInvalidHtmlResponseException(
-            firstAttempt.RawContent,
-            firstAttempt.Html,
-            firstAttempt.FinishReason,
-            currentMaxTokens: firstAttempt.MaxTokens);
+        var rawJson = await SendAnalysisRequestAsync(client, uri, payloadJson, includeResponseFormat: true, ct);
+        return ParseAnalysisPayload(rawJson);
     }
 
-    private async Task<OpenAIHtmlGenerationAttempt> SendHtmlGenerationRequestAsync(
+    private async Task<string> SendAnalysisRequestAsync(
         HttpClient client,
         string uri,
         string payloadJson,
-        bool compactRetry,
+        bool includeResponseFormat,
         CancellationToken ct)
     {
-        var tokenBudgets = BuildReportTokenBudgets(_azureOpenAIOptions.MaxTokens);
-        for (var index = 0; index < tokenBudgets.Count; index++)
+        var requestBody = BuildOpenAIAnalysisRequestBody(payloadJson, includeResponseFormat);
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri);
+        httpRequest.Headers.TryAddWithoutValidation("api-key", _azureOpenAIOptions.ApiKey);
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        httpRequest.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(httpRequest, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
         {
-            var maxTokens = tokenBudgets[index];
-            var requestBody = BuildOpenAIReportRequestBody(payloadJson, compactRetry, maxTokens);
-
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, uri);
-            httpRequest.Headers.TryAddWithoutValidation("api-key", _azureOpenAIOptions.ApiKey);
-            httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            httpRequest.Content = new StringContent(JsonSerializer.Serialize(requestBody, JsonOptions), Encoding.UTF8, "application/json");
-
-            using var response = await client.SendAsync(httpRequest, ct);
-            var body = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
+            if (includeResponseFormat && IsResponseFormatRejected(response.StatusCode, body))
             {
-                if (index < tokenBudgets.Count - 1 && IsTokenBudgetRejected(response.StatusCode, body))
-                {
-                    _logger.LogWarning(
-                        "Azure OpenAI rechazo max_completion_tokens={MaxTokens} para informe. Reintentando con presupuesto menor. Status={StatusCode}",
-                        maxTokens,
-                        (int)response.StatusCode);
-                    continue;
-                }
-
-                throw new InvalidOperationException($"Azure OpenAI error {(int)response.StatusCode} {response.ReasonPhrase}. max_completion_tokens={maxTokens}. Body: {body}");
+                _logger.LogWarning(
+                    "Azure OpenAI rechazo response_format=json_object para analisis de informe. Reintentando sin response_format. Status={StatusCode}",
+                    (int)response.StatusCode);
+                return await SendAnalysisRequestAsync(client, uri, payloadJson, includeResponseFormat: false, ct);
             }
 
-            var rawContent = ExtractChatCompletionContent(body);
-            var finishReason = ExtractFinishReason(body);
-            var html = NormalizeHtmlResponse(rawContent);
-
-            return new OpenAIHtmlGenerationAttempt(rawContent, html, finishReason, maxTokens);
+            throw new InvalidOperationException($"Azure OpenAI error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
         }
 
-        throw new InvalidOperationException("Azure OpenAI no acepto ningun presupuesto de max_completion_tokens para generar el informe.");
+        var content = ExtractChatCompletionContent(body);
+        var finishReason = ExtractFinishReason(body);
+        var normalized = NormalizeJsonResponse(content);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException(
+                "Azure OpenAI no devolvio JSON de analisis para el informe. " +
+                $"finish_reason={finishReason}; raw_length={(content ?? "").Length}; raw_preview={BuildDiagnosticPreview(content)}");
+        }
+
+        return normalized;
     }
 
-    private Dictionary<string, object?> BuildOpenAIReportRequestBody(string payloadJson, bool compactRetry, int maxTokens)
+    private Dictionary<string, object?> BuildOpenAIAnalysisRequestBody(string payloadJson, bool includeResponseFormat)
     {
         var requestBody = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -218,12 +192,14 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
                 new
                 {
                     role = "user",
-                    content = BuildUserPrompt(payloadJson, compactRetry)
+                    content = BuildAnalysisUserPrompt(payloadJson)
                 }
             },
         };
+
         var tokenParameterName = NormalizeTokenParameterName(_azureOpenAIOptions.TokenParameterName);
-        requestBody[tokenParameterName] = maxTokens;
+        requestBody[tokenParameterName] = ResolveAnalysisMaxTokens(_azureOpenAIOptions.MaxTokens);
+
         if (_azureOpenAIOptions.IncludeTemperature)
             requestBody["temperature"] = _azureOpenAIOptions.Temperature;
 
@@ -231,71 +207,36 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         if (!string.IsNullOrWhiteSpace(reasoningEffort))
             requestBody["reasoning_effort"] = reasoningEffort;
 
-        var verbosity = ResolveReportVerbosity(_azureOpenAIOptions.Verbosity, compactRetry);
-        if (!string.IsNullOrWhiteSpace(verbosity))
-            requestBody["verbosity"] = verbosity;
+        requestBody["verbosity"] = "medium";
+
+        if (includeResponseFormat)
+            requestBody["response_format"] = new { type = "json_object" };
 
         return requestBody;
     }
 
-    private static string BuildUserPrompt(string payloadJson, bool compactRetry)
+    private static string BuildAnalysisUserPrompt(string payloadJson)
     {
-        var retryInstruction = compactRetry
-            ? """
-
-REINTENTO POR LIMITE DE TOKENS:
-La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. En este intento prioriza entregar un documento completo y cerrado.
-- Usa CSS compacto pero suficiente para mantener el aspecto premium.
-- No generes explicaciones, analisis previo ni texto fuera del HTML.
-- No sobreextiendas parrafos ni tablas.
-- Cierra obligatoriamente con </html>.
-"""
-            : "";
-
         return
-            "Genera el informe HTML mensual usando exclusivamente este JSON consolidado. " +
-            "La informacion del cliente, periodo, tickets y tenant Microsoft 365 ya viene en el JSON. " +
-            "No inventes metricas, tickets, datos de seguridad ni datos del cliente. " +
-            "Devuelve directamente <!DOCTYPE html> como primer texto visible." +
-            retryInstruction +
-            "\nJSON:\n" + payloadJson;
+            "Analiza este JSON consolidado de cliente, periodo, tickets y seguridad Microsoft 365. " +
+            "Devuelve exclusivamente el JSON de analisis solicitado en el system prompt. " +
+            "No inventes metricas, tickets, alertas, incidentes, controles, fechas ni datos de contacto. " +
+            "No devuelvas HTML. JSON consolidado:\n" + payloadJson;
     }
 
-    private static string ValidateGeneratedReportHtml(OpenAIHtmlGenerationAttempt attempt)
+    private static ReporteAnalysisPayload ParseAnalysisPayload(string rawJson)
     {
-        if (!IsCompleteHtmlDocument(attempt.Html))
-            throw BuildInvalidHtmlResponseException(
-                attempt.RawContent,
-                attempt.Html,
-                attempt.FinishReason,
-                currentMaxTokens: attempt.MaxTokens);
-
-        if (attempt.Html.Contains("<script", StringComparison.OrdinalIgnoreCase))
+        try
+        {
+            return JsonSerializer.Deserialize<ReporteAnalysisPayload>(rawJson, JsonOptions) ?? new ReporteAnalysisPayload();
+        }
+        catch (JsonException ex)
         {
             throw new InvalidOperationException(
-                "Azure OpenAI devolvio HTML con scripts. El informe debe contener solo HTML y CSS embebido. " +
-                $"finish_reason={attempt.FinishReason}; preview={BuildDiagnosticPreview(attempt.Html)}");
+                "Azure OpenAI devolvio JSON de analisis invalido. " +
+                $"preview={BuildDiagnosticPreview(rawJson)}",
+                ex);
         }
-
-        return attempt.Html;
-    }
-
-    private static bool IsCompleteHtmlDocument(string? html)
-    {
-        if (string.IsNullOrWhiteSpace(html))
-            return false;
-
-        var value = html.TrimStart();
-        return value.StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase)
-            && value.Contains("<html", StringComparison.OrdinalIgnoreCase)
-            && value.Contains("</html>", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool ShouldRetryWithCompactPrompt(OpenAIHtmlGenerationAttempt attempt)
-    {
-        return string.Equals(attempt.FinishReason, "length", StringComparison.OrdinalIgnoreCase)
-            || string.IsNullOrWhiteSpace(attempt.RawContent)
-            || string.IsNullOrWhiteSpace(attempt.Html);
     }
 
     private ReporteConsolidadoPayload BuildConsolidatedPayload(ReporteMonthlyInput input)
@@ -464,30 +405,19 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
         throw new InvalidOperationException("La respuesta de Azure OpenAI no contiene choices[0].message.content.");
     }
 
-    private static string NormalizeHtmlResponse(string html)
+    private static string NormalizeJsonResponse(string raw)
     {
-        var value = (html ?? "").Trim().Trim('\uFEFF');
-        value = StripMarkdownFence(value);
-        value = UnwrapJsonHtmlContent(value);
+        var value = (raw ?? "").Trim().Trim('\uFEFF');
         value = StripMarkdownFence(value);
         value = WebUtility.HtmlDecode(value).Trim().Trim('\uFEFF');
         value = StripMarkdownFence(value);
-        value = UnwrapJsonHtmlContent(value);
-        value = StripMarkdownFence(value);
 
-        var extracted = TryExtractHtmlDocument(value);
-        if (!string.IsNullOrWhiteSpace(extracted))
-            return extracted;
+        if (value.StartsWith('{') && value.EndsWith('}'))
+            return value;
 
-        var bodyIndex = value.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
-        if (bodyIndex >= 0)
-            return "<!DOCTYPE html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Informe Mensual</title></head>\n" + value[bodyIndex..];
-
-        var headIndex = value.IndexOf("<head", StringComparison.OrdinalIgnoreCase);
-        if (headIndex >= 0)
-            return "<!DOCTYPE html>\n<html lang=\"es\">\n" + value[headIndex..];
-
-        return value.Trim().Trim('\uFEFF');
+        var start = value.IndexOf('{');
+        var end = value.LastIndexOf('}');
+        return start >= 0 && end > start ? value[start..(end + 1)].Trim() : "";
     }
 
     private static string StripMarkdownFence(string value)
@@ -505,67 +435,6 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
             value = value[..closingFence];
 
         return value.Trim().Trim('\uFEFF');
-    }
-
-    private static string UnwrapJsonHtmlContent(string value)
-    {
-        value = (value ?? "").Trim().Trim('\uFEFF');
-        if (string.IsNullOrWhiteSpace(value) || value[0] is not '{')
-            return value;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(value);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-                return value;
-
-            foreach (var propertyName in new[] { "html", "content", "document", "output" })
-            {
-                if (doc.RootElement.TryGetProperty(propertyName, out var property)
-                    && property.ValueKind == JsonValueKind.String)
-                {
-                    var unwrapped = property.GetString();
-                    if (!string.IsNullOrWhiteSpace(unwrapped))
-                        return unwrapped.Trim();
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            return value;
-        }
-
-        return value;
-    }
-
-    private static string TryExtractHtmlDocument(string value)
-    {
-        value = (value ?? "").Trim().Trim('\uFEFF');
-        var doctypeIndex = value.IndexOf("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase);
-        if (doctypeIndex >= 0)
-        {
-            value = value[doctypeIndex..];
-            var doctypeEnd = value.IndexOf('>');
-            if (doctypeEnd >= 0)
-                value = "<!DOCTYPE html>" + value[(doctypeEnd + 1)..];
-        }
-        else
-        {
-            var htmlIndex = value.IndexOf("<html", StringComparison.OrdinalIgnoreCase);
-            if (htmlIndex >= 0)
-                value = "<!DOCTYPE html>\n" + value[htmlIndex..];
-        }
-
-        var trailingFence = value.LastIndexOf("```", StringComparison.Ordinal);
-        if (trailingFence >= 0)
-            value = value[..trailingFence];
-
-        var htmlEnd = value.LastIndexOf("</html>", StringComparison.OrdinalIgnoreCase);
-        if (htmlEnd >= 0)
-            value = value[..(htmlEnd + "</html>".Length)];
-
-        value = value.Trim().Trim('\uFEFF');
-        return value.StartsWith("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase) ? value : "";
     }
 
     private static string ExtractFinishReason(string body)
@@ -588,33 +457,6 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
         }
 
         return "no-disponible";
-    }
-
-    private static InvalidOperationException BuildInvalidHtmlResponseException(
-        string rawContent,
-        string normalizedContent,
-        string finishReason,
-        OpenAIHtmlGenerationAttempt? previousAttempt = null,
-        int? currentMaxTokens = null)
-    {
-        var previousDetail = previousAttempt is null
-            ? ""
-            : $" previous_finish_reason={previousAttempt.FinishReason}; previous_max_completion_tokens={previousAttempt.MaxTokens}; previous_raw_length={(previousAttempt.RawContent ?? "").Length}; previous_normalized_length={(previousAttempt.Html ?? "").Length};";
-        var tokenHint = string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase)
-            ? " causa_probable=max_completion_tokens insuficiente para el HTML solicitado o salida demasiado extensa;"
-            : "";
-        var message =
-            "Azure OpenAI no devolvio un HTML completo con <!DOCTYPE html>. " +
-            $"finish_reason={finishReason}; " +
-            $"max_completion_tokens={currentMaxTokens?.ToString(CultureInfo.InvariantCulture) ?? "no-disponible"}; " +
-            $"raw_length={(rawContent ?? "").Length}; " +
-            $"normalized_length={(normalizedContent ?? "").Length}; " +
-            previousDetail +
-            tokenHint +
-            $"raw_preview={BuildDiagnosticPreview(rawContent)}; " +
-            $"normalized_preview={BuildDiagnosticPreview(normalizedContent)}";
-
-        return new InvalidOperationException(message);
     }
 
     private static string BuildDiagnosticPreview(string? value)
@@ -647,22 +489,13 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
             : value;
     }
 
-    private static string ResolveReportVerbosity(string? raw, bool compactRetry)
+    private static int ResolveAnalysisMaxTokens(int configuredMaxTokens)
     {
-        var value = (raw ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(value))
-            return compactRetry ? "medium" : "high";
+        const int defaultAnalysisMaxTokens = 12000;
+        if (configuredMaxTokens <= 0)
+            return defaultAnalysisMaxTokens;
 
-        if (compactRetry && string.Equals(value, "high", StringComparison.OrdinalIgnoreCase))
-            return "medium";
-
-        return value;
-    }
-
-    private static int ResolveReportMaxTokens(int configuredMaxTokens)
-    {
-        const int minimumReportMaxTokens = 64000;
-        return Math.Max(configuredMaxTokens, minimumReportMaxTokens);
+        return Math.Clamp(configuredMaxTokens, 4000, defaultAnalysisMaxTokens);
     }
 
     private static int ResolveReportTimeoutSeconds(int configuredTimeoutSeconds)
@@ -671,230 +504,70 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
         return Math.Clamp(Math.Max(configuredTimeoutSeconds, minimumReportTimeoutSeconds), 30, 600);
     }
 
-    private static IReadOnlyList<int> BuildReportTokenBudgets(int configuredMaxTokens)
-    {
-        var candidates = new[]
-        {
-            ResolveReportMaxTokens(configuredMaxTokens),
-            32768,
-            configuredMaxTokens
-        };
-        var budgets = new List<int>();
-        foreach (var candidate in candidates)
-        {
-            if (candidate <= 0 || budgets.Contains(candidate))
-                continue;
-
-            budgets.Add(candidate);
-        }
-
-        return budgets;
-    }
-
-    private static bool IsTokenBudgetRejected(HttpStatusCode statusCode, string body)
+    private static bool IsResponseFormatRejected(HttpStatusCode statusCode, string body)
     {
         if (statusCode != HttpStatusCode.BadRequest && statusCode != HttpStatusCode.UnprocessableEntity)
             return false;
 
         var value = (body ?? "").ToLowerInvariant();
-        return value.Contains("max_completion_tokens", StringComparison.Ordinal)
-            || value.Contains("max_tokens", StringComparison.Ordinal)
-            || value.Contains("maximum", StringComparison.Ordinal)
-            || value.Contains("too large", StringComparison.Ordinal)
-            || value.Contains("exceed", StringComparison.Ordinal)
-            || value.Contains("token", StringComparison.Ordinal);
+        return value.Contains("response_format", StringComparison.Ordinal)
+            || value.Contains("json_object", StringComparison.Ordinal);
     }
 
     private static string BuildSystemPrompt()
     {
         return """
-## Rol y proposito
-Eres un agente especializado en generar informes tecnicos ejecutivos de auditoria, soporte cloud y seguridad Microsoft 365 en formato HTML. Tu funcion es recibir un JSON consolidado de la aplicacion y producir un unico archivo HTML final, completo, visualmente sofisticado y listo para abrir en navegador o exportar a PDF.
+Eres un consultor senior de soporte cloud, seguridad Microsoft 365 e ISO/IEC 27001:2022.
 
-El enfoque critico es visual: el informe debe parecerse lo mas posible a una plantilla corporativa premium de Digital Tech, con sidebar fijo, portada hero, tarjetas KPI, tablas elegantes, gauges de seguridad, barras comparativas, secciones alternadas, animaciones CSS sutiles y estilos de impresion. El contenido debe basarse estrictamente en el JSON recibido.
+Tu unica tarea es analizar el JSON consolidado recibido y devolver un JSON pequeno con textos ejecutivos para un informe mensual. No debes generar HTML, CSS, Markdown, tablas HTML ni explicaciones fuera del JSON.
 
-## Fuente de datos
-El usuario NO adjuntara archivos manuales en este flujo. La aplicacion ya entrega toda la informacion disponible en el JSON:
+La aplicacion renderizara el HTML con una plantilla fija inspirada en el informe corporativo de Digital Tech. Por eso debes concentrarte solo en criterio tecnico, priorizacion, redaccion ejecutiva y consistencia con la evidencia.
 
-- `cliente`: nombre, logo y color corporativo.
-- `periodo`: valor `yyyy-MM`, fechaInicio y fechaFin.
-- `resumenTickets`: totalTickets, totalHoras, promedioHoras y resumen.
-- `metricasTickets`: agrupaciones por estado, tipo, categoria, metodo y creador.
-- `ticketsRelevantes`: tickets reales del periodo con titulo, fecha, estado, tipo, categoria, metodo, creador, horas, descripcion y solucion.
-- `seguridadMicrosoft365`: snapshot real del tenant, Secure Score, alertas, incidentes y recomendaciones, o una limitacion si no existe snapshot.
+Reglas criticas:
+- Usa exclusivamente los datos del JSON recibido.
+- No inventes tickets, metricas, porcentajes, alertas, incidentes, controles, fechas, nombres, telefonos ni certificaciones.
+- Si falta evidencia, declara la limitacion de forma ejecutiva.
+- Alinea ISO 27001:2022 como referencia operativa; no afirmes certificacion ni cumplimiento formal.
+- Mantén textos concisos: cada parrafo maximo 55 palabras.
+- Devuelve arrays pequenos: resumenEjecutivo 2-4 items, iso 3-5 items, implementacion 3-6 items, hallazgos 2-5 items, conclusiones 2-4 items, recomendaciones 3-6 items.
+- El JSON debe ser valido y parseable.
 
-Debes usar exclusivamente esos campos. No inventes metricas, tickets, porcentajes, nombres, certificaciones, logos, alertas, incidentes, controles, fechas, horas ni datos de contacto.
-
-## Formato de salida obligatorio
-- Responde exclusivamente con HTML completo. No uses Markdown, fences ni explicaciones fuera del HTML.
-- El documento debe iniciar exactamente con `<!DOCTYPE html>` e incluir `html`, `head` y `body`.
-- Todo debe estar en un solo archivo HTML con CSS embebido en `<style>`.
-- No incluyas ningun `<script>`, JavaScript inline, `onclick`, `oninput`, `onchange`, `javascript:` ni dependencias externas. El backend rechazara HTML con scripts.
-- No uses CDN, Google Fonts, Font Awesome externo, imagenes externas inventadas ni recursos remotos no presentes en el JSON.
-- Si `cliente.logo` viene informado, usalo como `src` exactamente como llega. Si no hay logo, muestra una marca textual fuerte con el nombre del cliente.
-- Usa el color `cliente.colorCorporativo` como acento principal cuando exista. Si no existe, usa `#103975`.
-- El HTML debe ser responsive, imprimible y apto para PDF A4.
-
-## Plantilla visual de referencia
-Debes recrear una experiencia visual muy cercana a esta estructura:
-
-- Sidebar fijo de 270px a la izquierda, fondo en gradiente vertical negro a azul `#0F5094`, logo/titulo arriba, navegacion interna y footer compacto.
-- Contenido principal con margen izquierdo igual al sidebar.
-- Portada hero a pantalla ancha, fondo en gradiente horizontal negro a azul, texto blanco, badge superior tipo pill, H1 grande, subtitulo ejecutivo y tarjetas meta con "Entregado a", "Periodo", "Tenant" y "Generado por".
-- Secciones con padding amplio, fondo blanco o gris alternado, titulos con icono dentro de cuadro azul degradado, subtitulo gris, divisor verde/azul corto y contenido aireado.
-- Tablas dentro de `.table-wrapper` con bordes redondeados, sombra, thead azul oscuro, filas alternadas y badges de estado/tipo/categoria.
-- Tarjetas KPI en `.stats-grid`: fondo blanco, borde sutil, sombra suave, numero grande Montserrat-like, etiqueta y subtexto.
-- Seccion de seguridad con gauge circular SVG estatico, porcentaje grande al centro, barras de progreso y tarjetas de alertas/incidentes.
-- Listas de implementacion y recomendaciones con borde izquierdo de acento, icono o marcador visual, fondo blanco y sombra.
-- Footer final con gradiente azul/negro y texto corporativo.
-- Watermark muy sutil "DIGITAL TECH" o "INFORME MENSUAL" fijo o al final, sin molestar la lectura.
-
-Puedes crear iconos con elementos HTML/CSS simples, caracteres seguros o SVG inline pequenos. No dependas de librerias externas. No uses emojis como iconos principales.
-
-## CSS esperado
-El CSS debe ser detallado y consistente. Debe incluir, como minimo:
-
-- Variables `:root` para `--dark1`, `--dark2`, `--dark3`, `--accent`, `--accent-light`, `--accent-dark`, `--white`, `--gray-light`, `--gray`, `--gray-dark`, `--sidebar-w` y `--transition`.
-- Reset basico con `box-sizing: border-box`.
-- Tipografia tipo Montserrat/Open Sans usando fuentes del sistema: `font-family: 'Segoe UI', Arial, sans-serif` para cuerpo y una pila fuerte para titulos.
-- `.sidebar`, `.sidebar-logo`, `.sidebar nav a`, `.main`, `.hero`, `.hero-badge`, `.hero-meta`, `.hero-meta-item`.
-- `.section`, `.section-alt`, `.section-title`, `.section-subtitle`, `.section-text`, `.divider`.
-- `.stats-grid`, `.stat-card`, `.stat-number`, `.stat-label`, `.stat-sub`, `.stat-change`.
-- `.table-wrapper`, `table`, `thead`, `tbody`, `th`, `td`, `.badge` y variantes utiles como `.badge-resuelto`, `.badge-abierto`, `.badge-incidente`, `.badge-implementacion`, `.badge-consultoria`, `.badge-security`, `.badge-neutral`.
-- `.gauge-container`, `.gauge`, `.gauge-bg`, `.gauge-fill`, `.gauge-text`, `.gauge-info`, `.progress-section`, `.progress-bar-bg`, `.progress-bar-fill`.
-- `.impl-list`, `.finding-list`, `.contact-card`, `.footer`, `.watermark`.
-- `@media (max-width: 900px)` para ocultar o transformar el sidebar y dejar `.main` sin margen izquierdo.
-- `@media print` para A4: ocultar sidebar si estorba, quitar sombras excesivas, forzar fondos blancos donde convenga, evitar cortes internos en tablas/tarjetas con `break-inside: avoid`, y asegurar colores de impresion con `print-color-adjust: exact`.
-
-Usa animaciones CSS suaves si ayudan al aspecto visual: `fadeInDown`, `fadeSlideUp`, `scaleIn`, `expandWidth`. No requieren JavaScript.
-
-## Secciones obligatorias e IDs
-Genera estas secciones con estos IDs exactos y en este orden. La navegacion del sidebar debe apuntar a estos IDs:
-
-1. `#portada` - Portada hero.
-2. `#marco-iso` - Alcance y marco normativo.
-3. `#resumen` - Resumen ejecutivo.
-4. `#soportes` - Soportes tecnicos realizados.
-5. `#cumplimiento-iso` - Cumplimiento ISO 27001:2022.
-6. `#implementacion` - Implementacion y actividades ejecutadas.
-7. `#seguridad` - Reporte de seguridad Microsoft 365.
-8. `#hallazgos` - Hallazgos de auditoria.
-9. `#conclusiones` - Conclusiones.
-10. `#recomendaciones` - Recomendaciones.
-11. `#contacto` - Contacto.
-
-No agregues secciones nuevas salvo que sean visualmente necesarias y no dupliquen informacion. Si agregas un bloque auxiliar, debe estar dentro de una de las secciones anteriores.
-
-## Mapeo de contenido
-
-### Portada `#portada`
-- H1: "Informe Mensual de Soporte Cloud y Seguridad Microsoft 365".
-- Badge: "Informe Mensual".
-- Subtitulo: resumen del periodo, cliente y alcance.
-- Meta cards:
-  - Entregado a: `cliente.nombre`.
-  - Periodo: rango `periodo.fechaInicio` a `periodo.fechaFin` y/o `periodo.valor`.
-  - Tenant: `seguridadMicrosoft365.tenantId` si existe; si no, "No disponible".
-  - Generado por: "Digital Tech Copiers S.A.S."
-
-### Alcance y marco normativo `#marco-iso`
-- Explica que el informe consolida evidencias de soporte cloud, continuidad operativa, gestion de tickets y postura de seguridad M365.
-- Alinea el analisis a ISO/IEC 27001:2022 sin afirmar certificacion ni cumplimiento total si el JSON no lo prueba.
-- Incluye una tabla con dominios/controles interpretativos: gestion de incidentes, control de accesos, monitoreo, mejora continua y evidencia operativa. Cada fila debe derivarse de tickets, metricas o snapshot.
-
-### Resumen ejecutivo `#resumen`
-- Redacta 2 a 4 parrafos ejecutivos basados en `resumenTickets`, `metricasTickets` y `seguridadMicrosoft365`.
-- Incluye una grilla KPI con:
-  - Total tickets.
-  - Horas reportadas.
-  - Promedio horas por ticket.
-  - Secure Score porcentual si hay snapshot; si no, "Sin snapshot".
-  - Alertas altas.
-  - Incidentes activos.
-- Evita frases genericas. Cada afirmacion debe conectarse con datos reales.
-
-### Soportes tecnicos realizados `#soportes`
-- Incluye una tabla amplia y elegante con tickets reales de `ticketsRelevantes`.
-- Columnas recomendadas: Fecha, Ticket, Tipo, Categoria, Metodo, Creador, Horas, Estado, Solucion/resultado.
-- Usa badges visuales para estado, tipo y categoria.
-- Si no hay tickets, muestra una tarjeta o fila que diga que no se registraron tickets en el periodo.
-- No crees tickets ficticios ni fusiones tickets sin indicarlo.
-
-### Cumplimiento ISO 27001:2022 `#cumplimiento-iso`
-- Presenta el cumplimiento como "alineacion operativa observada", no como auditoria formal.
-- Usa tarjetas y/o tabla para clasificar:
-  - Evidencia disponible.
-  - Riesgo observado.
-  - Nivel de madurez estimado cualitativo: Alto, Medio, Bajo o Sin evidencia.
-  - Recomendacion.
-- Deriva todo de tickets, estado de seguridad, incidentes, alertas y recomendaciones M365.
-- Si faltan datos, declara la limitacion claramente.
-
-### Implementacion `#implementacion`
-- Resume actividades de implementacion o cambios ejecutados usando tickets cuyo tipo/categoria/descripcion/solucion sugiera implementacion, configuracion, ajustes, migracion, seguridad o administracion.
-- Usa `.impl-list` con tarjetas/list items visuales.
-- Si no hay implementaciones explicitas, habla de actividades operativas y de soporte evidenciadas, sin inventar proyectos.
-
-### Reporte de seguridad `#seguridad`
-- Si `seguridadMicrosoft365.tieneSnapshot` es true:
-  - Muestra un gauge circular con `secureScorePorcentaje`.
-  - Muestra Secure Score actual/maximo.
-  - Muestra tarjetas para alertas high/medium/low, incidentes activos e incidentes resueltos.
-  - Lista recomendaciones top, alertas e incidentes si vienen en arrays.
-  - Usa barras de progreso y comparativas visuales.
-- Si `tieneSnapshot` es false:
-  - Muestra una seccion visual de limitacion operativa.
-  - Usa `estadoConsulta` y `errorConsulta`.
-  - Recomienda recolectar el snapshot mensual antes del siguiente comite.
-- No inventes porcentajes ni severidades.
-
-### Hallazgos `#hallazgos`
-- Genera hallazgos accionables a partir de:
-  - Tickets abiertos, pendientes o con mayor consumo de horas.
-  - Concentracion por categoria, creador, metodo o tipo.
-  - Alertas altas/medias, incidentes activos o bajo Secure Score.
-- Cada hallazgo debe tener evidencia, impacto y accion sugerida.
-- Si la evidencia es insuficiente, dilo de forma ejecutiva.
-
-### Conclusiones `#conclusiones`
-- Redacta conclusiones breves, ejecutivas y conectadas a los datos.
-- Deben mencionar continuidad del servicio, gestion de tickets, postura de seguridad y limitaciones si aplica.
-
-### Recomendaciones `#recomendaciones`
-- Usa una tabla o lista visual priorizada.
-- Columnas sugeridas: Prioridad, Recomendacion, Evidencia, Responsable sugerido, Plazo sugerido.
-- Los plazos pueden ser cualitativos ("Corto plazo", "Mediano plazo") pero la recomendacion debe nacer de los datos.
-- No prometas resultados ni inventes responsables nominales.
-
-### Contacto `#contacto`
-- Usa una tarjeta visual corporativa.
-- Como no hay contacto especifico en el JSON, usa:
-  - Digital Tech Copiers S.A.S.
-  - Equipo de Servicios Cloud y Seguridad
-  - contacto@digitaltechcolombia.com
-  - www.digitaltechcolombia.com
-- No agregues telefonos si no vienen en el JSON.
-
-## Reglas de fidelidad visual
-- El resultado debe sentirse como un informe grafico premium, no como una pagina simple.
-- No uses una paleta plana de un solo color: combina negro, azul profundo, blanco, gris claro y el acento del cliente.
-- No pongas todo en tarjetas. Alterna secciones de ancho completo con tablas, listas y KPI cards.
-- Mantén titulos grandes y jerarquia visual clara.
-- Las tablas deben ser escaneables y profesionales.
-- Los textos deben caber en sus contenedores en desktop y mobile.
-- Usa `overflow-wrap: anywhere` donde pueda haber tenant IDs, URLs o nombres largos.
-- Evita hero generico de marketing: la portada debe identificar claramente el cliente, periodo y alcance del informe.
-
-## Manejo de informacion faltante
-- Si una seccion no tiene datos suficientes, no la omitas: muestra una limitacion clara dentro de esa seccion.
-- Usa frases como "No se encontro evidencia suficiente en el periodo para concluir este punto." o "No se encontro snapshot mensual de seguridad para este periodo.".
-- Nunca pidas al usuario informacion adicional dentro del HTML. Este es un flujo automatico.
-
-## Tono y estilo
-- Profesional, tecnico, ejecutivo y orientado a resultados.
-- Espanol empresarial claro.
-- Evita relleno, exageraciones y afirmaciones absolutas.
-- No menciones que recibiste un JSON, ni nombres de campos internos, ni reglas del prompt.
+Devuelve exactamente este objeto JSON:
+{
+  "heroSubtitle": "string",
+  "resumenEjecutivo": ["string"],
+  "alcanceMarco": "string",
+  "iso": [
+    {
+      "dominio": "string",
+      "evidencia": "string",
+      "riesgo": "string",
+      "madurez": "Alto|Medio|Bajo|Sin evidencia",
+      "recomendacion": "string"
+    }
+  ],
+  "implementacion": ["string"],
+  "seguridadNarrativa": "string",
+  "hallazgos": [
+    {
+      "titulo": "string",
+      "evidencia": "string",
+      "impacto": "string",
+      "accion": "string",
+      "severidad": "Alta|Media|Baja|Observacion"
+    }
+  ],
+  "conclusiones": ["string"],
+  "recomendaciones": [
+    {
+      "prioridad": "Alta|Media|Baja",
+      "recomendacion": "string",
+      "evidencia": "string",
+      "responsable": "Equipo Cloud|Equipo Seguridad|Mesa de Servicio|Cliente|Digital Tech",
+      "plazo": "Corto plazo|Mediano plazo|Siguiente periodo"
+    }
+  ]
+}
 """;
     }
 
@@ -1018,10 +691,4 @@ No agregues secciones nuevas salvo que sean visualmente necesarias y no duplique
         string Value,
         DateOnly StartDate,
         DateOnly EndExclusiveDate);
-
-    private sealed record OpenAIHtmlGenerationAttempt(
-        string RawContent,
-        string Html,
-        string FinishReason,
-        int MaxTokens);
 }
