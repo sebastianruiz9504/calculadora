@@ -275,6 +275,82 @@
     background: var(--lic-brand-soft);
 }
 
+.lic-group-row > td {
+    border-top: 1px solid var(--lic-line);
+    border-bottom: 1px solid var(--lic-line);
+    background: #f7faf8;
+    font-weight: 650;
+}
+
+.lic-group-row--invoice > td {
+    background: #edf7f1;
+}
+
+.lic-group-row--client > td {
+    background: #f4f9f6;
+}
+
+.lic-group-row--product > td {
+    background: #fafcfb;
+}
+
+.lic-group-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.lic-group-main--client {
+    padding-left: 22px;
+}
+
+.lic-group-main--product {
+    padding-left: 44px;
+}
+
+.lic-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 4px 9px;
+    border: 1px solid #b9d8c7;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--lic-brand-deep);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.lic-group-toggle__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--lic-brand-soft);
+    line-height: 1;
+}
+
+.lic-group-title {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.lic-group-title strong {
+    color: var(--lic-ink);
+    overflow-wrap: anywhere;
+}
+
+.lic-group-title small {
+    color: var(--lic-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .lic-muted {
     color: var(--lic-muted);
 }

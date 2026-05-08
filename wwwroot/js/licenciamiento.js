@@ -135,6 +135,7 @@
             key: "facturaValue",
             direction: "desc"
         },
+        boardExpandedGroups: new Set(),
         latestImportRecordIds: [],
         latestImportFacturaValue: "",
         latestImportFacturaDisplay: "",
@@ -313,6 +314,12 @@
             return;
         }
 
+        const groupToggle = target.closest("[data-lic-group-toggle]");
+        if (groupToggle instanceof HTMLElement) {
+            toggleBoardGroup(groupToggle.getAttribute("data-lic-group-toggle") || "");
+            return;
+        }
+
         const sortButton = target.closest("[data-lic-sort]");
         if (sortButton instanceof HTMLElement) {
             updateBoardSort(sortButton.getAttribute("data-lic-sort") || "");
@@ -432,33 +439,189 @@
             ? "No hay consumos cargados."
             : "No hay registros con esos filtros.";
 
-        rowsBody.innerHTML = records.map((row) => {
-            const checked = state.selectedIds.has(row.recordId);
-            const trClass = checked ? " class=\"is-selected\"" : "";
-            return `
-                <tr${trClass}>
-                    <td class="lic-check-cell" data-label="Seleccionar">
-                        <input class="form-check-input" type="checkbox" data-lic-row-check data-record-id="${escapeHtml(row.recordId)}" ${checked ? "checked" : ""} aria-label="Seleccionar fila" />
-                    </td>
-                    <td data-label="Cliente">${escapeHtml(row.nombreCliente)}</td>
-                    <td data-label="Cuenta">
-                        <div>${escapeHtml(row.companyAccountDisplay || row.companyAccountId || "Sin cuenta")}</div>
-                        ${row.hasAccountLookup ? "" : "<small class=\"lic-muted\">Sin lookup</small>"}
-                    </td>
-                    <td data-label="Producto">
-                        <div>${escapeHtml(row.productDisplay || "Sin producto")}</div>
-                        ${row.hasProductLookup ? "" : "<small class=\"lic-muted\">Sin lookup</small>"}
-                    </td>
-                    <td data-label="Factura">${escapeHtml(row.facturaDisplay || row.facturaValue)}</td>
-                    <td class="text-end" data-label="USD">${usdFormatter.format(Number(row.valorTotalUsd || 0))}</td>
-                    <td class="text-end" data-label="TRM">${Number(row.trm || 0) > 0 ? numberFormatter.format(Number(row.trm)) : "-"}</td>
-                    <td class="text-end" data-label="COP">${Number(row.pesosTotal || 0) > 0 ? copFormatter.format(Number(row.pesosTotal)) : "-"}</td>
-                    <td data-label="Tipo"><span class="lic-badge">${escapeHtml(row.contractTypeLabel || "Sin tipo")}</span></td>
-                </tr>`;
-        }).join("");
+        rowsBody.innerHTML = renderGroupedBoardRows(records);
 
         renderSelectionState();
         renderBoardSortState();
+    }
+
+    function renderGroupedBoardRows(records) {
+        return buildBoardGroups(records)
+            .map(renderInvoiceGroup)
+            .join("");
+    }
+
+    function renderInvoiceGroup(group) {
+        const expanded = isBoardGroupExpanded(group.key);
+        return [
+            renderBoardGroupRow(group, "invoice", "Factura", expanded),
+            expanded ? group.clients.map(renderClientGroup).join("") : ""
+        ].join("");
+    }
+
+    function renderClientGroup(group) {
+        const expanded = isBoardGroupExpanded(group.key);
+        return [
+            renderBoardGroupRow(group, "client", "Cliente", expanded),
+            expanded ? group.products.map(renderProductGroup).join("") : ""
+        ].join("");
+    }
+
+    function renderProductGroup(group) {
+        const expanded = isBoardGroupExpanded(group.key);
+        return [
+            renderBoardGroupRow(group, "product", "Producto", expanded),
+            expanded ? group.rows.map(renderBoardDetailRow).join("") : ""
+        ].join("");
+    }
+
+    function renderBoardGroupRow(group, level, labelPrefix, expanded) {
+        const summary = summarizeBoardRows(group.rows);
+        return `
+            <tr class="lic-group-row lic-group-row--${escapeHtml(level)}">
+                <td colspan="5" data-label="${escapeHtml(labelPrefix)}">
+                    <div class="lic-group-main lic-group-main--${escapeHtml(level)}">
+                        <button type="button"
+                                class="lic-group-toggle"
+                                data-lic-group-toggle="${escapeHtml(group.key)}"
+                                aria-expanded="${expanded ? "true" : "false"}">
+                            <span class="lic-group-toggle__icon">${expanded ? "-" : "+"}</span>
+                            <span>${expanded ? "Resumir" : "Desglosar"}</span>
+                        </button>
+                        <div class="lic-group-title">
+                            <strong>${escapeHtml(group.label)}</strong>
+                            <small>${numberFormatter.format(summary.count)} registro${summary.count === 1 ? "" : "s"}</small>
+                        </div>
+                    </div>
+                </td>
+                <td class="text-end" data-label="USD">${usdFormatter.format(summary.totalUsd)}</td>
+                <td class="text-end" data-label="TRM">${summary.trmLabel}</td>
+                <td class="text-end" data-label="COP">${summary.totalCop > 0 ? copFormatter.format(summary.totalCop) : "-"}</td>
+                <td data-label="Tipo"><span class="lic-badge">${escapeHtml(summary.contractTypeLabel)}</span></td>
+            </tr>`;
+    }
+
+    function renderBoardDetailRow(row) {
+        const checked = state.selectedIds.has(row.recordId);
+        const trClass = checked ? " class=\"is-selected\"" : "";
+        return `
+            <tr${trClass}>
+                <td class="lic-check-cell" data-label="Seleccionar">
+                    <input class="form-check-input" type="checkbox" data-lic-row-check data-record-id="${escapeHtml(row.recordId)}" ${checked ? "checked" : ""} aria-label="Seleccionar fila" />
+                </td>
+                <td data-label="Cliente">${escapeHtml(row.nombreCliente)}</td>
+                <td data-label="Cuenta">
+                    <div>${escapeHtml(row.companyAccountDisplay || row.companyAccountId || "Sin cuenta")}</div>
+                    ${row.hasAccountLookup ? "" : "<small class=\"lic-muted\">Sin lookup</small>"}
+                </td>
+                <td data-label="Producto">
+                    <div>${escapeHtml(row.productDisplay || "Sin producto")}</div>
+                    ${row.hasProductLookup ? "" : "<small class=\"lic-muted\">Sin lookup</small>"}
+                </td>
+                <td data-label="Factura">${escapeHtml(row.facturaDisplay || row.facturaValue)}</td>
+                <td class="text-end" data-label="USD">${usdFormatter.format(Number(row.valorTotalUsd || 0))}</td>
+                <td class="text-end" data-label="TRM">${Number(row.trm || 0) > 0 ? numberFormatter.format(Number(row.trm)) : "-"}</td>
+                <td class="text-end" data-label="COP">${Number(row.pesosTotal || 0) > 0 ? copFormatter.format(Number(row.pesosTotal)) : "-"}</td>
+                <td data-label="Tipo"><span class="lic-badge">${escapeHtml(row.contractTypeLabel || "Sin tipo")}</span></td>
+            </tr>`;
+    }
+
+    function buildBoardGroups(records) {
+        const invoices = [];
+        const invoiceMap = new Map();
+        records.forEach((row) => {
+            const invoiceLabel = row.facturaDisplay || row.facturaValue || "Sin factura";
+            const invoiceKey = buildBoardGroupKey("invoice", row.facturaValue || invoiceLabel);
+            let invoiceGroup = invoiceMap.get(invoiceKey);
+            if (!invoiceGroup) {
+                invoiceGroup = createBoardGroup(invoiceKey, invoiceLabel);
+                invoiceGroup.clients = [];
+                invoiceGroup.clientMap = new Map();
+                invoiceMap.set(invoiceKey, invoiceGroup);
+                invoices.push(invoiceGroup);
+            }
+            invoiceGroup.rows.push(row);
+
+            const clientLabel = row.nombreCliente || "Sin cliente";
+            const clientKey = `${invoiceKey}|${buildBoardGroupKey("client", clientLabel)}`;
+            let clientGroup = invoiceGroup.clientMap.get(clientKey);
+            if (!clientGroup) {
+                clientGroup = createBoardGroup(clientKey, clientLabel);
+                clientGroup.products = [];
+                clientGroup.productMap = new Map();
+                invoiceGroup.clientMap.set(clientKey, clientGroup);
+                invoiceGroup.clients.push(clientGroup);
+            }
+            clientGroup.rows.push(row);
+
+            const productLabel = row.productDisplay || row.productId || "Sin producto";
+            const productKey = `${clientKey}|${buildBoardGroupKey("product", productLabel)}`;
+            let productGroup = clientGroup.productMap.get(productKey);
+            if (!productGroup) {
+                productGroup = createBoardGroup(productKey, productLabel);
+                clientGroup.productMap.set(productKey, productGroup);
+                clientGroup.products.push(productGroup);
+            }
+            productGroup.rows.push(row);
+        });
+
+        return invoices;
+    }
+
+    function createBoardGroup(key, label) {
+        return {
+            key,
+            label,
+            rows: []
+        };
+    }
+
+    function summarizeBoardRows(rows) {
+        const trmValues = Array.from(new Set(rows
+            .map((row) => Number(row.trm || 0))
+            .filter((value) => value > 0)
+            .map((value) => numberFormatter.format(value))));
+        const contractTypes = Array.from(new Set(rows
+            .map((row) => row.contractTypeLabel || "Sin tipo")
+            .filter(Boolean)));
+
+        return {
+            count: rows.length,
+            totalUsd: rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0),
+            totalCop: rows.reduce((sum, row) => sum + Number(row.pesosTotal || 0), 0),
+            trmLabel: trmValues.length === 1 ? trmValues[0] : (trmValues.length > 1 ? "Mixta" : "-"),
+            contractTypeLabel: contractTypes.length === 1 ? contractTypes[0] : "Mixto"
+        };
+    }
+
+    function toggleBoardGroup(key) {
+        if (!key) {
+            return;
+        }
+
+        if (state.boardExpandedGroups.has(key)) {
+            state.boardExpandedGroups.delete(key);
+        } else {
+            state.boardExpandedGroups.add(key);
+        }
+
+        renderBoard();
+    }
+
+    function isBoardGroupExpanded(key) {
+        return state.boardExpandedGroups.has(key);
+    }
+
+    function buildBoardGroupKey(kind, value) {
+        return `${kind}:${normalizeBoardGroupKeyPart(value)}`;
+    }
+
+    function normalizeBoardGroupKeyPart(value) {
+        const normalized = normalizeBoardFilterText(value)
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "");
+
+        return normalized || "sin_valor";
     }
 
     function updateBoardFilter(input) {
