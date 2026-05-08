@@ -6,7 +6,6 @@ public sealed class LicenciamientoCrucePageViewModel
     public int DefaultYear { get; set; }
     public int DefaultMonth { get; set; }
     public int DefaultBillingOffsetMonths { get; set; } = 1;
-    public decimal DefaultMarginThresholdPercent { get; set; } = 20m;
 }
 
 public sealed class LicenciamientoCruceDashboardDto
@@ -15,12 +14,12 @@ public sealed class LicenciamientoCruceDashboardDto
     public string MesCosto { get; set; } = "";
     public string MesFacturacion { get; set; } = "";
     public int BillingOffsetMonths { get; set; }
-    public decimal MarginThresholdPercent { get; set; }
     public bool HasData { get; set; }
     public int RecordsCount { get; set; }
     public LicenciamientoCruceTotalsDto Totals { get; set; } = new();
     public LicenciamientoCruceStatusCountsDto StatusCounts { get; set; } = new();
     public IReadOnlyList<LicenciamientoCruceRowDto> Rows { get; set; } = Array.Empty<LicenciamientoCruceRowDto>();
+    public IReadOnlyList<LicenciamientoCruceContractSegmentDto> ContractSegments { get; set; } = Array.Empty<LicenciamientoCruceContractSegmentDto>();
     public IReadOnlyList<LicenciamientoCruceMonthSummaryDto> MonthSummaries { get; set; } = Array.Empty<LicenciamientoCruceMonthSummaryDto>();
     public IReadOnlyList<LicenciamientoCruceAlertDto> Alerts { get; set; } = Array.Empty<LicenciamientoCruceAlertDto>();
     public IReadOnlyList<LicenciamientoCruceValidationDto> Validations { get; set; } = Array.Empty<LicenciamientoCruceValidationDto>();
@@ -55,12 +54,25 @@ public sealed class LicenciamientoCruceMonthSummaryDto
     public decimal? MargenBrutoPct { get; set; }
 }
 
+public sealed class LicenciamientoCruceContractSegmentDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int RecordsCount { get; set; }
+    public int NegativeMarginCount { get; set; }
+    public LicenciamientoCruceTotalsDto Totals { get; set; } = new();
+    public LicenciamientoCruceStatusCountsDto StatusCounts { get; set; } = new();
+    public IReadOnlyList<LicenciamientoCruceRowDto> Rows { get; set; } = Array.Empty<LicenciamientoCruceRowDto>();
+}
+
 public sealed class LicenciamientoCruceRowDto
 {
     public string RowKey { get; set; } = "";
     public string MesCierre { get; set; } = "";
     public string MesCosto { get; set; } = "";
     public string MesFacturacion { get; set; } = "";
+    public string TipoContrato { get; set; } = "";
+    public string TipoContratoKey { get; set; } = "";
     public string Cliente { get; set; } = "";
     public string NitCliente { get; set; } = "";
     public string ProductoLicencia { get; set; } = "";

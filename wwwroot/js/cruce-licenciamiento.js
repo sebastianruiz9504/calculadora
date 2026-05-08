@@ -9,15 +9,14 @@
     const yearInput = document.getElementById("licCruceYear");
     const monthSelect = document.getElementById("licCruceMonth");
     const offsetSelect = document.getElementById("licCruceOffset");
-    const thresholdInput = document.getElementById("licCruceThreshold");
     const status = document.getElementById("licCruceStatus");
-    const rowsBody = document.getElementById("licCruceRows");
-    const emptyState = document.getElementById("licCruceEmpty");
-    const monthRowsBody = document.getElementById("licCruceMonthRows");
+    const segmentsWrap = document.getElementById("licCruceSegments");
     const alertsWrap = document.getElementById("licCruceAlerts");
     const validationsWrap = document.getElementById("licCruceValidations");
     const rankingWrap = document.getElementById("licCruceRanking");
-    const statusPills = document.getElementById("licCruceStatusPills");
+    const costMonth = document.getElementById("licCruceCostMonth");
+    const billingMonth = document.getElementById("licCruceBillingMonth");
+    const closeState = document.getElementById("licCruceCloseState");
 
     const totalCost = document.getElementById("licCruceTotalCost");
     const totalBilling = document.getElementById("licCruceTotalBilling");
@@ -42,7 +41,6 @@
     yearInput.value = app.dataset.defaultYear || new Date().getFullYear().toString();
     monthSelect.value = app.dataset.defaultMonth || "1";
     offsetSelect.value = app.dataset.defaultOffset || "1";
-    thresholdInput.value = app.dataset.defaultThreshold || "20";
 
     filtersForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -64,7 +62,6 @@
             url.searchParams.set("year", yearInput.value || "");
             url.searchParams.set("month", monthSelect.value || "");
             url.searchParams.set("billingOffsetMonths", offsetSelect.value || "1");
-            url.searchParams.set("marginThresholdPercent", thresholdInput.value || "20");
 
             const response = await fetch(url.toString(), {
                 headers: { Accept: "application/json" }
@@ -82,7 +79,9 @@
 
     function renderCruce(data) {
         const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const segments = Array.isArray(data?.contractSegments) ? data.contractSegments : [];
         const totals = data?.totals || {};
+        const negativeCount = rows.filter((row) => Number(row.margenBruto || 0) < 0).length;
 
         totalCost.textContent = formatCurrency(totals.totalCostosLicenciamiento);
         totalBilling.textContent = formatCurrency(totals.totalFacturacionRelacionada);
@@ -91,25 +90,92 @@
         totalMarginPct.textContent = formatPercent(totals.margenBrutoPct);
         totalMarginPct.classList.toggle("is-negative", Number(totals.margenBrutoPct || 0) < 0);
 
-        renderStatusPills(data?.statusCounts || {});
-        renderRows(rows);
-        renderMonthSummary(Array.isArray(data?.monthSummaries) ? data.monthSummaries : []);
+        costMonth.textContent = data?.mesCosto || "-";
+        billingMonth.textContent = data?.mesFacturacion || "-";
+        closeState.textContent = negativeCount > 0
+            ? `${numberFormatter.format(negativeCount)} cliente(s) con margen negativo`
+            : rows.length > 0 ? "Sin margen negativo" : "Sin datos";
+        closeState.classList.toggle("is-negative", negativeCount > 0);
+
+        renderSegments(segments);
         renderAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
         renderValidations(Array.isArray(data?.validations) ? data.validations : []);
         renderRanking(rows);
     }
 
-    function renderRows(rows) {
-        if (!rowsBody) {
+    function renderSegments(segments) {
+        if (!segmentsWrap) {
             return;
         }
 
-        emptyState.hidden = rows.length > 0;
-        rowsBody.innerHTML = rows.map((row) => `
+        if (segments.length === 0) {
+            segmentsWrap.innerHTML = "<section class=\"licx-panel\"><div class=\"licx-empty\">No hay registros para este periodo.</div></section>";
+            return;
+        }
+
+        segmentsWrap.innerHTML = segments.map((segment) => {
+            const totals = segment.totals || {};
+            const counts = segment.statusCounts || {};
+            const rows = Array.isArray(segment.rows) ? segment.rows : [];
+            return `
+                <section class="licx-panel licx-segment is-${escapeHtml(segment.key || "otros")}">
+                    <div class="licx-panel__header licx-segment__header">
+                        <div>
+                            <div class="licx-kicker">Tipo de contrato</div>
+                            <h2>${escapeHtml(segment.label || "Sin tipo")}</h2>
+                        </div>
+                        <div class="licx-segment-totals">
+                            <span><strong>${formatCurrency(totals.totalCostosLicenciamiento)}</strong> costo</span>
+                            <span><strong>${formatCurrency(totals.totalFacturacionRelacionada)}</strong> facturacion</span>
+                            <span class="${Number(totals.margenBrutoTotal || 0) < 0 ? "is-negative" : ""}"><strong>${formatCurrency(totals.margenBrutoTotal)}</strong> margen</span>
+                        </div>
+                    </div>
+                    <div class="licx-summary-pills">
+                        ${buildPill("Clientes", segment.recordsCount || 0, "neutral")}
+                        ${buildPill("Match exacto", counts.matchExacto || 0, "ok")}
+                        ${buildPill("Match probable", counts.matchProbable || 0, "probable")}
+                        ${buildPill("Costo sin facturacion", counts.costoSinFacturacion || 0, "warning")}
+                        ${buildPill("Facturacion sin costo", counts.facturacionSinCosto || 0, "neutral")}
+                        ${buildPill("Margen negativo", segment.negativeMarginCount || 0, Number(segment.negativeMarginCount || 0) > 0 ? "danger" : "ok")}
+                    </div>
+                    ${buildSegmentTable(rows)}
+                </section>
+            `;
+        }).join("");
+    }
+
+    function buildSegmentTable(rows) {
+        if (rows.length === 0) {
+            return "<div class=\"licx-empty\">No hay clientes en este tipo de contrato.</div>";
+        }
+
+        return `
+            <div class="licx-table-wrap">
+                <table class="table align-middle licx-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>NIT</th>
+                            <th>Producto/licencia</th>
+                            <th>Vertical</th>
+                            <th class="text-end">Costo</th>
+                            <th class="text-end">Facturacion sin IVA</th>
+                            <th class="text-end">Margen</th>
+                            <th class="text-end">Margen %</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(buildSegmentRow).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function buildSegmentRow(row) {
+        return `
             <tr class="${row.isMarginAlert ? "is-alert" : ""}">
-                <td data-label="Mes cierre">${escapeHtml(row.mesCierre)}</td>
-                <td data-label="Mes costo">${escapeHtml(row.mesCosto)}</td>
-                <td data-label="Mes facturacion">${escapeHtml(row.mesFacturacion)}</td>
                 <td data-label="Cliente">
                     <strong>${escapeHtml(row.cliente || "Cliente sin nombre")}</strong>
                     <small>${formatSourceCount(row)}</small>
@@ -123,40 +189,7 @@
                 <td data-label="Margen %" class="text-end ${Number(row.margenBrutoPct || 0) < 0 ? "is-negative" : ""}">${formatPercent(row.margenBrutoPct)}</td>
                 <td data-label="Estado"><span class="licx-badge ${getStatusClass(row.estadoCruce)}">${escapeHtml(row.estadoCruce || "-")}</span></td>
             </tr>
-        `).join("");
-    }
-
-    function renderStatusPills(counts) {
-        if (!statusPills) {
-            return;
-        }
-
-        const items = [
-            ["Match exacto", counts.matchExacto || 0, "ok"],
-            ["Match probable", counts.matchProbable || 0, "probable"],
-            ["Costo sin facturacion", counts.costoSinFacturacion || 0, "warning"],
-            ["Facturacion sin costo", counts.facturacionSinCosto || 0, "warning"]
-        ];
-
-        statusPills.innerHTML = items.map(([label, count, tone]) => `
-            <span class="licx-pill is-${tone}">${escapeHtml(label)} <strong>${numberFormatter.format(Number(count || 0))}</strong></span>
-        `).join("");
-    }
-
-    function renderMonthSummary(rows) {
-        if (!monthRowsBody) {
-            return;
-        }
-
-        monthRowsBody.innerHTML = rows.map((row) => `
-            <tr>
-                <td>${escapeHtml(row.mesCierre || "-")}</td>
-                <td class="text-end">${formatCurrency(row.costosLicenciamiento)}</td>
-                <td class="text-end">${formatCurrency(row.facturacionRelacionada)}</td>
-                <td class="text-end ${Number(row.margenBruto || 0) < 0 ? "is-negative" : ""}">${formatCurrency(row.margenBruto)}</td>
-                <td class="text-end">${formatPercent(row.margenBrutoPct)}</td>
-            </tr>
-        `).join("");
+        `;
     }
 
     function renderAlerts(alerts) {
@@ -193,42 +226,23 @@
             return;
         }
 
-        const lowMargin = rows
-            .filter((row) => Number.isFinite(Number(row.margenBrutoPct)) && Number(row.facturacionSinIva || 0) > 0)
-            .sort((a, b) => Number(a.margenBrutoPct || 0) - Number(b.margenBrutoPct || 0))
-            .slice(0, 5);
-        const costOnly = rows
-            .filter((row) => row.estadoCruce === "Costo sin facturacion")
-            .sort((a, b) => Number(b.costoLicenciamiento || 0) - Number(a.costoLicenciamiento || 0))
-            .slice(0, 5);
-        const billingOnly = rows
-            .filter((row) => row.estadoCruce === "Facturacion sin costo")
-            .sort((a, b) => Number(b.facturacionSinIva || 0) - Number(a.facturacionSinIva || 0))
-            .slice(0, 5);
+        const negativeRows = rows
+            .filter((row) => Number(row.margenBruto || 0) < 0)
+            .sort((a, b) => Number(a.margenBruto || 0) - Number(b.margenBruto || 0))
+            .slice(0, 8);
 
-        rankingWrap.innerHTML = [
-            buildRankingBlock("Menor margen", lowMargin, (row) => `${formatPercent(row.margenBrutoPct)} | ${formatCurrency(row.margenBruto)}`),
-            buildRankingBlock("Costos sin facturacion", costOnly, (row) => formatCurrency(row.costoLicenciamiento)),
-            buildRankingBlock("Facturacion sin costo", billingOnly, (row) => formatCurrency(row.facturacionSinIva))
-        ].join("");
-    }
-
-    function buildRankingBlock(title, rows, valueFactory) {
-        const content = rows.length === 0
-            ? "<div class=\"licx-ranking__empty\">Sin registros</div>"
-            : rows.map((row) => `
+        rankingWrap.innerHTML = negativeRows.length === 0
+            ? "<div class=\"licx-ranking__empty\">Sin clientes con margen negativo</div>"
+            : negativeRows.map((row) => `
                 <div class="licx-ranking__item">
-                    <span>${escapeHtml(row.cliente || "Cliente sin nombre")}</span>
-                    <strong>${escapeHtml(valueFactory(row))}</strong>
+                    <span>${escapeHtml(row.cliente || "Cliente sin nombre")} <small>${escapeHtml(row.tipoContrato || "")}</small></span>
+                    <strong>${formatCurrency(row.margenBruto)}</strong>
                 </div>
             `).join("");
+    }
 
-        return `
-            <section class="licx-ranking__block">
-                <h3>${escapeHtml(title)}</h3>
-                ${content}
-            </section>
-        `;
+    function buildPill(label, count, tone) {
+        return `<span class="licx-pill is-${tone}">${escapeHtml(label)} <strong>${numberFormatter.format(Number(count || 0))}</strong></span>`;
     }
 
     function formatSourceCount(row) {
@@ -251,6 +265,9 @@
         }
         if (statusValue === "Match probable") {
             return "is-probable";
+        }
+        if (statusValue === "Facturacion sin costo") {
+            return "is-neutral";
         }
         return "is-warning";
     }

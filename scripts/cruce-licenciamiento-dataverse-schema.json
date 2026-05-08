@@ -38,6 +38,13 @@
           "required": false
         },
         {
+          "logicalName": "cr07a_tipocontrato",
+          "displayName": "Tipo de contrato",
+          "type": "Text",
+          "maxLength": 80,
+          "required": false
+        },
+        {
           "logicalName": "cr07a_cliente",
           "displayName": "Cliente",
           "type": "Text",

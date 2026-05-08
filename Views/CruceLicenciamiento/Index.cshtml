@@ -12,8 +12,7 @@
      data-load-url="@Url.Action("Data", "CruceLicenciamiento")"
      data-default-year="@Model.DefaultYear"
      data-default-month="@Model.DefaultMonth"
-     data-default-offset="@Model.DefaultBillingOffsetMonths"
-     data-default-threshold="@Model.DefaultMarginThresholdPercent">
+     data-default-offset="@Model.DefaultBillingOffsetMonths">
     <section class="licx-header">
         <div>
             <div class="licx-kicker">Gerencia</div>
@@ -48,16 +47,12 @@
             </select>
         </label>
         <label class="licx-field">
-            <span>Mes facturacion</span>
+            <span>Facturacion a comparar</span>
             <select class="form-select" id="licCruceOffset">
                 <option value="1">Mes siguiente</option>
                 <option value="0">Mismo mes</option>
                 <option value="-1">Mes anterior</option>
             </select>
-        </label>
-        <label class="licx-field">
-            <span>Umbral margen %</span>
-            <input class="form-control" id="licCruceThreshold" type="number" min="-100" max="1000" step="0.01" />
         </label>
         <button type="submit" class="btn btn-primary">Actualizar</button>
     </form>
@@ -83,48 +78,45 @@
         </article>
     </section>
 
-    <section class="licx-grid">
-        <div class="licx-panel">
-            <div class="licx-panel__header">
-                <div>
-                    <div class="licx-kicker">Conciliacion</div>
-                    <h2>Detalle por cliente</h2>
-                </div>
-                <div class="licx-summary-pills" id="licCruceStatusPills"></div>
-            </div>
-            <div class="licx-table-wrap">
-                <table class="table align-middle licx-table">
-                    <thead>
-                        <tr>
-                            <th>Mes cierre</th>
-                            <th>Mes costo</th>
-                            <th>Mes facturacion</th>
-                            <th>Cliente</th>
-                            <th>NIT</th>
-                            <th>Producto/licencia</th>
-                            <th>Vertical</th>
-                            <th class="text-end">Costo</th>
-                            <th class="text-end">Facturacion sin IVA</th>
-                            <th class="text-end">Margen</th>
-                            <th class="text-end">Margen %</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="licCruceRows"></tbody>
-                </table>
-            </div>
-            <div class="licx-empty" id="licCruceEmpty" hidden>No hay registros para este periodo.</div>
+    <section class="licx-overview">
+        <div class="licx-period">
+            <span>Mes costo</span>
+            <strong id="licCruceCostMonth">-</strong>
         </div>
+        <div class="licx-period">
+            <span>Mes facturacion</span>
+            <strong id="licCruceBillingMonth">-</strong>
+        </div>
+        <div class="licx-period">
+            <span>Estado del cierre</span>
+            <strong id="licCruceCloseState">-</strong>
+        </div>
+    </section>
+
+    <section class="licx-layout">
+        <main class="licx-main">
+            <div id="licCruceSegments" class="licx-segments"></div>
+        </main>
 
         <aside class="licx-side">
             <section class="licx-panel">
                 <div class="licx-panel__header">
                     <div>
                         <div class="licx-kicker">Alertas</div>
-                        <h2>Control mensual</h2>
+                        <h2>Solo margen negativo</h2>
                     </div>
                 </div>
                 <div class="licx-alerts" id="licCruceAlerts"></div>
+            </section>
+
+            <section class="licx-panel">
+                <div class="licx-panel__header">
+                    <div>
+                        <div class="licx-kicker">Clientes</div>
+                        <h2>Margen negativo</h2>
+                    </div>
+                </div>
+                <div class="licx-ranking" id="licCruceRanking"></div>
             </section>
 
             <section class="licx-panel">
@@ -137,41 +129,6 @@
                 <div class="licx-validations" id="licCruceValidations"></div>
             </section>
         </aside>
-    </section>
-
-    <section class="licx-grid licx-grid--bottom">
-        <div class="licx-panel">
-            <div class="licx-panel__header">
-                <div>
-                    <div class="licx-kicker">Resumen</div>
-                    <h2>Mes de cierre</h2>
-                </div>
-            </div>
-            <div class="licx-table-wrap licx-table-wrap--compact">
-                <table class="table align-middle licx-table">
-                    <thead>
-                        <tr>
-                            <th>Mes</th>
-                            <th class="text-end">Costos</th>
-                            <th class="text-end">Facturacion</th>
-                            <th class="text-end">Margen</th>
-                            <th class="text-end">Margen %</th>
-                        </tr>
-                    </thead>
-                    <tbody id="licCruceMonthRows"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="licx-panel">
-            <div class="licx-panel__header">
-                <div>
-                    <div class="licx-kicker">Ranking</div>
-                    <h2>Clientes a revisar</h2>
-                </div>
-            </div>
-            <div class="licx-ranking" id="licCruceRanking"></div>
-        </div>
     </section>
 </div>
 

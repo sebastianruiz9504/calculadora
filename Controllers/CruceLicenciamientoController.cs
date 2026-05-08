@@ -31,8 +31,7 @@ public sealed class CruceLicenciamientoController : Controller
             CurrentUser = await GetCurrentUserAsync(ct),
             DefaultYear = defaultCostMonth.Year,
             DefaultMonth = defaultCostMonth.Month,
-            DefaultBillingOffsetMonths = 1,
-            DefaultMarginThresholdPercent = 20m
+            DefaultBillingOffsetMonths = 1
         });
     }
 
@@ -42,7 +41,6 @@ public sealed class CruceLicenciamientoController : Controller
         [FromQuery] int year,
         [FromQuery] int month,
         [FromQuery] int billingOffsetMonths = 1,
-        [FromQuery] decimal marginThresholdPercent = 20m,
         CancellationToken ct = default)
     {
         try
@@ -51,7 +49,6 @@ public sealed class CruceLicenciamientoController : Controller
                 year,
                 month,
                 billingOffsetMonths,
-                marginThresholdPercent,
                 ct));
         }
         catch (InvalidOperationException ex)
