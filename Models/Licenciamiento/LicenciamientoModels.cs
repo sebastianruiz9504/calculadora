@@ -10,6 +10,7 @@ public sealed class LicenciamientoBoardDto
     public IReadOnlyList<LicenciamientoRecordDto> Records { get; set; } = Array.Empty<LicenciamientoRecordDto>();
     public IReadOnlyList<LicenciamientoFacturaOptionDto> FacturaOptions { get; set; } = Array.Empty<LicenciamientoFacturaOptionDto>();
     public IReadOnlyList<LicenciamientoContractTypeOptionDto> ContractTypeOptions { get; set; } = Array.Empty<LicenciamientoContractTypeOptionDto>();
+    public LicenciamientoLatestImportDto LatestImport { get; set; } = new();
     public int TotalCount { get; set; }
     public decimal TotalUsd { get; set; }
     public decimal TotalCop { get; set; }
@@ -36,8 +37,23 @@ public sealed class LicenciamientoRecordDto
     public decimal PesosTotal { get; set; }
     public int ContractTypeValue { get; set; }
     public string ContractTypeLabel { get; set; } = "";
+    public string CreatedOnValue { get; set; } = "";
+    public string CreatedOnDisplay { get; set; } = "";
+    public string ModifiedOnValue { get; set; } = "";
+    public string ModifiedOnDisplay { get; set; } = "";
     public bool HasAccountLookup { get; set; }
     public bool HasProductLookup { get; set; }
+}
+
+public sealed class LicenciamientoLatestImportDto
+{
+    public IReadOnlyList<string> RecordIds { get; set; } = Array.Empty<string>();
+    public string FacturaValue { get; set; } = "";
+    public string FacturaDisplay { get; set; } = "";
+    public string CreatedOnValue { get; set; } = "";
+    public string CreatedOnDisplay { get; set; } = "";
+    public int Count { get; set; }
+    public decimal TotalUsd { get; set; }
 }
 
 public sealed class LicenciamientoFacturaOptionDto
@@ -108,6 +124,9 @@ public sealed class LicenciamientoImportRequestDto
 public sealed class LicenciamientoImportResultDto
 {
     public string Message { get; set; } = "";
+    public IReadOnlyList<string> CreatedRecordIds { get; set; } = Array.Empty<string>();
+    public string FacturaValue { get; set; } = "";
+    public string FacturaDisplay { get; set; } = "";
     public int CreatedCount { get; set; }
     public int SkippedCount { get; set; }
 }
@@ -157,6 +176,7 @@ public sealed class LicenciamientoRegisterProductResultDto
 public sealed class LicenciamientoAdjustTrmRequestDto
 {
     public string FacturaValue { get; set; } = "";
+    public List<string> RecordIds { get; set; } = new();
     public decimal Trm { get; set; }
 }
 

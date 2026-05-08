@@ -19,6 +19,7 @@
 
     const statusBanner = document.getElementById("licStatus");
     const refreshBtn = document.getElementById("licRefreshBtn");
+    const clearFiltersBtn = document.getElementById("licClearFiltersBtn");
     const newBtn = document.getElementById("licNewBtn");
     const trmBtn = document.getElementById("licTrmBtn");
     const contractBtn = document.getElementById("licContractBtn");
@@ -99,6 +100,7 @@
     const trmStatus = document.getElementById("licTrmStatus");
     const trmForm = document.getElementById("licTrmForm");
     const facturaSelect = document.getElementById("licFacturaSelect");
+    const trmScopeNote = document.getElementById("licTrmScopeNote");
     const trmInput = document.getElementById("licTrmInput");
     const trmSaveBtn = document.getElementById("licTrmSaveBtn");
 
@@ -128,6 +130,14 @@
     const state = {
         busy: false,
         board: null,
+        boardFilters: {},
+        boardSort: {
+            key: "facturaValue",
+            direction: "desc"
+        },
+        latestImportRecordIds: [],
+        latestImportFacturaValue: "",
+        latestImportFacturaDisplay: "",
         selectedIds: new Set(),
         previewRows: [],
         previewResult: null,
@@ -156,6 +166,7 @@
     };
 
     refreshBtn?.addEventListener("click", loadBoard);
+    clearFiltersBtn?.addEventListener("click", clearBoardFilters);
     newBtn?.addEventListener("click", openUploadModal);
     trmBtn?.addEventListener("click", openTrmModal);
     contractBtn?.addEventListener("click", openContractModal);
@@ -235,6 +246,11 @@
             return;
         }
 
+        if (target.matches("[data-lic-filter]")) {
+            updateBoardFilter(target);
+            return;
+        }
+
         if (target.matches("[data-preview-product-search]")) {
             handlePreviewProductInput(target);
             return;
@@ -289,6 +305,12 @@
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const sortButton = target.closest("[data-lic-sort]");
+        if (sortButton instanceof HTMLElement) {
+            updateBoardSort(sortButton.getAttribute("data-lic-sort") || "");
             return;
         }
 
@@ -380,6 +402,7 @@
             showStatus(statusBanner, "info", "Cargando consumos...");
             state.board = await fetchJson(loadUrl);
             state.contractTypeOptions = Array.isArray(state.board?.contractTypeOptions) ? state.board.contractTypeOptions : [];
+            syncLatestImportFromBoard();
             trimSelectionToCurrentRows();
             renderBoard();
             clearStatus(statusBanner);
@@ -391,11 +414,18 @@
     }
 
     function renderBoard() {
-        const records = getRecords();
-        totalCount.textContent = numberFormatter.format(Number(state.board?.totalCount || records.length || 0));
-        totalUsd.textContent = usdFormatter.format(Number(state.board?.totalUsd || 0));
-        totalCop.textContent = copFormatter.format(Number(state.board?.totalCop || 0));
+        const allRecords = getRecords();
+        const records = getVisibleRecords();
+        const hasActiveFilters = Object.values(state.boardFilters).some((value) => Boolean((value || "").trim()));
+        totalCount.textContent = hasActiveFilters
+            ? `${numberFormatter.format(records.length)} / ${numberFormatter.format(allRecords.length)}`
+            : numberFormatter.format(Number(state.board?.totalCount || allRecords.length || 0));
+        totalUsd.textContent = usdFormatter.format(records.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0));
+        totalCop.textContent = copFormatter.format(records.reduce((sum, row) => sum + Number(row.pesosTotal || 0), 0));
         emptyState.hidden = records.length > 0;
+        emptyState.textContent = allRecords.length === 0
+            ? "No hay consumos cargados."
+            : "No hay registros con esos filtros.";
 
         rowsBody.innerHTML = records.map((row) => {
             const checked = state.selectedIds.has(row.recordId);
@@ -424,16 +454,149 @@
         }).join("");
 
         renderSelectionState();
+        renderBoardSortState();
+    }
+
+    function updateBoardFilter(input) {
+        const key = input.getAttribute("data-lic-filter") || "";
+        if (!key) {
+            return;
+        }
+
+        state.boardFilters[key] = input.value || "";
+        trimSelectionToCurrentRows();
+        renderBoard();
+    }
+
+    function clearBoardFilters() {
+        state.boardFilters = {};
+        document.querySelectorAll("[data-lic-filter]").forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+                input.value = "";
+            }
+        });
+        renderBoard();
+    }
+
+    function updateBoardSort(key) {
+        if (!key) {
+            return;
+        }
+
+        if (state.boardSort.key === key) {
+            state.boardSort.direction = state.boardSort.direction === "asc" ? "desc" : "asc";
+        } else {
+            state.boardSort.key = key;
+            state.boardSort.direction = "asc";
+        }
+
+        renderBoard();
+    }
+
+    function renderBoardSortState() {
+        document.querySelectorAll("[data-lic-sort]").forEach((button) => {
+            const key = button.getAttribute("data-lic-sort") || "";
+            button.classList.toggle("is-active", key === state.boardSort.key);
+            button.setAttribute("aria-sort", key === state.boardSort.key ? state.boardSort.direction : "none");
+        });
+
+        document.querySelectorAll("[data-lic-sort-icon]").forEach((icon) => {
+            const key = icon.getAttribute("data-lic-sort-icon") || "";
+            icon.textContent = key === state.boardSort.key
+                ? (state.boardSort.direction === "asc" ? "^" : "v")
+                : "";
+        });
+    }
+
+    function getVisibleRecords() {
+        const filtered = getRecords().filter(matchesBoardFilters);
+        return sortBoardRecords(filtered);
+    }
+
+    function matchesBoardFilters(row) {
+        return Object.entries(state.boardFilters).every(([key, value]) => {
+            const query = normalizeBoardFilterText(value);
+            if (!query) {
+                return true;
+            }
+
+            return normalizeBoardFilterText(getBoardSearchValue(row, key)).includes(query);
+        });
+    }
+
+    function sortBoardRecords(records) {
+        const key = state.boardSort.key || "facturaValue";
+        const direction = state.boardSort.direction === "asc" ? 1 : -1;
+        return [...records].sort((left, right) => compareBoardValues(left, right, key) * direction);
+    }
+
+    function compareBoardValues(left, right, key) {
+        const leftValue = getBoardSortValue(left, key);
+        const rightValue = getBoardSortValue(right, key);
+        if (typeof leftValue === "number" && typeof rightValue === "number") {
+            return leftValue - rightValue;
+        }
+
+        return String(leftValue || "").localeCompare(String(rightValue || ""), "es", {
+            numeric: true,
+            sensitivity: "base"
+        });
+    }
+
+    function getBoardSortValue(row, key) {
+        if (["valorTotalUsd", "trm", "pesosTotal", "days", "cantidad"].includes(key)) {
+            return Number(row?.[key] || 0);
+        }
+
+        if (key === "facturaValue" || key === "createdOnValue" || key === "modifiedOnValue") {
+            return row?.[key] || "";
+        }
+
+        return getBoardSearchValue(row, key);
+    }
+
+    function getBoardSearchValue(row, key) {
+        if (key === "companyAccountDisplay") {
+            return row?.companyAccountDisplay || row?.companyAccountId || "";
+        }
+
+        if (key === "productDisplay") {
+            return row?.productDisplay || row?.productId || "";
+        }
+
+        if (key === "facturaValue") {
+            return `${row?.facturaDisplay || ""} ${row?.facturaValue || ""}`;
+        }
+
+        if (key === "valorTotalUsd") {
+            return `${row?.valorTotalUsd || 0} ${usdFormatter.format(Number(row?.valorTotalUsd || 0))}`;
+        }
+
+        if (key === "trm") {
+            return `${row?.trm || 0} ${numberFormatter.format(Number(row?.trm || 0))}`;
+        }
+
+        if (key === "pesosTotal") {
+            return `${row?.pesosTotal || 0} ${copFormatter.format(Number(row?.pesosTotal || 0))}`;
+        }
+
+        return row?.[key] ?? "";
+    }
+
+    function normalizeBoardFilterText(value) {
+        return (value ?? "").toString().trim().toLocaleLowerCase("es");
     }
 
     function renderSelectionState() {
         const records = getRecords();
+        const visibleRecords = getVisibleRecords();
         const selected = records.filter((row) => state.selectedIds.has(row.recordId)).length;
         selectedCount.textContent = `${selected} seleccionado${selected === 1 ? "" : "s"}`;
 
         if (selectAll) {
-            selectAll.checked = records.length > 0 && selected === records.length;
-            selectAll.indeterminate = selected > 0 && selected < records.length;
+            const visibleSelected = visibleRecords.filter((row) => state.selectedIds.has(row.recordId)).length;
+            selectAll.checked = visibleRecords.length > 0 && visibleSelected === visibleRecords.length;
+            selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visibleRecords.length;
         }
 
         if (contractBtn) {
@@ -442,7 +605,7 @@
     }
 
     function toggleSelectAll() {
-        const records = getRecords();
+        const records = getVisibleRecords();
         if (selectAll.checked) {
             records.forEach((row) => state.selectedIds.add(row.recordId));
         } else {
@@ -2086,6 +2249,9 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ rows: importableRows })
             });
+            state.latestImportRecordIds = Array.isArray(result.createdRecordIds) ? result.createdRecordIds : [];
+            state.latestImportFacturaValue = result.facturaValue || "";
+            state.latestImportFacturaDisplay = result.facturaDisplay || "";
 
             closeUploadModal();
             await loadBoard();
@@ -2113,20 +2279,35 @@
     }
 
     function renderFacturaOptions() {
-        const options = Array.isArray(state.board?.facturaOptions) ? state.board.facturaOptions : [];
-        facturaSelect.innerHTML = options.length === 0
-            ? "<option value=\"\">Sin facturas</option>"
-            : options.map((option) => `
-                <option value="${escapeHtml(option.value)}">${escapeHtml(option.label)} (${numberFormatter.format(Number(option.count || 0))})</option>
-            `).join("");
-        facturaSelect.disabled = options.length === 0;
-        trmSaveBtn.disabled = options.length === 0;
+        const latestImport = getLatestImportScope();
+        if (!latestImport.recordIds.length) {
+            facturaSelect.innerHTML = "<option value=\"\">Sin ultima importacion</option>";
+            facturaSelect.disabled = true;
+            trmSaveBtn.disabled = true;
+            if (trmScopeNote) {
+                trmScopeNote.textContent = "No hay una ultima importacion identificada para calcular.";
+            }
+            return;
+        }
+
+        const label = latestImport.facturaDisplay || latestImport.facturaValue || "Ultima importacion";
+        facturaSelect.innerHTML = `
+            <option value="${escapeHtml(latestImport.facturaValue || "")}">
+                ${escapeHtml(label)} (${numberFormatter.format(Number(latestImport.count || latestImport.recordIds.length || 0))})
+            </option>
+        `;
+        facturaSelect.disabled = true;
+        trmSaveBtn.disabled = false;
+        if (trmScopeNote) {
+            trmScopeNote.textContent = `Se calculara solo sobre ${numberFormatter.format(Number(latestImport.count || latestImport.recordIds.length || 0))} fila(s) de la ultima importacion.`;
+        }
     }
 
     async function adjustTrm() {
-        const facturaValue = facturaSelect?.value || "";
+        const latestImport = getLatestImportScope();
+        const facturaValue = latestImport.facturaValue || facturaSelect?.value || "";
         const trm = Number(trmInput?.value || 0);
-        if (!facturaValue || !Number.isFinite(trm) || trm <= 0) {
+        if (!latestImport.recordIds.length || !Number.isFinite(trm) || trm <= 0) {
             showStatus(trmStatus, "warning", "Indica factura y TRM.");
             return;
         }
@@ -2138,7 +2319,7 @@
             const result = await fetchJson(adjustTrmUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ facturaValue, trm })
+                body: JSON.stringify({ facturaValue, trm, recordIds: latestImport.recordIds })
             });
 
             closeTrmModal();
@@ -2220,6 +2401,38 @@
         return Array.isArray(state.board?.records) ? state.board.records : [];
     }
 
+    function syncLatestImportFromBoard() {
+        if (state.latestImportRecordIds.length > 0) {
+            return;
+        }
+
+        const latestImport = state.board?.latestImport || {};
+        state.latestImportRecordIds = Array.isArray(latestImport.recordIds) ? latestImport.recordIds : [];
+        state.latestImportFacturaValue = latestImport.facturaValue || "";
+        state.latestImportFacturaDisplay = latestImport.facturaDisplay || "";
+    }
+
+    function getLatestImportScope() {
+        if (state.latestImportRecordIds.length > 0) {
+            const boardLatest = state.board?.latestImport || {};
+            return {
+                recordIds: state.latestImportRecordIds,
+                facturaValue: state.latestImportFacturaValue || boardLatest.facturaValue || "",
+                facturaDisplay: state.latestImportFacturaDisplay || boardLatest.facturaDisplay || "",
+                count: state.latestImportRecordIds.length
+            };
+        }
+
+        const latestImport = state.board?.latestImport || {};
+        const recordIds = Array.isArray(latestImport.recordIds) ? latestImport.recordIds : [];
+        return {
+            recordIds,
+            facturaValue: latestImport.facturaValue || "",
+            facturaDisplay: latestImport.facturaDisplay || "",
+            count: Number(latestImport.count || recordIds.length || 0)
+        };
+    }
+
     function getSelectedRecordIds() {
         const available = new Set(getRecords().map((row) => row.recordId));
         return Array.from(state.selectedIds).filter((recordId) => available.has(recordId));
@@ -2228,6 +2441,9 @@
     function setBusy(value) {
         state.busy = value;
         refreshBtn.disabled = value;
+        if (clearFiltersBtn) {
+            clearFiltersBtn.disabled = value;
+        }
         newBtn.disabled = value;
         trmBtn.disabled = value;
         if (productRegistrationSaveBtn) {

@@ -25,6 +25,8 @@ public sealed class NominaAdjustmentInput
 {
     public string EmployeeId { get; set; } = "";
     public bool Verified { get; set; }
+    public bool ManualEditEnabled { get; set; }
+    public Dictionary<string, decimal?> ManualOverrides { get; set; } = new();
     public decimal? WorkedDays { get; set; }
     public string AbsenceReason { get; set; } = "";
     public decimal? AbsencePayment { get; set; }
@@ -52,6 +54,8 @@ public sealed class NominaRowDto
     public string EmployeeContractTypeLabel { get; set; } = "";
     public bool IsServiceContract { get; set; }
     public bool Verified { get; set; }
+    public bool ManualEditEnabled { get; set; }
+    public IReadOnlyDictionary<string, decimal> ManualOverrides { get; set; } = new Dictionary<string, decimal>();
     public int PeriodDays { get; set; }
     public decimal WorkedDays { get; set; }
     public decimal AbsenceDays { get; set; }

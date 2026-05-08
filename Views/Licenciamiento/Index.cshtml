@@ -43,6 +43,7 @@
             <div class="lic-panel__actions">
                 <span class="lic-counter" id="licSelectedCount">0 seleccionados</span>
                 <button type="button" class="btn btn-outline-secondary" id="licRefreshBtn">Actualizar</button>
+                <button type="button" class="btn btn-outline-secondary" id="licClearFiltersBtn">Limpiar filtros</button>
                 <button type="button" class="btn btn-outline-secondary" id="licContractBtn">Ajustar tipo de contrato</button>
                 <button type="button" class="btn btn-outline-secondary" id="licTrmBtn">Ajustar TRM</button>
                 <button type="button" class="btn btn-primary" id="licNewBtn">Nuevo ingreso</button>
@@ -71,15 +72,42 @@
                         <th class="lic-check-cell">
                             <input class="form-check-input" type="checkbox" id="licSelectAll" aria-label="Seleccionar todos" />
                         </th>
-                        <th>Cliente</th>
-                        <th>Cuenta</th>
-                        <th>Vendor</th>
-                        <th>Producto</th>
-                        <th>Factura</th>
-                        <th class="text-end">USD</th>
-                        <th class="text-end">TRM</th>
-                        <th class="text-end">COP</th>
-                        <th>Tipo</th>
+                        <th>
+                            <button type="button" class="lic-sort-btn" data-lic-sort="nombreCliente">Cliente<span data-lic-sort-icon="nombreCliente"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter" data-lic-filter="nombreCliente" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th>
+                            <button type="button" class="lic-sort-btn" data-lic-sort="companyAccountDisplay">Cuenta<span data-lic-sort-icon="companyAccountDisplay"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter" data-lic-filter="companyAccountDisplay" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th>
+                            <button type="button" class="lic-sort-btn" data-lic-sort="vendor">Vendor<span data-lic-sort-icon="vendor"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter" data-lic-filter="vendor" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th>
+                            <button type="button" class="lic-sort-btn" data-lic-sort="productDisplay">Producto<span data-lic-sort-icon="productDisplay"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter" data-lic-filter="productDisplay" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th>
+                            <button type="button" class="lic-sort-btn" data-lic-sort="facturaValue">Factura<span data-lic-sort-icon="facturaValue"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter" data-lic-filter="facturaValue" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th class="text-end">
+                            <button type="button" class="lic-sort-btn lic-sort-btn--end" data-lic-sort="valorTotalUsd">USD<span data-lic-sort-icon="valorTotalUsd"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter text-end" data-lic-filter="valorTotalUsd" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th class="text-end">
+                            <button type="button" class="lic-sort-btn lic-sort-btn--end" data-lic-sort="trm">TRM<span data-lic-sort-icon="trm"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter text-end" data-lic-filter="trm" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th class="text-end">
+                            <button type="button" class="lic-sort-btn lic-sort-btn--end" data-lic-sort="pesosTotal">COP<span data-lic-sort-icon="pesosTotal"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter text-end" data-lic-filter="pesosTotal" type="search" placeholder="Filtrar" />
+                        </th>
+                        <th>
+                            <button type="button" class="lic-sort-btn" data-lic-sort="contractTypeLabel">Tipo<span data-lic-sort-icon="contractTypeLabel"></span></button>
+                            <input class="form-control form-control-sm lic-column-filter" data-lic-filter="contractTypeLabel" type="search" placeholder="Filtrar" />
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="licRowsBody"></tbody>
@@ -414,6 +442,7 @@
             <label class="lic-field">
                 <span>Factura</span>
                 <select class="form-select" id="licFacturaSelect"></select>
+                <small class="lic-muted" id="licTrmScopeNote"></small>
             </label>
             <label class="lic-field">
                 <span>TRM</span>

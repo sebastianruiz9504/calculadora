@@ -38,11 +38,24 @@
     const detailAbsencePaymentWrap = document.getElementById("detailAbsencePaymentWrap");
     const detailAbsencePaymentLabel = document.getElementById("detailAbsencePaymentLabel");
     const detailAbsencePaymentHint = document.getElementById("detailAbsencePaymentHint");
+    const detailManualEditToggle = document.getElementById("detailManualEditToggle");
+    const detailManualEditPanel = document.getElementById("detailManualEditPanel");
+    const detailManualFields = document.getElementById("detailManualFields");
+    const detailManualResetBtn = document.getElementById("detailManualResetBtn");
     const detailInputs = detailModal ? Array.from(detailModal.querySelectorAll("[data-detail-field]")) : [];
     const detailCloseButtons = detailModal ? Array.from(detailModal.querySelectorAll("[data-nomina-detail-close]")) : [];
     const detailOutputs = detailModal
         ? Array.from(detailModal.querySelectorAll("[data-detail-output]")).reduce((map, element) => {
-            map[element.dataset.detailOutput] = element;
+            const key = element.dataset.detailOutput;
+            if (!key) {
+                return map;
+            }
+
+            if (!map[key]) {
+                map[key] = [];
+            }
+
+            map[key].push(element);
             return map;
         }, {})
         : {};
@@ -58,6 +71,29 @@
     const serviceContractTypeOptionValue = 645250001;
     const defaultExternalWithholdingRate = 0.04;
     const deductionFields = new Set(["otherDeductions", "loan", "payrollWithholding"]);
+    const manualEditableFields = [
+        { field: "salaryBase", label: "Sueldo base proporcional" },
+        { field: "auxilio", label: "Auxilio proporcional" },
+        { field: "absencePayment", label: "Pago dias no trabajados" },
+        { field: "commissionsCopiers", label: "Comisiones Copiers" },
+        { field: "commissionsCloud", label: "Comisiones Cloud" },
+        { field: "commissionsUnassigned", label: "Comisiones sin vertical" },
+        { field: "appliedCommissionBase", label: "Base aplicada" },
+        { field: "contributionBase", label: "Base aportes" },
+        { field: "health", label: "Salud" },
+        { field: "pension", label: "Pension" },
+        { field: "cuentaDeCobro", label: "Cuenta cobro" },
+        { field: "externalWithholding", label: "Rete fuente cxc" },
+        { field: "grossSalary", label: "Sueldo bruto" },
+        { field: "netPayroll", label: "Monto pagado" },
+        { field: "netCuentaDeCobro", label: "Monto pagado cxc" },
+        { field: "verticalBase", label: "Base reparto" },
+        { field: "baseCopiers", label: "Base Copiers" },
+        { field: "baseCloud", label: "Base Cloud" },
+        { field: "totalCopiers", label: "Total Copiers" },
+        { field: "totalCloud", label: "Total Cloud" }
+    ];
+    const manualAllowNegativeFields = new Set(["netPayroll", "netCuentaDeCobro", "verticalBase", "baseCopiers", "baseCloud", "totalCopiers", "totalCloud"]);
 
     const state = {
         rows: [],
@@ -136,11 +172,17 @@
 
     rowsBody.addEventListener("input", handleRowEditChange);
     rowsBody.addEventListener("change", handleRowEditChange);
+    verticalsBody.addEventListener("click", handleVerticalRowOpen);
+    verticalsBody.addEventListener("keydown", handleVerticalRowKeydown);
     verticalsBody.addEventListener("input", handleVerticalEditChange);
     verticalsBody.addEventListener("change", handleVerticalEditChange);
 
     detailForm?.addEventListener("input", handleDetailFieldChange);
     detailForm?.addEventListener("change", handleDetailFieldChange);
+    detailManualEditToggle?.addEventListener("change", handleManualToggleChange);
+    detailManualFields?.addEventListener("input", handleManualFieldChange);
+    detailManualFields?.addEventListener("change", handleManualFieldChange);
+    detailManualResetBtn?.addEventListener("click", resetManualOverrides);
 
     restoreDraft();
 
@@ -193,12 +235,46 @@
         updateVerticalOutputs(row, field);
         if (state.activeRowId === row.employeeId) {
             renderDetailValues(row);
+            renderManualEditor(row);
             renderDetailWarnings(row);
         }
 
         renderSummary();
         updateConfirmAvailability();
         saveDraft();
+    }
+
+    function handleVerticalRowOpen(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-vertical-field]")) {
+            return;
+        }
+
+        const rowElement = target ? target.closest("tr[data-vertical-row-id]") : null;
+        if (!rowElement) {
+            return;
+        }
+
+        openDetail(rowElement.dataset.verticalRowId);
+    }
+
+    function handleVerticalRowKeydown(event) {
+        if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-vertical-field]")) {
+            return;
+        }
+
+        const rowElement = target ? target.closest("tr[data-vertical-row-id]") : null;
+        if (!rowElement) {
+            return;
+        }
+
+        event.preventDefault();
+        openDetail(rowElement.dataset.verticalRowId);
     }
 
     function handleDetailFieldChange(event) {
@@ -243,6 +319,97 @@
         updateRowOutputs(row);
         renderDetailInputs(row, field);
         renderDetailValues(row);
+        renderManualEditor(row);
+        renderDetailWarnings(row);
+        renderSummary();
+        renderVerticals();
+        updateConfirmAvailability();
+        saveDraft();
+    }
+
+    function handleManualToggleChange(event) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const row = getActiveDetailRow();
+        if (!row) {
+            return;
+        }
+
+        markRowPendingVerification(row);
+        row.manualEditEnabled = input.checked;
+        if (!row.manualEditEnabled) {
+            row.manualOverrides = {};
+        } else {
+            ensureManualOverrides(row);
+        }
+
+        recalculateRow(row);
+        updateRowOutputs(row);
+        renderDetailInputs(row);
+        renderDetailValues(row);
+        renderManualEditor(row);
+        renderDetailWarnings(row);
+        renderSummary();
+        renderVerticals();
+        updateConfirmAvailability();
+        saveDraft();
+    }
+
+    function handleManualFieldChange(event) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const field = input.dataset.manualField;
+        if (!field) {
+            return;
+        }
+
+        const row = getActiveDetailRow();
+        if (!row) {
+            return;
+        }
+
+        markRowPendingVerification(row);
+        row.manualEditEnabled = true;
+        ensureManualOverrides(row);
+
+        if (input.value === "") {
+            delete row.manualOverrides[field];
+        } else {
+            row.manualOverrides[field] = parseManualInputValue(input.value, field);
+        }
+
+        recalculateRow(row);
+        updateRowOutputs(row);
+        renderDetailInputs(row);
+        renderDetailValues(row);
+        renderManualEditor(row, field);
+        renderDetailWarnings(row);
+        renderSummary();
+        renderVerticals();
+        updateConfirmAvailability();
+        saveDraft();
+    }
+
+    function resetManualOverrides() {
+        const row = getActiveDetailRow();
+        if (!row) {
+            return;
+        }
+
+        markRowPendingVerification(row);
+        row.manualEditEnabled = false;
+        row.manualOverrides = {};
+        recalculateRow(row);
+        updateRowOutputs(row);
+        renderDetailInputs(row);
+        renderDetailValues(row);
+        renderManualEditor(row);
         renderDetailWarnings(row);
         renderSummary();
         renderVerticals();
@@ -364,6 +531,8 @@
                 return {
                     employeeId: row.employeeId,
                     verified: Boolean(row.verified),
+                    manualEditEnabled: Boolean(row.manualEditEnabled),
+                    manualOverrides: buildManualOverridesPayload(row),
                     workedDays: row.workedDays,
                     absenceReason: row.absenceReason || "",
                     absencePayment: row.absencePayment,
@@ -420,6 +589,8 @@
         normalized.employeeContractTypeOptionValue = Number.parseInt(String(normalized.employeeContractTypeOptionValue || 0), 10) || 0;
         normalized.employeeContractTypeLabel = String(normalized.employeeContractTypeLabel || "").trim();
         normalized.isServiceContract = isServiceContract(normalized);
+        normalized.manualEditEnabled = Boolean(normalized.manualEditEnabled);
+        normalized.manualOverrides = normalizeManualOverrides(normalized.manualOverrides);
         normalized.periodDays = Math.max(Math.round(toPositiveNumber(normalized.periodDays)) || getDaysInPeriod(normalized.periodKey), 1);
         normalized.monthlySalaryBase = toPositiveNumber(normalized.monthlySalaryBase || normalized.salaryBase);
         normalized.monthlyAuxilio = toPositiveNumber(normalized.monthlyAuxilio || normalized.auxilio);
@@ -459,11 +630,12 @@
         }
         row.absenceReasonLabel = getAbsenceReasonLabel(row.absenceReason);
 
-        row.salaryBase = roundMoney(row.monthlySalaryBase * row.workedDays / row.periodDays);
-        row.auxilio = roundMoney(row.monthlyAuxilio * row.workedDays / row.periodDays);
-        row.commissionsCopiers = toPositiveNumber(row.commissionsCopiers);
-        row.commissionsCloud = toPositiveNumber(row.commissionsCloud);
-        row.commissionsUnassigned = toPositiveNumber(row.commissionsUnassigned);
+        row.salaryBase = resolveManualValue(row, "salaryBase", roundMoney(row.monthlySalaryBase * row.workedDays / row.periodDays));
+        row.auxilio = resolveManualValue(row, "auxilio", roundMoney(row.monthlyAuxilio * row.workedDays / row.periodDays));
+        row.absencePayment = resolveManualValue(row, "absencePayment", row.absencePayment);
+        row.commissionsCopiers = resolveManualValue(row, "commissionsCopiers", toPositiveNumber(row.commissionsCopiers));
+        row.commissionsCloud = resolveManualValue(row, "commissionsCloud", toPositiveNumber(row.commissionsCloud));
+        row.commissionsUnassigned = resolveManualValue(row, "commissionsUnassigned", toPositiveNumber(row.commissionsUnassigned));
         row.commissionCap = toPositiveNumber(row.commissionCap);
         row.factorCopiers = toPositiveNumber(row.factorCopiers);
         row.factorCloud = toPositiveNumber(row.factorCloud);
@@ -477,23 +649,23 @@
         }
 
         row.commissions = roundMoney(row.commissionsCopiers + row.commissionsCloud + row.commissionsUnassigned);
-        row.appliedCommissionBase = roundMoney(row.commissionCap > 0 ? Math.min(row.commissions, row.commissionCap) : row.commissions);
-        row.cuentaDeCobro = roundMoney(row.commissionCap > 0 ? Math.max(row.commissions - row.commissionCap, 0) : 0);
+        row.appliedCommissionBase = resolveManualValue(row, "appliedCommissionBase", roundMoney(row.commissionCap > 0 ? Math.min(row.commissions, row.commissionCap) : row.commissions));
+        row.cuentaDeCobro = resolveManualValue(row, "cuentaDeCobro", roundMoney(row.commissionCap > 0 ? Math.max(row.commissions - row.commissionCap, 0) : 0));
         row.externalWithholdingRate = row.cuentaDeCobro > 0 ? normalizeRate(row.externalWithholdingRate || defaultExternalWithholdingRate) : 0;
-        row.contributionBase = serviceContract
+        row.contributionBase = resolveManualValue(row, "contributionBase", serviceContract
             ? 0
-            : roundMoney(row.salaryBase + row.absencePayment + row.bonusCompliance + row.appliedCommissionBase);
-        row.health = roundMoney(row.contributionBase * row.healthRate);
-        row.pension = roundMoney(row.contributionBase * row.pensionRate);
-        row.grossSalary = roundMoney(row.salaryBase + row.auxilio + row.absencePayment + row.bonusCompliance + row.commissions);
-        row.netPayroll = roundMoney(row.grossSalary - (row.health + row.pension + row.otherDeductions + row.loan + row.payrollWithholding));
-        row.externalWithholding = row.cuentaDeCobro > 0 ? roundMoney(row.cuentaDeCobro * row.externalWithholdingRate) : 0;
-        row.netCuentaDeCobro = roundMoney(row.cuentaDeCobro - row.externalWithholding);
-        row.verticalBase = roundMoney(row.netPayroll - row.commissions);
-        row.baseCopiers = roundMoney(row.verticalBase * (row.factorCopiers / 100));
-        row.baseCloud = roundMoney(row.verticalBase * (row.factorCloud / 100));
-        row.totalCopiers = roundMoney(row.baseCopiers + row.commissionsCopiers);
-        row.totalCloud = roundMoney(row.baseCloud + row.commissionsCloud);
+            : roundMoney(row.salaryBase + row.absencePayment + row.bonusCompliance + row.appliedCommissionBase));
+        row.health = resolveManualValue(row, "health", roundMoney(row.contributionBase * row.healthRate));
+        row.pension = resolveManualValue(row, "pension", roundMoney(row.contributionBase * row.pensionRate));
+        row.grossSalary = resolveManualValue(row, "grossSalary", roundMoney(row.salaryBase + row.auxilio + row.absencePayment + row.bonusCompliance + row.commissions));
+        row.netPayroll = resolveManualValue(row, "netPayroll", roundMoney(row.grossSalary - (row.health + row.pension + row.otherDeductions + row.loan + row.payrollWithholding)));
+        row.externalWithholding = resolveManualValue(row, "externalWithholding", row.cuentaDeCobro > 0 ? roundMoney(row.cuentaDeCobro * row.externalWithholdingRate) : 0);
+        row.netCuentaDeCobro = resolveManualValue(row, "netCuentaDeCobro", roundMoney(row.cuentaDeCobro - row.externalWithholding));
+        row.verticalBase = resolveManualValue(row, "verticalBase", roundMoney(row.netPayroll - row.commissions));
+        row.baseCopiers = resolveManualValue(row, "baseCopiers", roundMoney(row.verticalBase * (row.factorCopiers / 100)));
+        row.baseCloud = resolveManualValue(row, "baseCloud", roundMoney(row.verticalBase * (row.factorCloud / 100)));
+        row.totalCopiers = resolveManualValue(row, "totalCopiers", roundMoney(row.baseCopiers + row.commissionsCopiers));
+        row.totalCloud = resolveManualValue(row, "totalCloud", roundMoney(row.baseCloud + row.commissionsCloud));
     }
 
     function renderRows() {
@@ -588,6 +760,7 @@
 
         renderDetailInputs(row);
         renderDetailValues(row);
+        renderManualEditor(row);
         renderDetailWarnings(row);
     }
 
@@ -652,6 +825,10 @@
         setDetailOutput("contributionBase", formatMoney(row.contributionBase));
         setDetailOutput("health", formatMoney(row.health));
         setDetailOutput("pension", formatMoney(row.pension));
+        setDetailOutput("bonusCompliance", formatMoney(row.bonusCompliance));
+        setDetailOutput("otherDeductions", formatMoney(row.otherDeductions));
+        setDetailOutput("loan", formatMoney(row.loan));
+        setDetailOutput("payrollWithholding", formatMoney(row.payrollWithholding));
         setDetailOutput("cuentaDeCobro", formatMoney(row.cuentaDeCobro));
         setDetailOutput("externalWithholding", formatMoney(row.externalWithholding));
         setDetailOutput("externalWithholdingRate", formatPercent(row.externalWithholdingRate * 100));
@@ -668,6 +845,50 @@
         setDetailOutput("baseCloud", formatMoney(row.baseCloud));
         setDetailOutput("commissionsCloudVertical", formatMoney(row.commissionsCloud));
         setDetailOutput("totalCloud", formatMoney(row.totalCloud));
+        setDetailOutput("verticalTotal", formatMoney(roundMoney(row.totalCopiers + row.totalCloud)));
+    }
+
+    function renderManualEditor(row, skipField) {
+        if (detailManualEditToggle) {
+            detailManualEditToggle.checked = Boolean(row.manualEditEnabled);
+        }
+
+        if (detailManualEditPanel) {
+            detailManualEditPanel.hidden = !row.manualEditEnabled;
+        }
+
+        if (!detailManualFields) {
+            return;
+        }
+
+        if (!row.manualEditEnabled) {
+            detailManualFields.innerHTML = "";
+            return;
+        }
+
+        const overrides = ensureManualOverrides(row);
+        detailManualFields.innerHTML = manualEditableFields.map((definition) => {
+            const overridden = Object.prototype.hasOwnProperty.call(overrides, definition.field);
+            const value = overridden ? overrides[definition.field] : row[definition.field];
+            return `
+                <label class="payroll-manual-field ${overridden ? "payroll-manual-field--active" : ""}">
+                    <span>${escapeHtml(definition.label)}</span>
+                    <input class="form-control payroll-detail-input text-end" type="number" step="0.01" value="${toManualInputValue(value)}" data-manual-field="${escapeHtml(definition.field)}" ${state.busy ? "disabled" : ""} />
+                </label>
+            `;
+        }).join("");
+
+        if (skipField) {
+            const activeInput = detailManualFields.querySelector(`[data-manual-field="${cssEscape(skipField)}"]`);
+            if (activeInput instanceof HTMLInputElement) {
+                activeInput.focus();
+                try {
+                    activeInput.setSelectionRange(activeInput.value.length, activeInput.value.length);
+                } catch {
+                    // Algunos navegadores no permiten seleccionar texto en inputs numericos.
+                }
+            }
+        }
     }
 
     function renderDetailWarnings(row) {
@@ -689,9 +910,16 @@
     }
 
     function setDetailOutput(role, value) {
-        const element = detailOutputs[role];
-        if (element) {
-            element.textContent = value;
+        const elements = detailOutputs[role];
+        if (Array.isArray(elements)) {
+            elements.forEach((element) => {
+                element.textContent = value;
+            });
+            return;
+        }
+
+        if (elements) {
+            elements.textContent = value;
         }
     }
 
@@ -713,25 +941,14 @@
 
     function renderVerticals() {
         verticalsBody.innerHTML = state.rows.map((row) => `
-            <tr data-vertical-row-id="${escapeHtml(row.employeeId)}" class="${buildVerticalRowClass(row)}">
+            <tr data-vertical-row-id="${escapeHtml(row.employeeId)}" class="${buildVerticalRowClass(row)}" tabindex="0" role="button" aria-label="Detalle vertical de ${escapeHtml(row.employeeName || "empleado")}">
                 <td>
                     <div class="payroll-row__name">${escapeHtml(row.employeeName || "Empleado sin nombre")}</div>
                     <div class="payroll-row__meta">${escapeHtml(resolveContractTypeLabel(row))}</div>
                 </td>
-                <td class="text-end" data-role="verticalBase">${formatMoney(row.verticalBase)}</td>
-                <td class="payroll-percent-cell">
-                    <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCopiers)}" data-vertical-field="factorCopiers" aria-label="Porcentaje Copiers de ${escapeHtml(row.employeeName || "empleado")}" />
-                </td>
-                <td class="text-end" data-role="baseCopiers">${formatMoney(row.baseCopiers)}</td>
-                <td class="text-end" data-role="commissionsCopiers">${formatMoney(row.commissionsCopiers)}</td>
-                <td class="text-end" data-role="totalCopiers">${formatMoney(row.totalCopiers)}</td>
-                <td class="payroll-percent-cell">
-                    <input class="form-control form-control-sm payroll-table-input text-end" type="number" min="0" step="0.01" value="${toInputValue(row.factorCloud)}" data-vertical-field="factorCloud" aria-label="Porcentaje Cloud de ${escapeHtml(row.employeeName || "empleado")}" />
-                </td>
-                <td class="text-end" data-role="baseCloud">${formatMoney(row.baseCloud)}</td>
-                <td class="text-end" data-role="commissionsCloud">${formatMoney(row.commissionsCloud)}</td>
-                <td class="text-end" data-role="totalCloud">${formatMoney(row.totalCloud)}</td>
-                <td class="text-end" data-role="commissionsUnassigned">${formatMoney(row.commissionsUnassigned)}</td>
+                <td class="text-end payroll-vertical-cell payroll-vertical-cell--total" data-role="verticalTotal">${formatMoney(calculateRowVerticalTotal(row))}</td>
+                <td class="text-end payroll-vertical-cell payroll-vertical-cell--copiers" data-role="totalCopiers">${formatMoney(row.totalCopiers)}</td>
+                <td class="text-end payroll-vertical-cell payroll-vertical-cell--cloud" data-role="totalCloud">${formatMoney(row.totalCloud)}</td>
             </tr>
         `).join("") + renderVerticalTotalsRow();
     }
@@ -744,16 +961,9 @@
         }
 
         tr.className = buildVerticalRowClass(row);
-        setCellText(tr, "verticalBase", formatMoney(row.verticalBase));
-        setCellText(tr, "baseCopiers", formatMoney(row.baseCopiers));
-        setCellText(tr, "commissionsCopiers", formatMoney(row.commissionsCopiers));
+        setCellText(tr, "verticalTotal", formatMoney(calculateRowVerticalTotal(row)));
         setCellText(tr, "totalCopiers", formatMoney(row.totalCopiers));
-        setCellText(tr, "baseCloud", formatMoney(row.baseCloud));
-        setCellText(tr, "commissionsCloud", formatMoney(row.commissionsCloud));
         setCellText(tr, "totalCloud", formatMoney(row.totalCloud));
-        setCellText(tr, "commissionsUnassigned", formatMoney(row.commissionsUnassigned));
-        setVerticalInputValue(tr, "factorCopiers", row.factorCopiers, skipField);
-        setVerticalInputValue(tr, "factorCloud", row.factorCloud, skipField);
         updateVerticalTotalsRow();
     }
 
@@ -762,16 +972,9 @@
         return `
             <tr class="payroll-vertical-total-row" data-vertical-summary-row>
                 <td>Total</td>
-                <td class="text-end" data-summary-role="verticalBase">${formatMoney(totals.verticalBase)}</td>
-                <td></td>
-                <td class="text-end" data-summary-role="baseCopiers">${formatMoney(totals.baseCopiers)}</td>
-                <td class="text-end" data-summary-role="commissionsCopiers">${formatMoney(totals.commissionsCopiers)}</td>
-                <td class="text-end" data-summary-role="totalCopiers">${formatMoney(totals.totalCopiers)}</td>
-                <td></td>
-                <td class="text-end" data-summary-role="baseCloud">${formatMoney(totals.baseCloud)}</td>
-                <td class="text-end" data-summary-role="commissionsCloud">${formatMoney(totals.commissionsCloud)}</td>
-                <td class="text-end" data-summary-role="totalCloud">${formatMoney(totals.totalCloud)}</td>
-                <td class="text-end" data-summary-role="commissionsUnassigned">${formatMoney(totals.commissionsUnassigned)}</td>
+                <td class="text-end payroll-vertical-cell payroll-vertical-cell--total" data-summary-role="verticalTotal">${formatMoney(totals.verticalTotal)}</td>
+                <td class="text-end payroll-vertical-cell payroll-vertical-cell--copiers" data-summary-role="totalCopiers">${formatMoney(totals.totalCopiers)}</td>
+                <td class="text-end payroll-vertical-cell payroll-vertical-cell--cloud" data-summary-role="totalCloud">${formatMoney(totals.totalCloud)}</td>
             </tr>
         `;
     }
@@ -783,18 +986,14 @@
         }
 
         const totals = calculateVerticalTotals();
-        setSummaryCellText(row, "verticalBase", formatMoney(totals.verticalBase));
-        setSummaryCellText(row, "baseCopiers", formatMoney(totals.baseCopiers));
-        setSummaryCellText(row, "commissionsCopiers", formatMoney(totals.commissionsCopiers));
+        setSummaryCellText(row, "verticalTotal", formatMoney(totals.verticalTotal));
         setSummaryCellText(row, "totalCopiers", formatMoney(totals.totalCopiers));
-        setSummaryCellText(row, "baseCloud", formatMoney(totals.baseCloud));
-        setSummaryCellText(row, "commissionsCloud", formatMoney(totals.commissionsCloud));
         setSummaryCellText(row, "totalCloud", formatMoney(totals.totalCloud));
-        setSummaryCellText(row, "commissionsUnassigned", formatMoney(totals.commissionsUnassigned));
     }
 
     function calculateVerticalTotals() {
         const totals = state.rows.reduce((totals, row) => {
+            totals.verticalTotal += calculateRowVerticalTotal(row);
             totals.verticalBase += toNumber(row.verticalBase);
             totals.baseCopiers += toNumber(row.baseCopiers);
             totals.commissionsCopiers += toNumber(row.commissionsCopiers);
@@ -805,6 +1004,7 @@
             totals.commissionsUnassigned += toNumber(row.commissionsUnassigned);
             return totals;
         }, {
+            verticalTotal: 0,
             verticalBase: 0,
             baseCopiers: 0,
             commissionsCopiers: 0,
@@ -820,6 +1020,10 @@
         });
 
         return totals;
+    }
+
+    function calculateRowVerticalTotal(row) {
+        return roundMoney(toNumber(row.totalCopiers) + toNumber(row.totalCloud));
     }
 
     function renderLogs() {
@@ -876,7 +1080,22 @@
     }
 
     function getRowWarnings(row) {
-        const warnings = Array.isArray(row.warnings) ? row.warnings.slice() : [];
+        const manualActive = Boolean(row.manualEditEnabled)
+            && Object.keys(normalizeManualOverrides(row.manualOverrides)).length > 0;
+        const warnings = Array.isArray(row.warnings)
+            ? row.warnings.filter((warning) => {
+                const normalized = normalizeText(warning);
+                if (normalized.includes("suma de porcentajes")) {
+                    return false;
+                }
+
+                return !normalized.includes("edicion manual activa") || manualActive;
+            })
+            : [];
+        if (manualActive && !warnings.some((warning) => normalizeText(warning).includes("edicion manual activa"))) {
+            warnings.push("Edicion manual activa; los valores marcados reemplazan el calculo automatico de esta fila.");
+        }
+
         if (row.netPayroll < 0) {
             warnings.push("El monto pagado de nomina quedo negativo.");
         }
@@ -890,8 +1109,7 @@
         }
 
         const factorTotal = roundMoney(toPositiveNumber(row.factorCopiers) + toPositiveNumber(row.factorCloud));
-        if (Math.abs(factorTotal - 100) > 0.01
-            && !warnings.some((warning) => normalizeText(warning).includes("suma de porcentajes"))) {
+        if (Math.abs(factorTotal - 100) > 0.01) {
             warnings.push(`La suma de porcentajes Copiers/Cloud es ${formatPercent(factorTotal)}.`);
         }
 
@@ -1098,6 +1316,17 @@
             const field = input.dataset.detailField;
             input.disabled = isBusy || field === "externalWithholding" || (detailRow && isServiceContract(detailRow) && isServiceDeductionField(field));
         });
+        if (detailManualEditToggle) {
+            detailManualEditToggle.disabled = isBusy;
+        }
+
+        if (detailManualResetBtn) {
+            detailManualResetBtn.disabled = isBusy;
+        }
+
+        detailManualFields?.querySelectorAll("input").forEach((input) => {
+            input.disabled = isBusy;
+        });
         updateConfirmAvailability();
     }
 
@@ -1163,6 +1392,68 @@
         }
 
         return "info";
+    }
+
+    function ensureManualOverrides(row) {
+        if (!row.manualOverrides || typeof row.manualOverrides !== "object" || Array.isArray(row.manualOverrides)) {
+            row.manualOverrides = {};
+        }
+
+        return row.manualOverrides;
+    }
+
+    function normalizeManualOverrides(overrides) {
+        const normalized = {};
+        if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+            return normalized;
+        }
+
+        manualEditableFields.forEach((definition) => {
+            if (!Object.prototype.hasOwnProperty.call(overrides, definition.field)) {
+                return;
+            }
+
+            const value = toNumber(overrides[definition.field]);
+            if (Number.isFinite(value)) {
+                normalized[definition.field] = roundMoney(value);
+            }
+        });
+
+        return normalized;
+    }
+
+    function buildManualOverridesPayload(row) {
+        if (!row.manualEditEnabled) {
+            return {};
+        }
+
+        return normalizeManualOverrides(row.manualOverrides);
+    }
+
+    function hasManualOverride(row, field) {
+        return Boolean(row?.manualEditEnabled)
+            && row.manualOverrides
+            && Object.prototype.hasOwnProperty.call(row.manualOverrides, field);
+    }
+
+    function resolveManualValue(row, field, automaticValue) {
+        const value = hasManualOverride(row, field)
+            ? row.manualOverrides[field]
+            : automaticValue;
+
+        const numeric = manualAllowNegativeFields.has(field)
+            ? toNumber(value)
+            : toPositiveNumber(value);
+
+        return roundMoney(numeric);
+    }
+
+    function parseManualInputValue(value, field) {
+        const numeric = manualAllowNegativeFields.has(field)
+            ? toNumber(value)
+            : toPositiveNumber(value);
+
+        return roundMoney(numeric);
     }
 
     function isServiceDeductionField(field) {
@@ -1314,6 +1605,10 @@
 
     function toInputValue(value) {
         return toPositiveNumber(value).toFixed(2);
+    }
+
+    function toManualInputValue(value) {
+        return toNumber(value).toFixed(2);
     }
 
     function formatNumber(value) {

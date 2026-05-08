@@ -13,6 +13,29 @@ public sealed partial class DataverseService
     private const int NominaCopiersLineOptionValue = 645250003;
     private const int NominaEmployeePayrollContractOptionValue = 645250000;
     private const int NominaEmployeeServiceContractOptionValue = 645250001;
+    private static readonly HashSet<string> NominaManualOverrideFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "salaryBase",
+        "auxilio",
+        "absencePayment",
+        "commissionsCopiers",
+        "commissionsCloud",
+        "commissionsUnassigned",
+        "appliedCommissionBase",
+        "contributionBase",
+        "health",
+        "pension",
+        "cuentaDeCobro",
+        "externalWithholding",
+        "grossSalary",
+        "netPayroll",
+        "netCuentaDeCobro",
+        "verticalBase",
+        "baseCopiers",
+        "baseCloud",
+        "totalCopiers",
+        "totalCloud"
+    };
 
     public async Task<NominaPreviewResultDto> PreviewNominaAsync(NominaPreviewRequest request, CancellationToken ct = default)
     {
@@ -485,6 +508,10 @@ public sealed partial class DataverseService
             {
                 EmployeeId = employeeId,
                 Verified = item.Verified,
+                ManualEditEnabled = item.ManualEditEnabled,
+                ManualOverrides = item.ManualEditEnabled
+                    ? NormalizeNominaManualOverrides(item.ManualOverrides)
+                    : new Dictionary<string, decimal?>(),
                 WorkedDays = item.WorkedDays.HasValue ? RoundCurrency(Math.Max(item.WorkedDays.Value, 0m)) : null,
                 AbsenceReason = NormalizeNominaAbsenceReason(item.AbsenceReason),
                 AbsencePayment = item.AbsencePayment.HasValue ? RoundCurrency(Math.Max(item.AbsencePayment.Value, 0m)) : null,
@@ -496,6 +523,21 @@ public sealed partial class DataverseService
                 PayrollWithholding = RoundCurrency(Math.Max(item.PayrollWithholding, 0m)),
                 ExternalWithholding = RoundCurrency(Math.Max(item.ExternalWithholding, 0m))
             };
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, decimal?> NormalizeNominaManualOverrides(
+        IReadOnlyDictionary<string, decimal?>? overrides)
+    {
+        var result = new Dictionary<string, decimal?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in overrides ?? new Dictionary<string, decimal?>())
+        {
+            if (!NominaManualOverrideFields.Contains(item.Key) || !item.Value.HasValue)
+                continue;
+
+            result[item.Key] = RoundCurrency(item.Value.Value);
         }
 
         return result;
@@ -516,6 +558,8 @@ public sealed partial class DataverseService
         {
             EmployeeId = employeeId,
             Verified = false,
+            ManualEditEnabled = false,
+            ManualOverrides = new Dictionary<string, decimal?>(),
             WorkedDays = existingRecord.WorkedDays,
             AbsenceReason = existingRecord.AbsenceReason,
             AbsencePayment = existingRecord.AbsencePayment,
@@ -550,7 +594,8 @@ public sealed partial class DataverseService
                 || adjustment.OtherDeductions > 0m
                 || adjustment.Loan > 0m
                 || adjustment.PayrollWithholding > 0m
-                || adjustment.ExternalWithholding > 0m);
+                || adjustment.ExternalWithholding > 0m
+                || adjustment.ManualEditEnabled && adjustment.ManualOverrides.Count > 0);
     }
 
     private List<string> BuildNominaWarnings(
@@ -689,11 +734,9 @@ public sealed partial class DataverseService
         var baseCloud = RoundCurrency(factorCloud / 100m * verticalBase);
         var totalCopiers = RoundCurrency(baseCopiers + commissionBucket.Copiers);
         var totalCloud = RoundCurrency(baseCloud + commissionBucket.Cloud);
-        var factorTotal = RoundCurrency(factorCopiers + factorCloud);
-        if (Math.Abs(factorTotal - 100m) > 0.01m)
-            rowWarnings.Add($"La suma de porcentajes Copiers/Cloud es {factorTotal:0.##}%; revisa que el reparto de la base cierre en 100%.");
+        var manualOverrides = BuildNominaManualOverrideSnapshot(adjustment.ManualOverrides);
 
-        return new NominaRowDto
+        var row = new NominaRowDto
         {
             EmployeeId = employee.EmployeeId,
             EmployeeName = employee.EmployeeName,
@@ -708,6 +751,8 @@ public sealed partial class DataverseService
             EmployeeContractTypeLabel = employee.ContractTypeLabel,
             IsServiceContract = isServiceContract,
             Verified = adjustment.Verified,
+            ManualEditEnabled = adjustment.ManualEditEnabled && manualOverrides.Count > 0,
+            ManualOverrides = manualOverrides,
             PeriodDays = periodDays,
             WorkedDays = workedDays,
             AbsenceDays = absenceDays,
@@ -737,7 +782,7 @@ public sealed partial class DataverseService
             Loan = loan,
             PayrollWithholding = payrollWithholding,
             CuentaDeCobro = cuentaDeCobro,
-            ExternalWithholdingRate = cuentaDeCobro > 0m ? _nominaExternalWithholdingRate : 0m,
+            ExternalWithholdingRate = _nominaExternalWithholdingRate,
             ExternalWithholding = externalWithholding,
             GrossSalary = grossSalary,
             NetPayroll = netPayroll,
@@ -745,9 +790,122 @@ public sealed partial class DataverseService
             FactorCopiers = factorCopiers,
             FactorCloud = factorCloud,
             TotalCopiers = totalCopiers,
-            TotalCloud = totalCloud,
-            Warnings = rowWarnings.ToArray()
+            TotalCloud = totalCloud
         };
+
+        if (row.ManualEditEnabled)
+        {
+            ApplyNominaManualOverrides(row);
+            rowWarnings.Add("Edicion manual activa; los valores marcados reemplazan el calculo automatico de esta fila.");
+        }
+
+        var factorTotal = RoundCurrency(row.FactorCopiers + row.FactorCloud);
+        if (Math.Abs(factorTotal - 100m) > 0.01m)
+            rowWarnings.Add($"La suma de porcentajes Copiers/Cloud es {factorTotal:0.##}%; revisa que el reparto de la base cierre en 100%.");
+
+        row.Warnings = rowWarnings.ToArray();
+        return row;
+    }
+
+    private static Dictionary<string, decimal> BuildNominaManualOverrideSnapshot(
+        IReadOnlyDictionary<string, decimal?>? overrides)
+    {
+        var result = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in overrides ?? new Dictionary<string, decimal?>())
+        {
+            if (!NominaManualOverrideFields.Contains(item.Key) || !item.Value.HasValue)
+                continue;
+
+            result[item.Key] = RoundCurrency(item.Value.Value);
+        }
+
+        return result;
+    }
+
+    private static void ApplyNominaManualOverrides(NominaRowDto row)
+    {
+        if (!row.ManualEditEnabled || row.ManualOverrides.Count == 0)
+            return;
+
+        row.SalaryBase = ResolveNominaManualValue(row, "salaryBase", row.SalaryBase);
+        row.Auxilio = ResolveNominaManualValue(row, "auxilio", row.Auxilio);
+        row.AbsencePayment = ResolveNominaManualValue(row, "absencePayment", row.AbsencePayment);
+        row.CommissionsCopiers = ResolveNominaManualValue(row, "commissionsCopiers", row.CommissionsCopiers);
+        row.CommissionsCloud = ResolveNominaManualValue(row, "commissionsCloud", row.CommissionsCloud);
+        row.CommissionsUnassigned = ResolveNominaManualValue(row, "commissionsUnassigned", row.CommissionsUnassigned);
+        row.Commissions = RoundCurrency(row.CommissionsCopiers + row.CommissionsCloud + row.CommissionsUnassigned);
+        row.AppliedCommissionBase = ResolveNominaManualValue(
+            row,
+            "appliedCommissionBase",
+            row.CommissionCap > 0m ? RoundCurrency(Math.Min(row.Commissions, row.CommissionCap)) : row.Commissions);
+        row.CuentaDeCobro = ResolveNominaManualValue(
+            row,
+            "cuentaDeCobro",
+            row.CommissionCap > 0m ? RoundCurrency(Math.Max(row.Commissions - row.CommissionCap, 0m)) : row.CuentaDeCobro);
+        row.ContributionBase = ResolveNominaManualValue(
+            row,
+            "contributionBase",
+            row.IsServiceContract
+                ? 0m
+                : RoundCurrency(row.SalaryBase + row.AbsencePayment + row.BonusCompliance + row.AppliedCommissionBase));
+        row.Health = ResolveNominaManualValue(row, "health", RoundCurrency(row.ContributionBase * row.HealthRate));
+        row.Pension = ResolveNominaManualValue(row, "pension", RoundCurrency(row.ContributionBase * row.PensionRate));
+        row.GrossSalary = ResolveNominaManualValue(
+            row,
+            "grossSalary",
+            RoundCurrency(row.SalaryBase + row.Auxilio + row.AbsencePayment + row.BonusCompliance + row.Commissions));
+        row.NetPayroll = ResolveNominaManualValue(
+            row,
+            "netPayroll",
+            RoundCurrency(row.GrossSalary - (row.Health + row.Pension + row.OtherDeductions + row.Loan + row.PayrollWithholding)),
+            allowNegative: true);
+        row.ExternalWithholding = ResolveNominaManualValue(
+            row,
+            "externalWithholding",
+            row.CuentaDeCobro > 0m ? RoundCurrency(row.CuentaDeCobro * row.ExternalWithholdingRate) : 0m);
+        row.NetCuentaDeCobro = ResolveNominaManualValue(
+            row,
+            "netCuentaDeCobro",
+            RoundCurrency(row.CuentaDeCobro - row.ExternalWithholding),
+            allowNegative: true);
+        row.VerticalBase = ResolveNominaManualValue(
+            row,
+            "verticalBase",
+            RoundCurrency(row.NetPayroll - row.Commissions),
+            allowNegative: true);
+        row.BaseCopiers = ResolveNominaManualValue(
+            row,
+            "baseCopiers",
+            RoundCurrency(row.FactorCopiers / 100m * row.VerticalBase),
+            allowNegative: true);
+        row.BaseCloud = ResolveNominaManualValue(
+            row,
+            "baseCloud",
+            RoundCurrency(row.FactorCloud / 100m * row.VerticalBase),
+            allowNegative: true);
+        row.TotalCopiers = ResolveNominaManualValue(
+            row,
+            "totalCopiers",
+            RoundCurrency(row.BaseCopiers + row.CommissionsCopiers),
+            allowNegative: true);
+        row.TotalCloud = ResolveNominaManualValue(
+            row,
+            "totalCloud",
+            RoundCurrency(row.BaseCloud + row.CommissionsCloud),
+            allowNegative: true);
+    }
+
+    private static decimal ResolveNominaManualValue(
+        NominaRowDto row,
+        string field,
+        decimal automaticValue,
+        bool allowNegative = false)
+    {
+        var value = row.ManualOverrides.TryGetValue(field, out var manualValue)
+            ? manualValue
+            : automaticValue;
+
+        return RoundCurrency(allowNegative ? value : Math.Max(value, 0m));
     }
 
     private NominaPreviewResultDto BuildNominaPreviewResult(NominaBuildContext context, string message)

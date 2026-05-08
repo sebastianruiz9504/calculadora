@@ -42,6 +42,7 @@ public sealed partial class DataverseService
     private const string LicensingProductLookupTargetFallbackPrimaryNameField = "cr07a_priceableitemdescription";
     private const string LicensingProductDescriptionLookupField = "cr07a_priceableitemdescription";
     private const string LicensingProductServiceIdentifierField = "cr07a_serviceidentifier";
+    private const string LicensingCreatedOnField = "createdon";
     private const string LicensingModifiedOnField = "modifiedon";
     private const int LicensingSalesPriceFallbackColumn = 20;
     private const string LicensingManualBreakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
@@ -87,6 +88,7 @@ public sealed partial class DataverseService
             .ThenBy(item => item.NombreCliente, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.ProductDisplay, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var latestImport = BuildLicensingLatestImport(records);
 
         var facturaOptions = records
             .Where(item => !string.IsNullOrWhiteSpace(item.FacturaValue))
@@ -105,6 +107,7 @@ public sealed partial class DataverseService
             Records = records,
             FacturaOptions = facturaOptions,
             ContractTypeOptions = GetLicensingContractTypeOptions(),
+            LatestImport = latestImport,
             TotalCount = records.Count,
             TotalUsd = RoundCurrency(records.Sum(item => item.ValorTotalUsd)),
             TotalCop = RoundCurrency(records.Sum(item => item.PesosTotal)),
@@ -392,22 +395,42 @@ public sealed partial class DataverseService
             throw new InvalidOperationException("No hay filas listas para procesar.");
 
         var created = 0;
+        var createdRecordIds = new List<string>();
+        var createSelect = string.Join(",",
+            new[]
+            {
+                metadata.BaseMetadata.PrimaryIdField,
+                LicensingInvoiceDateField,
+                LicensingCreatedOnField
+            }
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+
         foreach (var row in rowsToCreate)
         {
             var payload = BuildLicensingCreatePayload(metadata, row);
-            await CallDataverseSendAsync(
-                $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}",
+            using var response = await SendDataversePayloadWithRepresentationAsync(
+                $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={createSelect}",
                 "POST",
                 payload,
                 httpContext.User,
                 ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var createdId = ExtractRhRecordId(response, body, metadata.BaseMetadata.PrimaryIdField);
+            if (!string.IsNullOrWhiteSpace(createdId))
+                createdRecordIds.Add(createdId);
+
             created++;
         }
 
+        var importFacturaValue = ResolveSingleLicensingFacturaValue(rowsToCreate);
         return new LicenciamientoImportResultDto
         {
             CreatedCount = created,
             SkippedCount = rows.Count - created,
+            CreatedRecordIds = createdRecordIds,
+            FacturaValue = importFacturaValue,
+            FacturaDisplay = FormatLicensingDateDisplay(importFacturaValue),
             Message = BuildLicensingImportMessage(created, rows.Count - created)
         };
     }
@@ -419,31 +442,45 @@ public sealed partial class DataverseService
         if (request is null)
             throw new ArgumentNullException(nameof(request));
 
-        if (!TryParseDateOnly(request.FacturaValue, out var invoiceDate))
-            throw new InvalidOperationException("Debes seleccionar una factura valida.");
-
         if (request.Trm <= 0)
             throw new InvalidOperationException("La TRM debe ser mayor a cero.");
+
+        var hasInvoiceDate = TryParseDateOnly(request.FacturaValue, out var invoiceDate);
+        var recordIds = (request.RecordIds ?? new List<string>())
+            .Select(static value => NormalizeOptionalGuid(value))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!hasInvoiceDate && recordIds.Count == 0)
+            throw new InvalidOperationException("No se encontro una ultima importacion para ajustar.");
 
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
-        var nextInvoiceDate = invoiceDate.AddDays(1);
-        var select = string.Join(",", new[] { metadata.BaseMetadata.PrimaryIdField, LicensingInvoiceDateField, LicensingTotalUsdField }.Distinct(StringComparer.OrdinalIgnoreCase));
-        var filter = $"{LicensingInvoiceDateField} ge {invoiceDate:yyyy-MM-dd} and {LicensingInvoiceDateField} lt {nextInvoiceDate:yyyy-MM-dd}";
-        var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
-        var items = await GetDataverseEntitiesAsync(relativeUrl, httpContext.User, ct);
+        var items = recordIds.Count > 0
+            ? await LoadLicensingRowsByIdsAsync(metadata, recordIds, httpContext.User, ct)
+            : await LoadLatestLicensingImportRowsAsync(metadata, invoiceDate, httpContext.User, ct);
+
+        if (hasInvoiceDate)
+        {
+            items = items
+                .Where(item =>
+                {
+                    var itemInvoiceDate = ReadDateOnly(item, LicensingInvoiceDateField);
+                    return !itemInvoiceDate.HasValue || itemInvoiceDate.Value == invoiceDate;
+                })
+                .ToList();
+        }
+
+        if (items.Count == 0)
+            throw new InvalidOperationException("No se encontraron filas de la ultima importacion para ajustar.");
 
         var updated = 0;
         var totalUsd = 0m;
         var totalCop = 0m;
         foreach (var item in items)
         {
-            var itemInvoiceDate = ReadDateOnly(item, LicensingInvoiceDateField);
-            if (itemInvoiceDate.HasValue && itemInvoiceDate.Value != invoiceDate)
-                continue;
-
             var recordId = ReadString(item, metadata.BaseMetadata.PrimaryIdField);
             if (string.IsNullOrWhiteSpace(recordId))
                 continue;
@@ -866,6 +903,7 @@ public sealed partial class DataverseService
             LicensingTrmField,
             LicensingTotalCopField,
             LicensingContractTypeField,
+            LicensingCreatedOnField,
             LicensingModifiedOnField
         };
 
@@ -909,6 +947,8 @@ public sealed partial class DataverseService
         var productLookupProperty = metadata.ProductFieldIsLookup ? BuildLookupValueProperty(LicensingProductLookupField) : LicensingProductLookupField;
         var invoiceDate = ReadDateOnly(item, LicensingInvoiceDateField);
         var contractType = ReadIntFlexible(item, LicensingContractTypeField);
+        var createdOn = ReadLicensingDateTimeOffset(item, LicensingCreatedOnField);
+        var modifiedOn = ReadLicensingDateTimeOffset(item, LicensingModifiedOnField);
 
         return new LicenciamientoRecordDto
         {
@@ -937,8 +977,139 @@ public sealed partial class DataverseService
                 ReadString(item, $"{LicensingContractTypeField}{FormattedValueAnnotationSuffix}"),
                 ResolveLicensingContractTypeLabel(contractType),
                 "Sin tipo"),
+            CreatedOnValue = FormatLicensingDateTimeValue(createdOn),
+            CreatedOnDisplay = FormatLicensingDateTimeDisplay(createdOn),
+            ModifiedOnValue = FormatLicensingDateTimeValue(modifiedOn),
+            ModifiedOnDisplay = FormatLicensingDateTimeDisplay(modifiedOn),
             HasAccountLookup = metadata.AccountFieldIsLookup && !string.IsNullOrWhiteSpace(ReadString(item, accountLookupProperty)),
             HasProductLookup = metadata.ProductFieldIsLookup && !string.IsNullOrWhiteSpace(ReadString(item, productLookupProperty))
+        };
+    }
+
+    private async Task<List<JsonElement>> LoadLicensingRowsByIdsAsync(
+        LicensingMetadata metadata,
+        IReadOnlyList<string> recordIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var items = new List<JsonElement>();
+        if (recordIds.Count == 0)
+            return items;
+
+        var select = BuildLicensingTrmSelectClause(metadata);
+        foreach (var chunk in recordIds.Chunk(20))
+        {
+            var filter = string.Join(" or ", chunk.Select(id => $"{metadata.BaseMetadata.PrimaryIdField} eq {id}"));
+            var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+            items.AddRange(await GetDataverseEntitiesAsync(relativeUrl, user, ct));
+        }
+
+        return items
+            .DistinctBy(item => ReadString(item, metadata.BaseMetadata.PrimaryIdField), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<List<JsonElement>> LoadLatestLicensingImportRowsAsync(
+        LicensingMetadata metadata,
+        DateOnly invoiceDate,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var nextInvoiceDate = invoiceDate.AddDays(1);
+        var select = BuildLicensingTrmSelectClause(metadata);
+        var filter = $"{LicensingInvoiceDateField} ge {invoiceDate:yyyy-MM-dd} and {LicensingInvoiceDateField} lt {nextInvoiceDate:yyyy-MM-dd}";
+        var orderBy = Uri.EscapeDataString($"{LicensingCreatedOnField} desc");
+        var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct);
+        return FilterLatestLicensingImportItems(items);
+    }
+
+    private static string BuildLicensingTrmSelectClause(LicensingMetadata metadata) =>
+        string.Join(",",
+            new[]
+            {
+                metadata.BaseMetadata.PrimaryIdField,
+                LicensingInvoiceDateField,
+                LicensingTotalUsdField,
+                LicensingCreatedOnField
+            }
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+
+    private static List<JsonElement> FilterLatestLicensingImportItems(IReadOnlyList<JsonElement> items)
+    {
+        var parsed = items
+            .Select(item => new
+            {
+                Item = item,
+                CreatedOn = ReadLicensingDateTimeOffset(item, LicensingCreatedOnField)
+            })
+            .Where(static item => item.CreatedOn.HasValue)
+            .OrderByDescending(item => item.CreatedOn!.Value)
+            .ToList();
+
+        if (parsed.Count == 0)
+            return new List<JsonElement>();
+
+        var selected = new List<JsonElement>();
+        var previousCreatedOn = parsed[0].CreatedOn!.Value;
+        foreach (var item in parsed)
+        {
+            var createdOn = item.CreatedOn!.Value;
+            if (previousCreatedOn - createdOn > TimeSpan.FromMinutes(60))
+                break;
+
+            selected.Add(item.Item);
+            previousCreatedOn = createdOn;
+        }
+
+        return selected;
+    }
+
+    private static LicenciamientoLatestImportDto BuildLicensingLatestImport(IReadOnlyList<LicenciamientoRecordDto> records)
+    {
+        var parsed = records
+            .Select(record => new
+            {
+                Record = record,
+                CreatedOn = ParseLicensingDateTimeOffset(record.CreatedOnValue)
+            })
+            .Where(static item => item.CreatedOn.HasValue)
+            .OrderByDescending(item => item.CreatedOn!.Value)
+            .ToList();
+
+        if (parsed.Count == 0)
+            return new LicenciamientoLatestImportDto();
+
+        var latest = parsed[0];
+        var selected = new List<LicenciamientoRecordDto>();
+        var previousCreatedOn = latest.CreatedOn!.Value;
+        foreach (var item in parsed)
+        {
+            var createdOn = item.CreatedOn!.Value;
+            if (!string.Equals(item.Record.FacturaValue, latest.Record.FacturaValue, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (previousCreatedOn - createdOn > TimeSpan.FromMinutes(60))
+                break;
+
+            selected.Add(item.Record);
+            previousCreatedOn = createdOn;
+        }
+
+        return new LicenciamientoLatestImportDto
+        {
+            RecordIds = selected
+                .Select(static record => record.RecordId)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            FacturaValue = latest.Record.FacturaValue,
+            FacturaDisplay = FirstNonEmpty(latest.Record.FacturaDisplay, latest.Record.FacturaValue),
+            CreatedOnValue = latest.Record.CreatedOnValue,
+            CreatedOnDisplay = latest.Record.CreatedOnDisplay,
+            Count = selected.Count,
+            TotalUsd = RoundCurrency(selected.Sum(static record => record.ValorTotalUsd))
         };
     }
 
@@ -1837,6 +2008,48 @@ public sealed partial class DataverseService
         var nextMonth = new DateOnly(year, month, 1).AddMonths(1);
         invoiceDate = new DateOnly(nextMonth.Year, nextMonth.Month, 5);
         return true;
+    }
+
+    private static DateTimeOffset? ReadLicensingDateTimeOffset(JsonElement item, string fieldName) =>
+        ParseLicensingDateTimeOffset(ReadString(item, fieldName));
+
+    private static DateTimeOffset? ParseLicensingDateTimeOffset(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var value))
+            return value;
+
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dateTime))
+            return new DateTimeOffset(dateTime);
+
+        return null;
+    }
+
+    private static string FormatLicensingDateTimeValue(DateTimeOffset? value) =>
+        value?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) ?? "";
+
+    private static string FormatLicensingDateTimeDisplay(DateTimeOffset? value) =>
+        value?.ToLocalTime().ToString("dd/MM/yyyy HH:mm", LicensingCulture) ?? "";
+
+    private static string ResolveSingleLicensingFacturaValue(IReadOnlyList<LicenciamientoPreviewRowDto> rows)
+    {
+        var values = rows
+            .Select(static row => (row.FacturaValue ?? "").Trim())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return values.Count == 1 ? values[0] : "";
+    }
+
+    private static string FormatLicensingDateDisplay(string? rawDate)
+    {
+        if (TryParseDateOnly(rawDate, out var date))
+            return date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+        return (rawDate ?? "").Trim();
     }
 
     private static bool IsLicensingExcelRowEmpty(IXLRow row) =>

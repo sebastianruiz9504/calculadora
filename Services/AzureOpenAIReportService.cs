@@ -129,7 +129,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         var apiVersion = Uri.EscapeDataString(_azureOpenAIOptions.ApiVersion.Trim());
         var uri = $"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
         var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(Math.Clamp(_azureOpenAIOptions.TimeoutSeconds, 30, 600));
+        client.Timeout = TimeSpan.FromSeconds(ResolveReportTimeoutSeconds(_azureOpenAIOptions.TimeoutSeconds));
 
         var firstAttempt = await SendHtmlGenerationRequestAsync(client, uri, payloadJson, compactRetry: false, ct);
         if (IsCompleteHtmlDocument(firstAttempt.Html))
@@ -663,6 +663,12 @@ La respuesta anterior agoto max_completion_tokens antes de emitir HTML visible. 
     {
         const int minimumReportMaxTokens = 64000;
         return Math.Max(configuredMaxTokens, minimumReportMaxTokens);
+    }
+
+    private static int ResolveReportTimeoutSeconds(int configuredTimeoutSeconds)
+    {
+        const int minimumReportTimeoutSeconds = 600;
+        return Math.Clamp(Math.Max(configuredTimeoutSeconds, minimumReportTimeoutSeconds), 30, 600);
     }
 
     private static IReadOnlyList<int> BuildReportTokenBudgets(int configuredMaxTokens)

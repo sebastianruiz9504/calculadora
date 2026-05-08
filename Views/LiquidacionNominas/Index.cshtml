@@ -121,33 +121,22 @@
             <div class="payroll-modal__body">
                 <div class="payroll-detail-warnings" id="nominaDetailWarnings" hidden></div>
 
+                <section class="payroll-manual-editor">
+                    <div class="payroll-manual-editor__header">
+                        <label class="payroll-manual-toggle" for="detailManualEditToggle">
+                            <input class="form-check-input" id="detailManualEditToggle" type="checkbox" />
+                            <span>Edicion manual</span>
+                        </label>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="detailManualResetBtn">Restaurar automatico</button>
+                    </div>
+                    <div class="payroll-manual-editor__panel" id="detailManualEditPanel" hidden>
+                        <div class="payroll-detail-form-grid" id="detailManualFields"></div>
+                    </div>
+                </section>
+
                 <section class="payroll-detail-section">
                     <h3 class="payroll-detail-section__title">Valores base</h3>
-                    <div class="payroll-detail-grid">
-                        <div class="payroll-detail-item">
-                            <span>Accion</span>
-                            <strong data-detail-output="operation">-</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Tipo contrato</span>
-                            <strong data-detail-output="contractType">-</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Dias mes</span>
-                            <strong data-detail-output="periodDays">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Dias trabajados</span>
-                            <strong data-detail-output="workedDays">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Dias no trabajados</span>
-                            <strong data-detail-output="absenceDays">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Motivo</span>
-                            <strong data-detail-output="absenceReason">-</strong>
-                        </div>
+                    <div class="payroll-detail-grid payroll-detail-grid--base">
                         <div class="payroll-detail-item">
                             <span>Sueldo mensual</span>
                             <strong data-detail-output="monthlySalaryBase">0</strong>
@@ -157,40 +146,8 @@
                             <strong data-detail-output="monthlyAuxilio">0</strong>
                         </div>
                         <div class="payroll-detail-item">
-                            <span>Sueldo base proporcional</span>
-                            <strong data-detail-output="salaryBase">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Auxilio proporcional</span>
-                            <strong data-detail-output="auxilio">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Pago dias no trabajados</span>
-                            <strong data-detail-output="absencePayment">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
                             <span>Comisiones</span>
                             <strong data-detail-output="commissions">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Comis. copiers</span>
-                            <strong data-detail-output="commissionsCopiers">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Comis. cloud</span>
-                            <strong data-detail-output="commissionsCloud">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Comis. sin vertical</span>
-                            <strong data-detail-output="commissionsUnassigned">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Tope comisional</span>
-                            <strong data-detail-output="commissionCap">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Base aplicada</span>
-                            <strong data-detail-output="appliedCommissionBase">0</strong>
                         </div>
                     </div>
                 </section>
@@ -242,88 +199,140 @@
 
                 <section class="payroll-detail-section">
                     <h3 class="payroll-detail-section__title">Aportes y resultado</h3>
-                    <div class="payroll-detail-grid">
-                        <div class="payroll-detail-item">
-                            <span>Base aportes</span>
-                            <strong data-detail-output="contributionBase">0</strong>
+                    <div class="payroll-breakdown-card payroll-breakdown-card--result">
+                        <div class="payroll-breakdown-meta">
+                            <span>Base aportes <strong data-detail-output="contributionBase">0</strong></span>
+                            <span>Tope comisional <strong data-detail-output="commissionCap">0</strong></span>
+                            <span>Base aplicada <strong data-detail-output="appliedCommissionBase">0</strong></span>
                         </div>
-                        <div class="payroll-detail-item">
-                            <span>Salud</span>
-                            <strong data-detail-output="health">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Pension</span>
-                            <strong data-detail-output="pension">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Cuenta cobro</span>
-                            <strong data-detail-output="cuentaDeCobro">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>% Rete cxc</span>
-                            <strong data-detail-output="externalWithholdingRate">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Rete fuente cxc</span>
-                            <strong data-detail-output="externalWithholding">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Sueldo bruto</span>
-                            <strong data-detail-output="grossSalary">0</strong>
-                        </div>
-                        <div class="payroll-detail-item payroll-detail-item--strong">
-                            <span>Monto pagado</span>
-                            <strong data-detail-output="netPayroll">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Monto pagado cxc</span>
-                            <strong data-detail-output="netCuentaDeCobro">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Total desembolso</span>
-                            <strong data-detail-output="totalDisbursement">0</strong>
+                        <div class="payroll-breakdown-list">
+                            <div class="payroll-breakdown-row payroll-breakdown-row--positive">
+                                <span class="payroll-breakdown-sign">+</span>
+                                <span>Sueldo base proporcional</span>
+                                <strong data-detail-output="salaryBase">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--positive">
+                                <span class="payroll-breakdown-sign">+</span>
+                                <span>Auxilio proporcional</span>
+                                <strong data-detail-output="auxilio">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--positive">
+                                <span class="payroll-breakdown-sign">+</span>
+                                <span>Pago dias no trabajados</span>
+                                <strong data-detail-output="absencePayment">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--positive">
+                                <span class="payroll-breakdown-sign">+</span>
+                                <span>Bono</span>
+                                <strong data-detail-output="bonusCompliance">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--positive">
+                                <span class="payroll-breakdown-sign">+</span>
+                                <span>Comisiones</span>
+                                <strong data-detail-output="commissions">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--subtotal">
+                                <span class="payroll-breakdown-sign">=</span>
+                                <span>Sueldo bruto</span>
+                                <strong data-detail-output="grossSalary">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--negative">
+                                <span class="payroll-breakdown-sign">-</span>
+                                <span>Salud</span>
+                                <strong data-detail-output="health">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--negative">
+                                <span class="payroll-breakdown-sign">-</span>
+                                <span>Pension</span>
+                                <strong data-detail-output="pension">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--negative">
+                                <span class="payroll-breakdown-sign">-</span>
+                                <span>Otras deducciones</span>
+                                <strong data-detail-output="otherDeductions">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--negative">
+                                <span class="payroll-breakdown-sign">-</span>
+                                <span>Prestamo</span>
+                                <strong data-detail-output="loan">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--negative">
+                                <span class="payroll-breakdown-sign">-</span>
+                                <span>Rete nomina</span>
+                                <strong data-detail-output="payrollWithholding">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--subtotal">
+                                <span class="payroll-breakdown-sign">=</span>
+                                <span>Monto pagado nomina</span>
+                                <strong data-detail-output="netPayroll">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--positive">
+                                <span class="payroll-breakdown-sign">+</span>
+                                <span>Cuenta cobro</span>
+                                <strong data-detail-output="cuentaDeCobro">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--negative">
+                                <span class="payroll-breakdown-sign">-</span>
+                                <span>Rete fuente cxc <small data-detail-output="externalWithholdingRate">0</small></span>
+                                <strong data-detail-output="externalWithholding">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--subtotal">
+                                <span class="payroll-breakdown-sign">=</span>
+                                <span>Monto pagado cxc</span>
+                                <strong data-detail-output="netCuentaDeCobro">0</strong>
+                            </div>
+                            <div class="payroll-breakdown-row payroll-breakdown-row--total">
+                                <span class="payroll-breakdown-sign">=</span>
+                                <span>Total desembolso</span>
+                                <strong data-detail-output="totalDisbursement">0</strong>
+                            </div>
                         </div>
                     </div>
                 </section>
 
                 <section class="payroll-detail-section">
                     <h3 class="payroll-detail-section__title">Distribucion por vertical</h3>
-                    <div class="payroll-detail-grid">
-                        <div class="payroll-detail-item">
-                            <span>Base reparto</span>
-                            <strong data-detail-output="verticalBase">0</strong>
+                    <div class="payroll-vertical-detail-card">
+                        <div class="payroll-vertical-detail-total">
+                            <span>Total distribuido</span>
+                            <strong data-detail-output="verticalTotal">0</strong>
                         </div>
-                        <div class="payroll-detail-item">
-                            <span>% Copiers</span>
-                            <strong data-detail-output="factorCopiers">0</strong>
+                        <div class="payroll-vertical-detail-base">
+                            Base reparto <strong data-detail-output="verticalBase">0</strong>
                         </div>
-                        <div class="payroll-detail-item">
-                            <span>Base Copiers</span>
-                            <strong data-detail-output="baseCopiers">0</strong>
+                        <div class="payroll-vertical-detail-list">
+                            <div class="payroll-vertical-detail-row payroll-vertical-detail-row--copiers">
+                                <div class="payroll-vertical-detail-row__head">
+                                    <span>Copiers</span>
+                                    <strong data-detail-output="totalCopiers">0</strong>
+                                </div>
+                                <div class="payroll-vertical-detail-row__parts">
+                                    <label class="payroll-vertical-detail-field" for="detailFactorCopiers">
+                                        <span>% Copiers</span>
+                                        <input class="form-control payroll-detail-input text-end" id="detailFactorCopiers" type="number" min="0" step="0.01" data-detail-field="factorCopiers" />
+                                    </label>
+                                    <span>Base por porcentaje <strong data-detail-output="baseCopiers">0</strong></span>
+                                    <span>Comisiones <strong data-detail-output="commissionsCopiersVertical">0</strong></span>
+                                </div>
+                            </div>
+                            <div class="payroll-vertical-detail-row payroll-vertical-detail-row--cloud">
+                                <div class="payroll-vertical-detail-row__head">
+                                    <span>Cloud</span>
+                                    <strong data-detail-output="totalCloud">0</strong>
+                                </div>
+                                <div class="payroll-vertical-detail-row__parts">
+                                    <label class="payroll-vertical-detail-field" for="detailFactorCloud">
+                                        <span>% Cloud</span>
+                                        <input class="form-control payroll-detail-input text-end" id="detailFactorCloud" type="number" min="0" step="0.01" data-detail-field="factorCloud" />
+                                    </label>
+                                    <span>Base por porcentaje <strong data-detail-output="baseCloud">0</strong></span>
+                                    <span>Comisiones <strong data-detail-output="commissionsCloudVertical">0</strong></span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="payroll-detail-item">
-                            <span>Comis. Copiers</span>
-                            <strong data-detail-output="commissionsCopiersVertical">0</strong>
-                        </div>
-                        <div class="payroll-detail-item payroll-detail-item--strong">
-                            <span>Total Copiers</span>
-                            <strong data-detail-output="totalCopiers">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>% Cloud</span>
-                            <strong data-detail-output="factorCloud">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Base Cloud</span>
-                            <strong data-detail-output="baseCloud">0</strong>
-                        </div>
-                        <div class="payroll-detail-item">
-                            <span>Comis. Cloud</span>
-                            <strong data-detail-output="commissionsCloudVertical">0</strong>
-                        </div>
-                        <div class="payroll-detail-item payroll-detail-item--strong">
-                            <span>Total Cloud</span>
-                            <strong data-detail-output="totalCloud">0</strong>
+                        <div class="payroll-vertical-detail-residual">
+                            <span>Comisiones sin vertical</span>
+                            <strong data-detail-output="commissionsUnassigned">0</strong>
                         </div>
                     </div>
                 </section>
@@ -341,7 +350,7 @@
             <div>
                 <div class="payroll-kicker">Resumen final</div>
                 <h2 class="payroll-section-title">Desglose por vertical</h2>
-                <p class="payroll-section-subtitle">Base neta sin comisiones, porcentaje aplicado, comisiones por vertical y total final por empleado.</p>
+                <p class="payroll-section-subtitle">Vista resumida por empleado. Abre una fila para revisar y ajustar el detalle del calculo vertical.</p>
             </div>
         </div>
         <div class="table-responsive payroll-vertical-wrap">
@@ -349,16 +358,9 @@
                 <thead>
                     <tr>
                         <th>Empleado</th>
-                        <th class="text-end">Base reparto</th>
-                        <th class="text-end">% Copiers</th>
-                        <th class="text-end">Base Copiers</th>
-                        <th class="text-end">Comis. Copiers</th>
-                        <th class="text-end">Total Copiers</th>
-                        <th class="text-end">% Cloud</th>
-                        <th class="text-end">Base Cloud</th>
-                        <th class="text-end">Comis. Cloud</th>
-                        <th class="text-end">Total Cloud</th>
-                        <th class="text-end">Comis. sin vertical</th>
+                        <th class="text-end payroll-vertical-column payroll-vertical-column--total">Total</th>
+                        <th class="text-end payroll-vertical-column payroll-vertical-column--copiers">Total Copiers</th>
+                        <th class="text-end payroll-vertical-column payroll-vertical-column--cloud">Total Cloud</th>
                     </tr>
                 </thead>
                 <tbody id="nominaVerticalsBody"></tbody>
