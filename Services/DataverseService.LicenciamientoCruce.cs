@@ -14,10 +14,16 @@ public sealed partial class DataverseService
     private const string LicenciamientoCruceStatusBillingOnly = "Facturacion sin costo";
     private const string LicenciamientoCruceMonthlyKey = "monthly";
     private const string LicenciamientoCruceMonthlyLabel = "Monthly";
-    private const string LicenciamientoCrucePrepaidKey = "prepaid";
-    private const string LicenciamientoCrucePrepaidLabel = "Prepaid";
+    private const string LicenciamientoCruceOneTimeKey = "onetime";
+    private const string LicenciamientoCruceOneTimeLabel = "OneTime";
     private const string LicenciamientoCruceOtherKey = "otros";
     private const string LicenciamientoCruceOtherLabel = "Sin tipo";
+    private const int LicenciamientoCruceBillingMonthlyOption = 645250000;
+    private const int LicenciamientoCruceBillingOneTimeOption = 645250001;
+    private const int LicenciamientoCruceCostMonthlyOption = 645250000;
+    private const int LicenciamientoCruceCostMonthlyLegacyOption = 645240000;
+    private const int LicenciamientoCruceCostOneTimeOption = 645250001;
+    private const int LicenciamientoCruceCostPrepaidOption = 645250002;
     private const decimal LicenciamientoCruceProbableThreshold = 0.76m;
 
     private static readonly string[] LicenciamientoCruceLegalTokens =
@@ -156,13 +162,16 @@ public sealed partial class DataverseService
         var relativeUrl = $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
-        return items
+        var rows = items
             .Select(item => ParseLicenciamientoCruceCostRow(metadata, item, fallbackCostMonth, billingOffsetMonths))
             .Where(static row => row is not null)
             .Cast<LicenciamientoCruceCostRow>()
             .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
             .ToList();
+
+        await ResolveLicenciamientoCruceCostClientsFromAccountsAsync(metadata, rows, user, ct);
+        return rows;
     }
 
     private LicenciamientoCruceCostRow? ParseLicenciamientoCruceCostRow(
@@ -193,15 +202,54 @@ public sealed partial class DataverseService
         return new LicenciamientoCruceCostRow
         {
             RecordId = record.RecordId,
+            AccountId = NormalizeOptionalGuid(record.CompanyAccountId),
             ClientName = clientName,
             CompanyAccountDisplay = record.CompanyAccountDisplay,
             Vendor = record.Vendor,
-            ContractTypeKey = ResolveLicenciamientoCruceContractKey(record.ContractTypeLabel),
-            ContractTypeLabel = ResolveLicenciamientoCruceContractLabel(record.ContractTypeLabel),
+            ContractTypeKey = ResolveLicenciamientoCruceContractKey(record.ContractTypeValue, record.ContractTypeLabel, isBillingSource: false),
+            ContractTypeLabel = ResolveLicenciamientoCruceContractLabel(ResolveLicenciamientoCruceContractKey(record.ContractTypeValue, record.ContractTypeLabel, isBillingSource: false)),
             InvoiceDate = invoiceDate,
             CostMonth = costMonth,
             CostCop = RoundCurrency(costCop)
         };
+    }
+
+    private async Task ResolveLicenciamientoCruceCostClientsFromAccountsAsync(
+        LicensingMetadata metadata,
+        IReadOnlyList<LicenciamientoCruceCostRow> rows,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var accountIds = rows
+            .Select(static row => NormalizeOptionalGuid(row.AccountId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (accountIds.Count == 0)
+            return;
+
+        var resolutions = new Dictionary<string, LicensingAccountClientResolution>(StringComparer.OrdinalIgnoreCase);
+        foreach (var accountId in accountIds)
+        {
+            try
+            {
+                resolutions[accountId] = await ResolveLicensingClientFromAccountAsync(metadata, accountId, user, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                // If an Account ID is not tied to a client, keep the row visible as unmatched.
+            }
+        }
+
+        foreach (var row in rows)
+        {
+            var accountId = NormalizeOptionalGuid(row.AccountId);
+            if (string.IsNullOrWhiteSpace(accountId) || !resolutions.TryGetValue(accountId, out var resolution))
+                continue;
+
+            row.ClientId = NormalizeOptionalGuid(resolution.ClientId);
+            row.ClientName = FirstNonEmpty(resolution.ClientName, row.ClientName, "Cliente sin nombre");
+        }
     }
 
     private static IReadOnlyList<LicenciamientoCruceCostGroup> BuildLicenciamientoCruceCostGroups(
@@ -209,22 +257,24 @@ public sealed partial class DataverseService
         DateOnly fallbackCostMonth)
     {
         return rows
-            .GroupBy(row => $"{row.ContractTypeKey}|{BuildLicenciamientoCruceGroupingKey(row.ClientName, row.CompanyAccountDisplay)}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(row => $"{row.ContractTypeKey}|{BuildLicenciamientoCruceGroupingKey(row.ClientId, row.AccountId, row.ClientName, row.CompanyAccountDisplay)}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var items = group.ToList();
+                var clientId = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ClientId), "");
                 var clientName = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ClientName), "Cliente sin nombre");
                 var contractTypeKey = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ContractTypeKey), LicenciamientoCruceOtherKey);
                 var contractTypeLabel = ResolveLicenciamientoCruceContractLabel(contractTypeKey);
                 var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var item in items)
                 {
-                    AddLicenciamientoCruceMatchKeys(keys, item.ClientName, item.CompanyAccountDisplay);
+                    AddLicenciamientoCruceMatchKeys(keys, item.ClientId, item.ClientName);
                 }
 
                 return new LicenciamientoCruceCostGroup
                 {
                     GroupKey = group.Key,
+                    ClientId = clientId,
                     ContractTypeKey = contractTypeKey,
                     ContractTypeLabel = contractTypeLabel,
                     ClientName = clientName,
@@ -243,23 +293,25 @@ public sealed partial class DataverseService
         IReadOnlyList<BillingRecordRow> rows)
     {
         return rows
-            .GroupBy(row => $"{ResolveLicenciamientoCruceContractKey(row.ContractTypeLabel)}|{BuildLicenciamientoCruceGroupingKey(row.ClientName)}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(row => $"{ResolveLicenciamientoCruceContractKey(row.ContractTypeOptionValue, row.ContractTypeLabel, isBillingSource: true)}|{BuildLicenciamientoCruceGroupingKey(row.ClientId, row.ClientName)}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var items = group.ToList();
+                var clientId = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => NormalizeOptionalGuid(row.ClientId)), "");
                 var clientName = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ClientName), "Cliente sin nombre");
                 var nit = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.CompanyTaxId), "");
-                var contractTypeKey = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => ResolveLicenciamientoCruceContractKey(row.ContractTypeLabel)), LicenciamientoCruceOtherKey);
+                var contractTypeKey = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => ResolveLicenciamientoCruceContractKey(row.ContractTypeOptionValue, row.ContractTypeLabel, isBillingSource: true)), LicenciamientoCruceOtherKey);
                 var contractTypeLabel = ResolveLicenciamientoCruceContractLabel(contractTypeKey);
                 var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var item in items)
                 {
-                    AddLicenciamientoCruceMatchKeys(keys, item.ClientName);
+                    AddLicenciamientoCruceMatchKeys(keys, item.ClientId, item.ClientName);
                 }
 
                 return new LicenciamientoCruceBillingGroup
                 {
                     GroupKey = group.Key,
+                    ClientId = clientId,
                     ContractTypeKey = contractTypeKey,
                     ContractTypeLabel = contractTypeLabel,
                     ClientName = clientName,
@@ -291,7 +343,7 @@ public sealed partial class DataverseService
             var exactBilling = billingGroups.FirstOrDefault(billing =>
                 !usedBillingKeys.Contains(billing.GroupKey)
                 && string.Equals(cost.ContractTypeKey, billing.ContractTypeKey, StringComparison.OrdinalIgnoreCase)
-                && cost.MatchKeys.Overlaps(billing.MatchKeys));
+                && HasLicenciamientoCruceExactClientMatch(cost, billing));
             if (exactBilling is null)
             {
                 unmatchedCosts.Add(cost);
@@ -313,6 +365,7 @@ public sealed partial class DataverseService
             var probableBilling = billingGroups
                 .Where(billing => !usedBillingKeys.Contains(billing.GroupKey))
                 .Where(billing => string.Equals(cost.ContractTypeKey, billing.ContractTypeKey, StringComparison.OrdinalIgnoreCase))
+                .Where(billing => CanUseLicenciamientoCruceNameFallback(cost, billing))
                 .Select(billing => new
                 {
                     Billing = billing,
@@ -488,7 +541,7 @@ public sealed partial class DataverseService
         var orderedKeys = new[]
         {
             LicenciamientoCruceMonthlyKey,
-            LicenciamientoCrucePrepaidKey,
+            LicenciamientoCruceOneTimeKey,
             LicenciamientoCruceOtherKey
         };
         var segments = new List<LicenciamientoCruceContractSegmentDto>();
@@ -639,6 +692,13 @@ public sealed partial class DataverseService
     {
         foreach (var value in values)
         {
+            var clientId = NormalizeOptionalGuid(value);
+            if (!string.IsNullOrWhiteSpace(clientId))
+            {
+                keys.Add($"client:{clientId}");
+                continue;
+            }
+
             var clientKey = NormalizeLicenciamientoCruceClientKey(value);
             if (!string.IsNullOrWhiteSpace(clientKey))
                 keys.Add($"name:{clientKey}");
@@ -649,12 +709,40 @@ public sealed partial class DataverseService
     {
         foreach (var value in values)
         {
+            var clientId = NormalizeOptionalGuid(value);
+            if (!string.IsNullOrWhiteSpace(clientId))
+                return $"client:{clientId}";
+        }
+
+        foreach (var value in values)
+        {
             var clientKey = NormalizeLicenciamientoCruceClientKey(value);
             if (!string.IsNullOrWhiteSpace(clientKey))
                 return $"name:{clientKey}";
         }
 
         return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+    }
+
+    private static bool HasLicenciamientoCruceExactClientMatch(
+        LicenciamientoCruceCostGroup cost,
+        LicenciamientoCruceBillingGroup billing)
+    {
+        var costClientId = NormalizeOptionalGuid(cost.ClientId);
+        var billingClientId = NormalizeOptionalGuid(billing.ClientId);
+        if (!string.IsNullOrWhiteSpace(costClientId) && !string.IsNullOrWhiteSpace(billingClientId))
+            return string.Equals(costClientId, billingClientId, StringComparison.OrdinalIgnoreCase);
+
+        return cost.MatchKeys.Overlaps(billing.MatchKeys);
+    }
+
+    private static bool CanUseLicenciamientoCruceNameFallback(
+        LicenciamientoCruceCostGroup cost,
+        LicenciamientoCruceBillingGroup billing)
+    {
+        var costClientId = NormalizeOptionalGuid(cost.ClientId);
+        var billingClientId = NormalizeOptionalGuid(billing.ClientId);
+        return string.IsNullOrWhiteSpace(costClientId) || string.IsNullOrWhiteSpace(billingClientId);
     }
 
     private static decimal CalculateLicenciamientoCruceClientSimilarity(string? left, string? right)
@@ -806,14 +894,17 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(normalized))
             return LicenciamientoCruceOtherKey;
 
-        if (normalized.Contains("PREPAID", StringComparison.OrdinalIgnoreCase)
+        if (normalized.Contains("ONETIME", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("ONE TIME", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("PREPAID", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("PRE PAID", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("PREPAGO", StringComparison.OrdinalIgnoreCase))
         {
-            return LicenciamientoCrucePrepaidKey;
+            return LicenciamientoCruceOneTimeKey;
         }
 
         if (normalized.Contains("MONTHLY", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("MONTLHY", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("MENSUAL", StringComparison.OrdinalIgnoreCase))
         {
             return LicenciamientoCruceMonthlyKey;
@@ -822,10 +913,30 @@ public sealed partial class DataverseService
         return LicenciamientoCruceOtherKey;
     }
 
+    private static string ResolveLicenciamientoCruceContractKey(int optionValue, string? label, bool isBillingSource)
+    {
+        if (isBillingSource)
+        {
+            return optionValue switch
+            {
+                LicenciamientoCruceBillingMonthlyOption => LicenciamientoCruceMonthlyKey,
+                LicenciamientoCruceBillingOneTimeOption => LicenciamientoCruceOneTimeKey,
+                _ => ResolveLicenciamientoCruceContractKey(label)
+            };
+        }
+
+        return optionValue switch
+        {
+            LicenciamientoCruceCostMonthlyOption or LicenciamientoCruceCostMonthlyLegacyOption => LicenciamientoCruceMonthlyKey,
+            LicenciamientoCruceCostOneTimeOption or LicenciamientoCruceCostPrepaidOption => LicenciamientoCruceOneTimeKey,
+            _ => ResolveLicenciamientoCruceContractKey(label)
+        };
+    }
+
     private static string ResolveLicenciamientoCruceContractLabel(string? keyOrLabel)
     {
         var key = string.Equals(keyOrLabel, LicenciamientoCruceMonthlyKey, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(keyOrLabel, LicenciamientoCrucePrepaidKey, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(keyOrLabel, LicenciamientoCruceOneTimeKey, StringComparison.OrdinalIgnoreCase)
             || string.Equals(keyOrLabel, LicenciamientoCruceOtherKey, StringComparison.OrdinalIgnoreCase)
                 ? keyOrLabel
                 : ResolveLicenciamientoCruceContractKey(keyOrLabel);
@@ -833,7 +944,7 @@ public sealed partial class DataverseService
         return key switch
         {
             LicenciamientoCruceMonthlyKey => LicenciamientoCruceMonthlyLabel,
-            LicenciamientoCrucePrepaidKey => LicenciamientoCrucePrepaidLabel,
+            LicenciamientoCruceOneTimeKey => LicenciamientoCruceOneTimeLabel,
             _ => LicenciamientoCruceOtherLabel
         };
     }
@@ -843,7 +954,7 @@ public sealed partial class DataverseService
         return key switch
         {
             LicenciamientoCruceMonthlyKey => 0,
-            LicenciamientoCrucePrepaidKey => 1,
+            LicenciamientoCruceOneTimeKey => 1,
             _ => 2
         };
     }
@@ -862,20 +973,23 @@ public sealed partial class DataverseService
 
     private sealed class LicenciamientoCruceCostRow
     {
-        public string RecordId { get; init; } = "";
-        public string ClientName { get; init; } = "";
-        public string CompanyAccountDisplay { get; init; } = "";
-        public string Vendor { get; init; } = "";
-        public string ContractTypeKey { get; init; } = LicenciamientoCruceOtherKey;
-        public string ContractTypeLabel { get; init; } = LicenciamientoCruceOtherLabel;
-        public DateOnly? InvoiceDate { get; init; }
-        public DateOnly CostMonth { get; init; }
-        public decimal CostCop { get; init; }
+        public string RecordId { get; set; } = "";
+        public string AccountId { get; set; } = "";
+        public string ClientId { get; set; } = "";
+        public string ClientName { get; set; } = "";
+        public string CompanyAccountDisplay { get; set; } = "";
+        public string Vendor { get; set; } = "";
+        public string ContractTypeKey { get; set; } = LicenciamientoCruceOtherKey;
+        public string ContractTypeLabel { get; set; } = LicenciamientoCruceOtherLabel;
+        public DateOnly? InvoiceDate { get; set; }
+        public DateOnly CostMonth { get; set; }
+        public decimal CostCop { get; set; }
     }
 
     private sealed class LicenciamientoCruceCostGroup
     {
         public string GroupKey { get; init; } = "";
+        public string ClientId { get; init; } = "";
         public string ContractTypeKey { get; init; } = LicenciamientoCruceOtherKey;
         public string ContractTypeLabel { get; init; } = LicenciamientoCruceOtherLabel;
         public string ClientName { get; init; } = "";
@@ -889,6 +1003,7 @@ public sealed partial class DataverseService
     private sealed class LicenciamientoCruceBillingGroup
     {
         public string GroupKey { get; init; } = "";
+        public string ClientId { get; init; } = "";
         public string ContractTypeKey { get; init; } = LicenciamientoCruceOtherKey;
         public string ContractTypeLabel { get; init; } = LicenciamientoCruceOtherLabel;
         public string ClientName { get; init; } = "";
