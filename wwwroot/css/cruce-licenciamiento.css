@@ -74,6 +74,13 @@
     font-weight: 650;
 }
 
+.licx-field--inline {
+    display: grid;
+    grid-template-columns: auto minmax(180px, 240px);
+    align-items: center;
+    gap: .65rem;
+}
+
 .licx-status {
     border-radius: 8px;
     padding: .8rem 1rem;
@@ -167,21 +174,16 @@
     color: #b42318;
 }
 
-.licx-layout {
+.licx-top-panels {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: .7fr .9fr 1.4fr;
     gap: 1rem;
     align-items: start;
-}
-
-.licx-main {
-    min-width: 0;
 }
 
 .licx-segments {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
 }
 
 .licx-grid {
@@ -206,19 +208,27 @@
     overflow: hidden;
 }
 
-.licx-segment {
+.licx-detail-panel {
+    width: 100%;
+}
+
+.licx-detail-header {
+    align-items: center;
+}
+
+.licx-segment-detail {
     border-top: 4px solid #52606d;
 }
 
-.licx-segment.is-monthly {
+.licx-segment-detail.is-monthly {
     border-top-color: #2563eb;
 }
 
-.licx-segment.is-prepaid {
+.licx-segment-detail.is-prepaid {
     border-top-color: #047857;
 }
 
-.licx-segment.is-otros {
+.licx-segment-detail.is-otros {
     border-top-color: #7c3aed;
 }
 
@@ -247,9 +257,10 @@
 
 .licx-segment-totals {
     display: grid;
-    grid-template-columns: repeat(3, minmax(120px, auto));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: .5rem;
-    justify-content: end;
+    padding: 1rem;
+    border-bottom: 1px solid #e6ebf1;
 }
 
 .licx-segment-totals span {
@@ -282,7 +293,7 @@
 .licx-summary-pills {
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: .45rem;
     padding: .85rem 1rem;
     border-bottom: 1px solid #e6ebf1;
@@ -336,7 +347,7 @@
 
 .licx-table {
     margin: 0;
-    min-width: 1040px;
+    min-width: 900px;
 }
 
 .licx-table th {
@@ -504,7 +515,7 @@
 }
 
 @media (max-width: 1180px) {
-    .licx-layout,
+    .licx-top-panels,
     .licx-grid,
     .licx-grid--bottom {
         grid-template-columns: 1fr;
@@ -547,6 +558,10 @@
         width: 100%;
     }
 
+    .licx-field--inline {
+        grid-template-columns: 1fr;
+    }
+
     .licx-period {
         align-items: flex-start;
         flex-direction: column;
@@ -560,7 +575,4 @@
         grid-template-columns: 1fr;
     }
 
-    .licx-summary-pills {
-        justify-content: flex-start;
-    }
 }

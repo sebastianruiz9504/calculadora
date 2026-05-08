@@ -59,13 +59,6 @@
           "required": false
         },
         {
-          "logicalName": "cr07a_productolicencia",
-          "displayName": "Producto/licencia",
-          "type": "MultilineText",
-          "maxLength": 4000,
-          "required": false
-        },
-        {
           "logicalName": "cr07a_vertical",
           "displayName": "Vertical",
           "type": "Text",

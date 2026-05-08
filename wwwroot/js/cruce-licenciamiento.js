@@ -10,6 +10,7 @@
     const monthSelect = document.getElementById("licCruceMonth");
     const offsetSelect = document.getElementById("licCruceOffset");
     const status = document.getElementById("licCruceStatus");
+    const segmentSelect = document.getElementById("licCruceSegmentSelect");
     const segmentsWrap = document.getElementById("licCruceSegments");
     const alertsWrap = document.getElementById("licCruceAlerts");
     const validationsWrap = document.getElementById("licCruceValidations");
@@ -22,6 +23,8 @@
     const totalBilling = document.getElementById("licCruceTotalBilling");
     const totalMargin = document.getElementById("licCruceTotalMargin");
     const totalMarginPct = document.getElementById("licCruceTotalMarginPct");
+    let currentSegments = [];
+    let selectedSegmentKey = "";
 
     const copFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -45,6 +48,11 @@
     filtersForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await loadCruce();
+    });
+
+    segmentSelect?.addEventListener("change", () => {
+        selectedSegmentKey = segmentSelect.value || "";
+        renderSelectedSegment();
     });
 
     loadCruce();
@@ -108,40 +116,67 @@
             return;
         }
 
-        if (segments.length === 0) {
-            segmentsWrap.innerHTML = "<section class=\"licx-panel\"><div class=\"licx-empty\">No hay registros para este periodo.</div></section>";
+        currentSegments = Array.isArray(segments) ? segments : [];
+
+        if (currentSegments.length === 0) {
+            if (segmentSelect) {
+                segmentSelect.innerHTML = "";
+                segmentSelect.disabled = true;
+            }
+            segmentsWrap.innerHTML = "<div class=\"licx-empty\">No hay registros para este periodo.</div>";
             return;
         }
 
-        segmentsWrap.innerHTML = segments.map((segment) => {
-            const totals = segment.totals || {};
-            const counts = segment.statusCounts || {};
-            const rows = Array.isArray(segment.rows) ? segment.rows : [];
-            return `
-                <section class="licx-panel licx-segment is-${escapeHtml(segment.key || "otros")}">
-                    <div class="licx-panel__header licx-segment__header">
-                        <div>
-                            <div class="licx-kicker">Tipo de contrato</div>
-                            <h2>${escapeHtml(segment.label || "Sin tipo")}</h2>
-                        </div>
-                        <div class="licx-segment-totals">
-                            <span><strong>${formatCurrency(totals.totalCostosLicenciamiento)}</strong> costo</span>
-                            <span><strong>${formatCurrency(totals.totalFacturacionRelacionada)}</strong> facturacion</span>
-                            <span class="${Number(totals.margenBrutoTotal || 0) < 0 ? "is-negative" : ""}"><strong>${formatCurrency(totals.margenBrutoTotal)}</strong> margen</span>
-                        </div>
-                    </div>
-                    <div class="licx-summary-pills">
-                        ${buildPill("Clientes", segment.recordsCount || 0, "neutral")}
-                        ${buildPill("Match exacto", counts.matchExacto || 0, "ok")}
-                        ${buildPill("Match probable", counts.matchProbable || 0, "probable")}
-                        ${buildPill("Costo sin facturacion", counts.costoSinFacturacion || 0, "warning")}
-                        ${buildPill("Facturacion sin costo", counts.facturacionSinCosto || 0, "neutral")}
-                        ${buildPill("Margen negativo", segment.negativeMarginCount || 0, Number(segment.negativeMarginCount || 0) > 0 ? "danger" : "ok")}
-                    </div>
-                    ${buildSegmentTable(rows)}
-                </section>
-            `;
-        }).join("");
+        const selectedExists = currentSegments.some((segment) => segment.key === selectedSegmentKey);
+        const preferredSegment = selectedExists
+            ? currentSegments.find((segment) => segment.key === selectedSegmentKey)
+            : currentSegments.find((segment) => Number(segment.recordsCount || 0) > 0) || currentSegments[0];
+        selectedSegmentKey = preferredSegment?.key || "";
+
+        if (segmentSelect) {
+            segmentSelect.innerHTML = currentSegments.map((segment) => `
+                <option value="${escapeHtml(segment.key || "")}">${escapeHtml(segment.label || "Sin tipo")} (${numberFormatter.format(Number(segment.recordsCount || 0))})</option>
+            `).join("");
+            segmentSelect.value = selectedSegmentKey;
+            segmentSelect.disabled = currentSegments.length <= 1;
+        }
+
+        renderSelectedSegment();
+    }
+
+    function renderSelectedSegment() {
+        if (!segmentsWrap) {
+            return;
+        }
+
+        const segment = currentSegments.find((item) => item.key === selectedSegmentKey) || currentSegments[0];
+        if (!segment) {
+            segmentsWrap.innerHTML = "<div class=\"licx-empty\">No hay registros para este periodo.</div>";
+            return;
+        }
+
+        const totals = segment.totals || {};
+        const counts = segment.statusCounts || {};
+        const rows = Array.isArray(segment.rows) ? segment.rows : [];
+
+        segmentsWrap.innerHTML = `
+            <div class="licx-segment-detail is-${escapeHtml(segment.key || "otros")}">
+                <div class="licx-segment-totals">
+                    <span><strong>${formatCurrency(totals.totalCostosLicenciamiento)}</strong> costo</span>
+                    <span><strong>${formatCurrency(totals.totalFacturacionRelacionada)}</strong> facturacion</span>
+                    <span class="${Number(totals.margenBrutoTotal || 0) < 0 ? "is-negative" : ""}"><strong>${formatCurrency(totals.margenBrutoTotal)}</strong> margen</span>
+                </div>
+                <div class="licx-summary-pills">
+                    ${buildPill("Clientes", segment.recordsCount || 0, "neutral")}
+                    ${buildPill("Match exacto", counts.matchExacto || 0, "ok")}
+                    ${buildPill("Match probable", counts.matchProbable || 0, "probable")}
+                    ${buildPill("Costo sin facturacion", counts.costoSinFacturacion || 0, "warning")}
+                    ${buildPill("Facturacion sin costo", counts.facturacionSinCosto || 0, "neutral")}
+                    ${buildPill("Margen negativo", segment.negativeMarginCount || 0, Number(segment.negativeMarginCount || 0) > 0 ? "danger" : "ok")}
+                </div>
+                ${buildSegmentTable(rows)}
+            </div>
+        `;
     }
 
     function buildSegmentTable(rows) {
@@ -156,7 +191,6 @@
                         <tr>
                             <th>Cliente</th>
                             <th>NIT</th>
-                            <th>Producto/licencia</th>
                             <th>Vertical</th>
                             <th class="text-end">Costo</th>
                             <th class="text-end">Facturacion sin IVA</th>
@@ -181,7 +215,6 @@
                     <small>${formatSourceCount(row)}</small>
                 </td>
                 <td data-label="NIT">${escapeHtml(row.nitCliente || "-")}</td>
-                <td data-label="Producto/licencia">${escapeHtml(row.productoLicencia || "-")}</td>
                 <td data-label="Vertical">${escapeHtml(row.vertical || "-")}</td>
                 <td data-label="Costo" class="text-end">${formatCurrency(row.costoLicenciamiento)}</td>
                 <td data-label="Facturacion sin IVA" class="text-end">${formatCurrency(row.facturacionSinIva)}</td>

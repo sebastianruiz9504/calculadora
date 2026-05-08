@@ -75,7 +75,6 @@ public sealed class LicenciamientoCruceRowDto
     public string TipoContratoKey { get; set; } = "";
     public string Cliente { get; set; } = "";
     public string NitCliente { get; set; } = "";
-    public string ProductoLicencia { get; set; } = "";
     public string Vertical { get; set; } = "";
     public decimal CostoLicenciamiento { get; set; }
     public decimal FacturacionSinIva { get; set; }

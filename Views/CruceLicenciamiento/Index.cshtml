@@ -93,42 +93,50 @@
         </div>
     </section>
 
-    <section class="licx-layout">
-        <main class="licx-main">
-            <div id="licCruceSegments" class="licx-segments"></div>
-        </main>
-
-        <aside class="licx-side">
-            <section class="licx-panel">
-                <div class="licx-panel__header">
-                    <div>
-                        <div class="licx-kicker">Alertas</div>
-                        <h2>Solo margen negativo</h2>
-                    </div>
+    <section class="licx-top-panels" aria-label="Alertas y validaciones">
+        <section class="licx-panel">
+            <div class="licx-panel__header">
+                <div>
+                    <div class="licx-kicker">Alertas</div>
+                    <h2>Solo margen negativo</h2>
                 </div>
-                <div class="licx-alerts" id="licCruceAlerts"></div>
-            </section>
+            </div>
+            <div class="licx-alerts" id="licCruceAlerts"></div>
+        </section>
 
-            <section class="licx-panel">
-                <div class="licx-panel__header">
-                    <div>
-                        <div class="licx-kicker">Clientes</div>
-                        <h2>Margen negativo</h2>
-                    </div>
+        <section class="licx-panel">
+            <div class="licx-panel__header">
+                <div>
+                    <div class="licx-kicker">Clientes</div>
+                    <h2>Margen negativo</h2>
                 </div>
-                <div class="licx-ranking" id="licCruceRanking"></div>
-            </section>
+            </div>
+            <div class="licx-ranking" id="licCruceRanking"></div>
+        </section>
 
-            <section class="licx-panel">
-                <div class="licx-panel__header">
-                    <div>
-                        <div class="licx-kicker">Validaciones</div>
-                        <h2>Fuente y calidad</h2>
-                    </div>
+        <section class="licx-panel">
+            <div class="licx-panel__header">
+                <div>
+                    <div class="licx-kicker">Validaciones</div>
+                    <h2>Fuente y calidad</h2>
                 </div>
-                <div class="licx-validations" id="licCruceValidations"></div>
-            </section>
-        </aside>
+            </div>
+            <div class="licx-validations" id="licCruceValidations"></div>
+        </section>
+    </section>
+
+    <section class="licx-panel licx-detail-panel">
+        <div class="licx-panel__header licx-detail-header">
+            <div>
+                <div class="licx-kicker">Detalle</div>
+                <h2>Clientes por tipo de contrato</h2>
+            </div>
+            <label class="licx-field licx-field--inline">
+                <span>Ver tabla</span>
+                <select class="form-select" id="licCruceSegmentSelect"></select>
+            </label>
+        </div>
+        <div id="licCruceSegments" class="licx-segments"></div>
     </section>
 </div>
 
