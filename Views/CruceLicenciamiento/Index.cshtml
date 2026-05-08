@@ -12,6 +12,7 @@
      data-load-url="@Url.Action("Data", "CruceLicenciamiento")"
      data-update-cost-contract-url="@Url.Action("UpdateCostContractType", "CruceLicenciamiento")"
      data-update-billing-contract-url="@Url.Action("UpdateBillingContractType", "CruceLicenciamiento")"
+     data-update-billing-vertical-url="@Url.Action("UpdateBillingVertical", "CruceLicenciamiento")"
      data-update-cost-account-url="@Url.Action("UpdateCostAccount", "CruceLicenciamiento")"
      data-default-year="@Model.DefaultYear"
      data-default-month="@Model.DefaultMonth"
@@ -91,10 +92,6 @@
         <article class="licx-kpi">
             <span>Margen negativo</span>
             <strong id="licCruceNegativeCount">0</strong>
-        </article>
-        <article class="licx-kpi">
-            <span>Huerfanos</span>
-            <button type="button" class="btn btn-outline-primary licx-kpi-button" id="licCruceOpenOrphans">Ver 0</button>
         </article>
     </section>
 

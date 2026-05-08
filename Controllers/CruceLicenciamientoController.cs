@@ -109,6 +109,29 @@ public sealed class CruceLicenciamientoController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UpdateBillingVertical([FromBody] LicenciamientoCruceUpdateBillingVerticalRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Solicitud invalida."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateLicenciamientoCruceBillingVerticalAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible actualizar la vertical de la factura.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> UpdateCostAccount([FromBody] LicenciamientoCruceUpdateCostAccountRequestDto? request, CancellationToken ct)
     {
         if (request is null)

@@ -126,6 +126,7 @@ public interface IDataverseService
     Task<LicenciamientoUpdateSalesPriceResultDto> UpdateLicenciamientoSalesPriceAsync(LicenciamientoUpdateSalesPriceRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoCruceDashboardDto> GetLicenciamientoCruceDashboardAsync(int year, int month, string periodMode = "month", CancellationToken ct = default);
     Task<LicenciamientoCruceUpdateCostAccountResultDto> UpdateLicenciamientoCruceCostAccountAsync(LicenciamientoCruceUpdateCostAccountRequestDto request, CancellationToken ct = default);
+    Task<LicenciamientoCruceUpdateBillingVerticalResultDto> UpdateLicenciamientoCruceBillingVerticalAsync(LicenciamientoCruceUpdateBillingVerticalRequestDto request, CancellationToken ct = default);
     Task<HardwareCsvPreviewResultDto> PreviewHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<HardwareProvisionResultDto> ProvisionHardwareCsvAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<HardwareBoardDto> GetHardwareBoardAsync(int? stateValue = null, DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default, bool currentOwnerOnly = false, CurrentUserInfo? ownerOverride = null);

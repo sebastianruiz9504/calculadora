@@ -30,6 +30,7 @@ public sealed class LicenciamientoCruceDashboardDto
     public IReadOnlyList<LicenciamientoCruceOrphanRecordDto> Orphans { get; set; } = Array.Empty<LicenciamientoCruceOrphanRecordDto>();
     public IReadOnlyList<LicenciamientoCruceOptionDto> CostContractTypeOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();
     public IReadOnlyList<LicenciamientoCruceOptionDto> BillingContractTypeOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();
+    public IReadOnlyList<LicenciamientoCruceOptionDto> BillingVerticalOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();
     public IReadOnlyList<LicenciamientoCruceMonthSummaryDto> MonthSummaries { get; set; } = Array.Empty<LicenciamientoCruceMonthSummaryDto>();
     public IReadOnlyList<LicenciamientoCruceAlertDto> Alerts { get; set; } = Array.Empty<LicenciamientoCruceAlertDto>();
     public IReadOnlyList<LicenciamientoCruceValidationDto> Validations { get; set; } = Array.Empty<LicenciamientoCruceValidationDto>();
@@ -174,6 +175,7 @@ public sealed class LicenciamientoCruceTraceItemDto
     public string TipoContrato { get; set; } = "";
     public int? TipoContratoValue { get; set; }
     public string Vertical { get; set; } = "";
+    public int? VerticalValue { get; set; }
     public string Fecha { get; set; } = "";
     public string Mes { get; set; } = "";
     public decimal Valor { get; set; }
@@ -197,6 +199,7 @@ public sealed class LicenciamientoCruceOrphanRecordDto
     public string TipoContrato { get; set; } = "";
     public int? TipoContratoValue { get; set; }
     public string Vertical { get; set; } = "";
+    public int? VerticalValue { get; set; }
     public string Fecha { get; set; } = "";
     public decimal Valor { get; set; }
     public string Reason { get; set; } = "";
@@ -239,4 +242,18 @@ public sealed class LicenciamientoCruceUpdateCostAccountResultDto
     public string AccountLabel { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceUpdateBillingVerticalRequestDto
+{
+    public IReadOnlyList<string> RecordIds { get; set; } = Array.Empty<string>();
+    public int? VerticalOptionValue { get; set; }
+}
+
+public sealed class LicenciamientoCruceUpdateBillingVerticalResultDto
+{
+    public string Message { get; set; } = "";
+    public int UpdatedCount { get; set; }
+    public int VerticalOptionValue { get; set; }
+    public string VerticalLabel { get; set; } = "";
 }

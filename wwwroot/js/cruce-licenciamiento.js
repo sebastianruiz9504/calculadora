@@ -7,6 +7,7 @@
     const loadUrl = app.dataset.loadUrl || "";
     const updateCostContractUrl = app.dataset.updateCostContractUrl || "";
     const updateBillingContractUrl = app.dataset.updateBillingContractUrl || "";
+    const updateBillingVerticalUrl = app.dataset.updateBillingVerticalUrl || "";
     const updateCostAccountUrl = app.dataset.updateCostAccountUrl || "";
     const filtersForm = document.getElementById("licCruceFilters");
     const yearInput = document.getElementById("licCruceYear");
@@ -19,7 +20,6 @@
     const matrixSummary = document.getElementById("licCruceMatrixSummary");
     const periodLabel = document.getElementById("licCrucePeriodLabel");
     const negativeCount = document.getElementById("licCruceNegativeCount");
-    const openOrphansButton = document.getElementById("licCruceOpenOrphans");
     const totalCost = document.getElementById("licCruceTotalCost");
     const totalBilling = document.getElementById("licCruceTotalBilling");
     const totalMargin = document.getElementById("licCruceTotalMargin");
@@ -43,8 +43,8 @@
     let currentData = null;
     let currentSegments = [];
     let selectedSegmentKey = "";
-    let orphanDialog = null;
     let detailDialog = null;
+    let editDialog = null;
 
     yearInput.value = Number(app.dataset.defaultYear || 0) > 0 ? app.dataset.defaultYear : "";
     monthSelect.value = Number(app.dataset.defaultMonth || 0) > 0 ? app.dataset.defaultMonth : "";
@@ -60,11 +60,13 @@
         renderSelectedSegment();
     });
 
-    openOrphansButton?.addEventListener("click", () => {
-        openOrphanDialog();
-    });
-
     matrixWrap?.addEventListener("click", (event) => {
+        const editButton = event.target.closest("[data-edit-client]");
+        if (editButton) {
+            openClientEditDialog(editButton.dataset.clientKey || "", editButton.dataset.clientName || "");
+            return;
+        }
+
         const cell = event.target.closest("[data-detail-source]");
         if (!cell) {
             return;
@@ -75,6 +77,13 @@
 
     matrixWrap?.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        const editButton = event.target.closest("[data-edit-client]");
+        if (editButton) {
+            event.preventDefault();
+            openClientEditDialog(editButton.dataset.clientKey || "", editButton.dataset.clientName || "");
             return;
         }
 
@@ -89,8 +98,8 @@
 
     document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
-            closeOrphanDialog();
             closeDetailDialog();
+            closeEditDialog();
         }
     });
 
@@ -197,7 +206,6 @@
             if (matrixWrap) {
                 matrixWrap.innerHTML = "<div class=\"licx-empty\">No hay registros para este periodo.</div>";
             }
-            updateOrphanButton(0);
             return;
         }
 
@@ -216,7 +224,6 @@
             negativeCount.textContent = numberFormatter.format(Number(segment.negativeMarginCount || 0));
             negativeCount.classList.toggle("is-negative", Number(segment.negativeMarginCount || 0) > 0);
         }
-        updateOrphanButton(Array.isArray(currentData?.orphans) ? currentData.orphans.length : 0);
         renderMatrix(segment, months);
     }
 
@@ -229,15 +236,6 @@
         totalMargin.classList.toggle("is-negative", margin < 0);
         totalMarginPct.textContent = formatPercent(marginPct);
         totalMarginPct.classList.toggle("is-negative", Number(marginPct || 0) < 0);
-    }
-
-    function updateOrphanButton(count) {
-        if (!openOrphansButton) {
-            return;
-        }
-
-        openOrphansButton.textContent = `Ver ${numberFormatter.format(Number(count || 0))}`;
-        openOrphansButton.disabled = Number(count || 0) === 0;
     }
 
     function renderMatrix(segment, months) {
@@ -258,6 +256,7 @@
                         <tr>
                             <th rowspan="2" class="licx-client-col">Cliente</th>
                             ${months.map((month) => `<th colspan="4" class="text-center licx-month-head">${escapeHtml(month.label || month.key || "")}</th>`).join("")}
+                            <th rowspan="2" class="licx-action-col">Ajustar</th>
                         </tr>
                         <tr>
                             ${months.map(() => `
@@ -285,6 +284,9 @@
                     <small>${escapeHtml(row.nitCliente || row.clienteId || "")}</small>
                 </th>
                 ${months.map((month) => buildMatrixCellGroup(cellsByMonth.get(month.key || ""), row, month)).join("")}
+                <td class="licx-action-col">
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-edit-client data-client-key="${escapeHtml(row.rowKey || "")}" data-client-name="${escapeHtml(row.cliente || "Cliente sin nombre")}">Editar</button>
+                </td>
             </tr>
         `;
     }
@@ -430,6 +432,235 @@
                 <td><code>${escapeHtml(item.recordId || "")}</code></td>
             </tr>
         `;
+    }
+
+    function openClientEditDialog(clientKey, clientName) {
+        const dialog = ensureEditDialog();
+        const items = getClientEditItems(clientKey);
+        dialog.querySelector("[data-edit-title]").textContent = clientName || "Cliente";
+        dialog.querySelector("[data-edit-subtitle]").textContent =
+            `${items.costItems.length} costo(s) | ${items.billingItems.length} factura(s)`;
+        dialog.querySelector("[data-edit-body]").innerHTML = buildClientEditBody(items);
+        dialog.hidden = false;
+        document.body.classList.add("licx-modal-open");
+        dialog.querySelector("[data-edit-close]")?.focus();
+    }
+
+    function closeEditDialog() {
+        if (!editDialog) {
+            return;
+        }
+
+        editDialog.hidden = true;
+        document.body.classList.remove("licx-modal-open");
+    }
+
+    function ensureEditDialog() {
+        if (editDialog) {
+            return editDialog;
+        }
+
+        editDialog = document.createElement("div");
+        editDialog.className = "licx-modal";
+        editDialog.hidden = true;
+        editDialog.innerHTML = `
+            <div class="licx-modal__backdrop" data-edit-backdrop></div>
+            <section class="licx-modal__dialog" role="dialog" aria-modal="true" aria-label="Editar cruce de cliente">
+                <header class="licx-modal__header">
+                    <div>
+                        <div class="licx-kicker">Editar cliente</div>
+                        <h2 data-edit-title>Cliente</h2>
+                        <span data-edit-subtitle></span>
+                    </div>
+                    <button type="button" class="btn-close" aria-label="Cerrar" data-edit-close></button>
+                </header>
+                <div class="licx-modal__body">
+                    <div data-edit-body></div>
+                </div>
+            </section>
+        `;
+        editDialog.querySelector("[data-edit-close]")?.addEventListener("click", closeEditDialog);
+        editDialog.querySelector("[data-edit-backdrop]")?.addEventListener("click", closeEditDialog);
+        editDialog.addEventListener("click", handleClientEditAction);
+        document.body.appendChild(editDialog);
+        return editDialog;
+    }
+
+    function getClientEditItems(clientKey) {
+        const rows = (Array.isArray(currentData?.rows) ? currentData.rows : [])
+            .filter((row) =>
+                (row.tipoContratoKey || "") === selectedSegmentKey
+                && (row.matrixClientKey || buildRowClientKey(row)) === clientKey);
+        const costItems = distinctByRecordId(rows.flatMap((row) => row.trace?.costItems || []));
+        const billingItems = distinctByRecordId(rows.flatMap((row) => row.trace?.billingItems || []));
+        return { costItems, billingItems };
+    }
+
+    function buildClientEditBody(items) {
+        return `
+            <div class="licx-edit-sections">
+                <section>
+                    <h3>Costos licenciamiento</h3>
+                    ${buildCostEditTable(items.costItems)}
+                </section>
+                <section>
+                    <h3>Facturacion</h3>
+                    ${buildBillingEditTable(items.billingItems)}
+                </section>
+            </div>
+        `;
+    }
+
+    function buildCostEditTable(items) {
+        if (!items.length) {
+            return "<div class=\"licx-empty licx-empty--small\">No hay costos para esta fila.</div>";
+        }
+
+        const typeOptions = currentData?.costContractTypeOptions || [];
+        return `
+            <div class="licx-table-wrap licx-table-wrap--detail">
+                <table class="table align-middle licx-table licx-edit-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha factura</th>
+                            <th>Producto / licencia</th>
+                            <th>Cuenta</th>
+                            <th>Tipo contrato</th>
+                            <th class="text-end">Costo</th>
+                            <th>Record ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item) => buildCostEditRow(item, typeOptions)).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function buildCostEditRow(item, typeOptions) {
+        return `
+            <tr data-record-id="${escapeHtml(item.recordId || "")}">
+                <td>${escapeHtml(item.fecha || item.mes || "-")}</td>
+                <td>
+                    <strong>${escapeHtml(item.producto || "Sin producto")}</strong>
+                    <small>${escapeHtml(item.productoId || "")}</small>
+                </td>
+                <td>
+                    <div class="licx-edit-group">
+                        <input class="form-control form-control-sm" data-account-input value="${escapeHtml(item.account || item.accountId || "")}" />
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-edit-action="save-cost-account">Guardar</button>
+                    </div>
+                    <small>${escapeHtml(item.accountId || "")}</small>
+                </td>
+                <td>
+                    <div class="licx-edit-group">
+                        <select class="form-select form-select-sm" data-contract-select>
+                            ${buildOptions(typeOptions, item.tipoContratoValue)}
+                        </select>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-edit-action="save-cost-contract">Guardar</button>
+                    </div>
+                </td>
+                <td class="text-end">${formatCurrency(item.valor)}</td>
+                <td><code>${escapeHtml(item.recordId || "")}</code></td>
+            </tr>
+        `;
+    }
+
+    function buildBillingEditTable(items) {
+        if (!items.length) {
+            return "<div class=\"licx-empty licx-empty--small\">No hay facturas para esta fila.</div>";
+        }
+
+        const typeOptions = currentData?.billingContractTypeOptions || [];
+        const verticalOptions = currentData?.billingVerticalOptions || [];
+        return `
+            <div class="licx-table-wrap licx-table-wrap--detail">
+                <table class="table align-middle licx-table licx-edit-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha emision</th>
+                            <th>Factura</th>
+                            <th>Vertical</th>
+                            <th>Tipo contrato</th>
+                            <th class="text-end">Venta sin IVA</th>
+                            <th>Record ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item) => buildBillingEditRow(item, typeOptions, verticalOptions)).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function buildBillingEditRow(item, typeOptions, verticalOptions) {
+        return `
+            <tr data-record-id="${escapeHtml(item.recordId || "")}">
+                <td>${escapeHtml(item.fecha || item.mes || "-")}</td>
+                <td>${escapeHtml(item.referencia || "-")}</td>
+                <td>
+                    <div class="licx-edit-group">
+                        <select class="form-select form-select-sm" data-vertical-select>
+                            ${buildOptions(verticalOptions, item.verticalValue)}
+                        </select>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-edit-action="save-billing-vertical">Guardar</button>
+                    </div>
+                    <small>Actual: ${escapeHtml(item.vertical || "-")}</small>
+                </td>
+                <td>
+                    <div class="licx-edit-group">
+                        <select class="form-select form-select-sm" data-contract-select>
+                            ${buildOptions(typeOptions, item.tipoContratoValue)}
+                        </select>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-edit-action="save-billing-contract">Guardar</button>
+                    </div>
+                </td>
+                <td class="text-end">${formatCurrency(item.valor)}</td>
+                <td><code>${escapeHtml(item.recordId || "")}</code></td>
+            </tr>
+        `;
+    }
+
+    async function handleClientEditAction(event) {
+        const button = event.target.closest("[data-edit-action]");
+        if (!button) {
+            return;
+        }
+
+        const row = button.closest("tr[data-record-id]");
+        const recordId = row?.dataset.recordId || "";
+        const action = button.dataset.editAction || "";
+        if (!recordId) {
+            showStatus("error", "No se encontro el ID del registro.");
+            return;
+        }
+
+        button.disabled = true;
+        try {
+            if (action === "save-cost-contract") {
+                const value = Number(row.querySelector("[data-contract-select]")?.value || 0);
+                await postJson(updateCostContractUrl, { recordIds: [recordId], contractTypeValue: value });
+            } else if (action === "save-cost-account") {
+                const accountId = row.querySelector("[data-account-input]")?.value || "";
+                await postJson(updateCostAccountUrl, { recordId, accountId });
+            } else if (action === "save-billing-contract") {
+                const value = Number(row.querySelector("[data-contract-select]")?.value || 0);
+                await postJson(updateBillingContractUrl, { recordIds: [recordId], contractTypeOptionValue: value });
+            } else if (action === "save-billing-vertical") {
+                const value = Number(row.querySelector("[data-vertical-select]")?.value || 0);
+                await postJson(updateBillingVerticalUrl, { recordIds: [recordId], verticalOptionValue: value });
+            }
+
+            closeEditDialog();
+            showStatus("success", "Registro actualizado. Recalculando cruce...");
+            await loadCruce();
+        } catch (error) {
+            showStatus("error", error instanceof Error ? error.message : "No fue posible actualizar el registro.");
+        } finally {
+            button.disabled = false;
+        }
     }
 
     function openOrphanDialog() {
@@ -590,6 +821,28 @@
         } finally {
             button.disabled = false;
         }
+    }
+
+    function buildOptions(options, selectedValue) {
+        return (Array.isArray(options) ? options : []).map((option) => `
+            <option value="${Number(option.value || 0)}" ${Number(option.value || 0) === Number(selectedValue || 0) ? "selected" : ""}>
+                ${escapeHtml(option.label || option.value || "")}
+            </option>
+        `).join("");
+    }
+
+    function distinctByRecordId(items) {
+        const seen = new Set();
+        const result = [];
+        for (const item of Array.isArray(items) ? items : []) {
+            const key = (item?.recordId || "").toString().toLowerCase();
+            if (!key || seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            result.push(item);
+        }
+        return result;
     }
 
     async function postJson(url, payload) {

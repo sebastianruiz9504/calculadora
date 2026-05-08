@@ -157,6 +157,7 @@ public sealed partial class DataverseService
             Orphans = orphanRecords,
             CostContractTypeOptions = BuildLicenciamientoCruceCostContractTypeOptions(),
             BillingContractTypeOptions = BuildLicenciamientoCruceBillingContractTypeOptions(),
+            BillingVerticalOptions = BuildLicenciamientoCruceBillingVerticalOptions(),
             MonthSummaries = BuildLicenciamientoCruceMonthSummaries(rows),
             Alerts = BuildLicenciamientoCruceAlerts(rows),
             Validations = BuildLicenciamientoCruceValidations(
@@ -170,6 +171,63 @@ public sealed partial class DataverseService
             Message = rows.Count == 0
                 ? "No hay costos ni facturacion para el periodo seleccionado."
                 : $"Cruce listo para {period.Label}: costos por mes factura contra facturas emitidas en el mismo mes."
+        };
+    }
+
+    public async Task<LicenciamientoCruceUpdateBillingVerticalResultDto> UpdateLicenciamientoCruceBillingVerticalAsync(
+        LicenciamientoCruceUpdateBillingVerticalRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordIds = (request.RecordIds ?? Array.Empty<string>())
+            .Select(static value => NormalizeOptionalGuid(value))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (recordIds.Count == 0)
+            throw new InvalidOperationException("Selecciona al menos una factura para cambiar la vertical.");
+
+        var option = BuildLicenciamientoCruceBillingVerticalOptions()
+            .FirstOrDefault(item => item.Value == request.VerticalOptionValue);
+        if (option is null)
+            throw new InvalidOperationException("La vertical seleccionada no es valida.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var payload = new Dictionary<string, object?>
+        {
+            [_dashboardBillingVerticalField] = option.Value
+        };
+
+        foreach (var recordId in recordIds)
+        {
+            await CallDataverseSendAsync(
+                $"/api/data/v9.2/{metadata.EntitySetName}({recordId})",
+                "PATCH",
+                payload,
+                httpContext.User,
+                ct);
+        }
+
+        return new LicenciamientoCruceUpdateBillingVerticalResultDto
+        {
+            UpdatedCount = recordIds.Count,
+            VerticalOptionValue = option.Value,
+            VerticalLabel = option.Label,
+            Message = recordIds.Count == 1
+                ? $"Vertical actualizada a {option.Label}."
+                : $"{recordIds.Count:N0} facturas actualizadas a {option.Label}."
         };
     }
 
@@ -1004,6 +1062,7 @@ public sealed partial class DataverseService
             TipoContrato = item.TipoContrato,
             TipoContratoValue = item.TipoContratoValue,
             Vertical = item.Vertical,
+            VerticalValue = item.VerticalValue,
             Fecha = item.Fecha,
             Valor = item.Valor,
             Reason = reason
@@ -1022,6 +1081,13 @@ public sealed partial class DataverseService
         {
             new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceBillingMonthlyOption, Label = "Mensual" },
             new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceBillingOneTimeOption, Label = "OneTime" }
+        };
+
+    private static IReadOnlyList<LicenciamientoCruceOptionDto> BuildLicenciamientoCruceBillingVerticalOptions() =>
+        new[]
+        {
+            new LicenciamientoCruceOptionDto { Value = DashboardVerticalCloudOption, Label = "Cloud" },
+            new LicenciamientoCruceOptionDto { Value = DashboardVerticalCopiersOption, Label = "Copiers" }
         };
 
     private static LicenciamientoCruceTotalsDto BuildLicenciamientoCruceTotals(
@@ -1219,6 +1285,7 @@ public sealed partial class DataverseService
             TipoContrato = row.ContractTypeLabel,
             TipoContratoValue = row.ContractTypeOptionValue,
             Vertical = row.VerticalLabel,
+            VerticalValue = row.VerticalOptionValue,
             Fecha = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             Mes = row.EmissionDate.HasValue ? FormatLicenciamientoCruceMonth(new DateOnly(row.EmissionDate.Value.Year, row.EmissionDate.Value.Month, 1)) : "",
             Valor = withoutVat,
