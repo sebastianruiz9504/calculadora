@@ -15,7 +15,7 @@ public sealed partial class DataverseService
     private const string LicenciamientoCruceMonthlyKey = "monthly";
     private const string LicenciamientoCruceMonthlyLabel = "Monthly";
     private const string LicenciamientoCruceOneTimeKey = "onetime";
-    private const string LicenciamientoCruceOneTimeLabel = "OneTime";
+    private const string LicenciamientoCruceOneTimeLabel = "Prepaid";
     private const string LicenciamientoCruceOtherKey = "otros";
     private const string LicenciamientoCruceOtherLabel = "Sin tipo";
     private const int LicenciamientoCruceBillingMonthlyOption = 645250000;
@@ -45,20 +45,11 @@ public sealed partial class DataverseService
     public async Task<LicenciamientoCruceDashboardDto> GetLicenciamientoCruceDashboardAsync(
         int year,
         int month,
-        int billingOffsetMonths = 1,
+        string periodMode = "month",
         CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var today = GetBogotaToday();
-        var resolvedYear = year is < 2000 or > 2100 ? today.Year : year;
-        var resolvedMonth = month is < 1 or > 12 ? Math.Max(today.Month - 1, 1) : month;
-        var resolvedOffset = Math.Clamp(billingOffsetMonths, -12, 12);
-
-        var closeMonth = new DateOnly(resolvedYear, resolvedMonth, 1);
-        var billingMonth = closeMonth.AddMonths(resolvedOffset);
-        var billingMonthEnd = billingMonth.AddMonths(1);
 
         var licensingMetadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
         var billingMetadata = await ResolveRhEntityMetadataAsync(
@@ -69,18 +60,25 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
+        var latestDataMonth = await ResolveLicenciamientoCruceLatestDataMonthAsync(
+            licensingMetadata,
+            billingMetadata,
+            httpContext.User,
+            ct);
+        var period = ResolveLicenciamientoCrucePeriod(year, month, periodMode, latestDataMonth);
+
         var costRows = await GetLicenciamientoCruceCostRowsAsync(
             licensingMetadata,
-            billingMonth,
-            billingMonthEnd,
-            closeMonth,
-            resolvedOffset,
+            period.Start,
+            period.End,
+            period.SelectedMonth,
+            0,
             httpContext.User,
             ct);
         var allBillingRows = await GetBillingRecordsAsync(
             billingMetadata,
-            billingMonth,
-            billingMonthEnd,
+            period.Start,
+            period.End,
             _dashboardBillingEmissionDateField,
             _dashboardBillingEmissionDateFieldKind,
             httpContext.User,
@@ -92,21 +90,30 @@ public sealed partial class DataverseService
             .Where(static row => !IsLicenciamientoCruceCopiersVertical(row.VerticalLabel))
             .ToList();
 
-        var costGroups = BuildLicenciamientoCruceCostGroups(costRows, closeMonth);
-        var billingGroups = BuildLicenciamientoCruceBillingGroups(billingRows);
-        var rows = BuildLicenciamientoCruceRows(
-                costGroups,
-                billingGroups,
-                closeMonth,
-                billingMonth)
+        var months = BuildLicenciamientoCruceMatrixMonths(costRows, billingRows, period.Start, period.End, period.SelectedMonth);
+        var rows = months
+            .SelectMany(monthInfo =>
+            {
+                var monthDate = new DateOnly(monthInfo.Year, monthInfo.Month, 1);
+                var monthCostRows = costRows
+                    .Where(row => GetLicenciamientoCruceCostMonth(row) == monthDate)
+                    .ToList();
+                var monthBillingRows = billingRows
+                    .Where(row => GetLicenciamientoCruceBillingMonth(row) == monthDate)
+                    .ToList();
+                var costGroups = BuildLicenciamientoCruceCostGroups(monthCostRows, monthDate);
+                var billingGroups = BuildLicenciamientoCruceBillingGroups(monthBillingRows);
+                return BuildLicenciamientoCruceRows(costGroups, billingGroups, monthDate, monthDate);
+            })
             .OrderBy(row => ResolveLicenciamientoCruceContractOrder(row.TipoContratoKey))
+            .ThenBy(row => row.MesCierre, StringComparer.OrdinalIgnoreCase)
             .ThenBy(row => ResolveLicenciamientoCruceStateOrder(row.EstadoCruce))
             .ThenBy(row => row.Cliente, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var totalCostSource = RoundCurrency(costRows.Sum(static row => row.CostCop));
         var totalCostCross = RoundCurrency(rows.Sum(static row => row.CostoLicenciamiento));
-        var totalBillingSource = RoundCurrency(billingGroups.Sum(static row => row.BillingWithoutVat));
+        var totalBillingSource = RoundCurrency(billingRows.Sum(CalculateLicenciamientoCruceBillingWithoutVat));
         var totalBillingCross = RoundCurrency(rows.Sum(static row => row.FacturacionSinIva));
         var totalMargin = RoundCurrency(totalBillingCross - totalCostCross);
         var totalMarginPct = CalculateLicenciamientoCruceMarginPercent(totalMargin, totalBillingCross);
@@ -121,19 +128,31 @@ public sealed partial class DataverseService
             TotalCostosCruce = totalCostCross,
             TotalFacturacionFuenteSinIva = totalBillingSource
         };
+        var matrixSegments = BuildLicenciamientoCruceMatrixSegments(rows, months);
+        var orphanRecords = BuildLicenciamientoCruceOrphanRecords(rows);
 
         return new LicenciamientoCruceDashboardDto
         {
-            MesCierre = FormatLicenciamientoCruceMonth(closeMonth),
-            MesCosto = FormatLicenciamientoCruceMonth(closeMonth),
-            MesFacturacion = FormatLicenciamientoCruceMonth(billingMonth),
-            BillingOffsetMonths = resolvedOffset,
+            MesCierre = FormatLicenciamientoCruceMonth(period.SelectedMonth),
+            MesCosto = FormatLicenciamientoCruceMonth(period.SelectedMonth),
+            MesFacturacion = FormatLicenciamientoCruceMonth(period.SelectedMonth),
+            BillingOffsetMonths = 0,
+            SelectedYear = period.SelectedMonth.Year,
+            SelectedMonth = period.SelectedMonth.Month,
+            PeriodMode = period.Mode,
+            PeriodLabel = period.Label,
+            LatestDataMonth = FormatLicenciamientoCruceMonth(latestDataMonth),
             HasData = rows.Count > 0,
             RecordsCount = rows.Count,
             Totals = totals,
             StatusCounts = BuildLicenciamientoCruceStatusCounts(rows),
             Rows = rows,
             ContractSegments = BuildLicenciamientoCruceContractSegments(rows),
+            MatrixSegments = matrixSegments,
+            MatrixMonths = months,
+            Orphans = orphanRecords,
+            CostContractTypeOptions = BuildLicenciamientoCruceCostContractTypeOptions(),
+            BillingContractTypeOptions = BuildLicenciamientoCruceBillingContractTypeOptions(),
             MonthSummaries = BuildLicenciamientoCruceMonthSummaries(rows),
             Alerts = BuildLicenciamientoCruceAlerts(rows),
             Validations = BuildLicenciamientoCruceValidations(
@@ -142,12 +161,232 @@ public sealed partial class DataverseService
                 rows,
                 totalCostSource,
                 totalCostCross,
-                billingMonth,
+                period.SelectedMonth,
                 excludedCopiersBillingRows.Count),
             Message = rows.Count == 0
                 ? "No hay costos ni facturacion para el periodo seleccionado."
-                : $"Cruce listo para {FormatLicenciamientoCruceMonth(closeMonth)} contra facturacion {FormatLicenciamientoCruceMonth(billingMonth)}."
+                : $"Cruce listo para {period.Label}: costos por mes factura contra facturas emitidas en el mismo mes."
         };
+    }
+
+    public async Task<LicenciamientoCruceUpdateCostAccountResultDto> UpdateLicenciamientoCruceCostAccountAsync(
+        LicenciamientoCruceUpdateCostAccountRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordId = NormalizeOptionalGuid(request.RecordId);
+        if (string.IsNullOrWhiteSpace(recordId))
+            throw new InvalidOperationException("Selecciona un registro de consumo valido.");
+
+        var accountInput = (request.AccountId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(accountInput))
+            throw new InvalidOperationException("Indica el Account ID que debe quedar en el consumo.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var accountLookupId = NormalizeOptionalGuid(accountInput);
+        var accountLabel = accountInput;
+
+        if (metadata.AccountFieldIsLookup)
+        {
+            if (string.IsNullOrWhiteSpace(accountLookupId))
+            {
+                var lookupResult = await FindLicensingLookupAsync(
+                    metadata.AccountMetadata,
+                    metadata.AccountSearchFields,
+                    accountInput,
+                    metadata.AccountAttributeTypes,
+                    httpContext.User,
+                    ct);
+                if (lookupResult.Lookup is null)
+                    throw new InvalidOperationException(lookupResult.FailureReason);
+
+                accountLookupId = NormalizeGuid(lookupResult.Lookup.Id, nameof(lookupResult.Lookup.Id));
+                accountLabel = FirstNonEmpty(lookupResult.Lookup.Label, accountInput);
+            }
+
+            payload[$"{metadata.AccountNavigationProperty}@odata.bind"] =
+                $"/{metadata.AccountMetadata.EntitySetName}({accountLookupId})";
+        }
+        else
+        {
+            payload[LicensingAccountLookupField] = ConvertLicensingPayloadValue(metadata, LicensingAccountLookupField, accountInput);
+        }
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({recordId})",
+            "PATCH",
+            payload,
+            httpContext.User,
+            ct);
+
+        var clientId = "";
+        var clientName = "";
+        if (metadata.AccountFieldIsLookup && !string.IsNullOrWhiteSpace(accountLookupId))
+        {
+            try
+            {
+                var resolution = await ResolveLicensingClientFromAccountAsync(metadata, accountLookupId, httpContext.User, ct);
+                clientId = NormalizeOptionalGuid(resolution.ClientId);
+                clientName = resolution.ClientName;
+            }
+            catch (InvalidOperationException)
+            {
+                // The row was updated; if the Account ID still has no client, the next refresh will keep it as orphan.
+            }
+        }
+
+        return new LicenciamientoCruceUpdateCostAccountResultDto
+        {
+            RecordId = recordId,
+            AccountId = accountLookupId,
+            AccountLabel = accountLabel,
+            ClientId = clientId,
+            ClientName = clientName,
+            Message = string.IsNullOrWhiteSpace(clientName)
+                ? $"Account ID actualizado a {accountLabel}."
+                : $"Account ID actualizado a {accountLabel}; cliente resuelto: {clientName}."
+        };
+    }
+
+    private async Task<DateOnly> ResolveLicenciamientoCruceLatestDataMonthAsync(
+        LicensingMetadata licensingMetadata,
+        RhEntityMetadata billingMetadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var dates = new List<DateOnly>();
+
+        try
+        {
+            var filter = Uri.EscapeDataString($"{LicensingInvoiceDateField} ne null");
+            var orderBy = Uri.EscapeDataString($"{LicensingInvoiceDateField} desc");
+            var relativeUrl = $"/api/data/v9.2/{licensingMetadata.BaseMetadata.EntitySetName}?$select={LicensingInvoiceDateField}&$filter={filter}&$orderby={orderBy}&$top=1";
+            var rows = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            var costDate = rows.Count > 0 ? ReadDateOnly(rows[0], LicensingInvoiceDateField) : null;
+            if (costDate.HasValue)
+                dates.Add(new DateOnly(costDate.Value.Year, costDate.Value.Month, 1));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible resolver el ultimo mes con costos de licenciamiento.");
+        }
+
+        try
+        {
+            var filter = Uri.EscapeDataString($"{_dashboardBillingEmissionDateField} ne null");
+            var orderBy = Uri.EscapeDataString($"{_dashboardBillingEmissionDateField} desc");
+            var relativeUrl = $"/api/data/v9.2/{billingMetadata.EntitySetName}?$select={_dashboardBillingEmissionDateField}&$filter={filter}&$orderby={orderBy}&$top=1";
+            var rows = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            var billingDate = rows.Count > 0 ? ReadDateOnly(rows[0], _dashboardBillingEmissionDateField) : null;
+            if (billingDate.HasValue)
+                dates.Add(new DateOnly(billingDate.Value.Year, billingDate.Value.Month, 1));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible resolver el ultimo mes con facturacion.");
+        }
+
+        if (dates.Count > 0)
+            return dates.Max();
+
+        var today = GetBogotaToday();
+        return new DateOnly(today.Year, today.Month, 1);
+    }
+
+    private static LicenciamientoCrucePeriod ResolveLicenciamientoCrucePeriod(
+        int year,
+        int month,
+        string? periodMode,
+        DateOnly latestDataMonth)
+    {
+        var selectedMonth = year is >= 2000 and <= 2100 && month is >= 1 and <= 12
+            ? new DateOnly(year, month, 1)
+            : latestDataMonth;
+        var mode = (periodMode ?? "month").Trim().ToLowerInvariant() switch
+        {
+            "quarter" => "quarter",
+            "ytd" => "ytd",
+            _ => "month"
+        };
+
+        var start = mode switch
+        {
+            "quarter" => new DateOnly(selectedMonth.Year, (((selectedMonth.Month - 1) / 3) * 3) + 1, 1),
+            "ytd" => new DateOnly(selectedMonth.Year, 1, 1),
+            _ => selectedMonth
+        };
+        var end = mode switch
+        {
+            "quarter" => start.AddMonths(3),
+            "ytd" => selectedMonth.AddMonths(1),
+            _ => selectedMonth.AddMonths(1)
+        };
+        var label = mode switch
+        {
+            "quarter" => $"{selectedMonth.Year} Q{((selectedMonth.Month - 1) / 3) + 1}",
+            "ytd" => $"{selectedMonth.Year} acumulado a {FormatLicenciamientoCruceMonth(selectedMonth)}",
+            _ => FormatLicenciamientoCruceMonth(selectedMonth)
+        };
+
+        return new LicenciamientoCrucePeriod
+        {
+            SelectedMonth = selectedMonth,
+            Start = start,
+            End = end,
+            Mode = mode,
+            Label = label
+        };
+    }
+
+    private static IReadOnlyList<LicenciamientoCruceMatrixMonthDto> BuildLicenciamientoCruceMatrixMonths(
+        IReadOnlyList<LicenciamientoCruceCostRow> costRows,
+        IReadOnlyList<BillingRecordRow> billingRows,
+        DateOnly periodStart,
+        DateOnly periodEnd,
+        DateOnly selectedMonth)
+    {
+        var months = costRows
+            .Select(GetLicenciamientoCruceCostMonth)
+            .Concat(billingRows.Select(GetLicenciamientoCruceBillingMonth))
+            .Where(month => month >= periodStart && month < periodEnd)
+            .Distinct()
+            .OrderBy(static month => month)
+            .ToList();
+
+        if (months.Count == 0)
+            months.Add(selectedMonth);
+
+        return months
+            .Select(month => new LicenciamientoCruceMatrixMonthDto
+            {
+                Key = FormatLicenciamientoCruceMonth(month),
+                Label = month.ToString("MMM yyyy", CultureInfo.GetCultureInfo("es-CO")),
+                Year = month.Year,
+                Month = month.Month
+            })
+            .ToList();
+    }
+
+    private static DateOnly GetLicenciamientoCruceCostMonth(LicenciamientoCruceCostRow row)
+    {
+        if (row.InvoiceDate.HasValue)
+            return new DateOnly(row.InvoiceDate.Value.Year, row.InvoiceDate.Value.Month, 1);
+
+        return new DateOnly(row.CostMonth.Year, row.CostMonth.Month, 1);
+    }
+
+    private static DateOnly GetLicenciamientoCruceBillingMonth(BillingRecordRow row)
+    {
+        if (row.EmissionDate.HasValue)
+            return new DateOnly(row.EmissionDate.Value.Year, row.EmissionDate.Value.Month, 1);
+
+        return DateOnly.MinValue;
     }
 
     private async Task<List<LicenciamientoCruceCostRow>> GetLicenciamientoCruceCostRowsAsync(
@@ -192,8 +431,8 @@ public sealed partial class DataverseService
             return null;
 
         var invoiceDate = ReadDateOnly(item, LicensingInvoiceDateField);
-        var costMonth = TryParseLicenciamientoCruceMonth(record.BillingInterval)
-            ?? invoiceDate?.AddMonths(-billingOffsetMonths)
+        var costMonth = invoiceDate
+            ?? TryParseLicenciamientoCruceMonth(record.BillingInterval)
             ?? fallbackCostMonth;
         costMonth = new DateOnly(costMonth.Year, costMonth.Month, 1);
 
@@ -213,6 +452,7 @@ public sealed partial class DataverseService
             ClientName = clientName,
             CompanyAccountDisplay = record.CompanyAccountDisplay,
             Vendor = record.Vendor,
+            ContractTypeValue = record.ContractTypeValue,
             ContractTypeKey = ResolveLicenciamientoCruceContractKey(record.ContractTypeValue, record.ContractTypeLabel, isBillingSource: false),
             ContractTypeLabel = ResolveLicenciamientoCruceContractLabel(ResolveLicenciamientoCruceContractKey(record.ContractTypeValue, record.ContractTypeLabel, isBillingSource: false)),
             InvoiceDate = invoiceDate,
@@ -584,6 +824,191 @@ public sealed partial class DataverseService
         return segments;
     }
 
+    private static IReadOnlyList<LicenciamientoCruceMatrixSegmentDto> BuildLicenciamientoCruceMatrixSegments(
+        IReadOnlyList<LicenciamientoCruceRowDto> rows,
+        IReadOnlyList<LicenciamientoCruceMatrixMonthDto> months)
+    {
+        var orderedKeys = new[]
+        {
+            LicenciamientoCruceMonthlyKey,
+            LicenciamientoCruceOneTimeKey,
+            LicenciamientoCruceOtherKey
+        };
+        var segments = new List<LicenciamientoCruceMatrixSegmentDto>();
+
+        foreach (var key in orderedKeys)
+        {
+            var segmentRows = rows
+                .Where(row => string.Equals(row.TipoContratoKey, key, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var clientRows = segmentRows
+                .GroupBy(ResolveLicenciamientoCruceMatrixClientKey, StringComparer.OrdinalIgnoreCase)
+                .Select(group => BuildLicenciamientoCruceMatrixClientRow(group.ToList(), months))
+                .OrderBy(static row => row.HasNegativeMargin ? 0 : 1)
+                .ThenBy(static row => row.Cliente, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            segments.Add(new LicenciamientoCruceMatrixSegmentDto
+            {
+                Key = key,
+                Label = ResolveLicenciamientoCruceContractLabel(key),
+                RecordsCount = clientRows.Count,
+                NegativeMarginCount = clientRows.Count(static row => row.HasNegativeMargin),
+                OrphanCount = segmentRows.Count(static row =>
+                    string.Equals(row.EstadoCruce, LicenciamientoCruceStatusCostOnly, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(row.EstadoCruce, LicenciamientoCruceStatusBillingOnly, StringComparison.OrdinalIgnoreCase)),
+                Totals = BuildLicenciamientoCruceTotals(segmentRows),
+                StatusCounts = BuildLicenciamientoCruceStatusCounts(segmentRows),
+                Rows = clientRows
+            });
+        }
+
+        return segments;
+    }
+
+    private static LicenciamientoCruceMatrixClientRowDto BuildLicenciamientoCruceMatrixClientRow(
+        IReadOnlyList<LicenciamientoCruceRowDto> rows,
+        IReadOnlyList<LicenciamientoCruceMatrixMonthDto> months)
+    {
+        var first = rows.FirstOrDefault() ?? new LicenciamientoCruceRowDto();
+        var cells = months
+            .Select(month =>
+            {
+                var monthRows = rows
+                    .Where(row => string.Equals(row.MesCierre, month.Key, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var cost = RoundCurrency(monthRows.Sum(static row => row.CostoLicenciamiento));
+                var billing = RoundCurrency(monthRows.Sum(static row => row.FacturacionSinIva));
+                var utility = RoundCurrency(billing - cost);
+                return new LicenciamientoCruceMatrixCellDto
+                {
+                    Mes = month.Key,
+                    CostoLicenciamiento = cost,
+                    FacturacionSinIva = billing,
+                    UtilidadValor = utility,
+                    UtilidadPct = CalculateLicenciamientoCruceMarginPercent(utility, billing),
+                    HasNegativeMargin = utility < 0m,
+                    HasOrphans = monthRows.Any(static row =>
+                        string.Equals(row.EstadoCruce, LicenciamientoCruceStatusCostOnly, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(row.EstadoCruce, LicenciamientoCruceStatusBillingOnly, StringComparison.OrdinalIgnoreCase))
+                };
+            })
+            .ToList();
+        var totalCost = RoundCurrency(rows.Sum(static row => row.CostoLicenciamiento));
+        var totalBilling = RoundCurrency(rows.Sum(static row => row.FacturacionSinIva));
+        var totalUtility = RoundCurrency(totalBilling - totalCost);
+        var clientId = ResolveLicenciamientoCruceMatrixClientId(rows);
+
+        return new LicenciamientoCruceMatrixClientRowDto
+        {
+            RowKey = ResolveLicenciamientoCruceMatrixClientKey(first),
+            ClienteId = clientId,
+            Cliente = ResolveLicenciamientoCruceMostCommonText(rows.Select(static row => row.Cliente), "Cliente sin nombre"),
+            NitCliente = ResolveLicenciamientoCruceMostCommonText(rows.Select(static row => row.NitCliente), ""),
+            TotalCostoLicenciamiento = totalCost,
+            TotalFacturacionSinIva = totalBilling,
+            TotalUtilidad = totalUtility,
+            TotalUtilidadPct = CalculateLicenciamientoCruceMarginPercent(totalUtility, totalBilling),
+            HasNegativeMargin = cells.Any(static cell => cell.HasNegativeMargin),
+            HasOrphans = cells.Any(static cell => cell.HasOrphans),
+            Cells = cells
+        };
+    }
+
+    private static string ResolveLicenciamientoCruceMatrixClientId(IEnumerable<LicenciamientoCruceRowDto> rows)
+    {
+        foreach (var row in rows)
+        {
+            var billingId = NormalizeOptionalGuid(row.Trace?.BillingClientId);
+            if (!string.IsNullOrWhiteSpace(billingId))
+                return billingId;
+
+            var costId = NormalizeOptionalGuid(row.Trace?.CostClientId);
+            if (!string.IsNullOrWhiteSpace(costId))
+                return costId;
+        }
+
+        return "";
+    }
+
+    private static string ResolveLicenciamientoCruceMatrixClientKey(LicenciamientoCruceRowDto row)
+    {
+        var clientId = NormalizeOptionalGuid(row.Trace?.BillingClientId);
+        if (string.IsNullOrWhiteSpace(clientId))
+            clientId = NormalizeOptionalGuid(row.Trace?.CostClientId);
+        if (!string.IsNullOrWhiteSpace(clientId))
+            return $"client:{clientId}";
+
+        var clientKey = NormalizeLicenciamientoCruceClientKey(row.Cliente);
+        return !string.IsNullOrWhiteSpace(clientKey)
+            ? $"name:{clientKey}"
+            : $"row:{row.RowKey}";
+    }
+
+    private static IReadOnlyList<LicenciamientoCruceOrphanRecordDto> BuildLicenciamientoCruceOrphanRecords(
+        IReadOnlyList<LicenciamientoCruceRowDto> rows)
+    {
+        var orphans = new List<LicenciamientoCruceOrphanRecordDto>();
+        foreach (var row in rows)
+        {
+            if (string.Equals(row.EstadoCruce, LicenciamientoCruceStatusCostOnly, StringComparison.OrdinalIgnoreCase))
+            {
+                orphans.AddRange((row.Trace?.CostItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
+                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "cost", row.EstadoCruce, "No hay factura emitida en el mismo mes, con el mismo cliente padre y tipo de contrato.")));
+            }
+            else if (string.Equals(row.EstadoCruce, LicenciamientoCruceStatusBillingOnly, StringComparison.OrdinalIgnoreCase))
+            {
+                orphans.AddRange((row.Trace?.BillingItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
+                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "billing", row.EstadoCruce, "No hay costo con mes factura igual, mismo cliente padre y tipo de contrato.")));
+            }
+        }
+
+        return orphans
+            .OrderBy(static row => row.Source, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.Mes, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.Cliente, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static LicenciamientoCruceOrphanRecordDto BuildLicenciamientoCruceOrphanRecord(
+        LicenciamientoCruceTraceItemDto item,
+        string source,
+        string status,
+        string reason) =>
+        new()
+        {
+            Source = source,
+            Status = status,
+            RecordId = item.RecordId,
+            Referencia = item.Referencia,
+            Mes = item.Mes,
+            Cliente = item.Cliente,
+            ClienteId = item.ClienteId,
+            AccountId = item.AccountId,
+            Account = item.Account,
+            TipoContrato = item.TipoContrato,
+            TipoContratoValue = item.TipoContratoValue,
+            Vertical = item.Vertical,
+            Fecha = item.Fecha,
+            Valor = item.Valor,
+            Reason = reason
+        };
+
+    private static IReadOnlyList<LicenciamientoCruceOptionDto> BuildLicenciamientoCruceCostContractTypeOptions() =>
+        new[]
+        {
+            new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceCostMonthlyOption, Label = "Monthly" },
+            new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceCostOneTimeOption, Label = "Onetime" },
+            new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceCostPrepaidOption, Label = "Prepaid" }
+        };
+
+    private static IReadOnlyList<LicenciamientoCruceOptionDto> BuildLicenciamientoCruceBillingContractTypeOptions() =>
+        new[]
+        {
+            new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceBillingMonthlyOption, Label = "Mensual" },
+            new LicenciamientoCruceOptionDto { Value = LicenciamientoCruceBillingOneTimeOption, Label = "OneTime" }
+        };
+
     private static LicenciamientoCruceTotalsDto BuildLicenciamientoCruceTotals(
         IReadOnlyList<LicenciamientoCruceRowDto> rows)
     {
@@ -755,9 +1180,10 @@ public sealed partial class DataverseService
             AccountId = row.AccountId,
             Account = row.CompanyAccountDisplay,
             TipoContrato = row.ContractTypeLabel,
+            TipoContratoValue = row.ContractTypeValue,
             Vertical = FirstNonEmpty(row.Vendor, "Licenciamiento"),
             Fecha = row.InvoiceDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
-            Mes = FormatLicenciamientoCruceMonth(row.CostMonth),
+            Mes = FormatLicenciamientoCruceMonth(GetLicenciamientoCruceCostMonth(row)),
             Valor = row.CostCop,
             ValorTotal = row.CostCop
         };
@@ -774,6 +1200,7 @@ public sealed partial class DataverseService
             Cliente = row.ClientName,
             ClienteId = NormalizeOptionalGuid(row.ClientId),
             TipoContrato = row.ContractTypeLabel,
+            TipoContratoValue = row.ContractTypeOptionValue,
             Vertical = row.VerticalLabel,
             Fecha = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             Mes = row.EmissionDate.HasValue ? FormatLicenciamientoCruceMonth(new DateOnly(row.EmissionDate.Value.Year, row.EmissionDate.Value.Month, 1)) : "",
@@ -1081,6 +1508,7 @@ public sealed partial class DataverseService
         public string ClientName { get; set; } = "";
         public string CompanyAccountDisplay { get; set; } = "";
         public string Vendor { get; set; } = "";
+        public int ContractTypeValue { get; set; }
         public string ContractTypeKey { get; set; } = LicenciamientoCruceOtherKey;
         public string ContractTypeLabel { get; set; } = LicenciamientoCruceOtherLabel;
         public DateOnly? InvoiceDate { get; set; }
@@ -1118,5 +1546,14 @@ public sealed partial class DataverseService
         public IReadOnlyList<LicenciamientoCruceTraceItemDto> BillingItems { get; init; } = Array.Empty<LicenciamientoCruceTraceItemDto>();
         public bool HasInvalidVat { get; init; }
         public bool HasMissingVatValue { get; init; }
+    }
+
+    private sealed class LicenciamientoCrucePeriod
+    {
+        public DateOnly SelectedMonth { get; init; }
+        public DateOnly Start { get; init; }
+        public DateOnly End { get; init; }
+        public string Mode { get; init; } = "month";
+        public string Label { get; init; } = "";
     }
 }

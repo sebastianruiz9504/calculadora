@@ -1,5 +1,6 @@
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Licenciamiento;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
@@ -23,15 +24,12 @@ public sealed class CruceLicenciamientoController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var defaultCostMonth = new DateOnly(today.Year, today.Month, 1).AddMonths(-2);
-
         return View(new LicenciamientoCrucePageViewModel
         {
             CurrentUser = await GetCurrentUserAsync(ct),
-            DefaultYear = defaultCostMonth.Year,
-            DefaultMonth = defaultCostMonth.Month,
-            DefaultBillingOffsetMonths = 1
+            DefaultYear = 0,
+            DefaultMonth = 0,
+            DefaultPeriodMode = "month"
         });
     }
 
@@ -40,7 +38,7 @@ public sealed class CruceLicenciamientoController : Controller
     public async Task<IActionResult> Data(
         [FromQuery] int year,
         [FromQuery] int month,
-        [FromQuery] int billingOffsetMonths = 1,
+        [FromQuery] string periodMode = "month",
         CancellationToken ct = default)
     {
         try
@@ -48,7 +46,7 @@ public sealed class CruceLicenciamientoController : Controller
             return Ok(await _dataverse.GetLicenciamientoCruceDashboardAsync(
                 year,
                 month,
-                billingOffsetMonths,
+                periodMode,
                 ct));
         }
         catch (InvalidOperationException ex)
@@ -60,6 +58,75 @@ public sealed class CruceLicenciamientoController : Controller
             return StatusCode(
                 StatusCodes.Status500InternalServerError,
                 CreateErrorPayload("No fue posible construir el cruce de licenciamiento.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UpdateCostContractType([FromBody] LicenciamientoUpdateContractTypeRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Solicitud invalida."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateLicenciamientoContractTypeAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible actualizar el tipo de contrato del consumo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UpdateBillingContractType([FromBody] BillingInvoicesContractTypeUpdateRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Solicitud invalida."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateBillingInvoicesContractTypeAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible actualizar el tipo de contrato de la factura.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UpdateCostAccount([FromBody] LicenciamientoCruceUpdateCostAccountRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Solicitud invalida."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateLicenciamientoCruceCostAccountAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible actualizar el Account ID del consumo.", ex));
         }
     }
 

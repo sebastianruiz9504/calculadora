@@ -10,9 +10,12 @@
 <div class="licx-shell"
      id="licCruceApp"
      data-load-url="@Url.Action("Data", "CruceLicenciamiento")"
+     data-update-cost-contract-url="@Url.Action("UpdateCostContractType", "CruceLicenciamiento")"
+     data-update-billing-contract-url="@Url.Action("UpdateBillingContractType", "CruceLicenciamiento")"
+     data-update-cost-account-url="@Url.Action("UpdateCostAccount", "CruceLicenciamiento")"
      data-default-year="@Model.DefaultYear"
      data-default-month="@Model.DefaultMonth"
-     data-default-offset="@Model.DefaultBillingOffsetMonths">
+     data-default-period-mode="@Model.DefaultPeriodMode">
     <section class="licx-header">
         <div>
             <div class="licx-kicker">Gerencia</div>
@@ -26,12 +29,21 @@
 
     <form class="licx-toolbar" id="licCruceFilters">
         <label class="licx-field">
-            <span>Año cierre</span>
-            <input class="form-control" id="licCruceYear" type="number" min="2000" max="2100" step="1" />
+            <span>Periodo</span>
+            <select class="form-select" id="licCrucePeriodMode">
+                <option value="month">Mes</option>
+                <option value="quarter">Trimestre</option>
+                <option value="ytd">Ano acumulado</option>
+            </select>
         </label>
         <label class="licx-field">
-            <span>Mes cierre</span>
+            <span>Ano</span>
+            <input class="form-control" id="licCruceYear" type="number" min="2000" max="2100" step="1" placeholder="Ultimo" />
+        </label>
+        <label class="licx-field">
+            <span>Mes base</span>
             <select class="form-select" id="licCruceMonth">
+                <option value="">Ultimo mes con data</option>
                 <option value="1">Enero</option>
                 <option value="2">Febrero</option>
                 <option value="3">Marzo</option>
@@ -47,12 +59,8 @@
             </select>
         </label>
         <label class="licx-field">
-            <span>Facturacion a comparar</span>
-            <select class="form-select" id="licCruceOffset">
-                <option value="1">Mes siguiente</option>
-                <option value="0">Mismo mes</option>
-                <option value="-1">Mes anterior</option>
-            </select>
+            <span>Tipo</span>
+            <select class="form-select" id="licCruceSegmentSelect"></select>
         </label>
         <button type="submit" class="btn btn-primary">Actualizar</button>
     </form>
@@ -65,78 +73,42 @@
             <strong id="licCruceTotalCost">$0</strong>
         </article>
         <article class="licx-kpi">
-            <span>Facturacion sin IVA</span>
+            <span>Venta sin IVA</span>
             <strong id="licCruceTotalBilling">$0</strong>
         </article>
         <article class="licx-kpi">
-            <span>Margen bruto</span>
+            <span>Utilidad</span>
             <strong id="licCruceTotalMargin">$0</strong>
         </article>
         <article class="licx-kpi">
-            <span>Margen bruto %</span>
+            <span>Utilidad %</span>
             <strong id="licCruceTotalMarginPct">N/A</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Periodo cargado</span>
+            <strong id="licCrucePeriodLabel">-</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Margen negativo</span>
+            <strong id="licCruceNegativeCount">0</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Huerfanos</span>
+            <button type="button" class="btn btn-outline-primary licx-kpi-button" id="licCruceOpenOrphans">Ver 0</button>
         </article>
     </section>
 
-    <section class="licx-overview">
-        <div class="licx-period">
-            <span>Mes costo</span>
-            <strong id="licCruceCostMonth">-</strong>
-        </div>
-        <div class="licx-period">
-            <span>Mes facturacion</span>
-            <strong id="licCruceBillingMonth">-</strong>
-        </div>
-        <div class="licx-period">
-            <span>Estado del cierre</span>
-            <strong id="licCruceCloseState">-</strong>
-        </div>
-    </section>
-
-    <section class="licx-top-panels" aria-label="Alertas y validaciones">
-        <section class="licx-panel">
-            <div class="licx-panel__header">
-                <div>
-                    <div class="licx-kicker">Alertas</div>
-                    <h2>Solo margen negativo</h2>
-                </div>
-            </div>
-            <div class="licx-alerts" id="licCruceAlerts"></div>
-        </section>
-
-        <section class="licx-panel">
-            <div class="licx-panel__header">
-                <div>
-                    <div class="licx-kicker">Clientes</div>
-                    <h2>Margen negativo</h2>
-                </div>
-            </div>
-            <div class="licx-ranking" id="licCruceRanking"></div>
-        </section>
-
-        <section class="licx-panel">
-            <div class="licx-panel__header">
-                <div>
-                    <div class="licx-kicker">Validaciones</div>
-                    <h2>Fuente y calidad</h2>
-                </div>
-            </div>
-            <div class="licx-validations" id="licCruceValidations"></div>
-        </section>
-    </section>
-
-    <section class="licx-panel licx-detail-panel">
-        <div class="licx-panel__header licx-detail-header">
+    <section class="licx-panel licx-matrix-panel">
+        <div class="licx-panel__header">
             <div>
-                <div class="licx-kicker">Detalle</div>
-                <h2>Clientes por tipo de contrato</h2>
+                <div class="licx-kicker">Matriz por cliente</div>
+                <h2 id="licCruceMatrixTitle">Monthly</h2>
             </div>
-            <label class="licx-field licx-field--inline">
-                <span>Ver tabla</span>
-                <select class="form-select" id="licCruceSegmentSelect"></select>
-            </label>
+            <div class="licx-panel-actions">
+                <span id="licCruceMatrixSummary"></span>
+            </div>
         </div>
-        <div id="licCruceSegments" class="licx-segments"></div>
+        <div id="licCruceMatrix" class="licx-matrix"></div>
     </section>
 </div>
 

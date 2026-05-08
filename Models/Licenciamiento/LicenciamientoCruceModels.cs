@@ -5,7 +5,7 @@ public sealed class LicenciamientoCrucePageViewModel
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public int DefaultYear { get; set; }
     public int DefaultMonth { get; set; }
-    public int DefaultBillingOffsetMonths { get; set; } = 1;
+    public string DefaultPeriodMode { get; set; } = "month";
 }
 
 public sealed class LicenciamientoCruceDashboardDto
@@ -14,12 +14,22 @@ public sealed class LicenciamientoCruceDashboardDto
     public string MesCosto { get; set; } = "";
     public string MesFacturacion { get; set; } = "";
     public int BillingOffsetMonths { get; set; }
+    public int SelectedYear { get; set; }
+    public int SelectedMonth { get; set; }
+    public string PeriodMode { get; set; } = "month";
+    public string PeriodLabel { get; set; } = "";
+    public string LatestDataMonth { get; set; } = "";
     public bool HasData { get; set; }
     public int RecordsCount { get; set; }
     public LicenciamientoCruceTotalsDto Totals { get; set; } = new();
     public LicenciamientoCruceStatusCountsDto StatusCounts { get; set; } = new();
     public IReadOnlyList<LicenciamientoCruceRowDto> Rows { get; set; } = Array.Empty<LicenciamientoCruceRowDto>();
     public IReadOnlyList<LicenciamientoCruceContractSegmentDto> ContractSegments { get; set; } = Array.Empty<LicenciamientoCruceContractSegmentDto>();
+    public IReadOnlyList<LicenciamientoCruceMatrixSegmentDto> MatrixSegments { get; set; } = Array.Empty<LicenciamientoCruceMatrixSegmentDto>();
+    public IReadOnlyList<LicenciamientoCruceMatrixMonthDto> MatrixMonths { get; set; } = Array.Empty<LicenciamientoCruceMatrixMonthDto>();
+    public IReadOnlyList<LicenciamientoCruceOrphanRecordDto> Orphans { get; set; } = Array.Empty<LicenciamientoCruceOrphanRecordDto>();
+    public IReadOnlyList<LicenciamientoCruceOptionDto> CostContractTypeOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();
+    public IReadOnlyList<LicenciamientoCruceOptionDto> BillingContractTypeOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();
     public IReadOnlyList<LicenciamientoCruceMonthSummaryDto> MonthSummaries { get; set; } = Array.Empty<LicenciamientoCruceMonthSummaryDto>();
     public IReadOnlyList<LicenciamientoCruceAlertDto> Alerts { get; set; } = Array.Empty<LicenciamientoCruceAlertDto>();
     public IReadOnlyList<LicenciamientoCruceValidationDto> Validations { get; set; } = Array.Empty<LicenciamientoCruceValidationDto>();
@@ -63,6 +73,52 @@ public sealed class LicenciamientoCruceContractSegmentDto
     public LicenciamientoCruceTotalsDto Totals { get; set; } = new();
     public LicenciamientoCruceStatusCountsDto StatusCounts { get; set; } = new();
     public IReadOnlyList<LicenciamientoCruceRowDto> Rows { get; set; } = Array.Empty<LicenciamientoCruceRowDto>();
+}
+
+public sealed class LicenciamientoCruceMatrixMonthDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Year { get; set; }
+    public int Month { get; set; }
+}
+
+public sealed class LicenciamientoCruceMatrixSegmentDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int RecordsCount { get; set; }
+    public int NegativeMarginCount { get; set; }
+    public int OrphanCount { get; set; }
+    public LicenciamientoCruceTotalsDto Totals { get; set; } = new();
+    public LicenciamientoCruceStatusCountsDto StatusCounts { get; set; } = new();
+    public IReadOnlyList<LicenciamientoCruceMatrixClientRowDto> Rows { get; set; } = Array.Empty<LicenciamientoCruceMatrixClientRowDto>();
+}
+
+public sealed class LicenciamientoCruceMatrixClientRowDto
+{
+    public string RowKey { get; set; } = "";
+    public string ClienteId { get; set; } = "";
+    public string Cliente { get; set; } = "";
+    public string NitCliente { get; set; } = "";
+    public decimal TotalCostoLicenciamiento { get; set; }
+    public decimal TotalFacturacionSinIva { get; set; }
+    public decimal TotalUtilidad { get; set; }
+    public decimal? TotalUtilidadPct { get; set; }
+    public bool HasNegativeMargin { get; set; }
+    public bool HasOrphans { get; set; }
+    public IReadOnlyList<LicenciamientoCruceMatrixCellDto> Cells { get; set; } = Array.Empty<LicenciamientoCruceMatrixCellDto>();
+}
+
+public sealed class LicenciamientoCruceMatrixCellDto
+{
+    public string Mes { get; set; } = "";
+    public decimal CostoLicenciamiento { get; set; }
+    public decimal FacturacionSinIva { get; set; }
+    public decimal UtilidadValor { get; set; }
+    public decimal? UtilidadPct { get; set; }
+    public bool HasNegativeMargin { get; set; }
+    public bool HasOrphans { get; set; }
 }
 
 public sealed class LicenciamientoCruceRowDto
@@ -113,12 +169,38 @@ public sealed class LicenciamientoCruceTraceItemDto
     public string AccountId { get; set; } = "";
     public string Account { get; set; } = "";
     public string TipoContrato { get; set; } = "";
+    public int? TipoContratoValue { get; set; }
     public string Vertical { get; set; } = "";
     public string Fecha { get; set; } = "";
     public string Mes { get; set; } = "";
     public decimal Valor { get; set; }
     public decimal ValorTotal { get; set; }
     public decimal Iva { get; set; }
+}
+
+public sealed class LicenciamientoCruceOrphanRecordDto
+{
+    public string Source { get; set; } = "";
+    public string Status { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string Referencia { get; set; } = "";
+    public string Mes { get; set; } = "";
+    public string Cliente { get; set; } = "";
+    public string ClienteId { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string Account { get; set; } = "";
+    public string TipoContrato { get; set; } = "";
+    public int? TipoContratoValue { get; set; }
+    public string Vertical { get; set; } = "";
+    public string Fecha { get; set; } = "";
+    public decimal Valor { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceOptionDto
+{
+    public int Value { get; set; }
+    public string Label { get; set; } = "";
 }
 
 public sealed class LicenciamientoCruceAlertDto
@@ -136,4 +218,20 @@ public sealed class LicenciamientoCruceValidationDto
     public string Label { get; set; } = "";
     public string Status { get; set; } = "ok";
     public string Detail { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceUpdateCostAccountRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public string AccountId { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceUpdateCostAccountResultDto
+{
+    public string Message { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string AccountLabel { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
 }
