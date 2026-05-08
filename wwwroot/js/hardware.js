@@ -1020,10 +1020,6 @@
             }
 
             const fileName = resolveExistingFileName(row, fieldName);
-            if (!canDownloadCommercialFile(fieldName)) {
-                return `<span class="hardware-file-chip">${escapeHtml(label)}${fileName ? ` · ${escapeHtml(fileName)}` : ""}</span>`;
-            }
-
             return `
                 <a class="hardware-file-chip" href="${escapeHtml(buildDownloadUrl(row.recordId, fieldName))}" target="_blank" rel="noopener">
                     ${escapeHtml(label)}${fileName ? ` · ${escapeHtml(fileName)}` : ""}
@@ -3008,14 +3004,6 @@
 
         function isOrderDocumentationFile(fieldName) {
             return fieldName === "cr07a_ordendecompra" || fieldName === "cr07a_adjuntarproforma";
-        }
-
-        function canDownloadCommercialFile(fieldName) {
-            if (!isSupplierPaymentEffectiveUser()) {
-                return true;
-            }
-
-            return fieldName === "cr07a_adjuntarproforma" || fieldName === "cr07a_pagoaproveedor";
         }
 
         function findDisplayGroup(key) {
