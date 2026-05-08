@@ -164,6 +164,7 @@
 }
 
 .licx-table-wrap {
+    width: 100%;
     overflow: auto;
 }
 
@@ -206,6 +207,7 @@
 }
 
 .licx-matrix-table {
+    width: 100%;
     min-width: 1180px;
 }
 
@@ -237,11 +239,6 @@
     background: #f8fafc;
 }
 
-.licx-matrix-table tbody tr.is-alert .licx-client-col,
-.licx-matrix-table tbody tr.is-alert td {
-    background: #fff7ed;
-}
-
 .licx-matrix-table tbody tr.has-orphans .licx-client-col {
     border-left: 4px solid #d97706;
 }
@@ -257,6 +254,24 @@
 
 .licx-matrix-table td.is-orphan-cell {
     box-shadow: inset 0 -2px 0 #d97706;
+}
+
+.licx-matrix-table td.is-utility-positive {
+    background: #dcfce7;
+    color: #166534;
+    font-weight: 750;
+}
+
+.licx-matrix-table td.is-utility-negative {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 750;
+}
+
+.licx-matrix-table td.is-utility-neutral {
+    background: #f8fafc;
+    color: #334e68;
+    font-weight: 700;
 }
 
 .licx-drill-cell {

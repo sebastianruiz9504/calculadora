@@ -860,9 +860,7 @@ public sealed partial class DataverseService
                 Label = ResolveLicenciamientoCruceContractLabel(key),
                 RecordsCount = clientRows.Count,
                 NegativeMarginCount = clientRows.Count(static row => row.HasNegativeMargin),
-                OrphanCount = segmentRows.Count(static row =>
-                    string.Equals(row.EstadoCruce, LicenciamientoCruceStatusCostOnly, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(row.EstadoCruce, LicenciamientoCruceStatusBillingOnly, StringComparison.OrdinalIgnoreCase)),
+                OrphanCount = clientRows.SelectMany(static row => row.Cells).Count(static cell => cell.HasOrphans),
                 Totals = BuildLicenciamientoCruceTotals(segmentRows),
                 StatusCounts = BuildLicenciamientoCruceStatusCounts(segmentRows),
                 Rows = clientRows
@@ -886,6 +884,8 @@ public sealed partial class DataverseService
                 var cost = RoundCurrency(monthRows.Sum(static row => row.CostoLicenciamiento));
                 var billing = RoundCurrency(monthRows.Sum(static row => row.FacturacionSinIva));
                 var utility = RoundCurrency(billing - cost);
+                var hasCost = Math.Abs(cost) >= 0.01m;
+                var hasBilling = Math.Abs(billing) >= 0.01m;
                 return new LicenciamientoCruceMatrixCellDto
                 {
                     Mes = month.Key,
@@ -894,9 +894,7 @@ public sealed partial class DataverseService
                     UtilidadValor = utility,
                     UtilidadPct = CalculateLicenciamientoCruceMarginPercent(utility, billing),
                     HasNegativeMargin = utility < 0m,
-                    HasOrphans = monthRows.Any(static row =>
-                        string.Equals(row.EstadoCruce, LicenciamientoCruceStatusCostOnly, StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(row.EstadoCruce, LicenciamientoCruceStatusBillingOnly, StringComparison.OrdinalIgnoreCase))
+                    HasOrphans = hasCost != hasBilling
                 };
             })
             .ToList();
@@ -955,17 +953,26 @@ public sealed partial class DataverseService
         IReadOnlyList<LicenciamientoCruceRowDto> rows)
     {
         var orphans = new List<LicenciamientoCruceOrphanRecordDto>();
-        foreach (var row in rows)
+        foreach (var group in rows.GroupBy(row => $"{row.TipoContratoKey}|{row.MesCierre}|{FirstNonEmpty(row.MatrixClientKey, ResolveLicenciamientoCruceMatrixClientKey(row))}", StringComparer.OrdinalIgnoreCase))
         {
-            if (string.Equals(row.EstadoCruce, LicenciamientoCruceStatusCostOnly, StringComparison.OrdinalIgnoreCase))
+            var groupRows = group.ToList();
+            var costTotal = RoundCurrency(groupRows.Sum(static row => row.CostoLicenciamiento));
+            var billingTotal = RoundCurrency(groupRows.Sum(static row => row.FacturacionSinIva));
+            var hasCost = Math.Abs(costTotal) >= 0.01m;
+            var hasBilling = Math.Abs(billingTotal) >= 0.01m;
+            if (hasCost && !hasBilling)
             {
-                orphans.AddRange((row.Trace?.CostItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
-                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "cost", row.EstadoCruce, "No hay factura emitida en el mismo mes, con el mismo cliente padre y tipo de contrato.")));
+                orphans.AddRange(groupRows
+                    .SelectMany(static row => row.Trace?.CostItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
+                    .DistinctBy(static item => item.RecordId, StringComparer.OrdinalIgnoreCase)
+                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "cost", LicenciamientoCruceStatusCostOnly, "No hay factura emitida en el mismo mes, con el mismo cliente y tipo de contrato.")));
             }
-            else if (string.Equals(row.EstadoCruce, LicenciamientoCruceStatusBillingOnly, StringComparison.OrdinalIgnoreCase))
+            else if (hasBilling && !hasCost)
             {
-                orphans.AddRange((row.Trace?.BillingItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
-                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "billing", row.EstadoCruce, "No hay costo con mes factura igual, mismo cliente padre y tipo de contrato.")));
+                orphans.AddRange(groupRows
+                    .SelectMany(static row => row.Trace?.BillingItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
+                    .DistinctBy(static item => item.RecordId, StringComparer.OrdinalIgnoreCase)
+                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "billing", LicenciamientoCruceStatusBillingOnly, "No hay costo con mes factura igual, mismo cliente y tipo de contrato.")));
             }
         }
 
@@ -1272,9 +1279,8 @@ public sealed partial class DataverseService
         LicenciamientoCruceCostGroup cost,
         LicenciamientoCruceBillingGroup billing)
     {
-        var costClientId = NormalizeOptionalGuid(cost.ClientId);
-        var billingClientId = NormalizeOptionalGuid(billing.ClientId);
-        return string.IsNullOrWhiteSpace(costClientId) || string.IsNullOrWhiteSpace(billingClientId);
+        return !string.IsNullOrWhiteSpace(NormalizeLicenciamientoCruceClientKey(cost.ClientName))
+            && !string.IsNullOrWhiteSpace(NormalizeLicenciamientoCruceClientKey(billing.ClientName));
     }
 
     private static decimal CalculateLicenciamientoCruceClientSimilarity(string? left, string? right)

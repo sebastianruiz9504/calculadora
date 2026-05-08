@@ -296,11 +296,13 @@
             safeCell.hasOrphans ? "is-orphan-cell" : ""
         ].filter(Boolean).join(" ");
         const commonAttrs = `data-client-key="${escapeHtml(row.rowKey || "")}" data-client-name="${escapeHtml(row.cliente || "Cliente sin nombre")}" data-month="${escapeHtml(month.key || safeCell.mes || "")}"`;
+        const utilityValue = Number(safeCell.utilidadValor || 0);
+        const utilityClass = utilityValue > 0 ? "is-utility-positive" : utilityValue < 0 ? "is-utility-negative" : "is-utility-neutral";
         return `
             <td class="text-end ${classes} licx-drill-cell" tabindex="0" role="button" data-detail-source="cost" ${commonAttrs}>${formatCurrency(safeCell.costoLicenciamiento)}</td>
             <td class="text-end ${classes} licx-drill-cell" tabindex="0" role="button" data-detail-source="billing" ${commonAttrs}>${formatCurrency(safeCell.facturacionSinIva)}</td>
             <td class="text-end ${classes}">${formatPercent(safeCell.utilidadPct)}</td>
-            <td class="text-end ${classes} ${Number(safeCell.utilidadValor || 0) < 0 ? "is-negative" : ""}">${formatCurrency(safeCell.utilidadValor)}</td>
+            <td class="text-end ${classes} ${utilityClass}">${formatCurrency(safeCell.utilidadValor)}</td>
         `;
     }
 
