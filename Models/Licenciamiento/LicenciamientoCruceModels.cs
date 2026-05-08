@@ -124,6 +124,7 @@ public sealed class LicenciamientoCruceMatrixCellDto
 public sealed class LicenciamientoCruceRowDto
 {
     public string RowKey { get; set; } = "";
+    public string MatrixClientKey { get; set; } = "";
     public string MesCierre { get; set; } = "";
     public string MesCosto { get; set; } = "";
     public string MesFacturacion { get; set; } = "";
@@ -168,6 +169,8 @@ public sealed class LicenciamientoCruceTraceItemDto
     public string ClienteId { get; set; } = "";
     public string AccountId { get; set; } = "";
     public string Account { get; set; } = "";
+    public string Producto { get; set; } = "";
+    public string ProductoId { get; set; } = "";
     public string TipoContrato { get; set; } = "";
     public int? TipoContratoValue { get; set; }
     public string Vertical { get; set; } = "";
@@ -189,6 +192,8 @@ public sealed class LicenciamientoCruceOrphanRecordDto
     public string ClienteId { get; set; } = "";
     public string AccountId { get; set; } = "";
     public string Account { get; set; } = "";
+    public string Producto { get; set; } = "";
+    public string ProductoId { get; set; } = "";
     public string TipoContrato { get; set; } = "";
     public int? TipoContratoValue { get; set; }
     public string Vertical { get; set; } = "";

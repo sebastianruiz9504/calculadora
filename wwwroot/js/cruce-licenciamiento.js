@@ -44,6 +44,7 @@
     let currentSegments = [];
     let selectedSegmentKey = "";
     let orphanDialog = null;
+    let detailDialog = null;
 
     yearInput.value = Number(app.dataset.defaultYear || 0) > 0 ? app.dataset.defaultYear : "";
     monthSelect.value = Number(app.dataset.defaultMonth || 0) > 0 ? app.dataset.defaultMonth : "";
@@ -63,9 +64,33 @@
         openOrphanDialog();
     });
 
+    matrixWrap?.addEventListener("click", (event) => {
+        const cell = event.target.closest("[data-detail-source]");
+        if (!cell) {
+            return;
+        }
+
+        openCellDetailDialog(cell.dataset.detailSource || "", cell.dataset.clientKey || "", cell.dataset.month || "", cell.dataset.clientName || "");
+    });
+
+    matrixWrap?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        const cell = event.target.closest("[data-detail-source]");
+        if (!cell) {
+            return;
+        }
+
+        event.preventDefault();
+        openCellDetailDialog(cell.dataset.detailSource || "", cell.dataset.clientKey || "", cell.dataset.month || "", cell.dataset.clientName || "");
+    });
+
     document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
             closeOrphanDialog();
+            closeDetailDialog();
         }
     });
 
@@ -259,22 +284,149 @@
                     <strong>${escapeHtml(row.cliente || "Cliente sin nombre")}</strong>
                     <small>${escapeHtml(row.nitCliente || row.clienteId || "")}</small>
                 </th>
-                ${months.map((month) => buildMatrixCellGroup(cellsByMonth.get(month.key || ""))).join("")}
+                ${months.map((month) => buildMatrixCellGroup(cellsByMonth.get(month.key || ""), row, month)).join("")}
             </tr>
         `;
     }
 
-    function buildMatrixCellGroup(cell) {
+    function buildMatrixCellGroup(cell, row, month) {
         const safeCell = cell || {};
         const classes = [
             safeCell.hasNegativeMargin ? "is-negative-cell" : "",
             safeCell.hasOrphans ? "is-orphan-cell" : ""
         ].filter(Boolean).join(" ");
+        const commonAttrs = `data-client-key="${escapeHtml(row.rowKey || "")}" data-client-name="${escapeHtml(row.cliente || "Cliente sin nombre")}" data-month="${escapeHtml(month.key || safeCell.mes || "")}"`;
         return `
-            <td class="text-end ${classes}">${formatCurrency(safeCell.costoLicenciamiento)}</td>
-            <td class="text-end ${classes}">${formatCurrency(safeCell.facturacionSinIva)}</td>
+            <td class="text-end ${classes} licx-drill-cell" tabindex="0" role="button" data-detail-source="cost" ${commonAttrs}>${formatCurrency(safeCell.costoLicenciamiento)}</td>
+            <td class="text-end ${classes} licx-drill-cell" tabindex="0" role="button" data-detail-source="billing" ${commonAttrs}>${formatCurrency(safeCell.facturacionSinIva)}</td>
             <td class="text-end ${classes}">${formatPercent(safeCell.utilidadPct)}</td>
             <td class="text-end ${classes} ${Number(safeCell.utilidadValor || 0) < 0 ? "is-negative" : ""}">${formatCurrency(safeCell.utilidadValor)}</td>
+        `;
+    }
+
+    function openCellDetailDialog(source, clientKey, monthKey, clientName) {
+        const dialog = ensureDetailDialog();
+        const items = getCellDetailItems(source, clientKey, monthKey);
+        const sourceLabel = source === "billing" ? "Venta" : "Costo";
+        dialog.querySelector("[data-detail-title]").textContent = `${sourceLabel} - ${clientName || "Cliente"}`;
+        dialog.querySelector("[data-detail-subtitle]").textContent = `${monthKey || "-"} | ${items.length} registro(s)`;
+        dialog.querySelector("[data-detail-body]").innerHTML = buildDetailTable(items, source);
+        dialog.hidden = false;
+        document.body.classList.add("licx-modal-open");
+        dialog.querySelector("[data-detail-close]")?.focus();
+    }
+
+    function closeDetailDialog() {
+        if (!detailDialog) {
+            return;
+        }
+
+        detailDialog.hidden = true;
+        document.body.classList.remove("licx-modal-open");
+    }
+
+    function ensureDetailDialog() {
+        if (detailDialog) {
+            return detailDialog;
+        }
+
+        detailDialog = document.createElement("div");
+        detailDialog.className = "licx-modal";
+        detailDialog.hidden = true;
+        detailDialog.innerHTML = `
+            <div class="licx-modal__backdrop" data-detail-backdrop></div>
+            <section class="licx-modal__dialog" role="dialog" aria-modal="true" aria-label="Detalle de celda">
+                <header class="licx-modal__header">
+                    <div>
+                        <div class="licx-kicker">Detalle</div>
+                        <h2 data-detail-title>Detalle</h2>
+                        <span data-detail-subtitle></span>
+                    </div>
+                    <button type="button" class="btn-close" aria-label="Cerrar" data-detail-close></button>
+                </header>
+                <div class="licx-modal__body">
+                    <div data-detail-body></div>
+                </div>
+            </section>
+        `;
+        detailDialog.querySelector("[data-detail-close]")?.addEventListener("click", closeDetailDialog);
+        detailDialog.querySelector("[data-detail-backdrop]")?.addEventListener("click", closeDetailDialog);
+        document.body.appendChild(detailDialog);
+        return detailDialog;
+    }
+
+    function getCellDetailItems(source, clientKey, monthKey) {
+        const detailRows = Array.isArray(currentData?.rows) ? currentData.rows : [];
+        return detailRows
+            .filter((row) =>
+                (row.tipoContratoKey || "") === selectedSegmentKey
+                && (row.mesCierre || "") === monthKey
+                && (row.matrixClientKey || buildRowClientKey(row)) === clientKey)
+            .flatMap((row) => {
+                const trace = row.trace || {};
+                return source === "billing"
+                    ? (Array.isArray(trace.billingItems) ? trace.billingItems : [])
+                    : (Array.isArray(trace.costItems) ? trace.costItems : []);
+            });
+    }
+
+    function buildDetailTable(items, source) {
+        if (!Array.isArray(items) || items.length === 0) {
+            return "<div class=\"licx-empty\">No hay registros para esta celda.</div>";
+        }
+
+        const isBilling = source === "billing";
+        return `
+            <div class="licx-table-wrap licx-table-wrap--detail">
+                <table class="table align-middle licx-table licx-detail-table">
+                    <thead>
+                        <tr>
+                            <th>${isBilling ? "Fecha emision" : "Fecha factura costo"}</th>
+                            <th>${isBilling ? "Factura" : "Referencia"}</th>
+                            <th>Producto / licencia</th>
+                            <th>Cliente</th>
+                            ${isBilling ? "<th>Vertical</th>" : "<th>Account ID</th><th>Account</th>"}
+                            <th>Tipo</th>
+                            ${isBilling ? "<th class=\"text-end\">Total factura</th><th class=\"text-end\">IVA</th>" : ""}
+                            <th class="text-end">${isBilling ? "Venta sin IVA" : "Costo"}</th>
+                            <th>Record ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item) => buildDetailRow(item, isBilling)).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function buildDetailRow(item, isBilling) {
+        const product = item.producto || (isBilling ? "No disponible en facturacion" : "Sin producto");
+        const sourceCells = isBilling
+            ? `<td>${escapeHtml(item.vertical || "-")}</td>`
+            : `<td>${escapeHtml(item.accountId || "-")}</td><td>${escapeHtml(item.account || "-")}</td>`;
+        const billingTotals = isBilling
+            ? `<td class="text-end">${formatCurrency(item.valorTotal)}</td><td class="text-end">${formatCurrency(item.iva)}</td>`
+            : "";
+
+        return `
+            <tr>
+                <td>${escapeHtml(item.fecha || item.mes || "-")}</td>
+                <td>${escapeHtml(item.referencia || "-")}</td>
+                <td>
+                    <strong>${escapeHtml(product)}</strong>
+                    <small>${escapeHtml(item.productoId || "")}</small>
+                </td>
+                <td>
+                    <strong>${escapeHtml(item.cliente || "-")}</strong>
+                    <small>${escapeHtml(item.clienteId || "")}</small>
+                </td>
+                ${sourceCells}
+                <td>${escapeHtml(item.tipoContrato || "-")}</td>
+                ${billingTotals}
+                <td class="text-end">${formatCurrency(item.valor)}</td>
+                <td><code>${escapeHtml(item.recordId || "")}</code></td>
+            </tr>
         `;
     }
 
@@ -453,6 +605,37 @@
             body: JSON.stringify(payload)
         });
         return await readJsonResponse(response);
+    }
+
+    function buildRowClientKey(row) {
+        const trace = row?.trace || {};
+        const clientId = (trace.billingClientId || trace.costClientId || "").toString().trim();
+        if (clientId) {
+            return `client:${clientId.toLowerCase()}`;
+        }
+
+        const nameKey = normalizeClientKey(row?.cliente || "");
+        return nameKey ? `name:${nameKey}` : `row:${row?.rowKey || ""}`;
+    }
+
+    function normalizeClientKey(value) {
+        const legalTokens = new Set(["SAS", "SA", "S A S", "S A", "LTDA", "LIMITADA", "INC", "CORP", "CORPORACION", "FUNDACION", "EMPRESA", "UNION TEMPORAL"]);
+        const normalized = (value || "")
+            .toString()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, " ")
+            .trim();
+
+        if (!normalized) {
+            return "";
+        }
+
+        return normalized
+            .split(/\s+/)
+            .filter((token) => !legalTokens.has(token))
+            .join(" ");
     }
 
     function formatCurrency(value) {

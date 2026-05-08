@@ -110,6 +110,10 @@ public sealed partial class DataverseService
             .ThenBy(row => ResolveLicenciamientoCruceStateOrder(row.EstadoCruce))
             .ThenBy(row => row.Cliente, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        foreach (var row in rows)
+        {
+            row.MatrixClientKey = ResolveLicenciamientoCruceMatrixClientKey(row);
+        }
 
         var totalCostSource = RoundCurrency(costRows.Sum(static row => row.CostCop));
         var totalCostCross = RoundCurrency(rows.Sum(static row => row.CostoLicenciamiento));
@@ -452,6 +456,8 @@ public sealed partial class DataverseService
             ClientName = clientName,
             CompanyAccountDisplay = record.CompanyAccountDisplay,
             Vendor = record.Vendor,
+            ProductId = NormalizeOptionalGuid(record.ProductId),
+            ProductDisplay = record.ProductDisplay,
             ContractTypeValue = record.ContractTypeValue,
             ContractTypeKey = ResolveLicenciamientoCruceContractKey(record.ContractTypeValue, record.ContractTypeLabel, isBillingSource: false),
             ContractTypeLabel = ResolveLicenciamientoCruceContractLabel(ResolveLicenciamientoCruceContractKey(record.ContractTypeValue, record.ContractTypeLabel, isBillingSource: false)),
@@ -986,6 +992,8 @@ public sealed partial class DataverseService
             ClienteId = item.ClienteId,
             AccountId = item.AccountId,
             Account = item.Account,
+            Producto = item.Producto,
+            ProductoId = item.ProductoId,
             TipoContrato = item.TipoContrato,
             TipoContratoValue = item.TipoContratoValue,
             Vertical = item.Vertical,
@@ -1179,6 +1187,8 @@ public sealed partial class DataverseService
             ClienteId = row.ClientId,
             AccountId = row.AccountId,
             Account = row.CompanyAccountDisplay,
+            Producto = row.ProductDisplay,
+            ProductoId = row.ProductId,
             TipoContrato = row.ContractTypeLabel,
             TipoContratoValue = row.ContractTypeValue,
             Vertical = FirstNonEmpty(row.Vendor, "Licenciamiento"),
@@ -1508,6 +1518,8 @@ public sealed partial class DataverseService
         public string ClientName { get; set; } = "";
         public string CompanyAccountDisplay { get; set; } = "";
         public string Vendor { get; set; } = "";
+        public string ProductId { get; set; } = "";
+        public string ProductDisplay { get; set; } = "";
         public int ContractTypeValue { get; set; }
         public string ContractTypeKey { get; set; } = LicenciamientoCruceOtherKey;
         public string ContractTypeLabel { get; set; } = LicenciamientoCruceOtherLabel;

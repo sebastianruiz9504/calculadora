@@ -259,6 +259,21 @@
     box-shadow: inset 0 -2px 0 #d97706;
 }
 
+.licx-drill-cell {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+}
+
+.licx-drill-cell:hover,
+.licx-drill-cell:focus {
+    background: #dbeafe !important;
+    outline: 2px solid #93c5fd;
+    outline-offset: -2px;
+    text-decoration-color: currentColor;
+}
+
 .licx-badge {
     display: inline-flex;
     align-items: center;
@@ -356,6 +371,14 @@
 
 .licx-orphan-table {
     min-width: 1180px;
+}
+
+.licx-table-wrap--detail {
+    max-height: calc(100vh - 180px);
+}
+
+.licx-detail-table {
+    min-width: 1240px;
 }
 
 .licx-orphan-table code {
