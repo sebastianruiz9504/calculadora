@@ -510,7 +510,7 @@ public sealed partial class DataverseService
         DateOnly fallbackCostMonth)
     {
         return rows
-            .GroupBy(row => $"{row.ContractTypeKey}|{BuildLicenciamientoCruceGroupingKey(row.ClientId, row.AccountId, row.ClientName, row.CompanyAccountDisplay)}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(row => $"{row.ContractTypeKey}|{BuildLicenciamientoCruceGroupingKey(row.ClientId, row.ClientName, row.AccountId)}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var items = group.ToList();

@@ -493,10 +493,11 @@
                             <th>Fuente</th>
                             <th>Mes</th>
                             <th>Cliente</th>
-                            <th>Referencia</th>
+                            <th>Cuenta / factura</th>
+                            <th>Record ID</th>
                             <th class="text-end">Valor</th>
                             <th>Tipo de contrato</th>
-                            <th>Account ID consumo</th>
+                            <th>Corregir Account ID</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -523,10 +524,8 @@
                     <strong>${escapeHtml(orphan.cliente || "-")}</strong>
                     <small>${escapeHtml(orphan.reason || "")}</small>
                 </td>
-                <td>
-                    <div>${escapeHtml(orphan.referencia || "-")}</div>
-                    <code>${escapeHtml(orphan.recordId || "")}</code>
-                </td>
+                <td>${escapeHtml(orphan.account || orphan.referencia || "-")}</td>
+                <td><code>${escapeHtml(orphan.recordId || "")}</code></td>
                 <td class="text-end">${formatCurrency(orphan.valor)}</td>
                 <td>
                     <div class="licx-edit-group">
