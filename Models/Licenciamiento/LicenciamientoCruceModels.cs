@@ -87,6 +87,38 @@ public sealed class LicenciamientoCruceRowDto
     public int BillingRecordCount { get; set; }
     public decimal MatchScore { get; set; }
     public bool IsMarginAlert { get; set; }
+    public bool CanInspect { get; set; }
+    public LicenciamientoCruceTraceDto Trace { get; set; } = new();
+}
+
+public sealed class LicenciamientoCruceTraceDto
+{
+    public string MatchMode { get; set; } = "";
+    public string Rule { get; set; } = "";
+    public string CostClientId { get; set; } = "";
+    public string BillingClientId { get; set; } = "";
+    public string CostGroupKey { get; set; } = "";
+    public string BillingGroupKey { get; set; } = "";
+    public IReadOnlyList<LicenciamientoCruceTraceItemDto> CostItems { get; set; } = Array.Empty<LicenciamientoCruceTraceItemDto>();
+    public IReadOnlyList<LicenciamientoCruceTraceItemDto> BillingItems { get; set; } = Array.Empty<LicenciamientoCruceTraceItemDto>();
+}
+
+public sealed class LicenciamientoCruceTraceItemDto
+{
+    public string Fuente { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string Referencia { get; set; } = "";
+    public string Cliente { get; set; } = "";
+    public string ClienteId { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string Account { get; set; } = "";
+    public string TipoContrato { get; set; } = "";
+    public string Vertical { get; set; } = "";
+    public string Fecha { get; set; } = "";
+    public string Mes { get; set; } = "";
+    public decimal Valor { get; set; }
+    public decimal ValorTotal { get; set; }
+    public decimal Iva { get; set; }
 }
 
 public sealed class LicenciamientoCruceAlertDto

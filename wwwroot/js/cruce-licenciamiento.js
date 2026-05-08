@@ -24,7 +24,9 @@
     const totalMargin = document.getElementById("licCruceTotalMargin");
     const totalMarginPct = document.getElementById("licCruceTotalMarginPct");
     let currentSegments = [];
+    let currentRowsByKey = new Map();
     let selectedSegmentKey = "";
+    let traceDialog = null;
 
     const copFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -53,6 +55,41 @@
     segmentSelect?.addEventListener("change", () => {
         selectedSegmentKey = segmentSelect.value || "";
         renderSelectedSegment();
+    });
+
+    segmentsWrap?.addEventListener("click", (event) => {
+        const rowElement = event.target.closest("tr[data-row-key]");
+        if (!rowElement) {
+            return;
+        }
+
+        const row = currentRowsByKey.get(rowElement.dataset.rowKey || "");
+        if (row?.canInspect) {
+            openTraceDialog(row);
+        }
+    });
+
+    segmentsWrap?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        const rowElement = event.target.closest("tr[data-row-key]");
+        if (!rowElement) {
+            return;
+        }
+
+        const row = currentRowsByKey.get(rowElement.dataset.rowKey || "");
+        if (row?.canInspect) {
+            event.preventDefault();
+            openTraceDialog(row);
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            closeTraceDialog();
+        }
     });
 
     loadCruce();
@@ -158,6 +195,7 @@
         const totals = segment.totals || {};
         const counts = segment.statusCounts || {};
         const rows = Array.isArray(segment.rows) ? segment.rows : [];
+        currentRowsByKey = new Map(rows.map((row) => [row.rowKey || "", row]));
 
         segmentsWrap.innerHTML = `
             <div class="licx-segment-detail is-${escapeHtml(segment.key || "otros")}">
@@ -208,8 +246,14 @@
     }
 
     function buildSegmentRow(row) {
+        const isInspectable = Boolean(row.canInspect);
+        const rowClasses = [
+            row.isMarginAlert ? "is-alert" : "",
+            isInspectable ? "is-inspectable" : ""
+        ].filter(Boolean).join(" ");
+
         return `
-            <tr class="${row.isMarginAlert ? "is-alert" : ""}">
+            <tr class="${rowClasses}" data-row-key="${escapeHtml(row.rowKey || "")}" ${isInspectable ? "tabindex=\"0\" title=\"Ver detalle del cruce\"" : ""}>
                 <td data-label="Cliente">
                     <strong>${escapeHtml(row.cliente || "Cliente sin nombre")}</strong>
                     <small>${formatSourceCount(row)}</small>
@@ -221,6 +265,136 @@
                 <td data-label="Margen" class="text-end ${Number(row.margenBruto || 0) < 0 ? "is-negative" : ""}">${formatCurrency(row.margenBruto)}</td>
                 <td data-label="Margen %" class="text-end ${Number(row.margenBrutoPct || 0) < 0 ? "is-negative" : ""}">${formatPercent(row.margenBrutoPct)}</td>
                 <td data-label="Estado"><span class="licx-badge ${getStatusClass(row.estadoCruce)}">${escapeHtml(row.estadoCruce || "-")}</span></td>
+            </tr>
+        `;
+    }
+
+    function openTraceDialog(row) {
+        const dialog = ensureTraceDialog();
+        const trace = row.trace || {};
+        dialog.querySelector("[data-trace-title]").textContent = row.cliente || "Cliente sin nombre";
+        dialog.querySelector("[data-trace-subtitle]").textContent = `${row.estadoCruce || "-"} | ${row.tipoContrato || "-"}`;
+        dialog.querySelector("[data-trace-mode]").textContent = trace.matchMode || row.estadoCruce || "-";
+        dialog.querySelector("[data-trace-rule]").textContent = trace.rule || "-";
+        dialog.querySelector("[data-trace-client-cost]").textContent = trace.costClientId || "Sin cliente en costo";
+        dialog.querySelector("[data-trace-client-billing]").textContent = trace.billingClientId || "Sin cliente en facturacion";
+        dialog.querySelector("[data-trace-cost-items]").innerHTML = buildTraceItems(trace.costItems || [], "cost");
+        dialog.querySelector("[data-trace-billing-items]").innerHTML = buildTraceItems(trace.billingItems || [], "billing");
+        dialog.hidden = false;
+        document.body.classList.add("licx-modal-open");
+        dialog.querySelector("[data-trace-close]")?.focus();
+    }
+
+    function closeTraceDialog() {
+        if (!traceDialog) {
+            return;
+        }
+
+        traceDialog.hidden = true;
+        document.body.classList.remove("licx-modal-open");
+    }
+
+    function ensureTraceDialog() {
+        if (traceDialog) {
+            return traceDialog;
+        }
+
+        traceDialog = document.createElement("div");
+        traceDialog.className = "licx-modal";
+        traceDialog.hidden = true;
+        traceDialog.innerHTML = `
+            <div class="licx-modal__backdrop" data-trace-backdrop></div>
+            <section class="licx-modal__dialog" role="dialog" aria-modal="true" aria-label="Detalle del cruce">
+                <header class="licx-modal__header">
+                    <div>
+                        <div class="licx-kicker">Revision de cruce</div>
+                        <h2 data-trace-title>Cliente</h2>
+                        <span data-trace-subtitle></span>
+                    </div>
+                    <button type="button" class="btn-close" aria-label="Cerrar" data-trace-close></button>
+                </header>
+                <div class="licx-modal__body">
+                    <section class="licx-trace-summary">
+                        <div>
+                            <span>Modo</span>
+                            <strong data-trace-mode>-</strong>
+                        </div>
+                        <div>
+                            <span>Cliente costo</span>
+                            <strong data-trace-client-cost>-</strong>
+                        </div>
+                        <div>
+                            <span>Cliente facturacion</span>
+                            <strong data-trace-client-billing>-</strong>
+                        </div>
+                    </section>
+                    <p class="licx-trace-rule" data-trace-rule></p>
+                    <div class="licx-trace-grid">
+                        <section>
+                            <h3>Items costo</h3>
+                            <div data-trace-cost-items></div>
+                        </section>
+                        <section>
+                            <h3>Items facturacion</h3>
+                            <div data-trace-billing-items></div>
+                        </section>
+                    </div>
+                </div>
+            </section>
+        `;
+        traceDialog.querySelector("[data-trace-close]")?.addEventListener("click", closeTraceDialog);
+        traceDialog.querySelector("[data-trace-backdrop]")?.addEventListener("click", closeTraceDialog);
+        document.body.appendChild(traceDialog);
+        return traceDialog;
+    }
+
+    function buildTraceItems(items, type) {
+        if (!Array.isArray(items) || items.length === 0) {
+            return "<div class=\"licx-empty licx-empty--small\">Sin items en esta fuente.</div>";
+        }
+
+        const valueLabel = type === "billing" ? "Sin IVA" : "Valor";
+        const extraHeader = type === "billing" ? "<th class=\"text-end\">Total</th><th class=\"text-end\">IVA</th>" : "<th>Account ID</th><th>Account</th>";
+        return `
+            <div class="licx-table-wrap licx-table-wrap--trace">
+                <table class="table align-middle licx-table licx-table--trace">
+                    <thead>
+                        <tr>
+                            <th>Referencia</th>
+                            <th>Record ID</th>
+                            <th>Cliente</th>
+                            <th>Tipo</th>
+                            <th>Vertical</th>
+                            <th>Fecha</th>
+                            ${extraHeader}
+                            <th class="text-end">${valueLabel}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item) => buildTraceItemRow(item, type)).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function buildTraceItemRow(item, type) {
+        const extraCells = type === "billing"
+            ? `<td class="text-end">${formatCurrency(item.valorTotal)}</td><td class="text-end">${formatCurrency(item.iva)}</td>`
+            : `<td>${escapeHtml(item.accountId || "-")}</td><td>${escapeHtml(item.account || "-")}</td>`;
+        return `
+            <tr>
+                <td>${escapeHtml(item.referencia || "-")}</td>
+                <td><code>${escapeHtml(item.recordId || "-")}</code></td>
+                <td>
+                    <strong>${escapeHtml(item.cliente || "-")}</strong>
+                    <small>${escapeHtml(item.clienteId || "")}</small>
+                </td>
+                <td>${escapeHtml(item.tipoContrato || "-")}</td>
+                <td>${escapeHtml(item.vertical || "-")}</td>
+                <td>${escapeHtml(item.fecha || item.mes || "-")}</td>
+                ${extraCells}
+                <td class="text-end">${formatCurrency(item.valor)}</td>
             </tr>
         `;
     }
