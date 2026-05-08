@@ -327,13 +327,17 @@
                 })
             });
 
-            renderGeneratedReport(result);
-            renderProgress("done");
-            const isError = String(result?.estado || "").toLowerCase() === "error";
+            const finalResult = isReportGenerating(result)
+                ? await waitForGeneratedReport(result, connection, periodo)
+                : result;
+
+            renderGeneratedReport(finalResult);
+            const isError = String(finalResult?.estado || "").toLowerCase() === "error";
+            renderProgress(isError ? "error" : "done", finalResult?.error || "");
             setStatus(
                 isError ? "error" : "success",
                 isError
-                    ? (result?.error || "No fue posible generar el informe.")
+                    ? (finalResult?.error || "No fue posible generar el informe.")
                     : "Informe HTML generado correctamente.");
 
             await loadGeneratedReports();
@@ -351,6 +355,70 @@
             hideLoadingModal();
             setBusy(false);
         }
+    }
+
+    async function waitForGeneratedReport(initialResult, connection, periodo) {
+        const idReporte = initialResult?.idReporte || "";
+        const startedAt = Date.now();
+        const timeoutMs = 20 * 60 * 1000;
+        const pollMs = 8000;
+        let lastResult = initialResult;
+
+        renderGeneratedReport({
+            ...initialResult,
+            estado: "Generando",
+            error: "La generacion quedo en proceso. Esta pantalla consultara el resultado automaticamente."
+        });
+        renderProgress("generating", "Generacion iniciada en segundo plano. Esperando el HTML generado...");
+        setStatus("info", "Generacion iniciada. Puedes dejar esta pantalla abierta mientras termina el informe.");
+
+        while (Date.now() - startedAt < timeoutMs) {
+            await sleep(pollMs);
+
+            if (idReporte) {
+                try {
+                    lastResult = await fetchJson(`${urls.reportDetail}/${encodeURIComponent(idReporte)}`);
+                } catch (error) {
+                    setStatus("info", `El informe sigue en proceso. Ultima consulta: ${buildErrorMessage(error)}`);
+                    continue;
+                }
+            } else {
+                lastResult = await findGeneratedReportForConnection(connection, periodo);
+            }
+
+            if (!lastResult) {
+                renderProgress("generating", "El informe sigue en cola. Consultando nuevamente...");
+                continue;
+            }
+
+            const estado = String(lastResult.estado || "").toLowerCase();
+            if (estado === "generado" || estado === "error") {
+                return lastResult;
+            }
+
+            renderGeneratedReport({
+                ...lastResult,
+                estado: lastResult.estado || "Generando",
+                error: "El worker aun esta generando el HTML con Azure OpenAI."
+            });
+            renderProgress("generating", `Informe en proceso (${formatElapsed(Date.now() - startedAt)}). Consultando nuevamente...`);
+            await loadGeneratedReports();
+        }
+
+        throw new Error("La generacion sigue en proceso despues de 20 minutos. Consulta el historial del periodo para ver el resultado guardado.");
+    }
+
+    async function findGeneratedReportForConnection(connection, periodo) {
+        const items = await fetchJson(`${urls.generatedReports}?periodo=${encodeURIComponent(periodo)}`);
+        renderGeneratedReports(Array.isArray(items) ? items : []);
+        const normalizedClientId = String(connection?.clienteId || "").toLowerCase();
+        const item = (Array.isArray(items) ? items : []).find(report =>
+            String(report?.clienteId || "").toLowerCase() === normalizedClientId);
+        if (!item?.idReporte) {
+            return null;
+        }
+
+        return await fetchJson(`${urls.reportDetail}/${encodeURIComponent(item.idReporte)}`);
     }
 
     async function loadGeneratedReports() {
@@ -534,6 +602,22 @@
         }
 
         setReportState(estado);
+    }
+
+    function isReportGenerating(result) {
+        const estado = String(result?.estado || "").toLowerCase();
+        return estado === "generando" || estado === "en proceso" || estado === "queued";
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => window.setTimeout(resolve, ms));
+    }
+
+    function formatElapsed(ms) {
+        const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
     }
 
     function clearGeneratedReport() {
@@ -894,9 +978,13 @@
 
     function isHtmlGatewayError(status, body) {
         const text = body || "";
-        return (status === 502 || status === 503 || status === 504)
+        return (status === 500 || status === 502 || status === 503 || status === 504)
             && (text.includes("<html") || text.includes("<!DOCTYPE"))
-            && (text.includes("gateway") || text.includes("proxy server") || text.includes("Server Error"));
+            && (text.includes("gateway")
+                || text.includes("proxy server")
+                || text.includes("Server Error")
+                || text.includes("request timed out")
+                || text.includes("web server failed"));
     }
 
     function stripHtml(value) {

@@ -1,8 +1,10 @@
+using System.Globalization;
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.Reportes;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
@@ -13,17 +15,21 @@ namespace CotizadorInterno.Web.Controllers;
 public sealed class ReportesController : ControllerBase
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
-    private readonly IAzureOpenAIReportService _reportes;
+    private static readonly TimeSpan BogotaOffset = TimeSpan.FromHours(-5);
     private readonly IReportesDataverseRepository _repository;
+    private readonly IReportesGenerationQueue _generationQueue;
+    private readonly ReportesOptions _reportesOptions;
     private readonly ILogger<ReportesController> _logger;
 
     public ReportesController(
-        IAzureOpenAIReportService reportes,
         IReportesDataverseRepository repository,
+        IReportesGenerationQueue generationQueue,
+        IOptions<ReportesOptions> reportesOptions,
         ILogger<ReportesController> logger)
     {
-        _reportes = reportes;
         _repository = repository;
+        _generationQueue = generationQueue;
+        _reportesOptions = reportesOptions.Value;
         _logger = logger;
     }
 
@@ -36,7 +42,30 @@ public sealed class ReportesController : ControllerBase
 
         try
         {
-            return Ok(await _reportes.GenerateReportAsync(request, ct));
+            var periodo = ResolveReportPeriod(request.Periodo);
+            var queued = await _repository.UpsertGeneratedReportAsync(new ReporteHtmlGeneradoRecord
+            {
+                ClienteId = request.ClienteId,
+                Periodo = periodo,
+                HtmlGenerado = "",
+                Estado = "Generando",
+                FechaGeneracion = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                PromptVersion = _reportesOptions.PromptVersion,
+                Errores = ""
+            }, ct);
+
+            await _generationQueue.QueueAsync(new ReporteGenerarRequest
+            {
+                ClienteId = request.ClienteId,
+                Periodo = periodo
+            }, ct);
+
+            return Accepted(new ReporteGenerarResult
+            {
+                IdReporte = queued.RecordId,
+                Html = "",
+                Estado = "Generando"
+            });
         }
         catch (ReportesConfigurationException ex)
         {
@@ -55,6 +84,30 @@ public sealed class ReportesController : ControllerBase
                 StatusCodes.Status500InternalServerError,
                 CreateErrorPayload("No fue posible generar el informe mensual.", ex));
         }
+    }
+
+    private static string ResolveReportPeriod(string? rawPeriod)
+    {
+        var value = rawPeriod?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            var nowBogota = DateTimeOffset.UtcNow.ToOffset(BogotaOffset);
+            return new DateOnly(nowBogota.Year, nowBogota.Month, 1)
+                .AddMonths(-1)
+                .ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        }
+
+        if (!DateTime.TryParseExact(
+                value,
+                "yyyy-MM",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
+        {
+            throw new InvalidOperationException("El periodo debe tener formato yyyy-MM.");
+        }
+
+        return new DateOnly(parsed.Year, parsed.Month, 1).ToString("yyyy-MM", CultureInfo.InvariantCulture);
     }
 
     [HttpGet("generados")]

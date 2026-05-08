@@ -214,6 +214,11 @@
             return;
         }
 
+        if (target === facturaSelect) {
+            refreshTrmScopeNote();
+            return;
+        }
+
         if (target.matches("[data-lic-row-check]")) {
             const checkbox = target;
             const recordId = checkbox.getAttribute("data-record-id") || "";
@@ -440,7 +445,6 @@
                         <div>${escapeHtml(row.companyAccountDisplay || row.companyAccountId || "Sin cuenta")}</div>
                         ${row.hasAccountLookup ? "" : "<small class=\"lic-muted\">Sin lookup</small>"}
                     </td>
-                    <td data-label="Vendor">${escapeHtml(row.vendor)}</td>
                     <td data-label="Producto">
                         <div>${escapeHtml(row.productDisplay || "Sin producto")}</div>
                         ${row.hasProductLookup ? "" : "<small class=\"lic-muted\">Sin lookup</small>"}
@@ -2279,36 +2283,35 @@
     }
 
     function renderFacturaOptions() {
-        const latestImport = getLatestImportScope();
-        if (!latestImport.recordIds.length) {
-            facturaSelect.innerHTML = "<option value=\"\">Sin ultima importacion</option>";
+        const options = getTrmFacturaOptions();
+        if (options.length === 0) {
+            facturaSelect.innerHTML = "<option value=\"\">Sin facturas</option>";
             facturaSelect.disabled = true;
             trmSaveBtn.disabled = true;
             if (trmScopeNote) {
-                trmScopeNote.textContent = "No hay una ultima importacion identificada para calcular.";
+                trmScopeNote.textContent = "No hay facturas disponibles para calcular.";
             }
             return;
         }
 
-        const label = latestImport.facturaDisplay || latestImport.facturaValue || "Ultima importacion";
-        facturaSelect.innerHTML = `
-            <option value="${escapeHtml(latestImport.facturaValue || "")}">
-                ${escapeHtml(label)} (${numberFormatter.format(Number(latestImport.count || latestImport.recordIds.length || 0))})
+        const latestImport = getLatestImportScope();
+        const selectedValue = latestImport.facturaValue || facturaSelect?.value || options[0].value || "";
+        facturaSelect.innerHTML = options.map((option) => `
+            <option value="${escapeHtml(option.value)}" ${option.value === selectedValue ? "selected" : ""}>
+                ${escapeHtml(option.label)} (${numberFormatter.format(Number(option.count || 0))})
             </option>
-        `;
-        facturaSelect.disabled = true;
+        `).join("");
+        facturaSelect.disabled = false;
         trmSaveBtn.disabled = false;
-        if (trmScopeNote) {
-            trmScopeNote.textContent = `Se calculara solo sobre ${numberFormatter.format(Number(latestImport.count || latestImport.recordIds.length || 0))} fila(s) de la ultima importacion.`;
-        }
+        refreshTrmScopeNote();
     }
 
     async function adjustTrm() {
-        const latestImport = getLatestImportScope();
-        const facturaValue = latestImport.facturaValue || facturaSelect?.value || "";
+        const scope = getSelectedTrmScope();
+        const facturaValue = scope.facturaValue;
         const trm = Number(trmInput?.value || 0);
-        if (!latestImport.recordIds.length || !Number.isFinite(trm) || trm <= 0) {
-            showStatus(trmStatus, "warning", "Indica factura y TRM.");
+        if (!facturaValue || !Number.isFinite(trm) || trm <= 0) {
+            showStatus(trmStatus, "warning", "Selecciona factura e indica la TRM.");
             return;
         }
 
@@ -2319,7 +2322,7 @@
             const result = await fetchJson(adjustTrmUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ facturaValue, trm, recordIds: latestImport.recordIds })
+                body: JSON.stringify({ facturaValue, trm, recordIds: scope.recordIds })
             });
 
             closeTrmModal();
@@ -2399,6 +2402,72 @@
 
     function getRecords() {
         return Array.isArray(state.board?.records) ? state.board.records : [];
+    }
+
+    function getTrmFacturaOptions() {
+        const optionMap = new Map();
+        const latestImport = getLatestImportScope();
+        if (latestImport.facturaValue) {
+            optionMap.set(latestImport.facturaValue, {
+                value: latestImport.facturaValue,
+                label: latestImport.facturaDisplay || latestImport.facturaValue,
+                count: latestImport.count || latestImport.recordIds.length || 0
+            });
+        }
+
+        const facturaOptions = Array.isArray(state.board?.facturaOptions) ? state.board.facturaOptions : [];
+        facturaOptions.forEach((option) => {
+            const value = option.value || "";
+            if (!value || optionMap.has(value)) {
+                return;
+            }
+
+            optionMap.set(value, {
+                value,
+                label: option.label || value,
+                count: Number(option.count || 0)
+            });
+        });
+
+        return Array.from(optionMap.values())
+            .sort((left, right) => String(right.value || "").localeCompare(String(left.value || ""), "es", {
+                numeric: true,
+                sensitivity: "base"
+            }));
+    }
+
+    function refreshTrmScopeNote() {
+        if (!trmScopeNote) {
+            return;
+        }
+
+        const scope = getSelectedTrmScope();
+        if (!scope.facturaValue) {
+            trmScopeNote.textContent = "Selecciona una factura para calcular.";
+            return;
+        }
+
+        if (scope.recordIds.length > 0) {
+            trmScopeNote.textContent = `Se calculara solo sobre ${numberFormatter.format(Number(scope.count || scope.recordIds.length || 0))} fila(s) de la ultima importacion de esta factura.`;
+            return;
+        }
+
+        trmScopeNote.textContent = "Se calculara sobre la ultima importacion encontrada para la factura seleccionada.";
+    }
+
+    function getSelectedTrmScope() {
+        const facturaValue = facturaSelect?.value || "";
+        const latestImport = getLatestImportScope();
+        const isLatestImportFactura = facturaValue
+            && latestImport.facturaValue
+            && facturaValue === latestImport.facturaValue
+            && latestImport.recordIds.length > 0;
+
+        return {
+            facturaValue,
+            recordIds: isLatestImportFactura ? latestImport.recordIds : [],
+            count: isLatestImportFactura ? latestImport.count : 0
+        };
     }
 
     function syncLatestImportFromBoard() {
