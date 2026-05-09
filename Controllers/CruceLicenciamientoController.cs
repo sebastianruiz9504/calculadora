@@ -153,6 +153,72 @@ public sealed class CruceLicenciamientoController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SearchAccounts([FromQuery] string query = "", [FromQuery] int top = 12, CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _dataverse.SearchLicenciamientoCruceAccountsAsync(query, top, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible buscar Account IDs de licenciamiento.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SaveAccountMapping([FromBody] LicenciamientoCruceSaveAccountMappingRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Solicitud invalida."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveLicenciamientoCruceAccountMappingAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible guardar el mapeo de Account ID.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UpdateCostInvoiceDate([FromBody] LicenciamientoCruceUpdateCostInvoiceDateRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Solicitud invalida."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateLicenciamientoCruceCostInvoiceDateAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible mover el costo al mes seleccionado.", ex));
+        }
+    }
+
     private async Task<CurrentUserInfo> GetCurrentUserAsync(CancellationToken ct) =>
         await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
 

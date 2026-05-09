@@ -43,6 +43,8 @@ public sealed class LicenciamientoCruceTotalsDto
     public decimal TotalFacturacionRelacionada { get; set; }
     public decimal MargenBrutoTotal { get; set; }
     public decimal? MargenBrutoPct { get; set; }
+    public decimal TotalUtilidadPositiva { get; set; }
+    public decimal TotalUtilidadNegativa { get; set; }
     public decimal TotalCostosFuente { get; set; }
     public decimal TotalCostosCruce { get; set; }
     public decimal TotalFacturacionFuenteSinIva { get; set; }
@@ -170,6 +172,10 @@ public sealed class LicenciamientoCruceTraceItemDto
     public string ClienteId { get; set; } = "";
     public string AccountId { get; set; } = "";
     public string Account { get; set; } = "";
+    public string AccountIdOriginal { get; set; } = "";
+    public string AccountOriginal { get; set; } = "";
+    public string AccountMappingId { get; set; } = "";
+    public bool AccountMappingApplied { get; set; }
     public string Producto { get; set; } = "";
     public string ProductoId { get; set; } = "";
     public string TipoContrato { get; set; } = "";
@@ -256,4 +262,49 @@ public sealed class LicenciamientoCruceUpdateBillingVerticalResultDto
     public int UpdatedCount { get; set; }
     public int VerticalOptionValue { get; set; }
     public string VerticalLabel { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceAccountLookupDto
+{
+    public string AccountId { get; set; } = "";
+    public string AccountName { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string SearchField { get; set; } = "";
+    public string MatchedValue { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceSaveAccountMappingRequestDto
+{
+    public string SourceAccountId { get; set; } = "";
+    public string SourceAccountName { get; set; } = "";
+    public string SourceClientName { get; set; } = "";
+    public string TargetAccountId { get; set; } = "";
+    public string Notes { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceSaveAccountMappingResultDto
+{
+    public string Message { get; set; } = "";
+    public string MappingId { get; set; } = "";
+    public string SourceAccountId { get; set; } = "";
+    public string SourceAccountName { get; set; } = "";
+    public string TargetAccountId { get; set; } = "";
+    public string TargetAccountName { get; set; } = "";
+    public string TargetClientId { get; set; } = "";
+    public string TargetClientName { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceUpdateCostInvoiceDateRequestDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceDate { get; set; } = "";
+}
+
+public sealed class LicenciamientoCruceUpdateCostInvoiceDateResultDto
+{
+    public string Message { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string InvoiceDate { get; set; } = "";
+    public string Month { get; set; } = "";
 }

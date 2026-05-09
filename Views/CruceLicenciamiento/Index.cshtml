@@ -14,6 +14,9 @@
      data-update-billing-contract-url="@Url.Action("UpdateBillingContractType", "CruceLicenciamiento")"
      data-update-billing-vertical-url="@Url.Action("UpdateBillingVertical", "CruceLicenciamiento")"
      data-update-cost-account-url="@Url.Action("UpdateCostAccount", "CruceLicenciamiento")"
+     data-save-account-mapping-url="@Url.Action("SaveAccountMapping", "CruceLicenciamiento")"
+     data-search-accounts-url="@Url.Action("SearchAccounts", "CruceLicenciamiento")"
+     data-update-cost-invoice-date-url="@Url.Action("UpdateCostInvoiceDate", "CruceLicenciamiento")"
      data-default-year="@Model.DefaultYear"
      data-default-month="@Model.DefaultMonth"
      data-default-period-mode="@Model.DefaultPeriodMode">
@@ -80,6 +83,7 @@
         <article class="licx-kpi">
             <span>Utilidad</span>
             <strong id="licCruceTotalMargin">$0</strong>
+            <small id="licCruceMarginBreakdown"></small>
         </article>
         <article class="licx-kpi">
             <span>Utilidad %</span>

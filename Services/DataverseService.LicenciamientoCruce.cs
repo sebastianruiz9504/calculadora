@@ -16,8 +16,23 @@ public sealed partial class DataverseService
     private const string LicenciamientoCruceMonthlyLabel = "Monthly";
     private const string LicenciamientoCruceOneTimeKey = "onetime";
     private const string LicenciamientoCruceOneTimeLabel = "Prepaid";
+    private const string LicenciamientoCruceAllKey = "all";
+    private const string LicenciamientoCruceAllLabel = "Todo";
     private const string LicenciamientoCruceOtherKey = "otros";
     private const string LicenciamientoCruceOtherLabel = "Sin tipo";
+    private const string LicenciamientoCruceAccountMapLogicalName = "cr07a_licenciamientoaccountmap";
+    private const string LicenciamientoCruceAccountMapFallbackEntitySetName = "cr07a_licenciamientoaccountmaps";
+    private const string LicenciamientoCruceAccountMapFallbackIdField = "cr07a_licenciamientoaccountmapid";
+    private const string LicenciamientoCruceAccountMapPrimaryNameField = "cr07a_name";
+    private const string LicenciamientoCruceAccountMapSourceAccountIdField = "cr07a_sourceaccountid";
+    private const string LicenciamientoCruceAccountMapSourceAccountNameField = "cr07a_sourceaccountname";
+    private const string LicenciamientoCruceAccountMapSourceClientNameField = "cr07a_sourceclientname";
+    private const string LicenciamientoCruceAccountMapTargetAccountIdField = "cr07a_targetaccountid";
+    private const string LicenciamientoCruceAccountMapTargetAccountNameField = "cr07a_targetaccountname";
+    private const string LicenciamientoCruceAccountMapTargetClientIdField = "cr07a_targetclientid";
+    private const string LicenciamientoCruceAccountMapTargetClientNameField = "cr07a_targetclientname";
+    private const string LicenciamientoCruceAccountMapActiveField = "cr07a_active";
+    private const string LicenciamientoCruceAccountMapNotesField = "cr07a_notes";
     private const int LicenciamientoCruceBillingMonthlyOption = 645250000;
     private const int LicenciamientoCruceBillingOneTimeOption = 645250001;
     private const int LicenciamientoCruceCostMonthlyOption = 645250000;
@@ -121,6 +136,8 @@ public sealed partial class DataverseService
         var totalBillingCross = RoundCurrency(rows.Sum(static row => row.FacturacionSinIva));
         var totalMargin = RoundCurrency(totalBillingCross - totalCostCross);
         var totalMarginPct = CalculateLicenciamientoCruceMarginPercent(totalMargin, totalBillingCross);
+        var totalPositiveMargin = RoundCurrency(rows.Where(static row => row.MargenBruto > 0m).Sum(static row => row.MargenBruto));
+        var totalNegativeMargin = RoundCurrency(rows.Where(static row => row.MargenBruto < 0m).Sum(static row => row.MargenBruto));
 
         var totals = new LicenciamientoCruceTotalsDto
         {
@@ -128,6 +145,8 @@ public sealed partial class DataverseService
             TotalFacturacionRelacionada = totalBillingCross,
             MargenBrutoTotal = totalMargin,
             MargenBrutoPct = totalMarginPct,
+            TotalUtilidadPositiva = totalPositiveMargin,
+            TotalUtilidadNegativa = totalNegativeMargin,
             TotalCostosFuente = totalCostSource,
             TotalCostosCruce = totalCostCross,
             TotalFacturacionFuenteSinIva = totalBillingSource
@@ -316,6 +335,676 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<IReadOnlyList<LicenciamientoCruceAccountLookupDto>> SearchLicenciamientoCruceAccountsAsync(
+        string query,
+        int top = 12,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        query = (query ?? "").Trim();
+        if (query.Length < 2)
+            return Array.Empty<LicenciamientoCruceAccountLookupDto>();
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        return await SearchLicenciamientoCruceAccountOptionsAsync(
+            metadata,
+            query,
+            Math.Clamp(top, 1, 25),
+            httpContext.User,
+            ct);
+    }
+
+    public async Task<LicenciamientoCruceSaveAccountMappingResultDto> SaveLicenciamientoCruceAccountMappingAsync(
+        LicenciamientoCruceSaveAccountMappingRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var sourceAccountId = NormalizeOptionalGuid(request.SourceAccountId);
+        var sourceAccountName = (request.SourceAccountName ?? "").Trim();
+        var sourceClientName = (request.SourceClientName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(sourceAccountId) && string.IsNullOrWhiteSpace(sourceAccountName))
+            throw new InvalidOperationException("No se encontro la cuenta origen para guardar el mapeo.");
+
+        var targetAccountId = NormalizeOptionalGuid(request.TargetAccountId);
+        if (string.IsNullOrWhiteSpace(targetAccountId))
+            throw new InvalidOperationException("Selecciona un Account ID destino valido.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var licensingMetadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var mappingMetadata = await EnsureLicenciamientoCruceAccountMapTableAsync(httpContext.User, ct);
+        var targetAccount = await ResolveLicenciamientoCruceAccountLookupAsync(
+            licensingMetadata,
+            targetAccountId,
+            httpContext.User,
+            ct);
+        var targetClient = await ResolveLicensingClientFromAccountAsync(
+            licensingMetadata,
+            targetAccountId,
+            httpContext.User,
+            ct);
+
+        var mappingName = BuildLicenciamientoCruceMappingName(
+            FirstNonEmpty(sourceAccountName, sourceAccountId),
+            targetAccount.AccountName);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [LicenciamientoCruceAccountMapPrimaryNameField] = mappingName,
+            [LicenciamientoCruceAccountMapSourceAccountIdField] = sourceAccountId,
+            [LicenciamientoCruceAccountMapSourceAccountNameField] = sourceAccountName,
+            [LicenciamientoCruceAccountMapSourceClientNameField] = sourceClientName,
+            [LicenciamientoCruceAccountMapTargetAccountIdField] = targetAccountId,
+            [LicenciamientoCruceAccountMapTargetAccountNameField] = targetAccount.AccountName,
+            [LicenciamientoCruceAccountMapTargetClientIdField] = NormalizeOptionalGuid(targetClient.ClientId),
+            [LicenciamientoCruceAccountMapTargetClientNameField] = targetClient.ClientName,
+            [LicenciamientoCruceAccountMapActiveField] = true,
+            [LicenciamientoCruceAccountMapNotesField] = (request.Notes ?? "").Trim()
+        };
+
+        var existingMapping = await FindLicenciamientoCruceAccountMappingAsync(
+            mappingMetadata,
+            sourceAccountId,
+            sourceAccountName,
+            httpContext.User,
+            ct);
+        string mappingId;
+        if (existingMapping is null)
+        {
+            var body = await CallDataverseSendAsync(
+                $"/api/data/v9.2/{mappingMetadata.EntitySetName}",
+                "POST",
+                payload,
+                httpContext.User,
+                ct);
+            mappingId = await ResolveCreatedLicenciamientoCruceMappingIdAsync(
+                mappingMetadata,
+                body,
+                sourceAccountId,
+                sourceAccountName,
+                httpContext.User,
+                ct);
+        }
+        else
+        {
+            mappingId = existingMapping.MappingId;
+            await CallDataverseSendAsync(
+                $"/api/data/v9.2/{mappingMetadata.EntitySetName}({mappingId})",
+                "PATCH",
+                payload,
+                httpContext.User,
+                ct);
+        }
+
+        return new LicenciamientoCruceSaveAccountMappingResultDto
+        {
+            Message = $"Mapeo guardado: {FirstNonEmpty(sourceAccountName, sourceAccountId)} -> {targetAccount.AccountName}.",
+            MappingId = mappingId,
+            SourceAccountId = sourceAccountId,
+            SourceAccountName = sourceAccountName,
+            TargetAccountId = targetAccountId,
+            TargetAccountName = targetAccount.AccountName,
+            TargetClientId = NormalizeOptionalGuid(targetClient.ClientId),
+            TargetClientName = targetClient.ClientName
+        };
+    }
+
+    public async Task<LicenciamientoCruceUpdateCostInvoiceDateResultDto> UpdateLicenciamientoCruceCostInvoiceDateAsync(
+        LicenciamientoCruceUpdateCostInvoiceDateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordId = NormalizeOptionalGuid(request.RecordId);
+        if (string.IsNullOrWhiteSpace(recordId))
+            throw new InvalidOperationException("Selecciona un costo valido.");
+
+        if (!TryParseDateOnly((request.InvoiceDate ?? "").Trim(), out var invoiceDate))
+            throw new InvalidOperationException("La fecha factura seleccionada no es valida.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var payload = new Dictionary<string, object?>
+        {
+            [LicensingInvoiceDateField] = ConvertLicensingPayloadValue(metadata, LicensingInvoiceDateField, invoiceDate)
+        };
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({recordId})",
+            "PATCH",
+            payload,
+            httpContext.User,
+            ct);
+
+        return new LicenciamientoCruceUpdateCostInvoiceDateResultDto
+        {
+            Message = $"Costo movido a {invoiceDate:yyyy-MM}.",
+            RecordId = recordId,
+            InvoiceDate = invoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            Month = invoiceDate.ToString("yyyy-MM", CultureInfo.InvariantCulture)
+        };
+    }
+
+    private async Task<IReadOnlyList<LicenciamientoCruceAccountLookupDto>> SearchLicenciamientoCruceAccountOptionsAsync(
+        LicensingMetadata metadata,
+        string query,
+        int top,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var results = new List<LicenciamientoCruceAccountLookupDto>();
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var clientLookupProperty = BuildLookupValueProperty(LicensingAccountClientLookupField);
+
+        if (Guid.TryParse(query, out var queryGuid))
+        {
+            var exact = await TryGetLicenciamientoCruceAccountLookupByIdAsync(metadata, queryGuid.ToString("D"), user, ct);
+            if (exact is not null)
+            {
+                results.Add(exact);
+                seenIds.Add(exact.AccountId);
+            }
+        }
+
+        foreach (var searchField in metadata.AccountSearchFields.Where(static field => !string.IsNullOrWhiteSpace(field)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (results.Count >= top)
+                break;
+
+            metadata.AccountAttributeTypes.TryGetValue(searchField, out var searchFieldType);
+            var filter = BuildLicensingLookupSearchExpression(searchField, query, searchFieldType);
+            if (string.IsNullOrWhiteSpace(filter))
+                continue;
+
+            var select = string.Join(",",
+                new[] { metadata.AccountMetadata.PrimaryIdField, metadata.AccountMetadata.PrimaryNameField, searchField, clientLookupProperty }
+                    .Where(static field => !string.IsNullOrWhiteSpace(field))
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
+            var remaining = Math.Max(top - results.Count, 1);
+            var relativeUrl = $"/api/data/v9.2/{metadata.AccountMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top={remaining}";
+            IReadOnlyList<JsonElement> items;
+            try
+            {
+                items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible buscar Account IDs para cruce de licenciamiento en {SearchField}.",
+                    searchField);
+                continue;
+            }
+
+            foreach (var item in items)
+            {
+                var account = BuildLicenciamientoCruceAccountLookup(metadata, item, searchField, query);
+                if (account is null || !seenIds.Add(account.AccountId))
+                    continue;
+
+                results.Add(account);
+                if (results.Count >= top)
+                    break;
+            }
+        }
+
+        return results;
+    }
+
+    private async Task<LicenciamientoCruceAccountLookupDto> ResolveLicenciamientoCruceAccountLookupAsync(
+        LicensingMetadata metadata,
+        string accountId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedAccountId = NormalizeGuid(accountId, nameof(accountId));
+        var account = await TryGetLicenciamientoCruceAccountLookupByIdAsync(metadata, normalizedAccountId, user, ct);
+        if (account is null)
+            throw new InvalidOperationException("No se encontro el Account ID destino seleccionado.");
+
+        return account;
+    }
+
+    private async Task<LicenciamientoCruceAccountLookupDto?> TryGetLicenciamientoCruceAccountLookupByIdAsync(
+        LicensingMetadata metadata,
+        string accountId,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var clientLookupProperty = BuildLookupValueProperty(LicensingAccountClientLookupField);
+        var select = string.Join(",",
+            new[] { metadata.AccountMetadata.PrimaryIdField, metadata.AccountMetadata.PrimaryNameField, clientLookupProperty }
+                .Where(static field => !string.IsNullOrWhiteSpace(field))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        var relativeUrl = $"/api/data/v9.2/{metadata.AccountMetadata.EntitySetName}({accountId})?$select={select}";
+
+        try
+        {
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            using var doc = JsonDocument.Parse(json);
+            return BuildLicenciamientoCruceAccountLookup(metadata, doc.RootElement, metadata.AccountMetadata.PrimaryNameField, accountId);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible resolver el Account ID destino {AccountId}.", accountId);
+            return null;
+        }
+    }
+
+    private static LicenciamientoCruceAccountLookupDto? BuildLicenciamientoCruceAccountLookup(
+        LicensingMetadata metadata,
+        JsonElement item,
+        string searchField,
+        string query)
+    {
+        var clientLookupProperty = BuildLookupValueProperty(LicensingAccountClientLookupField);
+        var id = NormalizeOptionalGuid(ReadString(item, metadata.AccountMetadata.PrimaryIdField));
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+
+        var matchedValue = ReadString(item, searchField).Trim();
+        return new LicenciamientoCruceAccountLookupDto
+        {
+            AccountId = id,
+            AccountName = FirstNonEmpty(
+                ReadString(item, metadata.AccountMetadata.PrimaryNameField).Trim(),
+                matchedValue,
+                query),
+            ClientId = NormalizeOptionalGuid(ReadString(item, clientLookupProperty)),
+            ClientName = FirstNonEmpty(ReadLookupFormattedValue(item, clientLookupProperty), ""),
+            SearchField = searchField,
+            MatchedValue = matchedValue
+        };
+    }
+
+    private async Task<RhEntityMetadata> EnsureLicenciamientoCruceAccountMapTableAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var metadata = await TryResolveLicenciamientoCruceAccountMapMetadataAsync(user, ct);
+        var createdAny = false;
+        if (metadata is null)
+        {
+            await CreateLicenciamientoCruceAccountMapEntityAsync(user, ct);
+            createdAny = true;
+            metadata = await WaitForLicenciamientoCruceAccountMapMetadataAsync(user, ct);
+        }
+
+        var existingAttributes = await LoadLicenciamientoCruceAccountMapAttributesAsync(user, ct);
+        foreach (var definition in BuildLicenciamientoCruceAccountMapAttributeDefinitions())
+        {
+            if (existingAttributes.Contains(definition.LogicalName))
+                continue;
+
+            await CallDataverseSendAsync(
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(LicenciamientoCruceAccountMapLogicalName)}')/Attributes",
+                "POST",
+                BuildLicenciamientoCruceMapAttributePayload(definition),
+                user,
+                ct);
+            createdAny = true;
+        }
+
+        if (createdAny)
+        {
+            await PublishLicenciamientoCruceAccountMapEntityAsync(user, ct);
+            await WaitForLicenciamientoCruceAccountMapAttributesAsync(user, ct);
+        }
+
+        return metadata;
+    }
+
+    private async Task<RhEntityMetadata?> TryResolveLicenciamientoCruceAccountMapMetadataAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(LicenciamientoCruceAccountMapLogicalName)}')" +
+                "?$select=LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+            using var doc = JsonDocument.Parse(json);
+            return new RhEntityMetadata
+            {
+                LogicalName = LicenciamientoCruceAccountMapLogicalName,
+                EntitySetName = FirstNonEmpty(ReadString(doc.RootElement, "EntitySetName"), LicenciamientoCruceAccountMapFallbackEntitySetName),
+                PrimaryIdField = FirstNonEmpty(ReadString(doc.RootElement, "PrimaryIdAttribute"), LicenciamientoCruceAccountMapFallbackIdField),
+                PrimaryNameField = FirstNonEmpty(ReadString(doc.RootElement, "PrimaryNameAttribute"), LicenciamientoCruceAccountMapPrimaryNameField)
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogInformation(ex, "La tabla de mapeo de Account ID de licenciamiento aun no existe o no es visible.");
+            return null;
+        }
+    }
+
+    private async Task<RhEntityMetadata> WaitForLicenciamientoCruceAccountMapMetadataAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            var metadata = await TryResolveLicenciamientoCruceAccountMapMetadataAsync(user, ct);
+            if (metadata is not null)
+                return metadata;
+
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+
+        throw new InvalidOperationException("Dataverse creo la tabla de mapeo, pero aun no la expone. Intenta nuevamente en unos segundos.");
+    }
+
+    private async Task<HashSet<string>> LoadLicenciamientoCruceAccountMapAttributesAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            LicenciamientoCruceAccountMapPrimaryNameField
+        };
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(LicenciamientoCruceAccountMapLogicalName)}')" +
+                "?$select=LogicalName&$expand=Attributes($select=LogicalName)";
+            var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("Attributes", out var attributes)
+                || attributes.ValueKind != JsonValueKind.Array)
+            {
+                return result;
+            }
+
+            foreach (var attribute in attributes.EnumerateArray())
+            {
+                var logicalName = ReadString(attribute, "LogicalName").Trim();
+                if (!string.IsNullOrWhiteSpace(logicalName))
+                    result.Add(logicalName);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible listar las columnas de la tabla de mapeo de licenciamiento.");
+        }
+
+        return result;
+    }
+
+    private async Task WaitForLicenciamientoCruceAccountMapAttributesAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var required = BuildLicenciamientoCruceAccountMapAttributeDefinitions()
+            .Select(static definition => definition.LogicalName)
+            .Append(LicenciamientoCruceAccountMapPrimaryNameField)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            var existing = await LoadLicenciamientoCruceAccountMapAttributesAsync(user, ct);
+            if (required.All(existing.Contains))
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+
+        throw new InvalidOperationException("Dataverse aun no expone todas las columnas del mapeo de Account ID. Intenta nuevamente en unos segundos.");
+    }
+
+    private async Task CreateLicenciamientoCruceAccountMapEntityAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["@odata.type"] = "Microsoft.Dynamics.CRM.EntityMetadata",
+            ["Attributes"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["@odata.type"] = "Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                    ["AttributeType"] = "String",
+                    ["AttributeTypeName"] = CreateHardwareValuePayload("StringType"),
+                    ["Description"] = CreateHardwareLabelPayload("Nombre descriptivo del mapeo de Account ID de licenciamiento."),
+                    ["DisplayName"] = CreateHardwareLabelPayload("Nombre"),
+                    ["IsPrimaryName"] = true,
+                    ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+                    ["SchemaName"] = "cr07a_Name",
+                    ["FormatName"] = CreateHardwareValuePayload("Text"),
+                    ["MaxLength"] = 300
+                }
+            },
+            ["Description"] = CreateHardwareLabelPayload("Equivalencias persistentes para agrupar Account IDs de consumo Intcomex hacia un Account ID canonico."),
+            ["DisplayCollectionName"] = CreateHardwareLabelPayload("Mapeos Account ID Licenciamiento"),
+            ["DisplayName"] = CreateHardwareLabelPayload("Mapeo Account ID Licenciamiento"),
+            ["HasActivities"] = false,
+            ["HasNotes"] = false,
+            ["IsActivity"] = false,
+            ["OwnershipType"] = "UserOwned",
+            ["SchemaName"] = "cr07a_LicenciamientoAccountMap"
+        };
+
+        await CallDataverseSendAsync("/api/data/v9.2/EntityDefinitions", "POST", payload, user, ct);
+    }
+
+    private static IReadOnlyList<LicenciamientoCruceMapAttributeDefinition> BuildLicenciamientoCruceAccountMapAttributeDefinitions() =>
+        new[]
+        {
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapSourceAccountIdField, "cr07a_SourceAccountId", "Account ID origen", "string", 200),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapSourceAccountNameField, "cr07a_SourceAccountName", "Nombre cuenta origen", "string", 300),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapSourceClientNameField, "cr07a_SourceClientName", "Cliente origen", "string", 300),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapTargetAccountIdField, "cr07a_TargetAccountId", "Account ID destino", "string", 200),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapTargetAccountNameField, "cr07a_TargetAccountName", "Nombre cuenta destino", "string", 300),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapTargetClientIdField, "cr07a_TargetClientId", "Cliente destino ID", "string", 200),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapTargetClientNameField, "cr07a_TargetClientName", "Cliente destino", "string", 300),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapActiveField, "cr07a_Active", "Activo", "boolean", 0),
+            new LicenciamientoCruceMapAttributeDefinition(LicenciamientoCruceAccountMapNotesField, "cr07a_Notes", "Observacion", "memo", 2000)
+        };
+
+    private static object BuildLicenciamientoCruceMapAttributePayload(
+        LicenciamientoCruceMapAttributeDefinition definition)
+    {
+        if (string.Equals(definition.Kind, "boolean", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Dictionary<string, object?>
+            {
+                ["@odata.type"] = "Microsoft.Dynamics.CRM.BooleanAttributeMetadata",
+                ["AttributeType"] = "Boolean",
+                ["AttributeTypeName"] = CreateHardwareValuePayload("BooleanType"),
+                ["DefaultValue"] = true,
+                ["OptionSet"] = new Dictionary<string, object?>
+                {
+                    ["TrueOption"] = new Dictionary<string, object?>
+                    {
+                        ["Value"] = 1,
+                        ["Label"] = CreateHardwareLabelPayload("Si")
+                    },
+                    ["FalseOption"] = new Dictionary<string, object?>
+                    {
+                        ["Value"] = 0,
+                        ["Label"] = CreateHardwareLabelPayload("No")
+                    }
+                },
+                ["Description"] = CreateHardwareLabelPayload(definition.DisplayName),
+                ["DisplayName"] = CreateHardwareLabelPayload(definition.DisplayName),
+                ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+                ["SchemaName"] = definition.SchemaName
+            };
+        }
+
+        if (string.Equals(definition.Kind, "memo", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Dictionary<string, object?>
+            {
+                ["@odata.type"] = "Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+                ["AttributeType"] = "Memo",
+                ["AttributeTypeName"] = CreateHardwareValuePayload("MemoType"),
+                ["Format"] = "TextArea",
+                ["ImeMode"] = "Disabled",
+                ["MaxLength"] = definition.MaxLength,
+                ["IsLocalizable"] = false,
+                ["Description"] = CreateHardwareLabelPayload(definition.DisplayName),
+                ["DisplayName"] = CreateHardwareLabelPayload(definition.DisplayName),
+                ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+                ["SchemaName"] = definition.SchemaName
+            };
+        }
+
+        return new Dictionary<string, object?>
+        {
+            ["@odata.type"] = "Microsoft.Dynamics.CRM.StringAttributeMetadata",
+            ["AttributeType"] = "String",
+            ["AttributeTypeName"] = CreateHardwareValuePayload("StringType"),
+            ["Description"] = CreateHardwareLabelPayload(definition.DisplayName),
+            ["DisplayName"] = CreateHardwareLabelPayload(definition.DisplayName),
+            ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+            ["SchemaName"] = definition.SchemaName,
+            ["FormatName"] = CreateHardwareValuePayload("Text"),
+            ["MaxLength"] = definition.MaxLength
+        };
+    }
+
+    private async Task PublishLicenciamientoCruceAccountMapEntityAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var publishXml =
+            $"<importexportxml><entities><entity>{LicenciamientoCruceAccountMapLogicalName}</entity></entities></importexportxml>";
+        await CallDataverseSendAsync(
+            "/api/data/v9.2/PublishXml",
+            "POST",
+            new Dictionary<string, object?> { ["ParameterXml"] = publishXml },
+            user,
+            ct);
+    }
+
+    private async Task<LicenciamientoCruceAccountMapping?> FindLicenciamientoCruceAccountMappingAsync(
+        RhEntityMetadata metadata,
+        string sourceAccountId,
+        string sourceAccountName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var filters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(sourceAccountId))
+            filters.Add($"{LicenciamientoCruceAccountMapSourceAccountIdField} eq '{EscapeOdataLiteral(sourceAccountId)}'");
+
+        if (!string.IsNullOrWhiteSpace(sourceAccountName))
+            filters.Add($"{LicenciamientoCruceAccountMapSourceAccountNameField} eq '{EscapeOdataLiteral(sourceAccountName)}'");
+
+        if (filters.Count == 0)
+            return null;
+
+        var select = BuildLicenciamientoCruceMappingSelect(metadata);
+        var filter = string.Join(" or ", filters);
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        return items
+            .Select(item => ParseLicenciamientoCruceAccountMapping(metadata, item))
+            .FirstOrDefault(item => item is not null);
+    }
+
+    private async Task<string> ResolveCreatedLicenciamientoCruceMappingIdAsync(
+        RhEntityMetadata metadata,
+        string body,
+        string sourceAccountId,
+        string sourceAccountName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var inlineId = NormalizeOptionalGuid(ReadString(doc.RootElement, metadata.PrimaryIdField));
+                if (!string.IsNullOrWhiteSpace(inlineId))
+                    return inlineId;
+            }
+            catch (JsonException)
+            {
+                // Dataverse often returns 204 on create; fall through to lookup.
+            }
+        }
+
+        var mapping = await FindLicenciamientoCruceAccountMappingAsync(
+            metadata,
+            sourceAccountId,
+            sourceAccountName,
+            user,
+            ct);
+        if (mapping is null || string.IsNullOrWhiteSpace(mapping.MappingId))
+            throw new InvalidOperationException("El mapeo fue guardado, pero no fue posible recuperar su ID.");
+
+        return mapping.MappingId;
+    }
+
+    private static string BuildLicenciamientoCruceMappingSelect(RhEntityMetadata metadata) =>
+        string.Join(",",
+            new[]
+            {
+                metadata.PrimaryIdField,
+                metadata.PrimaryNameField,
+                LicenciamientoCruceAccountMapSourceAccountIdField,
+                LicenciamientoCruceAccountMapSourceAccountNameField,
+                LicenciamientoCruceAccountMapSourceClientNameField,
+                LicenciamientoCruceAccountMapTargetAccountIdField,
+                LicenciamientoCruceAccountMapTargetAccountNameField,
+                LicenciamientoCruceAccountMapTargetClientIdField,
+                LicenciamientoCruceAccountMapTargetClientNameField,
+                LicenciamientoCruceAccountMapActiveField,
+                LicenciamientoCruceAccountMapNotesField
+            }
+            .Where(static field => !string.IsNullOrWhiteSpace(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+
+    private static LicenciamientoCruceAccountMapping? ParseLicenciamientoCruceAccountMapping(
+        RhEntityMetadata metadata,
+        JsonElement item)
+    {
+        var mappingId = NormalizeOptionalGuid(ReadString(item, metadata.PrimaryIdField));
+        if (string.IsNullOrWhiteSpace(mappingId))
+            return null;
+
+        var targetAccountId = NormalizeOptionalGuid(ReadString(item, LicenciamientoCruceAccountMapTargetAccountIdField));
+        if (string.IsNullOrWhiteSpace(targetAccountId))
+            return null;
+
+        var active = !item.TryGetProperty(LicenciamientoCruceAccountMapActiveField, out _)
+            || ReadBool(item, LicenciamientoCruceAccountMapActiveField);
+
+        return new LicenciamientoCruceAccountMapping
+        {
+            MappingId = mappingId,
+            SourceAccountId = NormalizeOptionalGuid(ReadString(item, LicenciamientoCruceAccountMapSourceAccountIdField)),
+            SourceAccountName = ReadString(item, LicenciamientoCruceAccountMapSourceAccountNameField).Trim(),
+            SourceClientName = ReadString(item, LicenciamientoCruceAccountMapSourceClientNameField).Trim(),
+            TargetAccountId = targetAccountId,
+            TargetAccountName = ReadString(item, LicenciamientoCruceAccountMapTargetAccountNameField).Trim(),
+            TargetClientId = NormalizeOptionalGuid(ReadString(item, LicenciamientoCruceAccountMapTargetClientIdField)),
+            TargetClientName = ReadString(item, LicenciamientoCruceAccountMapTargetClientNameField).Trim(),
+            Active = active,
+            Notes = ReadString(item, LicenciamientoCruceAccountMapNotesField).Trim()
+        };
+    }
+
+    private static string BuildLicenciamientoCruceMappingName(string source, string target)
+    {
+        var normalizedSource = FirstNonEmpty(source, "Origen");
+        var normalizedTarget = FirstNonEmpty(target, "Destino");
+        var name = $"{normalizedSource} -> {normalizedTarget}";
+        return name.Length <= 300 ? name : name[..300];
+    }
+
     private async Task<DateOnly> ResolveLicenciamientoCruceLatestDataMonthAsync(
         LicensingMetadata licensingMetadata,
         RhEntityMetadata billingMetadata,
@@ -478,6 +1167,7 @@ public sealed partial class DataverseService
             .Select(static group => group.First())
             .ToList();
 
+        await ApplyLicenciamientoCruceAccountMappingsAsync(metadata, rows, user, ct);
         await ResolveLicenciamientoCruceCostClientsFromAccountsAsync(metadata, rows, user, ct);
         return rows;
     }
@@ -511,8 +1201,10 @@ public sealed partial class DataverseService
         {
             RecordId = record.RecordId,
             AccountId = NormalizeOptionalGuid(record.CompanyAccountId),
+            OriginalAccountId = NormalizeOptionalGuid(record.CompanyAccountId),
             ClientName = clientName,
             CompanyAccountDisplay = record.CompanyAccountDisplay,
+            OriginalAccountDisplay = record.CompanyAccountDisplay,
             Vendor = record.Vendor,
             ProductId = NormalizeOptionalGuid(record.ProductId),
             ProductDisplay = record.ProductDisplay,
@@ -523,6 +1215,104 @@ public sealed partial class DataverseService
             CostMonth = costMonth,
             CostCop = RoundCurrency(costCop)
         };
+    }
+
+    private async Task ApplyLicenciamientoCruceAccountMappingsAsync(
+        LicensingMetadata metadata,
+        IReadOnlyList<LicenciamientoCruceCostRow> rows,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (rows.Count == 0)
+            return;
+
+        var mappings = await LoadLicenciamientoCruceAccountMappingsAsync(user, ct);
+        if (mappings.Count == 0)
+            return;
+
+        foreach (var row in rows)
+        {
+            var mapping = FindLicenciamientoCruceMappingForCostRow(row, mappings);
+            if (mapping is null || string.IsNullOrWhiteSpace(mapping.TargetAccountId))
+                continue;
+
+            row.OriginalAccountId = FirstNonEmpty(row.OriginalAccountId, row.AccountId);
+            row.OriginalAccountDisplay = FirstNonEmpty(row.OriginalAccountDisplay, row.CompanyAccountDisplay);
+            row.AccountId = mapping.TargetAccountId;
+            row.CompanyAccountDisplay = FirstNonEmpty(mapping.TargetAccountName, row.CompanyAccountDisplay);
+            row.AccountMappingId = mapping.MappingId;
+            row.AccountMappingApplied = true;
+            row.ClientId = NormalizeOptionalGuid(mapping.TargetClientId);
+            row.ClientName = FirstNonEmpty(mapping.TargetClientName, row.ClientName);
+        }
+    }
+
+    private async Task<IReadOnlyList<LicenciamientoCruceAccountMapping>> LoadLicenciamientoCruceAccountMappingsAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        RhEntityMetadata metadata;
+        try
+        {
+            metadata = await EnsureLicenciamientoCruceAccountMapTableAsync(user, ct);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible asegurar la tabla de mapeo de Account ID para cruce de licenciamiento.");
+            return Array.Empty<LicenciamientoCruceAccountMapping>();
+        }
+
+        var select = BuildLicenciamientoCruceMappingSelect(metadata);
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$top=5000";
+        IReadOnlyList<JsonElement> items;
+        try
+        {
+            items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible consultar los mapeos de Account ID de licenciamiento.");
+            return Array.Empty<LicenciamientoCruceAccountMapping>();
+        }
+
+        return items
+            .Select(item => ParseLicenciamientoCruceAccountMapping(metadata, item))
+            .Where(static item => item is not null)
+            .Select(static item => item!)
+            .Where(static item => item.Active)
+            .ToList();
+    }
+
+    private static LicenciamientoCruceAccountMapping? FindLicenciamientoCruceMappingForCostRow(
+        LicenciamientoCruceCostRow row,
+        IReadOnlyList<LicenciamientoCruceAccountMapping> mappings)
+    {
+        var sourceAccountId = NormalizeOptionalGuid(FirstNonEmpty(row.OriginalAccountId, row.AccountId));
+        if (!string.IsNullOrWhiteSpace(sourceAccountId))
+        {
+            var byId = mappings.FirstOrDefault(mapping =>
+                string.Equals(NormalizeOptionalGuid(mapping.SourceAccountId), sourceAccountId, StringComparison.OrdinalIgnoreCase));
+            if (byId is not null)
+                return byId;
+        }
+
+        var sourceAccountName = NormalizeLicenciamientoCruceMapKey(FirstNonEmpty(row.OriginalAccountDisplay, row.CompanyAccountDisplay));
+        if (!string.IsNullOrWhiteSpace(sourceAccountName))
+        {
+            var byAccountName = mappings.FirstOrDefault(mapping =>
+                string.Equals(NormalizeLicenciamientoCruceMapKey(mapping.SourceAccountName), sourceAccountName, StringComparison.OrdinalIgnoreCase));
+            if (byAccountName is not null)
+                return byAccountName;
+        }
+
+        var sourceClientName = NormalizeLicenciamientoCruceClientKey(row.ClientName);
+        if (!string.IsNullOrWhiteSpace(sourceClientName))
+        {
+            return mappings.FirstOrDefault(mapping =>
+                string.Equals(NormalizeLicenciamientoCruceClientKey(mapping.SourceClientName), sourceClientName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return null;
     }
 
     private async Task ResolveLicenciamientoCruceCostClientsFromAccountsAsync(
@@ -896,6 +1686,7 @@ public sealed partial class DataverseService
         {
             LicenciamientoCruceMonthlyKey,
             LicenciamientoCruceOneTimeKey,
+            LicenciamientoCruceAllKey,
             LicenciamientoCruceOtherKey
         };
         var segments = new List<LicenciamientoCruceMatrixSegmentDto>();
@@ -903,7 +1694,8 @@ public sealed partial class DataverseService
         foreach (var key in orderedKeys)
         {
             var segmentRows = rows
-                .Where(row => string.Equals(row.TipoContratoKey, key, StringComparison.OrdinalIgnoreCase))
+                .Where(row => string.Equals(key, LicenciamientoCruceAllKey, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(row.TipoContratoKey, key, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             var clientRows = segmentRows
                 .GroupBy(ResolveLicenciamientoCruceMatrixClientKey, StringComparer.OrdinalIgnoreCase)
@@ -915,7 +1707,9 @@ public sealed partial class DataverseService
             segments.Add(new LicenciamientoCruceMatrixSegmentDto
             {
                 Key = key,
-                Label = ResolveLicenciamientoCruceContractLabel(key),
+                Label = string.Equals(key, LicenciamientoCruceAllKey, StringComparison.OrdinalIgnoreCase)
+                    ? LicenciamientoCruceAllLabel
+                    : ResolveLicenciamientoCruceContractLabel(key),
                 RecordsCount = clientRows.Count,
                 NegativeMarginCount = clientRows.Count(static row => row.HasNegativeMargin),
                 OrphanCount = clientRows.SelectMany(static row => row.Cells).Count(static cell => cell.HasOrphans),
@@ -1103,6 +1897,8 @@ public sealed partial class DataverseService
             TotalFacturacionRelacionada = billing,
             MargenBrutoTotal = margin,
             MargenBrutoPct = CalculateLicenciamientoCruceMarginPercent(margin, billing),
+            TotalUtilidadPositiva = RoundCurrency(rows.Where(static row => row.MargenBruto > 0m).Sum(static row => row.MargenBruto)),
+            TotalUtilidadNegativa = RoundCurrency(rows.Where(static row => row.MargenBruto < 0m).Sum(static row => row.MargenBruto)),
             TotalCostosFuente = cost,
             TotalCostosCruce = cost,
             TotalFacturacionFuenteSinIva = billing
@@ -1260,6 +2056,10 @@ public sealed partial class DataverseService
             ClienteId = row.ClientId,
             AccountId = row.AccountId,
             Account = row.CompanyAccountDisplay,
+            AccountIdOriginal = FirstNonEmpty(row.OriginalAccountId, row.AccountId),
+            AccountOriginal = FirstNonEmpty(row.OriginalAccountDisplay, row.CompanyAccountDisplay),
+            AccountMappingId = row.AccountMappingId,
+            AccountMappingApplied = row.AccountMappingApplied,
             Producto = row.ProductDisplay,
             ProductoId = row.ProductId,
             TipoContrato = row.ContractTypeLabel,
@@ -1409,6 +2209,22 @@ public sealed partial class DataverseService
             .ToList();
 
         return string.Join(" ", tokens);
+    }
+
+    private static string NormalizeLicenciamientoCruceMapKey(string? value)
+    {
+        var text = RemoveLicenciamientoCruceDiacritics(value ?? "").ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+
+        var builder = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (char.IsLetterOrDigit(ch))
+                builder.Append(ch);
+        }
+
+        return builder.ToString();
     }
 
     private static bool IsLicenciamientoCruceCopiersVertical(string? value)
@@ -1587,9 +2403,13 @@ public sealed partial class DataverseService
     {
         public string RecordId { get; set; } = "";
         public string AccountId { get; set; } = "";
+        public string OriginalAccountId { get; set; } = "";
         public string ClientId { get; set; } = "";
         public string ClientName { get; set; } = "";
         public string CompanyAccountDisplay { get; set; } = "";
+        public string OriginalAccountDisplay { get; set; } = "";
+        public string AccountMappingId { get; set; } = "";
+        public bool AccountMappingApplied { get; set; }
         public string Vendor { get; set; } = "";
         public string ProductId { get; set; } = "";
         public string ProductDisplay { get; set; } = "";
@@ -1599,6 +2419,27 @@ public sealed partial class DataverseService
         public DateOnly? InvoiceDate { get; set; }
         public DateOnly CostMonth { get; set; }
         public decimal CostCop { get; set; }
+    }
+
+    private sealed record LicenciamientoCruceMapAttributeDefinition(
+        string LogicalName,
+        string SchemaName,
+        string DisplayName,
+        string Kind,
+        int MaxLength);
+
+    private sealed class LicenciamientoCruceAccountMapping
+    {
+        public string MappingId { get; init; } = "";
+        public string SourceAccountId { get; init; } = "";
+        public string SourceAccountName { get; init; } = "";
+        public string SourceClientName { get; init; } = "";
+        public string TargetAccountId { get; init; } = "";
+        public string TargetAccountName { get; init; } = "";
+        public string TargetClientId { get; init; } = "";
+        public string TargetClientName { get; init; } = "";
+        public bool Active { get; init; } = true;
+        public string Notes { get; init; } = "";
     }
 
     private sealed class LicenciamientoCruceCostGroup

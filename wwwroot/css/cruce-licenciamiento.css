@@ -127,6 +127,23 @@
     overflow-wrap: anywhere;
 }
 
+.licx-kpi small {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .55rem;
+    color: #697586;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.licx-kpi small .is-positive {
+    color: #166534;
+}
+
+.licx-kpi small .is-negative {
+    color: #b42318;
+}
+
 .licx-kpi strong.is-negative,
 .licx-table .is-negative {
     color: #b42318;
@@ -244,6 +261,17 @@
     background: #eef6ff;
 }
 
+.licx-client-map {
+    cursor: pointer;
+}
+
+.licx-client-map:hover,
+.licx-client-map:focus {
+    background: #dbeafe !important;
+    outline: 2px solid #93c5fd;
+    outline-offset: -2px;
+}
+
 .licx-matrix-table td.is-negative-cell {
     background: #fff1f0;
 }
@@ -264,6 +292,11 @@
     background: #f8fafc;
     color: #334e68;
     font-weight: 700;
+}
+
+.licx-accum-col {
+    min-width: 150px;
+    box-shadow: -1px 0 0 #d8dee6;
 }
 
 .licx-drill-cell {
@@ -392,6 +425,10 @@
 
 .licx-detail-table {
     min-width: 1240px;
+}
+
+.licx-map-table {
+    min-width: 1080px;
 }
 
 .licx-edit-sections {
