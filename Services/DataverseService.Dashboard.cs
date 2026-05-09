@@ -3468,6 +3468,8 @@ public sealed partial class DataverseService
         public string ClientId { get; set; } = "";
         public string CompanyTaxId { get; set; } = "";
         public string ClientName { get; set; } = "";
+        public string BusinessGroupId { get; set; } = "";
+        public string BusinessGroupName { get; set; } = "";
         public string VerticalLabel { get; set; } = "";
         public string ContractTypeLabel { get; set; } = "";
         public int VerticalOptionValue { get; set; }

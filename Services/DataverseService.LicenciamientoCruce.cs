@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text;
@@ -40,6 +41,10 @@ public sealed partial class DataverseService
     private const int LicenciamientoCruceCostOneTimeOption = 645250001;
     private const int LicenciamientoCruceCostPrepaidOption = 645250002;
     private const decimal LicenciamientoCruceProbableThreshold = 0.76m;
+    private const string LicenciamientoCruceClientLogicalName = "cr07a_cliente";
+    private const string LicenciamientoCruceClientFallbackEntitySetName = "cr07a_clientes";
+    private const string LicenciamientoCruceClientFallbackIdField = "cr07a_clienteid";
+    private const string LicenciamientoCruceClientFallbackPrimaryNameField = "cr07a_nombre";
 
     private static readonly string[] LicenciamientoCruceLegalTokens =
     {
@@ -56,6 +61,34 @@ public sealed partial class DataverseService
         "EMPRESA",
         "UNION TEMPORAL"
     };
+
+    private static readonly string[] LicenciamientoCruceBusinessGroupIdFieldCandidates =
+    {
+        "cr07a_grupoempresarialid",
+        "cr07a_grupoempresrialid",
+        "cr07a_grupo_empresarial_id",
+        "cr07a_grupo_empresrial_id",
+        "grupoempresarialid",
+        "grupoempresrialid",
+        "grupo_empresarial_id",
+        "grupo_empresrial_id"
+    };
+
+    private static readonly string[] LicenciamientoCruceBusinessGroupNameFieldCandidates =
+    {
+        "cr07a_grupoempresarialname",
+        "cr07a_grupoempresrialname",
+        "cr07a_grupoempresarialnombre",
+        "cr07a_grupo_empresarial_name",
+        "cr07a_grupo_empresarial_nombre",
+        "grupoempresarialname",
+        "grupoempresrialname",
+        "grupoempresarialnombre",
+        "grupo_empresarial_name",
+        "grupo_empresarial_nombre"
+    };
+
+    private readonly ConcurrentDictionary<string, LicenciamientoCruceBusinessGroupMetadata> _licenciamientoCruceBusinessGroupMetadataCache = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<LicenciamientoCruceDashboardDto> GetLicenciamientoCruceDashboardAsync(
         int year,
@@ -104,6 +137,13 @@ public sealed partial class DataverseService
         var billingRows = allBillingRows
             .Where(static row => !IsLicenciamientoCruceCopiersVertical(row.VerticalLabel))
             .ToList();
+
+        await EnrichLicenciamientoCruceBusinessGroupsAsync(
+            licensingMetadata,
+            costRows,
+            billingRows,
+            httpContext.User,
+            ct);
 
         var months = BuildLicenciamientoCruceMatrixMonths(costRows, billingRows, period.Start, period.End, period.SelectedMonth);
         var rows = months
@@ -1005,6 +1045,439 @@ public sealed partial class DataverseService
         return name.Length <= 300 ? name : name[..300];
     }
 
+    private async Task EnrichLicenciamientoCruceBusinessGroupsAsync(
+        LicensingMetadata metadata,
+        IReadOnlyList<LicenciamientoCruceCostRow> costRows,
+        IReadOnlyList<BillingRecordRow> billingRows,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (costRows.Count == 0 && billingRows.Count == 0)
+            return;
+
+        var costAccountIds = costRows
+            .Select(static row => NormalizeOptionalGuid(row.AccountId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var clientIds = costRows
+            .Select(static row => NormalizeOptionalGuid(row.ClientId))
+            .Concat(billingRows.Select(static row => NormalizeOptionalGuid(row.ClientId)))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var accountGroups = await LoadLicenciamientoCruceAccountBusinessGroupsAsync(
+            metadata,
+            costAccountIds,
+            clientIds,
+            user,
+            ct);
+        var clientGroups = await LoadLicenciamientoCruceClientBusinessGroupsAsync(clientIds, user, ct);
+
+        foreach (var row in costRows)
+        {
+            var group = FirstLicenciamientoCruceBusinessGroup(
+                GetLicenciamientoCruceBusinessGroup(accountGroups.ByAccountId, NormalizeOptionalGuid(row.AccountId)),
+                GetLicenciamientoCruceBusinessGroup(clientGroups, NormalizeOptionalGuid(row.ClientId)),
+                GetLicenciamientoCruceBusinessGroup(accountGroups.ByClientId, NormalizeOptionalGuid(row.ClientId)));
+
+            if (!group.HasGroup)
+                continue;
+
+            row.BusinessGroupId = group.GroupId;
+            row.BusinessGroupName = group.GroupName;
+        }
+
+        foreach (var row in billingRows)
+        {
+            var group = FirstLicenciamientoCruceBusinessGroup(
+                GetLicenciamientoCruceBusinessGroup(clientGroups, NormalizeOptionalGuid(row.ClientId)),
+                GetLicenciamientoCruceBusinessGroup(accountGroups.ByClientId, NormalizeOptionalGuid(row.ClientId)));
+
+            if (!group.HasGroup)
+                continue;
+
+            row.BusinessGroupId = group.GroupId;
+            row.BusinessGroupName = group.GroupName;
+        }
+    }
+
+    private async Task<Dictionary<string, LicenciamientoCruceBusinessGroupInfo>> LoadLicenciamientoCruceClientBusinessGroupsAsync(
+        IReadOnlyList<string> clientIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var result = new Dictionary<string, LicenciamientoCruceBusinessGroupInfo>(StringComparer.OrdinalIgnoreCase);
+        if (clientIds.Count == 0)
+            return result;
+
+        var metadata = await ResolveLicenciamientoCruceClientBusinessGroupMetadataAsync(user, ct);
+        if (!metadata.HasGroupFields)
+            return result;
+
+        var select = BuildLicenciamientoCruceBusinessGroupSelectClause(
+            metadata,
+            metadata.EntityMetadata.PrimaryIdField,
+            metadata.EntityMetadata.PrimaryNameField);
+
+        foreach (var chunk in clientIds.Chunk(20))
+        {
+            var filter = string.Join(" or ", chunk.Select(id => $"{metadata.EntityMetadata.PrimaryIdField} eq {id}"));
+            var relativeUrl = $"/api/data/v9.2/{metadata.EntityMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+            IReadOnlyList<JsonElement> items;
+            try
+            {
+                items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                _logger.LogWarning(ex, "No fue posible consultar grupos empresariales desde la tabla cliente.");
+                continue;
+            }
+
+            foreach (var item in items)
+            {
+                var clientId = NormalizeOptionalGuid(ReadString(item, metadata.EntityMetadata.PrimaryIdField));
+                if (string.IsNullOrWhiteSpace(clientId))
+                    continue;
+
+                var clientName = ReadString(item, metadata.EntityMetadata.PrimaryNameField).Trim();
+                var group = BuildLicenciamientoCruceBusinessGroupInfo(item, metadata, "cliente", clientId, clientName);
+                if (group.HasGroup)
+                    result[clientId] = group;
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<LicenciamientoCruceAccountBusinessGroupLookup> LoadLicenciamientoCruceAccountBusinessGroupsAsync(
+        LicensingMetadata metadata,
+        IReadOnlyList<string> accountIds,
+        IReadOnlyList<string> clientIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var businessGroupMetadata = BuildLicenciamientoCruceBusinessGroupMetadata(
+            metadata.AccountMetadata,
+            metadata.AccountAttributeTypes);
+        if (!businessGroupMetadata.HasGroupFields || (accountIds.Count == 0 && clientIds.Count == 0))
+            return LicenciamientoCruceAccountBusinessGroupLookup.Empty;
+
+        var clientLookupProperty = BuildLookupValueProperty(LicensingAccountClientLookupField);
+        var select = BuildLicenciamientoCruceBusinessGroupSelectClause(
+            businessGroupMetadata,
+            metadata.AccountMetadata.PrimaryIdField,
+            metadata.AccountMetadata.PrimaryNameField,
+            clientLookupProperty);
+        var accountRows = new List<LicenciamientoCruceAccountBusinessGroupRow>();
+
+        foreach (var chunk in accountIds.Chunk(20))
+        {
+            var filter = string.Join(" or ", chunk.Select(id => $"{metadata.AccountMetadata.PrimaryIdField} eq {id}"));
+            accountRows.AddRange(await LoadLicenciamientoCruceAccountBusinessGroupRowsAsync(
+                metadata,
+                businessGroupMetadata,
+                select,
+                filter,
+                clientLookupProperty,
+                user,
+                ct));
+        }
+
+        foreach (var chunk in clientIds.Chunk(20))
+        {
+            var filter = string.Join(" or ", chunk.Select(id => $"{clientLookupProperty} eq {id}"));
+            accountRows.AddRange(await LoadLicenciamientoCruceAccountBusinessGroupRowsAsync(
+                metadata,
+                businessGroupMetadata,
+                select,
+                filter,
+                clientLookupProperty,
+                user,
+                ct));
+        }
+
+        var distinctRows = accountRows
+            .Where(static row => row.Group.HasGroup)
+            .DistinctBy(static row => row.AccountId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var byAccountId = distinctRows
+            .Where(static row => !string.IsNullOrWhiteSpace(row.AccountId))
+            .ToDictionary(static row => row.AccountId, static row => row.Group, StringComparer.OrdinalIgnoreCase);
+        var byClientId = distinctRows
+            .Where(static row => !string.IsNullOrWhiteSpace(row.ClientId))
+            .GroupBy(static row => row.ClientId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                static group => group.Key,
+                static group => ResolveLicenciamientoCruceMostCommonBusinessGroup(group.Select(static row => row.Group)),
+                StringComparer.OrdinalIgnoreCase);
+
+        return new LicenciamientoCruceAccountBusinessGroupLookup
+        {
+            ByAccountId = byAccountId,
+            ByClientId = byClientId
+        };
+    }
+
+    private async Task<IReadOnlyList<LicenciamientoCruceAccountBusinessGroupRow>> LoadLicenciamientoCruceAccountBusinessGroupRowsAsync(
+        LicensingMetadata licensingMetadata,
+        LicenciamientoCruceBusinessGroupMetadata businessGroupMetadata,
+        string select,
+        string filter,
+        string clientLookupProperty,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return Array.Empty<LicenciamientoCruceAccountBusinessGroupRow>();
+
+        var relativeUrl = $"/api/data/v9.2/{licensingMetadata.AccountMetadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
+        IReadOnlyList<JsonElement> items;
+        try
+        {
+            items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible consultar grupos empresariales desde la tabla Account ID.");
+            return Array.Empty<LicenciamientoCruceAccountBusinessGroupRow>();
+        }
+
+        return items
+            .Select(item =>
+            {
+                var accountId = NormalizeOptionalGuid(ReadString(item, licensingMetadata.AccountMetadata.PrimaryIdField));
+                var clientId = NormalizeOptionalGuid(ReadString(item, clientLookupProperty));
+                var clientName = FirstNonEmpty(ReadLookupFormattedValue(item, clientLookupProperty), clientId);
+                var group = BuildLicenciamientoCruceBusinessGroupInfo(item, businessGroupMetadata, "accountid", clientId, clientName);
+                return new LicenciamientoCruceAccountBusinessGroupRow
+                {
+                    AccountId = accountId,
+                    ClientId = clientId,
+                    Group = group
+                };
+            })
+            .Where(static row => !string.IsNullOrWhiteSpace(row.AccountId) || !string.IsNullOrWhiteSpace(row.ClientId))
+            .ToList();
+    }
+
+    private async Task<LicenciamientoCruceBusinessGroupMetadata> ResolveLicenciamientoCruceClientBusinessGroupMetadataAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        if (_licenciamientoCruceBusinessGroupMetadataCache.TryGetValue(LicenciamientoCruceClientLogicalName, out var cached))
+            return cached;
+
+        var entityMetadata = await ResolveRhEntityMetadataAsync(
+            LicenciamientoCruceClientLogicalName,
+            LicenciamientoCruceClientFallbackEntitySetName,
+            LicenciamientoCruceClientFallbackIdField,
+            LicenciamientoCruceClientFallbackPrimaryNameField,
+            user,
+            ct);
+        var attributes = await LoadLicensingAttributeTypesAsync(LicenciamientoCruceClientLogicalName, user, ct);
+        var metadata = BuildLicenciamientoCruceBusinessGroupMetadata(entityMetadata, attributes);
+
+        if (!metadata.HasGroupFields)
+        {
+            _logger.LogWarning(
+                "No se encontraron columnas de grupo empresarial en {EntityLogicalName}. Candidatos ID: {IdCandidates}. Candidatos nombre: {NameCandidates}.",
+                LicenciamientoCruceClientLogicalName,
+                string.Join(", ", LicenciamientoCruceBusinessGroupIdFieldCandidates),
+                string.Join(", ", LicenciamientoCruceBusinessGroupNameFieldCandidates));
+        }
+
+        _licenciamientoCruceBusinessGroupMetadataCache[LicenciamientoCruceClientLogicalName] = metadata;
+        return metadata;
+    }
+
+    private static LicenciamientoCruceBusinessGroupMetadata BuildLicenciamientoCruceBusinessGroupMetadata(
+        RhEntityMetadata entityMetadata,
+        IReadOnlyDictionary<string, string> attributeTypes)
+    {
+        var groupIdField = ResolveLicenciamientoCruceBusinessGroupField(
+            attributeTypes,
+            LicenciamientoCruceBusinessGroupIdFieldCandidates,
+            isIdField: true);
+        var groupNameField = ResolveLicenciamientoCruceBusinessGroupField(
+            attributeTypes,
+            LicenciamientoCruceBusinessGroupNameFieldCandidates,
+            isIdField: false);
+        var groupIdIsLookup = ResolveLicensingLookupMode(attributeTypes, groupIdField, fallback: false);
+        var groupNameIsLookup = ResolveLicensingLookupMode(attributeTypes, groupNameField, fallback: false);
+
+        return new LicenciamientoCruceBusinessGroupMetadata
+        {
+            EntityMetadata = entityMetadata,
+            GroupIdField = groupIdField,
+            GroupIdSelectField = ResolveLicenciamientoCruceBusinessGroupSelectField(groupIdField, groupIdIsLookup),
+            GroupIdIsLookup = groupIdIsLookup,
+            GroupNameField = groupNameField,
+            GroupNameSelectField = ResolveLicenciamientoCruceBusinessGroupSelectField(groupNameField, groupNameIsLookup),
+            GroupNameIsLookup = groupNameIsLookup
+        };
+    }
+
+    private static string ResolveLicenciamientoCruceBusinessGroupField(
+        IReadOnlyDictionary<string, string> attributeTypes,
+        IReadOnlyList<string> candidates,
+        bool isIdField)
+    {
+        if (attributeTypes.Count == 0)
+            return "";
+
+        foreach (var candidate in candidates)
+        {
+            if (attributeTypes.ContainsKey(candidate))
+                return candidate;
+        }
+
+        var normalizedCandidates = candidates
+            .Select(NormalizeLicenciamientoCruceAttributeKey)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var attributeName in attributeTypes.Keys)
+        {
+            var normalized = NormalizeLicenciamientoCruceAttributeKey(attributeName);
+            if (normalizedCandidates.Contains(normalized)
+                || normalizedCandidates.Any(candidate => normalized.EndsWith(candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return attributeName;
+            }
+        }
+
+        return attributeTypes.Keys
+            .FirstOrDefault(attributeName => isIdField
+                ? LooksLikeLicenciamientoCruceBusinessGroupIdField(attributeName)
+                : LooksLikeLicenciamientoCruceBusinessGroupNameField(attributeName))
+            ?? "";
+    }
+
+    private static bool LooksLikeLicenciamientoCruceBusinessGroupIdField(string attributeName)
+    {
+        var normalized = NormalizeLicenciamientoCruceAttributeKey(attributeName);
+        return ContainsLicenciamientoCruceBusinessGroupToken(normalized)
+            && normalized.Contains("id", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeLicenciamientoCruceBusinessGroupNameField(string attributeName)
+    {
+        var normalized = NormalizeLicenciamientoCruceAttributeKey(attributeName);
+        return ContainsLicenciamientoCruceBusinessGroupToken(normalized)
+            && (normalized.Contains("name", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("nombre", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool ContainsLicenciamientoCruceBusinessGroupToken(string normalizedAttributeName) =>
+        normalizedAttributeName.Contains("grupoempresarial", StringComparison.OrdinalIgnoreCase)
+        || normalizedAttributeName.Contains("grupoempresrial", StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveLicenciamientoCruceBusinessGroupSelectField(string fieldName, bool isLookup) =>
+        string.IsNullOrWhiteSpace(fieldName)
+            ? ""
+            : isLookup
+                ? BuildLookupValueProperty(fieldName)
+                : fieldName;
+
+    private static string BuildLicenciamientoCruceBusinessGroupSelectClause(
+        LicenciamientoCruceBusinessGroupMetadata metadata,
+        params string[] baseFields)
+    {
+        return string.Join(",",
+            baseFields
+                .Concat(new[] { metadata.GroupIdSelectField, metadata.GroupNameSelectField })
+                .Where(static field => !string.IsNullOrWhiteSpace(field))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static LicenciamientoCruceBusinessGroupInfo BuildLicenciamientoCruceBusinessGroupInfo(
+        JsonElement item,
+        LicenciamientoCruceBusinessGroupMetadata metadata,
+        string source,
+        string clientId,
+        string clientName)
+    {
+        var groupId = ReadLicenciamientoCruceBusinessGroupValue(
+            item,
+            metadata.GroupIdField,
+            metadata.GroupIdSelectField,
+            preferFormattedValue: false);
+        if (metadata.GroupIdIsLookup)
+            groupId = NormalizeOptionalGuid(groupId);
+
+        var groupName = ReadLicenciamientoCruceBusinessGroupValue(
+            item,
+            metadata.GroupNameField,
+            metadata.GroupNameSelectField,
+            preferFormattedValue: true);
+        if (string.IsNullOrWhiteSpace(groupName) && metadata.GroupIdIsLookup)
+            groupName = ReadLookupFormattedValue(item, metadata.GroupIdSelectField) ?? "";
+        if (metadata.GroupNameIsLookup)
+            groupName = FirstNonEmpty(ReadLookupFormattedValue(item, metadata.GroupNameSelectField), groupName);
+
+        return new LicenciamientoCruceBusinessGroupInfo
+        {
+            GroupId = groupId.Trim(),
+            GroupName = groupName.Trim(),
+            Source = source,
+            ClientId = NormalizeOptionalGuid(clientId),
+            ClientName = clientName.Trim()
+        };
+    }
+
+    private static string ReadLicenciamientoCruceBusinessGroupValue(
+        JsonElement item,
+        string fieldName,
+        string selectField,
+        bool preferFormattedValue)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName) && string.IsNullOrWhiteSpace(selectField))
+            return "";
+
+        var rawValue = FirstNonEmpty(
+            ReadString(item, selectField),
+            ReadString(item, fieldName));
+        var formattedValue = FirstNonEmpty(
+            ReadLookupFormattedValue(item, selectField),
+            ReadString(item, $"{selectField}{FormattedValueAnnotationSuffix}"),
+            ReadString(item, $"{fieldName}{FormattedValueAnnotationSuffix}"));
+
+        return preferFormattedValue
+            ? FirstNonEmpty(formattedValue, rawValue)
+            : FirstNonEmpty(rawValue, formattedValue);
+    }
+
+    private static LicenciamientoCruceBusinessGroupInfo GetLicenciamientoCruceBusinessGroup(
+        IReadOnlyDictionary<string, LicenciamientoCruceBusinessGroupInfo> groups,
+        string key)
+    {
+        return !string.IsNullOrWhiteSpace(key) && groups.TryGetValue(key, out var group)
+            ? group
+            : LicenciamientoCruceBusinessGroupInfo.Empty;
+    }
+
+    private static LicenciamientoCruceBusinessGroupInfo FirstLicenciamientoCruceBusinessGroup(
+        params LicenciamientoCruceBusinessGroupInfo[] groups)
+    {
+        return groups.FirstOrDefault(static group => group.HasGroup)
+            ?? LicenciamientoCruceBusinessGroupInfo.Empty;
+    }
+
+    private static LicenciamientoCruceBusinessGroupInfo ResolveLicenciamientoCruceMostCommonBusinessGroup(
+        IEnumerable<LicenciamientoCruceBusinessGroupInfo> groups)
+    {
+        return groups
+            .Where(static group => group.HasGroup)
+            .GroupBy(static group => BuildLicenciamientoCruceBusinessGroupKey(group.GroupId, group.GroupName), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(static group => group.Count())
+            .ThenBy(static group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .FirstOrDefault()
+            ?? LicenciamientoCruceBusinessGroupInfo.Empty;
+    }
+
     private async Task<DateOnly> ResolveLicenciamientoCruceLatestDataMonthAsync(
         LicensingMetadata licensingMetadata,
         RhEntityMetadata billingMetadata,
@@ -1358,27 +1831,40 @@ public sealed partial class DataverseService
         DateOnly fallbackCostMonth)
     {
         return rows
-            .GroupBy(row => $"{row.ContractTypeKey}|{BuildLicenciamientoCruceGroupingKey(row.ClientId, row.ClientName, row.AccountId)}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(row => $"{row.ContractTypeKey}|{BuildLicenciamientoCruceCostGroupingKey(row)}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var items = group.ToList();
                 var clientId = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ClientId), "");
                 var clientName = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ClientName), "Cliente sin nombre");
+                var businessGroup = ResolveLicenciamientoCruceMostCommonBusinessGroup(items.Select(static row => new LicenciamientoCruceBusinessGroupInfo
+                {
+                    GroupId = row.BusinessGroupId,
+                    GroupName = row.BusinessGroupName,
+                    ClientId = row.ClientId,
+                    ClientName = row.ClientName,
+                    Source = "cost"
+                }));
+                var businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(businessGroup.GroupId, businessGroup.GroupName);
+                var displayName = FirstNonEmpty(businessGroup.GroupName, businessGroup.GroupId, clientName, "Cliente sin nombre");
                 var contractTypeKey = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ContractTypeKey), LicenciamientoCruceOtherKey);
                 var contractTypeLabel = ResolveLicenciamientoCruceContractLabel(contractTypeKey);
                 var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var item in items)
                 {
-                    AddLicenciamientoCruceMatchKeys(keys, item.ClientId, item.ClientName);
+                    AddLicenciamientoCruceBusinessGroupMatchKeys(keys, item.BusinessGroupId, item.BusinessGroupName, item.ClientId, item.ClientName);
                 }
 
                 return new LicenciamientoCruceCostGroup
                 {
                     GroupKey = group.Key,
                     ClientId = clientId,
+                    BusinessGroupId = businessGroup.GroupId,
+                    BusinessGroupName = businessGroup.GroupName,
+                    BusinessGroupKey = businessGroupKey,
                     ContractTypeKey = contractTypeKey,
                     ContractTypeLabel = contractTypeLabel,
-                    ClientName = clientName,
+                    ClientName = displayName,
                     Vertical = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.Vendor), "Licenciamiento"),
                     CostMonth = ResolveLicenciamientoCruceMostCommonMonth(items.Select(static row => row.CostMonth)) ?? fallbackCostMonth,
                     CostCop = RoundCurrency(items.Sum(static row => row.CostCop)),
@@ -1395,28 +1881,41 @@ public sealed partial class DataverseService
         IReadOnlyList<BillingRecordRow> rows)
     {
         return rows
-            .GroupBy(row => $"{ResolveLicenciamientoCruceContractKey(row.ContractTypeOptionValue, row.ContractTypeLabel, isBillingSource: true)}|{BuildLicenciamientoCruceGroupingKey(row.ClientId, row.ClientName)}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(row => $"{ResolveLicenciamientoCruceContractKey(row.ContractTypeOptionValue, row.ContractTypeLabel, isBillingSource: true)}|{BuildLicenciamientoCruceBillingGroupingKey(row)}", StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var items = group.ToList();
                 var clientId = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => NormalizeOptionalGuid(row.ClientId)), "");
                 var clientName = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.ClientName), "Cliente sin nombre");
+                var businessGroup = ResolveLicenciamientoCruceMostCommonBusinessGroup(items.Select(static row => new LicenciamientoCruceBusinessGroupInfo
+                {
+                    GroupId = row.BusinessGroupId,
+                    GroupName = row.BusinessGroupName,
+                    ClientId = row.ClientId,
+                    ClientName = row.ClientName,
+                    Source = "billing"
+                }));
+                var businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(businessGroup.GroupId, businessGroup.GroupName);
+                var displayName = FirstNonEmpty(businessGroup.GroupName, businessGroup.GroupId, clientName, "Cliente sin nombre");
                 var nit = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.CompanyTaxId), "");
                 var contractTypeKey = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => ResolveLicenciamientoCruceContractKey(row.ContractTypeOptionValue, row.ContractTypeLabel, isBillingSource: true)), LicenciamientoCruceOtherKey);
                 var contractTypeLabel = ResolveLicenciamientoCruceContractLabel(contractTypeKey);
                 var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var item in items)
                 {
-                    AddLicenciamientoCruceMatchKeys(keys, item.ClientId, item.ClientName);
+                    AddLicenciamientoCruceBusinessGroupMatchKeys(keys, item.BusinessGroupId, item.BusinessGroupName, item.ClientId, item.ClientName);
                 }
 
                 return new LicenciamientoCruceBillingGroup
                 {
                     GroupKey = group.Key,
                     ClientId = clientId,
+                    BusinessGroupId = businessGroup.GroupId,
+                    BusinessGroupName = businessGroup.GroupName,
+                    BusinessGroupKey = businessGroupKey,
                     ContractTypeKey = contractTypeKey,
                     ContractTypeLabel = contractTypeLabel,
-                    ClientName = clientName,
+                    ClientName = displayName,
                     Nit = nit,
                     Vertical = ResolveLicenciamientoCruceMostCommonText(items.Select(static row => row.VerticalLabel), "Sin vertical"),
                     BillingWithoutVat = RoundCurrency(items.Sum(CalculateLicenciamientoCruceBillingWithoutVat)),
@@ -1523,6 +2022,8 @@ public sealed partial class DataverseService
             TipoContrato = ResolveLicenciamientoCruceContractLabel(cost.ContractTypeKey),
             TipoContratoKey = cost.ContractTypeKey,
             Cliente = FirstNonEmpty(billing.ClientName, cost.ClientName, "Cliente sin nombre"),
+            GrupoEmpresarialId = FirstNonEmpty(billing.BusinessGroupId, cost.BusinessGroupId),
+            GrupoEmpresarial = FirstNonEmpty(billing.BusinessGroupName, cost.BusinessGroupName),
             NitCliente = billing.Nit,
             Vertical = FirstNonEmpty(billing.Vertical, cost.Vertical, "Licenciamiento"),
             CostoLicenciamiento = cost.CostCop,
@@ -1557,6 +2058,8 @@ public sealed partial class DataverseService
             TipoContrato = ResolveLicenciamientoCruceContractLabel(cost.ContractTypeKey),
             TipoContratoKey = cost.ContractTypeKey,
             Cliente = cost.ClientName,
+            GrupoEmpresarialId = cost.BusinessGroupId,
+            GrupoEmpresarial = cost.BusinessGroupName,
             Vertical = FirstNonEmpty(cost.Vertical, "Licenciamiento"),
             CostoLicenciamiento = cost.CostCop,
             FacturacionSinIva = 0m,
@@ -1591,6 +2094,8 @@ public sealed partial class DataverseService
             TipoContrato = ResolveLicenciamientoCruceContractLabel(billing.ContractTypeKey),
             TipoContratoKey = billing.ContractTypeKey,
             Cliente = billing.ClientName,
+            GrupoEmpresarialId = billing.BusinessGroupId,
+            GrupoEmpresarial = billing.BusinessGroupName,
             NitCliente = billing.Nit,
             Vertical = FirstNonEmpty(billing.Vertical, "Sin vertical"),
             CostoLicenciamiento = 0m,
@@ -1760,6 +2265,8 @@ public sealed partial class DataverseService
             RowKey = ResolveLicenciamientoCruceMatrixClientKey(first),
             ClienteId = clientId,
             Cliente = ResolveLicenciamientoCruceMostCommonText(rows.Select(static row => row.Cliente), "Cliente sin nombre"),
+            GrupoEmpresarialId = ResolveLicenciamientoCruceMostCommonText(rows.Select(static row => row.GrupoEmpresarialId), ""),
+            GrupoEmpresarial = ResolveLicenciamientoCruceMostCommonText(rows.Select(static row => row.GrupoEmpresarial), ""),
             NitCliente = ResolveLicenciamientoCruceMostCommonText(rows.Select(static row => row.NitCliente), ""),
             TotalCostoLicenciamiento = totalCost,
             TotalFacturacionSinIva = totalBilling,
@@ -1775,6 +2282,14 @@ public sealed partial class DataverseService
     {
         foreach (var row in rows)
         {
+            var billingBusinessGroupId = row.Trace?.BillingBusinessGroupId?.Trim() ?? "";
+            if (!string.IsNullOrWhiteSpace(billingBusinessGroupId))
+                return billingBusinessGroupId;
+
+            var costBusinessGroupId = row.Trace?.CostBusinessGroupId?.Trim() ?? "";
+            if (!string.IsNullOrWhiteSpace(costBusinessGroupId))
+                return costBusinessGroupId;
+
             var billingId = NormalizeOptionalGuid(row.Trace?.BillingClientId);
             if (!string.IsNullOrWhiteSpace(billingId))
                 return billingId;
@@ -1789,6 +2304,18 @@ public sealed partial class DataverseService
 
     private static string ResolveLicenciamientoCruceMatrixClientKey(LicenciamientoCruceRowDto row)
     {
+        var businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(
+            row.Trace?.BillingBusinessGroupId,
+            row.Trace?.BillingBusinessGroupName);
+        if (string.IsNullOrWhiteSpace(businessGroupKey))
+        {
+            businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(
+                row.Trace?.CostBusinessGroupId,
+                row.Trace?.CostBusinessGroupName);
+        }
+        if (!string.IsNullOrWhiteSpace(businessGroupKey))
+            return businessGroupKey;
+
         var clientId = NormalizeOptionalGuid(row.Trace?.BillingClientId);
         if (string.IsNullOrWhiteSpace(clientId))
             clientId = NormalizeOptionalGuid(row.Trace?.CostClientId);
@@ -1817,14 +2344,14 @@ public sealed partial class DataverseService
                 orphans.AddRange(groupRows
                     .SelectMany(static row => row.Trace?.CostItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
                     .DistinctBy(static item => item.RecordId, StringComparer.OrdinalIgnoreCase)
-                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "cost", LicenciamientoCruceStatusCostOnly, "No hay factura emitida en el mismo mes, con el mismo cliente y tipo de contrato.")));
+                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "cost", LicenciamientoCruceStatusCostOnly, "No hay factura emitida en el mismo mes, con el mismo grupo/cliente y tipo de contrato.")));
             }
             else if (hasBilling && !hasCost)
             {
                 orphans.AddRange(groupRows
                     .SelectMany(static row => row.Trace?.BillingItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>())
                     .DistinctBy(static item => item.RecordId, StringComparer.OrdinalIgnoreCase)
-                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "billing", LicenciamientoCruceStatusBillingOnly, "No hay costo con mes factura igual, mismo cliente y tipo de contrato.")));
+                    .Select(item => BuildLicenciamientoCruceOrphanRecord(item, "billing", LicenciamientoCruceStatusBillingOnly, "No hay costo con mes factura igual, mismo grupo/cliente y tipo de contrato.")));
             }
         }
 
@@ -2022,8 +2549,14 @@ public sealed partial class DataverseService
         var costClientId = NormalizeOptionalGuid(cost?.ClientId);
         var billingClientId = NormalizeOptionalGuid(billing?.ClientId);
         var hasBothClientIds = !string.IsNullOrWhiteSpace(costClientId) && !string.IsNullOrWhiteSpace(billingClientId);
+        var costBusinessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(cost?.BusinessGroupId, cost?.BusinessGroupName);
+        var billingBusinessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(billing?.BusinessGroupId, billing?.BusinessGroupName);
+        var hasBothBusinessGroups = !string.IsNullOrWhiteSpace(costBusinessGroupKey)
+            && !string.IsNullOrWhiteSpace(billingBusinessGroupKey)
+            && string.Equals(costBusinessGroupKey, billingBusinessGroupKey, StringComparison.OrdinalIgnoreCase);
         var matchMode = status switch
         {
+            LicenciamientoCruceStatusExact when hasBothBusinessGroups => "Grupo empresarial + tipo de contrato",
             LicenciamientoCruceStatusExact when hasBothClientIds => "Cliente por lookup + tipo de contrato",
             LicenciamientoCruceStatusExact => "Cliente por nombre + tipo de contrato",
             LicenciamientoCruceStatusProbable => $"Nombre probable ({matchScore:N2}%) + tipo de contrato",
@@ -2035,9 +2568,13 @@ public sealed partial class DataverseService
         return new LicenciamientoCruceTraceDto
         {
             MatchMode = matchMode,
-            Rule = "Costos: Account ID -> cliente padre; Facturacion: cliente lookup. Luego se compara cliente padre y tipo de contrato normalizado.",
+            Rule = "Primero se cruza por grupo empresarial cuando existe; si no existe grupo, se usa cliente por lookup/account ID y tipo de contrato normalizado.",
             CostClientId = costClientId,
             BillingClientId = billingClientId,
+            CostBusinessGroupId = cost?.BusinessGroupId ?? "",
+            CostBusinessGroupName = cost?.BusinessGroupName ?? "",
+            BillingBusinessGroupId = billing?.BusinessGroupId ?? "",
+            BillingBusinessGroupName = billing?.BusinessGroupName ?? "",
             CostGroupKey = cost?.GroupKey ?? "",
             BillingGroupKey = billing?.GroupKey ?? "",
             CostItems = cost?.CostItems ?? Array.Empty<LicenciamientoCruceTraceItemDto>(),
@@ -2054,6 +2591,8 @@ public sealed partial class DataverseService
             Referencia = FirstNonEmpty(row.CompanyAccountDisplay, row.AccountId, row.RecordId),
             Cliente = row.ClientName,
             ClienteId = row.ClientId,
+            GrupoEmpresarialId = row.BusinessGroupId,
+            GrupoEmpresarial = row.BusinessGroupName,
             AccountId = row.AccountId,
             Account = row.CompanyAccountDisplay,
             AccountIdOriginal = FirstNonEmpty(row.OriginalAccountId, row.AccountId),
@@ -2082,6 +2621,8 @@ public sealed partial class DataverseService
             Referencia = FirstNonEmpty(row.InvoiceNumber, row.RecordId),
             Cliente = row.ClientName,
             ClienteId = NormalizeOptionalGuid(row.ClientId),
+            GrupoEmpresarialId = row.BusinessGroupId,
+            GrupoEmpresarial = row.BusinessGroupName,
             TipoContrato = row.ContractTypeLabel,
             TipoContratoValue = row.ContractTypeOptionValue,
             Vertical = row.VerticalLabel,
@@ -2111,6 +2652,50 @@ public sealed partial class DataverseService
         }
     }
 
+    private static void AddLicenciamientoCruceBusinessGroupMatchKeys(
+        HashSet<string> keys,
+        string? businessGroupId,
+        string? businessGroupName,
+        params string?[] clientValues)
+    {
+        var businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(businessGroupId, businessGroupName);
+        if (!string.IsNullOrWhiteSpace(businessGroupKey))
+        {
+            keys.Add(businessGroupKey);
+            return;
+        }
+
+        AddLicenciamientoCruceMatchKeys(keys, clientValues);
+    }
+
+    private static string BuildLicenciamientoCruceCostGroupingKey(LicenciamientoCruceCostRow row)
+    {
+        var businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(row.BusinessGroupId, row.BusinessGroupName);
+        return !string.IsNullOrWhiteSpace(businessGroupKey)
+            ? businessGroupKey
+            : BuildLicenciamientoCruceGroupingKey(row.ClientId, row.ClientName, row.AccountId);
+    }
+
+    private static string BuildLicenciamientoCruceBillingGroupingKey(BillingRecordRow row)
+    {
+        var businessGroupKey = BuildLicenciamientoCruceBusinessGroupKey(row.BusinessGroupId, row.BusinessGroupName);
+        return !string.IsNullOrWhiteSpace(businessGroupKey)
+            ? businessGroupKey
+            : BuildLicenciamientoCruceGroupingKey(row.ClientId, row.ClientName);
+    }
+
+    private static string BuildLicenciamientoCruceBusinessGroupKey(string? businessGroupId, string? businessGroupName)
+    {
+        var idKey = NormalizeLicenciamientoCruceMapKey(businessGroupId);
+        if (!string.IsNullOrWhiteSpace(idKey))
+            return $"group:{idKey}";
+
+        var nameKey = NormalizeLicenciamientoCruceClientKey(businessGroupName);
+        return !string.IsNullOrWhiteSpace(nameKey)
+            ? $"groupname:{nameKey}"
+            : "";
+    }
+
     private static string BuildLicenciamientoCruceGroupingKey(params string?[] values)
     {
         foreach (var value in values)
@@ -2134,6 +2719,13 @@ public sealed partial class DataverseService
         LicenciamientoCruceCostGroup cost,
         LicenciamientoCruceBillingGroup billing)
     {
+        if (!string.IsNullOrWhiteSpace(cost.BusinessGroupKey) || !string.IsNullOrWhiteSpace(billing.BusinessGroupKey))
+        {
+            return !string.IsNullOrWhiteSpace(cost.BusinessGroupKey)
+                && !string.IsNullOrWhiteSpace(billing.BusinessGroupKey)
+                && string.Equals(cost.BusinessGroupKey, billing.BusinessGroupKey, StringComparison.OrdinalIgnoreCase);
+        }
+
         var costClientId = NormalizeOptionalGuid(cost.ClientId);
         var billingClientId = NormalizeOptionalGuid(billing.ClientId);
         if (!string.IsNullOrWhiteSpace(costClientId) && !string.IsNullOrWhiteSpace(billingClientId))
@@ -2146,6 +2738,9 @@ public sealed partial class DataverseService
         LicenciamientoCruceCostGroup cost,
         LicenciamientoCruceBillingGroup billing)
     {
+        if (!string.IsNullOrWhiteSpace(cost.BusinessGroupKey) || !string.IsNullOrWhiteSpace(billing.BusinessGroupKey))
+            return false;
+
         return !string.IsNullOrWhiteSpace(NormalizeLicenciamientoCruceClientKey(cost.ClientName))
             && !string.IsNullOrWhiteSpace(NormalizeLicenciamientoCruceClientKey(billing.ClientName));
     }
@@ -2214,6 +2809,22 @@ public sealed partial class DataverseService
     private static string NormalizeLicenciamientoCruceMapKey(string? value)
     {
         var text = RemoveLicenciamientoCruceDiacritics(value ?? "").ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(text))
+            return "";
+
+        var builder = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (char.IsLetterOrDigit(ch))
+                builder.Append(ch);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string NormalizeLicenciamientoCruceAttributeKey(string? value)
+    {
+        var text = RemoveLicenciamientoCruceDiacritics(value ?? "").ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(text))
             return "";
 
@@ -2399,6 +3010,47 @@ public sealed partial class DataverseService
         };
     }
 
+    private sealed class LicenciamientoCruceBusinessGroupMetadata
+    {
+        public RhEntityMetadata EntityMetadata { get; init; } = new();
+        public string GroupIdField { get; init; } = "";
+        public string GroupIdSelectField { get; init; } = "";
+        public bool GroupIdIsLookup { get; init; }
+        public string GroupNameField { get; init; } = "";
+        public string GroupNameSelectField { get; init; } = "";
+        public bool GroupNameIsLookup { get; init; }
+        public bool HasGroupFields => !string.IsNullOrWhiteSpace(GroupIdSelectField)
+            || !string.IsNullOrWhiteSpace(GroupNameSelectField);
+    }
+
+    private sealed class LicenciamientoCruceBusinessGroupInfo
+    {
+        public static LicenciamientoCruceBusinessGroupInfo Empty { get; } = new();
+        public string GroupId { get; init; } = "";
+        public string GroupName { get; init; } = "";
+        public string Source { get; init; } = "";
+        public string ClientId { get; init; } = "";
+        public string ClientName { get; init; } = "";
+        public bool HasGroup => !string.IsNullOrWhiteSpace(GroupId)
+            || !string.IsNullOrWhiteSpace(GroupName);
+    }
+
+    private sealed class LicenciamientoCruceAccountBusinessGroupLookup
+    {
+        public static LicenciamientoCruceAccountBusinessGroupLookup Empty { get; } = new();
+        public IReadOnlyDictionary<string, LicenciamientoCruceBusinessGroupInfo> ByAccountId { get; init; } =
+            new Dictionary<string, LicenciamientoCruceBusinessGroupInfo>(StringComparer.OrdinalIgnoreCase);
+        public IReadOnlyDictionary<string, LicenciamientoCruceBusinessGroupInfo> ByClientId { get; init; } =
+            new Dictionary<string, LicenciamientoCruceBusinessGroupInfo>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class LicenciamientoCruceAccountBusinessGroupRow
+    {
+        public string AccountId { get; init; } = "";
+        public string ClientId { get; init; } = "";
+        public LicenciamientoCruceBusinessGroupInfo Group { get; init; } = LicenciamientoCruceBusinessGroupInfo.Empty;
+    }
+
     private sealed class LicenciamientoCruceCostRow
     {
         public string RecordId { get; set; } = "";
@@ -2406,6 +3058,8 @@ public sealed partial class DataverseService
         public string OriginalAccountId { get; set; } = "";
         public string ClientId { get; set; } = "";
         public string ClientName { get; set; } = "";
+        public string BusinessGroupId { get; set; } = "";
+        public string BusinessGroupName { get; set; } = "";
         public string CompanyAccountDisplay { get; set; } = "";
         public string OriginalAccountDisplay { get; set; } = "";
         public string AccountMappingId { get; set; } = "";
@@ -2446,6 +3100,9 @@ public sealed partial class DataverseService
     {
         public string GroupKey { get; init; } = "";
         public string ClientId { get; init; } = "";
+        public string BusinessGroupId { get; init; } = "";
+        public string BusinessGroupName { get; init; } = "";
+        public string BusinessGroupKey { get; init; } = "";
         public string ContractTypeKey { get; init; } = LicenciamientoCruceOtherKey;
         public string ContractTypeLabel { get; init; } = LicenciamientoCruceOtherLabel;
         public string ClientName { get; init; } = "";
@@ -2461,6 +3118,9 @@ public sealed partial class DataverseService
     {
         public string GroupKey { get; init; } = "";
         public string ClientId { get; init; } = "";
+        public string BusinessGroupId { get; init; } = "";
+        public string BusinessGroupName { get; init; } = "";
+        public string BusinessGroupKey { get; init; } = "";
         public string ContractTypeKey { get; init; } = LicenciamientoCruceOtherKey;
         public string ContractTypeLabel { get; init; } = LicenciamientoCruceOtherLabel;
         public string ClientName { get; init; } = "";

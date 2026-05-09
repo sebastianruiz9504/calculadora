@@ -103,6 +103,8 @@ public sealed class LicenciamientoCruceMatrixClientRowDto
     public string RowKey { get; set; } = "";
     public string ClienteId { get; set; } = "";
     public string Cliente { get; set; } = "";
+    public string GrupoEmpresarialId { get; set; } = "";
+    public string GrupoEmpresarial { get; set; } = "";
     public string NitCliente { get; set; } = "";
     public decimal TotalCostoLicenciamiento { get; set; }
     public decimal TotalFacturacionSinIva { get; set; }
@@ -134,6 +136,8 @@ public sealed class LicenciamientoCruceRowDto
     public string TipoContrato { get; set; } = "";
     public string TipoContratoKey { get; set; } = "";
     public string Cliente { get; set; } = "";
+    public string GrupoEmpresarialId { get; set; } = "";
+    public string GrupoEmpresarial { get; set; } = "";
     public string NitCliente { get; set; } = "";
     public string Vertical { get; set; } = "";
     public decimal CostoLicenciamiento { get; set; }
@@ -157,6 +161,10 @@ public sealed class LicenciamientoCruceTraceDto
     public string Rule { get; set; } = "";
     public string CostClientId { get; set; } = "";
     public string BillingClientId { get; set; } = "";
+    public string CostBusinessGroupId { get; set; } = "";
+    public string CostBusinessGroupName { get; set; } = "";
+    public string BillingBusinessGroupId { get; set; } = "";
+    public string BillingBusinessGroupName { get; set; } = "";
     public string CostGroupKey { get; set; } = "";
     public string BillingGroupKey { get; set; } = "";
     public IReadOnlyList<LicenciamientoCruceTraceItemDto> CostItems { get; set; } = Array.Empty<LicenciamientoCruceTraceItemDto>();
@@ -170,6 +178,8 @@ public sealed class LicenciamientoCruceTraceItemDto
     public string Referencia { get; set; } = "";
     public string Cliente { get; set; } = "";
     public string ClienteId { get; set; } = "";
+    public string GrupoEmpresarialId { get; set; } = "";
+    public string GrupoEmpresarial { get; set; } = "";
     public string AccountId { get; set; } = "";
     public string Account { get; set; } = "";
     public string AccountIdOriginal { get; set; } = "";
