@@ -736,6 +736,7 @@ public sealed partial class DataverseService
         builder.AppendLine("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
         builder.AppendLine("  <title>Solicitud de vacaciones</title>");
         builder.AppendLine("  <style>");
+        builder.AppendLine("    * { font-weight: 400 !important; }");
         builder.AppendLine("    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: #eef3f9; color: #10213a; }");
         builder.AppendLine("    .page { max-width: 860px; margin: 24px auto; background: #ffffff; border-radius: 24px; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); overflow: hidden; }");
         builder.AppendLine("    .hero { padding: 32px; background: linear-gradient(135deg, #0f4aa1 0%, #145af2 100%); color: #ffffff; }");

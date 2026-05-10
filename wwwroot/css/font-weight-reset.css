@@ -1,0 +1,21 @@
+html body *,
+html body [class],
+html body strong,
+html body b,
+html body th,
+html body h1,
+html body h2,
+html body h3,
+html body h4,
+html body h5,
+html body h6,
+html body button,
+html body input,
+html body select,
+html body textarea,
+html body option,
+html body label,
+html body summary,
+html body legend {
+    font-weight: 400 !important;
+}
