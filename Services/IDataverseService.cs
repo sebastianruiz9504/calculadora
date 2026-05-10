@@ -62,6 +62,7 @@ public interface IDataverseService
     Task<PnlDashboardDto> GetPnlDashboardAsync(int year, int? monthCutoff = null, string? vertical = null, CancellationToken ct = default);
     Task<PnlCellDetailDto> GetPnlCellDetailAsync(int year, int? monthCutoff, string? vertical, string rowKey, int? cellMonth = null, CancellationToken ct = default);
     Task<PnlDetailRecordUpdateResultDto> UpdatePnlDetailRecordAsync(PnlDetailRecordUpdateRequestDto request, CancellationToken ct = default);
+    Task<LicenciamientoDashboardDto> GetLicenciamientoDashboardAsync(int year, int? month = null, CancellationToken ct = default);
     Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default);
     Task<CopiersDashboardDto> GetCopiersDashboardAsync(CancellationToken ct = default);
     Task<CopiersClientInvoicesDetailDto> GetCopiersClientInvoicesAsync(string clientId, string? clientName = null, CancellationToken ct = default);

@@ -2983,3 +2983,365 @@
         min-width: 840px;
     }
 }
+
+.lic-dashboard-toolbar {
+    border-color: rgba(15, 118, 110, .16);
+    background:
+        linear-gradient(135deg, rgba(248, 250, 252, .98), rgba(236, 253, 245, .72) 48%, rgba(239, 246, 255, .86));
+}
+
+.lic-dashboard {
+    display: grid;
+    width: 100%;
+    gap: 20px;
+}
+
+.lic-dashboard__summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.lic-summary-card,
+.lic-chart-card,
+.lic-cost-section,
+.lic-cost-card {
+    border: 1px solid rgba(15, 23, 42, .09);
+    border-radius: 8px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(248, 250, 252, .9));
+    box-shadow: 0 18px 42px rgba(15, 23, 42, .08);
+}
+
+.lic-summary-card {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+    padding: 16px;
+    overflow: hidden;
+}
+
+.lic-summary-card:nth-child(1) {
+    background: linear-gradient(145deg, #ffffff, #eefcf8);
+}
+
+.lic-summary-card:nth-child(2) {
+    background: linear-gradient(145deg, #ffffff, #eef6ff);
+}
+
+.lic-summary-card:nth-child(4) {
+    background: linear-gradient(145deg, #ffffff, #ecfdf5);
+}
+
+.lic-summary-card:nth-child(5) {
+    background: linear-gradient(145deg, #ffffff, #fff7ed);
+}
+
+.lic-summary-card.is-positive {
+    border-color: rgba(13, 148, 136, .28);
+}
+
+.lic-summary-card.is-negative {
+    border-color: rgba(220, 38, 38, .28);
+}
+
+.lic-summary-card__label,
+.lic-chart-card__eyebrow,
+.lic-cost-card__eyebrow,
+.lic-section-heading__eyebrow {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.lic-summary-card__value {
+    min-width: 0;
+    color: #0f172a;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.lic-summary-card__hint {
+    min-width: 0;
+    color: #475569;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.lic-dashboard__charts,
+.lic-cost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+    width: 100%;
+}
+
+.lic-chart-card {
+    display: grid;
+    min-width: 0;
+    gap: 14px;
+    padding: 18px;
+    overflow: hidden;
+}
+
+.lic-chart-card__header,
+.lic-cost-card__header,
+.lic-section-heading,
+.lic-cost-breakdown__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.lic-chart-card__title,
+.lic-section-heading__title,
+.lic-cost-card__title {
+    margin: 2px 0 0;
+    color: #0f172a;
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.lic-chart-card__share,
+.lic-cost-card__badge,
+.lic-section-heading__meta {
+    flex: 0 0 auto;
+    border: 1px solid rgba(15, 118, 110, .16);
+    border-radius: 999px;
+    background: rgba(240, 253, 250, .92);
+    color: #0f766e;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 10px;
+    white-space: nowrap;
+}
+
+.lic-chart-card__metrics,
+.lic-cost-card__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.lic-chart-card__metrics span,
+.lic-cost-card__stats span {
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, .2);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, .76);
+    color: #475569;
+    font-size: 12px;
+    padding: 10px;
+    overflow-wrap: anywhere;
+}
+
+.lic-chart-card__metrics strong,
+.lic-cost-card__stats strong {
+    display: block;
+    color: #0f172a;
+    font-size: 14px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.lic-chart-card__canvas {
+    min-width: 0;
+    border-radius: 8px;
+    background:
+        linear-gradient(180deg, rgba(248, 250, 252, .94), rgba(255, 255, 255, .88));
+    padding: 6px;
+}
+
+.lic-chart {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.lic-chart__grid {
+    stroke: rgba(148, 163, 184, .34);
+    stroke-width: 1;
+}
+
+.lic-chart__baseline {
+    stroke: rgba(15, 23, 42, .34);
+    stroke-width: 1.2;
+}
+
+.lic-chart__axis,
+.lic-chart__month {
+    fill: #64748b;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.lic-chart__bar {
+    fill: #0f766e;
+    opacity: .9;
+}
+
+.lic-chart__bar.is-negative {
+    fill: #dc2626;
+}
+
+.lic-chart-card:nth-child(2) .lic-chart__bar.is-positive {
+    fill: #b45309;
+}
+
+.lic-cost-section {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(248, 250, 252, .88) 48%, rgba(240, 253, 250, .72));
+}
+
+.lic-cost-card {
+    display: grid;
+    min-width: 0;
+    gap: 14px;
+    padding: 18px;
+    overflow: hidden;
+}
+
+.lic-cost-card--monthly {
+    background: linear-gradient(145deg, #ffffff, #ecfdf5);
+}
+
+.lic-cost-card--prepaid {
+    background: linear-gradient(145deg, #ffffff, #fff7ed);
+}
+
+.lic-cost-card__value {
+    min-width: 0;
+    color: #0f172a;
+    font-size: 30px;
+    font-weight: 850;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+
+.lic-cost-breakdown {
+    display: grid;
+    max-height: 420px;
+    gap: 8px;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.lic-cost-breakdown__header {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.lic-cost-breakdown__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .72);
+    padding: 10px;
+}
+
+.lic-cost-breakdown__main,
+.lic-cost-breakdown__amount {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.lic-cost-breakdown__main strong,
+.lic-cost-breakdown__amount strong {
+    color: #0f172a;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.lic-cost-breakdown__main span,
+.lic-cost-breakdown__amount span {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.lic-cost-breakdown__amount {
+    text-align: right;
+}
+
+.lic-cost-breakdown__bar {
+    grid-column: 1 / -1;
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, .85);
+}
+
+.lic-cost-breakdown__bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #0f766e, #38bdf8);
+}
+
+.lic-cost-card--prepaid .lic-cost-breakdown__bar span {
+    background: linear-gradient(90deg, #b45309, #22c55e);
+}
+
+.lic-empty {
+    display: grid;
+    min-height: 96px;
+    place-items: center;
+    border: 1px dashed rgba(148, 163, 184, .38);
+    border-radius: 8px;
+    color: #64748b;
+    font-size: 13px;
+    text-align: center;
+    padding: 18px;
+}
+
+@media (max-width: 991px) {
+    .lic-chart-card__metrics,
+    .lic-cost-card__stats {
+        grid-template-columns: 1fr;
+    }
+
+    .lic-chart-card__header,
+    .lic-cost-card__header,
+    .lic-section-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .lic-chart-card__share,
+    .lic-cost-card__badge,
+    .lic-section-heading__meta {
+        width: fit-content;
+    }
+}
+
+@media (max-width: 767px) {
+    .lic-dashboard__charts,
+    .lic-cost-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .lic-summary-card__value,
+    .lic-cost-card__value {
+        font-size: 22px;
+    }
+
+    .lic-cost-breakdown__row {
+        grid-template-columns: 1fr;
+    }
+
+    .lic-cost-breakdown__amount {
+        text-align: left;
+    }
+}

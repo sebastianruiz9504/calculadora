@@ -272,12 +272,26 @@
     const pnlDetailStatus = document.getElementById("pnlDetailStatus");
     const pnlDetailBody = document.getElementById("pnlDetailBody");
 
+    const licenciamientoYearFilter = document.getElementById("licenciamientoYearFilter");
+    const licenciamientoMonthFilter = document.getElementById("licenciamientoMonthFilter");
+    const licenciamientoRefreshButton = document.getElementById("licenciamientoRefreshBtn");
+    const licenciamientoStatusBanner = document.getElementById("licenciamientoStatusBanner");
+    const licenciamientoPeriodLabel = document.getElementById("licenciamientoPeriodLabel");
+    const licenciamientoDateRangeLabel = document.getElementById("licenciamientoDateRangeLabel");
+    const licenciamientoSummaryCards = document.getElementById("licenciamientoSummaryCards");
+    const licenciamientoMonthlyChart = document.getElementById("licenciamientoMonthlyChart");
+    const licenciamientoPrepaidChart = document.getElementById("licenciamientoPrepaidChart");
+    const licenciamientoCostPeriodLabel = document.getElementById("licenciamientoCostPeriodLabel");
+    const licenciamientoCostCards = document.getElementById("licenciamientoCostCards");
+
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
 
     const currentYear = Number(app.dataset.initialYear || new Date().getFullYear());
     const currentPeriod = app.dataset.initialPeriod || "month";
     const currentValue = Number(app.dataset.initialValue || 1);
+    const licenciamientoDefaultYear = Math.max(currentYear - 1, 2000);
+    const licenciamientoDefaultMonth = 12;
     const taxesRetentionsExportUrl = app.dataset.taxesRetentionsExportUrl || "";
     const billingClientReportExportUrl = app.dataset.billingClientReportExportUrl || "";
 
@@ -387,13 +401,18 @@
         pnlYear: currentYear,
         pnlMonth: new Date().getMonth() + 1,
         pnlVertical: "all",
+        licenciamientoDashboard: null,
+        licenciamientoSignature: "",
+        licenciamientoYear: licenciamientoDefaultYear,
+        licenciamientoMonth: licenciamientoDefaultMonth,
         pnlDetail: null,
         pnlDetailContext: null,
         pnlDetailLoading: false,
         pnlDetailSavingRecordId: "",
         periodLoading: false,
         portfolioLoading: false,
-        pnlLoading: false
+        pnlLoading: false,
+        licenciamientoLoading: false
     };
 
     function escapeHtml(value) {
@@ -420,6 +439,10 @@
 
     function getPnlSignature() {
         return `${state.pnlYear}|${state.pnlMonth}|${state.pnlVertical}`;
+    }
+
+    function getLicenciamientoSignature() {
+        return `${state.licenciamientoYear}|${state.licenciamientoMonth}`;
     }
 
     function getCopiersCountersSignature() {
@@ -730,6 +753,15 @@
     function setPnlLoading(loading) {
         state.pnlLoading = loading;
         [pnlYearFilter, pnlMonthFilter, pnlVerticalFilter, pnlRefreshButton].forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+    }
+
+    function setLicenciamientoLoading(loading) {
+        state.licenciamientoLoading = loading;
+        [licenciamientoYearFilter, licenciamientoMonthFilter, licenciamientoRefreshButton].forEach(element => {
             if (element) {
                 element.disabled = loading;
             }
@@ -2386,6 +2418,20 @@
         pnlYearFilter.value = String(state.pnlYear);
     }
 
+    function buildLicenciamientoYearOptions() {
+        if (!licenciamientoYearFilter) {
+            return;
+        }
+
+        const options = [];
+        for (let year = currentYear + 1; year >= currentYear - 6; year -= 1) {
+            options.push(`<option value="${year}">${year}</option>`);
+        }
+
+        licenciamientoYearFilter.innerHTML = options.join("");
+        licenciamientoYearFilter.value = String(state.licenciamientoYear);
+    }
+
     function buildPnlMonthOptions(maxMonth = 12) {
         if (!pnlMonthFilter) {
             return;
@@ -2401,6 +2447,24 @@
             .map((label, index) => `<option value="${index + 1}">${escapeHtml(label)}</option>`)
             .join("");
         pnlMonthFilter.value = String(state.pnlMonth);
+    }
+
+    function buildLicenciamientoMonthOptions(monthOptions) {
+        if (!licenciamientoMonthFilter) {
+            return;
+        }
+
+        const options = Array.isArray(monthOptions) && monthOptions.length
+            ? monthOptions
+            : monthLabels.map((label, index) => ({ value: index + 1, label, hasData: false }));
+
+        licenciamientoMonthFilter.innerHTML = options.map(option => {
+            const value = Number(option?.value || 1);
+            const label = option?.label || monthLabels[Math.max(value - 1, 0)] || "Mes";
+            const suffix = option?.hasData ? "" : " · sin datos";
+            return `<option value="${value}">${escapeHtml(`${label}${suffix}`)}</option>`;
+        }).join("");
+        licenciamientoMonthFilter.value = String(state.licenciamientoMonth);
     }
 
     function getDefaultValue(period, year) {
@@ -2837,6 +2901,15 @@
         });
 
         return `${app.dataset.pnlUrl}?${params.toString()}`;
+    }
+
+    function buildLicenciamientoUrl() {
+        const params = new URLSearchParams({
+            year: String(state.licenciamientoYear),
+            month: String(state.licenciamientoMonth)
+        });
+
+        return `${app.dataset.licenciamientoUrl || ""}?${params.toString()}`;
     }
 
     function buildPnlDetailUrl(rowKey, cellMonth) {
@@ -3459,6 +3532,215 @@
                 <span class="dashboard-kpi__hint">${escapeHtml(kpi.hint)}</span>
             </article>
         `).join("");
+    }
+
+    function formatLicenciamientoPercent(value) {
+        if (value === null || value === undefined || value === "") {
+            return "Sin margen";
+        }
+
+        return formatPercent(value);
+    }
+
+    function formatSignedCurrency(value) {
+        const numericValue = Number(value || 0);
+        const prefix = numericValue > 0 ? "+" : "";
+        return `${prefix}${currencyFormatter.format(numericValue)}`;
+    }
+
+    function renderLicenciamientoSummary(dashboard) {
+        if (!licenciamientoSummaryCards) {
+            return;
+        }
+
+        const utility = Number(dashboard?.totalUtility || 0);
+        const utilityTone = utility >= 0 ? "positive" : "negative";
+        const cards = [
+            {
+                label: "Ventas totales",
+                value: currencyFormatter.format(Number(dashboard?.totalSales || 0)),
+                hint: dashboard?.dateRangeLabel || ""
+            },
+            {
+                label: "Costos totales",
+                value: currencyFormatter.format(Number(dashboard?.totalCost || 0)),
+                hint: `${numberFormatter.format(Number(dashboard?.recordsCount || 0))} cruces`
+            },
+            {
+                label: "Utilidad total",
+                value: formatSignedCurrency(utility),
+                hint: `Margen ${formatLicenciamientoPercent(dashboard?.totalUtilityPercent)}`,
+                tone: utilityTone
+            },
+            {
+                label: "Ventas Monthly",
+                value: currencyFormatter.format(Number(dashboard?.monthly?.totalSales || 0)),
+                hint: `${formatPercent(dashboard?.monthly?.salesSharePercent || 0)} de ventas`
+            },
+            {
+                label: "Ventas Prepaid",
+                value: currencyFormatter.format(Number(dashboard?.prepaid?.totalSales || 0)),
+                hint: `${formatPercent(dashboard?.prepaid?.salesSharePercent || 0)} de ventas`
+            }
+        ];
+
+        licenciamientoSummaryCards.innerHTML = cards.map(card => `
+            <article class="lic-summary-card ${card.tone ? `is-${card.tone}` : ""}">
+                <span class="lic-summary-card__label">${escapeHtml(card.label)}</span>
+                <strong class="lic-summary-card__value">${escapeHtml(card.value)}</strong>
+                <span class="lic-summary-card__hint">${escapeHtml(card.hint)}</span>
+            </article>
+        `).join("");
+    }
+
+    function renderLicenciamientoChart(container, segment, accent) {
+        if (!container) {
+            return;
+        }
+
+        const points = Array.isArray(segment?.months) ? segment.months : [];
+        const hasData = points.some(point => Number(point.recordsCount || 0) > 0);
+        const values = points.map(point => Number(point.utility || 0));
+        const minValue = Math.min(0, ...values);
+        const maxValue = Math.max(0, ...values);
+        const range = maxValue === minValue ? 1 : maxValue - minValue;
+        const width = 720;
+        const height = 286;
+        const padding = { top: 24, right: 22, bottom: 42, left: 64 };
+        const plotWidth = width - padding.left - padding.right;
+        const plotHeight = height - padding.top - padding.bottom;
+        const barSlot = plotWidth / Math.max(points.length, 1);
+        const barWidth = Math.min(28, Math.max(12, barSlot * 0.46));
+        const yForValue = value => padding.top + ((maxValue - value) / range) * plotHeight;
+        const baselineY = yForValue(0);
+        const gridValues = [maxValue, (maxValue + minValue) / 2, minValue]
+            .filter((value, index, all) => index === all.findIndex(item => Math.abs(item - value) < 0.01));
+
+        const grid = gridValues.map(value => {
+            const y = yForValue(value);
+            return `
+                <line class="lic-chart__grid" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"></line>
+                <text class="lic-chart__axis" x="${padding.left - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(numberFormatter.format(value))}</text>
+            `;
+        }).join("");
+
+        const bars = points.map((point, index) => {
+            const utility = Number(point.utility || 0);
+            const sales = Number(point.sales || 0);
+            const x = padding.left + (barSlot * index) + ((barSlot - barWidth) / 2);
+            const y = utility >= 0 ? yForValue(utility) : baselineY;
+            const barHeight = Math.max(2, Math.abs(yForValue(utility) - baselineY));
+            const labelX = padding.left + (barSlot * index) + (barSlot / 2);
+            const tone = utility >= 0 ? "positive" : "negative";
+            return `
+                <g>
+                    <title>${escapeHtml(`${point.label || ""}: utilidad ${currencyFormatter.format(utility)} - ventas ${currencyFormatter.format(sales)}`)}</title>
+                    <rect class="lic-chart__bar is-${tone}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="5"></rect>
+                    <text class="lic-chart__month" x="${labelX.toFixed(2)}" y="${height - 14}" text-anchor="middle">${escapeHtml(point.label || "")}</text>
+                </g>
+            `;
+        }).join("");
+
+        container.innerHTML = `
+            <div class="lic-chart-card__header">
+                <div>
+                    <span class="lic-chart-card__eyebrow">${escapeHtml(segment?.label || "Licenciamiento")}</span>
+                    <h2 class="lic-chart-card__title">Utilidad mensual</h2>
+                </div>
+                <span class="lic-chart-card__share">${escapeHtml(formatPercent(segment?.salesSharePercent || 0))} ventas</span>
+            </div>
+            <div class="lic-chart-card__metrics">
+                <span><strong>${escapeHtml(currencyFormatter.format(Number(segment?.totalSales || 0)))}</strong> ventas</span>
+                <span><strong>${escapeHtml(formatSignedCurrency(segment?.totalUtility || 0))}</strong> utilidad</span>
+                <span><strong>${escapeHtml(formatLicenciamientoPercent(segment?.utilityPercent))}</strong> margen</span>
+            </div>
+            <div class="lic-chart-card__canvas ${hasData ? "" : "is-empty"}">
+                ${hasData ? `
+                    <svg class="lic-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Utilidad mensual ${escapeHtml(segment?.label || "")}">
+                        <defs>
+                            <linearGradient id="lic-chart-gradient-${escapeHtml(segment?.key || "segment")}" x1="0" x2="0" y1="0" y2="1">
+                                <stop offset="0%" stop-color="${accent}" stop-opacity=".34"></stop>
+                                <stop offset="100%" stop-color="${accent}" stop-opacity=".08"></stop>
+                            </linearGradient>
+                        </defs>
+                        ${grid}
+                        <line class="lic-chart__baseline" x1="${padding.left}" y1="${baselineY}" x2="${width - padding.right}" y2="${baselineY}"></line>
+                        ${bars}
+                    </svg>
+                ` : '<div class="lic-empty">Sin utilidad para el periodo seleccionado.</div>'}
+            </div>
+        `;
+    }
+
+    function renderLicenciamientoCostCard(card, accentClass) {
+        const rows = Array.isArray(card?.breakdown) ? card.breakdown : [];
+        const totalCost = Number(card?.totalCost || 0);
+        const totalSales = Number(card?.totalSales || 0);
+        const utility = Number(card?.utility || 0);
+        const rowsHtml = rows.length
+            ? rows.map(item => {
+                const share = Math.min(Math.max(Number(item.sharePercent || 0), 0), 100);
+                const groupLabel = item.businessGroupName ? "Grupo empresarial" : "Cliente";
+                return `
+                    <div class="lic-cost-breakdown__row">
+                        <div class="lic-cost-breakdown__main">
+                            <strong>${escapeHtml(item.clientName || "Sin cliente")}</strong>
+                            <span>${escapeHtml(groupLabel)} · ${escapeHtml(numberFormatter.format(Number(item.recordsCount || 0)))} cruce(s)</span>
+                        </div>
+                        <div class="lic-cost-breakdown__amount">
+                            <strong>${escapeHtml(currencyFormatter.format(Number(item.cost || 0)))}</strong>
+                            <span>${escapeHtml(formatPercent(item.sharePercent || 0))}</span>
+                        </div>
+                        <div class="lic-cost-breakdown__bar" aria-hidden="true">
+                            <span style="width:${share}%"></span>
+                        </div>
+                    </div>
+                `;
+            }).join("")
+            : '<div class="lic-empty">Sin costos para este mes.</div>';
+
+        return `
+            <article class="lic-cost-card ${accentClass}">
+                <div class="lic-cost-card__header">
+                    <div>
+                        <span class="lic-cost-card__eyebrow">${escapeHtml(card?.label || "")}</span>
+                        <h3 class="lic-cost-card__title">${escapeHtml(card?.monthLabel || "")}</h3>
+                    </div>
+                    <span class="lic-cost-card__badge">${escapeHtml(numberFormatter.format(Number(card?.recordsCount || 0)))} cruces</span>
+                </div>
+                <strong class="lic-cost-card__value">${escapeHtml(currencyFormatter.format(totalCost))}</strong>
+                <div class="lic-cost-card__stats">
+                    <span>Ventas <strong>${escapeHtml(currencyFormatter.format(totalSales))}</strong></span>
+                    <span>Utilidad <strong>${escapeHtml(formatSignedCurrency(utility))}</strong></span>
+                    <span>Margen <strong>${escapeHtml(formatLicenciamientoPercent(card?.utilityPercent))}</strong></span>
+                </div>
+                <div class="lic-cost-breakdown">
+                    <div class="lic-cost-breakdown__header">
+                        <span>Desglose por cliente</span>
+                        <span>Costo</span>
+                    </div>
+                    ${rowsHtml}
+                </div>
+            </article>
+        `;
+    }
+
+    function renderLicenciamientoCostCards(dashboard) {
+        if (!licenciamientoCostCards) {
+            return;
+        }
+
+        licenciamientoCostCards.innerHTML = [
+            renderLicenciamientoCostCard(dashboard?.monthlyCostCard, "lic-cost-card--monthly"),
+            renderLicenciamientoCostCard(dashboard?.prepaidCostCard, "lic-cost-card--prepaid")
+        ].join("");
+    }
+
+    function renderLicenciamientoDashboard(dashboard) {
+        renderLicenciamientoSummary(dashboard);
+        renderLicenciamientoChart(licenciamientoMonthlyChart, dashboard?.monthly, "#0f766e");
+        renderLicenciamientoChart(licenciamientoPrepaidChart, dashboard?.prepaid, "#b45309");
+        renderLicenciamientoCostCards(dashboard);
     }
 
     function getNiceMaxValue(value) {
@@ -5806,6 +6088,12 @@
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
+    function updateHeroForLicenciamiento(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.yearLabel ? `Ano calendario ${dashboard.yearLabel}` : "Ano calendario");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Licenciamiento");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
     function updateBillingContext(dashboard) {
         state.billingDashboard = dashboard;
         state.billingSignature = getPeriodSignature();
@@ -5895,11 +6183,32 @@
         }
     }
 
+    function updateLicenciamientoContext(dashboard) {
+        state.licenciamientoDashboard = dashboard;
+        state.licenciamientoYear = Number(dashboard?.year || state.licenciamientoYear);
+        state.licenciamientoMonth = Number(dashboard?.month || state.licenciamientoMonth || licenciamientoDefaultMonth);
+        state.licenciamientoSignature = getLicenciamientoSignature();
+        licenciamientoPeriodLabel && (licenciamientoPeriodLabel.textContent = dashboard?.yearLabel ? `${dashboard.yearLabel} - ${dashboard.monthLabel || ""}` : "Sin periodo");
+        licenciamientoDateRangeLabel && (licenciamientoDateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+        licenciamientoCostPeriodLabel && (licenciamientoCostPeriodLabel.textContent = dashboard?.monthLabel || "-");
+
+        if (licenciamientoYearFilter) {
+            licenciamientoYearFilter.value = String(state.licenciamientoYear);
+        }
+
+        buildLicenciamientoMonthOptions(dashboard?.monthOptions);
+
+        if (state.activeTab === "licenciamiento") {
+            updateHeroForLicenciamiento(dashboard);
+        }
+    }
+
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
             dashboardPeriodScope.hidden = state.activeTab === "portfolio"
                 || state.activeTab === "copiers"
                 || state.activeTab === "pnl"
+                || state.activeTab === "licenciamiento"
                 || state.activeTab === "support-cloud";
         }
     }
@@ -6033,6 +6342,15 @@
                 updateHeroForPnl(state.pnlDashboard);
             } else {
                 loadPnl();
+            }
+            return;
+        }
+
+        if (tabKey === "licenciamiento") {
+            if (state.licenciamientoDashboard && state.licenciamientoSignature === getLicenciamientoSignature()) {
+                updateHeroForLicenciamiento(state.licenciamientoDashboard);
+            } else {
+                loadLicenciamiento();
             }
             return;
         }
@@ -6617,6 +6935,29 @@
         }
     }
 
+    async function loadLicenciamiento() {
+        if (!app.dataset.licenciamientoUrl) {
+            return;
+        }
+
+        setLicenciamientoLoading(true);
+        setStatus(licenciamientoStatusBanner, "info", "Actualizando tablero de licenciamiento...");
+
+        try {
+            const dashboard = await fetchJson(buildLicenciamientoUrl());
+            updateLicenciamientoContext(dashboard);
+            renderLicenciamientoDashboard(dashboard);
+            setStatus(
+                licenciamientoStatusBanner,
+                dashboard?.hasData ? "" : "info",
+                dashboard?.hasData ? "" : (dashboard?.emptyStateMessage || "No hay datos de licenciamiento para el periodo seleccionado."));
+        } catch (error) {
+            setStatus(licenciamientoStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard de licenciamiento.");
+        } finally {
+            setLicenciamientoLoading(false);
+        }
+    }
+
     yearFilter?.addEventListener("change", () => {
         state.year = Number(yearFilter.value || currentYear);
         state.value = getDefaultValue(state.period, state.year);
@@ -6861,6 +7202,7 @@
         openCopiersEditorModal("create");
     });
     pnlRefreshButton?.addEventListener("click", loadPnl);
+    licenciamientoRefreshButton?.addEventListener("click", loadLicenciamiento);
     portfolioClientSearch?.addEventListener("input", () => {
         state.portfolioSearchTerm = portfolioClientSearch.value || "";
         renderPortfolioTable();
@@ -6914,6 +7256,18 @@
         closePnlDetailModal();
         state.pnlVertical = pnlVerticalFilter.value || "all";
         loadPnl();
+    });
+    licenciamientoYearFilter?.addEventListener("change", () => {
+        state.licenciamientoYear = Number(licenciamientoYearFilter.value || licenciamientoDefaultYear);
+        state.licenciamientoMonth = state.licenciamientoYear >= currentYear
+            ? new Date().getMonth() + 1
+            : licenciamientoDefaultMonth;
+        buildLicenciamientoMonthOptions();
+        loadLicenciamiento();
+    });
+    licenciamientoMonthFilter?.addEventListener("change", () => {
+        state.licenciamientoMonth = Number(licenciamientoMonthFilter.value || licenciamientoDefaultMonth);
+        loadLicenciamiento();
     });
     pnlDetailCloseBtn?.addEventListener("click", closePnlDetailModal);
     pnlDetailModal?.querySelectorAll("[data-pnl-detail-close]").forEach(element => {
@@ -7180,6 +7534,7 @@
 
     buildYearOptions();
     buildPnlYearOptions();
+    buildLicenciamientoYearOptions();
     periodFilter && (periodFilter.value = state.period);
     pnlVerticalFilter && (pnlVerticalFilter.value = state.pnlVertical);
     wireCopiersLookupInput(billingInvoiceClientNameInput, billingInvoiceClientIdInput, billingInvoiceClientOptions, "billingInvoiceClientSuggestions", "name", buildCopiersClientSearchUrl);
@@ -7191,6 +7546,7 @@
     renderSiigoCustomerSelect();
     syncSiigoDateRangeWithActivePeriod();
     buildPnlMonthOptions(12);
+    buildLicenciamientoMonthOptions();
     buildCopiersMaintenanceFilterOptions();
     buildCopiersCountersPeriodOptions();
     renderCopiersCountersPending();

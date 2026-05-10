@@ -37,6 +37,7 @@
      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
      data-taxes-retentions-export-url="@Url.Action("TaxesRetentionsExport", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
+     data-licenciamiento-url="@Url.Action("Licenciamiento", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
      data-pnl-detail-url="@Url.Action("PnlDetail", "Dashboard")"
      data-pnl-detail-update-url="@Url.Action("PnlDetailRecord", "Dashboard")"
@@ -56,6 +57,7 @@
         <button type="button" class="dashboard-tab" data-dashboard-tab="support-cloud">Soporte cloud</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="licenciamiento">Licenciamiento</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
     </section>
 
@@ -1184,6 +1186,51 @@
                     </table>
                 </div>
             </article>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="licenciamiento" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static lic-dashboard-toolbar">
+            <div class="dashboard-filters">
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="licenciamientoYearFilter">A&ntilde;o</label>
+                    <select id="licenciamientoYearFilter" class="form-select dashboard-select"></select>
+                </div>
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="licenciamientoMonthFilter">Mes</label>
+                    <select id="licenciamientoMonthFilter" class="form-select dashboard-select"></select>
+                </div>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <div class="dashboard-toolbar__summary">
+                    <span class="dashboard-toolbar__summary-label">Periodo activo</span>
+                    <strong id="licenciamientoPeriodLabel">Cargando...</strong>
+                    <span id="licenciamientoDateRangeLabel">-</span>
+                </div>
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="licenciamientoRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="licenciamientoStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="lic-dashboard">
+            <div class="lic-dashboard__summary" id="licenciamientoSummaryCards"></div>
+
+            <section class="lic-dashboard__charts" aria-label="Utilidad mensual de licenciamiento">
+                <article class="lic-chart-card" id="licenciamientoMonthlyChart"></article>
+                <article class="lic-chart-card" id="licenciamientoPrepaidChart"></article>
+            </section>
+
+            <section class="lic-cost-section">
+                <div class="lic-section-heading">
+                    <div>
+                        <div class="lic-section-heading__eyebrow">Costos</div>
+                        <h2 class="lic-section-heading__title">Corte mensual por tipo de contrato</h2>
+                    </div>
+                    <span id="licenciamientoCostPeriodLabel" class="lic-section-heading__meta">-</span>
+                </div>
+                <div class="lic-cost-grid" id="licenciamientoCostCards"></div>
+            </section>
         </section>
     </div>
 
