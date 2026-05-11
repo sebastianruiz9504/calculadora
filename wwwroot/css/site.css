@@ -192,6 +192,55 @@ a.app-shell__dropdown-link.is-active:visited {
   margin-left: auto;
 }
 
+.app-shell__theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface-soft);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.app-shell__theme-toggle:hover,
+.app-shell__theme-toggle:focus-visible {
+  border-color: #d0d0d0;
+  background: #ffffff;
+  box-shadow: 0 0 0 0.2rem rgba(17, 17, 17, 0.06);
+  outline: none;
+}
+
+.app-shell__theme-toggle-track {
+  position: relative;
+  width: 26px;
+  height: 16px;
+}
+
+.app-shell__theme-toggle-track::before {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #e4e4e4;
+  content: "";
+}
+
+.app-shell__theme-toggle-orb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #111111;
+  box-shadow: 0 0 0 1px rgba(17, 17, 17, 0.06);
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
 .app-shell__user-chip {
   display: inline-flex;
   align-items: center;
@@ -307,6 +356,10 @@ a.app-shell__session-link.is-danger:focus {
     flex-direction: column;
     align-items: stretch;
     margin-left: 0;
+  }
+
+  .app-shell__theme-toggle {
+    align-self: flex-start;
   }
 
   .app-shell__user-chip,

@@ -1,0 +1,553 @@
+html[data-bs-theme="dark"] {
+  color-scheme: dark;
+  --bs-body-bg: #0b0d10;
+  --bs-body-color: #edf2f7;
+  --bs-emphasis-color: #ffffff;
+  --bs-secondary-color: #aab6c5;
+  --bs-tertiary-color: #8793a2;
+  --bs-body-bg-rgb: 11, 13, 16;
+  --bs-body-color-rgb: 237, 242, 247;
+  --bs-secondary-bg: #141920;
+  --bs-tertiary-bg: #171d25;
+  --bs-border-color: #2a313a;
+  --bs-border-color-translucent: rgba(152, 166, 184, 0.22);
+  --bs-link-color: #8ec5ff;
+  --bs-link-hover-color: #b8dcff;
+
+  --copiers-ink: #edf4ff;
+  --copiers-muted: #aab8c8;
+  --copiers-line: #2a3542;
+  --copiers-panel: #121820;
+  --copiers-soft: #171f29;
+  --copiers-brand: #70b9ff;
+  --copiers-brand-deep: #9bd0ff;
+  --copiers-brand-soft: rgba(112, 185, 255, 0.16);
+  --copiers-good: #8ee49f;
+  --copiers-good-soft: rgba(142, 228, 159, 0.14);
+  --copiers-danger: #ff9aac;
+  --copiers-danger-soft: rgba(255, 154, 172, 0.14);
+  --copiers-warning: #ffd98a;
+  --copiers-warning-soft: rgba(255, 217, 138, 0.14);
+  --copiers-shadow: 0 24px 54px rgba(0, 0, 0, 0.28);
+
+  --dashboard-ink: #edf4ff;
+  --dashboard-muted: #aab8c8;
+  --dashboard-line: #2a3542;
+  --dashboard-panel: #121820;
+  --dashboard-panel-soft: #171f29;
+  --dashboard-brand: #70b9ff;
+  --dashboard-brand-deep: #9bd0ff;
+  --dashboard-brand-soft: rgba(112, 185, 255, 0.16);
+  --dashboard-good: #8ee49f;
+  --dashboard-danger: #ff9aac;
+  --dashboard-shadow: 0 24px 54px rgba(0, 0, 0, 0.28);
+
+  --envios-ink: #edf4ff;
+  --envios-muted: #aab8c8;
+  --envios-line: #2a3542;
+  --envios-panel: #121820;
+  --envios-soft: #171f29;
+  --envios-blue: #70b9ff;
+  --envios-blue-soft: rgba(112, 185, 255, 0.16);
+  --envios-green: #8ee49f;
+  --envios-green-soft: rgba(142, 228, 159, 0.14);
+  --envios-amber: #ffd98a;
+  --envios-amber-soft: rgba(255, 217, 138, 0.14);
+  --envios-red: #ff9aac;
+  --envios-red-soft: rgba(255, 154, 172, 0.14);
+
+  --hardware-ink: #edf4ff;
+  --hardware-muted: #aab8c8;
+  --hardware-line: #2a3542;
+  --hardware-panel: #121820;
+  --hardware-soft: #171f29;
+  --hardware-soft-strong: #1d2631;
+  --hardware-brand: #70b9ff;
+  --hardware-brand-deep: #9bd0ff;
+  --hardware-brand-soft: rgba(112, 185, 255, 0.16);
+  --hardware-success: #8ee49f;
+  --hardware-danger: #ff9aac;
+  --hardware-warning: #ffd98a;
+  --hardware-doc-bg: rgba(255, 217, 138, 0.14);
+  --hardware-doc-ink: #ffd98a;
+  --hardware-supplier-bg: rgba(112, 185, 255, 0.16);
+  --hardware-supplier-ink: #9bd0ff;
+  --hardware-paid-bg: rgba(142, 228, 159, 0.14);
+  --hardware-paid-ink: #8ee49f;
+  --hardware-transit-bg: rgba(161, 166, 255, 0.16);
+  --hardware-transit-ink: #babdff;
+  --hardware-billing-bg: rgba(255, 190, 133, 0.14);
+  --hardware-billing-ink: #ffc38f;
+  --hardware-payment-bg: rgba(209, 160, 255, 0.16);
+  --hardware-payment-ink: #d7adff;
+  --hardware-closed-bg: rgba(142, 228, 159, 0.14);
+  --hardware-closed-ink: #8ee49f;
+
+  --lic-ink: #edf4ff;
+  --lic-muted: #aab8c8;
+  --lic-line: #2a3542;
+  --lic-panel: #121820;
+  --lic-soft: #171f29;
+  --lic-brand: #8ee49f;
+  --lic-brand-deep: #b0f2bd;
+  --lic-brand-soft: rgba(142, 228, 159, 0.14);
+  --lic-blue: #70b9ff;
+  --lic-blue-soft: rgba(112, 185, 255, 0.16);
+  --lic-danger: #ff9aac;
+  --lic-danger-soft: rgba(255, 154, 172, 0.14);
+  --lic-warning: #ffd98a;
+  --lic-warning-soft: rgba(255, 217, 138, 0.14);
+
+  --metrics-ink: #edf4ff;
+  --metrics-muted: #aab8c8;
+  --metrics-line: #2a3542;
+  --metrics-panel: #121820;
+  --metrics-panel-soft: #171f29;
+  --metrics-brand: #70b9ff;
+  --metrics-brand-deep: #9bd0ff;
+  --metrics-brand-soft: rgba(112, 185, 255, 0.16);
+  --metrics-good: #8ee49f;
+  --metrics-shadow: 0 24px 54px rgba(0, 0, 0, 0.28);
+
+  --support-cloud-ink: #edf4ff;
+  --support-cloud-muted: #aab8c8;
+  --support-cloud-line: #2a3542;
+  --support-cloud-panel: #121820;
+  --support-cloud-soft: #171f29;
+  --support-cloud-soft-strong: #1d2631;
+  --support-cloud-brand: #70b9ff;
+  --support-cloud-brand-deep: #9bd0ff;
+  --support-cloud-brand-soft: rgba(112, 185, 255, 0.16);
+  --support-cloud-success: #8ee49f;
+  --support-cloud-danger: #ff9aac;
+  --support-cloud-warning: #ffd98a;
+
+  --scores-ink: #edf4ff;
+  --scores-muted: #aab8c8;
+  --scores-line: #2a3542;
+  --scores-panel: #121820;
+  --scores-brand: #70b9ff;
+  --scores-brand-soft: rgba(112, 185, 255, 0.16);
+  --scores-success: #8ee49f;
+  --scores-success-soft: rgba(142, 228, 159, 0.14);
+  --scores-danger: #ff9aac;
+  --scores-shadow: 0 20px 45px rgba(0, 0, 0, 0.28);
+}
+
+html[data-bs-theme="dark"] body.app-shell {
+  --app-text: #edf2f7;
+  --app-muted: #aab6c5;
+  --app-border: #2a313a;
+  --app-surface: #12161c;
+  --app-surface-soft: #171d25;
+  --app-danger: #d94b5f;
+  --app-danger-hover: #f06a7d;
+  background: #0b0d10;
+  color: var(--app-text);
+}
+
+html[data-bs-theme="dark"] .app-shell__header {
+  background: rgba(11, 13, 16, 0.95);
+  border-bottom-color: #242b34;
+  backdrop-filter: blur(12px);
+}
+
+html[data-bs-theme="dark"] .app-shell__nav-frame {
+  background: transparent;
+}
+
+html[data-bs-theme="dark"] a.app-shell__brand,
+html[data-bs-theme="dark"] a.app-shell__brand:hover,
+html[data-bs-theme="dark"] a.app-shell__brand:focus,
+html[data-bs-theme="dark"] a.app-shell__brand:visited {
+  color: var(--app-text);
+}
+
+html[data-bs-theme="dark"] .app-shell__toggler {
+  border-color: var(--app-border);
+  background: #141920;
+}
+
+html[data-bs-theme="dark"] .navbar-toggler-icon {
+  filter: invert(1) grayscale(1) brightness(1.4);
+  opacity: 0.78;
+}
+
+html[data-bs-theme="dark"] a.app-shell__nav-link,
+html[data-bs-theme="dark"] a.app-shell__nav-link:hover,
+html[data-bs-theme="dark"] a.app-shell__nav-link:focus,
+html[data-bs-theme="dark"] a.app-shell__nav-link:visited,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link:hover,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link:focus,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link:visited {
+  color: #dce5ef;
+}
+
+html[data-bs-theme="dark"] a.app-shell__nav-link:hover,
+html[data-bs-theme="dark"] a.app-shell__nav-link:focus,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link:hover,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link:focus {
+  background: #1a2028;
+  color: #ffffff;
+}
+
+html[data-bs-theme="dark"] a.app-shell__nav-link.is-active,
+html[data-bs-theme="dark"] a.app-shell__nav-link.is-active:hover,
+html[data-bs-theme="dark"] a.app-shell__nav-link.is-active:focus,
+html[data-bs-theme="dark"] a.app-shell__nav-link.is-active:visited,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link.is-active,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link.is-active:hover,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link.is-active:focus,
+html[data-bs-theme="dark"] a.app-shell__dropdown-link.is-active:visited,
+html[data-bs-theme="dark"] a.app-shell__session-link.is-primary,
+html[data-bs-theme="dark"] a.app-shell__session-link.is-primary:hover,
+html[data-bs-theme="dark"] a.app-shell__session-link.is-primary:focus,
+html[data-bs-theme="dark"] a.app-shell__session-link.is-primary:visited {
+  background: #edf2f7;
+  box-shadow: inset 0 0 0 1px #edf2f7;
+  color: #0b0d10;
+}
+
+html[data-bs-theme="dark"] .app-shell__dropdown-menu {
+  border-color: var(--app-border);
+  background: #12161c;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.4);
+}
+
+html[data-bs-theme="dark"] .app-shell__user-chip {
+  border-color: var(--app-border);
+  background: #141920;
+}
+
+html[data-bs-theme="dark"] .app-shell__user-name {
+  color: var(--app-text);
+}
+
+html[data-bs-theme="dark"] .app-shell__theme-toggle {
+  border-color: #303944;
+  background: #12161c;
+}
+
+html[data-bs-theme="dark"] .app-shell__theme-toggle:hover,
+html[data-bs-theme="dark"] .app-shell__theme-toggle:focus-visible {
+  border-color: #475463;
+  background: #171d25;
+  box-shadow: 0 0 0 0.2rem rgba(142, 197, 255, 0.12);
+}
+
+html[data-bs-theme="dark"] .app-shell__theme-toggle-track::before {
+  background: #26313d;
+}
+
+html[data-bs-theme="dark"] .app-shell__theme-toggle-orb {
+  transform: translateX(10px);
+  background: #f5f8fb;
+  box-shadow: 0 0 12px rgba(142, 197, 255, 0.35);
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.card, .modal-content, .dropdown-menu, .list-group-item, .accordion-item, .popover, .toast) {
+  border-color: #2a313a;
+  background-color: #12161c;
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .home-card,
+  .calc-shell .calc-card,
+  .renew-shell .renew-card,
+  .renew-shell .renew-editor,
+  .payroll-card,
+  .portal-card,
+  .portal-summary-card,
+  .portal-table-card,
+  .permissions-panel,
+  .rbi-toolbar,
+  .rbi-summary-card,
+  .rbi-panel,
+  .ccb-card,
+  .ccb-summary__card,
+  .licx-panel,
+  .pde-admin-panel,
+  .plan-rio__week-panel,
+  .plan-rio__day,
+  .plan-rio__card
+) {
+  border-color: #2a313a !important;
+  background: #12161c !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28) !important;
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .home-hero,
+  .calc-hero,
+  .renew-shell .renew-hero,
+  .payroll-hero,
+  .portal-hero,
+  .permissions-hero,
+  .rbi-hero,
+  .ccb-hero,
+  .pde-admin-hero
+) {
+  border-color: #2a313a !important;
+  background:
+    radial-gradient(circle at top right, rgba(112, 185, 255, 0.18), transparent 36%),
+    linear-gradient(135deg, #121820 0%, #0f1319 100%) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28) !important;
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .home-user-pill,
+  .calc-user-pill,
+  .renew-user-pill,
+  .payroll-user-pill,
+  .permissions-user-pill,
+  .copiers-user-pill,
+  .dashboard-user,
+  .ccb-user-pill,
+  .rbi-user,
+  .portal-pill,
+  .portal-config-box,
+  .portal-soft-note,
+  .portal-selected-chip,
+  .pde-dataset-row
+) {
+  border-color: #2a313a !important;
+  background: #171d25 !important;
+  color: #edf2f7 !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .home-kicker,
+  .calc-kicker,
+  .renew-kicker,
+  .payroll-kicker,
+  .portal-pill,
+  .pde-kicker
+) {
+  border-color: rgba(112, 185, 255, 0.28) !important;
+  background: rgba(112, 185, 255, 0.16) !important;
+  color: #9bd0ff !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .home-title,
+  .home-card__title,
+  .home-module-card__title,
+  .calc-title,
+  .calc-section-title,
+  .calc-result-title,
+  .renew-title,
+  .renew-editor__title,
+  .payroll-title,
+  .payroll-section-title,
+  .portal-title,
+  .portal-card__title,
+  .permissions-title,
+  .permissions-section-title,
+  .rbi-title,
+  .rbi-section-title,
+  .rbi-modal__title,
+  .ccb-title,
+  .licx-title,
+  .pde-admin-hero h1,
+  .pde-admin-panel h2,
+  .plan-rio__detail-row strong
+) {
+  color: #f5f8fb !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .text-muted,
+  .home-subtitle,
+  .home-section-subtitle,
+  .home-module-card__description,
+  .home-empty__meta,
+  .calc-section-subtitle,
+  .calc-subtitle,
+  .calc-shell .muted,
+  .calc-shell .small,
+  .renew-subtitle,
+  .renew-helper,
+  .renew-group__meta,
+  .renew-editor__subtitle,
+  .renew-section-subtitle,
+  .renew-record-sub,
+  .payroll-subtitle,
+  .payroll-section-subtitle,
+  .portal-subtitle,
+  .portal-card__subtitle,
+  .portal-caption,
+  .permissions-subtitle,
+  .permissions-section-subtitle,
+  .permissions-kicker,
+  .permissions-user-pill__label,
+  .rbi-subtitle,
+  .rbi-modal__subtitle,
+  .rbi-toolbar__summary,
+  .rbi-kicker,
+  .rbi-user__label,
+  .ccb-subtitle,
+  .ccb-user-pill__label,
+  .licx-field span,
+  .licx-kicker,
+  .pde-admin-hero p,
+  .pde-admin-panel p,
+  .pde-dataset-row p,
+  .plan-rio__eyebrow,
+  .plan-rio__source-status,
+  .plan-rio__label,
+  .plan-rio__meta,
+  .plan-rio__detail,
+  .plan-rio__detail-empty
+) {
+  color: #aab6c5 !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.table, table) {
+  color: #edf2f7;
+  border-color: #2a313a;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.table, table) > :not(caption) > * > * {
+  border-color: #2a313a;
+  background-color: transparent;
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(thead th, .table thead th) {
+  border-color: #2a313a !important;
+  background: #171d25 !important;
+  color: #dce7f3 !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(tbody tr:hover > *, .table-hover > tbody > tr:hover > *) {
+  background: #1a2028 !important;
+  color: #ffffff !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .form-control,
+  .form-select,
+  .form-check-input,
+  .input-group-text,
+  textarea,
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="email"],
+  input[type="search"],
+  input[type="password"],
+  select
+) {
+  border-color: #303944 !important;
+  background-color: #0f1318 !important;
+  color: #edf2f7 !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.form-control, textarea, input)::placeholder {
+  color: #7f8b9a !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.form-control, .form-select, textarea, input, select):focus {
+  border-color: #70b9ff !important;
+  box-shadow: 0 0 0 0.2rem rgba(112, 185, 255, 0.16) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.btn-light, .btn-outline-secondary, .btn-outline-dark, .btn-outline-primary) {
+  border-color: #394452;
+  background-color: #171d25;
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.btn-light, .btn-outline-secondary, .btn-outline-dark, .btn-outline-primary):hover,
+html[data-bs-theme="dark"] body.app-shell :is(.btn-light, .btn-outline-secondary, .btn-outline-dark, .btn-outline-primary):focus {
+  border-color: #526174;
+  background-color: #202833;
+  color: #ffffff;
+}
+
+html[data-bs-theme="dark"] body.app-shell .btn-close {
+  filter: invert(1) grayscale(1) brightness(1.8);
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .home-insight,
+  .home-module-card,
+  .calc-shell .pill,
+  .calc-line,
+  .calc-result-row,
+  .renew-shell .renew-summary,
+  .renew-shell .renew-record,
+  .permissions-employee-item,
+  .permissions-module-menu,
+  .permissions-module-option,
+  .rbi-form__field,
+  .ccb-status,
+  .ccb-filter,
+  .ccb-modal__dialog,
+  .licx-kpi,
+  .licx-toolbar,
+  .licx-status,
+  .pde-field,
+  .pde-column-option
+) {
+  border-color: #2a313a !important;
+  background: #171d25 !important;
+  color: #edf2f7 !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .dropdown-item,
+  .dropdown-item:visited,
+  .dropdown-item:hover,
+  .dropdown-item:focus
+) {
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell .dropdown-item:hover,
+html[data-bs-theme="dark"] body.app-shell .dropdown-item:focus {
+  background-color: #1f2731;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .modal-backdrop,
+  .copiers-modal__backdrop,
+  .ccb-modal__backdrop,
+  .licx-modal__backdrop,
+  .rbi-modal__backdrop
+) {
+  background: rgba(0, 0, 0, 0.72) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .copiers-modal__dialog,
+  .support-cloud-modal__dialog,
+  .hardware-modal__dialog,
+  .envios-modal__dialog,
+  .rbi-modal__dialog,
+  .licx-modal__dialog
+) {
+  border-color: #2a313a !important;
+  background: #12161c !important;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.46) !important;
+  color: #edf2f7;
+}
+
+html[data-bs-theme="dark"] body.app-shell a:not(.btn):not(.app-shell__nav-link):not(.app-shell__brand):not(.app-shell__session-link):not(.app-shell__dropdown-link) {
+  color: #8ec5ff;
+}
+
+html[data-bs-theme="dark"] body.app-shell hr {
+  border-color: #2a313a;
+  opacity: 1;
+}

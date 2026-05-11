@@ -111,10 +111,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Digital Tech</title>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem("cotizador-interno-theme") === "dark") {
+                    document.documentElement.setAttribute("data-bs-theme", "dark");
+                    document.documentElement.classList.add("app-theme-dark");
+                }
+            } catch (error) {
+                document.documentElement.setAttribute("data-bs-theme", "light");
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/CotizadorInterno.Web.styles.css" asp-append-version="true" />
     @await RenderSectionAsync("Styles", required: false)
+    <link rel="stylesheet" href="~/css/dark-mode.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/font-weight-reset.css" asp-append-version="true" />
 </head>
 <body class="app-shell">
@@ -161,6 +174,12 @@
                     </ul>
 
                     <div class="app-shell__actions">
+                        <button type="button" class="app-shell__theme-toggle" data-theme-toggle aria-label="Activar modo oscuro" aria-pressed="false" title="Activar modo oscuro">
+                            <span class="app-shell__theme-toggle-track" aria-hidden="true">
+                                <span class="app-shell__theme-toggle-orb"></span>
+                            </span>
+                            <span class="visually-hidden" data-theme-toggle-label>Activar modo oscuro</span>
+                        </button>
                         @if (User?.Identity?.IsAuthenticated == true)
                         {
                             <div class="app-shell__user-chip" title="@userDisplayName">
@@ -190,6 +209,7 @@
 </div>
 
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="~/js/site.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
