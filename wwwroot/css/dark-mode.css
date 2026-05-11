@@ -1,5 +1,32 @@
 html[data-bs-theme="dark"] {
   color-scheme: dark;
+  --app-dark-bg: #0b0d10;
+  --app-dark-surface: #12161c;
+  --app-dark-surface-raised: #121820;
+  --app-dark-surface-soft: #171d25;
+  --app-dark-surface-softer: #1d2631;
+  --app-dark-field: #0f1318;
+  --app-dark-border: #2a313a;
+  --app-dark-border-strong: #303944;
+  --app-dark-text: #edf2f7;
+  --app-dark-heading: #f5f8fb;
+  --app-dark-muted: #aab6c5;
+  --app-dark-faint: #7f8b9a;
+  --app-dark-link: #8ec5ff;
+  --app-dark-link-strong: #9bd0ff;
+  --app-dark-info-bg: rgba(112, 185, 255, 0.16);
+  --app-dark-info-border: rgba(112, 185, 255, 0.32);
+  --app-dark-info-text: #9bd0ff;
+  --app-dark-success-bg: rgba(142, 228, 159, 0.14);
+  --app-dark-success-border: rgba(142, 228, 159, 0.28);
+  --app-dark-success-text: #8ee49f;
+  --app-dark-warning-bg: rgba(255, 217, 138, 0.14);
+  --app-dark-warning-border: rgba(255, 217, 138, 0.3);
+  --app-dark-warning-text: #ffd98a;
+  --app-dark-danger-bg: rgba(255, 154, 172, 0.14);
+  --app-dark-danger-border: rgba(255, 154, 172, 0.3);
+  --app-dark-danger-text: #ff9aac;
+
   --bs-body-bg: #0b0d10;
   --bs-body-color: #edf2f7;
   --bs-emphasis-color: #ffffff;
@@ -550,4 +577,806 @@ html[data-bs-theme="dark"] body.app-shell a:not(.btn):not(.app-shell__nav-link):
 html[data-bs-theme="dark"] body.app-shell hr {
   border-color: #2a313a;
   opacity: 1;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.bg-white, .bg-light, .text-bg-light) {
+  border-color: var(--app-dark-border) !important;
+  background-color: var(--app-dark-surface-soft) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(.border, .border-top, .border-end, .border-bottom, .border-start) {
+  border-color: var(--app-dark-border) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .form-control,
+  .form-select,
+  .form-control-plaintext,
+  .form-control-color,
+  .form-check-input,
+  .input-group-text,
+  .dashboard-search__input,
+  .dashboard-select,
+  .payroll-table-input,
+  .payroll-detail-input,
+  input,
+  select,
+  textarea
+) {
+  border-color: var(--app-dark-border-strong) !important;
+  background-color: var(--app-dark-field) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .form-control,
+  .form-select,
+  input,
+  select,
+  textarea
+):is(:disabled, [readonly]) {
+  border-color: var(--app-dark-border) !important;
+  background-color: #141920 !important;
+  color: var(--app-dark-muted) !important;
+  opacity: 1;
+}
+
+html[data-bs-theme="dark"] body.app-shell input[type="file"]::file-selector-button {
+  border-color: var(--app-dark-border-strong) !important;
+  background-color: var(--app-dark-surface-soft) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell input[type="date"]::-webkit-calendar-picker-indicator,
+html[data-bs-theme="dark"] body.app-shell input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.45);
+  opacity: 0.78;
+}
+
+html[data-bs-theme="dark"] body.app-shell input:-webkit-autofill,
+html[data-bs-theme="dark"] body.app-shell textarea:-webkit-autofill,
+html[data-bs-theme="dark"] body.app-shell select:-webkit-autofill {
+  -webkit-text-fill-color: var(--app-dark-text) !important;
+  box-shadow: 0 0 0 1000px var(--app-dark-field) inset !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .home-warning__pre,
+  .calc-shell .scenario-tab,
+  .calc-shell .type-chip,
+  .calc-shell .table-wrap,
+  .calc-result-block--metric > div:last-child,
+  .calc-result-list,
+  .calc-result-list > div,
+  .calc-shell .suggestions,
+  #provisioningModal .suggestions,
+  #attachmentModal .modal-card,
+  #proposalLoadingModal .modal-card,
+  #debugCalcModal .modal-card,
+  #provisioningModal .modal-card,
+  .renew-shell .renew-pill,
+  .renew-shell .renew-contract-pill,
+  .renew-shell .renew-summary__item,
+  .renew-shell .renew-group,
+  .renew-shell .renew-group__header,
+  .renew-shell .lookup-results,
+  .renew-shell .lookup-result,
+  .renew-shell .renew-editor__footer,
+  .payroll-summary__card,
+  .payroll-modal__dialog,
+  .payroll-manual-editor,
+  .payroll-detail-item,
+  .payroll-breakdown-card,
+  .payroll-vertical-detail-card,
+  .payroll-breakdown-meta,
+  .payroll-vertical-detail-base,
+  .payroll-vertical-detail-field,
+  .payroll-vertical-detail-row__parts > span,
+  .portal-lookup-menu,
+  .portal-summary-card,
+  .permissions-toolbar,
+  .permissions-employee-item,
+  .permissions-employee-trigger,
+  .permissions-module-menu,
+  .permissions-module-option,
+  .permissions-module-box,
+  .rbi-month,
+  .rbi-panel__header,
+  .rbi-table-wrap,
+  .pde-hero,
+  .pde-panel,
+  .pde-admin-hero,
+  .pde-admin-panel,
+  .pde-table-wrap,
+  .pde-table,
+  .pde-status,
+  .ccb-counter,
+  .ccb-empty,
+  .ccb-result-dialog__card,
+  .licx-header,
+  .licx-client-col,
+  .licx-modal__dialog
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .calc-shell .scenario-tab.active,
+  .calc-shell .type-chip.active,
+  .renew-shell .renew-table tr.row-selected,
+  .permissions-module-option:has(.permissions-module-checkbox:checked),
+  .portal-lookup-option:hover,
+  .renew-shell .lookup-result:hover,
+  .calc-shell .suggestion-item:hover,
+  #provisioningModal .suggestion-item:hover,
+  .rbi-row:hover,
+  .ccb-row:hover,
+  .ccb-row:focus-visible
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .calc-shell .pill,
+  .calc-shell .pill--ghost,
+  .renew-shell .renew-pill,
+  .renew-shell .renew-contract-pill,
+  .payroll-contract-pill,
+  .portal-pill,
+  .ccb-counter,
+  .lic-chart-card__share,
+  .lic-cost-card__badge,
+  .lic-section-heading__meta
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .dashboard-tax-calculation__stats > div,
+  .dashboard-tax-calculation__lines div,
+  .dashboard-tax-verticals,
+  .dashboard-tax-vertical-card,
+  .dashboard-copiers-detail-row td,
+  .dashboard-copiers-detail__section,
+  .dashboard-copiers-detail__header,
+  .dashboard-copiers-line,
+  .dashboard-copiers-equipment-item,
+  .dashboard-counter-chip,
+  .dashboard-trend-card,
+  .dashboard-chart-card,
+  .dashboard-table-card,
+  .dashboard-modal__dialog,
+  .dashboard-filter-card,
+  .dashboard-pnl-orphan-table tbody td:first-child,
+  .lic-dashboard-toolbar,
+  .lic-summary-card,
+  .lic-chart-card,
+  .lic-cost-section,
+  .lic-cost-card,
+  .lic-chart-card__metrics span,
+  .lic-cost-card__stats span,
+  .lic-chart-card__canvas,
+  .lic-cost-breakdown__row
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .support-cloud-report-card,
+  .support-cloud-response-card,
+  .support-cloud-report-question,
+  .support-cloud-table-wrap,
+  .support-cloud-filter-card,
+  .support-cloud-survey-card,
+  .support-cloud-survey-option,
+  .support-cloud-survey-question,
+  .support-cloud-survey-response,
+  .support-cloud-modal__body,
+  .support-cloud-progress-card,
+  .support-cloud-consent-card,
+  .support-cloud-file-card,
+  .support-cloud-file-card__actions,
+  .support-cloud-results-card,
+  .support-cloud-score-card,
+  .support-cloud-comment-card
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .copiers-user-card,
+  .copiers-filter-pill,
+  .copiers-subpanel,
+  .copiers-detail-card,
+  .copiers-table-wrap,
+  .copiers-modal__dialog,
+  .copiers-delete-button,
+  .copiers-supply-card,
+  .hardware-hero,
+  .hardware-card,
+  .hardware-table-wrap,
+  .hardware-modal__dialog,
+  .hardware-file-card,
+  .hardware-lookup-menu,
+  .hardware-lookup-option,
+  .hardware-status-card,
+  .hardware-summary-card
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .hardware-table__row.is-documentation,
+  .hardware-table__row.is-supplier-ready,
+  .hardware-table__row.is-supplier-paid,
+  .hardware-table__row.is-in-transit,
+  .hardware-table__row.is-awaiting-billing,
+  .hardware-table__row.is-awaiting-payment,
+  .hardware-table__row.is-closed
+) {
+  background: linear-gradient(90deg, rgba(112, 185, 255, 0.1) 0%, transparent 22%) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-hero,
+  .envios-card,
+  .envios-table-wrap,
+  .envios-modal__dialog,
+  .lic-table-wrap,
+  .lic-lookup-menu,
+  .lic-report-card,
+  .lic-modal__dialog,
+  .lic-mobile-card,
+  .metrics-card,
+  .metrics-summary__card,
+  .metrics-chart-card,
+  .metrics-empty,
+  .scores-summary__card,
+  .scores-table-wrap,
+  .scores-form-panel,
+  .scores-filter-card,
+  .scores-close-card,
+  .scores-verify-panel,
+  .scores-verify-meta__card,
+  .scores-result-card,
+  .scores-lookup-menu,
+  .close-review-summary__card,
+  .rh-card,
+  .rh-module-card,
+  .rh-file-card,
+  .rh-modal__dialog,
+  .rh-modal-result__card
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .scores-product-table tbody td,
+  .scores-verify-table tbody td,
+  .scores-verify-totals td,
+  .scores-verify-product__item,
+  .scores-criteria-item,
+  .scores-close-card__header,
+  .scores-result-card strong,
+  .rh-card__header,
+  .rh-table-wrap,
+  .rh-modal-result__detail,
+  .metrics-breakdown-row
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface-soft) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .renew-status.info,
+  .payroll-status--info,
+  .portal-status.info,
+  .permissions-status.is-info,
+  .rbi-status.is-info,
+  .ccb-status--info,
+  .licx-status.is-info,
+  .pde-status,
+  .alert-info
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .renew-status.success,
+  .payroll-status--success,
+  .portal-status.success,
+  .permissions-status.is-success,
+  .rbi-status.is-success,
+  .ccb-status--success,
+  .licx-status.is-success,
+  .alert-success
+) {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .renew-status.error,
+  .payroll-status--danger,
+  .portal-status.error,
+  .permissions-status.is-error,
+  .rbi-status.is-error,
+  .ccb-status--error,
+  .licx-status.is-error,
+  .pde-status.is-error,
+  .alert-danger
+) {
+  border-color: var(--app-dark-danger-border) !important;
+  background: var(--app-dark-danger-bg) !important;
+  color: var(--app-dark-danger-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .payroll-status--warning,
+  .portal-status.warning,
+  .ccb-status--warning,
+  .payroll-detail-warnings,
+  .payroll-warning-tag,
+  .home-warning__pre,
+  .alert-warning
+) {
+  border-color: var(--app-dark-warning-border) !important;
+  background: var(--app-dark-warning-bg) !important;
+  color: var(--app-dark-warning-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .payroll-row--warning,
+  .payroll-row--warning > *,
+  .payroll-vertical-row--warning > *,
+  .ccb-row.is-invalid,
+  .licx-matrix-table td.is-negative-cell
+) {
+  background: rgba(255, 217, 138, 0.1) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .licx-matrix-table td.is-utility-positive,
+  .payroll-breakdown-row--positive,
+  .payroll-contract-pill--service,
+  .payroll-badge--success,
+  .ccb-pill.is-success,
+  .rbi-month.has-income
+) {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .licx-matrix-table td.is-utility-negative,
+  .payroll-breakdown-row--negative,
+  .payroll-badge--danger,
+  .ccb-pill.is-danger
+) {
+  border-color: var(--app-dark-danger-border) !important;
+  background: var(--app-dark-danger-bg) !important;
+  color: var(--app-dark-danger-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .licx-matrix-table td.is-utility-neutral,
+  .payroll-breakdown-row--subtotal,
+  .payroll-badge--info,
+  .rbi-month.has-rebate,
+  .rbi-month.has-rebate.has-income
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .payroll-breakdown-row--total,
+  .payroll-vertical-detail-total
+) {
+  border-color: var(--app-dark-warning-border) !important;
+  background: #111a25 !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .portal-field label,
+  .pde-field span,
+  .pde-field .form-label,
+  .permissions-employee-name,
+  .permissions-module-name,
+  .rbi-user strong,
+  .rbi-summary-card strong,
+  .rbi-month strong,
+  .portal-lookup-option__title,
+  .payroll-summary__value,
+  .payroll-section-meta,
+  .payroll-modal__title,
+  .payroll-detail-section__title,
+  .payroll-detail-item strong,
+  .payroll-breakdown-meta strong,
+  .payroll-breakdown-row strong,
+  .payroll-vertical-detail-base strong,
+  .payroll-vertical-detail-row__head span,
+  .payroll-vertical-detail-row__head strong,
+  .payroll-vertical-detail-row__parts strong,
+  .ccb-summary__value,
+  .ccb-section-title,
+  .ccb-modal__title,
+  .ccb-row__title,
+  .ccb-result-dialog__title,
+  .dashboard-tax-calculation__header strong,
+  .dashboard-tax-calculation__stats strong,
+  .dashboard-tax-calculation__lines strong,
+  .dashboard-tax-verticals__header strong,
+  .dashboard-tax-vertical-card__label,
+  .dashboard-tax-vertical-card__value,
+  .dashboard-tax-vertical-card__component strong,
+  .dashboard-tax-vertical-card__footer strong,
+  .lic-summary-card__value,
+  .lic-chart-card__title,
+  .lic-section-heading__title,
+  .lic-cost-card__title,
+  .lic-cost-card__value,
+  .lic-chart-card__metrics strong,
+  .lic-cost-card__stats strong,
+  .lic-cost-breakdown__main strong,
+  .lic-cost-breakdown__amount strong,
+  .licx-user strong,
+  .licx-kpi strong,
+  .licx-month-head,
+  .pde-hero h1,
+  .pde-admin-hero h1,
+  .pde-panel h2,
+  .pde-admin-panel h2
+) {
+  color: var(--app-dark-heading) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .portal-field small,
+  .portal-helper,
+  .portal-lookup-option__sub,
+  .permissions-employee-email,
+  .permissions-module-category,
+  .permissions-module-menu__header small,
+  .rbi-summary-card small,
+  .rbi-month span,
+  .payroll-field-hint,
+  .payroll-toolbar__hint,
+  .payroll-modal__subtitle,
+  .payroll-modal__meta,
+  .payroll-detail-item span,
+  .payroll-manual-field span,
+  .payroll-breakdown-meta span,
+  .payroll-vertical-detail-base,
+  .payroll-vertical-detail-field,
+  .ccb-toolbar__hint,
+  .ccb-section-subtitle,
+  .ccb-modal__subtitle,
+  .ccb-row__subtitle,
+  .ccb-result-dialog__message,
+  .dashboard-tax-calculation__header > span,
+  .dashboard-tax-calculation__stats span,
+  .dashboard-tax-calculation__lines span,
+  .dashboard-tax-calculation__stats small,
+  .dashboard-tax-verticals__header,
+  .dashboard-tax-vertical-card__primary-label,
+  .dashboard-tax-vertical-card__component,
+  .dashboard-tax-vertical-card__footer,
+  .lic-summary-card__label,
+  .lic-summary-card__hint,
+  .lic-chart-card__eyebrow,
+  .lic-cost-card__eyebrow,
+  .lic-section-heading__eyebrow,
+  .lic-chart-card__metrics span,
+  .lic-cost-card__stats span,
+  .lic-cost-breakdown__header,
+  .lic-cost-breakdown__main span,
+  .lic-cost-breakdown__amount span,
+  .licx-user,
+  .licx-kpi span,
+  .licx-kpi small,
+  .licx-panel-actions,
+  .licx-muted,
+  .licx-empty,
+  .licx-modal__header span
+) {
+  color: var(--app-dark-muted) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-panel,
+  .envios-status,
+  .envios-summary__item,
+  .envios-calendar__cell,
+  .envios-empty,
+  .envios-placeholder,
+  .envios-table tbody tr,
+  .lic-group-toggle,
+  .lic-lookup-option,
+  .lic-table tbody tr,
+  .dashboard-invoice-preview,
+  .dashboard-equipment-detail__assignment,
+  .dashboard-equipment-detail__stock-toggle,
+  .dashboard-pnl-detail__static,
+  .support-cloud-progress__steps li,
+  .support-cloud-report-preview,
+  .support-cloud-survey-mini-list__item,
+  .support-cloud-survey-compose article,
+  .support-cloud-survey-pick,
+  .support-cloud-qr-panel,
+  .support-cloud-qr-counters article,
+  .support-cloud-breakdown__track,
+  .copiers-kpi,
+  .copiers-preventive-detail__summary span,
+  .hardware-import-panel,
+  .hardware-mini-table-wrap,
+  .hardware-stage-table-wrap,
+  .hardware-state-card,
+  .hardware-file-chip,
+  .hardware-group-toggle,
+  .hardware-stage-panel,
+  .hardware-lookup__menu,
+  .hardware-lookup__option,
+  .hardware-table__row--child,
+  .metrics-chart__totals,
+  .metrics-chart__empty,
+  .metrics-chart__legend-item,
+  .scores-card,
+  .scores-hero,
+  .scores-user-pill,
+  .scores-group__metric,
+  .scores-offer-link,
+  .scores-detail-row,
+  .scores-detail__chip,
+  .scores-product-empty,
+  .scores-verify-section,
+  .scores-verify-product__search,
+  .scores-close-log__entry,
+  .close-review-section,
+  .close-review-item,
+  .rh-hero,
+  .rh-user-pill,
+  .rh-record-pill,
+  .rh-counter,
+  .rh-empty-state,
+  .rh-static-value,
+  .vacation-metric,
+  .vacation-preview,
+  .rh-image-preview
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-kicker,
+  .envios-status-pill,
+  .lic-badge,
+  .metrics-chart__badge,
+  .scores-kicker,
+  .scores-filter-btn,
+  .rh-kicker
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-calendar__cell.has-count,
+  .envios-status.is-info,
+  .metrics-status.info,
+  .scores-status.info,
+  .rh-status--info,
+  #debugCalcModal .debug-chip
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-status.is-success,
+  .envios-status-pill.is-pickup,
+  .envios-status-pill.is-closed,
+  .metrics-status.success,
+  .scores-status.success,
+  .scores-group__complete,
+  .scores-verified--yes,
+  .scores-close-log__entry.success,
+  .rh-status--success,
+  .vacation-preview.is-valid,
+  #attachmentModal .status-success,
+  #provisioningModal .status-success
+) {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-status.is-error,
+  .envios-status-pill.is-delivered,
+  .metrics-status.error,
+  .scores-status.error,
+  .scores-close-log__entry.error,
+  .rh-status--error,
+  .vacation-preview.is-invalid,
+  #attachmentModal .status-error,
+  #provisioningModal .status-error
+) {
+  border-color: var(--app-dark-danger-border) !important;
+  background: var(--app-dark-danger-bg) !important;
+  color: var(--app-dark-danger-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-status-pill.is-open,
+  .lic-badge.is-warning,
+  .scores-close-log__entry.warning,
+  .rh-status--warning,
+  .payroll-badge--warning,
+  .payroll-vertical-detail-residual
+) {
+  border-color: var(--app-dark-warning-border) !important;
+  background: var(--app-dark-warning-bg) !important;
+  color: var(--app-dark-warning-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .lic-badge.is-good,
+  .scores-filter-btn.active
+) {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .lic-badge.is-danger
+) {
+  border-color: var(--app-dark-danger-border) !important;
+  background: var(--app-dark-danger-bg) !important;
+  color: var(--app-dark-danger-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-table tbody tr,
+  .lic-table tbody tr,
+  .hardware-lookup__option,
+  .support-cloud-survey-pick,
+  .scores-verify-product__item,
+  .scores-close-log__entry,
+  .close-review-item
+):hover {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .dashboard-invoice-preview iframe,
+  .support-cloud-report-preview iframe
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface-soft) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-summary__item strong,
+  .envios-calendar__cell strong,
+  .envios-table__main,
+  .envios-route strong,
+  .lic-group-title strong,
+  .hardware-import-panel__title,
+  .hardware-stage-panel__header h3,
+  .hardware-note-card strong,
+  .hardware-form__summary-title,
+  .hardware-summary__value,
+  .hardware-toolbar__summary strong,
+  .hardware-state-card__value,
+  .hardware-table__title strong,
+  .hardware-lookup__option span,
+  .metrics-summary__value,
+  .metrics-chart__title,
+  .metrics-chart__total-value,
+  .metrics-chart__empty strong,
+  .metrics-chart__legend-name,
+  .scores-title,
+  .scores-summary__value,
+  .scores-group__metric-value,
+  .scores-cell-main,
+  .scores-product-table__name,
+  .scores-verify-meta__value,
+  .scores-close-card__title,
+  .scores-close-log__title,
+  .close-review-summary__value,
+  .close-review-item__toggle,
+  .rh-title,
+  .rh-section-title,
+  .rh-module-card__title,
+  .rh-field label,
+  .vacation-preview__row strong,
+  .rh-modal-result__title
+) {
+  color: var(--app-dark-heading) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .envios-kicker,
+  .envios-field__label,
+  .envios-user-pill__label,
+  .envios-summary__item span,
+  .envios-form__label,
+  .envios-counter,
+  .envios-calendar__weekday,
+  .envios-calendar__day,
+  .envios-calendar__cell small,
+  .envios-table__muted,
+  .envios-placeholder,
+  .envios-route span,
+  .lic-group-title small,
+  .lic-muted,
+  .hardware-selection-summary,
+  .hardware-state-card__label,
+  .hardware-lookup__option small,
+  .hardware-lookup__empty,
+  .metrics-chart__eyebrow,
+  .metrics-chart__subtitle,
+  .scores-subtitle,
+  .scores-toolbar__caption,
+  .scores-group__subtitle,
+  .scores-modal__subtitle,
+  .scores-empty,
+  .scores-product-empty,
+  .scores-cell-sub,
+  .scores-product-table__id,
+  .scores-user-pill__label,
+  .scores-verify-meta__label,
+  .scores-verify-product__meta,
+  .scores-verify-product__item span,
+  .scores-close-card__subtitle,
+  .scores-close-log__empty,
+  .scores-close-log__text,
+  .rh-subtitle,
+  .rh-section-subtitle,
+  .rh-filter-field label,
+  .rh-module-card__description,
+  .rh-field small,
+  .vacation-metric__label,
+  .vacation-metric small,
+  .vacation-preview__hint,
+  .vacation-muted,
+  .rh-file-meta,
+  .rh-modal-result__message
+) {
+  color: var(--app-dark-muted) !important;
 }
