@@ -1380,3 +1380,269 @@ html[data-bs-theme="dark"] body.app-shell :is(
 ) {
   color: var(--app-dark-muted) !important;
 }
+
+/* Dark mode safety net for module styles that still use hard-coded light colors. */
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-card"],
+  [class*="-card "],
+  [class$="__card"],
+  [class*="__card "],
+  [class$="-dialog"],
+  [class*="-dialog "],
+  [class$="__dialog"],
+  [class*="__dialog "],
+  [class$="-modal-dialog"],
+  [class*="-modal-dialog "],
+  [class$="-empty"],
+  [class*="-empty "],
+  [class$="__empty"],
+  [class*="__empty "],
+  .dashboard-tabs,
+  .dashboard-subtabs,
+  .dashboard-toolbar,
+  .dashboard-kpi,
+  .dashboard-user-card,
+  .dashboard-column-menu,
+  .dashboard-pnl-detail__static,
+  .support-cloud-module-nav,
+  .support-cloud-tabs,
+  .support-cloud-status,
+  .support-cloud-user-pill,
+  .support-cloud-toolbar,
+  .support-cloud-report-result,
+  .support-cloud-progress__track,
+  .copiers-tabs,
+  .copiers-status,
+  .copiers-user-pill,
+  .copiers-location-card,
+  .copiers-modal__dialog--wide .copiers-form__grid,
+  .metrics-user-pill,
+  .metrics-insight,
+  .metrics-view-tabs,
+  .metrics-status,
+  .scores-verify-section,
+  .scores-verify-table,
+  .scores-verify-product__search,
+  .ccb-validation-card,
+  .ccb-file-card,
+  .ccb-file-card__actions
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-card"],
+  [class*="-card "],
+  [class$="__card"],
+  [class*="__card "],
+  [class$="-chip"],
+  [class*="-chip "],
+  [class$="__chip"],
+  [class*="__chip "],
+  [class$="-pill"],
+  [class*="-pill "],
+  [class$="__pill"],
+  [class*="__pill "],
+  [class$="-badge"],
+  [class*="-badge "],
+  [class$="__badge"],
+  [class*="__badge "]
+):is(.success, .is-success, [class*="--success"], [class*="--good"], [class*="has-income"]) {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-card"],
+  [class*="-card "],
+  [class$="__card"],
+  [class*="__card "],
+  [class$="-chip"],
+  [class*="-chip "],
+  [class$="__chip"],
+  [class*="__chip "],
+  [class$="-pill"],
+  [class*="-pill "],
+  [class$="__pill"],
+  [class*="__pill "],
+  [class$="-badge"],
+  [class*="-badge "],
+  [class$="__badge"],
+  [class*="__badge "]
+):is(.error, .is-error, .danger, .is-danger, [class*="--error"], [class*="--danger"], [class*="--negative"]) {
+  border-color: var(--app-dark-danger-border) !important;
+  background: var(--app-dark-danger-bg) !important;
+  color: var(--app-dark-danger-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-card"],
+  [class*="-card "],
+  [class$="__card"],
+  [class*="__card "],
+  [class$="-chip"],
+  [class*="-chip "],
+  [class$="__chip"],
+  [class*="__chip "],
+  [class$="-pill"],
+  [class*="-pill "],
+  [class$="__pill"],
+  [class*="__pill "],
+  [class$="-badge"],
+  [class*="-badge "],
+  [class$="__badge"],
+  [class*="__badge "]
+):is(.warning, .is-warning, [class*="--warning"], [class*="--onetime"], [class*="--pending"]) {
+  border-color: var(--app-dark-warning-border) !important;
+  background: var(--app-dark-warning-bg) !important;
+  color: var(--app-dark-warning-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-hero"],
+  [class*="-hero "]
+) {
+  border-color: var(--app-dark-border) !important;
+  background:
+    radial-gradient(circle at top right, rgba(112, 185, 255, 0.18), transparent 36%),
+    linear-gradient(135deg, var(--app-dark-surface-raised) 0%, var(--app-dark-field) 100%) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.28) !important;
+  color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-title"],
+  [class*="-title "],
+  [class$="__title"],
+  [class*="__title "],
+  [class$="-name"],
+  [class*="-name "],
+  [class$="__name"],
+  [class*="__name "],
+  [class$="-value"],
+  [class*="-value "],
+  [class$="__value"],
+  [class*="__value "],
+  [class$="-amount"],
+  [class*="-amount "],
+  [class$="__amount"],
+  [class*="__amount "]
+) {
+  color: var(--app-dark-heading) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class$="-subtitle"],
+  [class*="-subtitle "],
+  [class$="__subtitle"],
+  [class*="__subtitle "],
+  [class$="-description"],
+  [class*="-description "],
+  [class$="__description"],
+  [class*="__description "],
+  [class$="-caption"],
+  [class*="-caption "],
+  [class$="__caption"],
+  [class*="__caption "],
+  [class$="-label"],
+  [class*="-label "],
+  [class$="__label"],
+  [class*="__label "],
+  [class$="-hint"],
+  [class*="-hint "],
+  [class$="__hint"],
+  [class*="__hint "],
+  [class$="-meta"],
+  [class*="-meta "],
+  [class$="__meta"],
+  [class*="__meta "],
+  [class$="-muted"],
+  [class*="-muted "],
+  [class$="__muted"],
+  [class*="__muted "]
+) {
+  color: var(--app-dark-muted) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class*="status"],
+  [class*="notice"],
+  [class*="message"],
+  [class*="alert"]
+):not(.btn):not(button):not(input):not(select):not(textarea) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class*="status"],
+  [class*="notice"],
+  [class*="message"],
+  [class*="alert"]
+):is(.success, .is-success, .alert-success, [class*="--success"]) {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class*="status"],
+  [class*="notice"],
+  [class*="message"],
+  [class*="alert"]
+):is(.error, .is-error, .danger, .is-danger, .alert-danger, [class*="--error"], [class*="--danger"]) {
+  border-color: var(--app-dark-danger-border) !important;
+  background: var(--app-dark-danger-bg) !important;
+  color: var(--app-dark-danger-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  [class*="status"],
+  [class*="notice"],
+  [class*="message"],
+  [class*="alert"]
+):is(.warning, .is-warning, .alert-warning, [class*="--warning"]) {
+  border-color: var(--app-dark-warning-border) !important;
+  background: var(--app-dark-warning-bg) !important;
+  color: var(--app-dark-warning-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .dashboard-subtab,
+  .dashboard-pill,
+  .dashboard-pill--soft,
+  .support-cloud-kicker,
+  .support-cloud-tab,
+  .support-cloud-module-tab,
+  .copiers-tab,
+  .copiers-kicker,
+  .metrics-kicker,
+  .scores-kicker,
+  .scores-filter-btn,
+  .home-kicker,
+  .renew-kicker
+) {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .dashboard-tab.is-active,
+  .dashboard-subtab.is-active,
+  .support-cloud-tab.is-active,
+  .support-cloud-module-tab.is-active,
+  .copiers-tab.is-active,
+  .metrics-view-tab.active,
+  .scores-filter-btn.active
+) {
+  border-color: var(--app-dark-link) !important;
+  background: rgba(112, 185, 255, 0.26) !important;
+  color: var(--app-dark-heading) !important;
+  box-shadow: inset 0 0 0 1px rgba(112, 185, 255, 0.18) !important;
+}

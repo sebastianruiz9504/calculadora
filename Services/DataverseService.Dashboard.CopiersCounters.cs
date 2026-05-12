@@ -117,6 +117,8 @@ public sealed partial class DataverseService
                     EquipmentName = equipment.Serial,
                     ClientId = normalizedClientId,
                     ClientName = clientName,
+                    Area = equipment.Area,
+                    Site = equipment.Site,
                     CurrentDateValue = FormatCopiersCounterDateValue(actual.Date),
                     CurrentDateDisplay = FormatCopiersCounterDateDisplay(actual.Date),
                     PreviousDateValue = FormatCopiersCounterDateValue(previous.Date),

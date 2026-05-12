@@ -27,6 +27,7 @@
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
      data-copiers-equipment-url="@Url.Action("CopiersEquipment", "Dashboard")"
      data-copiers-counters-url="@Url.Action("CopiersCounters", "Dashboard")"
+     data-copiers-counters-pdf-url="@Url.Action("CopiersCountersPdf", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
      data-copiers-equipment-assignment-url="@Url.Action("CopiersEquipmentAssignment", "Dashboard")"
      data-copiers-line-equipment-assignment-url="@Url.Action("CopiersLineEquipmentAssignment", "Dashboard")"
@@ -1032,6 +1033,7 @@
                                 <datalist id="copiersCountersClientOptions"></datalist>
                             </label>
                             <button type="button" class="btn btn-primary dashboard-refresh-btn" id="copiersCountersRefreshBtn">Aplicar filtros</button>
+                            <button type="button" class="btn btn-outline-primary dashboard-refresh-btn" id="copiersCountersPdfBtn" disabled>Exportar PDF</button>
                             <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersCountersClearBtn">Limpiar</button>
                         </div>
                     </div>
@@ -1090,6 +1092,8 @@
                                 <tr>
                                     <th>Cliente</th>
                                     <th>Equipo</th>
+                                    <th>Sede</th>
+                                    <th>Ubicaci&oacute;n</th>
                                     <th>Fecha toma anterior</th>
                                     <th>Fecha toma actual</th>
                                     <th class="text-end">Contador actual copias</th>

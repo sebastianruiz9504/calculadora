@@ -7,6 +7,8 @@ using CotizadorInterno.Web.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
+using System.Globalization;
+using System.Text;
 
 namespace CotizadorInterno.Web.Controllers;
 
@@ -14,6 +16,8 @@ namespace CotizadorInterno.Web.Controllers;
 public sealed class DashboardController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
+    private static readonly CultureInfo PdfCulture = CultureInfo.GetCultureInfo("es-CO");
+    private static readonly Encoding PdfEncoding = Encoding.Latin1;
     private readonly IDataverseService _dataverse;
     private readonly ISiigoService _siigo;
 
@@ -472,6 +476,39 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el consumo de contadores copiers.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersCountersPdf([FromQuery] int? year, [FromQuery] int? month, [FromQuery] string? clientId, [FromQuery] string? clientName, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var dashboard = await _dataverse.GetCopiersCountersDashboardAsync(
+                year ?? today.Year,
+                month ?? today.Month,
+                clientId,
+                clientName,
+                ct);
+
+            var content = BuildCopiersCountersPdf(dashboard);
+            var periodToken = string.IsNullOrWhiteSpace(dashboard.PeriodValue)
+                ? $"{dashboard.Year:D4}-{dashboard.Month:D2}"
+                : dashboard.PeriodValue;
+            var clientToken = BuildSafeFileName(FirstNonEmpty(dashboard.SelectedClientName, "todos-los-clientes"));
+            var fileName = $"consumo-copiers-{periodToken}-{clientToken}.pdf";
+
+            return File(content, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible exportar el reporte mensual de consumo copiers.");
         }
     }
 
@@ -963,6 +1000,312 @@ public sealed class DashboardController : Controller
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
     }
 
+    private static byte[] BuildCopiersCountersPdf(CopiersCountersDashboardDto dashboard)
+    {
+        const double pageWidth = 841.89;
+        const double pageHeight = 595.28;
+        const double marginX = 24;
+        const double topY = 572;
+        const double tableTopY = 505;
+        const double bottomY = 34;
+        const double headerHeight = 18;
+        const double rowHeight = 14.5;
+
+        var rows = (dashboard.EquipmentRows ?? Array.Empty<CopiersCountersEquipmentRowDto>()).ToList();
+        var columns = new[]
+        {
+            new PdfTableColumn("Cliente", 110, false, row => FirstNonEmpty(row.ClientName, "Sin cliente")),
+            new PdfTableColumn("Equipo", 60, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
+            new PdfTableColumn("Sede", 65, false, row => row.Site),
+            new PdfTableColumn("Ubicacion", 65, false, row => row.Area),
+            new PdfTableColumn("Fecha ant.", 46, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
+            new PdfTableColumn("Fecha act.", 46, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
+            new PdfTableColumn("Act. copias", 50, true, row => FormatPdfNumber(row.CurrentCopiesCounter)),
+            new PdfTableColumn("Ant. copias", 50, true, row => FormatPdfNumber(row.PreviousCopiesCounter)),
+            new PdfTableColumn("Copias", 45, true, row => FormatPdfNumber(row.CopiesConsumption)),
+            new PdfTableColumn("Act. esc.", 50, true, row => FormatPdfNumber(row.CurrentScansCounter)),
+            new PdfTableColumn("Ant. esc.", 50, true, row => FormatPdfNumber(row.PreviousScansCounter)),
+            new PdfTableColumn("Escaneos", 45, true, row => FormatPdfNumber(row.ScansConsumption)),
+            new PdfTableColumn("Dias", 34, true, row => FormatPdfNumber(row.DaysBetweenReadings)),
+            new PdfTableColumn("Total", 44, true, row => FormatPdfNumber(row.TotalConsumption))
+        };
+
+        var tableWidth = columns.Sum(static column => column.Width);
+        var tableX = Math.Max(marginX, (pageWidth - tableWidth) / 2);
+        var rowsPerPage = Math.Max(1, (int)Math.Floor((tableTopY - headerHeight - bottomY) / rowHeight));
+        var totalPages = Math.Max(1, (int)Math.Ceiling(rows.Count / (double)rowsPerPage));
+        var pages = new List<string>(totalPages);
+
+        for (var pageIndex = 0; pageIndex < totalPages; pageIndex++)
+        {
+            var content = new StringBuilder();
+            var pageRows = rows
+                .Skip(pageIndex * rowsPerPage)
+                .Take(rowsPerPage)
+                .ToList();
+
+            AppendPdfText(content, "Reporte mensual de consumo Copiers", marginX, topY, 13, "F2", 360);
+            AppendPdfText(
+                content,
+                $"Periodo: {FirstNonEmpty(dashboard.PeriodLabel, $"{dashboard.Year:D4}-{dashboard.Month:D2}")} | Rango: {FirstNonEmpty(dashboard.DateRangeLabel, "-")}",
+                marginX,
+                topY - 16,
+                7.5,
+                "F1",
+                470);
+            AppendPdfText(
+                content,
+                $"Cliente: {FirstNonEmpty(dashboard.SelectedClientName, "Todos los clientes")} | Equipos: {rows.Count.ToString("N0", PdfCulture)} | Corte: {FirstNonEmpty(dashboard.AsOfDateLabel, "-")}",
+                marginX,
+                topY - 29,
+                7.5,
+                "F1",
+                620);
+            AppendPdfText(
+                content,
+                $"Pagina {pageIndex + 1} de {totalPages}",
+                pageWidth - marginX - 80,
+                topY - 29,
+                7.5,
+                "F1",
+                80,
+                alignRight: true);
+
+            AppendPdfRect(content, tableX, tableTopY - headerHeight, tableWidth, headerHeight, "0.91 0.95 1", fill: true);
+
+            var currentX = tableX;
+            foreach (var column in columns)
+            {
+                AppendPdfCellBorder(content, currentX, tableTopY - headerHeight, column.Width, headerHeight);
+                AppendPdfText(
+                    content,
+                    column.Header,
+                    currentX + 3,
+                    tableTopY - 12,
+                    5.7,
+                    "F2",
+                    column.Width - 6,
+                    alignRight: column.AlignRight);
+                currentX += column.Width;
+            }
+
+            var currentY = tableTopY - headerHeight;
+            if (rows.Count == 0)
+            {
+                var rowY = currentY - rowHeight;
+                AppendPdfCellBorder(content, tableX, rowY, tableWidth, rowHeight);
+                AppendPdfText(content, "No hay equipos con lecturas para el periodo seleccionado.", tableX + 4, rowY + 5, 7, "F1", tableWidth - 8);
+            }
+            else
+            {
+                for (var rowIndex = 0; rowIndex < pageRows.Count; rowIndex++)
+                {
+                    var row = pageRows[rowIndex];
+                    var rowY = currentY - rowHeight;
+                    if (rowIndex % 2 == 1)
+                    {
+                        AppendPdfRect(content, tableX, rowY, tableWidth, rowHeight, "0.98 0.99 1", fill: true);
+                    }
+
+                    currentX = tableX;
+                    foreach (var column in columns)
+                    {
+                        AppendPdfCellBorder(content, currentX, rowY, column.Width, rowHeight);
+                        AppendPdfText(
+                            content,
+                            FirstNonEmpty(column.ValueSelector(row), "-"),
+                            currentX + 3,
+                            rowY + 5,
+                            5.2,
+                            "F1",
+                            column.Width - 6,
+                            alignRight: column.AlignRight);
+                        currentX += column.Width;
+                    }
+
+                    currentY = rowY;
+                }
+            }
+
+            AppendPdfText(
+                content,
+                "Tabla generada desde Dashboard > Copiers > Contadores.",
+                marginX,
+                18,
+                6.5,
+                "F1",
+                pageWidth - (marginX * 2));
+
+            pages.Add(content.ToString());
+        }
+
+        return BuildPdfDocument(pages, pageWidth, pageHeight);
+    }
+
+    private static byte[] BuildPdfDocument(IReadOnlyList<string> pageContents, double pageWidth, double pageHeight)
+    {
+        var pageCount = Math.Max(1, pageContents.Count);
+        var objectCount = 4 + (pageCount * 2);
+        var offsets = new long[objectCount + 1];
+
+        using var stream = new MemoryStream();
+        WritePdfString(stream, "%PDF-1.4\n");
+
+        WritePdfObject(stream, offsets, 1, "<< /Type /Catalog /Pages 2 0 R >>");
+
+        var kids = string.Join(" ", Enumerable.Range(0, pageCount).Select(static index => $"{5 + (index * 2)} 0 R"));
+        WritePdfObject(stream, offsets, 2, $"<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>");
+        WritePdfObject(stream, offsets, 3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+        WritePdfObject(stream, offsets, 4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+
+        for (var index = 0; index < pageCount; index++)
+        {
+            var pageObjectNumber = 5 + (index * 2);
+            var contentObjectNumber = pageObjectNumber + 1;
+            WritePdfObject(
+                stream,
+                offsets,
+                pageObjectNumber,
+                FormattableString.Invariant(
+                    $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pageWidth:0.##} {pageHeight:0.##}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {contentObjectNumber} 0 R >>"));
+            WritePdfStreamObject(stream, offsets, contentObjectNumber, pageContents[index]);
+        }
+
+        var xrefOffset = stream.Position;
+        WritePdfString(stream, $"xref\n0 {objectCount + 1}\n");
+        WritePdfString(stream, "0000000000 65535 f \n");
+        for (var index = 1; index <= objectCount; index++)
+        {
+            WritePdfString(stream, $"{offsets[index]:D10} 00000 n \n");
+        }
+
+        WritePdfString(stream, $"trailer\n<< /Size {objectCount + 1} /Root 1 0 R >>\nstartxref\n{xrefOffset}\n%%EOF");
+        return stream.ToArray();
+    }
+
+    private static void WritePdfObject(MemoryStream stream, long[] offsets, int objectNumber, string body)
+    {
+        offsets[objectNumber] = stream.Position;
+        WritePdfString(stream, $"{objectNumber} 0 obj\n{body}\nendobj\n");
+    }
+
+    private static void WritePdfStreamObject(MemoryStream stream, long[] offsets, int objectNumber, string content)
+    {
+        offsets[objectNumber] = stream.Position;
+        var contentBytes = PdfEncoding.GetBytes(content);
+        WritePdfString(stream, $"{objectNumber} 0 obj\n<< /Length {contentBytes.Length} >>\nstream\n");
+        stream.Write(contentBytes, 0, contentBytes.Length);
+        WritePdfString(stream, "\nendstream\nendobj\n");
+    }
+
+    private static void WritePdfString(MemoryStream stream, string value)
+    {
+        var bytes = PdfEncoding.GetBytes(value);
+        stream.Write(bytes, 0, bytes.Length);
+    }
+
+    private static void AppendPdfRect(StringBuilder content, double x, double y, double width, double height, string color, bool fill)
+    {
+        AppendPdfCommand(
+            content,
+            fill
+                ? "{0} rg {1:0.###} {2:0.###} {3:0.###} {4:0.###} re f"
+                : "{0} RG {1:0.###} {2:0.###} {3:0.###} {4:0.###} re S",
+            color,
+            x,
+            y,
+            width,
+            height);
+    }
+
+    private static void AppendPdfCellBorder(StringBuilder content, double x, double y, double width, double height)
+    {
+        AppendPdfCommand(content, "0.82 0.87 0.93 RG 0.35 w {0:0.###} {1:0.###} {2:0.###} {3:0.###} re S", x, y, width, height);
+    }
+
+    private static void AppendPdfText(
+        StringBuilder content,
+        string? value,
+        double x,
+        double y,
+        double fontSize,
+        string fontResource,
+        double maxWidth,
+        bool alignRight = false)
+    {
+        var text = FitPdfText(CleanPdfText(value), maxWidth, fontSize);
+        var textX = x;
+        if (alignRight)
+        {
+            textX = x + Math.Max(0, maxWidth - EstimatePdfTextWidth(text, fontSize));
+        }
+
+        AppendPdfCommand(
+            content,
+            "BT /{0} {1:0.###} Tf 0.05 0.09 0.15 rg 1 0 0 1 {2:0.###} {3:0.###} Tm ({4}) Tj ET",
+            fontResource,
+            fontSize,
+            textX,
+            y,
+            EscapePdfText(text));
+    }
+
+    private static void AppendPdfCommand(StringBuilder content, string format, params object[] args)
+    {
+        content.AppendFormat(CultureInfo.InvariantCulture, format, args);
+        content.Append('\n');
+    }
+
+    private static string FormatPdfNumber(long? value) =>
+        value.HasValue ? value.Value.ToString("N0", PdfCulture) : "-";
+
+    private static string FormatPdfNumber(int? value) =>
+        value.HasValue ? value.Value.ToString("N0", PdfCulture) : "-";
+
+    private static string FormatPdfNumber(long value) =>
+        value.ToString("N0", PdfCulture);
+
+    private static string FitPdfText(string value, double maxWidth, double fontSize)
+    {
+        if (string.IsNullOrWhiteSpace(value) || maxWidth <= 0)
+            return value;
+
+        var maxChars = Math.Max(1, (int)Math.Floor(maxWidth / Math.Max(fontSize * 0.52, 1)));
+        if (value.Length <= maxChars)
+            return value;
+
+        if (maxChars <= 3)
+            return value[..Math.Min(value.Length, maxChars)];
+
+        return $"{value[..(maxChars - 3)].TrimEnd()}...";
+    }
+
+    private static double EstimatePdfTextWidth(string value, double fontSize) =>
+        CleanPdfText(value).Length * fontSize * 0.52;
+
+    private static string CleanPdfText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var cleaned = value
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Replace('\t', ' ')
+            .Trim();
+
+        return string.Join(" ", cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string EscapePdfText(string value) =>
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("(", "\\(", StringComparison.Ordinal)
+            .Replace(")", "\\)", StringComparison.Ordinal);
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
+
     private static string BuildSafeFileName(string? value)
     {
         var cleaned = string.Join("-", (value ?? "cliente")
@@ -976,4 +1319,10 @@ public sealed class DashboardController : Controller
             ? "cliente"
             : cleaned.ToLowerInvariant();
     }
+
+    private sealed record PdfTableColumn(
+        string Header,
+        double Width,
+        bool AlignRight,
+        Func<CopiersCountersEquipmentRowDto, string> ValueSelector);
 }

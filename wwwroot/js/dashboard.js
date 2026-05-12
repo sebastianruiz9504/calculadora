@@ -121,6 +121,7 @@
     const copiersEquipmentRefreshButton = document.getElementById("copiersEquipmentRefreshBtn");
     const copiersMaintenanceRefreshButton = document.getElementById("copiersMaintenanceRefreshBtn");
     const copiersCountersRefreshButton = document.getElementById("copiersCountersRefreshBtn");
+    const copiersCountersPdfButton = document.getElementById("copiersCountersPdfBtn");
     const copiersEquipmentResultsCount = document.getElementById("copiersEquipmentResultsCount");
     const copiersEquipmentKpisContainer = document.getElementById("copiersEquipmentKpisContainer");
     const copiersMaintenanceKpisContainer = document.getElementById("copiersMaintenanceKpisContainer");
@@ -294,6 +295,7 @@
     const licenciamientoDefaultMonth = 12;
     const taxesRetentionsExportUrl = app.dataset.taxesRetentionsExportUrl || "";
     const billingClientReportExportUrl = app.dataset.billingClientReportExportUrl || "";
+    const copiersCountersPdfUrl = app.dataset.copiersCountersPdfUrl || "";
 
     const currencyFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -691,6 +693,7 @@
         state.copiersCountersLoading = loading;
         [
             copiersCountersRefreshButton,
+            copiersCountersPdfButton,
             copiersCountersClearButton,
             copiersCountersMonthFilter,
             copiersCountersYearFilter,
@@ -701,6 +704,7 @@
                 element.disabled = loading;
             }
         });
+        updateCopiersCountersPdfButton();
     }
 
     function setCopiersEditorSaving(saving) {
@@ -2857,6 +2861,22 @@
         return `${baseUrl}?${params.toString()}`;
     }
 
+    function buildCopiersCountersPdfUrl() {
+        const baseUrl = copiersCountersPdfUrl || "";
+        if (!baseUrl) {
+            return "";
+        }
+
+        const params = new URLSearchParams({
+            year: String(state.copiersCountersYear),
+            month: String(state.copiersCountersMonth),
+            clientId: state.copiersCountersClientId || "",
+            clientName: state.copiersCountersClientName || ""
+        });
+
+        return `${baseUrl}?${params.toString()}`;
+    }
+
     function buildCopiersEquipmentDetailUrl(equipmentId) {
         const baseUrl = app.dataset.copiersEquipmentDetailUrl || "";
         const params = new URLSearchParams({
@@ -4600,7 +4620,7 @@
         }
 
         if (copiersCountersEquipmentBody) {
-            copiersCountersEquipmentBody.innerHTML = '<tr><td colspan="12" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
+            copiersCountersEquipmentBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
         }
 
         if (copiersCountersPeriodLabel) {
@@ -4610,6 +4630,8 @@
         if (state.activeTab === "copiers" && state.copiersSubtab === "counters") {
             updateHeroForCopiers(null);
         }
+
+        updateCopiersCountersPdfButton();
     }
 
     function markCopiersCountersFiltersPending(message) {
@@ -4622,6 +4644,19 @@
     function handleCopiersCountersFilterChanged(message) {
         syncCopiersCountersFiltersFromControls();
         markCopiersCountersFiltersPending(message);
+    }
+
+    function updateCopiersCountersPdfButton() {
+        if (!copiersCountersPdfButton) {
+            return;
+        }
+
+        const filtersMatchLoadedData = state.copiersCountersHasAppliedFilters
+            && state.copiersCountersDashboard
+            && state.copiersCountersSignature === getCopiersCountersSignature();
+        copiersCountersPdfButton.disabled = state.copiersCountersLoading
+            || !copiersCountersPdfUrl
+            || !filtersMatchLoadedData;
     }
 
     function renderCopiersCountersClientOptions(dashboard) {
@@ -4689,6 +4724,8 @@
                 <tr>
                     <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td>${escapeHtml(row.equipmentName || "Sin equipo")}</td>
+                    <td>${escapeHtml(row.site || "")}</td>
+                    <td>${escapeHtml(row.area || "")}</td>
                     <td>${escapeHtml(row.previousDateDisplay || "—")}</td>
                     <td>${escapeHtml(row.currentDateDisplay || "—")}</td>
                     <td class="text-end">${escapeHtml(formatNullableNumber(row.currentCopiesCounter))}</td>
@@ -4701,7 +4738,7 @@
                     <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.totalConsumption))}</strong></td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="12" class="dashboard-table__empty">No hay equipos con lecturas para el periodo seleccionado.</td></tr>';
+            : '<tr><td colspan="14" class="dashboard-table__empty">No hay equipos con lecturas para el periodo seleccionado.</td></tr>';
     }
 
     function renderCopiersCountersDashboard(dashboard) {
@@ -4728,6 +4765,8 @@
                 ? `${dashboard.periodLabel || "Periodo"} · ${dashboard.dateRangeLabel}`
                 : (dashboard?.periodLabel || "Copias y escaneos consolidados por periodo.");
         }
+
+        updateCopiersCountersPdfButton();
     }
 
     function renderCopiersEquipmentDashboard(dashboard) {
@@ -7188,6 +7227,22 @@
     });
     copiersCountersRefreshButton?.addEventListener("click", () => {
         loadCopiersCounters();
+    });
+    copiersCountersPdfButton?.addEventListener("click", () => {
+        syncCopiersCountersFiltersFromControls();
+        if (!state.copiersCountersHasAppliedFilters || state.copiersCountersSignature !== getCopiersCountersSignature()) {
+            setStatus(copiersStatusBanner, "warning", "Aplica los filtros antes de exportar el PDF.");
+            updateCopiersCountersPdfButton();
+            return;
+        }
+
+        const url = buildCopiersCountersPdfUrl();
+        if (!url) {
+            setStatus(copiersStatusBanner, "error", "No hay una URL configurada para exportar el PDF de contadores.");
+            return;
+        }
+
+        window.location.href = url;
     });
     copiersCountersClearButton?.addEventListener("click", () => {
         state.copiersCountersYear = currentYear;

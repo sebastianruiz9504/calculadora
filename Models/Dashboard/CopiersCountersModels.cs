@@ -43,6 +43,8 @@ public sealed class CopiersCountersEquipmentRowDto
     public string EquipmentName { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string Area { get; set; } = "";
+    public string Site { get; set; } = "";
     public string CurrentDateValue { get; set; } = "";
     public string CurrentDateDisplay { get; set; } = "";
     public string PreviousDateValue { get; set; } = "";
