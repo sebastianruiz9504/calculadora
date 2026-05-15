@@ -6,6 +6,7 @@
 
     const loadUrl = app.dataset.loadUrl || "";
     const previewUrl = app.dataset.previewUrl || "";
+    const historicalPreviewUrl = app.dataset.historicalPreviewUrl || "";
     const accountSearchUrl = app.dataset.accountSearchUrl || "";
     const clientSearchUrl = app.dataset.clientSearchUrl || "";
     const productSearchUrl = app.dataset.productSearchUrl || "";
@@ -16,11 +17,158 @@
     const updateContractUrl = app.dataset.updateContractUrl || "";
     const updateSalesPriceUrl = app.dataset.updateSalesPriceUrl || "";
     const breakdownProductName = "Acronis Cyber Cloud Commitment (SPLA) Manual Provisioning - One Time Setup Fee";
+    const defaultHistoricalTrmText = [
+        "05/02/2025 | 4.153,54",
+        "05/03/2025 | 4.144,18",
+        "05/04/2025 | 4.274,03",
+        "05/05/2025 | 4.243,80",
+        "05/06/2025 | 4.107,85",
+        "05/07/2025 | 3.974,37",
+        "05/08/2025 | 4.097,38",
+        "05/09/2025 | 3.991,09",
+        "05/10/2025 | 3.874,18",
+        "05/11/2025 | 3.872,47",
+        "05/12/2025 | 3.757,92",
+        "05/01/2026 | 3.790,77",
+        "05/02/2026 | 3.644,93",
+        "05/03/2026 | 3.751,41"
+    ].join("\\n");
+    const defaultHistoricalAcronisText = [
+        "2026-02 | Aerorental | 218.55",
+        "2026-02 | Aguas De Bogota | 618.22",
+        "2026-02 | Construelectricos | 17.42",
+        "2026-02 | Daetwyler | 14.08",
+        "2026-02 | Digital | 29.15",
+        "2026-02 | El Rey | 366.06",
+        "2026-02 | Frozen | 58.74",
+        "2026-02 | Gbarco | 348.90",
+        "2026-02 | Hiplantro | 160.63",
+        "2026-02 | IPS GOLEMAN | 153.75",
+        "2026-02 | JM | 27.43",
+        "2026-02 | Molpartes | 406.12",
+        "2026-02 | Multainers | 40.66",
+        "2026-02 | Quinteros | 47.79",
+        "2026-01 | Aerorental | 218.12",
+        "2026-01 | Aguas De Bogota | 618.22",
+        "2026-01 | Construelectricos | 15.66",
+        "2026-01 | Daetwyler | 14.08",
+        "2026-01 | Digital | 29.15",
+        "2026-01 | El Rey | 366.31",
+        "2026-01 | Frozen | 38.95",
+        "2026-01 | Gbarco | 336.58",
+        "2026-01 | Hiplantro | 157.83",
+        "2026-01 | IPS GOLEMAN | 153.75",
+        "2026-01 | JM | 27.54",
+        "2026-01 | Molpartes | 422.44",
+        "2026-01 | Multainers | 35.20",
+        "2026-01 | Quinteros | 46.03",
+        "2025-12 | Aerorental | 206.92",
+        "2025-12 | Aguas De Bogota | 579.60",
+        "2025-12 | Construelectricos | 12.98",
+        "2025-12 | Daetwyler | 13.20",
+        "2025-12 | Digital | 22.36",
+        "2025-12 | El Rey | 341.86",
+        "2025-12 | Frozen | 36.48",
+        "2025-12 | Gbarco | 312.45",
+        "2025-12 | Hiplantro | 126.95",
+        "2025-12 | IPS GOLEMAN | 124.91",
+        "2025-12 | JM | 24.76",
+        "2025-12 | Molpartes | 366.39",
+        "2025-12 | Multainers | 33.00",
+        "2025-12 | Quinteros | 49.71",
+        "2025-11 | Aerorental | 204.97",
+        "2025-11 | Aguas De Bogota | 581.25",
+        "2025-11 | Construelectricos | 12.98",
+        "2025-11 | Daetwyler | 13.20",
+        "2025-11 | Digital | 22.36",
+        "2025-11 | El Rey | 345.76",
+        "2025-11 | Frozen | 38.12",
+        "2025-11 | Gbarco | 312.45",
+        "2025-11 | Hiplantro | 127.73",
+        "2025-11 | IPS GOLEMAN | 124.91",
+        "2025-11 | JM | 26.64",
+        "2025-11 | Molpartes | 354.19",
+        "2025-11 | Multainers | 33.00",
+        "2025-10 | Aerorental | 205.04",
+        "2025-10 | Aguas De Bogota | 577.95",
+        "2025-10 | Construelectricos | 14.63",
+        "2025-10 | Daetwyler | 13.20",
+        "2025-10 | Digital | 22.36",
+        "2025-10 | El Rey | 340.45",
+        "2025-10 | Frozen | 33.17",
+        "2025-10 | Gbarco | 309.14",
+        "2025-10 | IPS GOLEMAN | 118.09",
+        "2025-10 | JM | 26.65",
+        "2025-10 | Molpartes | 349.69",
+        "2025-10 | Multainers | 33.00",
+        "2025-10 | Quinteros | 24.92",
+        "2025-09 | Aerorental | 206.29",
+        "2025-09 | Aguas De Bogota | 578.01",
+        "2025-09 | Construelectricos | 12.98",
+        "2025-09 | Daetwyler | 13.20",
+        "2025-09 | Digital | 22.36",
+        "2025-09 | El Rey | 334.17",
+        "2025-09 | Frozen | 33.17",
+        "2025-09 | Gbarco | 309.54",
+        "2025-09 | IPS GOLEMAN | 108.79",
+        "2025-09 | JM | 26.59",
+        "2025-09 | Molpartes | 301.65",
+        "2025-09 | Multainers | 33.00",
+        "2025-09 | Quinteros | 24.92",
+        "2025-08 | Aerorental | 200.59",
+        "2025-08 | Aguas De Bogota | 577.89",
+        "2025-08 | Construelectricos | 12.98",
+        "2025-08 | Daetwyler | 11.55",
+        "2025-08 | Digital | 20.71",
+        "2025-08 | El Rey | 333.98",
+        "2025-08 | Frozen | 32.26",
+        "2025-08 | Gbarco | 303.80",
+        "2025-08 | IPS GOLEMAN | 98.25",
+        "2025-08 | JM | 24.67",
+        "2025-08 | Multainers | 33.00",
+        "2025-08 | Quinteros | 26.57",
+        "2025-07 | Aerorental | 201.11",
+        "2025-07 | Aguas De Bogota | 577.89",
+        "2025-07 | Construelectricos | 13.60",
+        "2025-07 | Daetwyler | 11.55",
+        "2025-07 | Digital | 20.71",
+        "2025-07 | El Rey | 320.68",
+        "2025-07 | Frozen | 32.26",
+        "2025-07 | Gbarco | 297.05",
+        "2025-07 | IPS GOLEMAN | 97.01",
+        "2025-07 | JM | 24.41",
+        "2025-07 | Multainers | 33.00",
+        "2025-07 | Quinteros | 31.62",
+        "2025-06 | Aerorental | 196.55",
+        "2025-06 | Aguas De Bogota | 579.41",
+        "2025-06 | Construelectricos | 13.60",
+        "2025-06 | Daetwyler | 11.55",
+        "2025-06 | Digital | 22.36",
+        "2025-06 | El Rey | 321.73",
+        "2025-06 | Frozen | 32.26",
+        "2025-06 | Gbarco | 292.10",
+        "2025-06 | IPS GOLEMAN | 95.15",
+        "2025-06 | JM | 23.95",
+        "2025-06 | Multainers | 33.00",
+        "2025-06 | Quinteros | 31.62",
+        "2025-05 | Aerorental | 189.10",
+        "2025-05 | Aguas De Bogota | 581.06",
+        "2025-05 | Construelectricos | 13.60",
+        "2025-05 | Daetwyler | 11.55",
+        "2025-05 | Digital | 22.36",
+        "2025-05 | El Rey | 322.82",
+        "2025-05 | Frozen | 32.26",
+        "2025-05 | Gbarco | 289.54",
+        "2025-05 | IPS GOLEMAN | 92.67",
+        "2025-05 | JM | 23.74",
+        "2025-05 | Multainers | 33.00"
+    ].join("\\n");
 
     const statusBanner = document.getElementById("licStatus");
     const refreshBtn = document.getElementById("licRefreshBtn");
     const clearFiltersBtn = document.getElementById("licClearFiltersBtn");
     const newBtn = document.getElementById("licNewBtn");
+    const historicalBtn = document.getElementById("licHistoricalBtn");
     const trmBtn = document.getElementById("licTrmBtn");
     const contractBtn = document.getElementById("licContractBtn");
     const selectedCount = document.getElementById("licSelectedCount");
@@ -56,6 +204,29 @@
     const previewDataCount = document.getElementById("licPreviewDataCount");
     const previewDataBody = document.getElementById("licPreviewDataBody");
     const previewClean = document.getElementById("licPreviewClean");
+
+    const historicalModal = document.getElementById("licHistoricalModal");
+    const historicalStatus = document.getElementById("licHistoricalStatus");
+    const historicalForm = document.getElementById("licHistoricalForm");
+    const historicalFiles = document.getElementById("licHistoricalFiles");
+    const historicalTrmText = document.getElementById("licHistoricalTrmText");
+    const historicalAcronisText = document.getElementById("licHistoricalAcronisText");
+    const historicalPreviewBtn = document.getElementById("licHistoricalPreviewBtn");
+    const historicalImportBtn = document.getElementById("licHistoricalImportBtn");
+    const historicalSummary = document.getElementById("licHistoricalSummary");
+    const historicalFileCount = document.getElementById("licHistoricalFileCount");
+    const historicalRowCount = document.getElementById("licHistoricalRowCount");
+    const historicalTotalUsd = document.getElementById("licHistoricalTotalUsd");
+    const historicalTotalCop = document.getElementById("licHistoricalTotalCop");
+    const historicalMonthSection = document.getElementById("licHistoricalMonthSection");
+    const historicalMonthCount = document.getElementById("licHistoricalMonthCount");
+    const historicalMonthBody = document.getElementById("licHistoricalMonthBody");
+    const historicalAcronisSection = document.getElementById("licHistoricalAcronisSection");
+    const historicalAcronisCount = document.getElementById("licHistoricalAcronisCount");
+    const historicalAcronisBody = document.getElementById("licHistoricalAcronisBody");
+    const historicalRowsSection = document.getElementById("licHistoricalRowsSection");
+    const historicalReadyCount = document.getElementById("licHistoricalReadyCount");
+    const historicalRowsBody = document.getElementById("licHistoricalRowsBody");
 
     const accountRegistrationModal = document.getElementById("licAccountRegistrationModal");
     const accountRegistrationStatus = document.getElementById("licAccountRegistrationStatus");
@@ -158,6 +329,11 @@
         accountClientLookupActiveRequest: 0,
         productRegistrationIndex: -1,
         salesPriceUpdateIndex: -1,
+        historicalRows: [],
+        historicalResult: null,
+        historicalAccountLookupTimers: new Map(),
+        historicalAccountLookupRequests: new Map(),
+        historicalAccountLookupRequestSeq: 0,
         breakdownSourceIndex: -1,
         breakdownDraftRows: [],
         breakdownDraftSeq: 0,
@@ -169,6 +345,7 @@
     refreshBtn?.addEventListener("click", loadBoard);
     clearFiltersBtn?.addEventListener("click", clearBoardFilters);
     newBtn?.addEventListener("click", openUploadModal);
+    historicalBtn?.addEventListener("click", openHistoricalModal);
     trmBtn?.addEventListener("click", openTrmModal);
     contractBtn?.addEventListener("click", openContractModal);
     selectAll?.addEventListener("change", toggleSelectAll);
@@ -178,10 +355,16 @@
         renderBreakdownModal();
     });
     breakdownSaveBtn?.addEventListener("click", saveBreakdownRows);
+    historicalImportBtn?.addEventListener("click", importHistoricalRows);
 
     uploadForm?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await previewExcel();
+    });
+
+    historicalForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await previewHistorical();
     });
 
     accountRegistrationForm?.addEventListener("submit", async (event) => {
@@ -262,6 +445,11 @@
             return;
         }
 
+        if (target.matches("[data-historical-account-search]")) {
+            handleHistoricalAccountInput(target);
+            return;
+        }
+
         if (target === accountClientInput) {
             handleAccountClientInput(target);
             return;
@@ -290,6 +478,11 @@
 
         if (target.matches("[data-preview-product-search]") && target.value.trim().length >= 2) {
             openPreviewProductMenu(target);
+            return;
+        }
+
+        if (target.matches("[data-historical-account-search]") && target.value.trim().length >= 2) {
+            openHistoricalAccountMenu(target);
             return;
         }
 
@@ -332,6 +525,12 @@
             return;
         }
 
+        const historicalAccountOption = target.closest("[data-historical-account-option]");
+        if (historicalAccountOption instanceof HTMLElement) {
+            selectHistoricalAccountOption(historicalAccountOption);
+            return;
+        }
+
         const accountClientOption = target.closest("[data-account-client-option]");
         if (accountClientOption instanceof HTMLElement) {
             selectAccountClientOption(accountClientOption);
@@ -352,12 +551,15 @@
 
         if (!target.closest(".lic-lookup")) {
             closeProductLookupMenus();
+            closeHistoricalAccountMenus();
             closeAccountClientLookupMenu();
             closeBreakdownLookupMenus();
         }
 
         if (target.hasAttribute("data-lic-close")) {
             closeUploadModal();
+        } else if (target.hasAttribute("data-lic-historical-close")) {
+            closeHistoricalModal();
         } else if (target.hasAttribute("data-lic-account-close")) {
             closeAccountRegistrationModal();
         } else if (target.hasAttribute("data-lic-product-close")) {
@@ -397,6 +599,8 @@
             closeAccountRegistrationModal();
         } else if (breakdownModal && !breakdownModal.hidden) {
             closeBreakdownModal();
+        } else if (historicalModal && !historicalModal.hidden) {
+            closeHistoricalModal();
         } else if (uploadModal && !uploadModal.hidden) {
             closeUploadModal();
         } else if (trmModal && !trmModal.hidden) {
@@ -807,6 +1011,405 @@
         closeSalesPriceModal();
         closeBreakdownModal({ preserveStatus: false });
         uploadModal.hidden = true;
+    }
+
+    function openHistoricalModal() {
+        resetHistoricalState();
+        if (historicalTrmText && !historicalTrmText.value.trim()) {
+            historicalTrmText.value = defaultHistoricalTrmText;
+        }
+        if (historicalAcronisText && !historicalAcronisText.value.trim()) {
+            historicalAcronisText.value = defaultHistoricalAcronisText;
+        }
+        if (historicalFiles) {
+            historicalFiles.value = "";
+        }
+        clearStatus(historicalStatus);
+        historicalModal.hidden = false;
+        historicalFiles?.focus();
+    }
+
+    function closeHistoricalModal() {
+        closeHistoricalAccountMenus();
+        historicalModal.hidden = true;
+    }
+
+    function resetHistoricalState() {
+        state.historicalRows = [];
+        state.historicalResult = null;
+        state.historicalAccountLookupTimers.forEach((timer) => window.clearTimeout(timer));
+        state.historicalAccountLookupTimers.clear();
+        state.historicalAccountLookupRequests.clear();
+        renderHistoricalPreview();
+    }
+
+    async function previewHistorical() {
+        const files = Array.from(historicalFiles?.files || []);
+        if (files.length === 0) {
+            showStatus(historicalStatus, "warning", "Selecciona los Excel de meses anteriores.");
+            return;
+        }
+
+        if (!historicalPreviewUrl) {
+            showStatus(historicalStatus, "error", "Endpoint historico no configurado.");
+            return;
+        }
+
+        setBusy(true);
+        try {
+            showStatus(historicalStatus, "info", "Preparando vista historica...");
+            const formData = new FormData();
+            files.forEach((file) => formData.append("files", file));
+            formData.append("trmText", historicalTrmText?.value || "");
+            formData.append("acronisBreakdownText", historicalAcronisText?.value || "");
+
+            const result = await fetchJson(historicalPreviewUrl, {
+                method: "POST",
+                body: formData
+            });
+            state.historicalResult = result;
+            state.historicalRows = Array.isArray(result?.rows) ? result.rows : [];
+            state.contractTypeOptions = Array.isArray(result?.contractTypeOptions)
+                ? result.contractTypeOptions
+                : state.contractTypeOptions;
+            renderHistoricalPreview();
+
+            const pending = getHistoricalPendingAcronisGroups().length;
+            const errors = state.historicalRows.filter((row) => !row.isValid || requiresBreakdown(row)).length;
+            const tone = errors > 0 || pending > 0 ? "warning" : "success";
+            const suffix = pending > 0 ? ` Asigna ${pending} cliente${pending === 1 ? "" : "s"} Acronis.` : "";
+            showStatus(historicalStatus, tone, `${result.message || "Vista historica lista."}${suffix}`);
+        } catch (error) {
+            state.historicalRows = [];
+            state.historicalResult = null;
+            renderHistoricalPreview();
+            showStatus(historicalStatus, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function renderHistoricalPreview() {
+        const rows = state.historicalRows || [];
+        const result = state.historicalResult || {};
+        const summaries = Array.isArray(result.monthSummaries) ? result.monthSummaries : [];
+        const groups = buildHistoricalAcronisGroups(rows);
+
+        if (historicalSummary) {
+            historicalSummary.hidden = rows.length === 0;
+        }
+        if (historicalFileCount) {
+            historicalFileCount.textContent = numberFormatter.format(Number(result.fileCount || 0));
+        }
+        if (historicalRowCount) {
+            historicalRowCount.textContent = numberFormatter.format(rows.length);
+        }
+        if (historicalTotalUsd) {
+            historicalTotalUsd.textContent = usdFormatter.format(Number(result.totalUsd || rows.reduce((sum, row) => sum + Number(row.valorTotalUsd || 0), 0)));
+        }
+        if (historicalTotalCop) {
+            historicalTotalCop.textContent = copFormatter.format(Number(result.totalCop || rows.reduce((sum, row) => sum + Number(row.pesosTotal || 0), 0)));
+        }
+
+        if (historicalMonthSection) {
+            historicalMonthSection.hidden = summaries.length === 0;
+        }
+        if (historicalMonthCount) {
+            historicalMonthCount.textContent = `${numberFormatter.format(summaries.length)} mes${summaries.length === 1 ? "" : "es"}`;
+        }
+        if (historicalMonthBody) {
+            historicalMonthBody.innerHTML = summaries.map((item) => `
+                <tr class="${item.hasErrors ? "is-selected" : ""}">
+                    <td data-label="Consumo">${escapeHtml(item.consumptionMonth || "-")}</td>
+                    <td data-label="Factura">${escapeHtml(item.facturaDisplay || item.facturaValue || "-")}</td>
+                    <td data-label="TRM" class="text-end">${numberFormatter.format(Number(item.trm || 0))}</td>
+                    <td data-label="USD" class="text-end">${usdFormatter.format(Number(item.totalUsd || 0))}</td>
+                    <td data-label="COP" class="text-end">${copFormatter.format(Number(item.totalCop || 0))}</td>
+                    <td data-label="Estado">
+                        ${item.hasErrors ? "<span class=\"lic-lookup-note is-warning\">Revisar</span>" : "<span class=\"lic-muted\">Listo</span>"}
+                        ${Number(item.pendingAcronisAccountCount || 0) > 0 ? `<small class="lic-lookup-note is-warning">${numberFormatter.format(Number(item.pendingAcronisAccountCount))} Acronis sin cuenta</small>` : ""}
+                    </td>
+                </tr>`).join("");
+        }
+
+        if (historicalAcronisSection) {
+            historicalAcronisSection.hidden = groups.length === 0;
+        }
+        if (historicalAcronisCount) {
+            const pending = groups.filter((group) => !group.accountId).length;
+            historicalAcronisCount.textContent = `${numberFormatter.format(pending)} pendiente${pending === 1 ? "" : "s"}`;
+        }
+        if (historicalAcronisBody) {
+            historicalAcronisBody.innerHTML = groups.map(renderHistoricalAcronisGroup).join("");
+        }
+
+        if (historicalRowsSection) {
+            historicalRowsSection.hidden = rows.length === 0;
+        }
+        if (historicalReadyCount) {
+            const ready = rows.filter((row) => row.isValid && !requiresBreakdown(row)).length;
+            historicalReadyCount.textContent = `${numberFormatter.format(ready)} lista${ready === 1 ? "" : "s"}`;
+        }
+        if (historicalRowsBody) {
+            const visibleRows = rows.slice(0, 250);
+            const overflow = rows.length > visibleRows.length
+                ? `<tr><td colspan="8"><span class="lic-muted">Se muestran 250 de ${numberFormatter.format(rows.length)} filas.</span></td></tr>`
+                : "";
+            historicalRowsBody.innerHTML = visibleRows.map(renderHistoricalRow).join("") + overflow;
+        }
+
+        updateHistoricalImportState();
+    }
+
+    function buildHistoricalAcronisGroups(rows) {
+        const map = new Map();
+        rows.filter((row) => (row.sourceKind || "").toLowerCase() === "acronisbreakdown")
+            .forEach((row) => {
+                const name = row.sourceClientName || row.nombreCliente || "Cliente Acronis";
+                const key = normalizeLookupGroupKey(name);
+                const group = map.get(key) || {
+                    key,
+                    clientName: name,
+                    totalUsd: 0,
+                    months: new Set(),
+                    rowCount: 0,
+                    accountId: "",
+                    accountLabel: ""
+                };
+                group.totalUsd += Number(row.valorTotalUsd || 0);
+                group.rowCount += 1;
+                if (row.historicalConsumptionMonth) {
+                    group.months.add(row.historicalConsumptionMonth);
+                }
+                if (row.companyAccountLookupId && !group.accountId) {
+                    group.accountId = row.companyAccountLookupId;
+                    group.accountLabel = row.companyAccountLookupLabel || row.companyAccountId || "";
+                }
+                map.set(key, group);
+            });
+
+        return Array.from(map.values())
+            .map((group) => ({
+                ...group,
+                totalUsd: roundCurrency(group.totalUsd),
+                months: Array.from(group.months).sort()
+            }))
+            .sort((left, right) => left.clientName.localeCompare(right.clientName, "es"));
+    }
+
+    function renderHistoricalAcronisGroup(group) {
+        const helper = group.accountId
+            ? `Asignado${group.accountLabel ? ": " + group.accountLabel : ""}`
+            : "Busca el Account ID/cliente destino.";
+        const helperClass = group.accountId ? "lic-muted" : "lic-lookup-note is-warning";
+        return `
+            <tr>
+                <td data-label="Cliente">${escapeHtml(group.clientName)}</td>
+                <td data-label="USD" class="text-end">${usdFormatter.format(Number(group.totalUsd || 0))}</td>
+                <td data-label="Meses">${escapeHtml(group.months.join(", "))}</td>
+                <td data-label="Account ID">
+                    <div class="lic-lookup">
+                        <input class="form-control form-control-sm lic-lookup-input"
+                               type="search"
+                               autocomplete="off"
+                               value="${escapeHtml(group.accountLabel || "")}"
+                               placeholder="Buscar Account ID..."
+                               data-historical-account-search="${escapeHtml(group.key)}" />
+                        <div class="lic-lookup-menu" data-historical-account-menu="${escapeHtml(group.key)}"></div>
+                    </div>
+                    <small class="${helperClass}" data-historical-account-helper="${escapeHtml(group.key)}">${escapeHtml(helper)}</small>
+                </td>
+            </tr>`;
+    }
+
+    function renderHistoricalRow(row) {
+        const messages = []
+            .concat(Array.isArray(row.errors) ? row.errors : [])
+            .concat(Array.isArray(row.warnings) ? row.warnings : []);
+        const status = messages.length > 0
+            ? messages.slice(0, 2).join(" | ")
+            : "Lista";
+        return `
+            <tr>
+                <td data-label="Archivo">${escapeHtml(row.sourceFileName || "-")}</td>
+                <td data-label="Cliente">${escapeHtml(row.nombreCliente || row.sourceClientName || "-")}</td>
+                <td data-label="Cuenta">${escapeHtml(row.companyAccountLookupLabel || row.companyAccountId || "-")}</td>
+                <td data-label="Producto">${escapeHtml(row.productLookupLabel || row.productDescription || "-")}</td>
+                <td data-label="Factura">${escapeHtml(row.facturaDisplay || row.facturaValue || "-")}</td>
+                <td data-label="USD" class="text-end">${usdFormatter.format(Number(row.valorTotalUsd || 0))}</td>
+                <td data-label="COP" class="text-end">${copFormatter.format(Number(row.pesosTotal || 0))}</td>
+                <td data-label="Estado"><small class="${messages.length > 0 ? "lic-lookup-note is-warning" : "lic-muted"}">${escapeHtml(status)}</small></td>
+            </tr>`;
+    }
+
+    function handleHistoricalAccountInput(input) {
+        const key = input.getAttribute("data-historical-account-search") || "";
+        const query = input.value.trim();
+        applyHistoricalAccountSelection(key, "", "", "", { queryOnly: true });
+        if (query.length < 2) {
+            hideHistoricalAccountMenu(key);
+            return;
+        }
+
+        scheduleHistoricalAccountSearch(key, query, 280);
+    }
+
+    function openHistoricalAccountMenu(input) {
+        const key = input.getAttribute("data-historical-account-search") || "";
+        const query = input.value.trim();
+        scheduleHistoricalAccountSearch(key, query, 0);
+    }
+
+    function scheduleHistoricalAccountSearch(key, query, delay) {
+        const previous = state.historicalAccountLookupTimers.get(key);
+        if (previous) {
+            window.clearTimeout(previous);
+        }
+
+        const timer = window.setTimeout(() => searchHistoricalAccount(key, query), delay);
+        state.historicalAccountLookupTimers.set(key, timer);
+    }
+
+    async function searchHistoricalAccount(key, query) {
+        const menu = getHistoricalAccountMenu(key);
+        if (!menu || !buildAccountSearchUrl(query)) {
+            return;
+        }
+
+        const requestId = ++state.historicalAccountLookupRequestSeq;
+        state.historicalAccountLookupRequests.set(key, requestId);
+        menu.classList.add("is-open");
+        menu.innerHTML = "<div class=\"lic-lookup-empty\">Buscando...</div>";
+        try {
+            const items = await fetchJson(buildAccountSearchUrl(query));
+            if (state.historicalAccountLookupRequests.get(key) !== requestId) {
+                return;
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                menu.innerHTML = `<div class="lic-lookup-empty">Sin resultados para "${escapeHtml(query)}".</div>`;
+                return;
+            }
+
+            menu.innerHTML = items.map((item) => `
+                <button type="button"
+                        class="lic-lookup-option"
+                        data-historical-account-option
+                        data-key="${escapeHtml(key)}"
+                        data-id="${escapeHtml(item.id || "")}"
+                        data-label="${escapeHtml(item.label || "")}"
+                        data-matched-value="${escapeHtml(item.matchedValue || "")}">
+                    <span>${escapeHtml(item.label || item.matchedValue || "Account ID")}</span>
+                    ${item.matchedValue ? `<small>${escapeHtml(item.matchedValue)}</small>` : ""}
+                </button>`).join("");
+        } catch (error) {
+            menu.innerHTML = `<div class="lic-lookup-empty">${escapeHtml(getErrorMessage(error))}</div>`;
+        }
+    }
+
+    function selectHistoricalAccountOption(option) {
+        const key = option.getAttribute("data-key") || "";
+        const accountId = option.getAttribute("data-id") || "";
+        const label = option.getAttribute("data-label") || "";
+        const matchedValue = option.getAttribute("data-matched-value") || "";
+        applyHistoricalAccountSelection(key, accountId, label, matchedValue);
+        hideHistoricalAccountMenu(key);
+        renderHistoricalPreview();
+    }
+
+    function applyHistoricalAccountSelection(key, accountId, label, matchedValue, options) {
+        const queryOnly = options?.queryOnly ?? false;
+        state.historicalRows.forEach((row) => {
+            const rowKey = normalizeLookupGroupKey(row.sourceClientName || row.nombreCliente || "");
+            if ((row.sourceKind || "").toLowerCase() !== "acronisbreakdown" || rowKey !== key) {
+                return;
+            }
+
+            if (!queryOnly) {
+                row.companyAccountLookupId = accountId || "";
+                row.companyAccountLookupLabel = label || matchedValue || "";
+                row.companyAccountId = matchedValue || label || row.companyAccountId || "";
+                row.companyAccountLookupFound = Boolean(accountId);
+                row.companyAccountLookupFailureReason = "";
+                row.warnings = (row.warnings || []).filter((message) => {
+                    const text = (message || "").toString().toLowerCase();
+                    return !text.includes("account id destino") && !text.includes("companyaccountid");
+                });
+            }
+        });
+        updateHistoricalImportState();
+    }
+
+    function getHistoricalPendingAcronisGroups() {
+        return buildHistoricalAcronisGroups(state.historicalRows)
+            .filter((group) => !group.accountId);
+    }
+
+    function getHistoricalAccountMenu(key) {
+        return historicalAcronisBody?.querySelector(`[data-historical-account-menu="${cssEscape(key)}"]`);
+    }
+
+    function hideHistoricalAccountMenu(key) {
+        const menu = getHistoricalAccountMenu(key);
+        if (menu) {
+            menu.classList.remove("is-open");
+            menu.innerHTML = "";
+        }
+    }
+
+    function closeHistoricalAccountMenus() {
+        historicalAcronisBody?.querySelectorAll("[data-historical-account-menu]").forEach((menu) => {
+            menu.classList.remove("is-open");
+            menu.innerHTML = "";
+        });
+    }
+
+    function getHistoricalImportableRows() {
+        return state.historicalRows.filter((row) => row.isValid && !requiresBreakdown(row));
+    }
+
+    function updateHistoricalImportState() {
+        if (!historicalImportBtn) {
+            return;
+        }
+
+        historicalImportBtn.disabled = state.busy
+            || state.historicalRows.length === 0
+            || getHistoricalImportableRows().length === 0
+            || getHistoricalPendingAcronisGroups().length > 0
+            || state.historicalRows.some((row) => !row.isValid || requiresBreakdown(row));
+    }
+
+    async function importHistoricalRows() {
+        const pending = getHistoricalPendingAcronisGroups();
+        if (pending.length > 0) {
+            showStatus(historicalStatus, "warning", `Asigna ${pending.length} cliente${pending.length === 1 ? "" : "s"} Acronis antes de procesar.`);
+            return;
+        }
+
+        const rows = getHistoricalImportableRows();
+        if (rows.length === 0) {
+            showStatus(historicalStatus, "warning", "No hay filas historicas listas para importar.");
+            return;
+        }
+
+        setBusy(true);
+        try {
+            showStatus(historicalStatus, "info", "Procesando meses anteriores en Dataverse...");
+            const result = await fetchJson(importUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rows })
+            });
+            showStatus(statusBanner, "success", result.message || "Meses anteriores procesados.");
+            closeHistoricalModal();
+            await loadBoard();
+        } catch (error) {
+            showStatus(historicalStatus, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+            updateHistoricalImportState();
+        }
     }
 
     async function previewExcel() {
@@ -2677,6 +3280,12 @@
             clearFiltersBtn.disabled = value;
         }
         newBtn.disabled = value;
+        if (historicalBtn) {
+            historicalBtn.disabled = value;
+        }
+        if (historicalPreviewBtn) {
+            historicalPreviewBtn.disabled = value;
+        }
         trmBtn.disabled = value;
         if (productRegistrationSaveBtn) {
             productRegistrationSaveBtn.disabled = value;
@@ -2686,6 +3295,7 @@
             salesPriceSaveBtn.disabled = value || Boolean(row && getSalesPriceUpdateValidationMessage(row));
         }
         refreshAccountRegistrationState();
+        updateHistoricalImportState();
         renderSelectionState();
     }
 
@@ -2762,6 +3372,14 @@
         }
 
         return Math.round(amount * 100) / 100;
+    }
+
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === "function") {
+            return window.CSS.escape(value || "");
+        }
+
+        return (value || "").toString().replace(/["\\]/g, "\\$&");
     }
 
     function escapeHtml(value) {

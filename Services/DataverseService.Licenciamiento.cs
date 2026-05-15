@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using CotizadorInterno.Web.Models.Licenciamiento;
 
@@ -154,6 +155,86 @@ public sealed partial class DataverseService
             Message = totalRows == 0
                 ? "No se encontraron filas para importar."
                 : $"Vista previa lista: {validRows} de {totalRows} fila(s) validas."
+        };
+    }
+
+    public async Task<LicenciamientoHistoricalPreviewResultDto> PreviewLicenciamientoHistoricalUploadAsync(
+        IReadOnlyList<LicenciamientoHistoricalFileUploadDto> files,
+        string trmText,
+        string acronisBreakdownText,
+        CancellationToken ct = default)
+    {
+        if (files is null || files.Count == 0)
+            throw new InvalidOperationException("Debes seleccionar al menos un archivo de Excel.");
+
+        var trmByInvoiceDate = ParseLicensingHistoricalTrmTable(trmText);
+        if (trmByInvoiceDate.Count == 0)
+            throw new InvalidOperationException("No se encontraron TRM validas para los meses anteriores.");
+
+        var acronisBreakdownByMonth = ParseLicensingHistoricalAcronisBreakdownText(acronisBreakdownText)
+            .GroupBy(static item => item.ConsumptionMonth, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                static group => group.Key,
+                static group => (IReadOnlyList<LicensingHistoricalAcronisBreakdown>)group.ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveLicensingMetadataAsync(httpContext.User, ct);
+        var rows = new List<LicenciamientoPreviewRowDto>();
+        foreach (var file in files)
+        {
+            if (file.Content.Length == 0)
+                continue;
+
+            var extension = Path.GetExtension(file.FileName ?? "");
+            if (!string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(extension, ".xlsm", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"El archivo {Path.GetFileName(file.FileName)} debe estar en formato .xlsx o .xlsm.");
+            }
+
+            var parsedRows = ParseLicensingWorkbook(file.FileName ?? "consumo.xlsx", file.Content);
+            foreach (var row in parsedRows)
+            {
+                row.SourceFileName = Path.GetFileName(file.FileName ?? "");
+                row.SourceKind = "Excel";
+                ApplyLicensingHistoricalMonthMetadata(row);
+                ApplyLicensingHistoricalTrm(row, trmByInvoiceDate);
+
+                if (IsLicensingHistoricalAcronisAggregate(row))
+                {
+                    rows.AddRange(BuildLicensingHistoricalAcronisRows(row, acronisBreakdownByMonth));
+                }
+                else
+                {
+                    rows.Add(row);
+                }
+            }
+        }
+
+        if (rows.Count == 0)
+            throw new InvalidOperationException("No se encontraron filas para preparar.");
+
+        await ResolvePreviewLookupsAsync(metadata, rows, httpContext.User, ct);
+        ApplyPreviewLookupWarnings(metadata, rows);
+        ApplyLicensingHistoricalWarnings(rows);
+
+        return new LicenciamientoHistoricalPreviewResultDto
+        {
+            Rows = rows,
+            ContractTypeOptions = GetLicensingContractTypeOptions(),
+            MonthSummaries = BuildLicensingHistoricalMonthSummaries(rows),
+            AcronisGroups = BuildLicensingHistoricalAcronisGroups(rows),
+            FileCount = files.Count,
+            TotalRows = rows.Count,
+            ValidRows = rows.Count(static row => row.IsValid && (row.Errors?.Count ?? 0) == 0 && !row.RequiresBreakdown),
+            WarningRows = rows.Count(static row => (row.Warnings?.Count ?? 0) > 0),
+            ErrorRows = rows.Count(static row => !row.IsValid || (row.Errors?.Count ?? 0) > 0 || row.RequiresBreakdown),
+            TotalUsd = RoundCurrency(rows.Where(static row => row.IsValid).Sum(static row => row.ValorTotalUsd)),
+            TotalCop = RoundCurrency(rows.Where(static row => row.IsValid).Sum(static row => row.PesosTotal)),
+            Message = $"Vista historica lista: {rows.Count} fila(s) preparadas desde {files.Count} archivo(s)."
         };
     }
 
@@ -1268,6 +1349,368 @@ public sealed partial class DataverseService
         return result;
     }
 
+    private static Dictionary<string, decimal> ParseLicensingHistoricalTrmTable(string? rawText)
+    {
+        var result = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawLine in (rawText ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line)
+                || line.StartsWith("| ---", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("TRM", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var dateMatch = Regex.Match(line, @"(?<date>\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})");
+            if (!dateMatch.Success
+                || !TryParseLicensingHistoricalDate(dateMatch.Groups["date"].Value, out var date))
+            {
+                continue;
+            }
+
+            var tail = line[(dateMatch.Index + dateMatch.Length)..];
+            var amountMatches = Regex.Matches(
+                tail,
+                @"\$?\s*(?<amount>-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|-?\d+(?:[.,]\d+)?)");
+            if (amountMatches.Count == 0)
+                continue;
+
+            var amountText = amountMatches[amountMatches.Count - 1].Groups["amount"].Value;
+            if (!TryParseLicensingDecimal(amountText, out var trm) || trm <= 0m)
+                continue;
+
+            result[date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)] = RoundCurrency(trm);
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<LicensingHistoricalAcronisBreakdown> ParseLicensingHistoricalAcronisBreakdownText(string? rawText)
+    {
+        var result = new List<LicensingHistoricalAcronisBreakdown>();
+        foreach (var rawLine in (rawText ?? "").Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line)
+                || line.StartsWith("#", StringComparison.Ordinal)
+                || line.Contains("Cliente", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("Company Name", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parts = SplitLicensingHistoricalAcronisLine(line);
+            if (parts.Count < 3)
+                continue;
+
+            if (!TryParseLicensingHistoricalMonth(parts[0], out var consumptionMonth))
+                continue;
+
+            var amountText = parts[^1];
+            if (!TryParseLicensingDecimal(amountText, out var amount) || Math.Abs(amount) < 0.005m)
+                continue;
+
+            var clientName = string.Join(" ", parts.Skip(1).Take(parts.Count - 2)).Trim();
+            if (string.IsNullOrWhiteSpace(clientName)
+                || string.Equals(clientName, "Total", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            result.Add(new LicensingHistoricalAcronisBreakdown
+            {
+                ConsumptionMonth = consumptionMonth.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+                ClientName = clientName,
+                AmountUsd = RoundCurrency(amount)
+            });
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<string> SplitLicensingHistoricalAcronisLine(string line)
+    {
+        var separator = line.Contains('|')
+            ? '|'
+            : line.Contains('\t')
+                ? '\t'
+                : line.Contains(';')
+                    ? ';'
+                    : ',';
+
+        return line
+            .Split(separator, StringSplitOptions.TrimEntries)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+    }
+
+    private static bool TryParseLicensingHistoricalDate(string rawValue, out DateOnly date)
+    {
+        var formats = new[] { "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd" };
+        return DateOnly.TryParseExact(
+            (rawValue ?? "").Trim(),
+            formats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out date);
+    }
+
+    private static bool TryParseLicensingHistoricalMonth(string rawValue, out DateOnly month)
+    {
+        month = default;
+        var raw = (rawValue ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var normalized = raw.Replace('-', '/');
+        var monthParts = normalized.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (monthParts.Length == 2)
+        {
+            int year;
+            int resolvedMonth;
+            if (monthParts[0].Length == 4)
+            {
+                if (int.TryParse(monthParts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out year)
+                    && int.TryParse(monthParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out resolvedMonth)
+                    && resolvedMonth is >= 1 and <= 12
+                    && year is >= 1900 and <= 2100)
+                {
+                    month = new DateOnly(year, resolvedMonth, 1);
+                    return true;
+                }
+            }
+            else if (int.TryParse(monthParts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out resolvedMonth)
+                && int.TryParse(monthParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out year)
+                && resolvedMonth is >= 1 and <= 12
+                && year is >= 1900 and <= 2100)
+            {
+                month = new DateOnly(year, resolvedMonth, 1);
+                return true;
+            }
+        }
+
+        var parts = normalized.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 3
+            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var first)
+            && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var second)
+            && int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedYear))
+        {
+            var resolvedMonth = second > 12 ? first : second;
+            if (resolvedMonth is >= 1 and <= 12 && parsedYear is >= 1900 and <= 2100)
+            {
+                month = new DateOnly(parsedYear, resolvedMonth, 1);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void ApplyLicensingHistoricalMonthMetadata(LicenciamientoPreviewRowDto row)
+    {
+        if (TryParseLicensingHistoricalMonth(row.BillingInterval, out var consumptionMonth))
+            row.HistoricalConsumptionMonth = consumptionMonth.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+
+        if (TryParseDateOnly(row.FacturaValue, out var invoiceDate))
+            row.HistoricalFacturaMonth = invoiceDate.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+    }
+
+    private static void ApplyLicensingHistoricalTrm(
+        LicenciamientoPreviewRowDto row,
+        IReadOnlyDictionary<string, decimal> trmByInvoiceDate)
+    {
+        if (!TryParseDateOnly(row.FacturaValue, out var invoiceDate))
+        {
+            row.Errors.Add("No se pudo resolver la fecha de factura para asignar TRM.");
+            row.IsValid = false;
+            return;
+        }
+
+        var key = invoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        if (!trmByInvoiceDate.TryGetValue(key, out var trm) || trm <= 0m)
+        {
+            row.Errors.Add($"No hay TRM configurada para la factura {invoiceDate:dd/MM/yyyy}.");
+            row.IsValid = false;
+            return;
+        }
+
+        row.Trm = RoundCurrency(trm);
+        row.PesosTotal = RoundCurrency(row.ValorTotalUsd * row.Trm);
+    }
+
+    private static bool IsLicensingHistoricalAcronisAggregate(LicenciamientoPreviewRowDto row)
+    {
+        var vendor = row.Vendor ?? "";
+        var product = FirstNonEmpty(row.ProductDescription, row.ProductLookupLabel);
+        return vendor.Contains("Acronis", StringComparison.OrdinalIgnoreCase)
+            || product.Contains("Acronis Cyber Cloud Commitment", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<LicenciamientoPreviewRowDto> BuildLicensingHistoricalAcronisRows(
+        LicenciamientoPreviewRowDto aggregateRow,
+        IReadOnlyDictionary<string, IReadOnlyList<LicensingHistoricalAcronisBreakdown>> acronisBreakdownByMonth)
+    {
+        var monthKey = aggregateRow.HistoricalConsumptionMonth;
+        if (string.IsNullOrWhiteSpace(monthKey)
+            || !acronisBreakdownByMonth.TryGetValue(monthKey, out var breakdownRows)
+            || breakdownRows.Count == 0)
+        {
+            aggregateRow.SourceKind = "AcronisAggregate";
+            aggregateRow.RequiresBreakdown = true;
+            aggregateRow.IsValid = false;
+            aggregateRow.Errors.Add(string.IsNullOrWhiteSpace(monthKey)
+                ? "La fila Acronis no tiene mes de consumo para cruzar el desglose."
+                : $"Falta el desglose Acronis para el consumo {monthKey}.");
+            return new[] { aggregateRow };
+        }
+
+        var sourceTotal = RoundCurrency(breakdownRows.Sum(static item => item.AmountUsd));
+        if (Math.Abs(sourceTotal) < 0.005m)
+        {
+            aggregateRow.SourceKind = "AcronisAggregate";
+            aggregateRow.RequiresBreakdown = true;
+            aggregateRow.IsValid = false;
+            aggregateRow.Errors.Add($"El desglose Acronis de {monthKey} suma cero.");
+            return new[] { aggregateRow };
+        }
+
+        var invoiceTotal = RoundCurrency(aggregateRow.ValorTotalUsd);
+        var shouldScale = Math.Abs(sourceTotal - invoiceTotal) >= 0.01m;
+        var result = new List<LicenciamientoPreviewRowDto>();
+        var assigned = 0m;
+        for (var index = 0; index < breakdownRows.Count; index++)
+        {
+            var item = breakdownRows[index];
+            var amount = index == breakdownRows.Count - 1
+                ? RoundCurrency(invoiceTotal - assigned)
+                : RoundCurrency(invoiceTotal * item.AmountUsd / sourceTotal);
+            assigned += amount;
+
+            if (Math.Abs(amount) < 0.005m)
+                continue;
+
+            var row = new LicenciamientoPreviewRowDto
+            {
+                SourceRowNumber = aggregateRow.SourceRowNumber,
+                SourceFileName = aggregateRow.SourceFileName,
+                SourceKind = "AcronisBreakdown",
+                SourceClientName = item.ClientName,
+                HistoricalConsumptionMonth = aggregateRow.HistoricalConsumptionMonth,
+                HistoricalFacturaMonth = aggregateRow.HistoricalFacturaMonth,
+                CompanyAccountId = item.ClientName,
+                NombreCliente = item.ClientName,
+                Vendor = FirstNonEmpty(aggregateRow.Vendor, "Acronis"),
+                ProductDescription = aggregateRow.ProductDescription,
+                Days = aggregateRow.Days,
+                BillingInterval = aggregateRow.BillingInterval,
+                FacturaValue = aggregateRow.FacturaValue,
+                FacturaDisplay = aggregateRow.FacturaDisplay,
+                ValorTotalUsd = RoundCurrency(amount),
+                UnidadUsd = RoundCurrency(amount),
+                Cantidad = 1m,
+                Trm = aggregateRow.Trm,
+                PesosTotal = RoundCurrency(amount * aggregateRow.Trm),
+                SourceReferenceUsd = item.AmountUsd,
+                ContractTypeValue = aggregateRow.ContractTypeValue,
+                ContractTypeLabel = aggregateRow.ContractTypeLabel,
+                IsValid = aggregateRow.IsValid && (aggregateRow.Errors?.Count ?? 0) == 0
+            };
+
+            if (shouldScale)
+            {
+                row.Warnings.Add(
+                    $"Valor Acronis ajustado proporcionalmente desde USD {item.AmountUsd:N2}; el total del pantallazo ({sourceTotal:N2}) no coincide con el total del Excel ({invoiceTotal:N2}).");
+            }
+
+            result.Add(row);
+        }
+
+        return result;
+    }
+
+    private static void ApplyLicensingHistoricalWarnings(IEnumerable<LicenciamientoPreviewRowDto> rows)
+    {
+        foreach (var row in rows)
+        {
+            row.PesosTotal = row.Trm > 0m
+                ? RoundCurrency(row.PesosTotal == 0m ? row.ValorTotalUsd * row.Trm : row.PesosTotal)
+                : RoundCurrency(row.PesosTotal);
+
+            if (string.Equals(row.SourceKind, "AcronisBreakdown", StringComparison.OrdinalIgnoreCase)
+                && row.CompanyAccountLookupRequired
+                && string.IsNullOrWhiteSpace(row.CompanyAccountLookupId))
+            {
+                row.Warnings.Add("Asigna el Account ID destino para este cliente Acronis antes de importar.");
+            }
+        }
+    }
+
+    private static IReadOnlyList<LicenciamientoHistoricalMonthSummaryDto> BuildLicensingHistoricalMonthSummaries(
+        IReadOnlyList<LicenciamientoPreviewRowDto> rows)
+    {
+        return rows
+            .GroupBy(row => FirstNonEmpty(row.FacturaValue, row.HistoricalFacturaMonth, row.HistoricalConsumptionMonth), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var items = group.ToList();
+                var first = items.FirstOrDefault() ?? new LicenciamientoPreviewRowDto();
+                return new LicenciamientoHistoricalMonthSummaryDto
+                {
+                    ConsumptionMonth = FirstNonEmpty(first.HistoricalConsumptionMonth, first.BillingInterval),
+                    FacturaValue = first.FacturaValue,
+                    FacturaDisplay = FirstNonEmpty(first.FacturaDisplay, FormatLicensingDateDisplay(first.FacturaValue)),
+                    Trm = RoundCurrency(items.Select(static row => row.Trm).FirstOrDefault(static value => value > 0m)),
+                    TotalUsd = RoundCurrency(items.Where(static row => row.IsValid).Sum(static row => row.ValorTotalUsd)),
+                    TotalCop = RoundCurrency(items.Where(static row => row.IsValid).Sum(static row => row.PesosTotal)),
+                    RowCount = items.Count,
+                    AcronisRowCount = items.Count(static row => string.Equals(row.SourceKind, "AcronisBreakdown", StringComparison.OrdinalIgnoreCase)),
+                    PendingAcronisAccountCount = items
+                        .Where(static row => string.Equals(row.SourceKind, "AcronisBreakdown", StringComparison.OrdinalIgnoreCase)
+                            && row.CompanyAccountLookupRequired
+                            && string.IsNullOrWhiteSpace(row.CompanyAccountLookupId))
+                        .Select(static row => row.SourceClientName)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Count(),
+                    HasErrors = items.Any(static row => !row.IsValid || (row.Errors?.Count ?? 0) > 0 || row.RequiresBreakdown),
+                    FileNames = items
+                        .Select(static row => row.SourceFileName)
+                        .Where(static value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                };
+            })
+            .OrderBy(static item => item.FacturaValue, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<LicenciamientoHistoricalAcronisGroupDto> BuildLicensingHistoricalAcronisGroups(
+        IReadOnlyList<LicenciamientoPreviewRowDto> rows)
+    {
+        return rows
+            .Where(static row => string.Equals(row.SourceKind, "AcronisBreakdown", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(static row => row.SourceClientName, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var items = group.ToList();
+                return new LicenciamientoHistoricalAcronisGroupDto
+                {
+                    ClientName = FirstNonEmpty(group.Key, "Cliente Acronis"),
+                    RowCount = items.Count,
+                    TotalUsd = RoundCurrency(items.Sum(static row => row.ValorTotalUsd)),
+                    Months = items
+                        .Select(static row => row.HistoricalConsumptionMonth)
+                        .Where(static value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                };
+            })
+            .OrderBy(static item => item.ClientName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private async Task ResolvePreviewLookupsAsync(
         LicensingMetadata metadata,
         IReadOnlyList<LicenciamientoPreviewRowDto> rows,
@@ -1582,6 +2025,15 @@ public sealed partial class DataverseService
             [LicensingContractTypeField] = ConvertLicensingPayloadValue(metadata, LicensingContractTypeField, NormalizeLicensingContractTypeValue(row.ContractTypeValue))
         };
 
+        if (row.Trm > 0m)
+        {
+            var pesosTotal = row.PesosTotal != 0m
+                ? row.PesosTotal
+                : RoundCurrency(row.ValorTotalUsd * row.Trm);
+            payload[LicensingTrmField] = ConvertLicensingPayloadValue(metadata, LicensingTrmField, row.Trm);
+            payload[LicensingTotalCopField] = ConvertLicensingPayloadValue(metadata, LicensingTotalCopField, pesosTotal);
+        }
+
         if (metadata.AccountFieldIsLookup)
         {
             if (!string.IsNullOrWhiteSpace(row.CompanyAccountLookupId))
@@ -1641,6 +2093,11 @@ public sealed partial class DataverseService
     {
         row.Warnings ??= new List<string>();
         row.Errors ??= new List<string>();
+        row.SourceFileName = (row.SourceFileName ?? "").Trim();
+        row.SourceKind = (row.SourceKind ?? "").Trim();
+        row.SourceClientName = (row.SourceClientName ?? "").Trim();
+        row.HistoricalConsumptionMonth = (row.HistoricalConsumptionMonth ?? "").Trim();
+        row.HistoricalFacturaMonth = (row.HistoricalFacturaMonth ?? "").Trim();
         row.CompanyAccountId = (row.CompanyAccountId ?? "").Trim();
         row.CompanyAccountLookupId = NormalizeOptionalGuid(row.CompanyAccountLookupId);
         row.CompanyAccountLookupLabel = (row.CompanyAccountLookupLabel ?? "").Trim();
@@ -1654,6 +2111,11 @@ public sealed partial class DataverseService
         row.BillingInterval = (row.BillingInterval ?? "").Trim();
         row.FacturaValue = (row.FacturaValue ?? "").Trim();
         row.FacturaDisplay = (row.FacturaDisplay ?? "").Trim();
+        row.Trm = RoundCurrency(row.Trm);
+        row.PesosTotal = row.Trm > 0m
+            ? RoundCurrency(row.PesosTotal == 0m ? row.ValorTotalUsd * row.Trm : row.PesosTotal)
+            : RoundCurrency(row.PesosTotal);
+        row.SourceReferenceUsd = RoundCurrency(row.SourceReferenceUsd);
         row.SalesPriceUsd = RoundCurrency(row.SalesPriceUsd);
         row.HasSalesPrice = row.HasSalesPrice || row.SalesPriceUsd > 0m;
         row.ContractTypeValue = NormalizeLicensingContractTypeValue(row.ContractTypeValue);
@@ -2185,6 +2647,13 @@ public sealed partial class DataverseService
     }
 
     private sealed record LicensingLookupFilter(string Expression, int Top);
+
+    private sealed class LicensingHistoricalAcronisBreakdown
+    {
+        public string ConsumptionMonth { get; init; } = "";
+        public string ClientName { get; init; } = "";
+        public decimal AmountUsd { get; init; }
+    }
 
     private sealed class LicensingExcelColumns
     {

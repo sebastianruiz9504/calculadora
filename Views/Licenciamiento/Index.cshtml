@@ -11,6 +11,7 @@
      id="licenciamientoApp"
      data-load-url="@Url.Action("Data", "Licenciamiento")"
      data-preview-url="@Url.Action("Preview", "Licenciamiento")"
+     data-historical-preview-url="@Url.Action("HistoricalPreview", "Licenciamiento")"
      data-account-search-url="@Url.Action("AccountLookupSearch", "Licenciamiento")"
      data-client-search-url="@Url.Action("ClientLookupSearch", "Licenciamiento")"
      data-product-search-url="@Url.Action("ProductLookupSearch", "Licenciamiento")"
@@ -46,6 +47,7 @@
                 <button type="button" class="btn btn-outline-secondary" id="licClearFiltersBtn">Limpiar filtros</button>
                 <button type="button" class="btn btn-outline-secondary" id="licContractBtn">Ajustar tipo de contrato</button>
                 <button type="button" class="btn btn-outline-secondary" id="licTrmBtn">Ajustar TRM</button>
+                <button type="button" class="btn btn-outline-primary" id="licHistoricalBtn">Cruzar meses anteriores</button>
                 <button type="button" class="btn btn-primary" id="licNewBtn">Nuevo ingreso</button>
             </div>
         </div>
@@ -247,6 +249,127 @@
                 <button type="button" class="btn btn-outline-secondary" data-lic-close>Cancelar</button>
                 <button type="submit" class="btn btn-outline-primary" id="licPreviewBtn">Vista previa</button>
                 <button type="button" class="btn btn-primary" id="licImportBtn" disabled>Procesar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="lic-modal" id="licHistoricalModal" hidden>
+    <div class="lic-modal__backdrop" data-lic-historical-close></div>
+    <div class="lic-modal__dialog lic-modal__dialog--historical" role="dialog" aria-modal="true" aria-labelledby="licHistoricalTitle">
+        <div class="lic-modal__header">
+            <div>
+                <div class="lic-kicker">Meses anteriores</div>
+                <h2 class="lic-modal__title" id="licHistoricalTitle">Cruzar consumos historicos</h2>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-lic-historical-close>Cerrar</button>
+        </div>
+        <div id="licHistoricalStatus" class="lic-status" role="status" aria-live="polite"></div>
+        <form class="lic-form" id="licHistoricalForm">
+            <div class="lic-historical-grid">
+                <label class="lic-field">
+                    <span>Excel Intcomex</span>
+                    <input class="form-control" id="licHistoricalFiles" type="file" accept=".xlsx,.xlsm" multiple />
+                </label>
+                <label class="lic-field">
+                    <span>TRM por factura</span>
+                    <textarea class="form-control lic-textarea-mono" id="licHistoricalTrmText" rows="8"></textarea>
+                </label>
+                <label class="lic-field lic-field--wide">
+                    <span>Detalle Acronis</span>
+                    <textarea class="form-control lic-textarea-mono" id="licHistoricalAcronisText" rows="8"></textarea>
+                </label>
+            </div>
+
+            <div class="lic-preview-summary" id="licHistoricalSummary" hidden>
+                <div>
+                    <span>Archivos</span>
+                    <strong id="licHistoricalFileCount">0</strong>
+                </div>
+                <div>
+                    <span>Filas</span>
+                    <strong id="licHistoricalRowCount">0</strong>
+                </div>
+                <div>
+                    <span>Total USD</span>
+                    <strong id="licHistoricalTotalUsd">USD 0</strong>
+                </div>
+                <div>
+                    <span>Total COP</span>
+                    <strong id="licHistoricalTotalCop">$0</strong>
+                </div>
+            </div>
+
+            <section class="lic-preview-section" id="licHistoricalMonthSection" hidden>
+                <div class="lic-preview-section__header">
+                    <h3>Meses detectados</h3>
+                    <span class="lic-counter" id="licHistoricalMonthCount">0 meses</span>
+                </div>
+                <div class="lic-table-wrap lic-table-wrap--compact">
+                    <table class="table align-middle lic-table lic-table--historical-months">
+                        <thead>
+                            <tr>
+                                <th>Consumo</th>
+                                <th>Factura</th>
+                                <th class="text-end">TRM</th>
+                                <th class="text-end">USD</th>
+                                <th class="text-end">COP</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="licHistoricalMonthBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="lic-preview-section" id="licHistoricalAcronisSection" hidden>
+                <div class="lic-preview-section__header">
+                    <h3>Clientes Acronis por asignar</h3>
+                    <span class="lic-counter" id="licHistoricalAcronisCount">0 clientes</span>
+                </div>
+                <div class="lic-table-wrap lic-table-wrap--preview">
+                    <table class="table align-middle lic-table lic-table--historical-acronis">
+                        <thead>
+                            <tr>
+                                <th>Cliente pantallazo</th>
+                                <th class="text-end">USD</th>
+                                <th>Meses</th>
+                                <th>Account ID destino</th>
+                            </tr>
+                        </thead>
+                        <tbody id="licHistoricalAcronisBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="lic-preview-section" id="licHistoricalRowsSection" hidden>
+                <div class="lic-preview-section__header">
+                    <h3>Filas listas</h3>
+                    <span class="lic-counter" id="licHistoricalReadyCount">0 listas</span>
+                </div>
+                <div class="lic-table-wrap lic-table-wrap--preview">
+                    <table class="table align-middle lic-table lic-table--historical-rows">
+                        <thead>
+                            <tr>
+                                <th>Archivo</th>
+                                <th>Cliente</th>
+                                <th>Cuenta</th>
+                                <th>Producto</th>
+                                <th>Factura</th>
+                                <th class="text-end">USD</th>
+                                <th class="text-end">COP</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="licHistoricalRowsBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <div class="lic-modal__footer">
+                <button type="button" class="btn btn-outline-secondary" data-lic-historical-close>Cancelar</button>
+                <button type="submit" class="btn btn-outline-primary" id="licHistoricalPreviewBtn">Vista previa</button>
+                <button type="button" class="btn btn-primary" id="licHistoricalImportBtn" disabled>Procesar historico</button>
             </div>
         </form>
     </div>

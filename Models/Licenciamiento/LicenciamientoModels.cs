@@ -84,6 +84,11 @@ public sealed class LicenciamientoPreviewResultDto
 public sealed class LicenciamientoPreviewRowDto
 {
     public int SourceRowNumber { get; set; }
+    public string SourceFileName { get; set; } = "";
+    public string SourceKind { get; set; } = "";
+    public string SourceClientName { get; set; } = "";
+    public string HistoricalConsumptionMonth { get; set; } = "";
+    public string HistoricalFacturaMonth { get; set; } = "";
     public string CompanyAccountId { get; set; } = "";
     public string CompanyAccountLookupId { get; set; } = "";
     public string CompanyAccountLookupLabel { get; set; } = "";
@@ -105,6 +110,9 @@ public sealed class LicenciamientoPreviewRowDto
     public decimal ValorTotalUsd { get; set; }
     public decimal UnidadUsd { get; set; }
     public decimal Cantidad { get; set; }
+    public decimal Trm { get; set; }
+    public decimal PesosTotal { get; set; }
+    public decimal SourceReferenceUsd { get; set; }
     public decimal SalesPriceUsd { get; set; }
     public bool HasSalesPrice { get; set; }
     public int ContractTypeValue { get; set; }
@@ -119,6 +127,51 @@ public sealed class LicenciamientoPreviewRowDto
 public sealed class LicenciamientoImportRequestDto
 {
     public List<LicenciamientoPreviewRowDto> Rows { get; set; } = new();
+}
+
+public sealed class LicenciamientoHistoricalFileUploadDto
+{
+    public string FileName { get; set; } = "";
+    public byte[] Content { get; set; } = Array.Empty<byte>();
+}
+
+public sealed class LicenciamientoHistoricalPreviewResultDto
+{
+    public IReadOnlyList<LicenciamientoPreviewRowDto> Rows { get; set; } = Array.Empty<LicenciamientoPreviewRowDto>();
+    public IReadOnlyList<LicenciamientoContractTypeOptionDto> ContractTypeOptions { get; set; } = Array.Empty<LicenciamientoContractTypeOptionDto>();
+    public IReadOnlyList<LicenciamientoHistoricalMonthSummaryDto> MonthSummaries { get; set; } = Array.Empty<LicenciamientoHistoricalMonthSummaryDto>();
+    public IReadOnlyList<LicenciamientoHistoricalAcronisGroupDto> AcronisGroups { get; set; } = Array.Empty<LicenciamientoHistoricalAcronisGroupDto>();
+    public int FileCount { get; set; }
+    public int TotalRows { get; set; }
+    public int ValidRows { get; set; }
+    public int WarningRows { get; set; }
+    public int ErrorRows { get; set; }
+    public decimal TotalUsd { get; set; }
+    public decimal TotalCop { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class LicenciamientoHistoricalMonthSummaryDto
+{
+    public string ConsumptionMonth { get; set; } = "";
+    public string FacturaValue { get; set; } = "";
+    public string FacturaDisplay { get; set; } = "";
+    public decimal Trm { get; set; }
+    public decimal TotalUsd { get; set; }
+    public decimal TotalCop { get; set; }
+    public int RowCount { get; set; }
+    public int AcronisRowCount { get; set; }
+    public int PendingAcronisAccountCount { get; set; }
+    public bool HasErrors { get; set; }
+    public IReadOnlyList<string> FileNames { get; set; } = Array.Empty<string>();
+}
+
+public sealed class LicenciamientoHistoricalAcronisGroupDto
+{
+    public string ClientName { get; set; } = "";
+    public int RowCount { get; set; }
+    public decimal TotalUsd { get; set; }
+    public IReadOnlyList<string> Months { get; set; } = Array.Empty<string>();
 }
 
 public sealed class LicenciamientoImportResultDto

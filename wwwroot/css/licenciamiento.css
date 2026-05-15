@@ -197,6 +197,18 @@
     min-width: 1120px;
 }
 
+.lic-table--historical-months {
+    min-width: 920px;
+}
+
+.lic-table--historical-acronis {
+    min-width: 980px;
+}
+
+.lic-table--historical-rows {
+    min-width: 1180px;
+}
+
 .lic-table thead th {
     position: sticky;
     top: 0;
@@ -619,6 +631,10 @@
     width: min(1120px, 100%);
 }
 
+.lic-modal__dialog--historical {
+    width: min(1360px, 100%);
+}
+
 .lic-modal__dialog--small {
     width: min(520px, 100%);
 }
@@ -631,6 +647,24 @@
 .lic-field {
     display: grid;
     gap: 8px;
+}
+
+.lic-field--wide {
+    grid-column: 1 / -1;
+}
+
+.lic-historical-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(260px, .8fr) minmax(320px, 1.2fr);
+    align-items: start;
+}
+
+.lic-textarea-mono {
+    font-family: Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    resize: vertical;
 }
 
 .lic-field .form-control,
@@ -678,7 +712,8 @@
 
     .lic-kpis,
     .lic-preview-summary,
-    .lic-breakdown-summary {
+    .lic-breakdown-summary,
+    .lic-historical-grid {
         grid-template-columns: 1fr;
     }
 

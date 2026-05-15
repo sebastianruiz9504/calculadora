@@ -96,6 +96,85 @@ public sealed class PortfolioDashboardDto
     public IReadOnlyList<BillingInvoiceRowDto> Invoices { get; set; } = Array.Empty<BillingInvoiceRowDto>();
 }
 
+public sealed class BusinessDashboardDto
+{
+    public string AsOfDateLabel { get; set; } = "";
+    public string FocusLabel { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public int ClientsCount { get; set; }
+    public int ProductsCount { get; set; }
+    public decimal TotalAnnualValueUsd { get; set; }
+    public decimal MonthlyBillingUsd { get; set; }
+    public decimal AverageContractValueUsd { get; set; }
+    public string EmptyStateTitle { get; set; } = "";
+    public string EmptyStateMessage { get; set; } = "";
+    public IReadOnlyList<BusinessKpiDto> Kpis { get; set; } = Array.Empty<BusinessKpiDto>();
+    public IReadOnlyList<BusinessContractSummaryDto> TopContracts { get; set; } = Array.Empty<BusinessContractSummaryDto>();
+    public IReadOnlyList<BusinessLineSummaryDto> LineSummaries { get; set; } = Array.Empty<BusinessLineSummaryDto>();
+    public IReadOnlyList<BusinessProductSummaryDto> TopProducts { get; set; } = Array.Empty<BusinessProductSummaryDto>();
+    public IReadOnlyList<BusinessContractTypeSummaryDto> ContractTypes { get; set; } = Array.Empty<BusinessContractTypeSummaryDto>();
+}
+
+public sealed class BusinessKpiDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Hint { get; set; } = "";
+    public decimal Value { get; set; }
+    public string ValueFormat { get; set; } = "usd";
+    public string SecondaryLabel { get; set; } = "";
+    public string SecondaryValue { get; set; } = "";
+}
+
+public sealed class BusinessContractSummaryDto
+{
+    public string Key { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public decimal AnnualValueUsd { get; set; }
+    public decimal MonthlyBillingUsd { get; set; }
+    public int RecordsCount { get; set; }
+    public int ProductsCount { get; set; }
+    public string TopProductName { get; set; } = "";
+    public decimal SharePercent { get; set; }
+}
+
+public sealed class BusinessLineSummaryDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public decimal AnnualValueUsd { get; set; }
+    public decimal MonthlyBillingUsd { get; set; }
+    public int RecordsCount { get; set; }
+    public int ClientsCount { get; set; }
+    public int Quantity { get; set; }
+    public decimal SharePercent { get; set; }
+}
+
+public sealed class BusinessProductSummaryDto
+{
+    public string Key { get; set; } = "";
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public decimal AnnualValueUsd { get; set; }
+    public decimal MonthlyBillingUsd { get; set; }
+    public int Quantity { get; set; }
+    public int ClientsCount { get; set; }
+    public int RecordsCount { get; set; }
+    public decimal SharePercent { get; set; }
+}
+
+public sealed class BusinessContractTypeSummaryDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public decimal AnnualValueUsd { get; set; }
+    public decimal MonthlyBillingUsd { get; set; }
+    public int RecordsCount { get; set; }
+    public decimal SharePercent { get; set; }
+}
+
 public sealed class CopiersDashboardDto
 {
     public string AsOfDateLabel { get; set; } = "";
@@ -321,6 +400,59 @@ public sealed class CopiersEquipmentDashboardDto
     public IReadOnlyList<CopiersMaintenanceRowDto> MaintenanceRows { get; set; } = Array.Empty<CopiersMaintenanceRowDto>();
     public IReadOnlyList<CopiersEquipmentOptionDto> CategoryOptions { get; set; } = Array.Empty<CopiersEquipmentOptionDto>();
     public CopiersMaintenanceChartDto MaintenanceChart { get; set; } = new();
+}
+
+public sealed class CopiersCommercialInventoryDto
+{
+    public string AsOfDateLabel { get; set; } = "";
+    public string FocusLabel { get; set; } = "";
+    public bool HasData { get; set; }
+    public int RecordsCount { get; set; }
+    public bool CommercialValueColumnExists { get; set; }
+    public int ValuedRecordsCount { get; set; }
+    public int SuggestedRecordsCount { get; set; }
+    public int PendingRecordsCount { get; set; }
+    public decimal TotalCommercialValue { get; set; }
+    public IReadOnlyList<PortfolioKpiDto> Kpis { get; set; } = Array.Empty<PortfolioKpiDto>();
+    public IReadOnlyList<CopiersCommercialInventoryRowDto> Records { get; set; } = Array.Empty<CopiersCommercialInventoryRowDto>();
+    public IReadOnlyList<CopiersCommercialInventoryReferenceGroupDto> PendingReferenceGroups { get; set; } = Array.Empty<CopiersCommercialInventoryReferenceGroupDto>();
+}
+
+public sealed class CopiersCommercialInventoryRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string Serial { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public string ReferenceGroupKey { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string CategoryLabel { get; set; } = "";
+    public bool InStock { get; set; }
+    public decimal? CommercialValue { get; set; }
+    public decimal? SuggestedCommercialValue { get; set; }
+    public decimal? EffectiveCommercialValue { get; set; }
+    public string CommercialValueSource { get; set; } = "";
+}
+
+public sealed class CopiersCommercialInventoryReferenceGroupDto
+{
+    public string Key { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public int EquipmentCount { get; set; }
+    public IReadOnlyList<string> Examples { get; set; } = Array.Empty<string>();
+}
+
+public sealed class CopiersCommercialValueColumnEnsureResultDto
+{
+    public bool ColumnExists { get; set; }
+    public bool ColumnCreated { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class CopiersCommercialValueSeedResultDto
+{
+    public int UpdatedCount { get; set; }
+    public int SkippedCount { get; set; }
+    public string Message { get; set; } = "";
 }
 
 public sealed class CopiersEquipmentClientSummaryDto

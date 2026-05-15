@@ -59,6 +59,7 @@ public interface IDataverseService
     Task<BillingInvoicesDeleteResultDto> DeleteBillingInvoicesAsync(BillingInvoicesDeleteRequestDto request, CancellationToken ct = default);
     Task<BillingInvoicesContractTypeUpdateResultDto> UpdateBillingInvoicesContractTypeAsync(BillingInvoicesContractTypeUpdateRequestDto request, CancellationToken ct = default);
     Task<TaxesDashboardDto> GetTaxesDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
+    Task<BusinessDashboardDto> GetBusinessDashboardAsync(CancellationToken ct = default);
     Task<PnlDashboardDto> GetPnlDashboardAsync(int year, int? monthCutoff = null, string? vertical = null, CancellationToken ct = default);
     Task<PnlCellDetailDto> GetPnlCellDetailAsync(int year, int? monthCutoff, string? vertical, string rowKey, int? cellMonth = null, CancellationToken ct = default);
     Task<PnlDetailRecordUpdateResultDto> UpdatePnlDetailRecordAsync(PnlDetailRecordUpdateRequestDto request, CancellationToken ct = default);
@@ -72,6 +73,7 @@ public interface IDataverseService
     Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default);
     Task<CopiersEquipmentDashboardDto> GetCopiersEquipmentDashboardAsync(CancellationToken ct = default);
     Task<CopiersEquipmentDetailDto> GetCopiersEquipmentDetailAsync(string equipmentId, CancellationToken ct = default);
+    Task<CopiersCommercialInventoryDto> GetCopiersCommercialInventoryAsync(CancellationToken ct = default);
     Task<CopiersEquipmentInventoryDto> GetCopiersEquipmentInventoryAsync(string? clientId, string? clientName, CancellationToken ct = default);
     Task<CopiersCountersDashboardDto> GetCopiersCountersDashboardAsync(int year, int month, string? clientId = null, string? clientName = null, CancellationToken ct = default);
     Task<CopiersEquipmentAssignmentResultDto> SaveCopiersEquipmentAssignmentAsync(CopiersEquipmentAssignmentRequestDto request, CancellationToken ct = default);
@@ -117,6 +119,7 @@ public interface IDataverseService
     Task<CuentaCobroRowDto> GetCuentaCobroByIdAsync(string recordId, CancellationToken ct = default);
     Task<LicenciamientoBoardDto> GetLicenciamientoBoardAsync(CancellationToken ct = default);
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
+    Task<LicenciamientoHistoricalPreviewResultDto> PreviewLicenciamientoHistoricalUploadAsync(IReadOnlyList<LicenciamientoHistoricalFileUploadDto> files, string trmText, string acronisBreakdownText, CancellationToken ct = default);
     Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoAccountsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<IReadOnlyList<LicenciamientoLookupItemDto>> SearchLicenciamientoProductsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<LicenciamientoRegisterAccountIdResultDto> RegisterLicenciamientoAccountIdAsync(LicenciamientoRegisterAccountIdRequestDto request, CancellationToken ct = default);

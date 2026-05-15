@@ -18,6 +18,7 @@
      data-billing-invoices-contract-url="@Url.Action("BillingInvoicesContractType", "Dashboard")"
      data-billing-client-report-url="@Url.Action("BillingClientReport", "Dashboard")"
      data-billing-client-report-export-url="@Url.Action("BillingClientReportExport", "Dashboard")"
+     data-business-url="@Url.Action("Business", "Dashboard")"
      data-siigo-customers-url="@Url.Action("SiigoCustomers", "Dashboard")"
      data-siigo-customer-search-url="@Url.Action("SiigoCustomerSearch", "Dashboard")"
      data-siigo-invoices-url="@Url.Action("SiigoInvoices", "Dashboard")"
@@ -26,6 +27,8 @@
      data-copiers-client-invoices-url="@Url.Action("CopiersClientInvoices", "Dashboard")"
      data-copiers-save-url="@Url.Action("CopiersRecord", "Dashboard")"
      data-copiers-equipment-url="@Url.Action("CopiersEquipment", "Dashboard")"
+     data-copiers-inventory-url="@Url.Action("CopiersInventory", "Dashboard")"
+     data-copiers-inventory-export-url="@Url.Action("CopiersInventoryExport", "Dashboard")"
      data-copiers-counters-url="@Url.Action("CopiersCounters", "Dashboard")"
      data-copiers-counters-pdf-url="@Url.Action("CopiersCountersPdf", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
@@ -53,6 +56,7 @@
 
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
         <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="business">Negocios</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Copiers</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="hardware">Hardware</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="support-cloud">Soporte cloud</button>
@@ -342,6 +346,71 @@
                     </table>
                 </div>
             </article>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="business" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static business-dashboard-toolbar">
+            <div class="dashboard-toolbar__summary">
+                <span class="dashboard-toolbar__summary-label">Corte actual</span>
+                <strong id="businessAsOfLabel">Cargando...</strong>
+                <span id="businessFocusLabel">Productos Cloud agrupados por cliente</span>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="businessRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="businessStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="business-dashboard">
+            <section class="business-dashboard__summary" id="businessKpisContainer"></section>
+
+            <section class="business-dashboard__grid">
+                <article class="business-card business-card--wide">
+                    <div class="business-card__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Linea</div>
+                            <h2 class="business-card__title">Total de negocios por linea</h2>
+                        </div>
+                        <span class="business-card__meta" id="businessLineMeta">0 lineas</span>
+                    </div>
+                    <div class="business-line-chart" id="businessLinesChart"></div>
+                </article>
+
+                <article class="business-card">
+                    <div class="business-card__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Contrato</div>
+                            <h2 class="business-card__title">Mix de facturacion</h2>
+                        </div>
+                    </div>
+                    <div class="business-contract-mix" id="businessContractTypesChart"></div>
+                </article>
+            </section>
+
+            <section class="business-dashboard__grid business-dashboard__grid--balanced">
+                <article class="business-card">
+                    <div class="business-card__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Ranking</div>
+                            <h2 class="business-card__title">Top 10 contratos mas grandes</h2>
+                        </div>
+                        <span class="business-card__meta" id="businessContractsCount">0 contratos</span>
+                    </div>
+                    <div class="business-contract-list" id="businessContractsList"></div>
+                </article>
+
+                <article class="business-card">
+                    <div class="business-card__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Productos</div>
+                            <h2 class="business-card__title">Top productos mas vendidos</h2>
+                        </div>
+                    </div>
+                    <div class="business-products-chart" id="businessProductsChart"></div>
+                </article>
+            </section>
         </section>
     </div>
 
@@ -819,6 +888,7 @@
         <section class="dashboard-subtabs" aria-label="Subsecciones de copiers">
             <button type="button" class="dashboard-subtab is-active" data-copiers-subtab="billing">Facturaci&oacute;n copiers</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="equipment">Equipos</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="inventory">Inventario</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="counters">Contadores</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance">Mantenimientos</button>
         </section>
@@ -933,6 +1003,22 @@
                             </thead>
                             <tbody id="copiersEquipmentBody"></tbody>
                         </table>
+                    </div>
+                </article>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-copiers-subpanel="inventory" hidden>
+            <section class="dashboard-grid dashboard-grid--copiers-inventory">
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Inventario</div>
+                            <h2 class="dashboard-panel__title">Valor comercial de equipos</h2>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <button type="button" class="btn btn-primary dashboard-refresh-btn" id="copiersInventoryExportBtn">Exportar Excel</button>
+                        </div>
                     </div>
                 </article>
             </section>

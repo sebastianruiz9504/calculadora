@@ -74,6 +74,56 @@ public sealed class LicenciamientoController : Controller
         }
     }
 
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [RequestSizeLimit(52428800)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 52428800)]
+    public async Task<IActionResult> HistoricalPreview(CancellationToken ct)
+    {
+        var files = Request.Form.Files;
+        if (files.Count == 0)
+            return BadRequest(CreateErrorPayload("Debes seleccionar al menos un archivo de Excel."));
+
+        try
+        {
+            var uploads = new List<LicenciamientoHistoricalFileUploadDto>();
+            foreach (var file in files)
+            {
+                if (file.Length <= 0)
+                    continue;
+
+                await using var stream = file.OpenReadStream();
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer, ct);
+                uploads.Add(new LicenciamientoHistoricalFileUploadDto
+                {
+                    FileName = file.FileName,
+                    Content = buffer.ToArray()
+                });
+            }
+
+            if (uploads.Count == 0)
+                return BadRequest(CreateErrorPayload("Los archivos seleccionados estan vacios."));
+
+            var trmText = Request.Form["trmText"].ToString();
+            var acronisBreakdownText = Request.Form["acronisBreakdownText"].ToString();
+
+            return Ok(await _dataverse.PreviewLicenciamientoHistoricalUploadAsync(
+                uploads,
+                trmText,
+                acronisBreakdownText,
+                ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible preparar los meses anteriores.", ex));
+        }
+    }
+
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> AccountLookupSearch([FromQuery] string q, [FromQuery] int top = 12, CancellationToken ct = default)

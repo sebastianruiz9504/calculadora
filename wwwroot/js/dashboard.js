@@ -119,11 +119,17 @@
     const copiersBillingBody = document.getElementById("copiersBillingBody");
     const copiersNewRecordButton = document.getElementById("copiersNewRecordBtn");
     const copiersEquipmentRefreshButton = document.getElementById("copiersEquipmentRefreshBtn");
+    const copiersInventoryExportButton = document.getElementById("copiersInventoryExportBtn");
     const copiersMaintenanceRefreshButton = document.getElementById("copiersMaintenanceRefreshBtn");
     const copiersCountersRefreshButton = document.getElementById("copiersCountersRefreshBtn");
     const copiersCountersPdfButton = document.getElementById("copiersCountersPdfBtn");
     const copiersEquipmentResultsCount = document.getElementById("copiersEquipmentResultsCount");
     const copiersEquipmentKpisContainer = document.getElementById("copiersEquipmentKpisContainer");
+    const copiersInventoryKpisContainer = document.getElementById("copiersInventoryKpisContainer");
+    const copiersInventoryResultsCount = document.getElementById("copiersInventoryResultsCount");
+    const copiersInventoryPendingCount = document.getElementById("copiersInventoryPendingCount");
+    const copiersInventoryBody = document.getElementById("copiersInventoryBody");
+    const copiersInventoryPendingBody = document.getElementById("copiersInventoryPendingBody");
     const copiersMaintenanceKpisContainer = document.getElementById("copiersMaintenanceKpisContainer");
     const copiersCountersKpisContainer = document.getElementById("copiersCountersKpisContainer");
     const copiersClientSummaryBody = document.getElementById("copiersClientSummaryBody");
@@ -254,6 +260,18 @@
     const portfolioInvoicesHead = document.getElementById("portfolioInvoicesHead");
     const portfolioInvoicesBody = document.getElementById("portfolioInvoicesBody");
 
+    const businessRefreshButton = document.getElementById("businessRefreshBtn");
+    const businessStatusBanner = document.getElementById("businessStatusBanner");
+    const businessAsOfLabel = document.getElementById("businessAsOfLabel");
+    const businessFocusLabel = document.getElementById("businessFocusLabel");
+    const businessKpisContainer = document.getElementById("businessKpisContainer");
+    const businessLinesChart = document.getElementById("businessLinesChart");
+    const businessLineMeta = document.getElementById("businessLineMeta");
+    const businessContractTypesChart = document.getElementById("businessContractTypesChart");
+    const businessContractsList = document.getElementById("businessContractsList");
+    const businessContractsCount = document.getElementById("businessContractsCount");
+    const businessProductsChart = document.getElementById("businessProductsChart");
+
     const pnlYearFilter = document.getElementById("pnlYearFilter");
     const pnlMonthFilter = document.getElementById("pnlMonthFilter");
     const pnlVerticalFilter = document.getElementById("pnlVerticalFilter");
@@ -304,6 +322,13 @@
         maximumFractionDigits: 0
     });
 
+    const usdCurrencyFormatter = new Intl.NumberFormat("es-CO", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+
     const numberFormatter = new Intl.NumberFormat("es-CO", {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2
@@ -349,10 +374,12 @@
         siigoCustomerNitSearching: false,
         copiersDashboard: null,
         copiersEquipmentDashboard: null,
+        copiersInventoryDashboard: null,
         copiersCountersDashboard: null,
         copiersCountersSignature: "",
         taxesDashboard: null,
         portfolioDashboard: null,
+        businessDashboard: null,
         pnlDashboard: null,
         billingSignature: "",
         taxesSignature: "",
@@ -361,6 +388,8 @@
         copiersLoading: false,
         copiersExpandedGroups: new Set(),
         copiersEquipmentLoading: false,
+        copiersInventoryLoading: false,
+        copiersInventoryExporting: false,
         copiersCountersLoading: false,
         copiersEditorSaving: false,
         copiersEditorOriginal: null,
@@ -413,6 +442,7 @@
         pnlDetailSavingRecordId: "",
         periodLoading: false,
         portfolioLoading: false,
+        businessLoading: false,
         pnlLoading: false,
         licenciamientoLoading: false
     };
@@ -466,6 +496,22 @@
         }
 
         return currencyFormatter.format(numericValue);
+    }
+
+    function formatUsd(value) {
+        return usdCurrencyFormatter.format(Number(value || 0));
+    }
+
+    function formatBusinessMetric(value, format) {
+        if (format === "number") {
+            return numberFormatter.format(Number(value || 0));
+        }
+
+        if (format === "percent") {
+            return formatPercent(value);
+        }
+
+        return formatUsd(value);
     }
 
     function formatNullableNumber(value) {
@@ -664,6 +710,14 @@
         });
     }
 
+    function setBusinessLoading(loading) {
+        state.businessLoading = loading;
+        if (businessRefreshButton) {
+            businessRefreshButton.disabled = loading;
+            businessRefreshButton.textContent = loading ? "Actualizando..." : "Actualizar";
+        }
+    }
+
     function setCopiersLoading(loading) {
         state.copiersLoading = loading;
         [copiersRefreshButton, copiersNewRecordButton].forEach(element => {
@@ -687,6 +741,32 @@
                 element.disabled = loading;
             }
         });
+    }
+
+    function syncCopiersInventoryButtons() {
+        const busy = state.copiersInventoryLoading || state.copiersInventoryExporting;
+
+        if (copiersInventoryExportButton) {
+            copiersInventoryExportButton.disabled = busy;
+            copiersInventoryExportButton.textContent = state.copiersInventoryExporting
+                ? "Exportando..."
+                : "Exportar Excel";
+        }
+    }
+
+    function setCopiersInventoryLoading(loading) {
+        state.copiersInventoryLoading = loading;
+        copiersSubtabButtons.forEach(element => {
+            if (element) {
+                element.disabled = loading;
+            }
+        });
+        syncCopiersInventoryButtons();
+    }
+
+    function setCopiersInventoryExporting(exporting) {
+        state.copiersInventoryExporting = exporting;
+        syncCopiersInventoryButtons();
     }
 
     function setCopiersCountersLoading(loading) {
@@ -2831,6 +2911,10 @@
         return app.dataset.portfolioUrl || "";
     }
 
+    function buildBusinessUrl() {
+        return app.dataset.businessUrl || "";
+    }
+
     function buildCopiersUrl() {
         return app.dataset.copiersUrl || "";
     }
@@ -2847,6 +2931,14 @@
 
     function buildCopiersEquipmentUrl() {
         return app.dataset.copiersEquipmentUrl || "";
+    }
+
+    function buildCopiersInventoryUrl() {
+        return app.dataset.copiersInventoryUrl || "";
+    }
+
+    function buildCopiersInventoryExportUrl() {
+        return app.dataset.copiersInventoryExportUrl || "";
     }
 
     function buildCopiersCountersUrl() {
@@ -3529,12 +3621,199 @@
         `).join("");
     }
 
+    function renderBusinessKpis(dashboard) {
+        const kpis = Array.isArray(dashboard?.kpis) ? dashboard.kpis : [];
+        if (!businessKpisContainer) {
+            return;
+        }
+
+        businessKpisContainer.innerHTML = kpis.length
+            ? kpis.map(kpi => `
+                <article class="business-summary-card">
+                    <span class="business-summary-card__label">${escapeHtml(kpi.label || "")}</span>
+                    <strong class="business-summary-card__value">${escapeHtml(formatBusinessMetric(kpi.value, kpi.valueFormat))}</strong>
+                    <span class="business-summary-card__hint">${escapeHtml(kpi.hint || "")}</span>
+                    ${kpi.secondaryLabel || kpi.secondaryValue ? `
+                        <span class="business-summary-card__secondary">
+                            <span>${escapeHtml(kpi.secondaryLabel || "")}</span>
+                            <strong>${escapeHtml(kpi.secondaryValue || "")}</strong>
+                        </span>
+                    ` : ""}
+                </article>
+            `).join("")
+            : '<div class="business-empty">Sin indicadores disponibles.</div>';
+    }
+
+    function renderBusinessLinesChart(dashboard) {
+        const rows = Array.isArray(dashboard?.lineSummaries) ? dashboard.lineSummaries : [];
+        const maxValue = Math.max(1, ...rows.map(row => Number(row.annualValueUsd || 0)));
+
+        if (businessLineMeta) {
+            businessLineMeta.textContent = `${numberFormatter.format(rows.length)} linea(s)`;
+        }
+
+        if (!businessLinesChart) {
+            return;
+        }
+
+        businessLinesChart.innerHTML = rows.length
+            ? rows.map((row, index) => {
+                const annual = Number(row.annualValueUsd || 0);
+                const width = Math.max(3, (annual / maxValue) * 100);
+                const colorClass = `business-line-chart__bar--${(index % 5) + 1}`;
+
+                return `
+                    <div class="business-line-chart__row">
+                        <div class="business-line-chart__label">
+                            <strong>${escapeHtml(row.label || "Sin linea")}</strong>
+                            <span>${escapeHtml(numberFormatter.format(Number(row.recordsCount || 0)))} filas · ${escapeHtml(numberFormatter.format(Number(row.clientsCount || 0)))} clientes</span>
+                        </div>
+                        <div class="business-line-chart__track" aria-hidden="true">
+                            <span class="business-line-chart__bar ${colorClass}" style="width:${width}%"></span>
+                        </div>
+                        <div class="business-line-chart__value">
+                            <strong>${escapeHtml(formatUsd(annual))}</strong>
+                            <span>${escapeHtml(formatPercent(row.sharePercent || 0))}</span>
+                        </div>
+                    </div>
+                `;
+            }).join("")
+            : '<div class="business-empty">No hay lineas para graficar.</div>';
+    }
+
+    function renderBusinessContractTypes(dashboard) {
+        const rows = Array.isArray(dashboard?.contractTypes) ? dashboard.contractTypes : [];
+        if (!businessContractTypesChart) {
+            return;
+        }
+
+        if (!rows.length) {
+            businessContractTypesChart.innerHTML = '<div class="business-empty">Sin tipos de contrato.</div>';
+            return;
+        }
+
+        const colors = ["#0f766e", "#2563eb", "#b45309", "#7c3aed", "#db2777"];
+        let cursor = 0;
+        const totalShare = rows.reduce((sum, row) => sum + Math.max(Number(row.sharePercent || 0), 0), 0);
+        const segments = totalShare <= 0
+            ? "#e2e8f0 0% 100%"
+            : rows.map((row, index) => {
+                const start = cursor;
+                const share = Math.max(Number(row.sharePercent || 0), 0);
+                cursor = Math.min(100, cursor + share);
+                return `${colors[index % colors.length]} ${start}% ${cursor}%`;
+            }).join(", ");
+        const dominant = rows[0];
+
+        businessContractTypesChart.innerHTML = `
+            <div class="business-contract-mix__donut" style="background: conic-gradient(${segments});">
+                <span>
+                    <strong>${escapeHtml(formatPercent(dominant?.sharePercent || 0))}</strong>
+                    <small>${escapeHtml(dominant?.label || "")}</small>
+                </span>
+            </div>
+            <div class="business-contract-mix__legend">
+                ${rows.map((row, index) => `
+                    <div class="business-contract-mix__item">
+                        <span class="business-contract-mix__swatch" style="background:${colors[index % colors.length]}"></span>
+                        <span>${escapeHtml(row.label || "Sin contrato")}</span>
+                        <strong>${escapeHtml(formatUsd(row.annualValueUsd || 0))}</strong>
+                    </div>
+                `).join("")}
+            </div>
+        `;
+    }
+
+    function renderBusinessContracts(dashboard) {
+        const rows = Array.isArray(dashboard?.topContracts) ? dashboard.topContracts : [];
+        const maxValue = Math.max(1, ...rows.map(row => Number(row.annualValueUsd || 0)));
+
+        if (businessContractsCount) {
+            businessContractsCount.textContent = `${numberFormatter.format(rows.length)} contrato(s)`;
+        }
+
+        if (!businessContractsList) {
+            return;
+        }
+
+        businessContractsList.innerHTML = rows.length
+            ? rows.map((row, index) => {
+                const annual = Number(row.annualValueUsd || 0);
+                const width = Math.max(3, (annual / maxValue) * 100);
+
+                return `
+                    <div class="business-contract-row">
+                        <span class="business-contract-row__rank">${String(index + 1).padStart(2, "0")}</span>
+                        <div class="business-contract-row__main">
+                            <div class="business-contract-row__title">
+                                <strong>${escapeHtml(row.clientName || "Sin cliente")}</strong>
+                                <span>${escapeHtml(formatPercent(row.sharePercent || 0))}</span>
+                            </div>
+                            <small>${escapeHtml(numberFormatter.format(Number(row.recordsCount || 0)))} filas · ${escapeHtml(numberFormatter.format(Number(row.productsCount || 0)))} productos · ${escapeHtml(row.topProductName || "Sin producto dominante")}</small>
+                            <div class="business-contract-row__meter" aria-hidden="true">
+                                <span style="width:${width}%"></span>
+                            </div>
+                        </div>
+                        <div class="business-contract-row__amount">
+                            <strong>${escapeHtml(formatUsd(annual))}</strong>
+                            <span>${escapeHtml(formatUsd(row.monthlyBillingUsd || 0))}/mes</span>
+                        </div>
+                    </div>
+                `;
+            }).join("")
+            : '<div class="business-empty">No hay contratos para mostrar.</div>';
+    }
+
+    function renderBusinessProducts(dashboard) {
+        const rows = Array.isArray(dashboard?.topProducts) ? dashboard.topProducts : [];
+        const maxQuantity = Math.max(1, ...rows.map(row => Number(row.quantity || 0)));
+
+        if (!businessProductsChart) {
+            return;
+        }
+
+        businessProductsChart.innerHTML = rows.length
+            ? rows.map((row, index) => {
+                const quantity = Number(row.quantity || 0);
+                const width = Math.max(3, (quantity / maxQuantity) * 100);
+
+                return `
+                    <div class="business-product-row">
+                        <div class="business-product-row__head">
+                            <span>${escapeHtml(String(index + 1).padStart(2, "0"))}</span>
+                            <strong>${escapeHtml(row.productName || "Producto sin nombre")}</strong>
+                        </div>
+                        <div class="business-product-row__bar" aria-hidden="true">
+                            <span style="width:${width}%"></span>
+                        </div>
+                        <div class="business-product-row__meta">
+                            <span>${escapeHtml(numberFormatter.format(quantity))} unidades</span>
+                            <strong>${escapeHtml(formatUsd(row.annualValueUsd || 0))}</strong>
+                        </div>
+                    </div>
+                `;
+            }).join("")
+            : '<div class="business-empty">No hay productos para mostrar.</div>';
+    }
+
+    function renderBusinessDashboard(dashboard) {
+        renderBusinessKpis(dashboard);
+        renderBusinessLinesChart(dashboard);
+        renderBusinessContractTypes(dashboard);
+        renderBusinessContracts(dashboard);
+        renderBusinessProducts(dashboard);
+    }
+
     function renderCopiersKpis(dashboard) {
         renderSimpleKpis(copiersKpisContainer, dashboard?.kpis);
     }
 
     function renderCopiersEquipmentKpis(dashboard) {
         renderSimpleKpis(copiersEquipmentKpisContainer, dashboard?.kpis);
+    }
+
+    function renderCopiersInventoryKpis(dashboard) {
+        renderSimpleKpis(copiersInventoryKpisContainer, dashboard?.kpis);
     }
 
     function renderPnlKpis(dashboard) {
@@ -4462,6 +4741,91 @@
                 </tr>
             `).join("")
             : '<tr><td colspan="7" class="dashboard-table__empty">No hay equipos cargados en este momento.</td></tr>';
+    }
+
+    function renderCopiersInventoryValue(row) {
+        const effectiveValue = row?.effectiveCommercialValue;
+        if (effectiveValue === null || effectiveValue === undefined || effectiveValue === "") {
+            return '<span class="dashboard-pill dashboard-pill--warning">Pendiente</span>';
+        }
+
+        const value = currencyFormatter.format(Number(effectiveValue || 0));
+        const isSuggested = !row?.commercialValue && row?.suggestedCommercialValue;
+        return isSuggested
+            ? `${escapeHtml(value)} <span class="dashboard-muted-inline">sugerido</span>`
+            : escapeHtml(value);
+    }
+
+    function renderCopiersInventorySource(row) {
+        const source = row?.commercialValueSource || "Pendiente";
+        const tone = source === "Dataverse"
+            ? "success"
+            : source === "Sugerido"
+                ? "info"
+                : "warning";
+        return `<span class="dashboard-pill dashboard-pill--${tone}">${escapeHtml(source)}</span>`;
+    }
+
+    function renderCopiersInventoryTable(dashboard) {
+        const rows = Array.isArray(dashboard?.records) ? dashboard.records : [];
+
+        if (copiersInventoryResultsCount) {
+            copiersInventoryResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} equipos`;
+        }
+
+        if (!copiersInventoryBody) {
+            return;
+        }
+
+        copiersInventoryBody.innerHTML = rows.length
+            ? rows.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.serial || "Sin serial")}</td>
+                    <td>${escapeHtml(row.reference || "Sin referencia")}</td>
+                    <td class="text-end">${renderCopiersInventoryValue(row)}</td>
+                    <td>${renderCopiersInventorySource(row)}</td>
+                    <td>${row.inStock
+                        ? '<span class="dashboard-pill dashboard-pill--stock">Stock</span>'
+                        : escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td>${escapeHtml(row.categoryLabel || "Sin categoria")}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="6" class="dashboard-table__empty">No hay equipos cargados en este momento.</td></tr>';
+    }
+
+    function renderCopiersInventoryPendingGroups(dashboard) {
+        const groups = Array.isArray(dashboard?.pendingReferenceGroups)
+            ? dashboard.pendingReferenceGroups
+            : [];
+        const pendingCount = Number(dashboard?.pendingRecordsCount || 0);
+
+        if (copiersInventoryPendingCount) {
+            copiersInventoryPendingCount.textContent = `${numberFormatter.format(pendingCount)} pendientes`;
+        }
+
+        if (!copiersInventoryPendingBody) {
+            return;
+        }
+
+        copiersInventoryPendingBody.innerHTML = groups.length
+            ? groups.map(group => `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(group.reference || group.key || "Sin referencia")}</strong>
+                        <span class="dashboard-muted-inline">${escapeHtml(group.key || "")}</span>
+                    </td>
+                    <td class="text-end">${escapeHtml(numberFormatter.format(Number(group.equipmentCount || 0)))}</td>
+                    <td>${escapeHtml((Array.isArray(group.examples) ? group.examples : []).join(", ") || "Sin ejemplos")}</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="3" class="dashboard-table__empty">No quedan referencias pendientes sin valor comercial.</td></tr>';
+    }
+
+    function renderCopiersInventoryDashboard(dashboard) {
+        renderCopiersInventoryKpis(dashboard);
+        renderCopiersInventoryTable(dashboard);
+        renderCopiersInventoryPendingGroups(dashboard);
+        syncCopiersInventoryButtons();
     }
 
     function renderCopiersMaintenanceChart(chart) {
@@ -6100,15 +6464,25 @@
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
+    function updateHeroForBusiness(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.asOfDateLabel ? `Corte al ${dashboard.asOfDateLabel}` : "Corte actual");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Productos Cloud agrupados por cliente");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
     function updateHeroForCopiers(dashboard) {
         const fallbackFocus = state.copiersSubtab === "equipment"
             ? "Equipos asignados, stock y disponibilidad"
+            : state.copiersSubtab === "inventory"
+                ? "Valores comerciales y referencias pendientes"
             : state.copiersSubtab === "counters"
                 ? "Consumo mensual de copias y escaneos"
             : state.copiersSubtab === "maintenance"
                 ? "Mantenimientos, owners y actas"
                 : "Ordenado por dia de facturacion";
-        const focusLabel = state.copiersSubtab === "billing" || state.copiersSubtab === "counters"
+        const focusLabel = state.copiersSubtab === "billing"
+            || state.copiersSubtab === "counters"
+            || state.copiersSubtab === "inventory"
             ? (dashboard?.focusLabel || fallbackFocus)
             : fallbackFocus;
         const activeRecordCount = state.copiersSubtab === "maintenance"
@@ -6165,6 +6539,16 @@
         }
     }
 
+    function updateBusinessContext(dashboard) {
+        state.businessDashboard = dashboard;
+        businessAsOfLabel && (businessAsOfLabel.textContent = dashboard?.asOfDateLabel || "Sin corte");
+        businessFocusLabel && (businessFocusLabel.textContent = dashboard?.focusLabel || "Productos Cloud agrupados por cliente");
+
+        if (state.activeTab === "business") {
+            updateHeroForBusiness(dashboard);
+        }
+    }
+
     function updateCopiersContext(dashboard) {
         state.copiersDashboard = dashboard;
         copiersAsOfLabel && (copiersAsOfLabel.textContent = dashboard?.asOfDateLabel || "Sin corte");
@@ -6179,6 +6563,14 @@
         state.copiersEquipmentDashboard = dashboard;
 
         if (state.activeTab === "copiers" && state.copiersSubtab === "equipment") {
+            updateHeroForCopiers(dashboard);
+        }
+    }
+
+    function updateCopiersInventoryContext(dashboard) {
+        state.copiersInventoryDashboard = dashboard;
+
+        if (state.activeTab === "copiers" && state.copiersSubtab === "inventory") {
             updateHeroForCopiers(dashboard);
         }
     }
@@ -6245,6 +6637,7 @@
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
             dashboardPeriodScope.hidden = state.activeTab === "portfolio"
+                || state.activeTab === "business"
                 || state.activeTab === "copiers"
                 || state.activeTab === "pnl"
                 || state.activeTab === "licenciamiento"
@@ -6269,6 +6662,8 @@
     function setCopiersSubtab(subtabKey) {
         state.copiersSubtab = subtabKey === "equipment"
             ? "equipment"
+            : subtabKey === "inventory"
+                ? "inventory"
             : subtabKey === "counters"
                 ? "counters"
             : subtabKey === "maintenance"
@@ -6306,6 +6701,12 @@
             } else {
                 loadCopiersEquipment();
             }
+            return;
+        }
+
+        if (state.copiersSubtab === "inventory") {
+            updateHeroForCopiers(state.copiersInventoryDashboard || {});
+            syncCopiersInventoryButtons();
             return;
         }
 
@@ -6404,6 +6805,15 @@
                 updateHeroForPortfolio(state.portfolioDashboard);
             } else {
                 loadPortfolio();
+            }
+            return;
+        }
+
+        if (tabKey === "business") {
+            if (state.businessDashboard) {
+                updateHeroForBusiness(state.businessDashboard);
+            } else {
+                loadBusiness();
             }
             return;
         }
@@ -6713,6 +7123,29 @@
         }
     }
 
+    async function loadBusiness() {
+        if (!buildBusinessUrl()) {
+            return;
+        }
+
+        setBusinessLoading(true);
+        setStatus(businessStatusBanner, "info", "Actualizando tablero de negocios...");
+
+        try {
+            const dashboard = await fetchJson(buildBusinessUrl());
+            updateBusinessContext(dashboard);
+            renderBusinessDashboard(dashboard);
+            setStatus(
+                businessStatusBanner,
+                dashboard?.hasData ? "" : "info",
+                dashboard?.hasData ? "" : (dashboard?.emptyStateMessage || "No hay negocios cerrados para mostrar."));
+        } catch (error) {
+            setStatus(businessStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard de negocios.");
+        } finally {
+            setBusinessLoading(false);
+        }
+    }
+
     async function loadCopiers() {
         setCopiersLoading(true);
         setStatus(copiersStatusBanner, "info", "Actualizando facturacion copiers...");
@@ -6888,6 +7321,69 @@
             setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar los equipos copiers.");
         } finally {
             setCopiersEquipmentLoading(false);
+        }
+    }
+
+    async function loadCopiersInventory(options = {}) {
+        const quiet = Boolean(options.quiet);
+        setCopiersInventoryLoading(true);
+        if (!quiet) {
+            setStatus(copiersStatusBanner, "info", "Actualizando inventario comercial copiers...");
+        }
+
+        try {
+            const dashboard = await fetchJson(buildCopiersInventoryUrl());
+            updateCopiersInventoryContext(dashboard);
+            renderCopiersInventoryDashboard(dashboard);
+            if (!quiet) {
+                setStatus(copiersStatusBanner, "", "");
+            }
+        } catch (error) {
+            setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el inventario comercial.");
+        } finally {
+            setCopiersInventoryLoading(false);
+        }
+    }
+
+    async function exportCopiersInventory() {
+        const url = buildCopiersInventoryExportUrl();
+        if (!url) {
+            setStatus(copiersStatusBanner, "error", "No hay una URL configurada para exportar el inventario.");
+            return;
+        }
+
+        setCopiersInventoryExporting(true);
+        setStatus(copiersStatusBanner, "info", "Preparando Excel de inventario...");
+
+        try {
+            const response = await fetch(url, {
+                method: "GET",
+                headers: {
+                    Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                }
+            });
+
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || "No fue posible exportar el inventario.");
+            }
+
+            const blob = await response.blob();
+            const fileName = resolveDownloadFileName(response.headers.get("content-disposition"))
+                || "inventario-comercial-copiers.xlsx";
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            setStatus(copiersStatusBanner, "success", "Excel generado correctamente.");
+        } catch (error) {
+            setStatus(copiersStatusBanner, "error", error instanceof Error ? error.message : "No fue posible exportar el inventario.");
+        } finally {
+            setCopiersInventoryExporting(false);
         }
     }
 
@@ -7218,10 +7714,12 @@
         window.location.href = buildTaxesRetentionsExportUrl();
     });
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
+    businessRefreshButton?.addEventListener("click", loadBusiness);
     copiersRefreshButton?.addEventListener("click", loadCopiers);
     copiersEquipmentRefreshButton?.addEventListener("click", () => {
         loadCopiersEquipment();
     });
+    copiersInventoryExportButton?.addEventListener("click", exportCopiersInventory);
     copiersMaintenanceRefreshButton?.addEventListener("click", () => {
         loadCopiersEquipment();
     });
@@ -7606,6 +8104,7 @@
     buildCopiersCountersPeriodOptions();
     renderCopiersCountersPending();
     renderCopiersMaintenanceTable();
+    syncCopiersInventoryButtons();
     setBillingSectionExpanded(billingReportSection, billingReportToggleButton, false, "Ocultar reportes", "Mostrar reportes");
     setBillingSectionExpanded(siigoApiSection, siigoToggleButton, false, "Ocultar Siigo API", "Mostrar Siigo API");
     resetBillingReportReference();

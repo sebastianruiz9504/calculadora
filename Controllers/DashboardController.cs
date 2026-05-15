@@ -398,6 +398,25 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Business(CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetBusinessDashboardAsync(ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de negocios.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Copiers(CancellationToken ct)
     {
         try
@@ -450,6 +469,104 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de equipos copiers.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersInventory(CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetCopiersCommercialInventoryAsync(ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el inventario comercial copiers.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersInventoryExport(CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetCopiersCommercialInventoryAsync(ct);
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Inventario");
+
+            worksheet.Cell(1, 1).Value = "Inventario comercial Copiers";
+            worksheet.Cell(2, 1).Value = "Corte";
+            worksheet.Cell(2, 2).Value = dashboard.AsOfDateLabel;
+            worksheet.Cell(3, 1).Value = "Total equipos";
+            worksheet.Cell(3, 2).Value = dashboard.RecordsCount;
+            worksheet.Cell(3, 3).Value = "Valor comercial total";
+            worksheet.Cell(3, 4).Value = dashboard.TotalCommercialValue;
+
+            var headers = new[]
+            {
+                "Serial",
+                "Referencia",
+                "Valor comercial",
+                "Fuente",
+                "Cliente / estado",
+                "Categoria"
+            };
+
+            for (var index = 0; index < headers.Length; index++)
+            {
+                worksheet.Cell(5, index + 1).Value = headers[index];
+            }
+
+            var rowIndex = 6;
+            foreach (var row in dashboard.Records)
+            {
+                worksheet.Cell(rowIndex, 1).Value = row.Serial;
+                worksheet.Cell(rowIndex, 2).Value = row.Reference;
+                if (row.EffectiveCommercialValue.HasValue)
+                    worksheet.Cell(rowIndex, 3).Value = row.EffectiveCommercialValue.Value;
+                worksheet.Cell(rowIndex, 4).Value = row.CommercialValueSource;
+                worksheet.Cell(rowIndex, 5).Value = row.InStock ? "Stock" : row.ClientName;
+                worksheet.Cell(rowIndex, 6).Value = row.CategoryLabel;
+                rowIndex++;
+            }
+
+            if (dashboard.Records.Count == 0)
+            {
+                worksheet.Cell(rowIndex, 1).Value = "No hay equipos registrados.";
+                worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Merge();
+            }
+
+            var lastRow = Math.Max(rowIndex - 1, 6);
+            worksheet.Range(1, 1, 1, headers.Length).Merge().Style.Font.Bold = true;
+            worksheet.Range(5, 1, 5, headers.Length).Style.Font.Bold = true;
+            worksheet.Range(5, 1, 5, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+            worksheet.Range(3, 4, Math.Max(3, lastRow), 4).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Range(6, 3, Math.Max(6, lastRow), 3).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var fileName = $"inventario-comercial-copiers-{ResolveBogotaToday():yyyyMMdd}.xlsx";
+
+            return File(
+                stream.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible exportar el inventario comercial copiers.");
         }
     }
 
@@ -1008,26 +1125,24 @@ public sealed class DashboardController : Controller
         const double topY = 572;
         const double tableTopY = 505;
         const double bottomY = 34;
-        const double headerHeight = 18;
-        const double rowHeight = 14.5;
+        const double headerHeight = 19;
+        const double rowHeight = 15.5;
 
         var rows = (dashboard.EquipmentRows ?? Array.Empty<CopiersCountersEquipmentRowDto>()).ToList();
         var columns = new[]
         {
-            new PdfTableColumn("Cliente", 110, false, row => FirstNonEmpty(row.ClientName, "Sin cliente")),
-            new PdfTableColumn("Equipo", 60, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
-            new PdfTableColumn("Sede", 65, false, row => row.Site),
-            new PdfTableColumn("Ubicacion", 65, false, row => row.Area),
-            new PdfTableColumn("Fecha ant.", 46, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
-            new PdfTableColumn("Fecha act.", 46, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
-            new PdfTableColumn("Act. copias", 50, true, row => FormatPdfNumber(row.CurrentCopiesCounter)),
-            new PdfTableColumn("Ant. copias", 50, true, row => FormatPdfNumber(row.PreviousCopiesCounter)),
-            new PdfTableColumn("Copias", 45, true, row => FormatPdfNumber(row.CopiesConsumption)),
-            new PdfTableColumn("Act. esc.", 50, true, row => FormatPdfNumber(row.CurrentScansCounter)),
-            new PdfTableColumn("Ant. esc.", 50, true, row => FormatPdfNumber(row.PreviousScansCounter)),
-            new PdfTableColumn("Escaneos", 45, true, row => FormatPdfNumber(row.ScansConsumption)),
-            new PdfTableColumn("Dias", 34, true, row => FormatPdfNumber(row.DaysBetweenReadings)),
-            new PdfTableColumn("Total", 44, true, row => FormatPdfNumber(row.TotalConsumption))
+            new PdfTableColumn("Equipo", 90, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
+            new PdfTableColumn("Ubicacion", 90, false, row => row.Area),
+            new PdfTableColumn("Fecha ant.", 58, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
+            new PdfTableColumn("Fecha act.", 58, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
+            new PdfTableColumn("Act. copias", 65, true, row => FormatPdfNumber(row.CurrentCopiesCounter)),
+            new PdfTableColumn("Ant. copias", 65, true, row => FormatPdfNumber(row.PreviousCopiesCounter)),
+            new PdfTableColumn("Copias", 55, true, row => FormatPdfNumber(row.CopiesConsumption)),
+            new PdfTableColumn("Act. esc.", 65, true, row => FormatPdfNumber(row.CurrentScansCounter)),
+            new PdfTableColumn("Ant. esc.", 65, true, row => FormatPdfNumber(row.PreviousScansCounter)),
+            new PdfTableColumn("Escaneos", 55, true, row => FormatPdfNumber(row.ScansConsumption)),
+            new PdfTableColumn("Dias", 40, true, row => FormatPdfNumber(row.DaysBetweenReadings)),
+            new PdfTableColumn("Total", 54, true, row => FormatPdfNumber(row.TotalConsumption))
         };
 
         var tableWidth = columns.Sum(static column => column.Width);
@@ -1081,8 +1196,8 @@ public sealed class DashboardController : Controller
                     content,
                     column.Header,
                     currentX + 3,
-                    tableTopY - 12,
-                    5.7,
+                    tableTopY - 12.5,
+                    6.4,
                     "F2",
                     column.Width - 6,
                     alignRight: column.AlignRight);
@@ -1116,7 +1231,7 @@ public sealed class DashboardController : Controller
                             FirstNonEmpty(column.ValueSelector(row), "-"),
                             currentX + 3,
                             rowY + 5,
-                            5.2,
+                            6,
                             "F1",
                             column.Width - 6,
                             alignRight: column.AlignRight);

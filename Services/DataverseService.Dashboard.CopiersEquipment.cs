@@ -27,6 +27,8 @@ public sealed partial class DataverseService
     private const string DashboardEquipmentAddressField = "cr07a_direccion";
     private const string DashboardEquipmentMapHtmlField = "cr07a_htmlmapa";
     private const string DashboardEquipmentMapUrlField = "cr07a_mapa";
+    private const string DashboardEquipmentCommercialValueField = "cr07a_valorcomercial";
+    private const string DashboardEquipmentCommercialValueSchemaName = "cr07a_ValorComercial";
     private const string CopiersClientIdField = "cr07a_clienteid";
     private const string CopiersClientNameField = "cr07a_nombre";
     private const string CopiersClientContactNameField = "cr07a_nombrepersonaacargo";
@@ -82,6 +84,13 @@ public sealed partial class DataverseService
         {
             [DashboardMaintenanceStatusCompleted] = "Completado",
             [DashboardMaintenanceStatusPending] = "Pendiente"
+        };
+    private static readonly IReadOnlyDictionary<string, decimal> CopiersCommercialValueDefaults =
+        new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["FS2100"] = 1500000m,
+            ["M3645"] = 2700000m,
+            ["P2040"] = 1900000m
         };
     private static readonly IReadOnlyList<CopiersEquipmentInventoryOptionalColumnDefinition> DashboardEquipmentInventoryOptionalColumns =
         new[]
@@ -183,6 +192,149 @@ public sealed partial class DataverseService
             MaintenanceRows = BuildMaintenanceRows(maintenanceRows),
             MovementRows = BuildEquipmentMovementRows(movementRows),
             CategoryOptions = BuildEquipmentCategoryOptions()
+        };
+    }
+
+    public async Task<CopiersCommercialInventoryDto> GetCopiersCommercialInventoryAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var today = GetBogotaToday();
+        await ApplyCopiersCommercialValueDefaultsAsync(ct);
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            httpContext.User,
+            ct);
+        var rows = await GetCommercialInventoryRecordsAsync(
+            metadata,
+            includeCommercialValue: true,
+            httpContext.User,
+            ct);
+        var records = BuildCommercialInventoryRows(rows);
+        var valuedRecordsCount = records.Count(static row => HasCommercialValue(row.CommercialValue));
+        var suggestedRecordsCount = records.Count(static row =>
+            !HasCommercialValue(row.CommercialValue)
+            && HasCommercialValue(row.SuggestedCommercialValue));
+        var pendingRecordsCount = records.Count(static row => !HasCommercialValue(row.EffectiveCommercialValue));
+        var totalCommercialValue = records.Sum(static row => row.EffectiveCommercialValue ?? 0m);
+
+        return new CopiersCommercialInventoryDto
+        {
+            AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
+            FocusLabel = "Inventario comercial de equipos y referencias pendientes",
+            HasData = records.Count > 0,
+            RecordsCount = records.Count,
+            CommercialValueColumnExists = true,
+            ValuedRecordsCount = valuedRecordsCount,
+            SuggestedRecordsCount = suggestedRecordsCount,
+            PendingRecordsCount = pendingRecordsCount,
+            TotalCommercialValue = totalCommercialValue,
+            Kpis = BuildCommercialInventoryKpis(
+                records.Count,
+                valuedRecordsCount,
+                suggestedRecordsCount,
+                pendingRecordsCount,
+                totalCommercialValue),
+            Records = records,
+            PendingReferenceGroups = BuildCommercialInventoryPendingReferenceGroups(records)
+        };
+    }
+
+    public async Task<CopiersCommercialValueColumnEnsureResultDto> EnsureCopiersCommercialValueColumnAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var attributeNames = await GetCopiersEquipmentAttributeNamesAsync(httpContext.User, ct);
+        if (attributeNames.Contains(DashboardEquipmentCommercialValueField))
+        {
+            return new CopiersCommercialValueColumnEnsureResultDto
+            {
+                ColumnExists = true,
+                ColumnCreated = false,
+                Message = "La columna valor comercial ya existe en la tabla de equipos."
+            };
+        }
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(DashboardEquipmentTableLogicalName)}')/Attributes",
+            "POST",
+            BuildCopiersCommercialValueAttributePayload(),
+            httpContext.User,
+            ct);
+        await PublishCopiersEquipmentEntityAsync(httpContext.User, ct);
+        await WaitForCopiersCommercialValueColumnAsync(httpContext.User, ct);
+
+        return new CopiersCommercialValueColumnEnsureResultDto
+        {
+            ColumnExists = true,
+            ColumnCreated = true,
+            Message = "La columna valor comercial fue creada en la tabla de equipos."
+        };
+    }
+
+    public async Task<CopiersCommercialValueSeedResultDto> ApplyCopiersCommercialValueDefaultsAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        await EnsureCopiersCommercialValueColumnAsync(ct);
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            httpContext.User,
+            ct);
+        var rows = await GetCommercialInventoryRecordsAsync(
+            metadata,
+            includeCommercialValue: true,
+            httpContext.User,
+            ct);
+
+        var updatedCount = 0;
+        var skippedCount = 0;
+        foreach (var row in rows)
+        {
+            if (HasCommercialValue(row.CommercialValue))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            var suggestedValue = ResolveCopiersDefaultCommercialValue(row.Reference);
+            if (!HasCommercialValue(suggestedValue))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                [DashboardEquipmentCommercialValueField] = Math.Round(suggestedValue!.Value, 0, MidpointRounding.AwayFromZero)
+            };
+            await CallDataverseSendAsync(
+                $"/api/data/v9.2/{metadata.EntitySetName}({row.RecordId})",
+                "PATCH",
+                payload,
+                httpContext.User,
+                ct);
+            updatedCount++;
+        }
+
+        return new CopiersCommercialValueSeedResultDto
+        {
+            UpdatedCount = updatedCount,
+            SkippedCount = skippedCount,
+            Message = updatedCount == 0
+                ? "No habia equipos pendientes con referencias conocidas para actualizar."
+                : $"Se actualizaron {updatedCount:N0} equipo(s) con valores comerciales conocidos."
         };
     }
 
@@ -619,6 +771,226 @@ public sealed partial class DataverseService
         return ParseEquipmentRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
     }
 
+    private async Task<List<CopiersCommercialInventoryRecordRow>> GetCommercialInventoryRecordsAsync(
+        RhEntityMetadata metadata,
+        bool includeCommercialValue,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var relativeUrl =
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={BuildCommercialInventorySelectClause(metadata, includeCommercialValue)}" +
+            $"&$orderby={DashboardEquipmentReferenceField} asc,{DashboardEquipmentSerialField} asc";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(item => ParseCommercialInventoryRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField, includeCommercialValue))
+            .Where(static item => item is not null)
+            .Cast<CopiersCommercialInventoryRecordRow>()
+            .ToList();
+    }
+
+    private string BuildCommercialInventorySelectClause(RhEntityMetadata metadata, bool includeCommercialValue)
+    {
+        return string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            DashboardEquipmentSerialField,
+            BuildDashboardLookupValuePropertyName(DashboardEquipmentClientField),
+            DashboardEquipmentCategoryField,
+            DashboardEquipmentReferenceField,
+            includeCommercialValue ? DashboardEquipmentCommercialValueField : ""
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private CopiersCommercialInventoryRecordRow? ParseCommercialInventoryRecord(
+        JsonElement item,
+        string primaryIdField,
+        string primaryNameField,
+        bool includeCommercialValue)
+    {
+        var equipment = ParseEquipmentRecord(item, primaryIdField, primaryNameField);
+        if (equipment is null)
+            return null;
+
+        return new CopiersCommercialInventoryRecordRow
+        {
+            RecordId = equipment.RecordId,
+            Serial = equipment.Serial,
+            Reference = equipment.Reference,
+            ClientName = equipment.ClientName,
+            CategoryLabel = equipment.CategoryLabel,
+            InStock = equipment.InStock,
+            CommercialValue = includeCommercialValue
+                ? ReadDecimal(item, DashboardEquipmentCommercialValueField)
+                : null
+        };
+    }
+
+    private IReadOnlyList<CopiersCommercialInventoryRowDto> BuildCommercialInventoryRows(
+        IReadOnlyList<CopiersCommercialInventoryRecordRow> rows)
+    {
+        return rows
+            .Select(row =>
+            {
+                var commercialValue = HasCommercialValue(row.CommercialValue)
+                    ? row.CommercialValue
+                    : null;
+                var suggestedValue = ResolveCopiersDefaultCommercialValue(row.Reference);
+                var effectiveValue = commercialValue ?? suggestedValue;
+
+                return new CopiersCommercialInventoryRowDto
+                {
+                    RecordId = row.RecordId,
+                    Serial = row.Serial,
+                    Reference = row.Reference,
+                    ReferenceGroupKey = BuildCopiersReferenceGroupKey(row.Reference),
+                    ClientName = row.ClientName,
+                    CategoryLabel = row.CategoryLabel,
+                    InStock = row.InStock,
+                    CommercialValue = commercialValue,
+                    SuggestedCommercialValue = suggestedValue,
+                    EffectiveCommercialValue = effectiveValue,
+                    CommercialValueSource = HasCommercialValue(commercialValue)
+                        ? "Dataverse"
+                        : HasCommercialValue(suggestedValue)
+                            ? "Sugerido"
+                            : "Pendiente"
+                };
+            })
+            .OrderBy(static row => row.ReferenceGroupKey, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.Reference, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.Serial, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<PortfolioKpiDto> BuildCommercialInventoryKpis(
+        int recordsCount,
+        int valuedRecordsCount,
+        int suggestedRecordsCount,
+        int pendingRecordsCount,
+        decimal totalCommercialValue)
+    {
+        return new[]
+        {
+            new PortfolioKpiDto
+            {
+                Key = "equipment",
+                Label = "Equipos",
+                Value = recordsCount,
+                ValueFormat = "number",
+                Hint = "Registros en cr07a_equipo",
+                SecondaryLabel = "Con valor en Dataverse",
+                SecondaryValue = valuedRecordsCount.ToString("N0", DashboardCulture)
+            },
+            new PortfolioKpiDto
+            {
+                Key = "commercial-value",
+                Label = "Valor comercial",
+                Value = totalCommercialValue,
+                ValueFormat = "currency",
+                Hint = "Valores guardados y sugeridos",
+                SecondaryLabel = "Sugeridos",
+                SecondaryValue = suggestedRecordsCount.ToString("N0", DashboardCulture)
+            },
+            new PortfolioKpiDto
+            {
+                Key = "pending",
+                Label = "Pendientes",
+                Value = pendingRecordsCount,
+                ValueFormat = "number",
+                Hint = "Sin valor comercial ni sugerencia",
+                SecondaryLabel = "Mapeos activos",
+                SecondaryValue = CopiersCommercialValueDefaults.Count.ToString("N0", DashboardCulture)
+            }
+        };
+    }
+
+    private static IReadOnlyList<CopiersCommercialInventoryReferenceGroupDto> BuildCommercialInventoryPendingReferenceGroups(
+        IReadOnlyList<CopiersCommercialInventoryRowDto> records)
+    {
+        return records
+            .Where(static row => !HasCommercialValue(row.EffectiveCommercialValue))
+            .GroupBy(static row => row.ReferenceGroupKey, StringComparer.OrdinalIgnoreCase)
+            .Select(static group =>
+            {
+                var rows = group.ToList();
+                var reference = rows
+                    .Select(static row => row.Reference)
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .GroupBy(static value => value.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(static valueGroup => valueGroup.Count())
+                    .ThenBy(static valueGroup => valueGroup.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(static valueGroup => valueGroup.Key)
+                    .FirstOrDefault();
+
+                return new CopiersCommercialInventoryReferenceGroupDto
+                {
+                    Key = group.Key,
+                    Reference = FirstNonEmpty(reference, group.Key, "Sin referencia"),
+                    EquipmentCount = rows.Count,
+                    Examples = rows
+                        .Select(static row => FirstNonEmpty(row.Serial, row.Reference, "Equipo sin serial"))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(6)
+                        .ToList()
+                };
+            })
+            .OrderByDescending(static group => group.EquipmentCount)
+            .ThenBy(static group => group.Reference, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static decimal? ResolveCopiersDefaultCommercialValue(string? reference)
+    {
+        var normalizedReference = NormalizeCopiersReferenceKey(reference);
+        if (string.IsNullOrWhiteSpace(normalizedReference))
+            return null;
+
+        foreach (var item in CopiersCommercialValueDefaults)
+        {
+            if (normalizedReference.Contains(item.Key, StringComparison.OrdinalIgnoreCase))
+                return item.Value;
+        }
+
+        return null;
+    }
+
+    private static string BuildCopiersReferenceGroupKey(string? reference)
+    {
+        var normalizedReference = NormalizeCopiersReferenceKey(reference);
+        if (string.IsNullOrWhiteSpace(normalizedReference))
+            return "SIN_REFERENCIA";
+
+        var knownKey = CopiersCommercialValueDefaults.Keys
+            .FirstOrDefault(key => normalizedReference.Contains(key, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(knownKey))
+            return knownKey;
+
+        var match = Regex.Match(
+            normalizedReference,
+            "^[A-Z]+\\d{3,5}",
+            RegexOptions.CultureInvariant);
+        return match.Success ? match.Value : normalizedReference;
+    }
+
+    private static string NormalizeCopiersReferenceKey(string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+            return "";
+
+        return new string(reference
+            .Trim()
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToUpperInvariant)
+            .ToArray());
+    }
+
+    private static bool HasCommercialValue(decimal? value) =>
+        value.HasValue && value.Value > 0m;
+
     private async Task<string> CreateCopiersEquipmentMovementAsync(
         RhEntityMetadata movementMetadata,
         RhEntityMetadata equipmentMetadata,
@@ -965,6 +1337,50 @@ public sealed partial class DataverseService
         }
 
         return new HashSet<string>(cached, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task WaitForCopiersCommercialValueColumnAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            _copiersEquipmentAttributeNamesCache.TryRemove(DashboardEquipmentTableLogicalName, out _);
+            var attributeNames = await GetCopiersEquipmentAttributeNamesAsync(user, ct);
+            if (attributeNames.Contains(DashboardEquipmentCommercialValueField))
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+
+        throw new InvalidOperationException("Dataverse creo la columna valor comercial, pero aun no la expone. Intenta nuevamente en unos segundos.");
+    }
+
+    private async Task PublishCopiersEquipmentEntityAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        var publishXml =
+            $"<importexportxml><entities><entity>{DashboardEquipmentTableLogicalName}</entity></entities></importexportxml>";
+        await CallDataverseSendAsync(
+            "/api/data/v9.2/PublishXml",
+            "POST",
+            new Dictionary<string, object?> { ["ParameterXml"] = publishXml },
+            user,
+            ct);
+    }
+
+    private static object BuildCopiersCommercialValueAttributePayload()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["@odata.type"] = "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
+            ["AttributeType"] = "Money",
+            ["AttributeTypeName"] = CreateHardwareValuePayload("MoneyType"),
+            ["Description"] = CreateHardwareLabelPayload("Valor comercial estimado del equipo para inventario Copiers."),
+            ["DisplayName"] = CreateHardwareLabelPayload("Valor comercial"),
+            ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+            ["SchemaName"] = DashboardEquipmentCommercialValueSchemaName,
+            ["MinValue"] = 0m,
+            ["MaxValue"] = 1000000000000m,
+            ["PrecisionSource"] = 2
+        };
     }
 
     private static CopiersEquipmentInventoryFieldMap BuildCopiersEquipmentInventoryFieldMap(
@@ -1812,6 +2228,17 @@ public sealed partial class DataverseService
         public string MapUrl { get; init; } = "";
         public string MapEmbedUrl { get; init; } = "";
         public string Observations { get; init; } = "";
+    }
+
+    private sealed class CopiersCommercialInventoryRecordRow
+    {
+        public string RecordId { get; init; } = "";
+        public string Serial { get; init; } = "";
+        public string Reference { get; init; } = "";
+        public string ClientName { get; init; } = "";
+        public string CategoryLabel { get; init; } = "";
+        public bool InStock { get; init; }
+        public decimal? CommercialValue { get; init; }
     }
 
     private sealed class CopiersEquipmentRecordRow

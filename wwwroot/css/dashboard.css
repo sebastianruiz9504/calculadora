@@ -163,6 +163,29 @@
     color: var(--dashboard-brand-deep);
 }
 
+.dashboard-pill--success {
+    background: #edf8ed;
+    color: var(--dashboard-good);
+}
+
+.dashboard-pill--info {
+    background: #eef6ff;
+    color: var(--dashboard-brand);
+}
+
+.dashboard-pill--warning {
+    background: #fff7e6;
+    color: #946200;
+}
+
+.dashboard-muted-inline {
+    display: inline-block;
+    margin-left: 6px;
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .dashboard-title {
     margin: 12px 0 6px;
     color: var(--dashboard-ink);
@@ -290,6 +313,16 @@
     background: #fff2f4;
 }
 
+.dashboard-status.warning {
+    color: #946200;
+    background: #fff7e6;
+}
+
+.dashboard-status.success {
+    color: var(--dashboard-good);
+    background: #edf8ed;
+}
+
 .dashboard-kpis {
     display: grid;
     gap: 16px;
@@ -301,6 +334,10 @@
 }
 
 .dashboard-kpis--copiers-equipment {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-kpis--copiers-inventory {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -338,6 +375,9 @@
 .dashboard-kpis--copiers-equipment .dashboard-kpi,
 .dashboard-kpis--copiers-equipment .dashboard-kpi:nth-child(4),
 .dashboard-kpis--copiers-equipment .dashboard-kpi:nth-child(5),
+.dashboard-kpis--copiers-inventory .dashboard-kpi,
+.dashboard-kpis--copiers-inventory .dashboard-kpi:nth-child(4),
+.dashboard-kpis--copiers-inventory .dashboard-kpi:nth-child(5),
 .dashboard-kpis--copiers-counters .dashboard-kpi,
 .dashboard-kpis--copiers-counters .dashboard-kpi:nth-child(4),
 .dashboard-kpis--copiers-counters .dashboard-kpi:nth-child(5),
@@ -2778,6 +2818,372 @@
     border: 1px solid #f3c7cf;
 }
 
+.business-dashboard {
+    display: grid;
+    gap: 18px;
+}
+
+.business-dashboard-toolbar {
+    border-color: rgba(15, 118, 110, .2);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(236, 253, 245, .72) 52%, rgba(255, 247, 237, .72));
+}
+
+.business-dashboard__summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.business-dashboard__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr);
+    gap: 18px;
+}
+
+.business-dashboard__grid--balanced {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.business-summary-card,
+.business-card {
+    min-width: 0;
+    border: 1px solid rgba(15, 23, 42, .1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 18px 38px rgba(15, 23, 42, .08);
+}
+
+.business-summary-card {
+    display: grid;
+    gap: 8px;
+    padding: 16px;
+    overflow: hidden;
+}
+
+.business-summary-card:nth-child(1) {
+    background: linear-gradient(145deg, #ffffff, #ecfdf5);
+}
+
+.business-summary-card:nth-child(2) {
+    background: linear-gradient(145deg, #ffffff, #eff6ff);
+}
+
+.business-summary-card:nth-child(3) {
+    background: linear-gradient(145deg, #ffffff, #fff7ed);
+}
+
+.business-summary-card:nth-child(4) {
+    background: linear-gradient(145deg, #ffffff, #fdf2f8);
+}
+
+.business-summary-card__label,
+.business-card__meta {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.business-summary-card__value {
+    color: #0f172a;
+    font-size: 26px;
+    font-weight: 850;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+
+.business-summary-card__hint {
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.business-summary-card__secondary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(148, 163, 184, .18);
+    color: #64748b;
+    font-size: 12px;
+}
+
+.business-summary-card__secondary strong {
+    color: #0f172a;
+    font-size: 13px;
+    text-align: right;
+}
+
+.business-card {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    overflow: hidden;
+}
+
+.business-card__header,
+.business-contract-row,
+.business-contract-row__title,
+.business-product-row__meta,
+.business-contract-mix__item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.business-card__title {
+    margin: 4px 0 0;
+    color: #0f172a;
+    font-size: 21px;
+    font-weight: 850;
+    line-height: 1.15;
+}
+
+.business-line-chart,
+.business-contract-list,
+.business-products-chart,
+.business-contract-mix__legend {
+    display: grid;
+    gap: 10px;
+}
+
+.business-line-chart__row {
+    display: grid;
+    grid-template-columns: minmax(160px, .8fr) minmax(180px, 1fr) minmax(130px, auto);
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, .7);
+}
+
+.business-line-chart__label,
+.business-line-chart__value,
+.business-contract-row__main,
+.business-contract-row__amount,
+.business-product-row {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.business-line-chart__label strong,
+.business-contract-row__title strong,
+.business-product-row__head strong {
+    color: #0f172a;
+    font-size: 14px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.business-line-chart__label span,
+.business-line-chart__value span,
+.business-contract-row small,
+.business-contract-row__amount span,
+.business-product-row__meta span {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.business-line-chart__track,
+.business-contract-row__meter,
+.business-product-row__bar {
+    height: 9px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, .9);
+}
+
+.business-line-chart__bar,
+.business-contract-row__meter span,
+.business-product-row__bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+}
+
+.business-line-chart__bar--1 {
+    background: linear-gradient(90deg, #0f766e, #22c55e);
+}
+
+.business-line-chart__bar--2 {
+    background: linear-gradient(90deg, #2563eb, #06b6d4);
+}
+
+.business-line-chart__bar--3 {
+    background: linear-gradient(90deg, #b45309, #f97316);
+}
+
+.business-line-chart__bar--4 {
+    background: linear-gradient(90deg, #7c3aed, #ec4899);
+}
+
+.business-line-chart__bar--5 {
+    background: linear-gradient(90deg, #334155, #14b8a6);
+}
+
+.business-line-chart__value {
+    text-align: right;
+}
+
+.business-line-chart__value strong,
+.business-contract-row__amount strong,
+.business-product-row__meta strong {
+    color: #0f172a;
+    font-size: 14px;
+    line-height: 1.25;
+}
+
+.business-contract-mix {
+    display: grid;
+    gap: 16px;
+    align-content: start;
+}
+
+.business-contract-mix__donut {
+    position: relative;
+    width: min(220px, 100%);
+    aspect-ratio: 1;
+    margin: 0 auto;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+}
+
+.business-contract-mix__donut::after {
+    content: "";
+    position: absolute;
+    inset: 22%;
+    border-radius: inherit;
+    background: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, .18);
+}
+
+.business-contract-mix__donut span {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 2px;
+    text-align: center;
+}
+
+.business-contract-mix__donut strong {
+    color: #0f172a;
+    font-size: 26px;
+    font-weight: 850;
+}
+
+.business-contract-mix__donut small {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.business-contract-mix__item {
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, .16);
+    color: #475569;
+    font-size: 13px;
+}
+
+.business-contract-mix__item strong {
+    color: #0f172a;
+    text-align: right;
+}
+
+.business-contract-mix__swatch {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+}
+
+.business-contract-row {
+    align-items: center;
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.business-contract-row__rank {
+    display: grid;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 8px;
+    background: #ecfdf5;
+    color: #0f766e;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.business-contract-row__title {
+    align-items: center;
+}
+
+.business-contract-row__title span {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 12px;
+    font-weight: 750;
+    padding: 4px 8px;
+}
+
+.business-contract-row__meter span {
+    background: linear-gradient(90deg, #0f766e, #38bdf8);
+}
+
+.business-contract-row__amount {
+    min-width: 130px;
+    text-align: right;
+}
+
+.business-product-row {
+    padding: 12px;
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, .72);
+}
+
+.business-product-row__head {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.business-product-row__head span {
+    color: #0f766e;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.business-product-row__bar span {
+    background: linear-gradient(90deg, #b45309, #22c55e);
+}
+
+.business-empty {
+    min-height: 92px;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    border: 1px dashed rgba(148, 163, 184, .35);
+    border-radius: 8px;
+    color: #64748b;
+    font-size: 13px;
+    text-align: center;
+}
+
 @media (max-width: 991px) {
     .dashboard-toolbar,
     .dashboard-toolbar__actions,
@@ -2808,6 +3214,10 @@
         grid-template-columns: 1fr;
     }
 
+    .dashboard-kpis--copiers-inventory {
+        grid-template-columns: 1fr;
+    }
+
     .dashboard-kpis--pnl {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -2817,8 +3227,24 @@
     .dashboard-equipment-detail__summary,
     .dashboard-line-assignment-grid,
     .dashboard-report-summary,
-    .dashboard-equipment-detail__assignment-grid {
+    .dashboard-equipment-detail__assignment-grid,
+    .business-dashboard__summary,
+    .business-dashboard__grid,
+    .business-dashboard__grid--balanced {
         grid-template-columns: 1fr;
+    }
+
+    .business-line-chart__row {
+        grid-template-columns: 1fr;
+    }
+
+    .business-line-chart__value,
+    .business-contract-row__amount {
+        text-align: left;
+    }
+
+    .business-contract-row {
+        align-items: flex-start;
     }
 
     .dashboard-line-assignment-summary {
@@ -2981,6 +3407,20 @@
 
     .dashboard-maintenance-chart__svg {
         min-width: 840px;
+    }
+
+    .business-summary-card__value,
+    .business-contract-mix__donut strong {
+        font-size: 22px;
+    }
+
+    .business-contract-row {
+        display: grid;
+        grid-template-columns: 38px minmax(0, 1fr);
+    }
+
+    .business-contract-row__amount {
+        grid-column: 2;
     }
 }
 
