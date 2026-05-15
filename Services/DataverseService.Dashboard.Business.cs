@@ -47,7 +47,7 @@ public sealed partial class DataverseService
 
     private async Task<List<BusinessRecordRow>> GetBusinessRecordsAsync(ClaimsPrincipal user, CancellationToken ct)
     {
-        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$orderby={Uri.EscapeDataString($"{_salesPerformancePrimaryNameField} asc")}";
+        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         return items
