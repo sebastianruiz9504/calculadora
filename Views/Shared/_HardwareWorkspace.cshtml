@@ -220,9 +220,17 @@
                             <h3>Adjuntos de la orden</h3>
                         </div>
                         <div class="hardware-form__grid hardware-form__grid--nested">
+                            <label class="hardware-field hardware-field--span-2">
+                                <span class="hardware-field__label">Documento para proveedor</span>
+                                <select class="form-select" data-hw-create-field="supplierDocumentType">
+                                    <option value="proforma">Con proforma</option>
+                                    <option value="odc-proveedor">Con ODC al proveedor</option>
+                                </select>
+                                <span class="hardware-field__hint">La ODC cliente siempre es obligatoria. Si seleccionas ODC al proveedor, se omite Ok para pago a proveedor.</span>
+                            </label>
                             <div class="hardware-file-card" data-hw-create-file-card="cr07a_ordendecompra">
                                 <div>
-                                    <div class="hardware-file-card__title">ODC</div>
+                                    <div class="hardware-file-card__title">ODC cliente</div>
                                     <div class="hardware-file-card__hint">Se guardará en la primera línea de la orden.</div>
                                 </div>
                                 <div class="hardware-file-card__actions">
@@ -232,12 +240,22 @@
                             </div>
                             <div class="hardware-file-card" data-hw-create-file-card="cr07a_adjuntarproforma">
                                 <div>
-                                    <div class="hardware-file-card__title">Proforma</div>
+                                    <div class="hardware-file-card__title">Proforma proveedor</div>
                                     <div class="hardware-file-card__hint">Se guardará en la primera línea de la orden.</div>
                                 </div>
                                 <div class="hardware-file-card__actions">
                                     <div class="hardware-file-card__name" data-hw-create-file-name="cr07a_adjuntarproforma">Sin archivo</div>
                                     <input type="file" class="form-control" data-hw-create-file-input="cr07a_adjuntarproforma" />
+                                </div>
+                            </div>
+                            <div class="hardware-file-card" data-hw-create-file-card="cr07a_odcproveedor" hidden>
+                                <div>
+                                    <div class="hardware-file-card__title">ODC al proveedor</div>
+                                    <div class="hardware-file-card__hint">Se guardará en la primera línea de la orden.</div>
+                                </div>
+                                <div class="hardware-file-card__actions">
+                                    <div class="hardware-file-card__name" data-hw-create-file-name="cr07a_odcproveedor">Sin archivo</div>
+                                    <input type="file" class="form-control" data-hw-create-file-input="cr07a_odcproveedor" />
                                 </div>
                             </div>
                         </div>
@@ -307,7 +325,7 @@
                     <section class="hardware-stage-panel" data-hw-stage-panel="register-documentation" hidden>
                         <div class="hardware-stage-panel__header">
                             <h3>Registrar documentación</h3>
-                            <p>Completa la documentación base antes de autorizar el pago al proveedor.</p>
+                            <p>Completa la documentación base y define si el proveedor se gestiona con proforma o con ODC al proveedor.</p>
                         </div>
                         <div class="hardware-form__grid hardware-form__grid--nested">
                             <label class="hardware-field">
@@ -328,6 +346,14 @@
                                     <input type="number" min="0" step="0.01" class="form-control" data-hw-field="freightValue" />
                                 </label>
                             }
+                            <label class="hardware-field hardware-field--span-2">
+                                <span class="hardware-field__label">Documento para proveedor</span>
+                                <select class="form-select" data-hw-field="supplierDocumentType">
+                                    <option value="proforma">Con proforma</option>
+                                    <option value="odc-proveedor">Con ODC al proveedor</option>
+                                </select>
+                                <span class="hardware-field__hint">Con ODC al proveedor se adjunta ese documento y se omite el estado Ok para pago a proveedor.</span>
+                            </label>
                         </div>
                         <div class="hardware-stage-table-wrap">
                             <table class="table align-middle hardware-stage-table">
@@ -358,7 +384,7 @@
                         <div class="hardware-form__grid hardware-form__grid--nested hardware-order-documents">
                             <div class="hardware-file-card" data-hw-file-card="cr07a_ordendecompra">
                                 <div>
-                                    <div class="hardware-file-card__title">ODC</div>
+                                    <div class="hardware-file-card__title">ODC cliente</div>
                                     <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_ordendecompra">Se guardará en la primera fila de la orden.</div>
                                 </div>
                                 <div class="hardware-file-card__actions">
@@ -369,13 +395,24 @@
                             </div>
                             <div class="hardware-file-card" data-hw-file-card="cr07a_adjuntarproforma">
                                 <div>
-                                    <div class="hardware-file-card__title">Proforma</div>
+                                    <div class="hardware-file-card__title">Proforma proveedor</div>
                                     <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_adjuntarproforma">Se guardará en la primera fila de la orden.</div>
                                 </div>
                                 <div class="hardware-file-card__actions">
                                     <a class="hardware-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-hw-download-link="cr07a_adjuntarproforma">Descargar</a>
                                     <div class="hardware-file-card__name" data-hw-file-name="cr07a_adjuntarproforma">Sin archivo</div>
                                     <input type="file" class="form-control" data-hw-file-input="cr07a_adjuntarproforma" />
+                                </div>
+                            </div>
+                            <div class="hardware-file-card" data-hw-file-card="cr07a_odcproveedor" hidden>
+                                <div>
+                                    <div class="hardware-file-card__title">ODC al proveedor</div>
+                                    <div class="hardware-file-card__hint" data-hw-file-hint="cr07a_odcproveedor">Se guardará en la primera fila de la orden.</div>
+                                </div>
+                                <div class="hardware-file-card__actions">
+                                    <a class="hardware-file-card__link is-disabled" href="#" target="_blank" rel="noopener" data-hw-download-link="cr07a_odcproveedor">Descargar</a>
+                                    <div class="hardware-file-card__name" data-hw-file-name="cr07a_odcproveedor">Sin archivo</div>
+                                    <input type="file" class="form-control" data-hw-file-input="cr07a_odcproveedor" />
                                 </div>
                             </div>
                         </div>

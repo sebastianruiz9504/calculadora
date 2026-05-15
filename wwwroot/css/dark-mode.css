@@ -1290,6 +1290,35 @@ html[data-bs-theme="dark"] body.app-shell :is(
   background: var(--app-dark-surface-soft) !important;
 }
 
+html[data-bs-theme="dark"] body.app-shell .hardware-flow-row td {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .hardware-flow-step {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface-soft) !important;
+  color: var(--app-dark-muted) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .hardware-flow-step.is-done {
+  border-color: var(--app-dark-success-border) !important;
+  background: var(--app-dark-success-bg) !important;
+  color: var(--app-dark-success-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .hardware-flow-step.is-current {
+  border-color: var(--app-dark-info-border) !important;
+  background: var(--app-dark-info-bg) !important;
+  color: var(--app-dark-info-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .hardware-flow-step.is-next {
+  border-color: var(--app-dark-warning-border) !important;
+  background: var(--app-dark-warning-bg) !important;
+  color: var(--app-dark-warning-text) !important;
+}
+
 html[data-bs-theme="dark"] body.app-shell :is(
   .envios-summary__item strong,
   .envios-calendar__cell strong,

@@ -44,6 +44,11 @@ public sealed partial class DataverseService
     private const string HardwareOrderPurchaseFileNameLogicalName = "cr07a_ordendecompra_name";
     private const string HardwareProformaFileLogicalName = "cr07a_adjuntarproforma";
     private const string HardwareProformaFileNameLogicalName = "cr07a_adjuntarproforma_name";
+    private const string HardwareSupplierPurchaseOrderFileLogicalName = "cr07a_odcproveedor";
+    private const string HardwareSupplierPurchaseOrderFileNameLogicalName = "cr07a_odcproveedor_name";
+    private const string HardwareSupplierDocumentTypeLogicalName = "cr07a_tipodocumentoproveedor";
+    private const string HardwareSupplierDocumentTypeProforma = "proforma";
+    private const string HardwareSupplierDocumentTypePurchaseOrder = "odc-proveedor";
     private const string HardwareSupplierPaymentFileLogicalName = "cr07a_pagoaproveedor";
     private const string HardwareSupplierPaymentFileNameLogicalName = "cr07a_pagoaproveedor_name";
     private const string HardwareDeliveryRecordFileLogicalName = "cr07a_actadeentrega";
@@ -56,6 +61,7 @@ public sealed partial class DataverseService
         {
             [HardwareOrderPurchaseFileLogicalName] = "orden-de-compra",
             [HardwareProformaFileLogicalName] = "proforma",
+            [HardwareSupplierPurchaseOrderFileLogicalName] = "odc-proveedor",
             [HardwareSupplierPaymentFileLogicalName] = "pago-proveedor",
             [HardwareDeliveryRecordFileLogicalName] = "acta-entrega"
         };
@@ -314,6 +320,26 @@ public sealed partial class DataverseService
             Kind = HardwareAttributeKind.String,
             MaxLength = 200,
             IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "Tipo documento proveedor",
+            SourceHeader = "Tipo documento proveedor",
+            LogicalName = HardwareSupplierDocumentTypeLogicalName,
+            SchemaName = "cr07a_TipoDocumentoProveedor",
+            Kind = HardwareAttributeKind.String,
+            MaxLength = 40,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "ODC proveedor",
+            SourceHeader = "ODC proveedor",
+            LogicalName = HardwareSupplierPurchaseOrderFileLogicalName,
+            SchemaName = "cr07a_ODCProveedor",
+            Kind = HardwareAttributeKind.File,
+            MaxLength = 131072,
+            IsSystemColumn = false
         }
     };
 
@@ -534,7 +560,8 @@ public sealed partial class DataverseService
                      HardwareSupplierTotalLogicalName,
                      HardwarePurchaseOrderNumberLogicalName,
                      HardwareSupplierLogicalName,
-                     HardwareOdcDateLogicalName
+                     HardwareOdcDateLogicalName,
+                     HardwareSupplierDocumentTypeLogicalName
                  })
         {
             EnsureHardwareAttributeExists(attributes, fieldName);
@@ -633,7 +660,8 @@ public sealed partial class DataverseService
                      HardwarePurchaseOrderNumberLogicalName,
                      HardwareSupplierLogicalName,
                      HardwareOdcDateLogicalName,
-                     HardwareClientLookupLogicalName
+                     HardwareClientLookupLogicalName,
+                     HardwareSupplierDocumentTypeLogicalName
                  })
         {
             EnsureHardwareAttributeExists(attributes, fieldName);
@@ -743,10 +771,22 @@ public sealed partial class DataverseService
             case "register-documentation":
                 EnsureHardwareActionState(currentState, HardwareStateWaitingDocumentation, currentRecords[0].StateLabel);
                 var purchaseOrderNumber = RequireHardwareText(request.PurchaseOrderNumber, "No orden");
+                var supplierDocumentType = NormalizeHardwareSupplierDocumentType(request.SupplierDocumentType);
                 var freightSplits = SplitHardwareFreight(ParseHardwareStageOptionalNonNegativeCurrency(request.FreightValue, "Valor flete"), currentRecords.Count);
                 var documentationRows = ResolveHardwareDocumentationRows(request, currentRecords);
-                EnsureHardwareOrderFilePresent(currentRecords, HardwareOrderPurchaseFileLogicalName, "Adjuntar ODC");
-                EnsureHardwareOrderFilePresent(currentRecords, HardwareProformaFileLogicalName, "Adjuntar proforma");
+                EnsureHardwareOrderFilePresent(currentRecords, HardwareOrderPurchaseFileLogicalName, "Adjuntar ODC cliente");
+                if (supplierDocumentType == HardwareSupplierDocumentTypePurchaseOrder)
+                {
+                    EnsureHardwareOrderFilePresent(currentRecords, HardwareSupplierPurchaseOrderFileLogicalName, "Adjuntar ODC al proveedor");
+                }
+                else
+                {
+                    EnsureHardwareOrderFilePresent(currentRecords, HardwareProformaFileLogicalName, "Adjuntar proforma");
+                }
+
+                var nextDocumentationState = supplierDocumentType == HardwareSupplierDocumentTypePurchaseOrder
+                    ? HardwareStatePaidToSupplier
+                    : HardwareStateOkForSupplierPayment;
 
                 for (var index = 0; index < currentRecords.Count; index++)
                 {
@@ -770,13 +810,23 @@ public sealed partial class DataverseService
                         [HardwareUtilityLogicalName] = utility,
                         [HardwareMarginValueLogicalName] = marginValue,
                         [HardwareSupplierLogicalName] = RequireHardwareText(row.Provider, "Proveedor"),
-                        [HardwareStateLogicalName] = HardwareStateOkForSupplierPayment
+                        [HardwareSupplierDocumentTypeLogicalName] = supplierDocumentType,
+                        [HardwareStateLogicalName] = nextDocumentationState
                     };
                 }
 
-                message = currentRecords.Count == 1
-                    ? "Documentación registrada. El hardware pasó a Ok para pago a proveedor."
-                    : $"Documentación registrada en {currentRecords.Count} fila(s). El hardware pasó a Ok para pago a proveedor.";
+                if (supplierDocumentType == HardwareSupplierDocumentTypePurchaseOrder)
+                {
+                    message = currentRecords.Count == 1
+                        ? "Documentación registrada con ODC al proveedor. Se omitió Ok para pago a proveedor y el hardware pasó a Pagada a proveedor."
+                        : $"Documentación registrada con ODC al proveedor en {currentRecords.Count} fila(s). Se omitió Ok para pago a proveedor y el hardware pasó a Pagada a proveedor.";
+                }
+                else
+                {
+                    message = currentRecords.Count == 1
+                        ? "Documentación registrada con proforma. El hardware pasó a Ok para pago a proveedor."
+                        : $"Documentación registrada con proforma en {currentRecords.Count} fila(s). El hardware pasó a Ok para pago a proveedor.";
+                }
                 break;
 
             case "register-supplier-payment":
@@ -1489,6 +1539,7 @@ public sealed partial class DataverseService
             HardwareAttributeKind.Decimal => BuildHardwareDecimalAttributePayload(column),
             HardwareAttributeKind.Boolean => BuildHardwareBooleanAttributePayload(column),
             HardwareAttributeKind.Memo => BuildHardwareMemoAttributePayload(column),
+            HardwareAttributeKind.File => BuildHardwareFileAttributePayload(column),
             _ => BuildHardwareStringAttributePayload(column)
         };
     }
@@ -1618,6 +1669,21 @@ public sealed partial class DataverseService
             ["DisplayName"] = CreateHardwareLabelPayload(column.DisplayLabel),
             ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
             ["SchemaName"] = column.SchemaName
+        };
+    }
+
+    private static object BuildHardwareFileAttributePayload(HardwareManagedColumnDefinition column)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["@odata.type"] = "Microsoft.Dynamics.CRM.FileAttributeMetadata",
+            ["AttributeType"] = "File",
+            ["AttributeTypeName"] = CreateHardwareValuePayload("FileType"),
+            ["Description"] = CreateHardwareLabelPayload(BuildHardwareColumnDescription(column)),
+            ["DisplayName"] = CreateHardwareLabelPayload(column.DisplayLabel),
+            ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+            ["SchemaName"] = column.SchemaName,
+            ["MaxSizeInKB"] = column.MaxLength > 0 ? column.MaxLength : 131072
         };
     }
 
@@ -1900,7 +1966,8 @@ public sealed partial class DataverseService
                      HardwareOdcDateLogicalName,
                      HardwareSupplierPaymentDateLogicalName,
                      HardwareDeliveryRecordDateLogicalName,
-                     HardwareInvoiceNumberLogicalName
+                     HardwareInvoiceNumberLogicalName,
+                     HardwareSupplierDocumentTypeLogicalName
                  })
         {
             if (HasHardwareAttribute(attributes, field))
@@ -1914,6 +1981,7 @@ public sealed partial class DataverseService
 
         AddHardwareFileSelectField(selectFields, attributes, HardwareOrderPurchaseFileLogicalName, HardwareOrderPurchaseFileNameLogicalName);
         AddHardwareFileSelectField(selectFields, attributes, HardwareProformaFileLogicalName, HardwareProformaFileNameLogicalName);
+        AddHardwareFileSelectField(selectFields, attributes, HardwareSupplierPurchaseOrderFileLogicalName, HardwareSupplierPurchaseOrderFileNameLogicalName);
         AddHardwareFileSelectField(selectFields, attributes, HardwareSupplierPaymentFileLogicalName, HardwareSupplierPaymentFileNameLogicalName);
         AddHardwareFileSelectField(selectFields, attributes, HardwareDeliveryRecordFileLogicalName, HardwareDeliveryRecordFileNameLogicalName);
 
@@ -1995,6 +2063,9 @@ public sealed partial class DataverseService
             OrderPurchaseFileName = ResolveHardwareFileName(item, HardwareOrderPurchaseFileLogicalName, HardwareOrderPurchaseFileNameLogicalName),
             HasProforma = HasHardwareFile(item, HardwareProformaFileLogicalName, HardwareProformaFileNameLogicalName),
             ProformaFileName = ResolveHardwareFileName(item, HardwareProformaFileLogicalName, HardwareProformaFileNameLogicalName),
+            HasSupplierPurchaseOrder = HasHardwareFile(item, HardwareSupplierPurchaseOrderFileLogicalName, HardwareSupplierPurchaseOrderFileNameLogicalName),
+            SupplierPurchaseOrderFileName = ResolveHardwareFileName(item, HardwareSupplierPurchaseOrderFileLogicalName, HardwareSupplierPurchaseOrderFileNameLogicalName),
+            SupplierDocumentType = NormalizeHardwareSupplierDocumentTypeForDisplay(ReadString(item, HardwareSupplierDocumentTypeLogicalName)),
             HasSupplierPaymentProof = HasHardwareFile(item, HardwareSupplierPaymentFileLogicalName, HardwareSupplierPaymentFileNameLogicalName),
             SupplierPaymentProofFileName = ResolveHardwareFileName(item, HardwareSupplierPaymentFileLogicalName, HardwareSupplierPaymentFileNameLogicalName),
             HasDeliveryRecord = HasHardwareFile(item, HardwareDeliveryRecordFileLogicalName, HardwareDeliveryRecordFileNameLogicalName),
@@ -2453,10 +2524,45 @@ public sealed partial class DataverseService
         {
             HardwareOrderPurchaseFileLogicalName => record.HasOrderPurchase,
             HardwareProformaFileLogicalName => record.HasProforma,
+            HardwareSupplierPurchaseOrderFileLogicalName => record.HasSupplierPurchaseOrder,
             HardwareSupplierPaymentFileLogicalName => record.HasSupplierPaymentProof,
             HardwareDeliveryRecordFileLogicalName => record.HasDeliveryRecord,
             _ => false
         };
+
+    private static string NormalizeHardwareSupplierDocumentType(string? rawValue)
+    {
+        var normalized = NormalizeHardwareCell(rawValue)
+            .Replace("_", "-", StringComparison.Ordinal)
+            .ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(normalized) || normalized == HardwareSupplierDocumentTypeProforma)
+            return HardwareSupplierDocumentTypeProforma;
+
+        if (normalized is HardwareSupplierDocumentTypePurchaseOrder
+            or "supplier-odc"
+            or "odc-proveedor"
+            or "odc-al-proveedor"
+            or "orden-proveedor"
+            or "orden-de-compra-proveedor")
+        {
+            return HardwareSupplierDocumentTypePurchaseOrder;
+        }
+
+        throw new InvalidOperationException("Selecciona si el proveedor se gestionará con proforma o con ODC al proveedor.");
+    }
+
+    private static string NormalizeHardwareSupplierDocumentTypeForDisplay(string? rawValue)
+    {
+        try
+        {
+            return NormalizeHardwareSupplierDocumentType(rawValue);
+        }
+        catch
+        {
+            return HardwareSupplierDocumentTypeProforma;
+        }
+    }
 
     private static string ParseHardwareStageDate(string? rawValue, string label)
     {
@@ -2947,6 +3053,7 @@ public sealed partial class DataverseService
             HardwareAttributeKind.Decimal => "Decimal",
             HardwareAttributeKind.Boolean => "Si/No",
             HardwareAttributeKind.Memo => "Texto largo",
+            HardwareAttributeKind.File => "Archivo",
             _ => "Texto"
         };
 
@@ -3159,6 +3266,7 @@ public sealed partial class DataverseService
         Money,
         Integer,
         Decimal,
-        Boolean
+        Boolean,
+        File
     }
 }

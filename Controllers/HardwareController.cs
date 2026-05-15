@@ -36,6 +36,7 @@ public sealed class HardwareController : Controller
     {
         var currentUser = await GetCurrentUserAsync(ct);
         var today = ResolveBogotaToday();
+        var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(currentUser);
         return View(new HardwareWorkspaceViewModel
         {
             RootId = "hardwareApp",
@@ -46,8 +47,8 @@ public sealed class HardwareController : Controller
             CurrentUserId = currentUser.SystemUserId,
             CurrentUserEmail = currentUser.Email,
             CanImpersonate = HardwareAccessPolicy.IsImpersonationUser(currentUser),
-            AllowCreate = !HardwareAccessPolicy.IsSupplierPaymentUser(currentUser),
-            AllowCommercialDraftEdit = !HardwareAccessPolicy.IsSupplierPaymentUser(currentUser),
+            AllowCreate = !isSupplierPaymentUser,
+            AllowCommercialDraftEdit = !isSupplierPaymentUser,
             PreviewUrl = Url.Action(nameof(Preview), "Hardware") ?? "",
             ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
             BoardUrl = Url.Action(nameof(CommercialBoard), "Hardware") ?? "",
@@ -61,8 +62,12 @@ public sealed class HardwareController : Controller
             ClientSearchUrl = Url.Action(nameof(ClientSearch), "Hardware") ?? "",
             OwnerSearchUrl = "",
             ImpersonationUsersUrl = Url.Action(nameof(ImpersonationUsers), "Hardware") ?? "",
-            InitialStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
-            InitialEndDate = today.ToString("yyyy-MM-dd")
+            InitialStartDate = isSupplierPaymentUser
+                ? new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd")
+                : "",
+            InitialEndDate = isSupplierPaymentUser
+                ? today.ToString("yyyy-MM-dd")
+                : ""
         });
     }
 

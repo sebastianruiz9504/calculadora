@@ -92,7 +92,8 @@
             createFields: {
                 purchaseOrderNumber: root.querySelector('[data-hw-create-field="purchaseOrderNumber"]'),
                 odcDate: root.querySelector('[data-hw-create-field="odcDate"]'),
-                clientName: root.querySelector('[data-hw-create-field="clientName"]')
+                clientName: root.querySelector('[data-hw-create-field="clientName"]'),
+                supplierDocumentType: root.querySelector('[data-hw-create-field="supplierDocumentType"]')
             },
             selectAll: root.querySelector("[data-hw-select-all]"),
             totalRecords: root.querySelector("[data-hw-total-records]"),
@@ -121,6 +122,7 @@
                 odcDate: root.querySelector('[data-hw-field="odcDate"]'),
                 supplierUnitCost: root.querySelector('[data-hw-field="supplierUnitCost"]'),
                 provider: root.querySelector('[data-hw-field="provider"]'),
+                supplierDocumentType: root.querySelector('[data-hw-field="supplierDocumentType"]'),
                 supplierPaymentDate: root.querySelector('[data-hw-field="supplierPaymentDate"]'),
                 deliveryRecordDate: root.querySelector('[data-hw-field="deliveryRecordDate"]'),
                 invoiceNumber: root.querySelector('[data-hw-field="invoiceNumber"]')
@@ -227,10 +229,10 @@
         const stageConfig = {
             "register-documentation": {
                 title: "Registrar documentación",
-                subtitle: "Completa la documentación inicial y deja las filas listas para pago a proveedor.",
+                subtitle: "Completa la documentación inicial y define si el proveedor va por proforma u ODC al proveedor.",
                 buttonLabel: "Registrar documentación",
-                meta: "Próximo estado: Ok para pago a proveedor",
-                requiredFiles: ["cr07a_ordendecompra", "cr07a_adjuntarproforma"]
+                meta: "Con proforma pasa a Ok para pago; con ODC al proveedor salta ese paso",
+                requiredFiles: ["cr07a_ordendecompra"]
             },
             "register-supplier-payment": {
                 title: "Registrar pago a proveedor",
@@ -307,6 +309,16 @@
             }
         });
         elements.createFields.clientName?.addEventListener("input", handleCreateClientLookupInput);
+        elements.createFields.supplierDocumentType?.addEventListener("change", () => {
+            syncCreateSupplierDocumentCards();
+            renderCreateFileNames();
+            renderCreateFormMode();
+        });
+        elements.fields.supplierDocumentType?.addEventListener("change", () => {
+            syncDocumentationDocumentCards();
+            renderFileCards();
+            updateDocumentationModalMeta();
+        });
         if (elements.startDate) {
             elements.startDate.value = config.initialStartDate || "";
             elements.startDate.addEventListener("change", handleDateFilterChange);
@@ -950,6 +962,11 @@
         }
 
         function renderCommercialRows(rows) {
+            if (!isSupplierPaymentEffectiveUser()) {
+                renderCommercialStateSections(rows);
+                return;
+            }
+
             const groups = buildCommercialGroups(rows);
             const showLineProforma = isSupplierPaymentEffectiveUser();
             state.displayItems = groups;
@@ -973,7 +990,7 @@
                                 <th class="text-end">Costo proveedor</th>
                                 <th class="text-end">Venta unidad</th>
                                 <th>Proveedor</th>
-                                ${showLineProforma ? `<th class="text-center">Proforma</th>` : ""}
+                                ${showLineProforma ? `<th class="text-center">Doc. proveedor</th>` : ""}
                                 <th>Estado</th>
                                 <th>Acción</th>
                             </tr>
@@ -986,11 +1003,195 @@
             `;
         }
 
-        function buildCommercialGroups(rows) {
+        function renderCommercialStateSections(rows) {
+            const sections = buildCommercialStateSections(rows);
+            state.displayItems = sections.flatMap(section => section.groups);
+
+            if (!rows.length) {
+                elements.rows.innerHTML = `
+                    <div class="hardware-empty">No hay registros de Hardware para tu usuario.</div>
+                `;
+                syncSelectAllState();
+                return;
+            }
+
+            elements.rows.innerHTML = `
+                <div class="hardware-state-sections">
+                    ${sections.map(renderCommercialStateSection).join("")}
+                </div>
+            `;
+        }
+
+        function buildCommercialStateSections(rows) {
+            const rowsByState = new Map();
+            rows.forEach(row => {
+                const stateValue = Number(row?.stateValue || 0);
+                if (!rowsByState.has(stateValue)) {
+                    rowsByState.set(stateValue, []);
+                }
+
+                rowsByState.get(stateValue).push(row);
+            });
+
+            const selectedValue = Number(state.board?.selectedStateValue || 0);
+            const stateOptions = Array.isArray(state.board?.stateOptions) ? state.board.stateOptions : [];
+            const baseOptions = stateOptions.length
+                ? stateOptions
+                : Array.from(rowsByState.keys()).map(value => {
+                    const first = rowsByState.get(value)?.[0] || {};
+                    return {
+                        value,
+                        label: first.stateLabel || `Estado ${value}`,
+                        tone: first.stateTone || ""
+                    };
+                });
+            const visibleOptions = selectedValue > 0
+                ? baseOptions.filter(option => Number(option?.value || 0) === selectedValue)
+                : baseOptions;
+            const knownValues = new Set(visibleOptions.map(option => Number(option?.value || 0)));
+            const sections = visibleOptions.map(option => {
+                const stateValue = Number(option?.value || 0);
+                const stateRows = rowsByState.get(stateValue) || [];
+                return buildCommercialStateSection(option, stateRows, stateValue);
+            });
+
+            rowsByState.forEach((stateRows, stateValue) => {
+                if (knownValues.has(stateValue) || (selectedValue > 0 && stateValue !== selectedValue)) {
+                    return;
+                }
+
+                const first = stateRows[0] || {};
+                sections.push(buildCommercialStateSection({
+                    value: stateValue,
+                    label: first.stateLabel || `Estado ${stateValue}`,
+                    tone: first.stateTone || ""
+                }, stateRows, stateValue));
+            });
+
+            return sections;
+        }
+
+        function buildCommercialStateSection(option, rows, stateValue) {
+            const groups = buildCommercialGroups(rows, `state-${stateValue}`);
+            return {
+                option,
+                rows,
+                groups,
+                count: rows.length,
+                quantity: rows.reduce((total, row) => total + Number(row?.quantity || 0), 0),
+                totalSale: rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0)
+            };
+        }
+
+        function renderCommercialStateSection(section) {
+            const option = section.option || {};
+            const label = option.label || "Sin estado";
+            const tone = option.tone || "";
+            return `
+                <section class="hardware-state-section ${toneClass(tone)}">
+                    <div class="hardware-state-section__header">
+                        <div class="hardware-state-section__title">
+                            ${renderStatePill(label, tone)}
+                            <div>
+                                <h3>${escapeHtml(label)}</h3>
+                                <p>${formatNumber(section.count)} línea(s) · ${formatNumber(section.quantity)} und · ${formatCurrency(section.totalSale)}</p>
+                            </div>
+                        </div>
+                    </div>
+                    ${section.rows.length
+                        ? `<div class="hardware-table-wrap">
+                            <table class="table align-middle hardware-table hardware-commercial-table hardware-commercial-state-table">
+                                <thead>
+                                    <tr>
+                                        <th>Orden / Cliente</th>
+                                        <th>Producto / referencia</th>
+                                        <th class="text-end">Cant.</th>
+                                        <th class="text-end">Costo proveedor</th>
+                                        <th class="text-end">Venta unidad</th>
+                                        <th>Proveedor</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${section.groups.map(group => renderCommercialStateGroup(group)).join("")}
+                                </tbody>
+                            </table>
+                        </div>`
+                        : `<div class="hardware-empty hardware-empty--state">Sin registros en este estado.</div>`}
+                </section>
+            `;
+        }
+
+        function renderCommercialStateGroup(group) {
+            const first = group.rows[0] || {};
+            const validAction = validateActionRecords(group.rows);
+            const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
+            const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
+            const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
+            return `
+                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
+                    <td colspan="7">
+                        <div class="hardware-commercial-order">
+                            <div>
+                                <strong>${escapeHtml(group.orderNumber)}</strong>
+                                <span>${escapeHtml(clientLabel)} · ${escapeHtml(odcDate)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(totalSale)}</span>
+                                <div class="hardware-commercial-order__files">
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_ordendecompra")}
+                                    ${renderCommercialGroupSupplierDocumentLink(group.rows)}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_pagoaproveedor")}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_actadeentrega")}
+                                    ${renderCommercialGroupInvoiceChip(group.rows)}
+                                </div>
+                            </div>
+                            <div class="hardware-commercial-order__status">
+                                ${validAction.ok
+                                    ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(group.rows[0].actionLabel || "Gestionar")}</button>`
+                                    : `<span class="hardware-table__submeta">${escapeHtml(validAction.message || "Sin botón")}</span>`}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                ${group.rows.map(row => renderCommercialStateRecordRow(row)).join("")}
+            `;
+        }
+
+        function renderCommercialStateRecordRow(row) {
+            const editable = isCommercialLineEditable(row);
+            const editAttributes = editable
+                ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
+                : "";
+            return `
+                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${toneClass(row?.stateTone)}"${editAttributes}>
+                    <td class="hardware-table__client-cell">
+                        <div class="hardware-table__submeta">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</div>
+                        <strong>${escapeHtml(row?.clientName || "Sin cliente")}</strong>
+                        <div class="hardware-table__submeta">${escapeHtml(row?.odcDateDisplay || "Sin fecha")}</div>
+                    </td>
+                    <td>
+                        <div class="hardware-table__title">
+                            <strong>${escapeHtml(row?.name || "Hardware")}</strong>
+                        </div>
+                    </td>
+                    <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
+                    <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
+                    <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
+                    <td>${escapeHtml(row?.provider || "-")}</td>
+                    <td>
+                        <div class="hardware-action-cell">
+                            <span class="hardware-table__submeta">${editable ? "Editar" : "Gestionado por orden"}</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function buildCommercialGroups(rows, keyPrefix = "") {
             const groups = new Map();
             rows.forEach((row, index) => {
                 const orderNumber = String(row?.purchaseOrderNumber || "").trim() || "Sin orden";
-                const key = normalizeText(orderNumber) || `sin-orden-${index}`;
+                const baseKey = normalizeText(orderNumber) || `sin-orden-${index}`;
+                const key = keyPrefix ? `${keyPrefix}|${baseKey}` : baseKey;
                 if (!groups.has(key)) {
                     groups.set(key, {
                         type: "group",
@@ -1006,6 +1207,78 @@
 
             return Array.from(groups.values())
                 .sort((left, right) => left.index - right.index);
+        }
+
+        function renderHardwareFlowTableRow(row, columnCount, isChild = false, extraClass = "") {
+            const classes = [
+                "hardware-flow-row",
+                isChild ? "hardware-flow-row--child" : "",
+                toneClass(row?.stateTone),
+                extraClass
+            ].filter(Boolean).join(" ");
+
+            return `
+                <tr class="${classes}">
+                    <td colspan="${Number(columnCount) || 1}">
+                        ${renderHardwareFlowMini(row)}
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderHardwareFlowMini(row) {
+            const steps = [
+                { value: 645250000, label: "Documentación", tone: "documentation" },
+                { value: 645250001, label: "Ok pago proveedor", tone: "supplier-ready" },
+                { value: 645250002, label: "Pagada proveedor", tone: "supplier-paid" },
+                { value: 645250003, label: "Tránsito", tone: "in-transit" },
+                { value: 645250004, label: "Entrega", tone: "awaiting-billing" },
+                { value: 645250005, label: "Factura", tone: "awaiting-payment" },
+                { value: 645250006, label: "Cierre", tone: "closed" }
+            ];
+            const currentValue = Number(row?.stateValue || 645250000);
+            const skipsSupplierPayment = normalizeSupplierDocumentType(row?.supplierDocumentType || "") === "odc-proveedor";
+            const nextActiveStep = steps.find(step =>
+                step.value > currentValue
+                && !(skipsSupplierPayment && step.value === 645250001));
+
+            const renderedSteps = steps.map(step => {
+                const skipped = skipsSupplierPayment && step.value === 645250001 && currentValue >= 645250002;
+                const current = currentValue === step.value;
+                const done = !current && !skipped && currentValue > step.value;
+                const next = !current && !done && !skipped && nextActiveStep?.value === step.value;
+                const stateClass = skipped
+                    ? "is-skipped"
+                    : current
+                        ? "is-current"
+                        : done
+                            ? "is-done"
+                            : next
+                                ? "is-next"
+                                : "is-pending";
+                const title = skipped
+                    ? `${step.label}: omitido por ODC al proveedor`
+                    : current
+                        ? `${step.label}: paso actual`
+                        : done
+                            ? `${step.label}: completado`
+                            : next
+                                ? `${step.label}: siguiente paso`
+                                : `${step.label}: pendiente`;
+
+                return `
+                    <span class="hardware-flow-step ${stateClass} ${toneClass(step.tone)}" title="${escapeHtml(title)}" role="listitem">
+                        <span class="hardware-flow-step__dot" aria-hidden="true"></span>
+                        <span class="hardware-flow-step__label">${escapeHtml(step.label)}</span>
+                    </span>
+                `;
+            }).join("");
+
+            return `
+                <div class="hardware-flow" role="list" aria-label="Flujo de estados de ${escapeHtml(row?.name || "hardware")}">
+                    ${renderedSteps}
+                </div>
+            `;
         }
 
         function renderCommercialGroup(group, showLineProforma = false) {
@@ -1026,7 +1299,7 @@
                                 <span>${escapeHtml(clientLabel)} · ${escapeHtml(odcDate)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und</span>
                                 <div class="hardware-commercial-order__files">
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_ordendecompra")}
-                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_adjuntarproforma")}
+                                    ${renderCommercialGroupSupplierDocumentLink(group.rows)}
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_pagoaproveedor")}
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_actadeentrega")}
                                     ${renderCommercialGroupInvoiceChip(group.rows)}
@@ -1041,11 +1314,11 @@
                         </div>
                     </td>
                 </tr>
-                ${group.rows.map(row => renderCommercialRecordRow(row, group.rows, showLineProforma)).join("")}
+                ${group.rows.map(row => renderCommercialRecordRow(row, group.rows, showLineProforma, columnCount)).join("")}
             `;
         }
 
-        function renderCommercialRecordRow(row, orderRows = [], showLineProforma = false) {
+        function renderCommercialRecordRow(row, orderRows = [], showLineProforma = false, columnCount = 8) {
             const editable = isCommercialLineEditable(row);
             const editAttributes = editable
                 ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
@@ -1074,33 +1347,35 @@
                         </div>
                     </td>
                 </tr>
+                ${renderHardwareFlowTableRow(row, columnCount, true)}
             `;
         }
 
         function renderCommercialLineProformaLink(row, orderRows) {
-            const fieldName = "cr07a_adjuntarproforma";
-            const recordWithProforma = resolveOrderFileRecord(orderRows, fieldName);
-            const hasProforma = hasExistingFile(recordWithProforma, fieldName);
-            if (!hasProforma || !recordWithProforma?.recordId) {
+            const fieldName = resolveSupplierDocumentField(row);
+            const label = fieldName === "cr07a_odcproveedor" ? "ODC proveedor" : "Proforma";
+            const recordWithDocument = resolveOrderFileRecord(orderRows, fieldName);
+            const hasDocument = hasExistingFile(recordWithDocument, fieldName);
+            if (!hasDocument || !recordWithDocument?.recordId) {
                 return `
-                    <span class="hardware-icon-link is-disabled" title="Proforma pendiente" aria-label="Proforma pendiente">
+                    <span class="hardware-icon-link is-disabled" title="${escapeHtml(label)} pendiente" aria-label="${escapeHtml(label)} pendiente">
                         ${downloadIconSvg()}
-                        <span class="visually-hidden">Proforma pendiente</span>
+                        <span class="visually-hidden">${escapeHtml(label)} pendiente</span>
                     </span>
                 `;
             }
 
-            const fileName = resolveExistingFileName(recordWithProforma, fieldName);
-            const title = fileName ? `Descargar proforma: ${fileName}` : "Descargar proforma";
+            const fileName = resolveExistingFileName(recordWithDocument, fieldName);
+            const title = fileName ? `Descargar ${label}: ${fileName}` : `Descargar ${label}`;
             return `
                 <a class="hardware-icon-link"
-                   href="${escapeHtml(buildDownloadUrl(recordWithProforma.recordId, fieldName))}"
+                   href="${escapeHtml(buildDownloadUrl(recordWithDocument.recordId, fieldName))}"
                    target="_blank"
                    rel="noopener"
                    title="${escapeHtml(title)}"
                    aria-label="${escapeHtml(title)}">
                     ${downloadIconSvg()}
-                    <span class="visually-hidden">Descargar proforma de ${escapeHtml(row?.name || "esta línea")}</span>
+                    <span class="visually-hidden">Descargar ${escapeHtml(label)} de ${escapeHtml(row?.name || "esta línea")}</span>
                 </a>
             `;
         }
@@ -1131,6 +1406,14 @@
             `;
         }
 
+        function renderCommercialGroupSupplierDocumentLink(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const row = items.find(item => resolveSupplierDocumentField(item) === "cr07a_odcproveedor")
+                || items[0]
+                || null;
+            return renderCommercialGroupFileLink(items, resolveSupplierDocumentField(row));
+        }
+
         function renderCommercialGroupInvoiceChip(rows) {
             const invoiceNumbers = Array.from(new Set((Array.isArray(rows) ? rows : [])
                 .map(row => String(row?.invoiceNumber || "").trim())
@@ -1149,9 +1432,11 @@
         function resolveFileChipLabel(fieldName) {
             switch (fieldName) {
                 case "cr07a_ordendecompra":
-                    return "ODC";
+                    return "ODC cliente";
                 case "cr07a_adjuntarproforma":
-                    return "Proforma";
+                    return "Proforma proveedor";
+                case "cr07a_odcproveedor":
+                    return "ODC proveedor";
                 case "cr07a_pagoaproveedor":
                     return "Pago proveedor";
                 case "cr07a_actadeentrega":
@@ -1270,7 +1555,7 @@
                         </div>
                     </td>
                 </tr>
-                ${expanded ? group.rows.map(row => renderRecordRow(row, true)).join("") : ""}
+                ${expanded ? group.rows.map(row => renderRecordRow(row, true)).join("") : renderHardwareFlowTableRow(first, 9, false, "hardware-flow-row--group")}
             `;
         }
 
@@ -1300,6 +1585,7 @@
                         </div>
                     </td>
                 </tr>
+                ${renderHardwareFlowTableRow(row, 9, isChild)}
             `;
         }
 
@@ -1456,6 +1742,9 @@
             setFieldValue(elements.fields.purchaseOrderNumber, getCommonValue(state.modalRecords, "purchaseOrderNumber"));
             setFieldValue(elements.fields.freightValue, formatInputNumber(sumValues(state.modalRecords, "freightValue")));
             setFieldValue(elements.fields.odcDate, getCommonValue(state.modalRecords, "odcDateValue"));
+            setFieldValue(
+                elements.fields.supplierDocumentType,
+                normalizeSupplierDocumentType(getCommonValue(state.modalRecords, "supplierDocumentType") || "proforma"));
             setFieldValue(elements.fields.supplierPaymentDate, getCommonValue(state.modalRecords, "supplierPaymentDateValue"));
             setFieldValue(elements.fields.deliveryRecordDate, getCommonValue(state.modalRecords, "deliveryRecordDateValue"));
             setFieldValue(elements.fields.invoiceNumber, getCommonValue(state.modalRecords, "invoiceNumber"));
@@ -1468,6 +1757,8 @@
 
             if (actionKey === "register-documentation") {
                 renderDocumentationRows();
+                syncDocumentationDocumentCards();
+                updateDocumentationModalMeta();
             } else if (elements.documentationRows) {
                 elements.documentationRows.innerHTML = "";
             }
@@ -1541,9 +1832,11 @@
         }
 
         function renderFileCards() {
+            syncDocumentationDocumentCards();
             const fileFields = [
                 "cr07a_ordendecompra",
                 "cr07a_adjuntarproforma",
+                "cr07a_odcproveedor",
                 "cr07a_pagoaproveedor",
                 "cr07a_actadeentrega"
             ];
@@ -2073,6 +2366,41 @@
             });
         }
 
+        function syncDocumentationDocumentCards() {
+            const actionKey = elements.actionKey?.value || "";
+            const supplierDocumentType = normalizeSupplierDocumentType(elements.fields.supplierDocumentType?.value || "proforma");
+            root.querySelectorAll("[data-hw-file-card]").forEach(card => {
+                const fieldName = card.dataset.hwFileCard || "";
+                if (actionKey !== "register-documentation") {
+                    if (fieldName === "cr07a_odcproveedor") {
+                        card.hidden = true;
+                    }
+                    return;
+                }
+
+                if (fieldName === "cr07a_adjuntarproforma") {
+                    card.hidden = supplierDocumentType !== "proforma";
+                } else if (fieldName === "cr07a_odcproveedor") {
+                    card.hidden = supplierDocumentType !== "odc-proveedor";
+                } else if (fieldName === "cr07a_ordendecompra") {
+                    card.hidden = false;
+                }
+            });
+        }
+
+        function updateDocumentationModalMeta() {
+            if ((elements.actionKey?.value || "") !== "register-documentation") {
+                return;
+            }
+
+            const supplierDocumentType = normalizeSupplierDocumentType(elements.fields.supplierDocumentType?.value || "proforma");
+            setText(
+                elements.modalMeta,
+                supplierDocumentType === "odc-proveedor"
+                    ? "Próximo estado: Pagada a proveedor. Se omite Ok para pago a proveedor."
+                    : "Próximo estado: Ok para pago a proveedor.");
+        }
+
         function resetPurchaseOrderForm() {
             elements.purchaseOrderForm?.reset();
             if (elements.purchaseOrderLines) {
@@ -2211,6 +2539,7 @@
             state.createEditingRecord = null;
             resetCreateForm();
             renderCreateFormMode();
+            syncCreateSupplierDocumentCards();
             renderCreateFileNames();
             clearStatus(elements.createStatus);
             elements.createModal.hidden = false;
@@ -2235,6 +2564,7 @@
             setFieldValue(elements.createFields.purchaseOrderNumber, record.purchaseOrderNumber || "");
             setFieldValue(elements.createFields.odcDate, record.odcDateValue || "");
             setFieldValue(elements.createFields.clientName, record.clientName || "");
+            setFieldValue(elements.createFields.supplierDocumentType, "proforma");
             state.createClientSelection = record.clientId && record.clientName
                 ? { id: record.clientId, name: record.clientName }
                 : null;
@@ -2256,6 +2586,7 @@
                 });
             }
 
+            syncCreateSupplierDocumentCards();
             renderCreateFileNames();
             clearStatus(elements.createStatus);
             elements.createModal.hidden = false;
@@ -2286,23 +2617,31 @@
 
         function renderCreateFormMode() {
             const editing = Boolean(state.createEditingRecord?.recordId);
+            const supplierDocumentType = normalizeSupplierDocumentType(elements.createFields.supplierDocumentType?.value || "proforma");
             setText(elements.createModalKicker, editing ? "Edición comercial" : "Area comercial");
             setText(elements.createModalTitle, editing ? "Editar línea de hardware" : "Nuevo registro de hardware");
             setText(
                 elements.createModalSubtitle,
                 editing
                     ? "Actualiza la línea seleccionada antes de registrar el pago al proveedor."
-                    : "Registra la orden, adjunta ODC y Proforma una sola vez, y agrega sus líneas.");
+                    : "Registra la orden, adjunta la ODC cliente y define el documento para proveedor.");
             setText(
                 elements.createModalMeta,
                 editing
                     ? "La edición solo está disponible antes de registrar el pago al proveedor."
-                    : "ODC y Proforma se cargan una sola vez por orden.");
+                    : supplierDocumentType === "odc-proveedor"
+                        ? "Con ODC al proveedor la orden avanza directo a Pagada a proveedor."
+                        : "Con proforma la orden pasa a Ok para pago a proveedor.");
             setText(elements.saveCreateBtn, editing ? "Guardar cambios" : "Guardar orden");
+            const supplierTypeField = elements.createFields.supplierDocumentType?.closest(".hardware-field");
+            if (supplierTypeField instanceof HTMLElement) {
+                supplierTypeField.hidden = editing;
+            }
             if (elements.addCreateLineBtn) {
                 elements.addCreateLineBtn.hidden = editing;
                 elements.addCreateLineBtn.disabled = editing || state.busy;
             }
+            syncCreateSupplierDocumentCards();
         }
 
         function addCreateLine(values = {}) {
@@ -2559,7 +2898,7 @@
                 }
 
                 await uploadFile(firstRecordId, "cr07a_ordendecompra", draft.orderFile);
-                await uploadFile(firstRecordId, "cr07a_adjuntarproforma", draft.proformaFile);
+                await uploadFile(firstRecordId, draft.supplierDocumentFieldName, draft.supplierDocumentFile);
 
                 setStatus(elements.createStatus, "info", "Aplicando documentación de la orden...");
                 const savePayload = {
@@ -2567,6 +2906,7 @@
                     recordIds: records.map(record => record.recordId).filter(Boolean),
                     actionKey: "register-documentation",
                     purchaseOrderNumber: draft.payload.purchaseOrderNumber,
+                    supplierDocumentType: draft.supplierDocumentType,
                     freightValue: 0,
                     documentationRows: records.map((record, index) => ({
                         recordId: record.recordId,
@@ -2612,12 +2952,18 @@
             }
 
             const orderFile = getCreateOrderFile("cr07a_ordendecompra");
-            const proformaFile = getCreateOrderFile("cr07a_adjuntarproforma");
+            const supplierDocumentType = normalizeSupplierDocumentType(elements.createFields.supplierDocumentType?.value || "proforma");
+            const supplierDocumentFieldName = supplierDocumentType === "odc-proveedor"
+                ? "cr07a_odcproveedor"
+                : "cr07a_adjuntarproforma";
+            const supplierDocumentFile = getCreateOrderFile(supplierDocumentFieldName);
             if (!(orderFile instanceof File)) {
-                throw new Error("Debes adjuntar la ODC de la orden.");
+                throw new Error("Debes adjuntar la ODC cliente.");
             }
-            if (!(proformaFile instanceof File)) {
-                throw new Error("Debes adjuntar la Proforma de la orden.");
+            if (!(supplierDocumentFile instanceof File)) {
+                throw new Error(supplierDocumentType === "odc-proveedor"
+                    ? "Debes adjuntar la ODC al proveedor."
+                    : "Debes adjuntar la Proforma proveedor.");
             }
 
             const lines = readCreateLineDrafts();
@@ -2638,7 +2984,9 @@
                 },
                 lines,
                 orderFile,
-                proformaFile
+                supplierDocumentType,
+                supplierDocumentFieldName,
+                supplierDocumentFile
             };
         }
 
@@ -2670,10 +3018,10 @@
             const orderFile = getCreateOrderFile("cr07a_ordendecompra");
             const proformaFile = getCreateOrderFile("cr07a_adjuntarproforma");
             if (!(orderFile instanceof File) && !hasExistingCreateFile("cr07a_ordendecompra")) {
-                throw new Error("Debes adjuntar la ODC de la orden.");
+                throw new Error("Debes adjuntar la ODC cliente.");
             }
             if (!(proformaFile instanceof File) && !hasExistingCreateFile("cr07a_adjuntarproforma")) {
-                throw new Error("Debes adjuntar la Proforma de la orden.");
+                throw new Error("Debes adjuntar la Proforma proveedor.");
             }
 
             const lines = readCreateLineDrafts();
@@ -2764,6 +3112,7 @@
                 elements.createClientHint.textContent = "Busca y selecciona un cliente.";
             }
             renderCreateFormMode();
+            syncCreateSupplierDocumentCards();
             renderCreateFileNames();
         }
 
@@ -2779,12 +3128,31 @@
         }
 
         function renderCreateFileNames() {
+            syncCreateSupplierDocumentCards();
             elements.createFileNames.forEach(target => {
                 const fieldName = target.dataset.hwCreateFileName || "";
                 const file = getCreateOrderFile(fieldName);
                 target.textContent = file instanceof File
                     ? file.name
                     : resolveExistingCreateFileName(fieldName) || "Sin archivo";
+            });
+        }
+
+        function syncCreateSupplierDocumentCards() {
+            const editing = Boolean(state.createEditingRecord?.recordId);
+            const supplierDocumentType = editing
+                ? "proforma"
+                : normalizeSupplierDocumentType(elements.createFields.supplierDocumentType?.value || "proforma");
+
+            root.querySelectorAll("[data-hw-create-file-card]").forEach(card => {
+                const fieldName = card.dataset.hwCreateFileCard || "";
+                if (fieldName === "cr07a_ordendecompra") {
+                    card.hidden = false;
+                } else if (fieldName === "cr07a_adjuntarproforma") {
+                    card.hidden = supplierDocumentType !== "proforma";
+                } else if (fieldName === "cr07a_odcproveedor") {
+                    card.hidden = editing || supplierDocumentType !== "odc-proveedor";
+                }
             });
         }
 
@@ -3086,6 +3454,10 @@
             const freightValueRaw = (elements.fields.freightValue?.value || "").trim();
             const freightValue = parseDecimal(freightValueRaw);
             const commonOdcDate = (elements.fields.odcDate?.value || "").trim();
+            const supplierDocumentType = normalizeSupplierDocumentType(elements.fields.supplierDocumentType?.value || "proforma");
+            const supplierDocumentFieldName = supplierDocumentType === "odc-proveedor"
+                ? "cr07a_odcproveedor"
+                : "cr07a_adjuntarproforma";
             if (!purchaseOrderNumber) {
                 throw new Error("Debes diligenciar cr07a_noorden.");
             }
@@ -3096,10 +3468,12 @@
                 throw new Error("Debes diligenciar cr07a_fechaodc.");
             }
             if (!hasOrderDocumentationFileOrPending("cr07a_ordendecompra")) {
-                throw new Error("Debes cargar la ODC de la orden.");
+                throw new Error("Debes cargar la ODC cliente.");
             }
-            if (!hasOrderDocumentationFileOrPending("cr07a_adjuntarproforma")) {
-                throw new Error("Debes cargar la Proforma de la orden.");
+            if (!hasOrderDocumentationFileOrPending(supplierDocumentFieldName)) {
+                throw new Error(supplierDocumentType === "odc-proveedor"
+                    ? "Debes cargar la ODC al proveedor."
+                    : "Debes cargar la Proforma proveedor.");
             }
 
             const documentationRows = Array.from(elements.documentationRows?.querySelectorAll("[data-hw-documentation-row]") || [])
@@ -3135,6 +3509,7 @@
                 recordIds,
                 actionKey,
                 purchaseOrderNumber,
+                supplierDocumentType,
                 freightValue: freightValueRaw ? freightValue : 0,
                 documentationRows
             };
@@ -3164,6 +3539,8 @@
                     return Boolean(record.hasOrderPurchase);
                 case "cr07a_adjuntarproforma":
                     return Boolean(record.hasProforma);
+                case "cr07a_odcproveedor":
+                    return Boolean(record.hasSupplierPurchaseOrder);
                 case "cr07a_pagoaproveedor":
                     return Boolean(record.hasSupplierPaymentProof);
                 case "cr07a_actadeentrega":
@@ -3188,6 +3565,8 @@
                     return record.orderPurchaseFileName || "";
                 case "cr07a_adjuntarproforma":
                     return record.proformaFileName || "";
+                case "cr07a_odcproveedor":
+                    return record.supplierPurchaseOrderFileName || "";
                 case "cr07a_pagoaproveedor":
                     return record.supplierPaymentProofFileName || "";
                 case "cr07a_actadeentrega":
@@ -3200,9 +3579,11 @@
         function resolveFileLabel(fieldName) {
             switch (fieldName) {
                 case "cr07a_ordendecompra":
-                    return "Adjuntar ODC";
+                    return "Adjuntar ODC cliente";
                 case "cr07a_adjuntarproforma":
-                    return "Adjuntar Proforma";
+                    return "Adjuntar Proforma proveedor";
+                case "cr07a_odcproveedor":
+                    return "Adjuntar ODC al proveedor";
                 case "cr07a_pagoaproveedor":
                     return "Adjuntar pago a proveedor";
                 case "cr07a_actadeentrega":
@@ -3331,8 +3712,37 @@
             return `${normalizeText(row?.ownerId || row?.ownerName || "sin-owner")}|${Number(row?.stateValue || 0)}|${normalizeText(row?.purchaseOrderNumber || "")}`;
         }
 
+        function normalizeSupplierDocumentType(value) {
+            const normalized = normalizeText(value || "").replace(/_/g, "-");
+            if (!normalized || normalized === "proforma") {
+                return "proforma";
+            }
+
+            if (normalized === "odc-proveedor"
+                || normalized === "supplier-odc"
+                || normalized === "odc-al-proveedor"
+                || normalized === "orden-proveedor"
+                || normalized === "orden-de-compra-proveedor") {
+                return "odc-proveedor";
+            }
+
+            return "proforma";
+        }
+
+        function resolveSupplierDocumentField(row) {
+            const supplierDocumentType = normalizeSupplierDocumentType(row?.supplierDocumentType || "");
+            if (supplierDocumentType === "odc-proveedor"
+                || (!row?.hasProforma && row?.hasSupplierPurchaseOrder)) {
+                return "cr07a_odcproveedor";
+            }
+
+            return "cr07a_adjuntarproforma";
+        }
+
         function isOrderDocumentationFile(fieldName) {
-            return fieldName === "cr07a_ordendecompra" || fieldName === "cr07a_adjuntarproforma";
+            return fieldName === "cr07a_ordendecompra"
+                || fieldName === "cr07a_adjuntarproforma"
+                || fieldName === "cr07a_odcproveedor";
         }
 
         function findDisplayGroup(key) {

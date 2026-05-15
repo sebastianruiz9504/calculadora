@@ -118,6 +118,9 @@ public sealed class HardwareBoardRowDto
     public string OrderPurchaseFileName { get; set; } = "";
     public bool HasProforma { get; set; }
     public string ProformaFileName { get; set; } = "";
+    public bool HasSupplierPurchaseOrder { get; set; }
+    public string SupplierPurchaseOrderFileName { get; set; } = "";
+    public string SupplierDocumentType { get; set; } = "";
     public bool HasSupplierPaymentProof { get; set; }
     public string SupplierPaymentProofFileName { get; set; } = "";
     public bool HasDeliveryRecord { get; set; }
@@ -138,6 +141,7 @@ public sealed class HardwareStageSaveRequest
     public string SupplierPaymentDateValue { get; set; } = "";
     public string DeliveryRecordDateValue { get; set; } = "";
     public string InvoiceNumber { get; set; } = "";
+    public string SupplierDocumentType { get; set; } = "";
     public List<HardwareDocumentationLineSaveRequest> DocumentationRows { get; set; } = new();
 }
 
