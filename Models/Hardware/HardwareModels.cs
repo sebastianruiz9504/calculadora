@@ -19,6 +19,7 @@ public sealed class HardwareWorkspaceViewModel
     public string SaveUrl { get; set; } = "";
     public string UploadUrl { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
+    public string PurchaseOrderUrl { get; set; } = "";
     public string InvoiceSearchUrl { get; set; } = "";
     public string ClientSearchUrl { get; set; } = "";
     public string OwnerSearchUrl { get; set; } = "";
@@ -206,6 +207,26 @@ public sealed class HardwareOrderLineCreateRequest
     public decimal? SupplierUnitCost { get; set; }
     public decimal? SaleUnit { get; set; }
     public string Provider { get; set; } = "";
+}
+
+public sealed class HardwarePurchaseOrderRequest
+{
+    public string ProviderName { get; set; } = "";
+    public List<HardwarePurchaseOrderLineRequest> Lines { get; set; } = new();
+}
+
+public sealed class HardwarePurchaseOrderLineRequest
+{
+    public string Product { get; set; } = "";
+    public int? Quantity { get; set; }
+    public decimal? UnitValueBeforeVat { get; set; }
+    public decimal? VatPercent { get; set; }
+}
+
+public sealed class HardwarePurchaseOrderSubmitResultDto
+{
+    public string Message { get; set; } = "";
+    public string OrderNumber { get; set; } = "";
 }
 
 public sealed class HardwareOrderLineEditRequest

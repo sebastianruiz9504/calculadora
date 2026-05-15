@@ -3,7 +3,10 @@ using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Hardware;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
+using System.Net.Http.Json;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
@@ -14,10 +17,17 @@ public sealed class HardwareController : Controller
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private const long MaxUploadBytes = 128 * 1024 * 1024;
     private readonly IDataverseService _dataverse;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly HardwareOptions _hardwareOptions;
 
-    public HardwareController(IDataverseService dataverse)
+    public HardwareController(
+        IDataverseService dataverse,
+        IHttpClientFactory httpClientFactory,
+        IOptions<HardwareOptions> hardwareOptions)
     {
         _dataverse = dataverse;
+        _httpClientFactory = httpClientFactory;
+        _hardwareOptions = hardwareOptions.Value;
     }
 
     [HttpGet]
@@ -42,6 +52,7 @@ public sealed class HardwareController : Controller
             ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
             BoardUrl = Url.Action(nameof(CommercialBoard), "Hardware") ?? "",
             CreateUrl = Url.Action(nameof(CreateOrder), "Hardware") ?? "",
+            PurchaseOrderUrl = Url.Action(nameof(SubmitPurchaseOrder), "Hardware") ?? "",
             SaveUrl = Url.Action(nameof(CommercialSaveStage), "Hardware") ?? "",
             EditUrl = Url.Action(nameof(CommercialEditRecord), "Hardware") ?? "",
             UploadUrl = Url.Action(nameof(CommercialUploadFile), "Hardware") ?? "",
@@ -53,6 +64,103 @@ public sealed class HardwareController : Controller
             InitialStartDate = new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd"),
             InitialEndDate = today.ToString("yyyy-MM-dd")
         });
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SubmitPurchaseOrder([FromBody] HardwarePurchaseOrderRequest? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar los datos de la orden de compra."));
+
+        if (string.IsNullOrWhiteSpace(_hardwareOptions.PurchaseOrderApprovalFlowUrl))
+        {
+            return BadRequest(CreateErrorPayload("Configura la URL del flujo en Hardware:PurchaseOrderApprovalFlowUrl antes de generar la ODC."));
+        }
+
+        try
+        {
+            var currentUser = await GetCurrentUserAsync(ct);
+            currentUser.Email = FirstNonEmpty(
+                currentUser.Email,
+                currentUser.EmployeeUserEmail,
+                User.FindFirstValue("preferred_username"),
+                User.FindFirstValue(ClaimTypes.Upn),
+                User.FindFirstValue(ClaimTypes.Email));
+
+            if (string.IsNullOrWhiteSpace(currentUser.Email))
+                return BadRequest(CreateErrorPayload("No fue posible resolver el correo del usuario solicitante."));
+
+            var document = HardwarePurchaseOrderDocumentBuilder.Build(
+                request,
+                currentUser,
+                _hardwareOptions,
+                ResolveBogotaNow());
+            var payload = new
+            {
+                requestId = document.RequestId,
+                source = "CotizadorInterno.Hardware",
+                requestedAtUtc = DateTimeOffset.UtcNow,
+                approverEmail = FirstNonEmpty(_hardwareOptions.PurchaseOrderApproverEmail, "adaza@digitaltechcolombia.com"),
+                requester = new
+                {
+                    systemUserId = currentUser.SystemUserId,
+                    displayName = FirstNonEmpty(currentUser.DisplayName, currentUser.Email),
+                    email = currentUser.Email
+                },
+                order = new
+                {
+                    orderNumber = document.OrderNumber,
+                    providerName = document.ProviderName,
+                    orderDate = document.OrderDate,
+                    subtotalBeforeVat = document.SubtotalBeforeVat,
+                    vatTotal = document.VatTotal,
+                    grandTotal = document.GrandTotal
+                },
+                lines = document.Lines.Select(static line => new
+                {
+                    product = line.Product,
+                    quantity = line.Quantity,
+                    unitValueBeforeVat = line.UnitValueBeforeVat,
+                    totalBeforeVat = line.TotalBeforeVat,
+                    vatPercent = line.VatPercent,
+                    vatValue = line.VatValue,
+                    totalWithVat = line.TotalWithVat
+                }),
+                document = new
+                {
+                    pdfFileName = document.PdfFileName,
+                    pdfBase64 = Convert.ToBase64String(document.PdfContent),
+                    emailHtml = document.EmailHtml,
+                    approvalSummary = document.ApprovalSummary
+                }
+            };
+
+            var client = _httpClientFactory.CreateClient();
+            using var response = await client.PostAsJsonAsync(_hardwareOptions.PurchaseOrderApprovalFlowUrl, payload, cancellationToken: ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                var message = string.IsNullOrWhiteSpace(body)
+                    ? $"El flujo respondió con error HTTP {(int)response.StatusCode}."
+                    : body;
+                return BadRequest(CreateErrorPayload(message));
+            }
+
+            return Ok(new HardwarePurchaseOrderSubmitResultDto
+            {
+                OrderNumber = document.OrderNumber,
+                Message = $"Se envió la ODC {document.OrderNumber} para aprobación."
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible generar la orden de compra.", ex));
+        }
     }
 
     [HttpGet]
@@ -607,6 +715,30 @@ public sealed class HardwareController : Controller
 
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
     }
+
+    private static DateTimeOffset ResolveBogotaNow()
+    {
+        var utcNow = DateTimeOffset.UtcNow;
+        foreach (var timeZoneId in new[] { "SA Pacific Standard Time", "America/Bogota" })
+        {
+            try
+            {
+                var timezone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                return TimeZoneInfo.ConvertTime(utcNow, timezone);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return utcNow;
+    }
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
 
     private object CreateErrorPayload(string message, Exception? ex = null)
     {

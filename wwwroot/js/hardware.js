@@ -15,6 +15,7 @@
             provisionUrl: root.dataset.provisionUrl || "",
             boardUrl: root.dataset.boardUrl || "",
             createUrl: root.dataset.createUrl || "",
+            purchaseOrderUrl: root.dataset.purchaseOrderUrl || "",
             saveUrl: root.dataset.saveUrl || "",
             editUrl: root.dataset.editUrl || "",
             uploadUrl: root.dataset.uploadUrl || "",
@@ -61,6 +62,7 @@
             createStatus: root.querySelector("[data-hw-create-status]"),
             createLines: root.querySelector("[data-hw-create-lines]"),
             openCreateModalBtn: root.querySelector("[data-hw-open-create-modal]"),
+            openPurchaseOrderModalBtn: root.querySelector("[data-hw-open-purchase-order-modal]"),
             addCreateLineBtn: root.querySelector("[data-hw-add-create-line]"),
             saveCreateBtn: root.querySelector("[data-hw-save-create]"),
             createModalKicker: root.querySelector("[data-hw-create-modal-kicker]"),
@@ -70,6 +72,21 @@
             closeCreateModalButtons: Array.from(root.querySelectorAll("[data-hw-close-create-modal]")),
             createFileInputs: Array.from(root.querySelectorAll("[data-hw-create-file-input]")),
             createFileNames: Array.from(root.querySelectorAll("[data-hw-create-file-name]")),
+            purchaseOrderModal: root.querySelector("[data-hw-purchase-order-modal]"),
+            purchaseOrderForm: root.querySelector("[data-hw-purchase-order-form]"),
+            purchaseOrderStatus: root.querySelector("[data-hw-purchase-order-status]"),
+            purchaseOrderLines: root.querySelector("[data-hw-purchase-order-lines]"),
+            addPurchaseOrderLineBtn: root.querySelector("[data-hw-add-purchase-order-line]"),
+            submitPurchaseOrderBtn: root.querySelector("[data-hw-submit-purchase-order]"),
+            closePurchaseOrderModalButtons: Array.from(root.querySelectorAll("[data-hw-close-purchase-order-modal]")),
+            purchaseOrderFields: {
+                providerName: root.querySelector('[data-hw-purchase-order-field="providerName"]')
+            },
+            purchaseOrderTotals: {
+                subtotal: root.querySelector('[data-hw-purchase-order-total="subtotal"]'),
+                vat: root.querySelector('[data-hw-purchase-order-total="vat"]'),
+                grand: root.querySelector('[data-hw-purchase-order-total="grand"]')
+            },
             createClientOptions: root.querySelector("[data-hw-create-client-options]"),
             createClientHint: root.querySelector("[data-hw-create-client-hint]"),
             createFields: {
@@ -187,6 +204,7 @@
             createClientSuggestions: [],
             createLineSequence: 0,
             createEditingRecord: null,
+            purchaseOrderLineSequence: 0,
             invoiceSuggestions: [],
             invoiceLookupTimer: 0,
             invoiceLookupSequence: 0,
@@ -260,10 +278,22 @@
         elements.selectedActionBtn?.addEventListener("click", openSelectedRows);
         elements.editSelectedBtn?.addEventListener("click", openBulkEditForSelectedRows);
         elements.openCreateModalBtn?.addEventListener("click", openCreateModal);
+        elements.openPurchaseOrderModalBtn?.addEventListener("click", openPurchaseOrderModal);
         elements.addCreateLineBtn?.addEventListener("click", () => addCreateLine());
+        elements.addPurchaseOrderLineBtn?.addEventListener("click", () => addPurchaseOrderLine());
         elements.createForm?.addEventListener("submit", async event => {
             event.preventDefault();
             await saveCommercialCreateForm();
+        });
+        elements.purchaseOrderForm?.addEventListener("submit", async event => {
+            event.preventDefault();
+            await submitPurchaseOrder();
+        });
+        elements.purchaseOrderForm?.addEventListener("input", event => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.closest("[data-hw-purchase-order-line]")) {
+                recalculatePurchaseOrderTotals();
+            }
         });
         elements.createForm?.addEventListener("change", event => {
             const target = event.target;
@@ -341,6 +371,10 @@
                 if (record) {
                     openModalForRecords([record]);
                 }
+                return;
+            }
+
+            if (target.closest("a, button, input, select, textarea, label")) {
                 return;
             }
 
@@ -427,6 +461,10 @@
             button.addEventListener("click", closeCreateModal);
         });
 
+        elements.closePurchaseOrderModalButtons.forEach(button => {
+            button.addEventListener("click", closePurchaseOrderModal);
+        });
+
         elements.closeEditModalButtons.forEach(button => {
             button.addEventListener("click", closeEditModal);
         });
@@ -468,6 +506,13 @@
             }
         });
 
+        elements.purchaseOrderModal?.addEventListener("click", event => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.hasAttribute("data-hw-close-purchase-order-modal")) {
+                closePurchaseOrderModal();
+            }
+        });
+
         elements.createForm?.addEventListener("click", event => {
             const target = event.target;
             if (!(target instanceof HTMLElement)) {
@@ -483,6 +528,18 @@
             const removeLineButton = target.closest("[data-hw-remove-create-line]");
             if (removeLineButton instanceof HTMLButtonElement) {
                 removeCreateLine(removeLineButton.dataset.hwRemoveCreateLine || "");
+            }
+        });
+
+        elements.purchaseOrderForm?.addEventListener("click", event => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            const removeLineButton = target.closest("[data-hw-remove-purchase-order-line]");
+            if (removeLineButton instanceof HTMLButtonElement) {
+                removePurchaseOrderLine(removeLineButton.dataset.hwRemovePurchaseOrderLine || "");
             }
         });
 
@@ -503,7 +560,9 @@
                 return;
             }
 
-            if (elements.createModal && !elements.createModal.hidden) {
+            if (elements.purchaseOrderModal && !elements.purchaseOrderModal.hidden) {
+                closePurchaseOrderModal();
+            } else if (elements.createModal && !elements.createModal.hidden) {
                 closeCreateModal();
             } else if (elements.editModal && !elements.editModal.hidden) {
                 closeEditModal();
@@ -518,6 +577,9 @@
 
         if (isCommercialMode && elements.createLines && !elements.createLines.children.length) {
             addCreateLine();
+        }
+        if (isCommercialMode && elements.purchaseOrderLines && !elements.purchaseOrderLines.children.length) {
+            addPurchaseOrderLine();
         }
 
         if (config.canImpersonate && elements.impersonationSelect && config.impersonationUsersUrl) {
@@ -889,6 +951,7 @@
 
         function renderCommercialRows(rows) {
             const groups = buildCommercialGroups(rows);
+            const showLineProforma = isSupplierPaymentEffectiveUser();
             state.displayItems = groups;
 
             if (!rows.length) {
@@ -901,7 +964,7 @@
 
             elements.rows.innerHTML = `
                 <div class="hardware-table-wrap">
-                    <table class="table align-middle hardware-table hardware-commercial-table">
+                    <table class="table align-middle hardware-table hardware-commercial-table ${showLineProforma ? "hardware-commercial-table--with-proforma" : ""}">
                         <thead>
                             <tr>
                                 <th>Orden / Cliente</th>
@@ -910,12 +973,13 @@
                                 <th class="text-end">Costo proveedor</th>
                                 <th class="text-end">Venta unidad</th>
                                 <th>Proveedor</th>
+                                ${showLineProforma ? `<th class="text-center">Proforma</th>` : ""}
                                 <th>Estado</th>
                                 <th>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${groups.map(renderCommercialGroup).join("")}
+                            ${groups.map(group => renderCommercialGroup(group, showLineProforma)).join("")}
                         </tbody>
                     </table>
                 </div>
@@ -944,7 +1008,7 @@
                 .sort((left, right) => left.index - right.index);
         }
 
-        function renderCommercialGroup(group) {
+        function renderCommercialGroup(group, showLineProforma = false) {
             const first = group.rows[0] || {};
             const validAction = validateActionRecords(group.rows);
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
@@ -952,9 +1016,10 @@
             const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
             const groupStateLabel = getCommonValue(group.rows, "stateLabel") || "Varios estados";
             const groupStateTone = getCommonValue(group.rows, "stateTone") || first.stateTone || "";
+            const columnCount = showLineProforma ? 9 : 8;
             return `
                 <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
-                    <td colspan="8">
+                    <td colspan="${columnCount}">
                         <div class="hardware-commercial-order">
                             <div>
                                 <strong>${escapeHtml(group.orderNumber)}</strong>
@@ -976,11 +1041,11 @@
                         </div>
                     </td>
                 </tr>
-                ${group.rows.map(row => renderCommercialRecordRow(row)).join("")}
+                ${group.rows.map(row => renderCommercialRecordRow(row, group.rows, showLineProforma)).join("")}
             `;
         }
 
-        function renderCommercialRecordRow(row) {
+        function renderCommercialRecordRow(row, orderRows = [], showLineProforma = false) {
             const editable = isCommercialLineEditable(row);
             const editAttributes = editable
                 ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
@@ -1001,6 +1066,7 @@
                     <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
                     <td>${escapeHtml(row?.provider || "-")}</td>
+                    ${showLineProforma ? `<td class="text-center">${renderCommercialLineProformaLink(row, orderRows)}</td>` : ""}
                     <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
@@ -1008,6 +1074,44 @@
                         </div>
                     </td>
                 </tr>
+            `;
+        }
+
+        function renderCommercialLineProformaLink(row, orderRows) {
+            const fieldName = "cr07a_adjuntarproforma";
+            const recordWithProforma = resolveOrderFileRecord(orderRows, fieldName);
+            const hasProforma = hasExistingFile(recordWithProforma, fieldName);
+            if (!hasProforma || !recordWithProforma?.recordId) {
+                return `
+                    <span class="hardware-icon-link is-disabled" title="Proforma pendiente" aria-label="Proforma pendiente">
+                        ${downloadIconSvg()}
+                        <span class="visually-hidden">Proforma pendiente</span>
+                    </span>
+                `;
+            }
+
+            const fileName = resolveExistingFileName(recordWithProforma, fieldName);
+            const title = fileName ? `Descargar proforma: ${fileName}` : "Descargar proforma";
+            return `
+                <a class="hardware-icon-link"
+                   href="${escapeHtml(buildDownloadUrl(recordWithProforma.recordId, fieldName))}"
+                   target="_blank"
+                   rel="noopener"
+                   title="${escapeHtml(title)}"
+                   aria-label="${escapeHtml(title)}">
+                    ${downloadIconSvg()}
+                    <span class="visually-hidden">Descargar proforma de ${escapeHtml(row?.name || "esta línea")}</span>
+                </a>
+            `;
+        }
+
+        function downloadIconSvg() {
+            return `
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <path d="M7 10l5 5 5-5"></path>
+                    <path d="M12 15V3"></path>
+                </svg>
             `;
         }
 
@@ -1429,7 +1533,11 @@
             resetFileInputs();
             clearStatus(elements.modalStatus);
             elements.modal.hidden = true;
-            document.body.classList.remove("hardware-modal-open");
+            if ((!elements.createModal || elements.createModal.hidden)
+                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)
+                && (!elements.editModal || elements.editModal.hidden)) {
+                document.body.classList.remove("hardware-modal-open");
+            }
         }
 
         function renderFileCards() {
@@ -1873,6 +1981,224 @@
             closeOwnerLookupMenu();
         }
 
+        function openPurchaseOrderModal() {
+            if (!elements.purchaseOrderModal) {
+                return;
+            }
+            if (!canCreateCommercialRecords()) {
+                setStatus(elements.boardStatus, "warning", "La vista de cartera no puede generar ODC comerciales.");
+                return;
+            }
+
+            resetPurchaseOrderForm();
+            clearStatus(elements.purchaseOrderStatus);
+            elements.purchaseOrderModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+            elements.purchaseOrderFields.providerName?.focus();
+        }
+
+        function closePurchaseOrderModal(force = false) {
+            if (state.saving && !force) {
+                return;
+            }
+
+            clearStatus(elements.purchaseOrderStatus);
+            if (elements.purchaseOrderModal) {
+                elements.purchaseOrderModal.hidden = true;
+            }
+
+            if ((!elements.modal || elements.modal.hidden)
+                && (!elements.createModal || elements.createModal.hidden)
+                && (!elements.editModal || elements.editModal.hidden)) {
+                document.body.classList.remove("hardware-modal-open");
+            }
+        }
+
+        function addPurchaseOrderLine(values = {}) {
+            if (!elements.purchaseOrderLines) {
+                return;
+            }
+
+            const rowKey = values.rowKey || `purchase-line-${++state.purchaseOrderLineSequence}`;
+            elements.purchaseOrderLines.insertAdjacentHTML("beforeend", `
+                <tr data-hw-purchase-order-line="${escapeHtml(rowKey)}">
+                    <td>
+                        <input type="text" class="form-control form-control-sm" data-hw-purchase-order-line-field="product" value="${escapeHtml(values.product || "")}" />
+                    </td>
+                    <td>
+                        <input type="number" min="1" step="1" class="form-control form-control-sm text-end" data-hw-purchase-order-line-field="quantity" value="${escapeHtml(values.quantity || "")}" />
+                    </td>
+                    <td>
+                        <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end" data-hw-purchase-order-line-field="unitValueBeforeVat" value="${escapeHtml(values.unitValueBeforeVat || "")}" />
+                    </td>
+                    <td class="text-end hardware-purchase-order-computed" data-hw-purchase-order-line-total="beforeVat">COP 0</td>
+                    <td>
+                        <input type="number" min="0" max="100" step="0.01" class="form-control form-control-sm text-end" data-hw-purchase-order-line-field="vatPercent" value="${escapeHtml(values.vatPercent ?? "19")}" />
+                    </td>
+                    <td class="text-end hardware-purchase-order-computed" data-hw-purchase-order-line-total="withVat">COP 0</td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-hw-remove-purchase-order-line="${escapeHtml(rowKey)}">Quitar</button>
+                    </td>
+                </tr>
+            `);
+            syncPurchaseOrderLineButtons();
+            recalculatePurchaseOrderTotals();
+        }
+
+        function removePurchaseOrderLine(rowKey) {
+            if (!elements.purchaseOrderLines) {
+                return;
+            }
+
+            const row = elements.purchaseOrderLines.querySelector(`[data-hw-purchase-order-line="${cssEscape(rowKey)}"]`);
+            row?.remove();
+            if (!elements.purchaseOrderLines.children.length) {
+                addPurchaseOrderLine();
+            }
+            syncPurchaseOrderLineButtons();
+            recalculatePurchaseOrderTotals();
+        }
+
+        function syncPurchaseOrderLineButtons() {
+            if (!elements.purchaseOrderLines) {
+                return;
+            }
+
+            const rows = Array.from(elements.purchaseOrderLines.querySelectorAll("[data-hw-purchase-order-line]"));
+            rows.forEach(row => {
+                const button = row.querySelector("[data-hw-remove-purchase-order-line]");
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = rows.length <= 1 || state.busy;
+                }
+            });
+        }
+
+        function resetPurchaseOrderForm() {
+            elements.purchaseOrderForm?.reset();
+            if (elements.purchaseOrderLines) {
+                elements.purchaseOrderLines.innerHTML = "";
+                addPurchaseOrderLine();
+            }
+            recalculatePurchaseOrderTotals();
+        }
+
+        async function submitPurchaseOrder() {
+            if (state.saving || !elements.purchaseOrderForm || !config.purchaseOrderUrl) {
+                return;
+            }
+
+            let draft;
+            try {
+                draft = buildPurchaseOrderDraft();
+            } catch (error) {
+                setStatus(elements.purchaseOrderStatus, "error", getErrorMessage(error));
+                return;
+            }
+
+            try {
+                state.saving = true;
+                setBusy(true);
+                setStatus(elements.purchaseOrderStatus, "info", "Enviando ODC para aprobación...");
+                const result = await fetchJson(config.purchaseOrderUrl, {
+                    method: "POST",
+                    body: JSON.stringify(draft)
+                });
+
+                resetPurchaseOrderForm();
+                closePurchaseOrderModal(true);
+                setStatus(elements.status, "success", result?.message || "ODC enviada para aprobación.");
+            } catch (error) {
+                setStatus(elements.purchaseOrderStatus, "error", getErrorMessage(error));
+            } finally {
+                state.saving = false;
+                if (state.busy) {
+                    setBusy(false);
+                }
+            }
+        }
+
+        function buildPurchaseOrderDraft() {
+            const providerName = (elements.purchaseOrderFields.providerName?.value || "").trim();
+            if (!providerName) {
+                throw new Error("Debes diligenciar el nombre de proveedor.");
+            }
+
+            const rows = Array.from(elements.purchaseOrderLines?.querySelectorAll("[data-hw-purchase-order-line]") || []);
+            if (!rows.length) {
+                throw new Error("Agrega al menos una línea.");
+            }
+
+            return {
+                providerName,
+                lines: rows.map((row, index) => {
+                    const product = getPurchaseOrderLineValue(row, "product");
+                    const quantity = parseIntegerStrict(getPurchaseOrderLineValue(row, "quantity"));
+                    const unitValueBeforeVat = parseDecimalStrict(getPurchaseOrderLineValue(row, "unitValueBeforeVat"));
+                    const vatPercent = parseDecimalStrict(getPurchaseOrderLineValue(row, "vatPercent"));
+
+                    if (!product) {
+                        throw new Error(`Debes diligenciar Producto en la línea ${index + 1}.`);
+                    }
+                    if (!Number.isInteger(quantity) || quantity <= 0) {
+                        throw new Error(`Debes diligenciar una cantidad válida en la línea ${index + 1}.`);
+                    }
+                    if (!(unitValueBeforeVat > 0)) {
+                        throw new Error(`Debes diligenciar un valor unitario válido en la línea ${index + 1}.`);
+                    }
+                    if (!Number.isFinite(vatPercent) || vatPercent < 0 || vatPercent > 100) {
+                        throw new Error(`El IVA de la línea ${index + 1} debe estar entre 0 y 100.`);
+                    }
+
+                    return {
+                        product,
+                        quantity,
+                        unitValueBeforeVat,
+                        vatPercent
+                    };
+                })
+            };
+        }
+
+        function recalculatePurchaseOrderTotals() {
+            let subtotal = 0;
+            let vatTotal = 0;
+            let grandTotal = 0;
+            const rows = Array.from(elements.purchaseOrderLines?.querySelectorAll("[data-hw-purchase-order-line]") || []);
+            rows.forEach(row => {
+                const quantity = parseIntegerStrict(getPurchaseOrderLineValue(row, "quantity"));
+                const unitValue = parseDecimalStrict(getPurchaseOrderLineValue(row, "unitValueBeforeVat"));
+                const vatPercent = parseDecimalStrict(getPurchaseOrderLineValue(row, "vatPercent"));
+                const hasValidInputs = Number.isInteger(quantity)
+                    && quantity > 0
+                    && unitValue > 0
+                    && Number.isFinite(vatPercent)
+                    && vatPercent >= 0;
+                const beforeVat = hasValidInputs ? quantity * unitValue : 0;
+                const vatValue = beforeVat * vatPercent / 100;
+                const withVat = beforeVat + vatValue;
+                subtotal += beforeVat;
+                vatTotal += vatValue;
+                grandTotal += withVat;
+                setPurchaseOrderComputedValue(row, "beforeVat", formatCurrency(beforeVat));
+                setPurchaseOrderComputedValue(row, "withVat", formatCurrency(withVat));
+            });
+
+            setText(elements.purchaseOrderTotals.subtotal, formatCurrency(subtotal));
+            setText(elements.purchaseOrderTotals.vat, formatCurrency(vatTotal));
+            setText(elements.purchaseOrderTotals.grand, formatCurrency(grandTotal));
+        }
+
+        function getPurchaseOrderLineValue(row, fieldName) {
+            return (row.querySelector(`[data-hw-purchase-order-line-field="${cssEscape(fieldName)}"]`)?.value || "").trim();
+        }
+
+        function setPurchaseOrderComputedValue(row, fieldName, value) {
+            const target = row.querySelector(`[data-hw-purchase-order-line-total="${cssEscape(fieldName)}"]`);
+            if (target) {
+                target.textContent = value;
+            }
+        }
+
         function openCreateModal() {
             if (!elements.createModal) {
                 return;
@@ -1952,6 +2278,7 @@
             }
 
             if ((!elements.modal || elements.modal.hidden)
+                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)
                 && (!elements.editModal || elements.editModal.hidden)) {
                 document.body.classList.remove("hardware-modal-open");
             }
@@ -2661,7 +2988,9 @@
                 elements.editModal.hidden = true;
             }
 
-            if (!elements.modal || elements.modal.hidden) {
+            if ((!elements.modal || elements.modal.hidden)
+                && (!elements.createModal || elements.createModal.hidden)
+                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)) {
                 document.body.classList.remove("hardware-modal-open");
             }
         }
@@ -3105,6 +3434,12 @@
                 elements.openCreateModalBtn.disabled = state.busy || !canCreate;
             }
 
+            if (elements.openPurchaseOrderModalBtn) {
+                const canCreate = canCreateCommercialRecords();
+                elements.openPurchaseOrderModalBtn.hidden = !canCreate;
+                elements.openPurchaseOrderModalBtn.disabled = state.busy || !canCreate;
+            }
+
             if (elements.impersonationReset) {
                 elements.impersonationReset.disabled = state.busy || !state.impersonatedOwnerId;
             }
@@ -3126,8 +3461,11 @@
                 elements.selectedActionBtn,
                 elements.editSelectedBtn,
                 elements.openCreateModalBtn,
+                elements.openPurchaseOrderModalBtn,
                 elements.addCreateLineBtn,
-                elements.saveCreateBtn
+                elements.saveCreateBtn,
+                elements.addPurchaseOrderLineBtn,
+                elements.submitPurchaseOrderBtn
             ].forEach(element => {
                 if (element) {
                     element.disabled = isBusy;
@@ -3146,11 +3484,19 @@
                 button.disabled = isBusy;
             });
 
+            elements.closePurchaseOrderModalButtons.forEach(button => {
+                button.disabled = isBusy;
+            });
+
             elements.editForm?.querySelectorAll("input, select, textarea, button").forEach(element => {
                 element.disabled = isBusy;
             });
 
             elements.createForm?.querySelectorAll("input, select, textarea, button").forEach(element => {
+                element.disabled = isBusy;
+            });
+
+            elements.purchaseOrderForm?.querySelectorAll("input, select, textarea, button").forEach(element => {
                 element.disabled = isBusy;
             });
 
@@ -3167,6 +3513,7 @@
             updateEditDirtyMeta();
             renderCreateFormMode();
             syncCreateLineButtons();
+            syncPurchaseOrderLineButtons();
             syncAccessControls();
         }
 
@@ -3375,6 +3722,26 @@
 
             const parsed = Number.parseFloat(normalized);
             return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function parseDecimalStrict(value) {
+            let normalized = String(value || "").trim().replace(/\s/g, "");
+            if (!normalized) {
+                return Number.NaN;
+            }
+
+            const hasComma = normalized.includes(",");
+            const hasDot = normalized.includes(".");
+            if (hasComma && hasDot) {
+                normalized = normalized.replaceAll(".", "").replace(",", ".");
+            } else if (hasComma) {
+                normalized = normalized.replace(",", ".");
+            } else if (/^\d{1,3}(\.\d{3})+$/.test(normalized)) {
+                normalized = normalized.replaceAll(".", "");
+            }
+
+            const parsed = Number.parseFloat(normalized);
+            return Number.isFinite(parsed) ? parsed : Number.NaN;
         }
 
         function parseIntegerStrict(value) {

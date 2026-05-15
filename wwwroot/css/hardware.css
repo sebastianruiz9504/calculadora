@@ -427,10 +427,64 @@
     min-width: 920px;
 }
 
+.hardware-purchase-order-table {
+    min-width: 1040px;
+}
+
 .hardware-create-table th:last-child,
-.hardware-create-table td:last-child {
+.hardware-create-table td:last-child,
+.hardware-purchase-order-table th:last-child,
+.hardware-purchase-order-table td:last-child {
     width: 84px;
     text-align: right;
+}
+
+.hardware-purchase-order-table th:nth-child(1) {
+    width: 260px;
+}
+
+.hardware-purchase-order-table th:nth-child(2) {
+    width: 92px;
+}
+
+.hardware-purchase-order-table th:nth-child(3),
+.hardware-purchase-order-table th:nth-child(4),
+.hardware-purchase-order-table th:nth-child(6) {
+    width: 170px;
+}
+
+.hardware-purchase-order-table th:nth-child(5) {
+    width: 92px;
+}
+
+.hardware-purchase-order-computed {
+    color: var(--hardware-ink);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.hardware-purchase-order-summary {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: var(--hardware-muted);
+    font-size: 13px;
+}
+
+.hardware-purchase-order-summary span {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 8px;
+    background: var(--hardware-soft);
+}
+
+.hardware-purchase-order-summary strong {
+    color: var(--hardware-ink);
 }
 
 .hardware-commercial-create__actions {
@@ -442,6 +496,10 @@
 
 .hardware-commercial-table {
     min-width: 1040px;
+}
+
+.hardware-commercial-table--with-proforma {
+    min-width: 1128px;
 }
 
 .hardware-commercial-table th:nth-child(1) {
@@ -470,6 +528,18 @@
 }
 
 .hardware-commercial-table th:nth-child(8) {
+    width: 126px;
+}
+
+.hardware-commercial-table--with-proforma th:nth-child(7) {
+    width: 84px;
+}
+
+.hardware-commercial-table--with-proforma th:nth-child(8) {
+    width: 138px;
+}
+
+.hardware-commercial-table--with-proforma th:nth-child(9) {
     width: 126px;
 }
 
@@ -550,6 +620,38 @@
 .hardware-file-chip.is-missing {
     background: var(--hardware-soft-strong);
     color: var(--hardware-muted);
+}
+
+.hardware-icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid #c8d5e1;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--hardware-brand);
+    text-decoration: none;
+    vertical-align: middle;
+}
+
+.hardware-icon-link:hover,
+.hardware-icon-link:focus {
+    border-color: var(--hardware-brand);
+    color: var(--hardware-brand-deep);
+    box-shadow: 0 0 0 .16rem rgba(23, 104, 172, .12);
+}
+
+.hardware-icon-link.is-disabled {
+    background: var(--hardware-soft-strong);
+    color: var(--hardware-muted);
+    pointer-events: none;
+    opacity: .68;
+}
+
+.hardware-icon-link svg {
+    flex: 0 0 auto;
 }
 
 .hardware-state-grid {
@@ -900,6 +1002,10 @@
     width: min(1120px, 100%);
 }
 
+.hardware-modal__dialog--purchase {
+    width: min(1160px, 100%);
+}
+
 .hardware-status--modal {
     margin: 0;
 }
@@ -1051,6 +1157,7 @@ body.hardware-modal-open {
     .hardware-toolbar__actions,
     .hardware-actions,
     .hardware-commercial-create__actions,
+    .hardware-purchase-order-summary,
     .hardware-commercial-order,
     .hardware-owner-table__header,
     .hardware-modal__header,

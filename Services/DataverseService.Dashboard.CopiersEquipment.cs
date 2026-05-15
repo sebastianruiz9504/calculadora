@@ -90,7 +90,37 @@ public sealed partial class DataverseService
         {
             ["FS2100"] = 1500000m,
             ["M3645"] = 2700000m,
-            ["P2040"] = 1900000m
+            ["P2040"] = 1900000m,
+            ["FS4100"] = 965000m,
+            ["M3655"] = 2300000m,
+            ["M3540"] = 2300000m,
+            ["P3145"] = 1100000m,
+            ["M3860"] = 3000000m,
+            ["P3045"] = 965000m,
+            ["RICOHMP501"] = 1700000m,
+            ["P3155"] = 1100000m,
+            ["MA6000"] = 6000000m,
+            ["M3560"] = 2000000m,
+            ["P3050"] = 1500000m,
+            ["SHARPMXM450"] = 450000m,
+            ["CANONMF455"] = 350000m,
+            ["EPSONDS1730"] = 450000m,
+            ["HPMFPM477"] = 450000m,
+            ["FS2020"] = 900000m,
+            ["FS3900"] = 900000m,
+            ["FS4000"] = 900000m,
+            ["FS4200"] = 900000m,
+            ["M3040"] = 900000m,
+            ["M3145"] = 900000m,
+            ["M35501"] = 1500000m,
+            ["M3550"] = 1500000m,
+            ["M5526"] = 1500000m,
+            ["M6235"] = 1500000m,
+            ["MA4500"] = 3500000m,
+            ["RICOHIMC300"] = 3500000m,
+            ["RICOHMP4002"] = 3500000m,
+            ["RICOHMP601"] = 3500000m,
+            ["SHARPMXM257"] = 250000m
         };
     private static readonly IReadOnlyList<CopiersEquipmentInventoryOptionalColumnDefinition> DashboardEquipmentInventoryOptionalColumns =
         new[]

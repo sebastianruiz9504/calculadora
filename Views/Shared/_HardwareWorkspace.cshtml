@@ -15,6 +15,7 @@
      data-provision-url="@Model.ProvisionUrl"
      data-board-url="@Model.BoardUrl"
      data-create-url="@Model.CreateUrl"
+     data-purchase-order-url="@Model.PurchaseOrderUrl"
      data-save-url="@Model.SaveUrl"
      data-edit-url="@Model.EditUrl"
      data-upload-url="@Model.UploadUrl"
@@ -83,6 +84,7 @@
                     @if (Model.IsCommercialMode && Model.AllowCreate)
                     {
                         <button type="button" class="btn btn-primary" data-hw-open-create-modal>Nuevo registro</button>
+                        <button type="button" class="btn btn-outline-primary" data-hw-open-purchase-order-modal>Generar Orden de Compra</button>
                     }
                     <button type="button" class="btn btn-primary" data-hw-selected-action disabled @(Model.IsCommercialMode ? "hidden" : "")>Gestionar selección</button>
                     @if (!Model.IsCommercialMode)
@@ -108,6 +110,72 @@
 
     @if (Model.IsCommercialMode)
     {
+        <div class="hardware-modal" data-hw-purchase-order-modal hidden>
+            <div class="hardware-modal__backdrop" data-hw-close-purchase-order-modal></div>
+            <div class="hardware-modal__dialog hardware-modal__dialog--purchase" role="dialog" aria-modal="true" aria-labelledby="hardwarePurchaseOrderModalTitle-@Model.RootId">
+                <div class="hardware-modal__header">
+                    <div>
+                        <div class="hardware-kicker">Orden de compra</div>
+                        <h2 class="hardware-modal__title" id="hardwarePurchaseOrderModalTitle-@Model.RootId">Generar Orden de Compra</h2>
+                        <p class="hardware-modal__subtitle">Diligencia el proveedor y las líneas para enviar la ODC a aprobación.</p>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary" data-hw-close-purchase-order-modal>Cerrar</button>
+                </div>
+
+                <div class="hardware-inline-status" data-hw-purchase-order-status role="status" aria-live="polite"></div>
+
+                <form class="hardware-form" data-hw-purchase-order-form>
+                    <section class="hardware-stage-panel">
+                        <div class="hardware-stage-panel__header">
+                            <h3>Proveedor</h3>
+                        </div>
+                        <div class="hardware-form__grid hardware-form__grid--nested">
+                            <label class="hardware-field hardware-field--span-2">
+                                <span class="hardware-field__label">Nombre de proveedor</span>
+                                <input type="text" class="form-control" autocomplete="off" data-hw-purchase-order-field="providerName" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="hardware-stage-panel">
+                        <div class="hardware-stage-panel__header">
+                            <h3>Líneas</h3>
+                        </div>
+                        <div class="hardware-table-wrap">
+                            <table class="table align-middle hardware-stage-table hardware-purchase-order-table">
+                                <thead>
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th class="text-end">Cantidad</th>
+                                        <th class="text-end">Valor unitario (antes de IVA)</th>
+                                        <th class="text-end">Valor total (antes de IVA)</th>
+                                        <th class="text-end">IVA (%)</th>
+                                        <th class="text-end">Valor total con IVA</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody data-hw-purchase-order-lines></tbody>
+                            </table>
+                        </div>
+                        <div class="hardware-purchase-order-summary">
+                            <span>Subtotal: <strong data-hw-purchase-order-total="subtotal">COP 0</strong></span>
+                            <span>IVA: <strong data-hw-purchase-order-total="vat">COP 0</strong></span>
+                            <span>Total: <strong data-hw-purchase-order-total="grand">COP 0</strong></span>
+                        </div>
+                    </section>
+
+                    <div class="hardware-modal__footer">
+                        <div class="hardware-modal__meta">La ODC se enviará a aprobación antes de llegar al solicitante.</div>
+                        <div class="hardware-actions">
+                            <button type="button" class="btn btn-outline-primary" data-hw-add-purchase-order-line>Agregar línea</button>
+                            <button type="button" class="btn btn-outline-secondary" data-hw-close-purchase-order-modal>Cancelar</button>
+                            <button type="submit" class="btn btn-primary" data-hw-submit-purchase-order>Enviar a aprobación</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div class="hardware-modal" data-hw-create-modal hidden>
             <div class="hardware-modal__backdrop" data-hw-close-create-modal></div>
             <div class="hardware-modal__dialog hardware-modal__dialog--create" role="dialog" aria-modal="true" aria-labelledby="hardwareCreateModalTitle-@Model.RootId">
