@@ -35,7 +35,6 @@ public sealed class HardwareController : Controller
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var currentUser = await GetCurrentUserAsync(ct);
-        var today = ResolveBogotaToday();
         var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(currentUser);
         return View(new HardwareWorkspaceViewModel
         {
@@ -62,12 +61,8 @@ public sealed class HardwareController : Controller
             ClientSearchUrl = Url.Action(nameof(ClientSearch), "Hardware") ?? "",
             OwnerSearchUrl = "",
             ImpersonationUsersUrl = Url.Action(nameof(ImpersonationUsers), "Hardware") ?? "",
-            InitialStartDate = isSupplierPaymentUser
-                ? new DateOnly(today.Year, today.Month, 1).ToString("yyyy-MM-dd")
-                : "",
-            InitialEndDate = isSupplierPaymentUser
-                ? today.ToString("yyyy-MM-dd")
-                : ""
+            InitialStartDate = "",
+            InitialEndDate = ""
         });
     }
 
@@ -270,6 +265,9 @@ public sealed class HardwareController : Controller
 
         try
         {
+            var currentUser = await GetCurrentUserAsync(ct);
+            EnsureCommercialDraftAllowed(currentUser);
+
             await using var stream = file.OpenReadStream();
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer, ct);
@@ -297,6 +295,9 @@ public sealed class HardwareController : Controller
 
         try
         {
+            var currentUser = await GetCurrentUserAsync(ct);
+            EnsureCommercialDraftAllowed(currentUser);
+
             await using var stream = file.OpenReadStream();
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer, ct);
@@ -323,6 +324,18 @@ public sealed class HardwareController : Controller
     {
         try
         {
+            var currentUser = await GetCurrentUserAsync(ct);
+            if (HardwareAccessPolicy.IsSupplierPaymentUser(currentUser))
+            {
+                var board = await _dataverse.GetHardwareBoardAsync(
+                    HardwareAccessPolicy.OkForSupplierPaymentStateValue,
+                    startDate,
+                    endDate,
+                    ct);
+                ApplyCommercialBoardAccess(board, currentUser);
+                return Json(board);
+            }
+
             return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct));
         }
         catch (Exception ex)
@@ -340,6 +353,10 @@ public sealed class HardwareController : Controller
 
         try
         {
+            var currentUser = await GetCurrentUserAsync(ct);
+            if (HardwareAccessPolicy.IsSupplierPaymentUser(currentUser) && !IsSupplierPaymentAction(request.ActionKey))
+                return BadRequest(CreateErrorPayload("Cartera solo puede registrar pagos a proveedor en Hardware."));
+
             return Ok(await _dataverse.SaveHardwareStageAsync(request, ct));
         }
         catch (InvalidOperationException ex)
@@ -402,6 +419,9 @@ public sealed class HardwareController : Controller
 
         try
         {
+            var currentUser = await GetCurrentUserAsync(ct);
+            EnsureCommercialDraftAllowed(currentUser);
+
             return Ok(await _dataverse.SaveHardwareRecordsAsync(request, ct));
         }
         catch (InvalidOperationException ex)
@@ -425,6 +445,11 @@ public sealed class HardwareController : Controller
 
         try
         {
+            var currentUser = await GetCurrentUserAsync(ct);
+            var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(currentUser);
+            if (isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName))
+                return BadRequest(CreateErrorPayload("Cartera solo puede cargar el soporte de pago a proveedor."));
+
             await using var stream = file.OpenReadStream();
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer, ct);
@@ -435,7 +460,8 @@ public sealed class HardwareController : Controller
                 file.FileName,
                 file.ContentType,
                 buffer.ToArray(),
-                ct));
+                ct,
+                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null));
         }
         catch (InvalidOperationException ex)
         {
@@ -502,7 +528,13 @@ public sealed class HardwareController : Controller
     {
         try
         {
-            var file = await _dataverse.DownloadHardwareFileAsync(recordId, fieldName, ct);
+            var currentUser = await GetCurrentUserAsync(ct);
+            var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(currentUser);
+            var file = await _dataverse.DownloadHardwareFileAsync(
+                recordId,
+                fieldName,
+                ct,
+                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null);
             if (file is null || file.Content.Length == 0)
                 return NotFound();
 
@@ -698,27 +730,6 @@ public sealed class HardwareController : Controller
         return selectedUser.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
             ? selectedUser.Name[..^suffix.Length]
             : selectedUser.Name;
-    }
-
-    private static DateOnly ResolveBogotaToday()
-    {
-        var utcNow = DateTimeOffset.UtcNow;
-        foreach (var timeZoneId in new[] { "SA Pacific Standard Time", "America/Bogota" })
-        {
-            try
-            {
-                var timezone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-                return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, timezone).DateTime);
-            }
-            catch (TimeZoneNotFoundException)
-            {
-            }
-            catch (InvalidTimeZoneException)
-            {
-            }
-        }
-
-        return DateOnly.FromDateTime(utcNow.UtcDateTime);
     }
 
     private static DateTimeOffset ResolveBogotaNow()

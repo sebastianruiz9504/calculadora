@@ -21,7 +21,7 @@
 
     bool CanAccessModule(AppModuleDefinition module)
     {
-        return layoutCurrentUser?.HasModule(module.OptionValue) == true;
+        return AppModuleAccessPolicy.CanAccess(module, layoutCurrentUser);
     }
 
     bool IsActiveModule(AppModuleDefinition module)

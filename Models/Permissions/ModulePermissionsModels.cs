@@ -1,4 +1,5 @@
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Hardware;
 
 namespace CotizadorInterno.Web.Models.Permissions;
 
@@ -351,12 +352,37 @@ public static class AppModuleCatalog
     };
 
     public static AppModuleDefinition? Find(AppModule module) =>
-        NavigationModules.FirstOrDefault(item => item.Key == module);
+        PermissionModules.FirstOrDefault(item => item.Key == module);
 
     public static AppModuleDefinition? FindByController(string? controller) =>
-        NavigationModules.FirstOrDefault(item =>
+        PermissionModules.FirstOrDefault(item =>
             !string.IsNullOrWhiteSpace(item.Controller)
             && string.Equals(item.Controller, controller?.Trim(), StringComparison.OrdinalIgnoreCase));
+}
+
+public static class AppModuleAccessPolicy
+{
+    public static bool CanAccess(AppModule module, CurrentUserInfo? currentUser)
+    {
+        var definition = AppModuleCatalog.Find(module);
+        return definition is not null && CanAccess(definition, currentUser);
+    }
+
+    public static bool CanAccess(AppModuleDefinition module, CurrentUserInfo? currentUser)
+    {
+        return currentUser?.HasModule(module.OptionValue) == true
+            || HasSpecificUserAccess(module.Key, currentUser);
+    }
+
+    public static bool HasSpecificUserAccess(AppModule module, CurrentUserInfo? currentUser)
+    {
+        return module switch
+        {
+            AppModule.Hardware => HardwareAccessPolicy.IsSupplierPaymentUser(currentUser)
+                || HardwareAccessPolicy.IsImpersonationUser(currentUser),
+            _ => false
+        };
+    }
 }
 
 public sealed class EmployeeModulePermissionRowDto

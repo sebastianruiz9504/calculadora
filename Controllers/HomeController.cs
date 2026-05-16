@@ -30,7 +30,7 @@ public class HomeController : Controller
     {
         var currentUser = await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
         var availableModules = AppModuleCatalog.NavigationModules
-            .Where(module => currentUser.HasModule(module.OptionValue))
+            .Where(module => AppModuleAccessPolicy.CanAccess(module, currentUser))
             .ToList();
 
         var model = new HomePageViewModel

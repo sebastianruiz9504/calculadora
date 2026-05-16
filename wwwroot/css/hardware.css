@@ -1013,11 +1013,13 @@
     background: #fbfdff;
 }
 
-.hardware-table__row.is-editable {
+.hardware-table__row.is-editable,
+.hardware-table__row.is-actionable {
     cursor: pointer;
 }
 
-.hardware-table__row.is-editable:hover {
+.hardware-table__row.is-editable:hover,
+.hardware-table__row.is-actionable:hover {
     box-shadow: inset 0 0 0 999px rgba(23, 104, 172, .05);
 }
 

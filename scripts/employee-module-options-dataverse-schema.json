@@ -1,0 +1,114 @@
+{
+  "moduleOptions": [
+    {
+      "label": "Calculadora",
+      "value": 645250000,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Renovaciones",
+      "value": 645250001,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Puntajes",
+      "value": 645250002,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Nomina",
+      "value": 645250003,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "RH",
+      "value": 645250004,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Proveedor",
+      "value": 645250005,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Gestion humana",
+      "value": 645250006,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Permisos",
+      "value": 645250007,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Dashboard",
+      "value": 645250008,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Metricas",
+      "value": 645250009,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Cuentas de cobro",
+      "value": 645250010,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Copiers",
+      "value": 645250011,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Inventario",
+      "value": 645250012,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Licenciamiento",
+      "value": 645250013,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Soporte Cloud",
+      "value": 645250014,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Ventas Hardware",
+      "value": 645250015,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Plan Rio 70.3",
+      "value": 645250016,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Envios",
+      "value": 645250017,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Transportador",
+      "value": 645250018,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Rebates/Inversiones",
+      "value": 645250019,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Cruce Licenciamiento",
+      "value": 645250020,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Registro pagos clientes",
+      "value": 645250021,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    }
+  ]
+}

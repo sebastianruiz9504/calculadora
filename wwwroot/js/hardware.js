@@ -390,6 +390,15 @@
                 return;
             }
 
+            const openRecordRow = target.closest("[data-hw-open-record]");
+            if (isCommercialMode && openRecordRow instanceof HTMLElement) {
+                const record = findRow(openRecordRow.dataset.hwOpenRecord || "");
+                if (record) {
+                    openModalForRecords([record]);
+                }
+                return;
+            }
+
             const editableRow = target.closest("[data-hw-edit-record]");
             if (isCommercialMode && editableRow instanceof HTMLElement) {
                 const record = findRow(editableRow.dataset.hwEditRecord || "");
@@ -1320,11 +1329,13 @@
 
         function renderCommercialRecordRow(row, orderRows = [], showLineProforma = false, columnCount = 8) {
             const editable = isCommercialLineEditable(row);
-            const editAttributes = editable
-                ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
-                : "";
+            const openable = isSupplierPaymentEffectiveUser() && Boolean(row?.recordId) && Boolean(row?.hasAction) && Boolean(row?.actionKey);
+            const rowAttributes = [
+                editable ? `data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"` : "",
+                openable ? `data-hw-open-record="${escapeHtml(row?.recordId || "")}" title="Abrir gestión de pago a proveedor"` : ""
+            ].filter(Boolean).join(" ");
             return `
-                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${toneClass(row?.stateTone)}"${editAttributes}>
+                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${openable ? "is-actionable" : ""} ${toneClass(row?.stateTone)}"${rowAttributes ? ` ${rowAttributes}` : ""}>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__submeta">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</div>
                         <strong>${escapeHtml(row?.clientName || "Sin cliente")}</strong>
@@ -1343,7 +1354,7 @@
                     <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
-                            <span class="hardware-table__submeta">${editable ? "Editar" : "Gestionado por orden"}</span>
+                            <span class="hardware-table__submeta">${openable ? "Abrir" : editable ? "Editar" : "Gestionado por orden"}</span>
                         </div>
                     </td>
                 </tr>
@@ -1842,9 +1853,9 @@
             ];
 
             fileFields.forEach(fieldName => {
-                const fileNameTarget = elements.fileNames.find(item => item.dataset.hwFileName === fieldName);
-                const fileHintTarget = elements.fileHints.find(item => item.dataset.hwFileHint === fieldName);
-                const downloadLink = elements.downloadLinks.find(item => item.dataset.hwDownloadLink === fieldName);
+                const fileNameTargets = elements.fileNames.filter(item => item.dataset.hwFileName === fieldName);
+                const fileHintTargets = elements.fileHints.filter(item => item.dataset.hwFileHint === fieldName);
+                const downloadLinks = elements.downloadLinks.filter(item => item.dataset.hwDownloadLink === fieldName);
                 const pendingFile = state.pendingFiles[fieldName];
                 const actionKey = elements.actionKey?.value || "";
                 const isDocumentationOrderFile = actionKey === "register-documentation" && isOrderDocumentationFile(fieldName);
@@ -1853,50 +1864,50 @@
 
                 if (isDocumentationOrderFile) {
                     const orderHasFile = hasExistingFile(orderFileRecord, fieldName);
-                    if (fileNameTarget) {
+                    fileNameTargets.forEach(fileNameTarget => {
                         fileNameTarget.textContent = pendingFile instanceof File
                             ? pendingFile.name
                             : resolveExistingFileName(orderFileRecord, fieldName) || "Sin archivo";
-                    }
+                    });
 
-                    if (fileHintTarget) {
+                    fileHintTargets.forEach(fileHintTarget => {
                         fileHintTarget.textContent = pendingFile instanceof File
                             ? "El archivo se cargará solo en la primera fila de la orden."
                             : orderHasFile
                                 ? "Adjunto registrado en una fila de la orden."
                                 : (fileHintTarget.dataset.defaultHint || "");
-                    }
+                    });
 
-                    if (downloadLink) {
+                    downloadLinks.forEach(downloadLink => {
                         downloadLink.href = orderHasFile && orderFileRecord
                             ? buildDownloadUrl(orderFileRecord.recordId, fieldName)
                             : "#";
                         downloadLink.classList.toggle("is-disabled", !orderHasFile);
-                    }
+                    });
 
                     return;
                 }
 
-                if (fileNameTarget) {
+                fileNameTargets.forEach(fileNameTarget => {
                     fileNameTarget.textContent = pendingFile instanceof File
                         ? pendingFile.name
                         : resolveExistingFileName(orderFileRecord, fieldName) || "Sin archivo";
-                }
+                });
 
-                if (fileHintTarget) {
+                fileHintTargets.forEach(fileHintTarget => {
                     fileHintTarget.textContent = pendingFile instanceof File
                         ? "El archivo se cargará solo en la primera fila de la orden."
                         : orderHasFile
                             ? "Adjunto registrado en una fila de la orden."
                             : (fileHintTarget.dataset.defaultHint || "");
-                }
+                });
 
-                if (downloadLink) {
+                downloadLinks.forEach(downloadLink => {
                     downloadLink.href = orderHasFile && orderFileRecord
                         ? buildDownloadUrl(orderFileRecord.recordId, fieldName)
                         : "#";
                     downloadLink.classList.toggle("is-disabled", !(orderHasFile && orderFileRecord));
-                }
+                });
             });
         }
 
@@ -2374,6 +2385,8 @@
                 if (actionKey !== "register-documentation") {
                     if (fieldName === "cr07a_odcproveedor") {
                         card.hidden = true;
+                    } else if (fieldName === "cr07a_ordendecompra" || fieldName === "cr07a_adjuntarproforma") {
+                        card.hidden = false;
                     }
                     return;
                 }
@@ -3552,7 +3565,24 @@
 
         function resolveOrderFileRecord(records, fieldName) {
             const items = Array.isArray(records) ? records : [];
-            return items.find(record => hasExistingFile(record, fieldName)) || items[0] || null;
+            const directRecord = items.find(record => hasExistingFile(record, fieldName));
+            if (directRecord || !isOrderDocumentationFile(fieldName)) {
+                return directRecord || items[0] || null;
+            }
+
+            const orderNumbers = new Set(items
+                .map(record => normalizeText(record?.purchaseOrderNumber || ""))
+                .filter(Boolean));
+            if (orderNumbers.size > 0) {
+                const orderRecord = state.rows.find(record =>
+                    orderNumbers.has(normalizeText(record?.purchaseOrderNumber || ""))
+                    && hasExistingFile(record, fieldName));
+                if (orderRecord) {
+                    return orderRecord;
+                }
+            }
+
+            return items[0] || null;
         }
 
         function resolveExistingFileName(record, fieldName) {

@@ -9,7 +9,6 @@ public sealed partial class DataverseService
     private const string CurrentUserCacheKey = "Dataverse.CurrentUserInfo";
     private const string EmployeeFullNameField = "cr07a_nombrecompleto";
     private const string EmployeeEmailField = "cr07a_correo";
-    private const string EmployeeModulesField = "cr07a_modulos";
     private const string EmployeeUserLookupField = "_cr07a_usuario_value";
 
     public async Task<IReadOnlyList<EmployeeModulePermissionRowDto>> GetEmployeeModulePermissionsAsync(CancellationToken ct = default)
@@ -23,7 +22,7 @@ public sealed partial class DataverseService
             _nominaEmployeeNameField,
             EmployeeFullNameField,
             EmployeeEmailField,
-            EmployeeModulesField,
+            _nominaEmployeeModulesField,
             EmployeeUserLookupField
         }.Distinct(StringComparer.OrdinalIgnoreCase));
 
@@ -66,7 +65,7 @@ public sealed partial class DataverseService
 
             var payload = new Dictionary<string, object?>
             {
-                [EmployeeModulesField] = BuildMultiSelectOptionPayload(normalizedValues)
+                [_nominaEmployeeModulesField] = BuildMultiSelectOptionPayload(normalizedValues)
             };
 
             await CallDataverseSendAsync(
@@ -102,7 +101,7 @@ public sealed partial class DataverseService
             _nominaEmployeeNameField,
             EmployeeFullNameField,
             EmployeeEmailField,
-            EmployeeModulesField,
+            _nominaEmployeeModulesField,
             EmployeeUserLookupField
         }.Distinct(StringComparer.OrdinalIgnoreCase));
 
@@ -132,7 +131,7 @@ public sealed partial class DataverseService
             _nominaEmployeeNameField,
             EmployeeFullNameField,
             EmployeeEmailField,
-            EmployeeModulesField,
+            _nominaEmployeeModulesField,
             EmployeeUserLookupField
         }.Distinct(StringComparer.OrdinalIgnoreCase));
 
@@ -164,7 +163,7 @@ public sealed partial class DataverseService
             EmployeeName = employeeName,
             UserDisplayName = lookupDisplayName,
             UserEmail = employeeEmail,
-            ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord, EmployeeModulesField)
+            ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord, _nominaEmployeeModulesField)
         };
     }
 

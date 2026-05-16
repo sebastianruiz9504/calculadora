@@ -88,6 +88,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaEmployeeCloudFactorField = "cr07a_factorcloud";
     private const string DefaultNominaEmployeeUserLookupField = "cr07a_usuario";
     private const string DefaultNominaEmployeeContractTypeField = "cr07a_tipocontrato";
+    private const string DefaultNominaEmployeeModulesField = "cr07a_modulos";
     private const string DefaultNominaPayrollTableSetName = "cr07a_nominas";
     private const string DefaultNominaPayrollTableName = "cr07a_nomina";
     private const string DefaultNominaPayrollIdField = "cr07a_nominaid";
@@ -235,6 +236,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaEmployeeCloudFactorField;
     private readonly string _nominaEmployeeUserLookupField;
     private readonly string _nominaEmployeeContractTypeField;
+    private readonly string _nominaEmployeeModulesField;
     private readonly string _nominaPayrollTableSetName;
     private readonly string _nominaPayrollTableName;
     private readonly string _nominaPayrollIdField;
@@ -437,6 +439,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaEmployeeUserLookupField;
         _nominaEmployeeContractTypeField = configuration["Nomina:EmployeeContractTypeField"]
             ?? DefaultNominaEmployeeContractTypeField;
+        _nominaEmployeeModulesField = configuration["Nomina:EmployeeModulesField"]
+            ?? DefaultNominaEmployeeModulesField;
         _nominaPayrollTableSetName = configuration["Nomina:PayrollTableSetName"]
             ?? DefaultNominaPayrollTableSetName;
         _nominaPayrollTableName = configuration["Nomina:PayrollTableName"]
@@ -1520,7 +1524,7 @@ public sealed partial class DataverseService : IDataverseService
             currentUser.EmployeeUserEmail = FirstNonEmpty(
                 ReadString(employeeRecord.Value, EmployeeEmailField),
                 currentUser.Email);
-            currentUser.ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord.Value, EmployeeModulesField);
+            currentUser.ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord.Value, _nominaEmployeeModulesField);
         }
 
         httpContext.Items[CurrentUserCacheKey] = currentUser;
