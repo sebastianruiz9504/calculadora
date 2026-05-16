@@ -13,7 +13,7 @@ public sealed partial class DataverseService
     private const string VacationRequestTableLogicalName = "cr07a_solicituddevacaciones";
     private const string VacationRequestTableSetName = "cr07a_solicituddevacacioneses";
     private const string VacationRequestIdField = "cr07a_solicituddevacacionesid";
-    private const string VacationRequestPrimaryNameField = "cr07a_name";
+    private const string VacationRequestPrimaryNameField = "cr07a_numerodesolicitud";
     private const string VacationRequestEmployeeLookupField = "cr07a_idempleado";
     private const string VacationRequestStartDateField = "cr07a_fechainicio";
     private const string VacationRequestEndDateField = "cr07a_fechafin";
@@ -320,7 +320,7 @@ public sealed partial class DataverseService
 
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         return items
-            .Select(BuildVacationRequestRecord)
+            .Select(item => BuildVacationRequestRecord(metadata, item))
             .Where(static item => item is not null)
             .Select(static item => item!.ToHistoryDto())
             .ToList();
@@ -345,7 +345,7 @@ public sealed partial class DataverseService
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         using var doc = JsonDocument.Parse(json);
-        return BuildVacationRequestRecord(doc.RootElement);
+        return BuildVacationRequestRecord(metadata, doc.RootElement);
     }
 
     private IReadOnlyList<string> BuildVacationRequestSelectFields(RhEntityMetadata metadata)
@@ -372,7 +372,7 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private VacationRequestRecordData? BuildVacationRequestRecord(JsonElement item)
+    private VacationRequestRecordData? BuildVacationRequestRecord(RhEntityMetadata metadata, JsonElement item)
     {
         var recordId = ReadString(item, VacationRequestIdField);
         if (string.IsNullOrWhiteSpace(recordId))
@@ -388,7 +388,7 @@ public sealed partial class DataverseService
         {
             RecordId = recordId,
             Title = FirstNonEmpty(
-                ReadString(item, VacationRequestPrimaryNameField),
+                ReadString(item, metadata.PrimaryNameField),
                 BuildVacationRequestTitle(
                     ReadDataverseDisplayValue(item, VacationRequestEmployeeLookupField, "idempleado", "empleado"),
                     startDate,

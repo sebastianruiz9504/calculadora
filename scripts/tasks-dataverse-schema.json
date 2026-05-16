@@ -1,0 +1,242 @@
+{
+  "table": {
+    "displayName": "Tarea",
+    "displayCollectionName": "Tareas",
+    "logicalName": "cr07a_tarea",
+    "entitySetName": "cr07a_tareas",
+    "primaryIdAttribute": "cr07a_tareaid",
+    "primaryNameAttribute": "cr07a_name",
+    "ownership": "UserOwned"
+  },
+  "statusOptions": [
+    {
+      "label": "Pendiente",
+      "value": 645250000
+    },
+    {
+      "label": "Cerrada",
+      "value": 645250001
+    },
+    {
+      "label": "Cancelada",
+      "value": 645250002
+    }
+  ],
+  "columns": [
+    {
+      "logicalName": "cr07a_name",
+      "displayName": "Nombre",
+      "type": "Text",
+      "maxLength": 200,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_claveunica",
+      "displayName": "Clave unica",
+      "type": "Text",
+      "maxLength": 300,
+      "required": true,
+      "unique": true
+    },
+    {
+      "logicalName": "cr07a_estado",
+      "displayName": "Estado",
+      "type": "Choice",
+      "required": true,
+      "optionsRef": "statusOptions"
+    },
+    {
+      "logicalName": "cr07a_modulo",
+      "displayName": "Modulo",
+      "type": "Text",
+      "maxLength": 120,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_tipo",
+      "displayName": "Tipo",
+      "type": "Text",
+      "maxLength": 120,
+      "required": true
+    },
+    {
+      "logicalName": "cr07a_sourceid",
+      "displayName": "Origen ID",
+      "type": "Text",
+      "maxLength": 100,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_responsableid",
+      "displayName": "Responsable ID",
+      "type": "Text",
+      "maxLength": 100,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_responsablecorreo",
+      "displayName": "Correo responsable",
+      "type": "Text",
+      "maxLength": 200,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_responsablenombre",
+      "displayName": "Nombre responsable",
+      "type": "Text",
+      "maxLength": 200,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_creadoporid",
+      "displayName": "Creador ID",
+      "type": "Text",
+      "maxLength": 100,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_creadoporcorreo",
+      "displayName": "Correo creador",
+      "type": "Text",
+      "maxLength": 200,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_creadopornombre",
+      "displayName": "Nombre creador",
+      "type": "Text",
+      "maxLength": 200,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_fechalimite",
+      "displayName": "Fecha limite",
+      "type": "DateTime",
+      "behavior": "DateOnly",
+      "format": "DateOnly",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_fechacierre",
+      "displayName": "Fecha cierre",
+      "type": "DateTime",
+      "behavior": "UserLocal",
+      "format": "DateAndTime",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_cerradaporid",
+      "displayName": "Cierre ID",
+      "type": "Text",
+      "maxLength": 100,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_cerradaporcorreo",
+      "displayName": "Correo cierre",
+      "type": "Text",
+      "maxLength": 200,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_descripcion",
+      "displayName": "Descripcion",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_actionurl",
+      "displayName": "URL de accion",
+      "type": "Text",
+      "maxLength": 600,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_periodokey",
+      "displayName": "Periodo",
+      "type": "Text",
+      "maxLength": 100,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_totalpendientes",
+      "displayName": "Total pendientes",
+      "type": "Integer",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_payloadjson",
+      "displayName": "Payload JSON",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_emailtablahtml",
+      "displayName": "Tabla HTML email",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_emailtablahtmlfull",
+      "displayName": "Tabla HTML email completa",
+      "type": "MultilineText",
+      "maxLength": 1048576,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_esmanual",
+      "displayName": "Es manual",
+      "type": "TwoOptions",
+      "required": false,
+      "defaultValue": false
+    },
+    {
+      "logicalName": "cr07a_emailenviado",
+      "displayName": "Email enviado",
+      "type": "TwoOptions",
+      "required": false,
+      "defaultValue": false
+    },
+    {
+      "logicalName": "cr07a_emailenviadoen",
+      "displayName": "Email enviado en",
+      "type": "DateTime",
+      "behavior": "UserLocal",
+      "format": "DateAndTime",
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_emailerror",
+      "displayName": "Error email",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_comentariocierre",
+      "displayName": "Comentario de cierre",
+      "type": "MultilineText",
+      "maxLength": 4000,
+      "required": false
+    },
+    {
+      "logicalName": "cr07a_adjuntocierre",
+      "displayName": "Adjunto cierre",
+      "type": "File",
+      "maxSizeMb": 20,
+      "required": false
+    }
+  ],
+  "alternateKeys": [
+    {
+      "logicalName": "cr07a_tarea_claveunica",
+      "displayName": "Tarea - clave unica",
+      "columns": [
+        "cr07a_claveunica"
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 @{
     ViewData["Title"] = "Inicio";
     var availableModulesCount = Model.AvailableModules.Count;
+    var pendingTasksCount = Model.PendingTasks.Count;
     var primaryModule = Model.AvailableModules.FirstOrDefault();
     var userEmail = string.IsNullOrWhiteSpace(Model.CurrentUser.Email)
         ? "Sin correo disponible"
@@ -67,6 +68,61 @@
             </details>
         </section>
     }
+
+    <section class="home-card home-tasks" data-home-tasks>
+        <div class="home-card__header">
+            <div>
+                <div class="home-kicker">Tareas</div>
+                <h2 class="home-section-title">Pendientes asignadas a ti</h2>
+                <p class="home-section-subtitle">
+                    @pendingTasksCount tarea(s) pendiente(s).
+                </p>
+            </div>
+            <button type="button" class="btn btn-primary home-task-create-button" data-task-create-open>Nueva tarea</button>
+        </div>
+
+        @if (pendingTasksCount > 0)
+        {
+            <div class="home-task-list">
+                @foreach (var task in Model.PendingTasks)
+                {
+                    <article class="home-task-row" data-task-id="@task.TaskId" data-task-title="@task.Title" data-task-manual="@task.IsManual.ToString().ToLowerInvariant()">
+                        <div class="home-task-row__main">
+                            <div class="home-task-row__meta">
+                                <span>@task.Module</span>
+                                @if (!string.IsNullOrWhiteSpace(task.DueDateDisplay))
+                                {
+                                    <span>Vence @task.DueDateDisplay</span>
+                                }
+                                @if (task.PendingCount > 1)
+                                {
+                                    <span>@task.PendingCount pendientes</span>
+                                }
+                            </div>
+                            <h3>@task.Title</h3>
+                            <p>@task.Description</p>
+                        </div>
+                        <div class="home-task-row__actions">
+                            @if (task.CanExecute)
+                            {
+                                <a class="btn btn-secondary" href="@task.ActionUrl">Ejecutar</a>
+                            }
+                            @if (task.CanCloseManually)
+                            {
+                                <button type="button" class="btn btn-ghost" data-task-close-open>Cerrar</button>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="home-task-empty">
+                No tienes tareas pendientes.
+            </div>
+        }
+    </section>
 
     @if (availableModulesCount > 0)
     {
@@ -154,3 +210,65 @@
         </section>
     }
 </div>
+
+<div class="home-modal" data-task-create-modal hidden>
+    <div class="home-modal__backdrop" data-task-modal-close></div>
+    <form class="home-modal__panel" data-task-create-form>
+        <div class="home-modal__header">
+            <h2>Nueva tarea</h2>
+            <button type="button" class="home-modal__close" data-task-modal-close aria-label="Cerrar">x</button>
+        </div>
+        <label class="home-field">
+            <span>Responsable</span>
+            <input type="search" data-task-user-search autocomplete="off" placeholder="Buscar usuario" />
+            <input type="hidden" data-task-user-id />
+            <div class="home-lookup-menu" data-task-user-menu hidden></div>
+        </label>
+        <label class="home-field">
+            <span>Correo</span>
+            <input type="email" data-task-user-email required />
+        </label>
+        <label class="home-field">
+            <span>Fecha limite</span>
+            <input type="date" data-task-due-date required />
+        </label>
+        <label class="home-field">
+            <span>Descripcion</span>
+            <textarea data-task-description rows="5" required></textarea>
+        </label>
+        <div class="home-modal__status" data-task-create-status></div>
+        <div class="home-modal__actions">
+            <button type="button" class="btn btn-ghost" data-task-modal-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Crear</button>
+        </div>
+    </form>
+</div>
+
+<div class="home-modal" data-task-close-modal hidden>
+    <div class="home-modal__backdrop" data-task-modal-close></div>
+    <form class="home-modal__panel" data-task-close-form>
+        <div class="home-modal__header">
+            <h2>Cerrar tarea</h2>
+            <button type="button" class="home-modal__close" data-task-modal-close aria-label="Cerrar">x</button>
+        </div>
+        <input type="hidden" data-task-close-id />
+        <div class="home-task-close-title" data-task-close-title></div>
+        <label class="home-field">
+            <span>Comentarios</span>
+            <textarea data-task-close-comments rows="4"></textarea>
+        </label>
+        <label class="home-field">
+            <span>Adjunto</span>
+            <input type="file" data-task-close-attachment />
+        </label>
+        <div class="home-modal__status" data-task-close-status></div>
+        <div class="home-modal__actions">
+            <button type="button" class="btn btn-ghost" data-task-modal-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Cerrar tarea</button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script src="~/js/home-tasks.js" asp-append-version="true"></script>
+}

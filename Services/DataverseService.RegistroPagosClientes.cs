@@ -86,8 +86,7 @@ public sealed partial class DataverseService
             [_dashboardBillingPaymentValueField] = paymentValue,
             [_dashboardBillingRteFteField] = reteFteValue,
             [_dashboardBillingReteIcaField] = reteIcaValue,
-            [_dashboardBillingRteIvaField] = rteIvaValue,
-            [_dashboardBillingDifferenceField] = difference
+            [_dashboardBillingRteIvaField] = rteIvaValue
         };
 
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({recordId})";

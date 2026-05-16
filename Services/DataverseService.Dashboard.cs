@@ -1305,7 +1305,6 @@ public sealed partial class DataverseService
             [_dashboardBillingReteIcaField] = NormalizeBillingAmount(request.ReteIcaValue, "ReteICA"),
             [_dashboardBillingRteIvaField] = NormalizeBillingAmount(request.RteIvaValue, "RteIVA"),
             [_dashboardBillingRteFteField] = NormalizeBillingAmount(request.RteFteValue, "RteFte"),
-            [_dashboardBillingDifferenceField] = RoundCurrency(request.DifferenceValue),
             [_dashboardBillingPublicUrlField] = NormalizeBillingTextValue(request.PublicUrl)
         };
 

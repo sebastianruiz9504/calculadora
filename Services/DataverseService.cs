@@ -118,7 +118,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaPayrollNetAmountField = "cr07a_montopagado";
     private const string DefaultNominaPayrollNetCuentaDeCobroField = "cr07a_montopagadocuentadecobro";
     private const string DefaultNominaScoresEmployeeLookupField = "cr07a_comercial";
-    private const string DefaultSalesPerformancePrimaryNameField = "cr07a_name";
+    private const string DefaultSalesPerformancePrimaryNameField = "cr07a_icpname";
     private const string DefaultSalesPerformanceBillingDayField = "cr07a_billingday";
     private const string DefaultSalesPerformanceHasVatField = "cr07a_sitieneiva";
     private const string DefaultSalesPerformanceAutoBillField = "cr07a_facturableautomatico";
@@ -139,14 +139,14 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardBillingDueDateFieldKind = "date-only";
     private const string DefaultDashboardBillingTotalField = "cr07a_totalfactura";
     private const string DefaultDashboardBillingVatPercentField = "cr07a_iva";
-    private const string DefaultDashboardBillingVatField = "cr07a_ivavalor";
+    private const string DefaultDashboardBillingVatField = "cr07a_impuestovalor";
     private const string DefaultDashboardBillingPublicUrlField = "cr07a_publicurl";
     private const string DefaultDashboardBillingPaymentDateField = "cr07a_fechadepago";
     private const string DefaultDashboardBillingPaymentDateFieldKind = "date-only";
     private const string DefaultDashboardBillingPaymentValueField = "cr07a_valorpago";
-    private const string DefaultDashboardBillingReteIcaField = "cr07a_reteicavalor";
-    private const string DefaultDashboardBillingRteIvaField = "cr07a_rteivavalor";
-    private const string DefaultDashboardBillingRteFteField = "cr07a_rteftevalor";
+    private const string DefaultDashboardBillingReteIcaField = "cr07a_reteica";
+    private const string DefaultDashboardBillingRteIvaField = "cr07a_reteivavalor";
+    private const string DefaultDashboardBillingRteFteField = "cr07a_retefuentevalor";
     private const string DefaultDashboardBillingDifferenceField = "cr07a_diferencia";
     private const string DefaultDashboardCopiersTableLogicalName = "cr07a_productoscopiers";
     private const string DefaultDashboardCopiersTableSetName = "cr07a_productoscopiers";
@@ -596,6 +596,20 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardCopiersLineEquipmentAssignmentLineField;
         _dashboardCopiersLineEquipmentAssignmentEquipmentField = configuration["Dashboard:CopiersLineEquipmentAssignmentEquipmentField"]
             ?? DefaultDashboardCopiersLineEquipmentAssignmentEquipmentField;
+        _tasksTableSetName = configuration["Tasks:TableSetName"] ?? DefaultTasksTableSetName;
+        _tasksTableName = configuration["Tasks:TableName"] ?? DefaultTasksTableName;
+        _tasksIdField = configuration["Tasks:IdField"] ?? DefaultTasksIdField;
+        _tasksNotificationFlowUrl = configuration["Tasks:NotificationFlowUrl"] ?? "";
+        _tasksApplicationBaseUrl = configuration["Tasks:ApplicationBaseUrl"] ?? "";
+        _tasksLicensingAssigneeEmail = configuration["Tasks:LicensingAssigneeEmail"] ?? _tasksLicensingAssigneeEmail;
+        _tasksCrossLicensingAssigneeEmail = configuration["Tasks:CrossLicensingAssigneeEmail"] ?? _tasksCrossLicensingAssigneeEmail;
+        _tasksRenewalsAssigneeEmail = configuration["Tasks:RenewalsAssigneeEmail"] ?? _tasksRenewalsAssigneeEmail;
+        _tasksScoresAssigneeEmail = configuration["Tasks:ScoresAssigneeEmail"] ?? _tasksScoresAssigneeEmail;
+        _tasksPayrollAssigneeEmail = configuration["Tasks:PayrollAssigneeEmail"] ?? _tasksPayrollAssigneeEmail;
+        _tasksCuentasCobroAssigneeEmail = configuration["Tasks:CuentasCobroAssigneeEmail"] ?? _tasksCuentasCobroAssigneeEmail;
+        _tasksPortfolioAssigneeEmails = configuration["Tasks:PortfolioAssigneeEmails"] ?? _tasksPortfolioAssigneeEmails;
+        _tasksHardwarePaymentAssigneeEmail = configuration["Tasks:HardwarePaymentAssigneeEmail"] ?? _tasksHardwarePaymentAssigneeEmail;
+        _tasksHardwareInvoiceAssigneeEmail = configuration["Tasks:HardwareInvoiceAssigneeEmail"] ?? _tasksHardwareInvoiceAssigneeEmail;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

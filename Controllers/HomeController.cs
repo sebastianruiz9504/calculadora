@@ -29,6 +29,20 @@ public class HomeController : Controller
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var currentUser = await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
+        IReadOnlyList<CotizadorInterno.Web.Models.Tasks.TaskBoardItemDto> pendingTasks = Array.Empty<CotizadorInterno.Web.Models.Tasks.TaskBoardItemDto>();
+        try
+        {
+            await _dataverse.SyncAutomaticTasksAsync(ct);
+            pendingTasks = await _dataverse.GetPendingTasksForCurrentUserAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No fue posible sincronizar o cargar tareas pendientes.");
+            currentUser.PermissionLoadWarning = string.IsNullOrWhiteSpace(currentUser.PermissionLoadWarning)
+                ? $"No fue posible cargar las tareas pendientes. {ex.Message}"
+                : $"{currentUser.PermissionLoadWarning}{Environment.NewLine}{Environment.NewLine}No fue posible cargar las tareas pendientes. {ex.Message}";
+        }
+
         var availableModules = AppModuleCatalog.NavigationModules
             .Where(module => AppModuleAccessPolicy.CanAccess(module, currentUser))
             .ToList();
@@ -37,6 +51,7 @@ public class HomeController : Controller
         {
             CurrentUser = currentUser,
             UserDisplayName = ResolveUserDisplayName(currentUser),
+            PendingTasks = pendingTasks,
             AvailableModules = availableModules,
             CanManagePublicDataExport = PublicDataExportAuthorization.IsAdmin(currentUser, HttpContext.User)
         };

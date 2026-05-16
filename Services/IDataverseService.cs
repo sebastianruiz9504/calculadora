@@ -18,6 +18,7 @@ using CotizadorInterno.Web.Models.RegistroPagosClientes;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Models.Renovaciones;
 using CotizadorInterno.Web.Models.SoporteCloud;
+using CotizadorInterno.Web.Models.Tasks;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -169,6 +170,10 @@ public interface IDataverseService
     Task<EnvioSaveResultDto> ConfirmEnvioDeliveryAsync(string recordId, CancellationToken ct = default);
     Task<EnvioFileUploadResultDto> ApproveEnvioDeliverySatisfactionAsync(string recordId, string fileName, string contentType, byte[] content, CancellationToken ct = default);
     Task<EnvioFileDownloadResult?> DownloadEnvioDeliveryActAsync(string recordId, CancellationToken ct = default);
+    Task<TaskSyncResultDto> SyncAutomaticTasksAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<TaskBoardItemDto>> GetPendingTasksForCurrentUserAsync(CancellationToken ct = default);
+    Task<ManualTaskCreateResult> CreateManualTaskAsync(ManualTaskCreateRequest request, CancellationToken ct = default);
+    Task<ManualTaskCloseResult> CloseManualTaskAsync(ManualTaskCloseRequest request, string? fileName = null, string? contentType = null, byte[]? content = null, CancellationToken ct = default);
     PublicDataExportCatalogDto GetPublicDataExportCatalog();
     Task<PublicDataExportTableDto> GetPublicDataExportTableAsync(string datasetKey, IReadOnlyList<string> columnKeys, int? top = null, CancellationToken ct = default);
 }
