@@ -9,6 +9,7 @@ using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
@@ -35,6 +36,7 @@ public sealed class CalculatorController : Controller
     private const string ProvisioningLegacyDescriptionField = "cr07a_description";
     private const int ProvisioningContractKindNewBusinessValue = 645250000;
     private const int ProvisioningContractKindRenewalValue = 645250001;
+    private static readonly CultureInfo ColombianCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly JsonSerializerOptions ProvisioningDescriptionJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -575,6 +577,13 @@ public sealed class CalculatorController : Controller
         }).ToList();
         var descriptionText = BuildFullProvisioningDescription(cliente, aprovisionamiento, scenario, resultado, lineItems, dealTypeLabel);
         var legacyDescriptionText = BuildLimitedProvisioningDescription(cliente, aprovisionamiento, scenario, resultado, lineItems, dealTypeLabel);
+        var lineItemsJson = SerializeDetailedProvisioningLines(lineItems);
+        var lineItemsTableText = BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 120, includeCommercialFields: true, includeTechnicalFields: true);
+        var lineItemsTableMarkdown = BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 120, includeCommercialFields: true, includeTechnicalFields: false);
+        var lineItemsTableHtml = BuildProvisioningLineItemsHtmlTable(lineItems);
+        var notificationSummaryText = BuildProvisioningNotificationSummaryText(requester, cliente, aprovisionamiento, scenario, resultado, dealTypeLabel, contractKindLabel, requestId);
+        var teamsMessageMarkdown = BuildProvisioningTeamsMessageMarkdown(notificationSummaryText, lineItemsTableMarkdown);
+        var emailHtml = BuildProvisioningEmailHtml(notificationSummaryText, lineItemsTableHtml);
 
         return new
         {
@@ -627,12 +636,28 @@ public sealed class CalculatorController : Controller
             },
             descriptionText,
             legacyDescriptionText,
+            lineItemsJson,
+            lineItemsTableText,
+            lineItemsTableMarkdown,
+            lineItemsTableHtml,
+            notificationSummaryText,
+            teamsMessageMarkdown,
+            emailHtml,
             descriptionTextLength = descriptionText.Length,
             legacyDescriptionTextLength = legacyDescriptionText.Length,
             dataverseFields = new
             {
                 description = ProvisioningDescriptionField,
                 legacyDescription = ProvisioningLegacyDescriptionField
+            },
+            notification = new
+            {
+                summaryText = notificationSummaryText,
+                teamsMarkdown = teamsMessageMarkdown,
+                emailHtml,
+                lineItemsTableText,
+                lineItemsTableMarkdown,
+                lineItemsTableHtml
             },
             lineItems = lineItems.Select(item => new
             {
@@ -673,7 +698,7 @@ public sealed class CalculatorController : Controller
     {
         var description = BuildProvisioningDescriptionText(
             BuildProvisioningDescriptionHeader(cliente, aprovisionamiento, scenario, resultado, dealTypeLabel),
-            SerializeDetailedProvisioningLines(lineItems));
+            BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 160, includeCommercialFields: true, includeTechnicalFields: true));
         return TruncateTextForDescription(description, ProvisioningLongDescriptionMaxLength);
     }
 
@@ -688,13 +713,13 @@ public sealed class CalculatorController : Controller
         var headerText = BuildProvisioningDescriptionHeader(cliente, aprovisionamiento, scenario, resultado, dealTypeLabel);
         var detailedDescription = BuildProvisioningDescriptionText(
             headerText,
-            SerializeDetailedProvisioningLines(lineItems));
+            BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 120, includeCommercialFields: true, includeTechnicalFields: true));
         if (FitsProvisioningDescriptionLimit(detailedDescription))
             return detailedDescription;
 
         var compactDescription = BuildProvisioningDescriptionText(
             headerText,
-            SerializeCompactProvisioningLines(lineItems, maxProductNameLength: null, includeCommercialFields: true));
+            BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 90, includeCommercialFields: true, includeTechnicalFields: false));
         if (FitsProvisioningDescriptionLimit(compactDescription))
             return compactDescription;
 
@@ -702,14 +727,14 @@ public sealed class CalculatorController : Controller
         {
             compactDescription = BuildProvisioningDescriptionText(
                 headerText,
-                SerializeCompactProvisioningLines(lineItems, maxProductNameLength, includeCommercialFields: true));
+                BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength, includeCommercialFields: true, includeTechnicalFields: false));
             if (FitsProvisioningDescriptionLimit(compactDescription))
                 return compactDescription;
         }
 
         compactDescription = BuildProvisioningDescriptionText(
             headerText,
-            SerializeCompactProvisioningLines(lineItems, maxProductNameLength: 30, includeCommercialFields: false));
+            BuildProvisioningLineItemsMarkdownTable(lineItems, maxProductNameLength: 30, includeCommercialFields: false, includeTechnicalFields: false));
         if (FitsProvisioningDescriptionLimit(compactDescription))
             return compactDescription;
 
@@ -724,13 +749,17 @@ public sealed class CalculatorController : Controller
         string dealTypeLabel)
     {
         var builder = new StringBuilder();
-        var normalizedProvisioningDate = NormalizeDateLikeValue(aprovisionamiento?.Fecha, preferIsoWhenPossible: true);
+        var normalizedProvisioningDate = NormalizeDateLikeValue(aprovisionamiento?.Fecha);
         var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
         var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
         var requiresProration = scenario?.RequiresProration == true;
+        var contractKindCode = ResolveProvisioningContractKindCode(aprovisionamiento);
+        var contractKindLabel = ResolveProvisioningContractKindLabel(contractKindCode, aprovisionamiento);
 
         builder.AppendLine($"Cliente: {cliente?.Nombre?.Trim() ?? ""}");
         builder.AppendLine($"Fecha aprovisionamiento: {normalizedProvisioningDate}");
+        if (!string.IsNullOrWhiteSpace(contractKindLabel))
+            builder.AppendLine($"Tipo contrato: {contractKindLabel}");
         builder.AppendLine($"Tipo negocio: {dealTypeLabel}");
         builder.AppendLine($"Requiere prorrateo: {(requiresProration ? "Si" : "No")}");
         if (!string.IsNullOrWhiteSpace(normalizedScenarioStartDate))
@@ -745,15 +774,15 @@ public sealed class CalculatorController : Controller
         return builder.ToString();
     }
 
-    private static string BuildProvisioningDescriptionText(string headerText, string linesJson, string? extraMetadataLine = null)
+    private static string BuildProvisioningDescriptionText(string headerText, string linesContent, string? extraMetadataLine = null)
     {
-        var builder = new StringBuilder(headerText.Length + linesJson.Length + 24);
+        var builder = new StringBuilder(headerText.Length + linesContent.Length + 24);
         builder.Append(headerText);
         if (!string.IsNullOrWhiteSpace(extraMetadataLine))
             extraMetadataLine = extraMetadataLine.Trim();
         builder.AppendLine();
         builder.AppendLine("Líneas:");
-        builder.Append(linesJson);
+        builder.Append(linesContent);
         if (!string.IsNullOrWhiteSpace(extraMetadataLine))
         {
             builder.AppendLine();
@@ -761,6 +790,248 @@ public sealed class CalculatorController : Controller
         }
         return builder.ToString();
     }
+
+    private static string BuildProvisioningNotificationSummaryText(
+        ProvisioningRequester? requester,
+        ProvisioningClient? cliente,
+        ProvisioningAprovisionamiento? aprovisionamiento,
+        ProvisioningScenarioContext? scenario,
+        ProvisioningResultado? resultado,
+        string dealTypeLabel,
+        string contractKindLabel,
+        string requestId)
+    {
+        var rows = new List<(string Label, string Value)>
+        {
+            ("Solicitud", requestId),
+            ("Cliente", cliente?.Nombre?.Trim() ?? ""),
+            ("Solicitante", FirstNonEmpty(requester?.DisplayName, requester?.Email)),
+            ("Correo solicitante", requester?.Email?.Trim() ?? ""),
+            ("Fecha aprovisionamiento", NormalizeDateLikeValue(aprovisionamiento?.Fecha)),
+            ("Tipo contrato", contractKindLabel),
+            ("Tipo negocio", dealTypeLabel),
+            ("Requiere prorrateo", scenario?.RequiresProration == true ? "Si" : "No")
+        };
+
+        var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
+        var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
+        if (!string.IsNullOrWhiteSpace(normalizedScenarioStartDate))
+            rows.Add(("Inicio", normalizedScenarioStartDate));
+        if (!string.IsNullOrWhiteSpace(normalizedScenarioEndDate))
+            rows.Add(("Final", normalizedScenarioEndDate));
+
+        rows.Add(("Prorrateo", resultado?.ProrrateoTexto?.Trim() ?? ""));
+        rows.Add(("Puntaje", FormatDecimalForNotification(resultado?.Puntaje ?? 0m)));
+        rows.Add(("Comision", FormatMoneyForNotification(resultado?.Comision ?? 0m)));
+        rows.Add(("Venta mensual total", FormatMoneyForNotification(resultado?.VentaMensualTotal ?? 0m)));
+        rows.Add(("Venta total anual", FormatMoneyForNotification(resultado?.VentaTotalAnual ?? resultado?.VentaTotal ?? 0m)));
+
+        var labelWidth = rows.Max(static row => row.Label.Length);
+        var builder = new StringBuilder();
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Value))
+                continue;
+
+            builder.Append(row.Label.PadRight(labelWidth));
+            builder.Append(": ");
+            builder.AppendLine(row.Value.Trim());
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildProvisioningTeamsMessageMarkdown(string summaryText, string lineItemsTableMarkdown)
+    {
+        var builder = new StringBuilder(summaryText.Length + lineItemsTableMarkdown.Length + 80);
+        builder.AppendLine("**Solicitud de aprovisionamiento**");
+        builder.AppendLine();
+        builder.AppendLine("```");
+        builder.AppendLine(summaryText);
+        builder.AppendLine("```");
+        builder.AppendLine();
+        builder.AppendLine("**Lineas solicitadas**");
+        builder.Append(lineItemsTableMarkdown);
+        return builder.ToString();
+    }
+
+    private static string BuildProvisioningEmailHtml(string summaryText, string lineItemsTableHtml)
+    {
+        var builder = new StringBuilder(summaryText.Length + lineItemsTableHtml.Length + 512);
+        builder.Append("<div style=\"font-family:Segoe UI,Arial,sans-serif;color:#172033;font-size:14px;line-height:1.45;\">");
+        builder.Append("<h2 style=\"margin:0 0 14px;color:#102a43;font-size:20px;\">Solicitud de aprovisionamiento</h2>");
+        builder.Append("<pre style=\"margin:0 0 18px;padding:14px;background:#f6f8fb;border:1px solid #d9e2ec;border-radius:6px;white-space:pre-wrap;font-family:Consolas,Segoe UI,Arial,sans-serif;font-size:13px;\">");
+        builder.Append(WebUtility.HtmlEncode(summaryText));
+        builder.Append("</pre>");
+        builder.Append("<h3 style=\"margin:0 0 10px;color:#102a43;font-size:16px;\">Lineas solicitadas</h3>");
+        builder.Append(lineItemsTableHtml);
+        builder.Append("</div>");
+        return builder.ToString();
+    }
+
+    private static string BuildProvisioningLineItemsMarkdownTable(
+        IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
+        int? maxProductNameLength,
+        bool includeCommercialFields,
+        bool includeTechnicalFields)
+    {
+        if (lineItems.Count == 0)
+            return "_Sin lineas._";
+
+        var builder = new StringBuilder(lineItems.Count * 180);
+        if (includeCommercialFields)
+        {
+            builder.Append("| # | Tipo | Producto | Cant. | Costo und. | Venta und. | Margen % | Meses | Venta mensual | Venta total | IVA | Inicio | Final |");
+            if (includeTechnicalFields)
+                builder.Append(" Producto Id |");
+            builder.AppendLine();
+            builder.Append("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
+            if (includeTechnicalFields)
+                builder.Append(" --- |");
+            builder.AppendLine();
+        }
+        else
+        {
+            builder.AppendLine("| # | Tipo | Producto | Cant. | Venta mensual | Venta total | IVA |");
+            builder.AppendLine("|---:|---|---|---:|---:|---:|---|");
+        }
+
+        for (var index = 0; index < lineItems.Count; index++)
+        {
+            var item = lineItems[index];
+            if (includeCommercialFields)
+            {
+                builder.Append("| ");
+                builder.Append(index + 1);
+                builder.Append(" | ");
+                builder.Append(FormatMarkdownCell(item.Tipo));
+                builder.Append(" | ");
+                builder.Append(FormatMarkdownCell(item.ProductoNombre, maxProductNameLength));
+                builder.Append(" | ");
+                builder.Append(FormatQuantityForNotification(item.Cantidad));
+                builder.Append(" | ");
+                builder.Append(FormatMoneyForNotification(item.CostoUnd));
+                builder.Append(" | ");
+                builder.Append(FormatMoneyForNotification(item.VentaUnd));
+                builder.Append(" | ");
+                builder.Append(FormatPercentForNotification(item.MargenPorcentaje));
+                builder.Append(" | ");
+                builder.Append(item.DuracionMeses.ToString(CultureInfo.InvariantCulture));
+                builder.Append(" | ");
+                builder.Append(FormatMoneyForNotification(item.VentaMensual));
+                builder.Append(" | ");
+                builder.Append(FormatMoneyForNotification(item.VentaTotal));
+                builder.Append(" | ");
+                builder.Append(item.TieneIva ? "Si" : "No");
+                builder.Append(" | ");
+                builder.Append(FormatMarkdownCell(item.Inicio));
+                builder.Append(" | ");
+                builder.Append(FormatMarkdownCell(item.Final));
+                builder.Append(" |");
+                if (includeTechnicalFields)
+                {
+                    builder.Append(' ');
+                    builder.Append(FormatMarkdownCell(item.ProductoId));
+                    builder.Append(" |");
+                }
+                builder.AppendLine();
+                continue;
+            }
+
+            builder.Append("| ");
+            builder.Append(index + 1);
+            builder.Append(" | ");
+            builder.Append(FormatMarkdownCell(item.Tipo));
+            builder.Append(" | ");
+            builder.Append(FormatMarkdownCell(item.ProductoNombre, maxProductNameLength));
+            builder.Append(" | ");
+            builder.Append(FormatQuantityForNotification(item.Cantidad));
+            builder.Append(" | ");
+            builder.Append(FormatMoneyForNotification(item.VentaMensual));
+            builder.Append(" | ");
+            builder.Append(FormatMoneyForNotification(item.VentaTotal));
+            builder.Append(" | ");
+            builder.Append(item.TieneIva ? "Si" : "No");
+            builder.AppendLine(" |");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string BuildProvisioningLineItemsHtmlTable(IReadOnlyList<ProvisioningFlowLinePayload> lineItems)
+    {
+        if (lineItems.Count == 0)
+            return "<p style=\"margin:0;color:#52616b;\">Sin lineas.</p>";
+
+        var builder = new StringBuilder(lineItems.Count * 220);
+        builder.Append("<table style=\"border-collapse:collapse;width:100%;font-size:13px;\">");
+        builder.Append("<thead><tr style=\"background:#102a43;color:#fff;\">");
+        foreach (var header in new[] { "#", "Tipo", "Producto", "Cant.", "Venta und.", "Meses", "Venta mensual", "Venta total", "IVA" })
+        {
+            builder.Append("<th style=\"padding:9px 10px;border:1px solid #bcccdc;text-align:left;\">");
+            builder.Append(WebUtility.HtmlEncode(header));
+            builder.Append("</th>");
+        }
+        builder.Append("</tr></thead><tbody>");
+
+        for (var index = 0; index < lineItems.Count; index++)
+        {
+            var item = lineItems[index];
+            builder.Append("<tr>");
+            AppendHtmlCell(builder, (index + 1).ToString(CultureInfo.InvariantCulture), alignRight: true);
+            AppendHtmlCell(builder, item.Tipo);
+            AppendHtmlCell(builder, item.ProductoNombre);
+            AppendHtmlCell(builder, FormatQuantityForNotification(item.Cantidad), alignRight: true);
+            AppendHtmlCell(builder, FormatMoneyForNotification(item.VentaUnd), alignRight: true);
+            AppendHtmlCell(builder, item.DuracionMeses.ToString(CultureInfo.InvariantCulture), alignRight: true);
+            AppendHtmlCell(builder, FormatMoneyForNotification(item.VentaMensual), alignRight: true);
+            AppendHtmlCell(builder, FormatMoneyForNotification(item.VentaTotal), alignRight: true);
+            AppendHtmlCell(builder, item.TieneIva ? "Si" : "No");
+            builder.Append("</tr>");
+        }
+
+        builder.Append("</tbody></table>");
+        return builder.ToString();
+    }
+
+    private static void AppendHtmlCell(StringBuilder builder, string? value, bool alignRight = false)
+    {
+        builder.Append("<td style=\"padding:8px 10px;border:1px solid #d9e2ec;vertical-align:top;");
+        if (alignRight)
+            builder.Append("text-align:right;white-space:nowrap;");
+        builder.Append("\">");
+        builder.Append(WebUtility.HtmlEncode(FirstNonEmpty(value, "-")));
+        builder.Append("</td>");
+    }
+
+    private static string FormatMarkdownCell(string? value, int? maxLength = null)
+    {
+        var compact = CompactWhitespace(value);
+        if (maxLength.HasValue)
+            compact = TrimTextForDescription(compact, maxLength.Value);
+
+        return string.IsNullOrWhiteSpace(compact)
+            ? "-"
+            : compact.Replace("|", "/", StringComparison.Ordinal);
+    }
+
+    private static string CompactWhitespace(string? value) =>
+        string.Join(" ", (value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
+
+    private static string FormatQuantityForNotification(decimal value) =>
+        Round2(value).ToString("#,0.##", ColombianCulture);
+
+    private static string FormatMoneyForNotification(decimal value) =>
+        "$" + Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("N0", ColombianCulture);
+
+    private static string FormatPercentForNotification(decimal value) =>
+        Round2(value).ToString("#,0.##", ColombianCulture) + "%";
+
+    private static string FormatDecimalForNotification(decimal value) =>
+        Round2(value).ToString("#,0.##", ColombianCulture);
 
     private static string SerializeDetailedProvisioningLines(IReadOnlyList<ProvisioningFlowLinePayload> lineItems) =>
         JsonSerializer.Serialize(lineItems.Select(item => new
@@ -783,52 +1054,14 @@ public sealed class CalculatorController : Controller
             final = item.Final
         }), ProvisioningDescriptionJsonOptions);
 
-    private static string SerializeCompactProvisioningLines(
-        IReadOnlyList<ProvisioningFlowLinePayload> lineItems,
-        int? maxProductNameLength,
-        bool includeCommercialFields)
-    {
-        if (includeCommercialFields)
-        {
-            return JsonSerializer.Serialize(lineItems.Select(item => new
-            {
-                lineId = item.LineId,
-                productoId = item.ProductoId,
-                productoNombre = TrimTextForDescription(item.ProductoNombre, maxProductNameLength),
-                cantidad = RoundWholeNumber(item.Cantidad),
-                costoUnd = RoundWholeNumber(item.CostoUnd),
-                ventaUnd = RoundWholeNumber(item.VentaUnd),
-                margenPorcentaje = Round2(item.MargenPorcentaje),
-                duracionMeses = item.DuracionMeses,
-                ventaMensual = RoundWholeNumber(item.VentaMensual),
-                ventaTotal = RoundWholeNumber(item.VentaTotal),
-                tieneIva = item.TieneIva,
-                tipo = item.Tipo
-            }), ProvisioningDescriptionJsonOptions);
-        }
-
-        return JsonSerializer.Serialize(lineItems.Select(item => new
-        {
-            productoId = item.ProductoId,
-            productoNombre = TrimTextForDescription(item.ProductoNombre, maxProductNameLength),
-            cantidad = RoundWholeNumber(item.Cantidad),
-            ventaUnd = RoundWholeNumber(item.VentaUnd),
-            duracionMeses = item.DuracionMeses,
-            ventaMensual = RoundWholeNumber(item.VentaMensual),
-            ventaTotal = RoundWholeNumber(item.VentaTotal),
-            tieneIva = item.TieneIva,
-            tipo = item.Tipo
-        }), ProvisioningDescriptionJsonOptions);
-    }
-
     private static string BuildProvisioningDescriptionWithLineBudget(
         string headerText,
         IReadOnlyList<ProvisioningFlowLinePayload> lineItems)
     {
-        var includedLines = new List<Dictionary<string, object?>>();
+        var includedLines = new List<ProvisioningFlowLinePayload>();
         var lastAcceptedDescription = BuildProvisioningDescriptionText(
             headerText,
-            "[]",
+            BuildProvisioningLineItemsMarkdownTable(includedLines, maxProductNameLength: 30, includeCommercialFields: false, includeTechnicalFields: false),
             $"Lineas incluidas en descripcion: 0/{lineItems.Count}");
 
         if (!FitsProvisioningDescriptionLimit(lastAcceptedDescription))
@@ -836,18 +1069,11 @@ public sealed class CalculatorController : Controller
 
         foreach (var item in lineItems)
         {
-            includedLines.Add(new Dictionary<string, object?>
-            {
-                ["productoId"] = item.ProductoId,
-                ["productoNombre"] = TrimTextForDescription(item.ProductoNombre, 20),
-                ["cantidad"] = RoundWholeNumber(item.Cantidad),
-                ["ventaMensual"] = RoundWholeNumber(item.VentaMensual),
-                ["ventaTotal"] = RoundWholeNumber(item.VentaTotal)
-            });
+            includedLines.Add(item);
 
             var candidate = BuildProvisioningDescriptionText(
                 headerText,
-                JsonSerializer.Serialize(includedLines, ProvisioningDescriptionJsonOptions),
+                BuildProvisioningLineItemsMarkdownTable(includedLines, maxProductNameLength: 30, includeCommercialFields: false, includeTechnicalFields: false),
                 $"Lineas incluidas en descripcion: {includedLines.Count}/{lineItems.Count}");
             if (FitsProvisioningDescriptionLimit(candidate))
             {

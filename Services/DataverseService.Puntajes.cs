@@ -3092,23 +3092,20 @@ public sealed partial class DataverseService
                 {
                     var parsedLines = DeserializeJsonOrDefault<List<RawScoreProductLine>>(jsonArray)
                         ?? new List<RawScoreProductLine>();
-                    foreach (var line in parsedLines)
-                    {
-                        if (!result.RequiresProration.HasValue && line.RequiresProration.HasValue)
-                            result.RequiresProration = line.RequiresProration.Value;
-
-                        if (!result.ScenarioStartDate.HasValue && TryParseDateOnly(line.StartDate, out var lineStartDate))
-                            result.ScenarioStartDate = lineStartDate;
-
-                        if (!result.ScenarioEndDate.HasValue && TryParseDateOnly(line.EndDate, out var lineEndDate))
-                            result.ScenarioEndDate = lineEndDate;
-
-                        result.ProductLines.Add(ToScoreProductLine(line, result.ProductLines.Count + 1));
-                    }
+                    AppendParsedScoreProductLines(result, parsedLines);
 
                     cursor = nextIndex;
                     continue;
                 }
+            }
+
+            if (TryExtractMarkdownProvisioningTable(raw, arrayStart, out var tableLines, out var tableNextIndex))
+            {
+                var parsedLines = ParseMarkdownProvisioningLines(tableLines);
+                AppendParsedScoreProductLines(result, parsedLines);
+
+                cursor = tableNextIndex;
+                continue;
             }
 
             cursor = linesIndex + labelLength;
@@ -3220,6 +3217,190 @@ public sealed partial class DataverseService
             TotalValue = RoundCurrency(totalValueRaw),
             AnnualValue = RoundCurrency(totalValueRaw)
         };
+    }
+
+    private static void AppendParsedScoreProductLines(
+        ScoreDescriptionParseResult result,
+        IEnumerable<RawScoreProductLine> parsedLines)
+    {
+        foreach (var line in parsedLines)
+        {
+            if (!result.RequiresProration.HasValue && line.RequiresProration.HasValue)
+                result.RequiresProration = line.RequiresProration.Value;
+
+            if (!result.ScenarioStartDate.HasValue && TryParseDateOnly(line.StartDate, out var lineStartDate))
+                result.ScenarioStartDate = lineStartDate;
+
+            if (!result.ScenarioEndDate.HasValue && TryParseDateOnly(line.EndDate, out var lineEndDate))
+                result.ScenarioEndDate = lineEndDate;
+
+            result.ProductLines.Add(ToScoreProductLine(line, result.ProductLines.Count + 1));
+        }
+    }
+
+    private static bool TryExtractMarkdownProvisioningTable(
+        string raw,
+        int startIndex,
+        out List<string> tableLines,
+        out int nextIndex)
+    {
+        tableLines = new List<string>();
+        nextIndex = startIndex;
+        var index = startIndex;
+
+        while (index < raw.Length)
+        {
+            var lineStart = index;
+            var lineEnd = raw.IndexOf('\n', index);
+            if (lineEnd < 0)
+                lineEnd = raw.Length;
+
+            var line = raw[lineStart..lineEnd].TrimEnd('\r');
+            var nextLineIndex = lineEnd < raw.Length ? lineEnd + 1 : lineEnd;
+            if (string.IsNullOrWhiteSpace(line) && tableLines.Count == 0)
+            {
+                index = nextLineIndex;
+                continue;
+            }
+
+            if (!line.TrimStart().StartsWith("|", StringComparison.Ordinal))
+                break;
+
+            tableLines.Add(line.Trim());
+            index = nextLineIndex;
+        }
+
+        nextIndex = index;
+        return tableLines.Count >= 3
+            && SplitMarkdownProvisioningRow(tableLines[0]).Count > 0
+            && IsMarkdownProvisioningSeparatorRow(tableLines[1]);
+    }
+
+    private static IReadOnlyList<RawScoreProductLine> ParseMarkdownProvisioningLines(IReadOnlyList<string> tableLines)
+    {
+        if (tableLines.Count < 3)
+            return Array.Empty<RawScoreProductLine>();
+
+        var headers = SplitMarkdownProvisioningRow(tableLines[0])
+            .Select(NormalizeMarkdownProvisioningHeader)
+            .ToList();
+        var lines = new List<RawScoreProductLine>();
+
+        foreach (var rowLine in tableLines.Skip(2))
+        {
+            if (IsMarkdownProvisioningSeparatorRow(rowLine))
+                continue;
+
+            var cells = SplitMarkdownProvisioningRow(rowLine);
+            if (cells.Count == 0)
+                continue;
+
+            var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (var index = 0; index < headers.Count && index < cells.Count; index++)
+            {
+                var header = headers[index];
+                if (string.IsNullOrWhiteSpace(header))
+                    continue;
+
+                row[header] = NormalizeMarkdownProvisioningCell(cells[index]);
+            }
+
+            var productName = GetMarkdownProvisioningValue(row, "producto", "productonombre");
+            if (string.IsNullOrWhiteSpace(productName))
+                continue;
+
+            var quantity = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "cant", "cantidad")) ?? 0m;
+            var months = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "meses", "duracionmeses", "duracion")) ?? 12m;
+            var rawLine = new RawScoreProductLine
+            {
+                LineId = GetMarkdownProvisioningValue(row, "lineaid", "lineid"),
+                ProductId = GetMarkdownProvisioningValue(row, "productoid", "idproducto"),
+                ProductName = productName,
+                LineType = GetMarkdownProvisioningValue(row, "tipo"),
+                Quantity = (int)Math.Round(Math.Max(quantity, 0m), 0, MidpointRounding.AwayFromZero),
+                CostUnit = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "costound", "costo")),
+                SaleUnit = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "ventaund", "ventaunitaria")),
+                MarginPercent = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "margen", "margenporcentaje")),
+                ContractMonths = (int)Math.Round(Math.Max(months, 0m), 0, MidpointRounding.AwayFromZero),
+                MonthlyValue = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "ventamensual", "mensual")),
+                TotalValue = ParseLooseDecimal(GetMarkdownProvisioningValue(row, "ventatotal", "total")),
+                StartDate = GetMarkdownProvisioningValue(row, "inicio"),
+                EndDate = GetMarkdownProvisioningValue(row, "final")
+            };
+
+            var ivaText = GetMarkdownProvisioningValue(row, "iva", "tieneiva");
+            if (TryResolveYesNoValue(ivaText, out var hasVat))
+                rawLine.HasVat = hasVat;
+
+            lines.Add(rawLine);
+        }
+
+        return lines;
+    }
+
+    private static List<string> SplitMarkdownProvisioningRow(string row)
+    {
+        var trimmed = row.Trim();
+        if (trimmed.StartsWith("|", StringComparison.Ordinal))
+            trimmed = trimmed[1..];
+        if (trimmed.EndsWith("|", StringComparison.Ordinal))
+            trimmed = trimmed[..^1];
+
+        return trimmed
+            .Split('|')
+            .Select(static cell => cell.Trim())
+            .ToList();
+    }
+
+    private static bool IsMarkdownProvisioningSeparatorRow(string row)
+    {
+        var cells = SplitMarkdownProvisioningRow(row);
+        return cells.Count > 0
+            && cells.All(static cell =>
+            {
+                var normalized = cell.Replace(":", "", StringComparison.Ordinal).Trim();
+                return normalized.Length > 0 && normalized.All(static ch => ch == '-');
+            });
+    }
+
+    private static string NormalizeMarkdownProvisioningHeader(string value)
+    {
+        var normalized = NormalizeDescriptionKey(value)
+            .Replace(".", "", StringComparison.Ordinal)
+            .Replace("%", "", StringComparison.Ordinal)
+            .Replace("#", "numero", StringComparison.Ordinal);
+
+        return normalized switch
+        {
+            "cant" => "cantidad",
+            "costound" => "costound",
+            "ventaund" => "ventaund",
+            "margen" => "margen",
+            "meses" => "meses",
+            "lineaid" => "lineaid",
+            "productoid" => "productoid",
+            "idproducto" => "idproducto",
+            _ => normalized
+        };
+    }
+
+    private static string NormalizeMarkdownProvisioningCell(string value)
+    {
+        var normalized = value.Trim();
+        return normalized is "-" or "\u2014" ? "" : normalized;
+    }
+
+    private static string GetMarkdownProvisioningValue(
+        IReadOnlyDictionary<string, string> row,
+        params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (row.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return "";
     }
 
     private static ScoreProductLineDto ToScoreProductLine(ScoreVerificationLineInput line, int index)
@@ -3399,7 +3580,12 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(raw))
             return null;
 
-        var trimmed = raw.Trim();
+        var trimmed = raw
+            .Trim()
+            .Replace("$", "", StringComparison.Ordinal)
+            .Replace("%", "", StringComparison.Ordinal)
+            .Replace("COP", "", StringComparison.OrdinalIgnoreCase)
+            .Trim();
         if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariantValue))
             return invariantValue;
 

@@ -1677,7 +1677,6 @@ public sealed partial class DataverseService
         return new Dictionary<string, object?>
         {
             ["@odata.type"] = "Microsoft.Dynamics.CRM.FileAttributeMetadata",
-            ["AttributeType"] = "File",
             ["AttributeTypeName"] = CreateHardwareValuePayload("FileType"),
             ["Description"] = CreateHardwareLabelPayload(BuildHardwareColumnDescription(column)),
             ["DisplayName"] = CreateHardwareLabelPayload(column.DisplayLabel),

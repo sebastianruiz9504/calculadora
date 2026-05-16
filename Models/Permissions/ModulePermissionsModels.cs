@@ -25,7 +25,8 @@ public enum AppModule
     Envios = 18,
     Transportador = 19,
     RebatesInversiones = 20,
-    CruceLicenciamiento = 21
+    CruceLicenciamiento = 21,
+    RegistroPagosClientes = 22
 }
 
 public sealed class AppModuleDefinition
@@ -259,6 +260,16 @@ public static class AppModuleCatalog
         Controller = "RebatesInversiones"
     };
 
+    public static readonly AppModuleDefinition RegistroPagosClientes = new()
+    {
+        Key = AppModule.RegistroPagosClientes,
+        Label = "Registro pagos clientes",
+        Category = "Admin",
+        Description = "Registra pagos de clientes y calcula retenciones contra facturas emitidas.",
+        OptionValue = 645250021,
+        Controller = "RegistroPagosClientes"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -282,6 +293,7 @@ public static class AppModuleCatalog
         Envios,
         Transportador,
         RebatesInversiones,
+        RegistroPagosClientes,
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
@@ -306,7 +318,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Admin",
-            Modules = new[] { Rh, PortalProveedores, CuentasCobro, Inventario, RebatesInversiones },
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro, RegistroPagosClientes, Inventario, RebatesInversiones },
             IsDropdown = true
         },
         new AppModuleNavigationGroup

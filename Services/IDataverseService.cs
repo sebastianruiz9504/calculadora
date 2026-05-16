@@ -14,6 +14,7 @@ using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.PublicDataExport;
 using CotizadorInterno.Web.Models.Puntajes;
 using CotizadorInterno.Web.Models.RebatesInversiones;
+using CotizadorInterno.Web.Models.RegistroPagosClientes;
 using CotizadorInterno.Web.Models.RH;
 using CotizadorInterno.Web.Models.Renovaciones;
 using CotizadorInterno.Web.Models.SoporteCloud;
@@ -117,6 +118,8 @@ public interface IDataverseService
     Task<CuentaCobroFileDownloadResult?> DownloadCuentaCobroAttachmentAsync(string recordId, CancellationToken ct = default);
     Task<CuentaCobroPrintResultDto> MarkCuentaCobroAsPrintedAsync(string recordId, CancellationToken ct = default);
     Task<CuentaCobroRowDto> GetCuentaCobroByIdAsync(string recordId, CancellationToken ct = default);
+    Task<RegistroPagosClientesBoardDto> GetRegistroPagosClientesBoardAsync(CancellationToken ct = default);
+    Task<RegistroPagosClientesPaymentSaveResult> SaveRegistroPagosClientePaymentAsync(RegistroPagosClientesPaymentSaveRequest request, CancellationToken ct = default);
     Task<LicenciamientoBoardDto> GetLicenciamientoBoardAsync(CancellationToken ct = default);
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<LicenciamientoHistoricalPreviewResultDto> PreviewLicenciamientoHistoricalUploadAsync(IReadOnlyList<LicenciamientoHistoricalFileUploadDto> files, string trmText, string acronisBreakdownText, CancellationToken ct = default);

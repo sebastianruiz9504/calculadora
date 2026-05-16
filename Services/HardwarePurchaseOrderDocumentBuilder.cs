@@ -160,9 +160,26 @@ public static class HardwarePurchaseOrderDocumentBuilder
         builder.AppendLine($"Total: {FormatCurrency(document.GrandTotal)}");
         builder.AppendLine();
         builder.AppendLine("Lineas:");
-        foreach (var line in document.Lines)
+        builder.AppendLine("| # | Producto | Cant. | Unitario | Antes IVA | IVA | Total |");
+        builder.AppendLine("|---:|---|---:|---:|---:|---:|---:|");
+        for (var index = 0; index < document.Lines.Count; index++)
         {
-            builder.AppendLine($"- {line.Product} | Cant. {line.Quantity} | Unit. {FormatCurrency(line.UnitValueBeforeVat)} | IVA {FormatPercent(line.VatPercent)} | Total {FormatCurrency(line.TotalWithVat)}");
+            var line = document.Lines[index];
+            builder.Append("| ");
+            builder.Append(index + 1);
+            builder.Append(" | ");
+            builder.Append(MarkdownCell(line.Product));
+            builder.Append(" | ");
+            builder.Append(line.Quantity.ToString(CultureInfo.InvariantCulture));
+            builder.Append(" | ");
+            builder.Append(FormatCurrency(line.UnitValueBeforeVat));
+            builder.Append(" | ");
+            builder.Append(FormatCurrency(line.TotalBeforeVat));
+            builder.Append(" | ");
+            builder.Append(FormatPercent(line.VatPercent));
+            builder.Append(" | ");
+            builder.Append(FormatCurrency(line.TotalWithVat));
+            builder.AppendLine(" |");
         }
 
         return builder.ToString();
@@ -274,6 +291,14 @@ public static class HardwarePurchaseOrderDocumentBuilder
 
     private static string Html(string? value) =>
         WebUtility.HtmlEncode(value ?? "");
+
+    private static string MarkdownCell(string? value)
+    {
+        var compact = string.Join(" ", (value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return string.IsNullOrWhiteSpace(compact)
+            ? "-"
+            : compact.Replace("|", "/", StringComparison.Ordinal);
+    }
 
     private static string SanitizeFileName(string value)
     {

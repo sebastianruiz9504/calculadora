@@ -1,0 +1,220 @@
+@model RegistroPagosClientesPageViewModel
+@{
+    ViewData["Title"] = "Registro de pagos clientes";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/registro-pagos-clientes.css" asp-append-version="true" />
+}
+
+<div class="rpc-shell"
+     id="registroPagosClientesApp"
+     data-load-url="@Url.Action("Data", "RegistroPagosClientes")"
+     data-save-url="@Url.Action("Save", "RegistroPagosClientes")">
+    <section class="rpc-heading">
+        <div>
+            <div class="rpc-kicker">Finanzas</div>
+            <h1 class="rpc-title">Registro de pagos clientes</h1>
+            <p class="rpc-subtitle">Facturas emitidas desde Dataverse con registro de pago, retenciones y diferencia.</p>
+        </div>
+        <div class="rpc-user-pill">
+            <span class="rpc-user-pill__label">Acceso</span>
+            <span>@Model.CurrentUser.Email</span>
+        </div>
+    </section>
+
+    <div id="rpcStatusBanner" class="rpc-status" role="status" aria-live="polite"></div>
+
+    <section class="rpc-summary" aria-label="Resumen de pagos">
+        <article class="rpc-summary-item">
+            <span class="rpc-summary-item__label">Facturas</span>
+            <strong class="rpc-summary-item__value" id="rpcSummaryRecords">0</strong>
+        </article>
+        <article class="rpc-summary-item">
+            <span class="rpc-summary-item__label">Pagas</span>
+            <strong class="rpc-summary-item__value" id="rpcSummaryPaid">0</strong>
+        </article>
+        <article class="rpc-summary-item">
+            <span class="rpc-summary-item__label">Vencidas</span>
+            <strong class="rpc-summary-item__value" id="rpcSummaryOverdue">0</strong>
+        </article>
+        <article class="rpc-summary-item">
+            <span class="rpc-summary-item__label">Pendiente</span>
+            <strong class="rpc-summary-item__value" id="rpcSummaryPendingValue">$0</strong>
+        </article>
+    </section>
+
+    <section class="rpc-panel">
+        <div class="rpc-toolbar">
+            <div>
+                <div class="rpc-kicker">Tabla</div>
+                <h2 class="rpc-section-title">Facturas</h2>
+            </div>
+            <div class="rpc-toolbar__actions">
+                <span class="rpc-counter" id="rpcResultsCount">0 filas</span>
+                <button type="button" class="btn btn-outline-secondary" id="rpcClearFiltersBtn">Limpiar filtros</button>
+                <button type="button" class="btn btn-primary" id="rpcRefreshBtn">Actualizar</button>
+            </div>
+        </div>
+
+        <div class="rpc-table-wrap">
+            <table class="table align-middle rpc-table" id="rpcInvoicesTable">
+                <colgroup>
+                    <col class="rpc-col-invoice" />
+                    <col class="rpc-col-date" />
+                    <col class="rpc-col-client" />
+                    <col class="rpc-col-total" />
+                    <col class="rpc-col-status" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Numero de factura</th>
+                        <th>Fecha de emision</th>
+                        <th>Cliente</th>
+                        <th class="text-end">Total</th>
+                        <th>Estado</th>
+                    </tr>
+                    <tr class="rpc-filter-row">
+                        <th>
+                            <input class="form-control form-control-sm" id="rpcInvoiceFilter" type="search" placeholder="Factura" />
+                        </th>
+                        <th>
+                            <input class="form-control form-control-sm" id="rpcEmissionFilter" type="date" />
+                        </th>
+                        <th>
+                            <input class="form-control form-control-sm" id="rpcClientFilter" type="search" list="rpcClientFilterOptions" placeholder="Buscar cliente" autocomplete="off" />
+                            <datalist id="rpcClientFilterOptions"></datalist>
+                        </th>
+                        <th>
+                            <div class="rpc-total-filter">
+                                <input class="form-control form-control-sm" id="rpcTotalMinFilter" type="number" min="0" step="0.01" placeholder="Min" />
+                                <input class="form-control form-control-sm" id="rpcTotalMaxFilter" type="number" min="0" step="0.01" placeholder="Max" />
+                            </div>
+                        </th>
+                        <th>
+                            <select class="form-select form-select-sm" id="rpcStatusFilter">
+                                <option value="">Todos</option>
+                                <option value="paid">Paga</option>
+                                <option value="overdue">Vencida</option>
+                                <option value="pending">Pendiente</option>
+                            </select>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="rpcRowsBody">
+                    <tr>
+                        <td colspan="5" class="rpc-table__empty">Cargando facturas...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="rpcEmptyState" class="rpc-empty" hidden>No hay facturas para los filtros seleccionados.</div>
+    </section>
+</div>
+
+<div class="rpc-modal" id="rpcPaymentModal" hidden>
+    <div class="rpc-modal__backdrop" data-rpc-close></div>
+    <div class="rpc-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="rpcPaymentTitle">
+        <div class="rpc-modal__header">
+            <div>
+                <div class="rpc-kicker">Pago cliente</div>
+                <h2 class="rpc-modal__title" id="rpcPaymentTitle">Registrar pago</h2>
+                <p class="rpc-modal__subtitle" id="rpcPaymentSubtitle">Factura seleccionada</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="rpcModalCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="rpcModalStatus" class="rpc-status" role="status" aria-live="polite"></div>
+
+        <div class="rpc-reference" id="rpcSuggestionBox">
+            <div class="rpc-reference__content">
+                <span class="rpc-reference__label">Sugerencia de retenciones</span>
+                <strong id="rpcSuggestionSummary">Sin escenarios anteriores para este cliente.</strong>
+                <span id="rpcSuggestionDetail"></span>
+            </div>
+            <div class="rpc-reference__actions">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="rpcUseAverageBtn" disabled>Usar promedio</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="rpcUseLatestBtn" disabled>Usar ultimo</button>
+            </div>
+        </div>
+
+        <form id="rpcPaymentForm" class="rpc-form">
+            <input type="hidden" id="rpcRecordIdInput" />
+
+            <div class="rpc-invoice-strip">
+                <div>
+                    <span>Factura</span>
+                    <strong id="rpcModalInvoiceNumber">-</strong>
+                </div>
+                <div>
+                    <span>Cliente</span>
+                    <strong id="rpcModalClientName">-</strong>
+                </div>
+                <div>
+                    <span>Total</span>
+                    <strong id="rpcModalTotalInvoice">$0</strong>
+                </div>
+                <div>
+                    <span>Estado</span>
+                    <strong id="rpcModalStatusLabel">-</strong>
+                </div>
+            </div>
+
+            <div class="rpc-form__grid">
+                <label class="rpc-form__field">
+                    <span class="rpc-form__label">Valor pago</span>
+                    <input class="form-control" id="rpcPaymentValueInput" type="number" min="0" step="0.01" required />
+                </label>
+                <label class="rpc-form__field">
+                    <span class="rpc-form__label">Fecha de pago</span>
+                    <input class="form-control" id="rpcPaymentDateInput" type="date" required />
+                </label>
+                <label class="rpc-form__field">
+                    <span class="rpc-form__label">Rete fte %</span>
+                    <input class="form-control" id="rpcReteFtePercentInput" type="number" min="0" max="100" step="0.0001" />
+                </label>
+                <label class="rpc-form__field">
+                    <span class="rpc-form__label">Rete ica %</span>
+                    <input class="form-control" id="rpcReteIcaPercentInput" type="number" min="0" max="100" step="0.0001" />
+                </label>
+                <label class="rpc-form__field">
+                    <span class="rpc-form__label">Rte iva %</span>
+                    <input class="form-control" id="rpcRteIvaPercentInput" type="number" min="0" max="100" step="0.0001" />
+                </label>
+            </div>
+
+            <div class="rpc-calculation">
+                <article class="rpc-calculation__item">
+                    <span>RTE FTE VALOR</span>
+                    <strong id="rpcReteFteValue">$0</strong>
+                </article>
+                <article class="rpc-calculation__item">
+                    <span>RTE IVA VALOR</span>
+                    <strong id="rpcRteIvaValue">$0</strong>
+                </article>
+                <article class="rpc-calculation__item">
+                    <span>reteica Valor</span>
+                    <strong id="rpcReteIcaValue">$0</strong>
+                </article>
+                <article class="rpc-calculation__item rpc-calculation__item--difference" id="rpcDifferenceCard">
+                    <span>Diferencia</span>
+                    <strong id="rpcDifferenceValue">$0</strong>
+                    <small>Objetivo 0</small>
+                </article>
+            </div>
+
+            <div class="rpc-modal__footer">
+                <span class="rpc-modal__meta" id="rpcModalMeta">Diferencia verde entre -$5.000 y $5.000.</span>
+                <div class="rpc-modal__actions">
+                    <button type="button" class="btn btn-outline-secondary" id="rpcModalCancelBtn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="rpcModalSaveBtn">Guardar pago</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/registro-pagos-clientes.js" asp-append-version="true"></script>
+}
