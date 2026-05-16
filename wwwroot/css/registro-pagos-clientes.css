@@ -106,6 +106,49 @@
     margin-bottom: 1rem;
 }
 
+.rpc-tabs {
+    border-bottom: 1px solid #d9e2ef;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: -0.2rem 0 1rem;
+}
+
+.rpc-tab {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    color: #53657d;
+    display: inline-flex;
+    font-weight: 750;
+    gap: 0.45rem;
+    min-height: 2.45rem;
+    padding: 0.45rem 0.75rem;
+}
+
+.rpc-tab:hover,
+.rpc-tab:focus {
+    color: #175cd3;
+}
+
+.rpc-tab.is-active {
+    border-bottom-color: #2563eb;
+    color: #102033;
+}
+
+.rpc-tab__count {
+    align-items: center;
+    background: #eef6ff;
+    border-radius: 999px;
+    color: #175cd3;
+    display: inline-flex;
+    font-size: 0.72rem;
+    justify-content: center;
+    min-width: 1.45rem;
+    padding: 0.1rem 0.4rem;
+}
+
 .rpc-toolbar__actions {
     align-items: center;
     display: flex;
@@ -211,6 +254,26 @@
 .rpc-filter-row .form-control,
 .rpc-filter-row .form-select {
     min-width: 0;
+}
+
+.rpc-date-filter {
+    min-width: 0;
+}
+
+.rpc-filter-static {
+    color: #64748b;
+    display: none;
+    font-size: 0.78rem;
+    font-weight: 650;
+    padding: 0.25rem 0.1rem;
+}
+
+.rpc-shell.is-retentions-tab .rpc-date-filter input {
+    display: none;
+}
+
+.rpc-shell.is-retentions-tab .rpc-filter-static {
+    display: inline-block;
 }
 
 .rpc-total-filter {
@@ -494,6 +557,18 @@ html[data-bs-theme="dark"] .rpc-invoice-strip,
 html[data-bs-theme="dark"] .rpc-user-pill {
     background: #0f172a;
     border-color: #334155;
+}
+
+html[data-bs-theme="dark"] .rpc-tabs {
+    border-color: #334155;
+}
+
+html[data-bs-theme="dark"] .rpc-tab {
+    color: #aab6c5;
+}
+
+html[data-bs-theme="dark"] .rpc-tab.is-active {
+    color: #e5edf6;
 }
 
 html[data-bs-theme="dark"] .rpc-reference {

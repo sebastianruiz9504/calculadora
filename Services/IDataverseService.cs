@@ -144,7 +144,7 @@ public interface IDataverseService
     Task<HardwareBulkEditResultDto> UpdateHardwareCommercialDraftAsync(HardwareOrderLineEditRequest request, CancellationToken ct = default, CurrentUserInfo? ownerOverride = null);
     Task<HardwareSaveResultDto> SaveHardwareStageAsync(HardwareStageSaveRequest request, CancellationToken ct = default, bool requireCurrentOwner = false, CurrentUserInfo? ownerOverride = null);
     Task<HardwareBulkEditResultDto> SaveHardwareRecordsAsync(HardwareBulkEditRequest request, CancellationToken ct = default);
-    Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default, bool requireCurrentOwner = false, CurrentUserInfo? ownerOverride = null, int? requiredStateValue = null);
+    Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default, bool requireCurrentOwner = false, CurrentUserInfo? ownerOverride = null, int? requiredStateValue = null, IReadOnlyCollection<int>? allowedStateValues = null);
     Task<HardwareFileDownloadResult?> DownloadHardwareFileAsync(string recordId, string fieldName, CancellationToken ct = default, bool requireCurrentOwner = false, CurrentUserInfo? ownerOverride = null, int? requiredStateValue = null);
     Task<IReadOnlyList<HardwareInvoiceLookupItemDto>> SearchHardwareInvoicesAsync(string query, int top = 12, CancellationToken ct = default);
     Task<SoporteCloudBoardDto> GetSoporteCloudBoardAsync(DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default);

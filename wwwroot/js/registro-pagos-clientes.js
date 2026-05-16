@@ -10,6 +10,9 @@
     const resultsCount = document.getElementById("rpcResultsCount");
     const rowsBody = document.getElementById("rpcRowsBody");
     const emptyState = document.getElementById("rpcEmptyState");
+    const tableTitle = document.getElementById("rpcTableTitle");
+    const tabButtons = Array.from(document.querySelectorAll("[data-rpc-tab]"));
+    const pendingRetentionsCount = document.getElementById("rpcPendingRetentionsCount");
     const refreshButton = document.getElementById("rpcRefreshBtn");
     const clearFiltersButton = document.getElementById("rpcClearFiltersBtn");
 
@@ -67,6 +70,7 @@
         board: null,
         rows: [],
         filteredRows: [],
+        activeTab: "all",
         currentInvoice: null
     };
 
@@ -163,6 +167,38 @@
         });
     }
 
+    function isPendingRetentionRow(row) {
+        return Number(row?.paymentValue || 0) > 0
+            && Math.abs(Number(row?.differenceValue || 0)) > 5000;
+    }
+
+    function getPendingRetentionRows() {
+        return state.rows.filter(isPendingRetentionRow);
+    }
+
+    function getBaseRowsForActiveTab() {
+        return state.activeTab === "pending-retentions"
+            ? getPendingRetentionRows()
+            : state.rows;
+    }
+
+    function updatePendingRetentionCount() {
+        pendingRetentionsCount && (pendingRetentionsCount.textContent = getPendingRetentionRows().length.toLocaleString("es-CO"));
+    }
+
+    function setActiveTab(tabKey) {
+        state.activeTab = tabKey === "pending-retentions" ? "pending-retentions" : "all";
+        tabButtons.forEach((button) => {
+            const isActive = button.dataset.rpcTab === state.activeTab;
+            button.classList.toggle("is-active", isActive);
+            button.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+
+        app.classList.toggle("is-retentions-tab", state.activeTab === "pending-retentions");
+        tableTitle && (tableTitle.textContent = state.activeTab === "pending-retentions" ? "RETENCIONES PENDIENTES" : "Facturas");
+        applyFilters();
+    }
+
     function updateClientOptions() {
         if (!clientFilterOptions) {
             return;
@@ -197,9 +233,12 @@
 
     function applyFilters() {
         const filters = getFilters();
-        state.filteredRows = state.rows.filter((row) => {
+        const baseRows = getBaseRowsForActiveTab();
+        state.filteredRows = baseRows.filter((row) => {
             const invoiceMatches = !filters.invoice || String(row.invoiceNumber || "").toLowerCase().includes(filters.invoice);
-            const emissionMatches = !filters.emission || row.emissionDateValue === filters.emission;
+            const emissionMatches = state.activeTab === "pending-retentions"
+                ? true
+                : !filters.emission || row.emissionDateValue === filters.emission;
             const clientMatches = !filters.client || String(row.clientName || "").toLowerCase().includes(filters.client);
             const total = Number(row.totalInvoice || 0);
             const totalMinMatches = !filters.hasTotalMin || total >= filters.totalMin;
@@ -214,6 +253,7 @@
                 && statusMatches;
         });
 
+        updatePendingRetentionCount();
         renderRows();
     }
 
@@ -226,8 +266,12 @@
         resultsCount && (resultsCount.textContent = `${rows.length.toLocaleString("es-CO")} fila${rows.length === 1 ? "" : "s"}`);
 
         if (rows.length === 0) {
-            rowsBody.innerHTML = '<tr><td colspan="5" class="rpc-table__empty">No hay facturas para mostrar.</td></tr>';
+            const emptyMessage = state.activeTab === "pending-retentions"
+                ? "No hay retenciones pendientes para mostrar."
+                : "No hay facturas para mostrar.";
+            rowsBody.innerHTML = `<tr><td colspan="5" class="rpc-table__empty">${escapeHtml(emptyMessage)}</td></tr>`;
             emptyState && (emptyState.hidden = false);
+            emptyState && (emptyState.textContent = emptyMessage);
             return;
         }
 
@@ -532,6 +576,9 @@
 
     refreshButton?.addEventListener("click", () => loadData(true));
     clearFiltersButton?.addEventListener("click", clearFilters);
+    tabButtons.forEach((button) => {
+        button.addEventListener("click", () => setActiveTab(button.dataset.rpcTab || "all"));
+    });
     modalCloseButton?.addEventListener("click", closeModal);
     modalCancelButton?.addEventListener("click", closeModal);
     modal?.querySelector("[data-rpc-close]")?.addEventListener("click", closeModal);

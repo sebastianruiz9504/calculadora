@@ -28,6 +28,7 @@
             initialEndDate: root.dataset.initialEndDate || ""
         };
         const isCommercialMode = normalizeText(config.mode) === "commercial";
+        const hardwareStateOkForSupplierPayment = 645250001;
 
         const elements = {
             status: root.querySelector("[data-hw-status]"),
@@ -368,6 +369,15 @@
                 return;
             }
 
+            const downloadGroupButton = target.closest("[data-hw-download-group]");
+            if (downloadGroupButton instanceof HTMLButtonElement) {
+                const group = findDisplayGroup(downloadGroupButton.dataset.hwDownloadGroup || "");
+                if (group) {
+                    downloadSupplierPaymentDocuments(group.rows);
+                }
+                return;
+            }
+
             const groupAction = target.closest("[data-hw-action-group]");
             if (groupAction instanceof HTMLButtonElement) {
                 const group = findDisplayGroup(groupAction.dataset.hwActionGroup || "");
@@ -395,6 +405,29 @@
                 const record = findRow(openRecordRow.dataset.hwOpenRecord || "");
                 if (record) {
                     openModalForRecords([record]);
+                }
+                return;
+            }
+
+            const openGroupRow = target.closest("[data-hw-open-group]");
+            if (isCommercialMode && openGroupRow instanceof HTMLElement) {
+                const group = findDisplayGroup(openGroupRow.dataset.hwOpenGroup || "");
+                if (group) {
+                    openModalForRecords(group.rows);
+                }
+                return;
+            }
+
+            const editableGroupRow = target.closest("[data-hw-edit-group]");
+            if (isCommercialMode && editableGroupRow instanceof HTMLElement) {
+                const group = findDisplayGroup(editableGroupRow.dataset.hwEditGroup || "");
+                const editableRecords = Array.isArray(group?.rows)
+                    ? group.rows.filter(isCommercialLineEditable)
+                    : [];
+                if (editableRecords.length === 1) {
+                    openCreateModalForEdit(editableRecords[0]);
+                } else if (editableRecords.length > 1) {
+                    setStatus(elements.boardStatus, "info", "Selecciona la línea específica que quieres editar.");
                 }
                 return;
             }
@@ -976,8 +1009,11 @@
                 return;
             }
 
+            renderSupplierPaymentRows(rows);
+        }
+
+        function renderSupplierPaymentRows(rows) {
             const groups = buildCommercialGroups(rows);
-            const showLineProforma = isSupplierPaymentEffectiveUser();
             state.displayItems = groups;
 
             if (!rows.length) {
@@ -990,22 +1026,19 @@
 
             elements.rows.innerHTML = `
                 <div class="hardware-table-wrap">
-                    <table class="table align-middle hardware-table hardware-commercial-table ${showLineProforma ? "hardware-commercial-table--with-proforma" : ""}">
+                    <table class="table align-middle hardware-table hardware-supplier-payment-table">
                         <thead>
                             <tr>
-                                <th>Orden / Cliente</th>
-                                <th>Producto / referencia</th>
-                                <th class="text-end">Cant.</th>
-                                <th class="text-end">Costo proveedor</th>
-                                <th class="text-end">Venta unidad</th>
+                                <th>ODC</th>
+                                <th>Cliente</th>
                                 <th>Proveedor</th>
-                                ${showLineProforma ? `<th class="text-center">Doc. proveedor</th>` : ""}
-                                <th>Estado</th>
-                                <th>Acción</th>
+                                <th class="text-end">Valor total a pagar</th>
+                                <th>Descargar</th>
+                                <th>Registrar pago</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${groups.map(group => renderCommercialGroup(group, showLineProforma)).join("")}
+                            ${groups.map(renderSupplierPaymentGroupRow).join("")}
                         </tbody>
                     </table>
                 </div>
@@ -1134,12 +1167,17 @@
         function renderCommercialStateGroup(group) {
             const first = group.rows[0] || {};
             const validAction = validateActionRecords(group.rows);
+            const editableRows = group.rows.filter(isCommercialLineEditable);
+            const groupCanOpenSingleEdit = editableRows.length === 1;
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
             const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
             const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
             const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
+            const groupEditAttributes = groupCanOpenSingleEdit
+                ? ` data-hw-edit-group="${escapeHtml(group.key)}" title="Editar línea"`
+                : "";
             return `
-                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
+                <tr class="hardware-table__row hardware-commercial-table__group ${groupCanOpenSingleEdit ? "is-editable" : ""} ${toneClass(first.stateTone)}"${groupEditAttributes}>
                     <td colspan="7">
                         <div class="hardware-commercial-order">
                             <div>
@@ -1154,7 +1192,9 @@
                                 </div>
                             </div>
                             <div class="hardware-commercial-order__status">
-                                ${validAction.ok
+                                ${editableRows.length > 0
+                                    ? `<span class="hardware-table__submeta">${escapeHtml(groupCanOpenSingleEdit ? "Click para editar" : "Click en una línea para editarla")}</span>`
+                                    : validAction.ok
                                     ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(group.rows[0].actionLabel || "Gestionar")}</button>`
                                     : `<span class="hardware-table__submeta">${escapeHtml(validAction.message || "Sin botón")}</span>`}
                             </div>
@@ -1170,6 +1210,7 @@
             const editAttributes = editable
                 ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
                 : "";
+            const actionLabel = resolveCommercialLineStatusLabel(row, editable);
             return `
                 <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${toneClass(row?.stateTone)}"${editAttributes}>
                     <td class="hardware-table__client-cell">
@@ -1188,7 +1229,7 @@
                     <td>${escapeHtml(row?.provider || "-")}</td>
                     <td>
                         <div class="hardware-action-cell">
-                            <span class="hardware-table__submeta">${editable ? "Editar" : "Gestionado por orden"}</span>
+                            <span class="hardware-table__submeta">${escapeHtml(actionLabel)}</span>
                         </div>
                     </td>
                 </tr>
@@ -1327,9 +1368,103 @@
             `;
         }
 
+        function renderSupplierPaymentGroupRow(group) {
+            const first = group.rows[0] || {};
+            const validation = validateActionRecords(group.rows);
+            const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
+            const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const paymentTotal = calculateSupplierPaymentTotal(group.rows);
+            const downloads = resolveSupplierPaymentDocumentDownloads(group.rows);
+            return `
+                <tr class="hardware-table__row hardware-supplier-payment-row ${toneClass(first.stateTone)}" data-hw-open-group="${escapeHtml(group.key)}" title="Abrir gestión de pago a proveedor">
+                    <td class="hardware-table__order-cell">
+                        <span class="hardware-order-number">${escapeHtml(group.orderNumber || "Sin ODC")}</span>
+                    </td>
+                    <td class="hardware-table__client-cell">
+                        <strong>${escapeHtml(clientLabel)}</strong>
+                    </td>
+                    <td>${escapeHtml(providerLabel || "-")}</td>
+                    <td class="text-end"><strong>${formatCurrency(paymentTotal)}</strong></td>
+                    <td>
+                        <div class="hardware-action-cell">
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-hw-download-group="${escapeHtml(group.key)}" ${downloads.length ? "" : "disabled"}>
+                                Descargar
+                            </button>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="hardware-action-cell">
+                            ${validation.ok
+                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">Registrar pago</button>`
+                                : `<span class="hardware-table__submeta">${escapeHtml(validation.message || "Sin acción")}</span>`}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function calculateSupplierPaymentTotal(rows) {
+            return (Array.isArray(rows) ? rows : []).reduce((total, row) => {
+                const supplierTotal = Number(row?.supplierTotal || 0);
+                if (supplierTotal > 0) {
+                    return total + supplierTotal;
+                }
+
+                return total + (Number(row?.quantity || 0) * Number(row?.supplierUnitCost || 0));
+            }, 0);
+        }
+
+        function resolveSupplierPaymentDocumentDownloads(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const downloads = [];
+            addDownloadIfAvailable(downloads, items, "cr07a_ordendecompra", "ODC");
+
+            const supplierDocumentSource = items.find(item => resolveSupplierDocumentField(item) === "cr07a_odcproveedor")
+                || items[0]
+                || null;
+            addDownloadIfAvailable(
+                downloads,
+                items,
+                resolveSupplierDocumentField(supplierDocumentSource),
+                resolveSupplierDocumentField(supplierDocumentSource) === "cr07a_odcproveedor" ? "ODC proveedor" : "Proforma");
+
+            return downloads;
+        }
+
+        function addDownloadIfAvailable(downloads, rows, fieldName, label) {
+            const record = resolveOrderFileRecord(rows, fieldName);
+            if (!record?.recordId || !hasExistingFile(record, fieldName)) {
+                return;
+            }
+
+            const key = `${record.recordId}|${fieldName}`;
+            if (downloads.some(item => item.key === key)) {
+                return;
+            }
+
+            downloads.push({
+                key,
+                label,
+                url: buildDownloadUrl(record.recordId, fieldName)
+            });
+        }
+
+        function downloadSupplierPaymentDocuments(rows) {
+            const downloads = resolveSupplierPaymentDocumentDownloads(rows);
+            if (!downloads.length) {
+                setStatus(elements.boardStatus, "warning", "No hay ODC o proforma para descargar en esta orden.");
+                return;
+            }
+
+            downloads.forEach(item => {
+                window.open(item.url, "_blank", "noopener");
+            });
+        }
+
         function renderCommercialRecordRow(row, orderRows = [], showLineProforma = false, columnCount = 8) {
             const editable = isCommercialLineEditable(row);
             const openable = isSupplierPaymentEffectiveUser() && Boolean(row?.recordId) && Boolean(row?.hasAction) && Boolean(row?.actionKey);
+            const actionLabel = resolveCommercialLineStatusLabel(row, editable, openable);
             const rowAttributes = [
                 editable ? `data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"` : "",
                 openable ? `data-hw-open-record="${escapeHtml(row?.recordId || "")}" title="Abrir gestión de pago a proveedor"` : ""
@@ -1354,7 +1489,7 @@
                     <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
-                            <span class="hardware-table__submeta">${openable ? "Abrir" : editable ? "Editar" : "Gestionado por orden"}</span>
+                            <span class="hardware-table__submeta">${escapeHtml(actionLabel)}</span>
                         </div>
                     </td>
                 </tr>
@@ -1719,7 +1854,25 @@
                 && config.allowCommercialDraftEdit
                 && !isSupplierPaymentEffectiveUser()
                 && Boolean(row?.recordId)
-                && Number(row?.stateValue || 0) === 645250001;
+                && Number(row?.stateValue || 0) === hardwareStateOkForSupplierPayment;
+        }
+
+        function hasCommercialLinePassedEditableState(row) {
+            return Number(row?.stateValue || 0) > hardwareStateOkForSupplierPayment;
+        }
+
+        function resolveCommercialLineStatusLabel(row, editable, openable = false) {
+            if (openable) {
+                return "Abrir";
+            }
+
+            if (editable) {
+                return "Editar";
+            }
+
+            return hasCommercialLinePassedEditableState(row)
+                ? "Bloqueada"
+                : "Gestionar por orden";
         }
 
         function renderModal() {
@@ -1903,6 +2056,14 @@
                 });
 
                 downloadLinks.forEach(downloadLink => {
+                    const hideSupplierPaymentDownload = isSupplierPaymentEffectiveUser()
+                        && actionKey === "register-supplier-payment"
+                        && fieldName === "cr07a_pagoaproveedor";
+                    downloadLink.hidden = hideSupplierPaymentDownload;
+                    if (hideSupplierPaymentDownload) {
+                        return;
+                    }
+
                     downloadLink.href = orderHasFile && orderFileRecord
                         ? buildDownloadUrl(orderFileRecord.recordId, fieldName)
                         : "#";
@@ -2566,7 +2727,7 @@
             }
 
             if (!isCommercialLineEditable(record)) {
-                setStatus(elements.boardStatus, "warning", "Solo puedes editar líneas comerciales pendientes de pago a proveedor.");
+                setStatus(elements.boardStatus, "warning", "Solo puedes editar líneas comerciales en estado Ok para pago a proveedor.");
                 return;
             }
 
@@ -3010,7 +3171,7 @@
             }
 
             if (!isCommercialLineEditable(record)) {
-                throw new Error("Solo puedes editar líneas con acción Registrar pago a proveedor.");
+                throw new Error("Solo puedes editar líneas en estado Ok para pago a proveedor.");
             }
 
             const purchaseOrderNumber = (elements.createFields.purchaseOrderNumber?.value || "").trim();

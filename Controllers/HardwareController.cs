@@ -497,6 +497,14 @@ public sealed class HardwareController : Controller
             if (!isSupplierPaymentUser && IsSupplierPaymentFile(fieldName))
                 return BadRequest(CreateErrorPayload("Solo cartera puede cargar el soporte de pago a proveedor."));
 
+            var commercialOrderDocumentStates = !isSupplierPaymentUser && IsOrderDocumentationFile(fieldName)
+                ? new[]
+                {
+                    HardwareAccessPolicy.WaitingDocumentationStateValue,
+                    HardwareAccessPolicy.OkForSupplierPaymentStateValue
+                }
+                : null;
+
             await using var stream = file.OpenReadStream();
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer, ct);
@@ -510,7 +518,8 @@ public sealed class HardwareController : Controller
                 ct,
                 requireCurrentOwner: !isSupplierPaymentUser,
                 ownerOverride: isSupplierPaymentUser ? null : effectiveUser,
-                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null));
+                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null,
+                allowedStateValues: commercialOrderDocumentStates));
         }
         catch (InvalidOperationException ex)
         {
@@ -720,6 +729,14 @@ public sealed class HardwareController : Controller
             (fieldName ?? "").Trim(),
             HardwareAccessPolicy.SupplierPaymentFileField,
             StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOrderDocumentationFile(string? fieldName)
+    {
+        var normalizedFieldName = (fieldName ?? "").Trim();
+        return string.Equals(normalizedFieldName, "cr07a_ordendecompra", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedFieldName, "cr07a_adjuntarproforma", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedFieldName, "cr07a_odcproveedor", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string ResolveSystemUserDisplayName(SystemUserLookupItem selectedUser)
     {

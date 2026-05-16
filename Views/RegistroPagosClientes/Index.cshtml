@@ -45,10 +45,28 @@
     </section>
 
     <section class="rpc-panel">
+        <div class="rpc-tabs" role="tablist" aria-label="Vistas de registro de pagos">
+            <button type="button"
+                    class="rpc-tab is-active"
+                    data-rpc-tab="all"
+                    role="tab"
+                    aria-selected="true">
+                Facturas
+            </button>
+            <button type="button"
+                    class="rpc-tab"
+                    data-rpc-tab="pending-retentions"
+                    role="tab"
+                    aria-selected="false">
+                RETENCIONES PENDIENTES
+                <span class="rpc-tab__count" id="rpcPendingRetentionsCount">0</span>
+            </button>
+        </div>
+
         <div class="rpc-toolbar">
             <div>
                 <div class="rpc-kicker">Tabla</div>
-                <h2 class="rpc-section-title">Facturas</h2>
+                <h2 class="rpc-section-title" id="rpcTableTitle">Facturas</h2>
             </div>
             <div class="rpc-toolbar__actions">
                 <span class="rpc-counter" id="rpcResultsCount">0 filas</span>
@@ -79,7 +97,10 @@
                             <input class="form-control form-control-sm" id="rpcInvoiceFilter" type="search" placeholder="Factura" />
                         </th>
                         <th>
-                            <input class="form-control form-control-sm" id="rpcEmissionFilter" type="date" />
+                            <div class="rpc-date-filter">
+                                <input class="form-control form-control-sm" id="rpcEmissionFilter" type="date" />
+                                <span class="rpc-filter-static">Todos</span>
+                            </div>
                         </th>
                         <th>
                             <input class="form-control form-control-sm" id="rpcClientFilter" type="search" list="rpcClientFilterOptions" placeholder="Buscar cliente" autocomplete="off" />

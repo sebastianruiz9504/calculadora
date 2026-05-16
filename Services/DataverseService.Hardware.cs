@@ -1055,7 +1055,8 @@ public sealed partial class DataverseService
         CancellationToken ct = default,
         bool requireCurrentOwner = false,
         CurrentUserInfo? ownerOverride = null,
-        int? requiredStateValue = null)
+        int? requiredStateValue = null,
+        IReadOnlyCollection<int>? allowedStateValues = null)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -1067,7 +1068,7 @@ public sealed partial class DataverseService
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         EnsureHardwareFileAttributeExists(attributes, normalizedFieldName);
         HardwareBoardRowDto? currentRecord = null;
-        if (requireCurrentOwner || requiredStateValue.HasValue)
+        if (requireCurrentOwner || requiredStateValue.HasValue || allowedStateValues?.Count > 0)
         {
             currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
         }
@@ -1082,6 +1083,13 @@ public sealed partial class DataverseService
             EnsureHardwareActionState(
                 NormalizeHardwareStateValue(currentRecord!.StateValue),
                 requiredStateValue.Value,
+                currentRecord.StateLabel);
+        }
+        else if (allowedStateValues?.Count > 0)
+        {
+            EnsureHardwareActionStateOneOf(
+                NormalizeHardwareStateValue(currentRecord!.StateValue),
+                allowedStateValues,
                 currentRecord.StateLabel);
         }
 
@@ -2499,6 +2507,25 @@ public sealed partial class DataverseService
             return;
 
         var expected = ResolveHardwareStateOption(expectedState).Label;
+        throw new InvalidOperationException(
+            $"Esta acción solo está disponible cuando el hardware está en '{expected}'. Estado actual: '{FirstNonEmpty(currentLabel, ResolveHardwareStateOption(currentState).Label)}'.");
+    }
+
+    private static void EnsureHardwareActionStateOneOf(
+        int currentState,
+        IReadOnlyCollection<int> expectedStates,
+        string currentLabel)
+    {
+        var normalizedExpectedStates = expectedStates
+            .Select(NormalizeHardwareStateValue)
+            .Distinct()
+            .ToList();
+        if (normalizedExpectedStates.Contains(currentState))
+            return;
+
+        var expected = string.Join(
+            "' o '",
+            normalizedExpectedStates.Select(state => ResolveHardwareStateOption(state).Label));
         throw new InvalidOperationException(
             $"Esta acción solo está disponible cuando el hardware está en '{expected}'. Estado actual: '{FirstNonEmpty(currentLabel, ResolveHardwareStateOption(currentState).Label)}'.");
     }

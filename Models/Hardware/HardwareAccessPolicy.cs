@@ -6,6 +6,7 @@ public static class HardwareAccessPolicy
 {
     public const string SupplierPaymentEmail = "cartera@digitaltechcolombia.com";
     public const string ImpersonationEmail = "sruiz@digitaltechcolombia.com";
+    public const int WaitingDocumentationStateValue = 645250000;
     public const int OkForSupplierPaymentStateValue = 645250001;
     public const string SupplierPaymentFileField = "cr07a_pagoaproveedor";
     public const string SupplierPaymentActionKey = "register-supplier-payment";

@@ -506,6 +506,32 @@
     min-width: 980px;
 }
 
+.hardware-supplier-payment-table {
+    width: 100%;
+    min-width: 0;
+}
+
+.hardware-supplier-payment-table th:nth-child(1) {
+    width: 18%;
+}
+
+.hardware-supplier-payment-table th:nth-child(2) {
+    width: 22%;
+}
+
+.hardware-supplier-payment-table th:nth-child(3) {
+    width: 20%;
+}
+
+.hardware-supplier-payment-table th:nth-child(4) {
+    width: 18%;
+}
+
+.hardware-supplier-payment-table th:nth-child(5),
+.hardware-supplier-payment-table th:nth-child(6) {
+    width: 11%;
+}
+
 .hardware-commercial-table th:nth-child(1) {
     width: 190px;
 }
@@ -1014,12 +1040,14 @@
 }
 
 .hardware-table__row.is-editable,
-.hardware-table__row.is-actionable {
+.hardware-table__row.is-actionable,
+.hardware-supplier-payment-row {
     cursor: pointer;
 }
 
 .hardware-table__row.is-editable:hover,
-.hardware-table__row.is-actionable:hover {
+.hardware-table__row.is-actionable:hover,
+.hardware-supplier-payment-row:hover {
     box-shadow: inset 0 0 0 999px rgba(23, 104, 172, .05);
 }
 
