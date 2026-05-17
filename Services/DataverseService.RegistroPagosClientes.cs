@@ -299,10 +299,7 @@ public sealed partial class DataverseService
         if (totalInvoice <= 0m)
             return 0m;
 
-        if (vatValue > 0m && vatValue < totalInvoice)
-            return RoundCurrency(totalInvoice - vatValue);
-
-        return RoundCurrency(totalInvoice / 1.19m);
+        return RoundCurrency(Math.Max(totalInvoice - Math.Max(vatValue, 0m), 0m));
     }
 
     private static decimal CalculateRegistroPagoVatFromIncludedTotal(decimal totalInvoice)

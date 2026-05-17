@@ -392,11 +392,7 @@
             return 0;
         }
 
-        if (vatNumber > 0 && vatNumber < totalNumber) {
-            return roundCurrency(totalNumber - vatNumber);
-        }
-
-        return roundCurrency(totalNumber / 1.19);
+        return roundCurrency(Math.max(totalNumber - Math.max(vatNumber, 0), 0));
     }
 
     function getVatFromIncludedTotal(total) {
