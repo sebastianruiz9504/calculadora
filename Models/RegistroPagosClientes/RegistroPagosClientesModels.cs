@@ -39,6 +39,10 @@ public sealed class RegistroPagosClientesInvoiceDto
     public string PaymentDateValue { get; set; } = "";
     public string PaymentDateDisplay { get; set; } = "";
     public decimal PaymentValue { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal ReteFtePercent { get; set; }
+    public decimal ReteIcaPercent { get; set; }
+    public decimal RteIvaPercent { get; set; }
     public decimal ReteFteValue { get; set; }
     public decimal ReteIcaValue { get; set; }
     public decimal RteIvaValue { get; set; }

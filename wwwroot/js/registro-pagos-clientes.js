@@ -121,8 +121,8 @@
         return currencyFormatter.format(Number(value || 0));
     }
 
-    function formatPercent(value) {
-        return `${numberFormatter.format(Number(value || 0))}%`;
+    function formatRate(value) {
+        return numberFormatter.format(Number(value || 0));
     }
 
     function formatInputNumber(value, precision = 2, emptyWhenZero = false) {
@@ -133,15 +133,6 @@
 
         const rounded = Number(number.toFixed(precision));
         return rounded.toString();
-    }
-
-    function calculatePercentFromValue(value, total) {
-        const totalNumber = Number(total || 0);
-        if (totalNumber <= 0) {
-            return 0;
-        }
-
-        return roundPercent((Number(value || 0) * 100) / totalNumber);
     }
 
     function updateSummary(board) {
@@ -243,7 +234,9 @@
             const total = Number(row.totalInvoice || 0);
             const totalMinMatches = !filters.hasTotalMin || total >= filters.totalMin;
             const totalMaxMatches = !filters.hasTotalMax || total <= filters.totalMax;
-            const statusMatches = !filters.status || row.paymentStatusKey === filters.status;
+            const statusMatches = state.activeTab === "pending-retentions"
+                ? true
+                : !filters.status || row.paymentStatusKey === filters.status;
 
             return invoiceMatches
                 && emissionMatches
@@ -269,7 +262,7 @@
             const emptyMessage = state.activeTab === "pending-retentions"
                 ? "No hay retenciones pendientes para mostrar."
                 : "No hay facturas para mostrar.";
-            rowsBody.innerHTML = `<tr><td colspan="5" class="rpc-table__empty">${escapeHtml(emptyMessage)}</td></tr>`;
+            rowsBody.innerHTML = `<tr><td colspan="7" class="rpc-table__empty">${escapeHtml(emptyMessage)}</td></tr>`;
             emptyState && (emptyState.hidden = false);
             emptyState && (emptyState.textContent = emptyMessage);
             return;
@@ -282,7 +275,9 @@
                 <td title="${escapeHtml(row.emissionDateDisplay)}">${escapeHtml(row.emissionDateDisplay || "-")}</td>
                 <td title="${escapeHtml(row.clientName)}">${escapeHtml(row.clientName || "Cliente sin nombre")}</td>
                 <td class="text-end" title="${escapeHtml(formatCurrency(row.totalInvoice))}">${escapeHtml(formatCurrency(row.totalInvoice))}</td>
-                <td><span class="rpc-status-badge is-${escapeHtml(row.paymentStatusTone || "pending")}">${escapeHtml(row.paymentStatusLabel || "-")}</span></td>
+                <td class="text-end rpc-pending-only" title="${escapeHtml(formatCurrency(row.paymentValue))}">${escapeHtml(formatCurrency(row.paymentValue))}</td>
+                <td class="rpc-all-only"><span class="rpc-status-badge is-${escapeHtml(row.paymentStatusTone || "pending")}">${escapeHtml(row.paymentStatusLabel || "-")}</span></td>
+                <td class="text-end rpc-pending-only" title="${escapeHtml(formatCurrency(row.differenceValue))}">${escapeHtml(formatCurrency(row.differenceValue))}</td>
             </tr>
         `).join("");
 
@@ -338,10 +333,10 @@
             return;
         }
 
-        const averageText = `Promedio: FTE ${formatPercent(suggestion.averageReteFtePercent)}, ICA ${formatPercent(suggestion.averageReteIcaPercent)}, IVA ${formatPercent(suggestion.averageRteIvaPercent)}`;
+        const averageText = `Promedio: FTE ${formatRate(suggestion.averageReteFtePercent)}, ICA ${formatRate(suggestion.averageReteIcaPercent)} x mil, IVA ${formatRate(suggestion.averageRteIvaPercent)}`;
         const latest = suggestion.latestScenario || {};
         const latestText = latest.invoiceNumber
-            ? `Ultimo: ${latest.invoiceNumber} (${latest.paymentDateDisplay || "sin fecha"}) FTE ${formatPercent(latest.reteFtePercent)}, ICA ${formatPercent(latest.reteIcaPercent)}, IVA ${formatPercent(latest.rteIvaPercent)}`
+            ? `Ultimo: ${latest.invoiceNumber} (${latest.paymentDateDisplay || "sin fecha"}) FTE ${formatRate(latest.reteFtePercent)}, ICA ${formatRate(latest.reteIcaPercent)} x mil, IVA ${formatRate(latest.rteIvaPercent)}`
             : "";
 
         suggestionSummary && (suggestionSummary.textContent = `${suggestion.sourceCount || 0} escenario${suggestion.sourceCount === 1 ? "" : "s"} del cliente`);
@@ -370,12 +365,11 @@
         updateModalSummary(invoice);
         renderSuggestion(invoice);
 
-        const total = Number(invoice.totalInvoice || 0);
         paymentValueInput && (paymentValueInput.value = formatInputNumber(invoice.paymentValue || 0, 2, true));
         paymentDateInput && (paymentDateInput.value = invoice.paymentDateValue || "");
-        reteFtePercentInput && (reteFtePercentInput.value = formatInputNumber(calculatePercentFromValue(invoice.reteFteValue, total), 4, true));
-        reteIcaPercentInput && (reteIcaPercentInput.value = formatInputNumber(calculatePercentFromValue(invoice.reteIcaValue, total), 4, true));
-        rteIvaPercentInput && (rteIvaPercentInput.value = formatInputNumber(calculatePercentFromValue(invoice.rteIvaValue, total), 4, true));
+        reteFtePercentInput && (reteFtePercentInput.value = formatInputNumber(invoice.reteFtePercent || 0, 4, true));
+        reteIcaPercentInput && (reteIcaPercentInput.value = formatInputNumber(invoice.reteIcaPercent || 0, 4, true));
+        rteIvaPercentInput && (rteIvaPercentInput.value = formatInputNumber(invoice.rteIvaPercent || 0, 4, true));
 
         updateCalculation();
         modal.hidden = false;
@@ -391,15 +385,41 @@
         document.body.classList.remove("rpc-modal-open");
     }
 
+    function getBaseBeforeVat(total, vatValue) {
+        const totalNumber = Number(total || 0);
+        const vatNumber = Number(vatValue || 0);
+        if (totalNumber <= 0) {
+            return 0;
+        }
+
+        if (vatNumber > 0 && vatNumber < totalNumber) {
+            return roundCurrency(totalNumber - vatNumber);
+        }
+
+        return roundCurrency(totalNumber / 1.19);
+    }
+
+    function getVatFromIncludedTotal(total) {
+        const totalNumber = Number(total || 0);
+        if (totalNumber <= 0) {
+            return 0;
+        }
+
+        return roundCurrency(totalNumber - (totalNumber / 1.19));
+    }
+
     function getCalculation() {
         const total = Number(state.currentInvoice?.totalInvoice || 0);
+        const vatValue = Number(state.currentInvoice?.vatValue || 0);
+        const baseBeforeVat = getBaseBeforeVat(total, vatValue);
+        const vatFromIncludedTotal = getVatFromIncludedTotal(total);
         const payment = roundCurrency(parseDecimal(paymentValueInput?.value));
         const reteFtePercent = roundPercent(parseDecimal(reteFtePercentInput?.value));
         const reteIcaPercent = roundPercent(parseDecimal(reteIcaPercentInput?.value));
         const rteIvaPercent = roundPercent(parseDecimal(rteIvaPercentInput?.value));
-        const reteFte = roundCurrency(total * (reteFtePercent / 100));
-        const reteIca = roundCurrency(total * (reteIcaPercent / 100));
-        const rteIva = roundCurrency(total * (rteIvaPercent / 100));
+        const reteFte = roundCurrency(baseBeforeVat * reteFtePercent);
+        const reteIca = roundCurrency((baseBeforeVat * reteIcaPercent) / 1000);
+        const rteIva = roundCurrency(vatFromIncludedTotal * rteIvaPercent);
         const difference = roundCurrency(total - payment - reteFte - reteIca - rteIva);
 
         return {
@@ -451,13 +471,17 @@
             return "Indica la fecha de pago.";
         }
 
-        const percentages = [
-            ["Rete fte", payload.reteFtePercent],
-            ["Rete ica", payload.reteIcaPercent],
-            ["Rte iva", payload.rteIvaPercent]
-        ];
-        const invalid = percentages.find(([, value]) => value < 0 || value > 100);
-        return invalid ? `${invalid[0]} debe estar entre 0 y 100.` : "";
+        if (payload.reteFtePercent < 0 || payload.reteFtePercent > 1) {
+            return "Rete fte debe estar entre 0 y 1. Usa 0,04 para 4%.";
+        }
+        if (payload.reteIcaPercent < 0 || payload.reteIcaPercent > 1000) {
+            return "Rete ica debe estar entre 0 y 1000. Usa 11,04 para 11,04 por mil.";
+        }
+        if (payload.rteIvaPercent < 0 || payload.rteIvaPercent > 1) {
+            return "Rte iva debe estar entre 0 y 1. Usa 0,15 para 15%.";
+        }
+
+        return "";
     }
 
     async function savePayment(event) {
@@ -527,7 +551,7 @@
         }
 
         setStatus(statusBanner, "Cargando facturas desde Dataverse...", "info");
-        rowsBody && (rowsBody.innerHTML = '<tr><td colspan="5" class="rpc-table__empty">Cargando facturas...</td></tr>');
+        rowsBody && (rowsBody.innerHTML = '<tr><td colspan="7" class="rpc-table__empty">Cargando facturas...</td></tr>');
 
         try {
             const response = await fetch(loadUrl, {

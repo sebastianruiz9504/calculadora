@@ -82,7 +82,9 @@
                     <col class="rpc-col-date" />
                     <col class="rpc-col-client" />
                     <col class="rpc-col-total" />
-                    <col class="rpc-col-status" />
+                    <col class="rpc-col-payment rpc-pending-only" />
+                    <col class="rpc-col-status rpc-all-only" />
+                    <col class="rpc-col-difference rpc-pending-only" />
                 </colgroup>
                 <thead>
                     <tr>
@@ -90,7 +92,9 @@
                         <th>Fecha de emision</th>
                         <th>Cliente</th>
                         <th class="text-end">Total</th>
-                        <th>Estado</th>
+                        <th class="text-end rpc-pending-only">Valor pago</th>
+                        <th class="rpc-all-only">Estado</th>
+                        <th class="text-end rpc-pending-only">Diferencia</th>
                     </tr>
                     <tr class="rpc-filter-row">
                         <th>
@@ -112,7 +116,8 @@
                                 <input class="form-control form-control-sm" id="rpcTotalMaxFilter" type="number" min="0" step="0.01" placeholder="Max" />
                             </div>
                         </th>
-                        <th>
+                        <th class="rpc-pending-only"></th>
+                        <th class="rpc-all-only">
                             <select class="form-select form-select-sm" id="rpcStatusFilter">
                                 <option value="">Todos</option>
                                 <option value="paid">Paga</option>
@@ -120,11 +125,12 @@
                                 <option value="pending">Pendiente</option>
                             </select>
                         </th>
+                        <th class="rpc-pending-only"></th>
                     </tr>
                 </thead>
                 <tbody id="rpcRowsBody">
                     <tr>
-                        <td colspan="5" class="rpc-table__empty">Cargando facturas...</td>
+                        <td colspan="7" class="rpc-table__empty">Cargando facturas...</td>
                     </tr>
                 </tbody>
             </table>
@@ -192,16 +198,16 @@
                     <input class="form-control" id="rpcPaymentDateInput" type="date" required />
                 </label>
                 <label class="rpc-form__field">
-                    <span class="rpc-form__label">Rete fte %</span>
-                    <input class="form-control" id="rpcReteFtePercentInput" type="number" min="0" max="100" step="0.0001" />
+                    <span class="rpc-form__label">Rete fte % (0,04)</span>
+                    <input class="form-control" id="rpcReteFtePercentInput" type="number" min="0" max="1" step="0.0001" />
                 </label>
                 <label class="rpc-form__field">
-                    <span class="rpc-form__label">Rete ica %</span>
-                    <input class="form-control" id="rpcReteIcaPercentInput" type="number" min="0" max="100" step="0.0001" />
+                    <span class="rpc-form__label">Rete ica x mil (11,04)</span>
+                    <input class="form-control" id="rpcReteIcaPercentInput" type="number" min="0" max="1000" step="0.01" />
                 </label>
                 <label class="rpc-form__field">
-                    <span class="rpc-form__label">Rte iva %</span>
-                    <input class="form-control" id="rpcRteIvaPercentInput" type="number" min="0" max="100" step="0.0001" />
+                    <span class="rpc-form__label">Rte iva % (0,15)</span>
+                    <input class="form-control" id="rpcRteIvaPercentInput" type="number" min="0" max="1" step="0.0001" />
                 </label>
             </div>
 

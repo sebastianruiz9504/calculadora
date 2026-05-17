@@ -67,12 +67,12 @@ public sealed partial class DataverseService
         var paymentDate = NormalizeBillingDateValue(request.PaymentDateValue, "fecha de pago")
             ?? throw new InvalidOperationException("Indica la fecha de pago.");
         var reteFtePercent = NormalizeRegistroPagoRetentionPercent(request.ReteFtePercent, "Rete FTE");
-        var reteIcaPercent = NormalizeRegistroPagoRetentionPercent(request.ReteIcaPercent, "Rete ICA");
+        var reteIcaPercent = NormalizeRegistroPagoReteIcaRate(request.ReteIcaPercent);
         var rteIvaPercent = NormalizeRegistroPagoRetentionPercent(request.RteIvaPercent, "Rte IVA");
 
-        var reteFteValue = CalculateRegistroPagoRetentionValue(current.TotalInvoice, reteFtePercent);
-        var reteIcaValue = CalculateRegistroPagoRetentionValue(current.TotalInvoice, reteIcaPercent);
-        var rteIvaValue = CalculateRegistroPagoRetentionValue(current.TotalInvoice, rteIvaPercent);
+        var reteFteValue = CalculateRegistroPagoReteFteValue(current.TotalInvoice, current.VatValue, reteFtePercent);
+        var reteIcaValue = CalculateRegistroPagoReteIcaValue(current.TotalInvoice, current.VatValue, reteIcaPercent);
+        var rteIvaValue = CalculateRegistroPagoRteIvaValue(current.TotalInvoice, rteIvaPercent);
         var difference = CalculateRegistroPagoDifference(
             current.TotalInvoice,
             paymentValue,
@@ -84,9 +84,9 @@ public sealed partial class DataverseService
         {
             [_dashboardBillingPaymentDateField] = paymentDate,
             [_dashboardBillingPaymentValueField] = paymentValue,
-            [_dashboardBillingRteFteField] = reteFteValue,
-            [_dashboardBillingReteIcaField] = reteIcaValue,
-            [_dashboardBillingRteIvaField] = rteIvaValue
+            [_dashboardBillingRteFteField] = reteFtePercent,
+            [_dashboardBillingReteIcaField] = reteIcaPercent,
+            [_dashboardBillingRteIvaField] = rteIvaPercent
         };
 
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({recordId})";
@@ -126,6 +126,7 @@ public sealed partial class DataverseService
         var statusKey = row.HasPayment
             ? "paid"
             : isOverdue ? "overdue" : "pending";
+        var retention = CalculateRegistroPagoRetentionValues(row);
 
         return new RegistroPagosClientesInvoiceDto
         {
@@ -150,10 +151,14 @@ public sealed partial class DataverseService
             PaymentDateValue = row.PaymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             PaymentDateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin pago",
             PaymentValue = row.PaymentValue,
-            ReteFteValue = row.RteFteValue,
-            ReteIcaValue = row.ReteIcaValue,
-            RteIvaValue = row.RteIvaValue,
-            DifferenceValue = row.DifferenceValue,
+            VatValue = row.VatValue,
+            ReteFtePercent = row.RteFteValue,
+            ReteIcaPercent = row.ReteIcaValue,
+            RteIvaPercent = row.RteIvaValue,
+            ReteFteValue = retention.ReteFteValue,
+            ReteIcaValue = retention.ReteIcaValue,
+            RteIvaValue = retention.RteIvaValue,
+            DifferenceValue = retention.DifferenceValue,
             Suggestion = BuildRegistroPagosClientesSuggestion(row, allRows)
         };
     }
@@ -166,7 +171,7 @@ public sealed partial class DataverseService
             .Where(row => !string.Equals(row.RecordId, current.RecordId, StringComparison.OrdinalIgnoreCase))
             .Where(row => RegistroPagosClientesSameClient(row, current))
             .Where(static row => row.TotalInvoice > 0m)
-            .Where(static row => row.HasPayment || row.RetentionsTotal > 0m)
+            .Where(static row => row.HasPayment || row.RteFteValue > 0m || row.ReteIcaValue > 0m || row.RteIvaValue > 0m)
             .ToList();
 
         var currentScenarioDate = GetRegistroPagosClientesScenarioDate(current);
@@ -197,9 +202,9 @@ public sealed partial class DataverseService
         {
             HasSuggestion = true,
             SourceCount = sourceRows.Count,
-            AverageReteFtePercent = RoundRegistroPagoPercent(sourceRows.Average(row => CalculateRegistroPagoPercent(row.RteFteValue, row.TotalInvoice))),
-            AverageReteIcaPercent = RoundRegistroPagoPercent(sourceRows.Average(row => CalculateRegistroPagoPercent(row.ReteIcaValue, row.TotalInvoice))),
-            AverageRteIvaPercent = RoundRegistroPagoPercent(sourceRows.Average(row => CalculateRegistroPagoPercent(row.RteIvaValue, row.TotalInvoice))),
+            AverageReteFtePercent = RoundRegistroPagoPercent(sourceRows.Average(static row => row.RteFteValue)),
+            AverageReteIcaPercent = RoundRegistroPagoPercent(sourceRows.Average(static row => row.ReteIcaValue)),
+            AverageRteIvaPercent = RoundRegistroPagoPercent(sourceRows.Average(static row => row.RteIvaValue)),
             LatestScenario = scenarios.FirstOrDefault(),
             Scenarios = scenarios
         };
@@ -207,16 +212,18 @@ public sealed partial class DataverseService
 
     private static RegistroPagosClientesRetentionScenarioDto BuildRegistroPagosClientesScenario(BillingRecordRow row)
     {
+        var retention = CalculateRegistroPagoRetentionValues(row);
+
         return new RegistroPagosClientesRetentionScenarioDto
         {
             InvoiceNumber = row.InvoiceNumber,
             PaymentDateDisplay = (row.PaymentDate ?? row.EmissionDate)?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
             TotalInvoice = row.TotalInvoice,
             PaymentValue = row.PaymentValue,
-            ReteFtePercent = CalculateRegistroPagoPercent(row.RteFteValue, row.TotalInvoice),
-            ReteIcaPercent = CalculateRegistroPagoPercent(row.ReteIcaValue, row.TotalInvoice),
-            RteIvaPercent = CalculateRegistroPagoPercent(row.RteIvaValue, row.TotalInvoice),
-            DifferenceValue = row.DifferenceValue
+            ReteFtePercent = row.RteFteValue,
+            ReteIcaPercent = row.ReteIcaValue,
+            RteIvaPercent = row.RteIvaValue,
+            DifferenceValue = retention.DifferenceValue
         };
     }
 
@@ -254,14 +261,57 @@ public sealed partial class DataverseService
 
     private static decimal NormalizeRegistroPagoRetentionPercent(decimal value, string label)
     {
-        if (value < 0m || value > 100m)
-            throw new InvalidOperationException($"El porcentaje de {label} debe estar entre 0 y 100.");
+        if (value < 0m || value > 1m)
+            throw new InvalidOperationException($"El valor de {label} debe estar entre 0 y 1. Usa 0,04 para 4%.");
 
         return RoundRegistroPagoPercent(value);
     }
 
-    private static decimal CalculateRegistroPagoRetentionValue(decimal totalInvoice, decimal percent) =>
-        RoundCurrency(Math.Max(totalInvoice, 0m) * percent / 100m);
+    private static decimal NormalizeRegistroPagoReteIcaRate(decimal value)
+    {
+        if (value < 0m || value > 1000m)
+            throw new InvalidOperationException("La tarifa de Rete ICA debe estar entre 0 y 1000. Usa 11,04 para 11,04 por mil.");
+
+        return RoundRegistroPagoPercent(value);
+    }
+
+    private static RegistroPagoRetentionCalculation CalculateRegistroPagoRetentionValues(BillingRecordRow row)
+    {
+        var reteFteValue = CalculateRegistroPagoReteFteValue(row.TotalInvoice, row.VatValue, row.RteFteValue);
+        var reteIcaValue = CalculateRegistroPagoReteIcaValue(row.TotalInvoice, row.VatValue, row.ReteIcaValue);
+        var rteIvaValue = CalculateRegistroPagoRteIvaValue(row.TotalInvoice, row.RteIvaValue);
+        var difference = CalculateRegistroPagoDifference(row.TotalInvoice, row.PaymentValue, reteFteValue, reteIcaValue, rteIvaValue);
+
+        return new RegistroPagoRetentionCalculation(reteFteValue, reteIcaValue, rteIvaValue, difference);
+    }
+
+    private static decimal CalculateRegistroPagoReteFteValue(decimal totalInvoice, decimal vatValue, decimal rate) =>
+        RoundCurrency(CalculateRegistroPagoBaseBeforeVat(totalInvoice, vatValue) * rate);
+
+    private static decimal CalculateRegistroPagoReteIcaValue(decimal totalInvoice, decimal vatValue, decimal ratePerThousand) =>
+        RoundCurrency(CalculateRegistroPagoBaseBeforeVat(totalInvoice, vatValue) * ratePerThousand / 1000m);
+
+    private static decimal CalculateRegistroPagoRteIvaValue(decimal totalInvoice, decimal rate) =>
+        RoundCurrency(CalculateRegistroPagoVatFromIncludedTotal(totalInvoice) * rate);
+
+    private static decimal CalculateRegistroPagoBaseBeforeVat(decimal totalInvoice, decimal vatValue)
+    {
+        if (totalInvoice <= 0m)
+            return 0m;
+
+        if (vatValue > 0m && vatValue < totalInvoice)
+            return RoundCurrency(totalInvoice - vatValue);
+
+        return RoundCurrency(totalInvoice / 1.19m);
+    }
+
+    private static decimal CalculateRegistroPagoVatFromIncludedTotal(decimal totalInvoice)
+    {
+        if (totalInvoice <= 0m)
+            return 0m;
+
+        return RoundCurrency(totalInvoice - (totalInvoice / 1.19m));
+    }
 
     private static decimal CalculateRegistroPagoDifference(
         decimal totalInvoice,
@@ -271,14 +321,12 @@ public sealed partial class DataverseService
         decimal rteIvaValue) =>
         RoundCurrency(totalInvoice - paymentValue - reteFteValue - reteIcaValue - rteIvaValue);
 
-    private static decimal CalculateRegistroPagoPercent(decimal value, decimal totalInvoice)
-    {
-        if (totalInvoice <= 0m)
-            return 0m;
-
-        return RoundRegistroPagoPercent(value * 100m / totalInvoice);
-    }
-
     private static decimal RoundRegistroPagoPercent(decimal value) =>
         Math.Round(value, 4, MidpointRounding.AwayFromZero);
+
+    private sealed record RegistroPagoRetentionCalculation(
+        decimal ReteFteValue,
+        decimal ReteIcaValue,
+        decimal RteIvaValue,
+        decimal DifferenceValue);
 }

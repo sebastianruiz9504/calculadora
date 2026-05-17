@@ -215,14 +215,41 @@
     width: 18%;
 }
 
+.rpc-col-payment,
+.rpc-col-difference {
+    width: 15%;
+}
+
 .rpc-col-status {
     width: 14%;
+}
+
+.rpc-shell:not(.is-retentions-tab) .rpc-pending-only,
+.rpc-shell.is-retentions-tab .rpc-all-only {
+    display: none;
+}
+
+.rpc-shell.is-retentions-tab .rpc-col-invoice {
+    width: 15%;
+}
+
+.rpc-shell.is-retentions-tab .rpc-col-date {
+    width: 13%;
+}
+
+.rpc-shell.is-retentions-tab .rpc-col-client {
+    width: 27%;
+}
+
+.rpc-shell.is-retentions-tab .rpc-col-total {
+    width: 15%;
 }
 
 .rpc-table th,
 .rpc-table td {
     border-color: #e5edf6;
     color: #1f2a3d;
+    font-variant-numeric: tabular-nums;
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: middle;
