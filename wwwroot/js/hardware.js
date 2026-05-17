@@ -108,6 +108,13 @@
             modalMeta: root.querySelector("[data-hw-modal-meta]"),
             form: root.querySelector("[data-hw-form]"),
             saveStageBtn: root.querySelector("[data-hw-save-stage]"),
+            saveResultModal: root.querySelector("[data-hw-save-result-modal]"),
+            saveResultBox: root.querySelector("[data-hw-save-result-state]"),
+            saveResultKicker: root.querySelector("[data-hw-save-result-kicker]"),
+            saveResultTitle: root.querySelector("[data-hw-save-result-title]"),
+            saveResultMessage: root.querySelector("[data-hw-save-result-message]"),
+            saveResultMeta: root.querySelector("[data-hw-save-result-meta]"),
+            closeSaveResultBtn: root.querySelector("[data-hw-close-save-result]"),
             recordId: root.querySelector("[data-hw-record-id]"),
             actionKey: root.querySelector("[data-hw-action-key]"),
             recordName: root.querySelector("[data-hw-record-name]"),
@@ -201,6 +208,7 @@
             ownerLookupTimer: 0,
             ownerLookupSequence: 0,
             ownerSuggestions: [],
+            saveResultFinalize: null,
             createClientSelection: null,
             createClientLookupTimer: 0,
             createClientLookupSequence: 0,
@@ -510,6 +518,8 @@
         elements.closeModalButtons.forEach(button => {
             button.addEventListener("click", closeModal);
         });
+
+        elements.closeSaveResultBtn?.addEventListener("click", closeSaveResultModal);
 
         elements.closeCreateModalButtons.forEach(button => {
             button.addEventListener("click", closeCreateModal);
@@ -1995,6 +2005,60 @@
             }
         }
 
+        function showSaveResultModal(stateName, kicker, title, message, canClose) {
+            if (!elements.saveResultModal) {
+                if (message) {
+                    setStatus(elements.modalStatus, stateName === "error" ? "error" : "info", message);
+                }
+                return;
+            }
+
+            if (elements.saveResultBox) {
+                elements.saveResultBox.dataset.hwSaveResultState = stateName || "saving";
+            }
+            setText(elements.saveResultKicker, kicker || "Guardando");
+            setText(elements.saveResultTitle, title || "Guardando");
+            setText(elements.saveResultMessage, message || "");
+            setText(elements.saveResultMeta, canClose ? "Cierra para volver a Hardware." : "Espera a que termine el proceso.");
+            if (elements.closeSaveResultBtn) {
+                elements.closeSaveResultBtn.disabled = !canClose;
+            }
+
+            elements.saveResultModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+        }
+
+        async function closeSaveResultModal() {
+            if (state.saving || !elements.saveResultModal) {
+                return;
+            }
+
+            const finalize = state.saveResultFinalize;
+            state.saveResultFinalize = null;
+            elements.saveResultModal.hidden = true;
+
+            if (finalize?.closeStage) {
+                state.selectedRecordIds.clear();
+                closeModal(true);
+            }
+
+            if (finalize?.refreshBoard) {
+                await loadBoard();
+            }
+
+            if (finalize?.statusMessage) {
+                setStatus(elements.status, finalize.statusType || "info", finalize.statusMessage);
+            }
+
+            if ((!elements.modal || elements.modal.hidden)
+                && (!elements.createModal || elements.createModal.hidden)
+                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)
+                && (!elements.editModal || elements.editModal.hidden)
+                && (!elements.saveResultModal || elements.saveResultModal.hidden)) {
+                document.body.classList.remove("hardware-modal-open");
+            }
+        }
+
         function renderFileCards() {
             syncDocumentationDocumentCards();
             const fileFields = [
@@ -2025,10 +2089,8 @@
 
                     fileHintTargets.forEach(fileHintTarget => {
                         fileHintTarget.textContent = pendingFile instanceof File
-                            ? "El archivo se cargará solo en la primera fila de la orden."
-                            : orderHasFile
-                                ? "Adjunto registrado en una fila de la orden."
-                                : (fileHintTarget.dataset.defaultHint || "");
+                            ? resolvePendingFileHint(fieldName)
+                            : resolveExistingFileHint(fieldName, orderHasFile, fileHintTarget.dataset.defaultHint || "");
                     });
 
                     downloadLinks.forEach(downloadLink => {
@@ -2049,10 +2111,8 @@
 
                 fileHintTargets.forEach(fileHintTarget => {
                     fileHintTarget.textContent = pendingFile instanceof File
-                        ? "El archivo se cargará solo en la primera fila de la orden."
-                        : orderHasFile
-                            ? "Adjunto registrado en una fila de la orden."
-                            : (fileHintTarget.dataset.defaultHint || "");
+                        ? resolvePendingFileHint(fieldName)
+                        : resolveExistingFileHint(fieldName, orderHasFile, fileHintTarget.dataset.defaultHint || "");
                 });
 
                 downloadLinks.forEach(downloadLink => {
@@ -2072,6 +2132,32 @@
             });
         }
 
+        function resolvePendingFileHint(fieldName) {
+            return shouldUploadStageFileToEverySelectedRecord(fieldName)
+                ? "El archivo se cargará en todas las filas seleccionadas."
+                : "El archivo se cargará solo en la primera fila de la orden.";
+        }
+
+        function resolveExistingFileHint(fieldName, hasFile, defaultHint) {
+            if (!hasFile) {
+                return defaultHint || "";
+            }
+
+            if (!shouldUploadStageFileToEverySelectedRecord(fieldName)) {
+                return "Adjunto registrado en una fila de la orden.";
+            }
+
+            const selectedRecords = state.modalRecords.filter(record => Boolean(record?.recordId));
+            const recordsWithFile = selectedRecords.filter(record => hasExistingFile(record, fieldName)).length;
+            if (selectedRecords.length > 1 && recordsWithFile > 0 && recordsWithFile < selectedRecords.length) {
+                return "Adjunto registrado parcialmente; al guardar se completará en las demás filas.";
+            }
+
+            return selectedRecords.length > 1
+                ? "Adjunto registrado en las filas seleccionadas."
+                : "Adjunto registrado.";
+        }
+
         async function saveStage() {
             if (state.saving || !state.modalRecords.length) {
                 return;
@@ -2088,22 +2174,47 @@
             try {
                 state.saving = true;
                 setBusy(true);
-                setStatus(elements.modalStatus, "info", "Cargando adjuntos de Hardware...");
-                await uploadPendingFiles();
+                clearStatus(elements.modalStatus);
+                showSaveResultModal("saving", "Guardando", "Guardando", "Cargando adjuntos de Hardware...", false);
+                await uploadPendingFiles((current, total) => {
+                    showSaveResultModal(
+                        "saving",
+                        "Guardando",
+                        "Guardando",
+                        total > 0
+                            ? `Cargando adjuntos de Hardware (${current} de ${total})...`
+                            : "Cargando adjuntos de Hardware...",
+                        false);
+                });
 
-                setStatus(elements.modalStatus, "info", "Guardando etapa de Hardware...");
+                showSaveResultModal("saving", "Guardando", "Guardando", "Guardando etapa de Hardware...", false);
                 const result = await fetchJson(buildImpersonatedUrl(config.saveUrl), {
                     method: "POST",
                     body: JSON.stringify(payload)
                 });
 
-                closeModal(true);
-                setBusy(false);
                 state.selectedRecordIds.clear();
-                await loadBoard();
-                setStatus(elements.status, "success", result?.message || "Etapa guardada correctamente.");
+                state.saveResultFinalize = {
+                    closeStage: true,
+                    refreshBoard: true,
+                    statusType: "success",
+                    statusMessage: result?.message || "Etapa guardada correctamente."
+                };
+                showSaveResultModal(
+                    "success",
+                    "Completado",
+                    "Carga completada",
+                    result?.message || "Etapa guardada correctamente.",
+                    true);
             } catch (error) {
-                setStatus(elements.modalStatus, "error", getErrorMessage(error));
+                const message = getErrorMessage(error);
+                state.saveResultFinalize = {
+                    closeStage: true,
+                    refreshBoard: true,
+                    statusType: "error",
+                    statusMessage: message
+                };
+                showSaveResultModal("error", "Error", "No se pudo completar la carga", message, true);
             } finally {
                 state.saving = false;
                 if (state.busy) {
@@ -3537,22 +3648,72 @@
             }
         }
 
-        async function uploadPendingFiles() {
+        async function uploadPendingFiles(onProgress) {
+            const tasks = buildPendingFileUploadTasks();
+
+            for (let index = 0; index < tasks.length; index += 1) {
+                const task = tasks[index];
+                if (typeof onProgress === "function") {
+                    onProgress(index + 1, tasks.length, task);
+                }
+                await uploadFile(task.recordId, task.fieldName, task.file);
+            }
+        }
+
+        function buildPendingFileUploadTasks() {
+            const tasks = [];
+            const seen = new Set();
             const entries = Object.entries(state.pendingFiles)
                 .filter(([, file]) => file instanceof File);
 
-            for (const [key, file] of entries) {
+            entries.forEach(([key, file]) => {
                 if (key.includes("|")) {
                     const [recordId, fieldName] = key.split("|");
-                    await uploadFile(recordId, fieldName, file);
-                    continue;
+                    addPendingFileUploadTask(tasks, seen, recordId, fieldName, file);
+                    return;
                 }
 
-                const firstRecord = state.modalRecords[0];
-                if (firstRecord?.recordId) {
-                    await uploadFile(firstRecord.recordId, key, file);
-                }
+                resolveStageFileUploadTargets(key).forEach(record => {
+                    addPendingFileUploadTask(tasks, seen, record.recordId, key, file);
+                });
+            });
+
+            return tasks;
+        }
+
+        function addPendingFileUploadTask(tasks, seen, recordId, fieldName, file) {
+            const normalizedRecordId = String(recordId || "").trim();
+            const normalizedFieldName = String(fieldName || "").trim();
+            if (!normalizedRecordId || !normalizedFieldName || !(file instanceof File)) {
+                return;
             }
+
+            const key = `${normalizedRecordId}|${normalizedFieldName}`;
+            if (seen.has(key)) {
+                return;
+            }
+
+            seen.add(key);
+            tasks.push({
+                recordId: normalizedRecordId,
+                fieldName: normalizedFieldName,
+                file
+            });
+        }
+
+        function resolveStageFileUploadTargets(fieldName) {
+            const records = state.modalRecords.filter(record => Boolean(record?.recordId));
+            if (shouldUploadStageFileToEverySelectedRecord(fieldName)) {
+                return records;
+            }
+
+            return records.length ? [records[0]] : [];
+        }
+
+        function shouldUploadStageFileToEverySelectedRecord(fieldName) {
+            const actionKey = elements.actionKey?.value || "";
+            return (actionKey === "register-supplier-payment" && fieldName === "cr07a_pagoaproveedor")
+                || (actionKey === "register-client-received" && fieldName === "cr07a_actadeentrega");
         }
 
         async function uploadFile(recordId, fieldName, file) {

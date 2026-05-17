@@ -147,7 +147,10 @@ public sealed partial class DataverseService
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(3)
                 .ToList();
-            throw new InvalidOperationException($"Hay equipo(s) ya asignados a otra linea: {string.Join(", ", conflictLabels)}.");
+            var hasBackupConflict = conflicts.Any(static row => row.IsBackup);
+            throw new InvalidOperationException(hasBackupConflict
+                ? $"Hay equipo(s) ya marcados como backup: {string.Join(", ", conflictLabels)}."
+                : $"Hay equipo(s) ya asignados a otra linea: {string.Join(", ", conflictLabels)}.");
         }
 
         var selectedSet = selectedEquipmentIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -287,6 +290,43 @@ public sealed partial class DataverseService
             .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
             .ToList();
+    }
+
+    private async Task<IReadOnlyList<CopiersLineEquipmentAssignmentRecordRow>> TryLoadCopiersLineEquipmentAssignmentRecordsByClientsAsync(
+        IEnumerable<string> clientIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedClientIds = clientIds
+            .Select(NormalizeOptionalGuid)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedClientIds.Count == 0)
+            return Array.Empty<CopiersLineEquipmentAssignmentRecordRow>();
+
+        try
+        {
+            var metadata = await ResolveCopiersLineEquipmentAssignmentMetadataAsync(user, ct);
+            var rows = new List<CopiersLineEquipmentAssignmentRecordRow>();
+            foreach (var clientId in normalizedClientIds)
+            {
+                rows.AddRange(await LoadCopiersLineEquipmentAssignmentRecordsByClientAsync(metadata, clientId, user, ct));
+            }
+
+            return rows
+                .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.First())
+                .ToList();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible cargar asignaciones linea-equipo Copiers por cliente. Se mostraran datos sin clasificacion completa.");
+            return Array.Empty<CopiersLineEquipmentAssignmentRecordRow>();
+        }
     }
 
     private string BuildCopiersLineEquipmentAssignmentSelectClause(RhEntityMetadata metadata)
@@ -440,6 +480,39 @@ public sealed partial class DataverseService
         await CallDataverseSendAsync($"/api/data/v9.2/{assignmentMetadata.EntitySetName}", "POST", payload, user, ct);
     }
 
+    private async Task CreateCopiersBackupEquipmentAssignmentAsync(
+        RhEntityMetadata assignmentMetadata,
+        RhEntityMetadata equipmentMetadata,
+        string clientId,
+        string clientName,
+        CopiersEquipmentRecordRow equipment,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var clientNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            _dashboardCopiersLineEquipmentAssignmentLogicalName,
+            _dashboardCopiersLineEquipmentAssignmentClientField,
+            _dashboardCopiersLineEquipmentAssignmentClientField,
+            user,
+            ct);
+        var equipmentNavigationProperty = await ResolveRhLookupNavigationPropertyAsync(
+            _dashboardCopiersLineEquipmentAssignmentLogicalName,
+            _dashboardCopiersLineEquipmentAssignmentEquipmentField,
+            _dashboardCopiersLineEquipmentAssignmentEquipmentField,
+            user,
+            ct);
+
+        var name = BuildCopiersBackupEquipmentAssignmentName(clientName, equipment.Serial);
+        var payload = new Dictionary<string, object?>
+        {
+            [assignmentMetadata.PrimaryNameField] = name,
+            [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({NormalizeGuid(clientId, nameof(clientId))})",
+            [$"{equipmentNavigationProperty}@odata.bind"] = $"/{equipmentMetadata.EntitySetName}({NormalizeGuid(equipment.RecordId, nameof(equipment.RecordId))})"
+        };
+
+        await CallDataverseSendAsync($"/api/data/v9.2/{assignmentMetadata.EntitySetName}", "POST", payload, user, ct);
+    }
+
     private async Task DeleteCopiersLineEquipmentAssignmentAsync(
         RhEntityMetadata metadata,
         string assignmentId,
@@ -478,6 +551,17 @@ public sealed partial class DataverseService
         return value.Length <= 100 ? value : value[..100];
     }
 
+    private static string BuildCopiersBackupEquipmentAssignmentName(string clientName, string serial)
+    {
+        var value = string.Join(" - ", new[]
+        {
+            FirstNonEmpty(clientName, "Cliente"),
+            "Backup",
+            FirstNonEmpty(serial, "Equipo")
+        });
+        return value.Length <= 100 ? value : value[..100];
+    }
+
     private sealed class CopiersLineEquipmentAssignmentRecordRow
     {
         public string RecordId { get; init; } = "";
@@ -488,5 +572,6 @@ public sealed partial class DataverseService
         public string LineName { get; init; } = "";
         public string EquipmentId { get; init; } = "";
         public string EquipmentSerial { get; init; } = "";
+        public bool IsBackup => string.IsNullOrWhiteSpace(LineId) && !string.IsNullOrWhiteSpace(EquipmentId);
     }
 }

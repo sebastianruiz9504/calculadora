@@ -503,7 +503,8 @@
     font-weight: 600;
 }
 
-.copiers-badge.is-good {
+.copiers-badge.is-good,
+.copiers-badge.is-success {
     background: var(--copiers-good-soft);
     color: var(--copiers-good);
 }
@@ -516,6 +517,65 @@
 .copiers-badge.is-warning {
     background: var(--copiers-warning-soft);
     color: var(--copiers-warning);
+}
+
+.copiers-badge.is-info {
+    background: #edf6ff;
+    color: var(--copiers-brand-deep);
+}
+
+.copiers-contract-lines {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.copiers-contract-line {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--copiers-line);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.copiers-contract-line span,
+.copiers-contract-line dt,
+.copiers-table-note {
+    color: var(--copiers-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.copiers-contract-line strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--copiers-ink);
+    font-size: 16px;
+}
+
+.copiers-contract-line small,
+.copiers-table-note {
+    display: block;
+    margin-top: 4px;
+}
+
+.copiers-contract-line dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+}
+
+.copiers-contract-line dd {
+    margin: 2px 0 0;
+    color: var(--copiers-ink);
+    font-weight: 700;
+}
+
+.copiers-empty--inline {
+    grid-column: 1 / -1;
+    border-radius: 8px;
 }
 
 .copiers-status {

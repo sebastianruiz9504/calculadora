@@ -3375,7 +3375,7 @@
         }
 
         if (siigoInvoicesBody) {
-            siigoInvoicesBody.innerHTML = `<tr><td colspan="7" class="dashboard-table__empty">${escapeHtml(message || "Busca un cliente y consulta sus facturas de Siigo.")}</td></tr>`;
+            siigoInvoicesBody.innerHTML = `<tr><td colspan="8" class="dashboard-table__empty">${escapeHtml(message || "Busca un cliente y consulta sus facturas de Siigo.")}</td></tr>`;
         }
 
         syncSiigoInvoicesSelectionSummary();
@@ -3415,7 +3415,7 @@
         }
 
         if (!rows.length) {
-            siigoInvoicesBody.innerHTML = `<tr><td colspan="7" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas en Siigo.")}</td></tr>`;
+            siigoInvoicesBody.innerHTML = `<tr><td colspan="8" class="dashboard-table__empty">${escapeHtml(detail?.emptyStateTitle || "No encontramos facturas en Siigo.")}</td></tr>`;
             syncSiigoInvoicesSelectionSummary();
             return;
         }
@@ -3427,6 +3427,10 @@
             const statusClass = row.annulled
                 ? "dashboard-badge"
                 : "dashboard-badge is-success";
+            const mailStatus = row.mailStatus || "Sin estado";
+            const mailStatusClass = String(row.mailStatus || "").toLowerCase() === "sent"
+                ? "dashboard-badge is-success"
+                : "dashboard-badge";
 
             return `
                 <tr data-siigo-invoice-id="${escapeHtml(row.id || "")}">
@@ -3442,6 +3446,7 @@
                     <td>${escapeHtml(row.dateDisplay || row.dateValue || "Sin fecha")}</td>
                     <td>${escapeHtml(row.customerIdentification || detail?.customerIdentification || "-")}</td>
                     <td><span class="${statusClass}">${escapeHtml(status)}</span></td>
+                    <td><span class="${mailStatusClass}">${escapeHtml(mailStatus)}</span></td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.total || 0)))}</td>
                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.balance || 0)))}</td>
                 </tr>
@@ -4980,11 +4985,11 @@
         }
 
         if (copiersCountersClientBody) {
-            copiersCountersClientBody.innerHTML = '<tr><td colspan="5" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
+            copiersCountersClientBody.innerHTML = '<tr><td colspan="11" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
         }
 
         if (copiersCountersEquipmentBody) {
-            copiersCountersEquipmentBody.innerHTML = '<tr><td colspan="14" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
+            copiersCountersEquipmentBody.innerHTML = '<tr><td colspan="20" class="dashboard-table__empty">Aplica filtros para consultar Dataverse.</td></tr>';
         }
 
         if (copiersCountersPeriodLabel) {
@@ -5064,13 +5069,19 @@
             ? rows.map(row => `
                 <tr>
                     <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
+                    <td>${escapeHtml(row.billingDayDisplay || "Sin dia")}</td>
                     <td class="text-end">${escapeHtml(formatNullableNumber(row.totalCopies))}</td>
                     <td class="text-end">${escapeHtml(formatNullableNumber(row.totalScans))}</td>
                     <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.totalConsumption))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.includedOperations))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.excessQuantity))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatMetric(row.unitExcessCost || 0, "currency"))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatMetric(row.excessTotal || 0, "currency"))}</strong></td>
                     <td class="text-end">${escapeHtml(formatNullableNumber(row.equipmentWithConsumption))}</td>
+                    <td>${escapeHtml(row.assignmentModeLabel || row.validationSummary || "")}</td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="5" class="dashboard-table__empty">No hay datos para el periodo seleccionado.</td></tr>';
+            : '<tr><td colspan="11" class="dashboard-table__empty">No hay datos para el periodo seleccionado.</td></tr>';
     }
 
     function renderCopiersCountersEquipmentTable(dashboard) {
@@ -5088,6 +5099,8 @@
                 <tr>
                     <td>${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td>${escapeHtml(row.equipmentName || "Sin equipo")}</td>
+                    <td>${renderCopiersCounterAssignmentBadge(row)}</td>
+                    <td>${escapeHtml(row.isBackup ? "Backup" : (row.productLineName || ""))}</td>
                     <td>${escapeHtml(row.site || "")}</td>
                     <td>${escapeHtml(row.area || "")}</td>
                     <td>${escapeHtml(row.previousDateDisplay || "—")}</td>
@@ -5100,9 +5113,21 @@
                     <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.scansConsumption))}</strong></td>
                     <td class="text-end">${escapeHtml(formatNullableNumber(row.daysBetweenReadings))}</td>
                     <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.totalConsumption))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatNullableNumber(row.includedOperations))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatNullableNumber(row.excessQuantity))}</strong></td>
+                    <td class="text-end">${escapeHtml(formatMetric(row.unitExcessCost || 0, "currency"))}</td>
+                    <td class="text-end"><strong>${escapeHtml(formatMetric(row.excessTotal || 0, "currency"))}</strong></td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="14" class="dashboard-table__empty">No hay equipos con lecturas para el periodo seleccionado.</td></tr>';
+            : '<tr><td colspan="20" class="dashboard-table__empty">No hay equipos con lecturas para el periodo seleccionado.</td></tr>';
+    }
+
+    function renderCopiersCounterAssignmentBadge(row) {
+        const status = row?.assignmentStatus || "Sin clasificar";
+        const tone = row?.isBackup
+            ? "info"
+            : (status.toLowerCase().includes("sin") ? "warning" : "success");
+        return `<span class="dashboard-status-pill dashboard-status-pill--${tone}">${escapeHtml(status)}</span>`;
     }
 
     function renderCopiersCountersDashboard(dashboard) {
@@ -7737,6 +7762,18 @@
         const url = buildCopiersCountersPdfUrl();
         if (!url) {
             setStatus(copiersStatusBanner, "error", "No hay una URL configurada para exportar el PDF de contadores.");
+            return;
+        }
+
+        const blockers = Array.isArray(state.copiersCountersDashboard?.exportBlockers)
+            ? state.copiersCountersDashboard.exportBlockers
+            : [];
+        if (blockers.length || state.copiersCountersDashboard?.canExport === false) {
+            const message = blockers.length
+                ? blockers.map(item => item.message || "Pendiente sin detalle.").filter(Boolean).join("\n")
+                : "Hay pendientes por solucionar antes de exportar.";
+            window.alert(`Antes de exportar debes corregir:\n\n${message}`);
+            setStatus(copiersStatusBanner, "warning", "Hay pendientes por solucionar antes de exportar el PDF de contadores.");
             return;
         }
 

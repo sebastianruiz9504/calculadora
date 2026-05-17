@@ -1371,11 +1371,18 @@
         container.innerHTML = lines.map(line => {
             const locked = line.canChangeSelection === false;
             const warnings = Array.isArray(line.warnings) ? line.warnings : [];
-            const predictedAction = line.predictedAction === "skip-renewal"
+            const predictedAction = line.predictedAction === "already-uploaded"
+                ? "Ya enviada"
+                : line.predictedAction === "skip-renewal"
                 ? "Renovacion excluida"
                 : line.predictedAction === "increment"
                     ? `Incremento a ${formatNumber(line.finalQuantity)}`
                     : `Nueva linea con ${formatNumber(line.finalQuantity)}`;
+            const actionClass = line.predictedAction === "create"
+                ? "close-review-chip--success"
+                : line.predictedAction === "already-uploaded"
+                    ? "close-review-chip--warning"
+                    : "close-review-chip--muted";
 
             return `
                 <article class="close-review-item ${warnings.length ? "close-review-item--warning" : ""} ${locked ? "close-review-item--locked" : ""}">
@@ -1384,7 +1391,7 @@
                             <input type="checkbox" class="close-review-toggle" data-line-key="${escapeHtml(line.lineKey || "")}" ${line.selected ? "checked" : ""} ${locked ? "disabled" : ""} />
                             <span>${escapeHtml(line.clientName || "Cliente")} | ${escapeHtml(line.productName || "Producto")}</span>
                         </label>
-                        <span class="close-review-chip ${line.predictedAction === "create" ? "close-review-chip--success" : "close-review-chip--muted"}">${escapeHtml(predictedAction)}</span>
+                        <span class="close-review-chip ${actionClass}">${escapeHtml(predictedAction)}</span>
                     </div>
                     <div class="close-review-item__meta">
                         <span class="close-review-chip">Cantidad: ${escapeHtml(formatNumber(line.quantity))}</span>

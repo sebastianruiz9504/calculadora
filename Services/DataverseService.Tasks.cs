@@ -64,6 +64,7 @@ public sealed partial class DataverseService
     private string _tasksPortfolioAssigneeEmails = "adaza@digitaltechcolombia.com;sruiz@digitaltechcolombia.com";
     private string _tasksHardwarePaymentAssigneeEmail = "cartera@digitaltechcolombia.com";
     private string _tasksHardwareInvoiceAssigneeEmail = "";
+    private string _tasksCopiersInventoryAssigneeEmail = "lrivera@digitaltechcopiers.com";
 
     public async Task<TaskSyncResultDto> SyncAutomaticTasksAsync(CancellationToken ct = default)
     {
@@ -82,6 +83,7 @@ public sealed partial class DataverseService
         await AddTaskRulesSafelyAsync("Nomina", () => BuildPayrollTaskRulesAsync(user, ct), rules, warnings);
         await AddTaskRulesSafelyAsync("Cuentas de cobro", () => BuildCuentasCobroTaskRulesAsync(user, ct), rules, warnings);
         await AddTaskRulesSafelyAsync("Cartera", () => BuildPortfolioTaskRulesAsync(user, ct), rules, warnings);
+        await AddTaskRulesSafelyAsync("Copiers inventario", () => BuildCopiersInventoryTaskRulesAsync(user, ct), rules, warnings);
 
         var result = new TaskSyncResultDto { Warnings = warnings };
         foreach (var rule in rules)
@@ -509,6 +511,74 @@ public sealed partial class DataverseService
                 DueDate = row.DueDateDisplay,
                 Value = row.TotalInvoice
             }).ToList()
+        }).ToList();
+    }
+
+    private async Task<IReadOnlyList<TaskRuleDefinition>> BuildCopiersInventoryTaskRulesAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        var today = GetBogotaToday();
+        var copiersMetadata = await ResolveRhEntityMetadataAsync(
+            _dashboardCopiersTableLogicalName,
+            _dashboardCopiersTableSetName,
+            _dashboardCopiersIdField,
+            _dashboardCopiersPrimaryNameField,
+            user,
+            ct);
+        var equipmentMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            user,
+            ct);
+
+        var contractRows = await GetCopiersRecordsAsync(copiersMetadata, user, ct);
+        var equipmentRows = await GetEquipmentRecordsAsync(equipmentMetadata, user, ct);
+        var clientRefs = BuildCopiersCountersClientRefs(equipmentRows, contractRows);
+        var assignmentRows = await TryLoadCopiersLineEquipmentAssignmentRecordsByClientsAsync(
+            clientRefs.Select(static row => row.ClientId),
+            user,
+            ct);
+        var assignee = await ResolveTaskAssigneeByEmailAsync(_tasksCopiersInventoryAssigneeEmail, user, ct);
+
+        return clientRefs.Select(client =>
+        {
+            var analysis = BuildCopiersContractAnalysis(
+                client.ClientId,
+                client.ClientName,
+                contractRows,
+                equipmentRows,
+                assignmentRows);
+            var issues = analysis.Issues.ToList();
+            var pendingCount = issues.Count;
+            var issueText = pendingCount == 0
+                ? "El inventario Copiers esta alineado con Productos Copiers y backups."
+                : string.Join(" ", issues.Take(8).Select(static issue => issue.Message));
+
+            return new TaskRuleDefinition
+            {
+                UniqueKey = $"copiers:inventario:{BuildDashboardGroupKey(client.ClientId, client.ClientName)}",
+                Title = $"Inventario Copiers desfasado - {FirstNonEmpty(analysis.ClientName, client.ClientName, "Cliente")}",
+                Module = "Copiers",
+                TaskType = "Inventario desfasado",
+                SourceId = client.ClientId,
+                AssigneeId = assignee.Id,
+                AssigneeEmail = assignee.Email,
+                AssigneeName = assignee.Name,
+                DueDate = today.AddDays(3),
+                Description = issueText,
+                ActionUrl = "/Copiers",
+                PeriodKey = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                PendingCount = pendingCount,
+                ShouldBeOpen = pendingCount > 0,
+                NotificationRows = issues.Select(issue => new TaskNotificationTableRow
+                {
+                    Reference = "Inventario Copiers",
+                    Client = FirstNonEmpty(analysis.ClientName, client.ClientName, "Cliente"),
+                    Detail = issue.Message,
+                    DueDate = today.AddDays(3).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+                }).ToList()
+            };
         }).ToList();
     }
 

@@ -11,11 +11,13 @@
         downloadMaintenance: app.dataset.downloadMaintenanceUrl || "",
         preventiveMaintenance: app.dataset.preventiveMaintenanceUrl || "",
         schedulePreventiveMaintenance: app.dataset.schedulePreventiveMaintenanceUrl || "",
+        calendarConsent: app.dataset.calendarConsentUrl || "",
         saveCounter: app.dataset.saveCounterUrl || "",
         uploadCounter: app.dataset.uploadCounterUrl || "",
         equipment: app.dataset.equipmentUrl || "",
         equipmentDetail: app.dataset.equipmentDetailUrl || "",
         equipmentInventory: app.dataset.equipmentInventoryUrl || "",
+        equipmentBackupAssignment: app.dataset.equipmentBackupAssignmentUrl || "",
         equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
         saveEquipment: app.dataset.saveEquipmentUrl || "",
         registerEquipmentMovement: app.dataset.registerEquipmentMovementUrl || "",
@@ -142,6 +144,7 @@
     const inventoryCount = document.getElementById("copiersInventoryCount");
     const inventoryMissing = document.getElementById("copiersInventoryMissing");
     const inventoryKpis = document.getElementById("copiersInventoryKpis");
+    const inventoryContractLines = document.getElementById("copiersInventoryContractLines");
     const inventoryLocations = document.getElementById("copiersInventoryLocations");
     const inventoryBody = document.getElementById("copiersInventoryBody");
     const inventoryEmpty = document.getElementById("copiersInventoryEmpty");
@@ -418,6 +421,16 @@
     inventoryBody?.addEventListener("click", async (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement) || target.closest("a")) {
+            return;
+        }
+
+        const backupButton = target.closest("[data-inventory-backup-toggle]");
+        if (backupButton instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            await saveEquipmentBackupAssignment(
+                backupButton.dataset.equipmentId || "",
+                backupButton.dataset.isBackup !== "true");
             return;
         }
 
@@ -819,7 +832,7 @@
             await loadPreventiveMaintenance();
             showStatus(statusBanner, "success", result.message || "Mantenimiento preventivo programado.");
         } catch (error) {
-            showStatus(preventiveScheduleStatus, "error", getErrorMessage(error));
+            showScheduleError(error);
         } finally {
             preventiveScheduleSaveBtn.disabled = false;
             state.scheduleSaving = false;
@@ -990,6 +1003,8 @@
         const inventory = state.equipmentInventory || null;
         const records = Array.isArray(inventory?.records) ? inventory.records : [];
         const kpis = Array.isArray(inventory?.kpis) ? inventory.kpis : [];
+        const contractLines = Array.isArray(inventory?.contractLines) ? inventory.contractLines : [];
+        const issues = Array.isArray(inventory?.issues) ? inventory.issues : [];
 
         inventoryCount.textContent = `${records.length} equipo${records.length === 1 ? "" : "s"}`;
         inventoryEmpty.hidden = Boolean(inventory) && records.length > 0;
@@ -997,7 +1012,11 @@
             ? "No hay equipos registrados para este cliente."
             : "Selecciona un cliente para consultar sus equipos.";
 
-        clearStatus(inventoryMissing);
+        if (issues.length) {
+            showStatus(inventoryMissing, "warning", issues.map(issue => issue.message).join(" "));
+        } else {
+            clearStatus(inventoryMissing);
+        }
 
         inventoryKpis.innerHTML = kpis.map((kpi) => `
             <article class="copiers-kpi">
@@ -1005,6 +1024,30 @@
                 <strong>${numberFormatter.format(Number(kpi.value || 0))}</strong>
                 <small>${escapeHtml(kpi.secondaryLabel || "")}: ${escapeHtml(kpi.secondaryValue || "")}</small>
             </article>`).join("");
+
+        if (inventoryContractLines) {
+            inventoryContractLines.innerHTML = contractLines.length ? contractLines.map(line => `
+                <article class="copiers-contract-line">
+                    <div>
+                        <span>${escapeHtml(line.billingDayDisplay || "Sin dia")}</span>
+                        <strong>${escapeHtml(line.productName || "Producto Copiers")}</strong>
+                        <small>${escapeHtml(line.assignmentSummary || "")}</small>
+                    </div>
+                    <dl>
+                        <div>
+                            <dt>Cantidad</dt>
+                            <dd>${numberFormatter.format(Number(line.quantity || 0))}</dd>
+                        </div>
+                        <div>
+                            <dt>Operaciones incl.</dt>
+                            <dd>${numberFormatter.format(Number(line.includedOperations || 0))}</dd>
+                        </div>
+                    </dl>
+                </article>
+            `).join("") : (inventory ? `
+                <div class="copiers-empty copiers-empty--inline">No hay lineas contratadas en Productos Copiers para este cliente.</div>
+            ` : "");
+        }
 
         inventoryLocations.innerHTML = inventory ? `
             <article class="copiers-location-card copiers-location-card--client is-selectable" data-inventory-client-id="${escapeHtml(inventory.clientId || "")}" tabindex="0">
@@ -1024,10 +1067,64 @@
                 <td data-label="No.">${numberFormatter.format(Number(row.lineNumber || 0))}</td>
                 <td data-label="Serial de maquina">${escapeHtml(row.serial || "")}</td>
                 <td data-label="Empresa">${escapeHtml(row.company || "")}</td>
+                <td data-label="Clasificacion">${renderInventoryAssignmentBadge(row)}</td>
+                <td data-label="Producto contratado">${escapeHtml(row.contractLineName || "")}${row.billingDayDisplay ? `<small class="copiers-table-note">${escapeHtml(row.billingDayDisplay)}</small>` : ""}</td>
+                <td data-label="Operaciones incl." class="text-end">${row.includedOperations ? numberFormatter.format(Number(row.includedOperations || 0)) : ""}</td>
                 <td data-label="Area">${escapeHtml(row.area || "")}</td>
                 <td data-label="Sede">${escapeHtml(row.site || "")}</td>
                 <td data-label="Observaciones">${escapeHtml(row.observations || "")}</td>
-            </tr>`).join("") : `<tr><td colspan="6" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+                <td data-label="Backup" class="text-end">
+                    <button type="button"
+                            class="btn btn-sm ${row.isBackup ? "btn-outline-secondary" : "btn-outline-primary"} copiers-backup-btn"
+                            data-inventory-backup-toggle
+                            data-equipment-id="${escapeHtml(row.recordId || "")}"
+                            data-is-backup="${row.isBackup ? "true" : "false"}">
+                        ${row.isBackup ? "Quitar" : "Marcar"}
+                    </button>
+                </td>
+            </tr>`).join("") : `<tr><td colspan="10" class="text-center copiers-muted">No hay equipos para mostrar.</td></tr>`;
+    }
+
+    function renderInventoryAssignmentBadge(row) {
+        const status = row?.assignmentStatus || "Sin clasificar";
+        const tone = row?.isBackup
+            ? "is-info"
+            : (status.toLowerCase().includes("sin") ? "is-warning" : "is-success");
+        return `<span class="copiers-badge ${tone}">${escapeHtml(status)}</span>`;
+    }
+
+    async function saveEquipmentBackupAssignment(equipmentId, isBackup) {
+        if (!equipmentId || !urls.equipmentBackupAssignment) {
+            showStatus(statusBanner, "error", "No hay una URL configurada para actualizar backups.");
+            return;
+        }
+
+        const inventory = state.equipmentInventory || {};
+        const clientId = inventory.clientId || inventoryClientIdInput.value || "";
+        const clientName = inventory.clientName || inventoryClientNameInput.value || "";
+        try {
+            setBusy(true);
+            showStatus(statusBanner, "info", isBackup ? "Marcando equipo como backup..." : "Quitando equipo de backups...");
+            const result = await fetchJson(urls.equipmentBackupAssignment, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    clientId,
+                    clientName,
+                    equipmentId,
+                    isBackup
+                })
+            });
+            state.equipmentInventory = result.inventory || state.equipmentInventory;
+            renderEquipmentInventory();
+            showStatus(statusBanner, "success", result.message || "Clasificacion de backup actualizada.");
+        } catch (error) {
+            showStatus(statusBanner, "error", getErrorMessage(error));
+        } finally {
+            setBusy(false);
+        }
     }
 
     function clearEquipmentInventory() {
@@ -1917,6 +2014,27 @@
 
         element.textContent = message || "";
         element.className = `copiers-status is-visible ${tone ? "is-" + tone : ""}`;
+    }
+
+    function showScheduleError(error) {
+        const payload = error?.payload || {};
+        if (payload.action !== "calendarConsentRequired") {
+            showStatus(preventiveScheduleStatus, "error", getErrorMessage(error));
+            return;
+        }
+
+        showStatus(preventiveScheduleStatus, "error", payload.message || getErrorMessage(error));
+        const consentUrl = payload.consentUrl || urls.calendarConsent;
+        if (!consentUrl || !preventiveScheduleStatus) {
+            return;
+        }
+
+        const link = document.createElement("a");
+        link.className = "copiers-link";
+        link.href = consentUrl;
+        link.textContent = "Autorizar calendario";
+        preventiveScheduleStatus.appendChild(document.createTextNode(" "));
+        preventiveScheduleStatus.appendChild(link);
     }
 
     function clearStatus(element) {

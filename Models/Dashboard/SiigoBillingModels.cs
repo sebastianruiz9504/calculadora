@@ -43,6 +43,10 @@ public sealed class SiigoInvoiceRowDto
     public decimal Total { get; set; }
     public decimal Balance { get; set; }
     public string StampStatus { get; set; } = "";
+    public string StampObservations { get; set; } = "";
+    public string StampErrors { get; set; } = "";
+    public string MailStatus { get; set; } = "";
+    public string MailObservations { get; set; } = "";
     public bool Annulled { get; set; }
 }
 

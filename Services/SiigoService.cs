@@ -565,6 +565,10 @@ public sealed class SiigoService : ISiigoService
             Total = invoice.Total,
             Balance = invoice.Balance,
             StampStatus = invoice.Stamp?.Status?.Trim() ?? "",
+            StampObservations = invoice.Stamp?.Observations?.Trim() ?? "",
+            StampErrors = invoice.Stamp?.Errors?.Trim() ?? "",
+            MailStatus = invoice.Mail?.Status?.Trim() ?? "",
+            MailObservations = invoice.Mail?.Observations?.Trim() ?? "",
             Annulled = invoice.Annulled
         };
     }
@@ -777,6 +781,9 @@ public sealed class SiigoService : ISiigoService
         [JsonPropertyName("stamp")]
         public SiigoInvoiceStampApiDto? Stamp { get; set; }
 
+        [JsonPropertyName("mail")]
+        public SiigoInvoiceMailApiDto? Mail { get; set; }
+
         [JsonPropertyName("annulled")]
         public bool Annulled { get; set; }
     }
@@ -794,6 +801,21 @@ public sealed class SiigoService : ISiigoService
     {
         [JsonPropertyName("status")]
         public string Status { get; set; } = "";
+
+        [JsonPropertyName("observations")]
+        public string Observations { get; set; } = "";
+
+        [JsonPropertyName("errors")]
+        public string Errors { get; set; } = "";
+    }
+
+    private sealed class SiigoInvoiceMailApiDto
+    {
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = "";
+
+        [JsonPropertyName("observations")]
+        public string Observations { get; set; } = "";
     }
 
     private sealed class SiigoPdfResponseApiDto

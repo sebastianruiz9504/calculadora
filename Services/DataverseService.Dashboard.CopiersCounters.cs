@@ -50,12 +50,27 @@ public sealed partial class DataverseService
             DashboardEquipmentPrimaryNameField,
             httpContext.User,
             ct);
+        var copiersProductMetadata = await ResolveRhEntityMetadataAsync(
+            _dashboardCopiersTableLogicalName,
+            _dashboardCopiersTableSetName,
+            _dashboardCopiersIdField,
+            _dashboardCopiersPrimaryNameField,
+            httpContext.User,
+            ct);
         var allEquipmentRows = await GetEquipmentRecordsAsync(equipmentMetadata, httpContext.User, ct);
+        var allContractRows = await GetCopiersRecordsAsync(copiersProductMetadata, httpContext.User, ct);
         var clientOptions = BuildCopiersCountersClientOptions(allEquipmentRows);
         var equipmentRows = allEquipmentRows;
+        var contractRows = allContractRows;
         if (!string.IsNullOrWhiteSpace(selectedClientId))
         {
             equipmentRows = equipmentRows
+                .Where(row => string.Equals(
+                    NormalizeOptionalGuid(row.ClientId),
+                    selectedClientId,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            contractRows = contractRows
                 .Where(row => string.Equals(
                     NormalizeOptionalGuid(row.ClientId),
                     selectedClientId,
@@ -66,6 +81,9 @@ public sealed partial class DataverseService
         {
             var comparableClientName = NormalizeCopiersComparableValue(selectedClientName);
             equipmentRows = equipmentRows
+                .Where(row => NormalizeCopiersComparableValue(row.ClientName).Contains(comparableClientName, StringComparison.Ordinal))
+                .ToList();
+            contractRows = contractRows
                 .Where(row => NormalizeCopiersComparableValue(row.ClientName).Contains(comparableClientName, StringComparison.Ordinal))
                 .ToList();
         }
@@ -130,7 +148,8 @@ public sealed partial class DataverseService
                     PreviousScansCounter = previous.Scans,
                     ScansConsumption = scansConsumption,
                     DaysBetweenReadings = daysBetweenReadings,
-                    TotalConsumption = (copiesConsumption ?? 0) + (scansConsumption ?? 0)
+                    TotalConsumption = (copiesConsumption ?? 0) + (scansConsumption ?? 0),
+                    HasCurrentCounter = actual.Date.HasValue
                 };
             }
             finally
@@ -143,10 +162,20 @@ public sealed partial class DataverseService
             .OrderBy(static row => row.ClientName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static row => row.EquipmentName, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var clientSummaries = BuildCopiersCountersClientSummaries(rows);
+        var periodLabel = ToTitleCase(periodStart.ToString("MMMM yyyy", DashboardCulture));
+        var assignmentRows = await TryLoadCopiersLineEquipmentAssignmentRecordsByClientsAsync(
+            equipmentRows.Select(static row => row.ClientId).Concat(contractRows.Select(static row => row.ClientId)),
+            httpContext.User,
+            ct);
+        var contractContext = BuildCopiersCountersContractContext(
+            rows,
+            equipmentRows,
+            contractRows,
+            assignmentRows,
+            periodLabel);
+        var clientSummaries = contractContext.ClientSummaries;
         var totalCopies = rows.Sum(static row => row.CopiesConsumption ?? 0);
         var totalScans = rows.Sum(static row => row.ScansConsumption ?? 0);
-        var periodLabel = ToTitleCase(periodStart.ToString("MMMM yyyy", DashboardCulture));
 
         return new CopiersCountersDashboardDto
         {
@@ -160,13 +189,15 @@ public sealed partial class DataverseService
             SelectedClientId = selectedClientId,
             SelectedClientName = selectedClientName,
             HasData = rows.Count > 0,
+            CanExport = rows.Count > 0 && contractContext.ExportBlockers.Count == 0,
             RecordsCount = rows.Count,
             EmptyStateTitle = "No encontramos equipos para el filtro seleccionado.",
             EmptyStateMessage = "Cambia el cliente o el periodo para consultar otros consumos.",
-            Kpis = BuildCopiersCountersKpis(rows, totalCopies, totalScans),
+            Kpis = BuildCopiersCountersKpis(rows, totalCopies, totalScans, clientSummaries.Sum(static row => row.ExcessTotal)),
             Clients = clientOptions,
             ClientSummaries = clientSummaries,
-            EquipmentRows = rows
+            EquipmentRows = rows,
+            ExportBlockers = contractContext.ExportBlockers
         };
     }
 
@@ -340,38 +371,288 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private static IReadOnlyList<CopiersCountersClientSummaryDto> BuildCopiersCountersClientSummaries(
-        IReadOnlyList<CopiersCountersEquipmentRowDto> rows)
+    private CopiersCountersContractContext BuildCopiersCountersContractContext(
+        IReadOnlyList<CopiersCountersEquipmentRowDto> counterRows,
+        IReadOnlyList<CopiersEquipmentRecordRow> equipmentRows,
+        IReadOnlyList<CopiersBillingRecordRow> contractRows,
+        IReadOnlyList<CopiersLineEquipmentAssignmentRecordRow> assignmentRows,
+        string periodLabel)
     {
-        return rows
-            .GroupBy(row => new
+        var blockers = new List<CopiersCountersExportBlockerDto>();
+        var summaries = new List<CopiersCountersClientSummaryDto>();
+        var clientRefs = BuildCopiersCountersClientRefs(equipmentRows, contractRows);
+
+        foreach (var clientRef in clientRefs)
+        {
+            var analysis = BuildCopiersContractAnalysis(
+                clientRef.ClientId,
+                clientRef.ClientName,
+                contractRows,
+                equipmentRows,
+                assignmentRows);
+            var clientRows = counterRows
+                .Where(row => CopiersCounterRowClientMatches(row, clientRef.ClientId, clientRef.ClientName))
+                .ToList();
+
+            foreach (var issue in analysis.Issues)
             {
-                row.ClientId,
-                ClientName = FirstNonEmpty(row.ClientName, "Sin cliente")
-            })
-            .Select(group =>
-            {
-                var totalCopies = group.Sum(static row => row.CopiesConsumption ?? 0);
-                var totalScans = group.Sum(static row => row.ScansConsumption ?? 0);
-                return new CopiersCountersClientSummaryDto
+                blockers.Add(new CopiersCountersExportBlockerDto
                 {
-                    ClientId = group.Key.ClientId,
-                    ClientName = group.Key.ClientName,
+                    Code = issue.Code,
+                    ClientId = analysis.ClientId,
+                    ClientName = analysis.ClientName,
+                    Message = issue.Message,
+                    Severity = issue.Severity
+                });
+            }
+
+            ApplyCopiersCountersEquipmentContractInfo(clientRows, analysis);
+            AddCopiersCountersMissingCounterBlockers(blockers, clientRows, analysis, periodLabel);
+
+            foreach (var group in analysis.Groups)
+            {
+                var groupRows = clientRows
+                    .Where(row => row.BillingDay == group.BillingDay)
+                    .ToList();
+                var summary = BuildCopiersCountersGroupSummary(group, groupRows, blockers, periodLabel);
+                summaries.Add(summary);
+            }
+
+            if (analysis.Groups.Count == 0 && clientRows.Count > 0)
+            {
+                var totalCopies = clientRows.Sum(static row => row.CopiesConsumption ?? 0);
+                var totalScans = clientRows.Sum(static row => row.ScansConsumption ?? 0);
+                summaries.Add(new CopiersCountersClientSummaryDto
+                {
+                    GroupId = BuildCopiersContractGroupId(analysis.ClientId, analysis.ClientName, 0),
+                    ClientId = analysis.ClientId,
+                    ClientName = analysis.ClientName,
+                    BillingDayDisplay = "Sin contrato",
                     TotalCopies = totalCopies,
                     TotalScans = totalScans,
                     TotalConsumption = totalCopies + totalScans,
-                    EquipmentWithConsumption = group.Count(static row =>
-                        (row.CopiesConsumption ?? 0) > 0 || (row.ScansConsumption ?? 0) > 0)
-                };
-            })
-            .OrderBy(static row => row.ClientName, StringComparer.OrdinalIgnoreCase)
+                    EquipmentWithConsumption = clientRows.Count(static row => row.TotalConsumption > 0),
+                    ValidationSummary = "Sin lineas contratadas"
+                });
+            }
+        }
+
+        return new CopiersCountersContractContext
+        {
+            ClientSummaries = summaries
+                .OrderBy(static row => row.BillingDay is >= 1 and <= 31 ? row.BillingDay : int.MaxValue)
+                .ThenBy(static row => row.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            ExportBlockers = blockers
+                .Where(static blocker => !string.IsNullOrWhiteSpace(blocker.Message))
+                .GroupBy(static blocker => $"{blocker.Code}|{blocker.ClientId}|{blocker.BillingDay}|{blocker.EquipmentId}|{blocker.Message}", StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.First())
+                .OrderBy(static blocker => blocker.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static blocker => blocker.BillingDay is >= 1 and <= 31 ? blocker.BillingDay : int.MaxValue)
+                .ThenBy(static blocker => blocker.Message, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        };
+    }
+
+    private static IReadOnlyList<CopiersCountersClientRef> BuildCopiersCountersClientRefs(
+        IReadOnlyList<CopiersEquipmentRecordRow> equipmentRows,
+        IReadOnlyList<CopiersBillingRecordRow> contractRows)
+    {
+        return equipmentRows
+            .Select(row => new CopiersCountersClientRef(
+                NormalizeOptionalGuid(row.ClientId),
+                FirstNonEmpty(row.ClientName, "Sin cliente")))
+            .Concat(contractRows.Select(row => new CopiersCountersClientRef(
+                NormalizeOptionalGuid(row.ClientId),
+                FirstNonEmpty(row.ClientName, "Sin cliente"))))
+            .Where(static row => !string.IsNullOrWhiteSpace(row.ClientId) || !string.IsNullOrWhiteSpace(row.ClientName))
+            .GroupBy(static row => BuildDashboardGroupKey(row.ClientId, row.ClientName), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => new CopiersCountersClientRef(
+                group.Select(static row => row.ClientId).FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? "",
+                group.Select(static row => row.ClientName).FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? "Sin cliente"))
             .ToList();
+    }
+
+    private static bool CopiersCounterRowClientMatches(CopiersCountersEquipmentRowDto row, string clientId, string clientName)
+    {
+        var rowClientId = NormalizeOptionalGuid(row.ClientId);
+        var normalizedClientId = NormalizeOptionalGuid(clientId);
+        if (!string.IsNullOrWhiteSpace(normalizedClientId)
+            && !string.IsNullOrWhiteSpace(rowClientId)
+            && string.Equals(rowClientId, normalizedClientId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var rowClientName = NormalizeCopiersComparableValue(row.ClientName);
+        var normalizedClientName = NormalizeCopiersComparableValue(clientName);
+        return !string.IsNullOrWhiteSpace(rowClientName)
+            && !string.IsNullOrWhiteSpace(normalizedClientName)
+            && string.Equals(rowClientName, normalizedClientName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ApplyCopiersCountersEquipmentContractInfo(
+        IReadOnlyList<CopiersCountersEquipmentRowDto> rows,
+        CopiersContractAnalysis analysis)
+    {
+        var lineByEquipment = analysis.ContractLines
+            .SelectMany(line => line.AssignedEquipmentIds.Select(equipmentId => new { equipmentId, line }))
+            .GroupBy(item => item.equipmentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().line, StringComparer.OrdinalIgnoreCase);
+        var groupByLineId = analysis.Groups
+            .SelectMany(group => group.Lines.Select(line => new { line.LineId, group }))
+            .GroupBy(item => item.LineId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().group, StringComparer.OrdinalIgnoreCase);
+        var fallbackGroup = analysis.Groups.Count == 1 ? analysis.Groups[0] : null;
+
+        foreach (var row in rows)
+        {
+            if (analysis.BackupEquipmentIds.Contains(row.EquipmentId))
+            {
+                row.IsBackup = true;
+                row.AssignmentStatus = "Backup";
+                ApplyCopiersCountersGroupToEquipmentRow(row, fallbackGroup);
+                continue;
+            }
+
+            if (lineByEquipment.TryGetValue(row.EquipmentId, out var line))
+            {
+                row.ProductLineId = line.LineId;
+                row.ProductLineName = line.ProductName;
+                row.AssignmentStatus = "Linea contratada";
+                row.IncludedOperations = line.IncludedOperations;
+                row.UnitExcessCost = line.AdditionalOperation;
+                ApplyCopiersCountersGroupToEquipmentRow(
+                    row,
+                    groupByLineId.TryGetValue(line.LineId, out var group) ? group : fallbackGroup);
+                continue;
+            }
+
+            row.AssignmentStatus = "Sin clasificar";
+            ApplyCopiersCountersGroupToEquipmentRow(row, fallbackGroup);
+        }
+    }
+
+    private static void ApplyCopiersCountersGroupToEquipmentRow(
+        CopiersCountersEquipmentRowDto row,
+        CopiersContractGroupAnalysis? group)
+    {
+        if (group is null)
+            return;
+
+        row.BillingDay = group.BillingDay;
+        row.BillingDayDisplay = group.BillingDayDisplay;
+        if (row.UnitExcessCost <= 0m)
+            row.UnitExcessCost = group.UnitExcessCost;
+    }
+
+    private static void AddCopiersCountersMissingCounterBlockers(
+        List<CopiersCountersExportBlockerDto> blockers,
+        IReadOnlyList<CopiersCountersEquipmentRowDto> clientRows,
+        CopiersContractAnalysis analysis,
+        string periodLabel)
+    {
+        foreach (var group in analysis.Groups)
+        {
+            var missing = clientRows
+                .Where(row => row.BillingDay == group.BillingDay)
+                .Where(static row => !row.HasCurrentCounter)
+                .ToList();
+            if (missing.Count == 0)
+                continue;
+
+            blockers.Add(new CopiersCountersExportBlockerDto
+            {
+                Code = "missing-current-counter",
+                ClientId = group.ClientId,
+                ClientName = group.ClientName,
+                BillingDay = group.BillingDay,
+                BillingDayDisplay = group.BillingDayDisplay,
+                Message = $"{FirstNonEmpty(group.ClientName, "Cliente")} {group.BillingDayDisplay} tiene {missing.Count.ToString("N0", DashboardCulture)} equipo(s) sin contador registrado en {periodLabel}."
+            });
+        }
+    }
+
+    private CopiersCountersClientSummaryDto BuildCopiersCountersGroupSummary(
+        CopiersContractGroupAnalysis group,
+        IReadOnlyList<CopiersCountersEquipmentRowDto> groupRows,
+        List<CopiersCountersExportBlockerDto> blockers,
+        string periodLabel)
+    {
+        var totalCopies = groupRows.Sum(static row => row.CopiesConsumption ?? 0);
+        var totalScans = groupRows.Sum(static row => row.ScansConsumption ?? 0);
+        var totalConsumption = totalCopies + totalScans;
+        long excessQuantity;
+        decimal excessTotal;
+
+        if (group.GroupIncludedOperations)
+        {
+            excessQuantity = Math.Max(totalConsumption - (long)Math.Round(group.IncludedOperationsTotal, MidpointRounding.AwayFromZero), 0);
+            excessTotal = RoundCurrency(excessQuantity * group.UnitExcessCost);
+        }
+        else
+        {
+            ApplyCopiersCountersPerEquipmentExcess(groupRows, group);
+            excessQuantity = groupRows.Sum(static row => row.ExcessQuantity);
+            excessTotal = RoundCurrency(groupRows.Sum(static row => row.ExcessTotal));
+        }
+
+        if (excessQuantity > 0 && group.UnitExcessCost <= 0m)
+        {
+            blockers.Add(new CopiersCountersExportBlockerDto
+            {
+                Code = "missing-additional-cost",
+                ClientId = group.ClientId,
+                ClientName = group.ClientName,
+                BillingDay = group.BillingDay,
+                BillingDayDisplay = group.BillingDayDisplay,
+                Message = $"{FirstNonEmpty(group.ClientName, "Cliente")} {group.BillingDayDisplay} tiene excedentes en {periodLabel}, pero no tiene costo unitario de excedente configurado."
+            });
+        }
+
+        return new CopiersCountersClientSummaryDto
+        {
+            GroupId = group.GroupId,
+            ClientId = group.ClientId,
+            ClientName = group.ClientName,
+            BillingDay = group.BillingDay,
+            BillingDayDisplay = group.BillingDayDisplay,
+            TotalCopies = totalCopies,
+            TotalScans = totalScans,
+            TotalConsumption = totalConsumption,
+            IncludedOperations = group.IncludedOperationsTotal,
+            UnitExcessCost = group.UnitExcessCost,
+            ExcessQuantity = excessQuantity,
+            ExcessTotal = excessTotal,
+            EquipmentWithConsumption = groupRows.Count(static row => row.TotalConsumption > 0),
+            AssignmentModeLabel = group.AssignmentModeLabel,
+            ValidationSummary = groupRows.Any(static row => string.Equals(row.AssignmentStatus, "Sin clasificar", StringComparison.OrdinalIgnoreCase))
+                ? "Pendiente por clasificar"
+                : "Listo"
+        };
+    }
+
+    private static void ApplyCopiersCountersPerEquipmentExcess(
+        IReadOnlyList<CopiersCountersEquipmentRowDto> groupRows,
+        CopiersContractGroupAnalysis group)
+    {
+        foreach (var row in groupRows)
+        {
+            var included = row.IsBackup || string.IsNullOrWhiteSpace(row.ProductLineId)
+                ? 0m
+                : row.IncludedOperations;
+            var unitCost = row.UnitExcessCost > 0m ? row.UnitExcessCost : group.UnitExcessCost;
+            row.ExcessQuantity = Math.Max(row.TotalConsumption - (long)Math.Round(included, MidpointRounding.AwayFromZero), 0);
+            row.ExcessTotal = RoundCurrency(row.ExcessQuantity * unitCost);
+            row.UnitExcessCost = unitCost;
+        }
     }
 
     private static IReadOnlyList<PortfolioKpiDto> BuildCopiersCountersKpis(
         IReadOnlyList<CopiersCountersEquipmentRowDto> rows,
         long totalCopies,
-        long totalScans)
+        long totalScans,
+        decimal excessTotal)
     {
         return new[]
         {
@@ -404,6 +685,17 @@ public sealed partial class DataverseService
                 ValueFormat = "number",
                 SecondaryLabel = "Equipos consultados",
                 SecondaryValue = rows.Count.ToString("N0", DashboardCulture)
+            },
+            new PortfolioKpiDto
+            {
+                Key = "counter-excess",
+                Label = "Excedentes",
+                Hint = "Valor total calculado por operaciones adicionales sobre lo contratado.",
+                Value = excessTotal,
+                ValueFormat = "currency",
+                SecondaryLabel = "Equipos clasificados",
+                SecondaryValue = rows.Count(static row => !string.IsNullOrWhiteSpace(row.AssignmentStatus)
+                    && !string.Equals(row.AssignmentStatus, "Sin clasificar", StringComparison.OrdinalIgnoreCase)).ToString("N0", DashboardCulture)
             }
         };
     }
@@ -494,5 +786,15 @@ public sealed partial class DataverseService
     private sealed record CopiersCounterReading(DateTime? Date, long? Copies, long? Scans)
     {
         public static CopiersCounterReading Empty { get; } = new(null, null, null);
+    }
+
+    private sealed record CopiersCountersClientRef(string ClientId, string ClientName);
+
+    private sealed class CopiersCountersContractContext
+    {
+        public IReadOnlyList<CopiersCountersClientSummaryDto> ClientSummaries { get; init; } =
+            Array.Empty<CopiersCountersClientSummaryDto>();
+        public IReadOnlyList<CopiersCountersExportBlockerDto> ExportBlockers { get; init; } =
+            Array.Empty<CopiersCountersExportBlockerDto>();
     }
 }

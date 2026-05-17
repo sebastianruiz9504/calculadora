@@ -203,6 +203,7 @@ public sealed class CopiersBillingGroupDto
     public int PendingCountersCount { get; set; }
     public decimal Quantity { get; set; }
     public decimal IncludedOperations { get; set; }
+    public bool GroupIncludedOperations { get; set; } = true;
     public decimal AdditionalOperation { get; set; }
     public decimal TotalWithVat { get; set; }
     public string CounterSummary { get; set; } = "";
@@ -241,6 +242,7 @@ public sealed class CopiersBillingRowDto
     public string ProductName { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal IncludedOperations { get; set; }
+    public bool GroupIncludedOperations { get; set; } = true;
     public decimal AdditionalOperation { get; set; }
     public decimal UnitValueBeforeVat { get; set; }
     public decimal UnitValueWithVat { get; set; }

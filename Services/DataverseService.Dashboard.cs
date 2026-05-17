@@ -838,14 +838,34 @@ public sealed partial class DataverseService
     {
         try
         {
-            return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup: false);
+            return await GetCopiersRecordsCoreWithGroupRetryAsync(metadata, user, ct, preferProductLookup: false);
         }
         catch (InvalidOperationException ex)
         {
             if (!await ShouldRetryCopiersQueryWithProductLookupAsync(ex, user, ct))
                 throw;
 
-            return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup: true);
+            return await GetCopiersRecordsCoreWithGroupRetryAsync(metadata, user, ct, preferProductLookup: true);
+        }
+    }
+
+    private async Task<List<CopiersBillingRecordRow>> GetCopiersRecordsCoreWithGroupRetryAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        bool preferProductLookup)
+    {
+        try
+        {
+            return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup, includeGroupField: true);
+        }
+        catch (InvalidOperationException ex) when (ShouldRetryCopiersQueryWithoutGroupField(ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible leer la columna de agrupacion Copiers {Field}. Se usara agrupacion por defecto.",
+                _dashboardCopiersGroupField);
+            return await GetCopiersRecordsCoreAsync(metadata, user, ct, preferProductLookup, includeGroupField: false);
         }
     }
 
@@ -853,9 +873,10 @@ public sealed partial class DataverseService
         RhEntityMetadata metadata,
         ClaimsPrincipal user,
         CancellationToken ct,
-        bool preferProductLookup)
+        bool preferProductLookup,
+        bool includeGroupField)
     {
-        var select = BuildCopiersSelectClause(metadata, preferProductLookup);
+        var select = BuildCopiersSelectClause(metadata, preferProductLookup, includeGroupField);
 
         var orderBy = Uri.EscapeDataString($"{_dashboardCopiersBillingDayField} asc");
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={orderBy}";
@@ -873,7 +894,7 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private string BuildCopiersSelectClause(RhEntityMetadata metadata, bool preferProductLookup)
+    private string BuildCopiersSelectClause(RhEntityMetadata metadata, bool preferProductLookup, bool includeGroupField = true)
     {
         return string.Join(",", new[]
         {
@@ -886,6 +907,7 @@ public sealed partial class DataverseService
             _dashboardCopiersUnitValueBeforeVatField,
             _dashboardCopiersBillingDayField,
             _dashboardCopiersIncludedOperationsField,
+            includeGroupField ? _dashboardCopiersGroupField : "",
             DashboardCopiersAdditionalOperationField,
             BuildDashboardLookupValuePropertyName(_dashboardCopiersClientField),
             _dashboardCopiersUnitValueWithVatField,
@@ -914,6 +936,15 @@ public sealed partial class DataverseService
         return await IsCopiersLookupFieldAsync(productField, user, ct);
     }
 
+    private bool ShouldRetryCopiersQueryWithoutGroupField(InvalidOperationException exception)
+    {
+        return !string.IsNullOrWhiteSpace(_dashboardCopiersGroupField)
+            && exception.Message.Contains(_dashboardCopiersGroupField, StringComparison.OrdinalIgnoreCase)
+            && (exception.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase)
+                || exception.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+                || exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase));
+    }
+
     private async Task<CopiersBillingRecordRow?> GetCopiersRecordByIdAsync(
         RhEntityMetadata metadata,
         string recordId,
@@ -940,7 +971,29 @@ public sealed partial class DataverseService
         CancellationToken ct,
         bool preferProductLookup)
     {
-        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(recordId, nameof(recordId))})?$select={BuildCopiersSelectClause(metadata, preferProductLookup)}";
+        try
+        {
+            return await GetCopiersRecordByIdCoreAsync(metadata, recordId, user, ct, preferProductLookup, includeGroupField: true);
+        }
+        catch (InvalidOperationException ex) when (ShouldRetryCopiersQueryWithoutGroupField(ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible leer la columna de agrupacion Copiers {Field}. Se usara agrupacion por defecto.",
+                _dashboardCopiersGroupField);
+            return await GetCopiersRecordByIdCoreAsync(metadata, recordId, user, ct, preferProductLookup, includeGroupField: false);
+        }
+    }
+
+    private async Task<CopiersBillingRecordRow?> GetCopiersRecordByIdCoreAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        bool preferProductLookup,
+        bool includeGroupField)
+    {
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(recordId, nameof(recordId))})?$select={BuildCopiersSelectClause(metadata, preferProductLookup, includeGroupField)}";
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         using var doc = JsonDocument.Parse(json);
         return ParseCopiersRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
@@ -977,6 +1030,7 @@ public sealed partial class DataverseService
             ProductName = productName,
             Quantity = RoundCurrency(ReadDecimal(item, _dashboardCopiersQuantityField) ?? 0m),
             IncludedOperations = RoundCurrency(ReadDecimal(item, _dashboardCopiersIncludedOperationsField) ?? 0m),
+            GroupIncludedOperations = ReadCopiersGroupIncludedOperations(item),
             AdditionalOperation = RoundCurrency(ReadDecimal(item, DashboardCopiersAdditionalOperationField) ?? 0m),
             UnitValueBeforeVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersUnitValueBeforeVatField) ?? 0m),
             UnitValueWithVat = RoundCurrency(ReadDecimal(item, _dashboardCopiersUnitValueWithVatField) ?? 0m),
@@ -989,7 +1043,7 @@ public sealed partial class DataverseService
     {
         var totalWithVat = RoundCurrency(rows.Sum(static row => row.TotalWithVat));
         var totalQuantity = RoundCurrency(rows.Sum(static row => row.Quantity));
-        var totalOperations = RoundCurrency(rows.Sum(static row => row.IncludedOperations));
+        var totalOperations = RoundCurrency(rows.Sum(static row => CalculateCopiersLineIncludedOperations(row.Quantity, row.IncludedOperations)));
         var averageUnitWithVat = rows.Count == 0
             ? 0m
             : RoundCurrency(rows.Average(static row => row.UnitValueWithVat));
@@ -1090,6 +1144,7 @@ public sealed partial class DataverseService
                     ProductName = row.ProductName,
                     Quantity = row.Quantity,
                     IncludedOperations = row.IncludedOperations,
+                    GroupIncludedOperations = row.GroupIncludedOperations,
                     AdditionalOperation = row.AdditionalOperation,
                     UnitValueBeforeVat = row.UnitValueBeforeVat,
                     UnitValueWithVat = row.UnitValueWithVat,
@@ -2430,7 +2485,7 @@ public sealed partial class DataverseService
                     CountersRegisteredCount = countersRegistered,
                     PendingCountersCount = pendingCounters,
                     Quantity = RoundCurrency(lines.Sum(static row => row.Quantity)),
-                    IncludedOperations = RoundCurrency(lines.Sum(static row => row.IncludedOperations)),
+                    IncludedOperations = RoundCurrency(lines.Sum(static row => CalculateCopiersLineIncludedOperations(row.Quantity, row.IncludedOperations))),
                     AdditionalOperation = RoundCurrency(lines.Sum(static row => row.AdditionalOperation)),
                     TotalWithVat = RoundCurrency(lines.Sum(static row => row.TotalWithVat)),
                     CounterSummary = equipment.Count == 0
@@ -2512,6 +2567,9 @@ public sealed partial class DataverseService
             && !string.IsNullOrWhiteSpace(rowClientName)
             && string.Equals(assignmentClientName, rowClientName, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static decimal CalculateCopiersLineIncludedOperations(decimal quantity, decimal includedOperations) =>
+        RoundCurrency(Math.Max(quantity, 0m) * Math.Max(includedOperations, 0m));
 
     private IReadOnlyList<BillingTrendPointDto> BuildBillingYtdTrend(
         int year,
@@ -3053,6 +3111,50 @@ public sealed partial class DataverseService
         };
     }
 
+    private bool ReadCopiersGroupIncludedOperations(JsonElement item)
+    {
+        if (string.IsNullOrWhiteSpace(_dashboardCopiersGroupField))
+            return true;
+
+        var formatted = ReadString(item, $"{_dashboardCopiersGroupField}{FormattedValueAnnotationSuffix}").Trim();
+        if (TryParseCopiersGroupFlag(formatted, out var formattedValue))
+            return formattedValue;
+
+        if (!item.TryGetProperty(_dashboardCopiersGroupField, out var property))
+            return true;
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number => property.TryGetInt32(out var intValue) ? intValue != 0 : true,
+            JsonValueKind.String => TryParseCopiersGroupFlag(property.GetString(), out var stringValue) ? stringValue : true,
+            _ => true
+        };
+    }
+
+    private static bool TryParseCopiersGroupFlag(string? rawValue, out bool value)
+    {
+        value = true;
+        var normalized = NormalizeCopiersComparableValue(rawValue);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        if (normalized is "si" or "sí" or "yes" or "true" or "1" or "agrupar" or "agrupado")
+        {
+            value = true;
+            return true;
+        }
+
+        if (normalized is "no" or "false" or "0" or "individual" or "no agrupar")
+        {
+            value = false;
+            return true;
+        }
+
+        return false;
+    }
+
     private static DateOnly ResolveBillingYtdEndExclusive(int year, DateOnly today)
     {
         var lastVisibleMonth = year == today.Year ? today.Month : 12;
@@ -3518,6 +3620,7 @@ public sealed partial class DataverseService
         public string ProductName { get; set; } = "";
         public decimal Quantity { get; set; }
         public decimal IncludedOperations { get; set; }
+        public bool GroupIncludedOperations { get; set; } = true;
         public decimal AdditionalOperation { get; set; }
         public decimal UnitValueBeforeVat { get; set; }
         public decimal UnitValueWithVat { get; set; }

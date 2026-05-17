@@ -5,6 +5,7 @@ using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 
 namespace CotizadorInterno.Web.Controllers;
@@ -16,11 +17,13 @@ public sealed class CopiersController : Controller
     private const string GraphCalendarScope = UserCalendarService.CalendarWriteScope;
     private readonly IDataverseService _dataverse;
     private readonly IUserCalendarService _calendar;
+    private readonly ITokenAcquisition _tokenAcquisition;
 
-    public CopiersController(IDataverseService dataverse, IUserCalendarService calendar)
+    public CopiersController(IDataverseService dataverse, IUserCalendarService calendar, ITokenAcquisition tokenAcquisition)
     {
         _dataverse = dataverse;
         _calendar = calendar;
+        _tokenAcquisition = tokenAcquisition;
     }
 
     [HttpGet]
@@ -148,6 +151,14 @@ public sealed class CopiersController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { GraphCalendarScope })]
+    public async Task<IActionResult> CalendarConsent()
+    {
+        _ = await _tokenAcquisition.GetAccessTokenForUserAsync(new[] { GraphCalendarScope }, user: User);
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope, GraphCalendarScope })]
     public async Task<IActionResult> SchedulePreventiveMaintenance([FromBody] CopiersPreventiveMaintenanceScheduleRequestDto? request, CancellationToken ct)
@@ -161,9 +172,17 @@ public sealed class CopiersController : Controller
             await _dataverse.SaveCopiersPreventiveMaintenanceScheduleAsync(request, result, ct);
             return Ok(result);
         }
-        catch (MicrosoftIdentityWebChallengeUserException)
+        catch (MicrosoftIdentityWebChallengeUserException ex)
         {
-            throw;
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                CreateCalendarConsentPayload(ex.Message));
+        }
+        catch (MsalUiRequiredException ex)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                CreateCalendarConsentPayload(ex.Message));
         }
         catch (InvalidOperationException ex)
         {
@@ -279,6 +298,27 @@ public sealed class CopiersController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el inventario de equipos.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> EquipmentBackupAssignment([FromBody] CopiersEquipmentBackupAssignmentRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar el equipo que quieres clasificar como backup."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveCopiersEquipmentBackupAssignmentAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible actualizar el backup del equipo.", ex));
         }
     }
 
@@ -557,6 +597,15 @@ public sealed class CopiersController : Controller
             traceId = HttpContext.TraceIdentifier
         };
     }
+
+    private object CreateCalendarConsentPayload(string detail = "") => new
+    {
+        message = "Debes autorizar el acceso al calendario para programar mantenimientos preventivos.",
+        detail,
+        action = "calendarConsentRequired",
+        consentUrl = Url.Action(nameof(CalendarConsent), "Copiers") ?? "/Copiers/CalendarConsent",
+        traceId = HttpContext.TraceIdentifier
+    };
 
     private static string BuildExceptionDetail(Exception? ex)
     {

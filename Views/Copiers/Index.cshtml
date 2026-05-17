@@ -15,11 +15,13 @@
      data-download-maintenance-url="@Url.Action("DownloadMaintenanceAttachment", "Copiers")"
      data-preventive-maintenance-url="@Url.Action("PreventiveMaintenance", "Copiers")"
      data-schedule-preventive-maintenance-url="@Url.Action("SchedulePreventiveMaintenance", "Copiers")"
+     data-calendar-consent-url="@Url.Action("CalendarConsent", "Copiers")"
      data-save-counter-url="@Url.Action("SaveCounter", "Copiers")"
      data-upload-counter-url="@Url.Action("UploadCounterAttachment", "Copiers")"
      data-equipment-url="@Url.Action("Equipment", "Copiers")"
      data-equipment-detail-url="@Url.Action("EquipmentDetail", "Copiers")"
      data-equipment-inventory-url="@Url.Action("EquipmentInventory", "Copiers")"
+     data-equipment-backup-assignment-url="@Url.Action("EquipmentBackupAssignment", "Copiers")"
      data-equipment-assignment-url="@Url.Action("EquipmentAssignment", "Copiers")"
      data-save-equipment-url="@Url.Action("SaveEquipment", "Copiers")"
      data-register-equipment-movement-url="@Url.Action("RegisterEquipmentMovement", "Copiers")"
@@ -212,6 +214,7 @@
         </div>
         <div class="copiers-status" id="copiersInventoryMissing" role="status" aria-live="polite"></div>
         <div class="copiers-kpis" id="copiersInventoryKpis"></div>
+        <div class="copiers-contract-lines" id="copiersInventoryContractLines"></div>
         <div class="copiers-location-grid" id="copiersInventoryLocations"></div>
         <div class="copiers-table-wrap">
             <table class="table align-middle copiers-table copiers-table--equipment-inventory">
@@ -220,9 +223,13 @@
                         <th>No.</th>
                         <th>Serial de maquina</th>
                         <th>Empresa</th>
+                        <th>Clasificaci&oacute;n</th>
+                        <th>Producto contratado</th>
+                        <th class="text-end">Operaciones incl.</th>
                         <th>Area</th>
                         <th>Sede</th>
                         <th>Observaciones</th>
+                        <th class="text-end">Backup</th>
                     </tr>
                 </thead>
                 <tbody id="copiersInventoryBody"></tbody>

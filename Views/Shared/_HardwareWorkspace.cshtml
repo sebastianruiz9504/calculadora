@@ -535,6 +535,26 @@
         </div>
     </div>
 
+    <div class="hardware-modal hardware-modal--result" data-hw-save-result-modal hidden>
+        <div class="hardware-modal__backdrop"></div>
+        <div class="hardware-modal__dialog hardware-modal__dialog--result" role="dialog" aria-modal="true" aria-labelledby="hardwareSaveResultTitle-@Model.RootId">
+            <div class="hardware-save-result" data-hw-save-result-state="saving">
+                <div class="hardware-save-result__spinner" data-hw-save-result-spinner aria-hidden="true"></div>
+                <div>
+                    <div class="hardware-kicker" data-hw-save-result-kicker>Guardando</div>
+                    <h2 class="hardware-modal__title" id="hardwareSaveResultTitle-@Model.RootId" data-hw-save-result-title>Guardando</h2>
+                    <p class="hardware-modal__subtitle" data-hw-save-result-message>Estamos guardando la carga de Hardware.</p>
+                </div>
+            </div>
+            <div class="hardware-modal__footer">
+                <div class="hardware-modal__meta" data-hw-save-result-meta>Espera a que termine el proceso.</div>
+                <div class="hardware-actions">
+                    <button type="button" class="btn btn-primary" data-hw-close-save-result disabled>Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="hardware-modal" data-hw-edit-modal hidden>
         <div class="hardware-modal__backdrop" data-hw-close-edit-modal></div>
         <div class="hardware-modal__dialog hardware-modal__dialog--edit" role="dialog" aria-modal="true" aria-labelledby="hardwareEditModalTitle-@Model.RootId">

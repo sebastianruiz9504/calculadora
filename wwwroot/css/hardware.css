@@ -1247,6 +1247,55 @@
     width: min(1160px, 100%);
 }
 
+.hardware-modal--result {
+    z-index: 1060;
+}
+
+.hardware-modal__dialog--result {
+    width: min(520px, 100%);
+}
+
+.hardware-save-result {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 16px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 10px;
+    background: var(--hardware-soft);
+}
+
+.hardware-save-result__spinner {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    border: 3px solid #c4d9ef;
+    border-top-color: var(--hardware-brand);
+    border-radius: 999px;
+    animation: hardware-spin .8s linear infinite;
+}
+
+.hardware-save-result[data-hw-save-result-state="success"] {
+    border-color: #c9e7d9;
+    background: #edf8f2;
+}
+
+.hardware-save-result[data-hw-save-result-state="error"] {
+    border-color: #f0c8d1;
+    background: #fff0f3;
+}
+
+.hardware-save-result[data-hw-save-result-state="success"] .hardware-save-result__spinner,
+.hardware-save-result[data-hw-save-result-state="error"] .hardware-save-result__spinner {
+    display: none;
+}
+
+@keyframes hardware-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .hardware-status--modal {
     margin: 0;
 }

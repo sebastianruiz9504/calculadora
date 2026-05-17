@@ -334,13 +334,14 @@
                                 <th>Fecha</th>
                                 <th>NIT</th>
                                 <th>Estado</th>
+                                <th>Correo</th>
                                 <th class="text-end">Total</th>
                                 <th class="text-end">Saldo</th>
                             </tr>
                         </thead>
                         <tbody id="siigoInvoicesBody">
                             <tr>
-                                <td colspan="7" class="dashboard-table__empty">Busca un cliente y consulta sus facturas de Siigo.</td>
+                                <td colspan="8" class="dashboard-table__empty">Busca un cliente y consulta sus facturas de Siigo.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1119,7 +1120,6 @@
                                 <datalist id="copiersCountersClientOptions"></datalist>
                             </label>
                             <button type="button" class="btn btn-primary dashboard-refresh-btn" id="copiersCountersRefreshBtn">Aplicar filtros</button>
-                            <button type="button" class="btn btn-outline-primary dashboard-refresh-btn" id="copiersCountersPdfBtn" disabled>Exportar PDF</button>
                             <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersCountersClearBtn">Limpiar</button>
                         </div>
                     </div>
@@ -1150,10 +1150,16 @@
                             <thead>
                                 <tr>
                                     <th>Cliente</th>
+                                    <th>D&iacute;a fact.</th>
                                     <th class="text-end">Copias</th>
                                     <th class="text-end">Escaneos</th>
                                     <th class="text-end">Total</th>
+                                    <th class="text-end">Incluidas</th>
+                                    <th class="text-end">Excedentes</th>
+                                    <th class="text-end">Costo unit.</th>
+                                    <th class="text-end">Valor excedente</th>
                                     <th class="text-end">Equipos con consumo</th>
+                                    <th>Modo</th>
                                 </tr>
                             </thead>
                             <tbody id="copiersCountersClientBody"></tbody>
@@ -1178,6 +1184,8 @@
                                 <tr>
                                     <th>Cliente</th>
                                     <th>Equipo</th>
+                                    <th>Clasificaci&oacute;n</th>
+                                    <th>L&iacute;nea</th>
                                     <th>Sede</th>
                                     <th>Ubicaci&oacute;n</th>
                                     <th>Fecha toma anterior</th>
@@ -1190,10 +1198,17 @@
                                     <th class="text-end">Escaneos</th>
                                     <th class="text-end">D&iacute;as entre tomas</th>
                                     <th class="text-end">Total equipo</th>
+                                    <th class="text-end">Incluidas</th>
+                                    <th class="text-end">Excedentes</th>
+                                    <th class="text-end">Costo unit.</th>
+                                    <th class="text-end">Valor excedente</th>
                                 </tr>
                             </thead>
                             <tbody id="copiersCountersEquipmentBody"></tbody>
                         </table>
+                    </div>
+                    <div class="dashboard-export-footer">
+                        <button type="button" class="btn btn-primary dashboard-refresh-btn dashboard-counters-export-btn" id="copiersCountersPdfBtn" disabled>Exportar PDF</button>
                     </div>
                 </article>
             </section>

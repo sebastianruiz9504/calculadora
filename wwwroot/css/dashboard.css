@@ -1113,11 +1113,53 @@
 }
 
 .dashboard-copiers-counters-equipment-table {
-    min-width: 1900px;
+    min-width: 2380px;
 }
 
 .dashboard-copiers-counters-client-table {
-    min-width: 820px;
+    min-width: 1320px;
+}
+
+.dashboard-export-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 14px;
+}
+
+.dashboard-counters-export-btn,
+.dashboard-counters-export-btn.btn {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.dashboard-counters-export-btn:hover,
+.dashboard-counters-export-btn:focus {
+    color: #ffffff;
+}
+
+.dashboard-status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.dashboard-status-pill--success {
+    background: #e8f5ee;
+    color: #17633a;
+}
+
+.dashboard-status-pill--warning {
+    background: #fff6dc;
+    color: #8a5a00;
+}
+
+.dashboard-status-pill--info {
+    background: #edf6ff;
+    color: var(--dashboard-brand-deep);
 }
 
 .dashboard-table thead th {

@@ -800,6 +800,7 @@ html[data-bs-theme="dark"] body.app-shell :is(
   .copiers-user-card,
   .copiers-filter-pill,
   .copiers-subpanel,
+  .copiers-contract-line,
   .copiers-detail-card,
   .copiers-table-wrap,
   .copiers-modal__dialog,
@@ -937,6 +938,8 @@ html[data-bs-theme="dark"] body.app-shell :is(
 html[data-bs-theme="dark"] body.app-shell :is(
   .payroll-status--warning,
   .portal-status.warning,
+  .copiers-status.is-warning,
+  .dashboard-status-pill--warning,
   .ccb-status--warning,
   .payroll-detail-warnings,
   .payroll-warning-tag,
@@ -946,6 +949,17 @@ html[data-bs-theme="dark"] body.app-shell :is(
   border-color: var(--app-dark-warning-border) !important;
   background: var(--app-dark-warning-bg) !important;
   color: var(--app-dark-warning-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell :is(
+  .dashboard-status-pill--success,
+  .dashboard-status-pill--info,
+  .copiers-badge.is-success,
+  .copiers-badge.is-info
+) {
+  border-color: var(--app-dark-border) !important;
+  background: var(--app-dark-surface-soft) !important;
+  color: var(--app-dark-text) !important;
 }
 
 html[data-bs-theme="dark"] body.app-shell :is(

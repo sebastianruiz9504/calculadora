@@ -186,7 +186,14 @@ public sealed class CopiersEquipmentInventoryDto
     public string AsOfDateLabel { get; set; } = "";
     public bool HasData { get; set; }
     public int RecordsCount { get; set; }
+    public int ContractedEquipmentCount { get; set; }
+    public int AssignedToContractCount { get; set; }
+    public int BackupEquipmentCount { get; set; }
+    public int UnassignedEquipmentCount { get; set; }
+    public bool HasInventoryMismatch { get; set; }
     public IReadOnlyList<CopiersEquipmentInventoryMetricDto> Kpis { get; set; } = Array.Empty<CopiersEquipmentInventoryMetricDto>();
+    public IReadOnlyList<CopiersEquipmentInventoryContractLineDto> ContractLines { get; set; } = Array.Empty<CopiersEquipmentInventoryContractLineDto>();
+    public IReadOnlyList<CopiersEquipmentInventoryIssueDto> Issues { get; set; } = Array.Empty<CopiersEquipmentInventoryIssueDto>();
     public IReadOnlyList<CopiersEquipmentInventoryLocationDto> Locations { get; set; } = Array.Empty<CopiersEquipmentInventoryLocationDto>();
     public IReadOnlyList<CopiersEquipmentInventoryRowDto> Records { get; set; } = Array.Empty<CopiersEquipmentInventoryRowDto>();
     public IReadOnlyList<CopiersEquipmentInventoryMissingColumnDto> MissingColumns { get; set; } = Array.Empty<CopiersEquipmentInventoryMissingColumnDto>();
@@ -212,6 +219,27 @@ public sealed class CopiersEquipmentInventoryLocationDto
     public IReadOnlyList<string> Areas { get; set; } = Array.Empty<string>();
 }
 
+public sealed class CopiersEquipmentInventoryContractLineDto
+{
+    public string LineId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public int BillingDay { get; set; }
+    public string BillingDayDisplay { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal IncludedOperations { get; set; }
+    public int ContractedEquipmentCount { get; set; }
+    public int AssignedEquipmentCount { get; set; }
+    public string AssignmentSummary { get; set; } = "";
+    public IReadOnlyList<string> AssignedEquipmentSerials { get; set; } = Array.Empty<string>();
+}
+
+public sealed class CopiersEquipmentInventoryIssueDto
+{
+    public string Code { get; set; } = "";
+    public string Severity { get; set; } = "error";
+    public string Message { get; set; } = "";
+}
+
 public sealed class CopiersEquipmentInventoryRowDto
 {
     public int LineNumber { get; set; }
@@ -230,8 +258,28 @@ public sealed class CopiersEquipmentInventoryRowDto
     public string MapUrl { get; set; } = "";
     public string MapEmbedUrl { get; set; } = "";
     public string Observations { get; set; } = "";
+    public string ContractLineId { get; set; } = "";
+    public string ContractLineName { get; set; } = "";
+    public string BillingDayDisplay { get; set; } = "";
+    public decimal IncludedOperations { get; set; }
+    public bool IsBackup { get; set; }
+    public string AssignmentStatus { get; set; } = "";
     public int MaintenanceCount { get; set; }
     public string LastMaintenanceDateDisplay { get; set; } = "";
+}
+
+public sealed class CopiersEquipmentBackupAssignmentRequestDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string EquipmentId { get; set; } = "";
+    public bool IsBackup { get; set; }
+}
+
+public sealed class CopiersEquipmentBackupAssignmentResultDto
+{
+    public string Message { get; set; } = "";
+    public CopiersEquipmentInventoryDto Inventory { get; set; } = new();
 }
 
 public sealed class CopiersEquipmentInventoryMissingColumnDto

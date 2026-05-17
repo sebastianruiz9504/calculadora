@@ -399,6 +399,13 @@ public sealed partial class DataverseService
             DashboardMaintenancePrimaryNameField,
             httpContext.User,
             ct);
+        var copiersProductMetadata = await ResolveRhEntityMetadataAsync(
+            _dashboardCopiersTableLogicalName,
+            _dashboardCopiersTableSetName,
+            _dashboardCopiersIdField,
+            _dashboardCopiersPrimaryNameField,
+            httpContext.User,
+            ct);
 
         var attributeNames = await GetCopiersEquipmentAttributeNamesAsync(httpContext.User, ct);
         var fieldMap = BuildCopiersEquipmentInventoryFieldMap(attributeNames);
@@ -411,7 +418,30 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
         var maintenanceRows = await GetMaintenanceRecordsAsync(maintenanceMetadata, httpContext.User, ct);
+        var contractRows = await GetCopiersRecordsAsync(copiersProductMetadata, httpContext.User, ct);
+        var assignmentRows = await TryLoadCopiersLineEquipmentAssignmentRecordsByClientsAsync(
+            new[] { normalizedClientId },
+            httpContext.User,
+            ct);
+        var analysis = BuildCopiersContractAnalysis(
+            normalizedClientId,
+            FirstNonEmpty(requestedClientName, clientContact?.ClientName, ""),
+            contractRows,
+            equipmentRows.Select(static row => new CopiersEquipmentRecordRow
+            {
+                RecordId = row.RecordId,
+                Serial = row.Serial,
+                ClientId = row.ClientId,
+                ClientName = row.ClientName,
+                CategoryLabel = row.Type,
+                Area = row.Area,
+                Site = row.Site,
+                Observations = row.Observations,
+                InStock = false
+            }).ToList(),
+            assignmentRows);
         var records = BuildEquipmentInventoryRows(equipmentRows, maintenanceRows);
+        ApplyCopiersInventoryContractInfo(records, analysis);
         foreach (var record in records)
         {
             record.ClientContactName = clientContact?.ContactName ?? "";
@@ -437,10 +467,109 @@ public sealed partial class DataverseService
             AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
             HasData = records.Count > 0,
             RecordsCount = records.Count,
-            Kpis = BuildEquipmentInventoryKpis(records),
+            ContractedEquipmentCount = analysis.ContractedEquipmentCount,
+            AssignedToContractCount = analysis.AssignedToContractCount,
+            BackupEquipmentCount = analysis.BackupEquipmentCount,
+            UnassignedEquipmentCount = analysis.UnassignedEquipmentCount,
+            HasInventoryMismatch = analysis.HasInventoryMismatch,
+            Kpis = BuildEquipmentInventoryKpis(records, analysis),
+            ContractLines = BuildEquipmentInventoryContractLines(analysis),
+            Issues = BuildEquipmentInventoryIssues(analysis),
             Locations = BuildEquipmentInventoryLocations(records),
             Records = records,
             MissingColumns = fieldMap.MissingColumns
+        };
+    }
+
+    public async Task<CopiersEquipmentBackupAssignmentResultDto> SaveCopiersEquipmentBackupAssignmentAsync(
+        CopiersEquipmentBackupAssignmentRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var normalizedClientId = NormalizeOptionalGuid(request.ClientId);
+        var requestedClientName = (request.ClientName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedClientId) && !string.IsNullOrWhiteSpace(requestedClientName))
+            normalizedClientId = await ResolveCopiersClientIdAsync(requestedClientName, ct);
+
+        if (string.IsNullOrWhiteSpace(normalizedClientId))
+            throw new InvalidOperationException("Debes seleccionar un cliente valido para marcar backups.");
+
+        var normalizedEquipmentId = NormalizeGuid(request.EquipmentId, nameof(request.EquipmentId));
+        var equipmentMetadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            httpContext.User,
+            ct);
+        var assignmentMetadata = await ResolveCopiersLineEquipmentAssignmentMetadataAsync(httpContext.User, ct);
+
+        var equipment = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
+            ?? throw new InvalidOperationException("No encontramos el equipo seleccionado.");
+        if (!CopiersEquipmentClientMatches(
+                equipment,
+                normalizedClientId,
+                NormalizeCopiersComparableValue(requestedClientName)))
+        {
+            throw new InvalidOperationException("El equipo seleccionado no pertenece al cliente consultado.");
+        }
+
+        var assignments = await LoadCopiersLineEquipmentAssignmentRecordsByClientAsync(
+            assignmentMetadata,
+            normalizedClientId,
+            httpContext.User,
+            ct);
+        var equipmentAssignments = assignments
+            .Where(row => string.Equals(row.EquipmentId, normalizedEquipmentId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var backupAssignments = equipmentAssignments
+            .Where(static row => row.IsBackup)
+            .ToList();
+        var lineAssignment = equipmentAssignments
+            .FirstOrDefault(static row => !row.IsBackup);
+
+        if (request.IsBackup)
+        {
+            if (lineAssignment is not null)
+                throw new InvalidOperationException("Ese equipo ya esta asignado a una linea de Productos Copiers. Retiralo de la linea antes de marcarlo como backup.");
+
+            foreach (var duplicate in backupAssignments.Skip(1))
+            {
+                await DeleteCopiersLineEquipmentAssignmentAsync(assignmentMetadata, duplicate.RecordId, httpContext.User, ct);
+            }
+
+            if (backupAssignments.Count == 0)
+            {
+                await CreateCopiersBackupEquipmentAssignmentAsync(
+                    assignmentMetadata,
+                    equipmentMetadata,
+                    normalizedClientId,
+                    FirstNonEmpty(requestedClientName, equipment.ClientName, "Cliente"),
+                    equipment,
+                    httpContext.User,
+                    ct);
+            }
+        }
+        else
+        {
+            foreach (var assignment in backupAssignments)
+            {
+                await DeleteCopiersLineEquipmentAssignmentAsync(assignmentMetadata, assignment.RecordId, httpContext.User, ct);
+            }
+        }
+
+        var inventory = await GetCopiersEquipmentInventoryAsync(normalizedClientId, requestedClientName, ct);
+        return new CopiersEquipmentBackupAssignmentResultDto
+        {
+            Message = request.IsBackup
+                ? "Equipo marcado como backup."
+                : "Equipo retirado de backups.",
+            Inventory = inventory
         };
     }
 
@@ -1955,6 +2084,38 @@ public sealed partial class DataverseService
                 };
             })
             .ToList();
+    }
+
+    private static void ApplyCopiersInventoryContractInfo(
+        IReadOnlyList<CopiersEquipmentInventoryRowDto> records,
+        CopiersContractAnalysis analysis)
+    {
+        var lineByEquipment = analysis.ContractLines
+            .SelectMany(line => line.AssignedEquipmentIds.Select(equipmentId => new { equipmentId, line }))
+            .GroupBy(item => item.equipmentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().line, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var record in records)
+        {
+            if (analysis.BackupEquipmentIds.Contains(record.RecordId))
+            {
+                record.IsBackup = true;
+                record.AssignmentStatus = "Backup";
+                continue;
+            }
+
+            if (lineByEquipment.TryGetValue(record.RecordId, out var line))
+            {
+                record.ContractLineId = line.LineId;
+                record.ContractLineName = line.ProductName;
+                record.BillingDayDisplay = line.BillingDayDisplay;
+                record.IncludedOperations = line.IncludedOperations;
+                record.AssignmentStatus = "Linea contratada";
+                continue;
+            }
+
+            record.AssignmentStatus = "Sin clasificar";
+        }
     }
 
     private IReadOnlyList<CopiersEquipmentInventoryMetricDto> BuildEquipmentInventoryKpis(

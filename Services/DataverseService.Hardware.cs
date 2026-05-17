@@ -764,6 +764,8 @@ public sealed partial class DataverseService
 
         var currentState = currentStates[0];
         var message = "";
+        int? expectedStateAfterSave = null;
+        string? requiredPerRecordFileAfterSave = null;
         var payloadsByRecordId = new Dictionary<string, Dictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
 
         switch (normalizedActionKey)
@@ -787,6 +789,7 @@ public sealed partial class DataverseService
                 var nextDocumentationState = supplierDocumentType == HardwareSupplierDocumentTypePurchaseOrder
                     ? HardwareStatePaidToSupplier
                     : HardwareStateOkForSupplierPayment;
+                expectedStateAfterSave = nextDocumentationState;
 
                 for (var index = 0; index < currentRecords.Count; index++)
                 {
@@ -831,9 +834,15 @@ public sealed partial class DataverseService
 
             case "register-supplier-payment":
                 EnsureHardwareActionState(currentState, HardwareStateOkForSupplierPayment, currentRecords[0].StateLabel);
+                await EnsureHardwareFilePresentOnEachRecordAsync(
+                    metadata,
+                    currentRecords,
+                    HardwareSupplierPaymentFileLogicalName,
+                    "Adjuntar pago a proveedor",
+                    user,
+                    ct);
                 foreach (var current in currentRecords)
                 {
-                    EnsureHardwareFilePresent(current, HardwareSupplierPaymentFileLogicalName, "Adjuntar pago a proveedor");
                     payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                     {
                         [HardwareSupplierPaymentDateLogicalName] = ParseHardwareStageDate(request.SupplierPaymentDateValue, "Fecha de pago a proveedor"),
@@ -841,6 +850,8 @@ public sealed partial class DataverseService
                     };
                 }
 
+                expectedStateAfterSave = HardwareStatePaidToSupplier;
+                requiredPerRecordFileAfterSave = HardwareSupplierPaymentFileLogicalName;
                 message = currentRecords.Count == 1
                     ? "Pago a proveedor registrado. El hardware pasó a Pagada a proveedor."
                     : $"Pago a proveedor registrado en {currentRecords.Count} fila(s). El hardware pasó a Pagada a proveedor.";
@@ -856,6 +867,7 @@ public sealed partial class DataverseService
                     };
                 }
 
+                expectedStateAfterSave = HardwareStateInTransit;
                 message = currentRecords.Count == 1
                     ? "Recibido aprobado por comercial. El hardware pasó a En tránsito a oficina o cliente."
                     : $"Recibido aprobado por comercial en {currentRecords.Count} fila(s). El hardware pasó a En tránsito a oficina o cliente.";
@@ -863,9 +875,15 @@ public sealed partial class DataverseService
 
             case "register-client-received":
                 EnsureHardwareActionState(currentState, HardwareStateInTransit, currentRecords[0].StateLabel);
+                await EnsureHardwareFilePresentOnEachRecordAsync(
+                    metadata,
+                    currentRecords,
+                    HardwareDeliveryRecordFileLogicalName,
+                    "Adjuntar acta de entrega",
+                    user,
+                    ct);
                 foreach (var current in currentRecords)
                 {
-                    EnsureHardwareFilePresent(current, HardwareDeliveryRecordFileLogicalName, "Adjuntar acta de entrega");
                     payloadsByRecordId[current.RecordId] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                     {
                         [HardwareDeliveryRecordDateLogicalName] = ParseHardwareStageDate(request.DeliveryRecordDateValue, "Fecha acta de entrega"),
@@ -873,6 +891,8 @@ public sealed partial class DataverseService
                     };
                 }
 
+                expectedStateAfterSave = HardwareStateDeliveredAwaitingBilling;
+                requiredPerRecordFileAfterSave = HardwareDeliveryRecordFileLogicalName;
                 message = currentRecords.Count == 1
                     ? "Recibido cliente registrado. El hardware pasó a Entregado en espera de facturación."
                     : $"Recibido cliente registrado en {currentRecords.Count} fila(s). El hardware pasó a Entregado en espera de facturación.";
@@ -890,6 +910,7 @@ public sealed partial class DataverseService
                     };
                 }
 
+                expectedStateAfterSave = HardwareStateBilledAwaitingPayment;
                 message = currentRecords.Count == 1
                     ? "Factura registrada. El hardware pasó a Facturado en espera de pago."
                     : $"Factura registrada en {currentRecords.Count} fila(s). El hardware pasó a Facturado en espera de pago.";
@@ -932,9 +953,13 @@ public sealed partial class DataverseService
                 await PatchHardwareRecordAsync(metadata.EntitySetName, item.Key, item.Value, user, ct);
         }
 
-        var updatedRecords = new List<HardwareBoardRowDto>(normalizedRecordIds.Count);
-        foreach (var recordId in normalizedRecordIds)
-            updatedRecords.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
+        var updatedRecords = await ReloadHardwareRecordsUntilConsistentAsync(
+            metadata,
+            normalizedRecordIds,
+            user,
+            ct,
+            expectedStateAfterSave,
+            requiredPerRecordFileAfterSave);
 
         return new HardwareSaveResultDto
         {
@@ -1011,6 +1036,120 @@ public sealed partial class DataverseService
             throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
     }
 
+    private async Task<List<HardwareBoardRowDto>> ReloadHardwareRecordsUntilConsistentAsync(
+        RhEntityMetadata metadata,
+        IReadOnlyCollection<string> recordIds,
+        ClaimsPrincipal user,
+        CancellationToken ct,
+        int? expectedState,
+        string? requiredPerRecordFileField)
+    {
+        const int maxAttempts = 4;
+        List<HardwareBoardRowDto> records = new(recordIds.Count);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            records = await LoadHardwareRecordsByIdsAsync(metadata, recordIds, user, ct);
+            if (HardwareRecordsMatchExpectedSaveState(records, expectedState, requiredPerRecordFileField))
+                return records;
+
+            if (attempt < maxAttempts)
+                await Task.Delay(TimeSpan.FromMilliseconds(450), ct);
+        }
+
+        throw new InvalidOperationException(BuildHardwareSaveConsistencyError(records, expectedState, requiredPerRecordFileField));
+    }
+
+    private async Task<List<HardwareBoardRowDto>> LoadHardwareRecordsByIdsAsync(
+        RhEntityMetadata metadata,
+        IReadOnlyCollection<string> recordIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var records = new List<HardwareBoardRowDto>(recordIds.Count);
+        foreach (var recordId in recordIds)
+            records.Add(await GetHardwareRecordByIdAsync(metadata, recordId, user, ct));
+
+        return records;
+    }
+
+    private static bool HardwareRecordsMatchExpectedSaveState(
+        IReadOnlyCollection<HardwareBoardRowDto> records,
+        int? expectedState,
+        string? requiredPerRecordFileField)
+    {
+        if (expectedState.HasValue
+            && records.Any(record => NormalizeHardwareStateValue(record.StateValue) != expectedState.Value))
+        {
+            return false;
+        }
+
+        return string.IsNullOrWhiteSpace(requiredPerRecordFileField)
+            || records.All(record => HasHardwareFile(record, requiredPerRecordFileField!));
+    }
+
+    private static string BuildHardwareSaveConsistencyError(
+        IReadOnlyCollection<HardwareBoardRowDto> records,
+        int? expectedState,
+        string? requiredPerRecordFileField)
+    {
+        var details = new List<string>();
+        if (expectedState.HasValue)
+        {
+            var pendingStateCount = records.Count(record => NormalizeHardwareStateValue(record.StateValue) != expectedState.Value);
+            if (pendingStateCount > 0)
+            {
+                var expectedLabel = ResolveHardwareStateOption(expectedState.Value).Label;
+                details.Add($"{pendingStateCount} fila(s) no quedaron en '{expectedLabel}'.");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(requiredPerRecordFileField))
+        {
+            var missingFileCount = records.Count(record => !HasHardwareFile(record, requiredPerRecordFileField!));
+            if (missingFileCount > 0)
+                details.Add($"{missingFileCount} fila(s) no muestran el adjunto requerido.");
+        }
+
+        return details.Count == 0
+            ? "Dataverse recibió la solicitud, pero no fue posible confirmar el estado final de la carga."
+            : $"Dataverse recibió la solicitud, pero no confirmó el estado final de la carga. {string.Join(" ", details)} Actualiza la página e intenta nuevamente si el registro sigue pendiente.";
+    }
+
+    private async Task EnsureHardwareFilePresentOnEachRecordAsync(
+        RhEntityMetadata metadata,
+        IReadOnlyList<HardwareBoardRowDto> records,
+        string fieldName,
+        string fieldLabel,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var missingRecords = records
+            .Where(record => !HasHardwareFile(record, fieldName))
+            .ToList();
+        if (missingRecords.Count == 0)
+            return;
+
+        var sourceRecord = records.FirstOrDefault(record => HasHardwareFile(record, fieldName));
+        if (sourceRecord is null)
+            throw new InvalidOperationException($"Debes cargar el archivo '{fieldLabel}' antes de avanzar esta etapa.");
+
+        var sourceFile = await TryDownloadHardwareFileContentAsync(metadata, sourceRecord.RecordId, fieldName, user, ct)
+            ?? throw new InvalidOperationException($"No fue posible leer el archivo '{fieldLabel}' ya cargado para completar las filas seleccionadas.");
+
+        foreach (var record in missingRecords)
+        {
+            await UploadHardwareFileContentAsync(
+                metadata,
+                record.RecordId,
+                fieldName,
+                sourceFile.FileName,
+                sourceFile.Content,
+                user,
+                ct);
+        }
+    }
+
     private async Task<List<string>> ExpandHardwareRecordIdsToOrderScopeAsync(
         RhEntityMetadata metadata,
         IReadOnlyCollection<string> baseRecordIds,
@@ -1044,6 +1183,80 @@ public sealed partial class DataverseService
         }
 
         return expandedRecordIds.ToList();
+    }
+
+    private async Task UploadHardwareFileContentAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        string fieldName,
+        string fileName,
+        byte[] content,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var normalizedFieldName = ResolveHardwareAllowedFileField(fieldName);
+        var safeFileName = SanitizeRhFileName(fileName, HardwareAllowedFileFields[normalizedFieldName]);
+        ValidateHardwareAttachmentUpload(safeFileName, content);
+
+        using var fileContent = new ByteArrayContent(content);
+        fileContent.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/octet-stream");
+
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}";
+        using var response = await CallRhDataverseResponseAsync(
+            relativeUrl,
+            "PATCH",
+            user,
+            ct,
+            fileContent,
+            request =>
+            {
+                request.Headers.TryAddWithoutValidation("If-Match", "*");
+                request.Headers.TryAddWithoutValidation("x-ms-file-name", safeFileName);
+            });
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+    }
+
+    private async Task<HardwareFileDownloadResult?> TryDownloadHardwareFileContentAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        string fieldName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var normalizedFieldName = ResolveHardwareAllowedFileField(fieldName);
+
+        using var response = await CallRhDataverseResponseAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}/$value",
+            "GET",
+            user,
+            ct);
+        if (response.StatusCode == HttpStatusCode.NoContent || response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        var bodyBytes = await response.Content.ReadAsByteArrayAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var bodyText = bodyBytes.Length == 0 ? "" : Encoding.UTF8.GetString(bodyBytes);
+            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {bodyText}");
+        }
+
+        return new HardwareFileDownloadResult
+        {
+            FileName = FirstNonEmpty(
+                ReadHeaderValue(response, "x-ms-file-name"),
+                ReadHeaderValue(response, "filename"),
+                $"{normalizedFieldName}-{normalizedRecordId}.bin"),
+            ContentType =
+                response.Content.Headers.ContentType?.MediaType
+                ?? ReadHeaderValue(response, "mimetype")
+                ?? "application/octet-stream",
+            Content = bodyBytes
+        };
     }
 
     public async Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(
@@ -1093,28 +1306,7 @@ public sealed partial class DataverseService
                 currentRecord.StateLabel);
         }
 
-        var safeFileName = SanitizeRhFileName(fileName, HardwareAllowedFileFields[normalizedFieldName]);
-        ValidateHardwareAttachmentUpload(safeFileName, content);
-
-        using var fileContent = new ByteArrayContent(content);
-        fileContent.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/octet-stream");
-
-        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}";
-        using var response = await CallRhDataverseResponseAsync(
-            relativeUrl,
-            "PATCH",
-            user,
-            ct,
-            fileContent,
-            request =>
-            {
-                request.Headers.TryAddWithoutValidation("If-Match", "*");
-                request.Headers.TryAddWithoutValidation("x-ms-file-name", safeFileName);
-            });
-
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+        await UploadHardwareFileContentAsync(metadata, normalizedRecordId, normalizedFieldName, fileName, content, user, ct);
 
         var record = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
         return new HardwareFileUploadResultDto
@@ -1160,33 +1352,7 @@ public sealed partial class DataverseService
                 currentRecord.StateLabel);
         }
 
-        using var response = await CallRhDataverseResponseAsync(
-            $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})/{normalizedFieldName}/$value",
-            "GET",
-            user,
-            ct);
-        if (response.StatusCode == HttpStatusCode.NoContent || response.StatusCode == HttpStatusCode.NotFound)
-            return null;
-
-        var bodyBytes = await response.Content.ReadAsByteArrayAsync(ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            var bodyText = bodyBytes.Length == 0 ? "" : Encoding.UTF8.GetString(bodyBytes);
-            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {bodyText}");
-        }
-
-        return new HardwareFileDownloadResult
-        {
-            FileName = FirstNonEmpty(
-                ReadHeaderValue(response, "x-ms-file-name"),
-                ReadHeaderValue(response, "filename"),
-                $"{normalizedFieldName}-{normalizedRecordId}.bin"),
-            ContentType =
-                response.Content.Headers.ContentType?.MediaType
-                ?? ReadHeaderValue(response, "mimetype")
-                ?? "application/octet-stream",
-            Content = bodyBytes
-        };
+        return await TryDownloadHardwareFileContentAsync(metadata, normalizedRecordId, normalizedFieldName, user, ct);
     }
 
     public async Task<IReadOnlyList<HardwareInvoiceLookupItemDto>> SearchHardwareInvoicesAsync(
@@ -2528,12 +2694,6 @@ public sealed partial class DataverseService
             normalizedExpectedStates.Select(state => ResolveHardwareStateOption(state).Label));
         throw new InvalidOperationException(
             $"Esta acción solo está disponible cuando el hardware está en '{expected}'. Estado actual: '{FirstNonEmpty(currentLabel, ResolveHardwareStateOption(currentState).Label)}'.");
-    }
-
-    private static void EnsureHardwareFilePresent(HardwareBoardRowDto record, string fieldName, string fieldLabel)
-    {
-        if (!HasHardwareFile(record, fieldName))
-            throw new InvalidOperationException($"Debes cargar el archivo '{fieldLabel}' antes de avanzar esta etapa.");
     }
 
     private static void EnsureHardwareOrderFilePresent(

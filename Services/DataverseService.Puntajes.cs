@@ -25,6 +25,11 @@ public sealed partial class DataverseService
     private static readonly HashSet<int> AllowedProductLineOptionValues = new() { 0, 1, 2, 3 };
     private static readonly HashSet<int> AllowedContractTypeOptionValues = new() { 0, 1 };
     private static readonly HashSet<int> AllowedContractKindOptionValues = new() { ScoreContractKindNewBusinessValue, ScoreContractKindRenewalValue };
+    private static readonly HashSet<string> SubmittedMonthCloseStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "created",
+        "updated"
+    };
     private const int ScoreContractKindNewBusinessValue = 645250000;
     private const int ScoreContractKindRenewalValue = 645250001;
 
@@ -468,6 +473,11 @@ public sealed partial class DataverseService
             .Where(item => !string.IsNullOrWhiteSpace(item.LineKey))
             .GroupBy(item => item.LineKey.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Last().Include, StringComparer.OrdinalIgnoreCase);
+        _logger.LogInformation(
+            "Inicio cierre de puntajes {PeriodKey}. Registros={RecordCount}, decisiones={DecisionCount}.",
+            plan.MonthInfo.PeriodKey,
+            plan.Records.Count,
+            decisions.Count);
 
         var logs = new List<ScoreMonthCloseLogEntryDto>();
         var batchId = Guid.NewGuid().ToString("N");
@@ -503,6 +513,12 @@ public sealed partial class DataverseService
                 if (linePlan.IsAlreadyClosed)
                 {
                     skippedCount++;
+                    _logger.LogInformation(
+                        "Cierre puntajes omitio linea ya enviada. Periodo={PeriodKey}, LineKey={LineKey}, Cliente={ClientName}, Producto={ProductName}.",
+                        plan.MonthInfo.PeriodKey,
+                        linePlan.LineKey,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName);
                     logs.Add(BuildMonthCloseLog(
                         "info",
                         "already-closed",
@@ -541,6 +557,13 @@ public sealed partial class DataverseService
                             ? "La linea se excluyo del cierre por decision del usuario."
                             : linePlan.Reason,
                         BuildPreviewLineState(linePlan)));
+                    _logger.LogInformation(
+                        "Cierre puntajes excluyo linea por decision/regla. Periodo={PeriodKey}, LineKey={LineKey}, Cliente={ClientName}, Producto={ProductName}, Motivo={Reason}.",
+                        plan.MonthInfo.PeriodKey,
+                        linePlan.LineKey,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName,
+                        linePlan.Reason);
                     continue;
                 }
 
@@ -572,6 +595,14 @@ public sealed partial class DataverseService
                         await UpdateSalesPerformanceQuantityAsync(currentMatch.RecordId, newQuantity, httpContext.User, ct);
                         currentMatch.Quantity = newQuantity;
                         updatedCount++;
+                        _logger.LogInformation(
+                            "Cierre puntajes actualizo cantidad en sales performance. Periodo={PeriodKey}, LineKey={LineKey}, SalesPerformanceId={SalesPerformanceId}, Antes={PreviousQuantity}, Cierre={AppliedQuantity}, Final={NewQuantity}.",
+                            plan.MonthInfo.PeriodKey,
+                            linePlan.LineKey,
+                            currentMatch.RecordId,
+                            previousQuantity,
+                            appliedQuantity,
+                            newQuantity);
 
                         logs.Add(BuildMonthCloseLog(
                             "success",
@@ -604,6 +635,14 @@ public sealed partial class DataverseService
 
                     if (createResult.Warnings.Count > 0)
                         warningCount++;
+                    _logger.LogInformation(
+                        "Cierre puntajes creo linea en sales performance. Periodo={PeriodKey}, LineKey={LineKey}, SalesPerformanceId={SalesPerformanceId}, Cliente={ClientName}, Producto={ProductName}, Warnings={WarningCount}.",
+                        plan.MonthInfo.PeriodKey,
+                        linePlan.LineKey,
+                        createdRecordId,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName,
+                        createResult.Warnings.Count);
 
                     logs.Add(BuildMonthCloseLog(
                         createResult.Warnings.Count > 0 ? "warning" : "success",
@@ -629,6 +668,13 @@ public sealed partial class DataverseService
                 {
                     errorCount++;
                     var errorDetail = BuildMonthCloseErrorDetail(ex);
+                    _logger.LogWarning(
+                        ex,
+                        "Cierre puntajes fallo para una linea. Periodo={PeriodKey}, LineKey={LineKey}, Cliente={ClientName}, Producto={ProductName}.",
+                        plan.MonthInfo.PeriodKey,
+                        linePlan.LineKey,
+                        linePlan.Record.ClientName,
+                        linePlan.Line.ProductName);
                     logs.Add(BuildMonthCloseLog(
                         "error",
                         "error",
@@ -656,6 +702,15 @@ public sealed partial class DataverseService
             : hasWarnings
                 ? $"Cierre ejecutado para {plan.MonthInfo.PeriodLabel} con revision manual pendiente. Nuevas: {createdCount}. Incrementos: {updatedCount}. Excluidas: {excludedCount}. Ya cerradas: {skippedCount}."
                 : $"Cierre ejecutado correctamente para {plan.MonthInfo.PeriodLabel}. Nuevas: {createdCount}. Incrementos: {updatedCount}. Excluidas: {excludedCount}. Ya cerradas: {skippedCount}.";
+        _logger.LogInformation(
+            "Fin cierre de puntajes {PeriodKey}. Creadas={CreatedCount}, actualizadas={UpdatedCount}, excluidas={ExcludedCount}, yaCerradas={SkippedCount}, warnings={WarningCount}, errores={ErrorCount}.",
+            plan.MonthInfo.PeriodKey,
+            createdCount,
+            updatedCount,
+            excludedCount,
+            skippedCount,
+            warningCount,
+            errorCount);
 
         return new ScoreMonthCloseResultDto
         {
@@ -864,9 +919,13 @@ public sealed partial class DataverseService
             {
                 var lineKey = BuildMonthCloseLineKey(context.Record.RecordId, line.LineId, index + 1);
                 var existingSnapshot = ResolveMonthlyClosureLine(context.Additional, monthInfo.PeriodKey, lineKey);
-                var isAlreadyClosed = existingSnapshot is not null;
+                var existingUpload = ResolveUploadedMonthCloseLine(context.Additional, lineKey);
+                var isLegacyRecordClosed = existingSnapshot is null
+                    && existingUpload is null
+                    && HasLegacySubmittedMonthlyClosure(context.Additional, monthInfo.PeriodKey);
+                var isAlreadyClosed = existingSnapshot is not null || existingUpload is not null || isLegacyRecordClosed;
                 var isRenewalContract = IsRenewalContractKind(context.Record.ContractKindOptionValue);
-                var selectedByDefault = !isAlreadyClosed && !isRenewalContract && detail.AutoBillOptionValue == 1;
+                var selectedByDefault = !isAlreadyClosed && !isRenewalContract;
 
                 List<SalesPerformanceCompactRecord> clientRecords = new();
                 if (!string.IsNullOrWhiteSpace(context.Record.ClientId))
@@ -895,12 +954,14 @@ public sealed partial class DataverseService
                     LineKey = lineKey,
                     ExistingMatch = existingMatch,
                     ExistingClosure = existingSnapshot,
+                    ExistingUpload = existingUpload,
+                    IsLegacyRecordClosed = isLegacyRecordClosed,
                     IsAlreadyClosed = isAlreadyClosed,
                     IsRenewalContract = isRenewalContract,
                     SelectedByDefault = selectedByDefault,
                     CanChangeSelection = !isAlreadyClosed && !isRenewalContract,
-                    Reason = ResolveMonthCloseLineReason(detail.AutoBillOptionValue, isAlreadyClosed, isRenewalContract),
-                    PredictedAction = isRenewalContract ? "skip-renewal" : existingMatch is not null ? "increment" : "create",
+                    Reason = ResolveMonthCloseLineReason(detail.AutoBillOptionValue, isAlreadyClosed, isRenewalContract, existingUpload, isLegacyRecordClosed),
+                    PredictedAction = isAlreadyClosed ? "already-uploaded" : isRenewalContract ? "skip-renewal" : existingMatch is not null ? "increment" : "create",
                     Warnings = isRenewalContract ? new List<string>() : BuildMonthCloseWarnings(context.Record, detail, line)
                 });
             }
@@ -2031,6 +2092,7 @@ public sealed partial class DataverseService
 
         var compact = CloneAdditionalForStorage(additional);
         compact.LastResult = null;
+        CompactUploadedLinesForStorage(compact, 250);
         foreach (var line in compact.Lines)
         {
             line.ProductName = TruncateForAdditional(line.ProductName, 80);
@@ -2043,6 +2105,7 @@ public sealed partial class DataverseService
         if (json.Length <= maxLength)
             return json;
 
+        CompactUploadedLinesForStorage(compact, 150);
         compact.MonthlyClosures = compact.MonthlyClosures
             .OrderByDescending(item => item.ClosedAt)
             .Take(2)
@@ -2063,6 +2126,7 @@ public sealed partial class DataverseService
         if (json.Length <= maxLength)
             return json;
 
+        CompactUploadedLinesForStorage(compact, 100);
         compact.Lines = compact.Lines.Take(25).ToList();
         json = JsonSerializer.Serialize(compact);
         if (json.Length <= maxLength)
@@ -2073,6 +2137,7 @@ public sealed partial class DataverseService
         if (json.Length <= maxLength)
             return json;
 
+        CompactUploadedLinesForStorage(compact, 60);
         compact.Lines = compact.Lines.Take(10).ToList();
         compact.VerifiedBy = TruncateForAdditional(compact.VerifiedBy, 40);
         compact.LastClosedBy = TruncateForAdditional(compact.LastClosedBy, 40);
@@ -2081,14 +2146,51 @@ public sealed partial class DataverseService
         if (json.Length <= maxLength)
             return json;
 
+        CompactUploadedLinesForStorage(compact, 25);
         compact.Lines = new List<ScoreVerificationLineInput>();
         compact.VerifiedBy = TruncateForAdditional(compact.VerifiedBy, 20);
         compact.LastClosedBy = TruncateForAdditional(compact.LastClosedBy, 20);
         compact.BusinessId = TruncateForAdditional(compact.BusinessId, 50);
         compact.LastResult = null;
         compact.MonthlyClosures = new List<ScoreMonthlyClosureSnapshot>();
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
 
+        CompactUploadedLinesForStorage(compact, 10);
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
+
+        CompactUploadedLinesForStorage(compact, 3);
+        json = JsonSerializer.Serialize(compact);
+        if (json.Length <= maxLength)
+            return json;
+
+        compact.UploadedLines = new List<ScoreMonthlyUploadedLineSnapshot>();
         return JsonSerializer.Serialize(compact);
+    }
+
+    private static void CompactUploadedLinesForStorage(ScoreAdditionalDataSnapshot additional, int maxItems)
+    {
+        additional.UploadedLines = (additional.UploadedLines ?? new List<ScoreMonthlyUploadedLineSnapshot>())
+            .Where(item => IsSubmittedMonthCloseStatus(item.Status) && !string.IsNullOrWhiteSpace(item.LineKey))
+            .OrderByDescending(item => item.UploadedAt)
+            .Take(maxItems)
+            .ToList();
+
+        foreach (var item in additional.UploadedLines)
+        {
+            item.LineKey = TruncateForAdditional(item.LineKey, 90);
+            item.LineId = TruncateForAdditional(item.LineId, 40);
+            item.ProductId = TruncateForAdditional(item.ProductId, 60);
+            item.ProductName = TruncateForAdditional(item.ProductName, 60);
+            item.PeriodKey = TruncateForAdditional(item.PeriodKey, 10);
+            item.BatchId = TruncateForAdditional(item.BatchId, 40);
+            item.Status = TruncateForAdditional(item.Status, 12);
+            item.SalesPerformanceRecordId = TruncateForAdditional(item.SalesPerformanceRecordId, 60);
+            item.UploadedBy = TruncateForAdditional(item.UploadedBy, 40);
+        }
     }
 
     private static ScoreAdditionalDataSnapshot CloneAdditionalForStorage(ScoreAdditionalDataSnapshot source) =>
@@ -2199,17 +2301,25 @@ public sealed partial class DataverseService
 
     private static bool HasMonthlyClosure(ScoreAdditionalDataSnapshot additional, string? activePeriodKey, IEnumerable<string>? expectedLineKeys = null)
     {
-        if (string.IsNullOrWhiteSpace(activePeriodKey) || additional.MonthlyClosures.Count == 0)
+        if (string.IsNullOrWhiteSpace(activePeriodKey))
             return false;
 
         var periodClosures = additional.MonthlyClosures
             .Where(item => string.Equals(item.PeriodKey, activePeriodKey, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        if (periodClosures.Count == 0)
+        var periodUploads = additional.UploadedLines
+            .Where(item =>
+                IsSubmittedMonthCloseStatus(item.Status)
+                && string.Equals(item.PeriodKey, activePeriodKey, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (periodClosures.Count == 0 && periodUploads.Count == 0)
             return false;
 
-        if (!periodClosures.Any(item => item.Lines.Count > 0))
+        if (periodClosures.Any(item => item.Lines.Count == 0))
             return true;
+
+        if (!periodClosures.Any(item => item.Lines.Any(line => IsSubmittedMonthCloseStatus(line.Status))) && periodUploads.Count == 0)
+            return false;
 
         var normalizedLineKeys = (expectedLineKeys ?? Array.Empty<string>())
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -2219,7 +2329,9 @@ public sealed partial class DataverseService
         if (normalizedLineKeys.Count == 0)
             return true;
 
-        return normalizedLineKeys.All(lineKey => ResolveMonthlyClosureLine(additional, activePeriodKey, lineKey) is not null);
+        return normalizedLineKeys.All(lineKey =>
+            ResolveMonthlyClosureLine(additional, activePeriodKey, lineKey) is not null
+            || ResolveUploadedMonthCloseLine(additional, lineKey, activePeriodKey) is not null);
     }
 
     private static ScoreMonthlyClosureLineSnapshot? ResolveMonthlyClosureLine(ScoreAdditionalDataSnapshot additional, string? periodKey, string? lineKey)
@@ -2231,11 +2343,45 @@ public sealed partial class DataverseService
             .Where(item => string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(item => item.ClosedAt)
             .SelectMany(item => item.Lines.Select(line => new { item.ClosedAt, Line = line }))
+            .Where(item => IsSubmittedMonthCloseStatus(item.Line.Status))
             .Where(item => string.Equals(item.Line.LineKey, lineKey.Trim(), StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(item => item.ClosedAt)
             .Select(item => item.Line)
             .FirstOrDefault();
     }
+
+    private static ScoreMonthlyUploadedLineSnapshot? ResolveUploadedMonthCloseLine(ScoreAdditionalDataSnapshot additional, string? lineKey, string? periodKey = null)
+    {
+        if (string.IsNullOrWhiteSpace(lineKey))
+            return null;
+
+        var normalizedLineKey = lineKey.Trim();
+        var query = additional.UploadedLines
+            .Where(item => IsSubmittedMonthCloseStatus(item.Status))
+            .Where(item => string.Equals(item.LineKey, normalizedLineKey, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(periodKey))
+        {
+            query = query.Where(item => string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query
+            .OrderByDescending(item => item.UploadedAt)
+            .FirstOrDefault();
+    }
+
+    private static bool HasLegacySubmittedMonthlyClosure(ScoreAdditionalDataSnapshot additional, string? periodKey)
+    {
+        if (string.IsNullOrWhiteSpace(periodKey))
+            return false;
+
+        return additional.MonthlyClosures.Any(item =>
+            string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase)
+            && item.Lines.Count == 0);
+    }
+
+    private static bool IsSubmittedMonthCloseStatus(string? status) =>
+        !string.IsNullOrWhiteSpace(status) && SubmittedMonthCloseStatuses.Contains(status.Trim());
 
     private static ScoreMonthlyClosureSnapshot? ResolveLatestMonthCloseBatch(IEnumerable<ScoreRecordContext> contexts, string? periodKey)
     {
@@ -2287,7 +2433,27 @@ public sealed partial class DataverseService
 
         closure.ClosedAt = DateTimeOffset.UtcNow;
         closure.ClosedBy = ResolveUserDisplayName(currentUser);
+        UpsertUploadedMonthCloseLines(additional, closure, lines);
         RefreshMonthlyClosureMetadata(additional);
+    }
+
+    private static void UpsertUploadedMonthCloseLines(
+        ScoreAdditionalDataSnapshot additional,
+        ScoreMonthlyClosureSnapshot closure,
+        IReadOnlyList<ScoreMonthlyClosureLineSnapshot> lines)
+    {
+        additional.UploadedLines ??= new List<ScoreMonthlyUploadedLineSnapshot>();
+        foreach (var line in lines.Where(item => IsSubmittedMonthCloseStatus(item.Status) && !string.IsNullOrWhiteSpace(item.LineKey)))
+        {
+            additional.UploadedLines.RemoveAll(item => string.Equals(item.LineKey, line.LineKey, StringComparison.OrdinalIgnoreCase));
+            additional.UploadedLines.Add(BuildUploadedLineSnapshot(closure, line));
+        }
+
+        additional.UploadedLines = additional.UploadedLines
+            .Where(item => IsSubmittedMonthCloseStatus(item.Status) && !string.IsNullOrWhiteSpace(item.LineKey))
+            .OrderByDescending(item => item.UploadedAt)
+            .Take(250)
+            .ToList();
     }
 
     private static void RemoveMonthlyClosureLines(
@@ -2310,6 +2476,10 @@ public sealed partial class DataverseService
                 additional.MonthlyClosures.Remove(closure);
         }
 
+        additional.UploadedLines.RemoveAll(item =>
+            string.Equals(item.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(item.BatchId, batchId, StringComparison.OrdinalIgnoreCase)
+            && lineKeys.Contains(item.LineKey));
         RefreshMonthlyClosureMetadata(additional);
     }
 
@@ -2330,21 +2500,40 @@ public sealed partial class DataverseService
             .FirstOrDefault();
     }
 
-    private static string ResolveMonthCloseLineReason(int autoBillOptionValue, bool isAlreadyClosed, bool isRenewalContract)
+    private static string ResolveMonthCloseLineReason(
+        int autoBillOptionValue,
+        bool isAlreadyClosed,
+        bool isRenewalContract,
+        ScoreMonthlyUploadedLineSnapshot? existingUpload,
+        bool isLegacyRecordClosed)
     {
         if (isAlreadyClosed)
-            return "La linea ya fue consolidada en un cierre anterior.";
+        {
+            if (existingUpload is not null)
+            {
+                var period = string.IsNullOrWhiteSpace(existingUpload.PeriodKey)
+                    ? "un cierre anterior"
+                    : $"el cierre {existingUpload.PeriodKey}";
+                return $"La linea ya fue enviada a Dataverse en {period}; no se puede volver a subir.";
+            }
+
+            return isLegacyRecordClosed
+                ? "El registro ya tiene un cierre historico sin detalle de lineas; se bloquea para evitar duplicados en Dataverse."
+                : "La linea ya fue consolidada en un cierre anterior.";
+        }
 
         if (isRenewalContract)
             return "Se excluye porque el tipo de contrato del puntaje es Renovacion.";
 
         return autoBillOptionValue == 1
-            ? "La linea quedara incluida porque tiene facturacion automatica habilitada."
-            : "Se excluye por defecto porque AutoBillOptionValue es distinto de 1.";
+            ? "La linea quedara incluida con facturacion automatica habilitada."
+            : "La linea quedara incluida como historico sin dia de facturacion recurrente.";
     }
 
     private static int ResolveSalesPerformanceBillingDay(ScoreVerificationDetailDto detail) =>
-        detail.BillingDay > 0
+        detail.AutoBillOptionValue != 1
+            ? 0
+            : detail.BillingDay > 0
             ? detail.BillingDay
             : DeriveBillingDay(detail.RenewalDateValue, detail.ScenarioEndDateValue, detail.ContractStartDateValue);
 
@@ -2415,7 +2604,7 @@ public sealed partial class DataverseService
                $"Facturable automatico: {(includeAutoBill ? ResolveOptionLabel(PuntajesOptionCatalog.AutoBillOptions, detail.AutoBillOptionValue) : "Pendiente manual")}. " +
                $"IVA: {(includeHasVat ? ResolveOptionLabel(PuntajesOptionCatalog.HasVatOptions, hasVatOptionValue) : "Pendiente manual")}. " +
                $"Linea: {(includeProductLine ? ResolveProductLineLabel(productLineOptionValue) : "Pendiente manual")}. " +
-               $"Dia facturacion: {(includeBillingDay && billingDay > 0 ? billingDay.ToString(CultureInfo.InvariantCulture) : "Pendiente manual")}. " +
+               $"Dia facturacion: {(includeBillingDay && billingDay > 0 ? billingDay.ToString(CultureInfo.InvariantCulture) : detail.AutoBillOptionValue == 1 ? "Pendiente manual" : "Vacio")}. " +
                $"Renovacion: {(includeRenewalDate && !string.IsNullOrWhiteSpace(renewalDateValue) ? renewalDateValue : "Pendiente manual")}.";
     }
 
@@ -2424,6 +2613,21 @@ public sealed partial class DataverseService
 
     private static string BuildPreviewLineState(ScoreMonthCloseLinePlan linePlan)
     {
+        if (linePlan.IsAlreadyClosed)
+        {
+            if (linePlan.ExistingUpload is not null)
+            {
+                var period = string.IsNullOrWhiteSpace(linePlan.ExistingUpload.PeriodKey)
+                    ? "un cierre anterior"
+                    : $"el cierre {linePlan.ExistingUpload.PeriodKey}";
+                return $"Accion prevista: bloqueada; ya fue enviada a Dataverse en {period}.";
+            }
+
+            return linePlan.IsLegacyRecordClosed
+                ? "Accion prevista: bloqueada por un cierre historico sin detalle de lineas."
+                : "Accion prevista: bloqueada; ya fue consolidada.";
+        }
+
         if (linePlan.IsRenewalContract)
             return "Accion prevista: no se envia por estar marcado como renovacion.";
 
@@ -2496,6 +2700,7 @@ public sealed partial class DataverseService
         additional.LastClosedBy ??= "";
         additional.Lines ??= new List<ScoreVerificationLineInput>();
         additional.MonthlyClosures ??= new List<ScoreMonthlyClosureSnapshot>();
+        additional.UploadedLines ??= new List<ScoreMonthlyUploadedLineSnapshot>();
         foreach (var closure in additional.MonthlyClosures)
         {
             closure.BatchId ??= "";
@@ -2512,7 +2717,66 @@ public sealed partial class DataverseService
                 line.Warnings ??= new List<string>();
             }
         }
+
+        foreach (var upload in additional.UploadedLines)
+        {
+            upload.LineKey ??= "";
+            upload.LineId ??= "";
+            upload.ProductId ??= "";
+            upload.ProductName ??= "";
+            upload.PeriodKey ??= "";
+            upload.BatchId ??= "";
+            upload.Status ??= "";
+            upload.SalesPerformanceRecordId ??= "";
+            upload.UploadedBy ??= "";
+        }
+
+        BackfillUploadedLinesFromClosures(additional);
     }
+
+    private static void BackfillUploadedLinesFromClosures(ScoreAdditionalDataSnapshot additional)
+    {
+        var knownKeys = additional.UploadedLines
+            .Where(item => IsSubmittedMonthCloseStatus(item.Status) && !string.IsNullOrWhiteSpace(item.LineKey))
+            .Select(item => item.LineKey.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var closure in additional.MonthlyClosures)
+        {
+            foreach (var line in closure.Lines.Where(item => IsSubmittedMonthCloseStatus(item.Status)))
+            {
+                if (string.IsNullOrWhiteSpace(line.LineKey) || !knownKeys.Add(line.LineKey.Trim()))
+                    continue;
+
+                additional.UploadedLines.Add(BuildUploadedLineSnapshot(closure, line));
+            }
+        }
+
+        additional.UploadedLines = additional.UploadedLines
+            .Where(item => IsSubmittedMonthCloseStatus(item.Status) && !string.IsNullOrWhiteSpace(item.LineKey))
+            .OrderByDescending(item => item.UploadedAt)
+            .Take(250)
+            .ToList();
+    }
+
+    private static ScoreMonthlyUploadedLineSnapshot BuildUploadedLineSnapshot(
+        ScoreMonthlyClosureSnapshot closure,
+        ScoreMonthlyClosureLineSnapshot line) =>
+        new()
+        {
+            LineKey = line.LineKey,
+            LineId = line.LineId,
+            ProductId = line.ProductId,
+            ProductName = line.ProductName,
+            PeriodKey = closure.PeriodKey,
+            BatchId = closure.BatchId,
+            Status = line.Status,
+            SalesPerformanceRecordId = line.SalesPerformanceRecordId,
+            AppliedQuantity = line.AppliedQuantity,
+            FinalQuantity = line.FinalQuantity,
+            UploadedAt = closure.ClosedAt,
+            UploadedBy = closure.ClosedBy
+        };
 
     private static string NormalizeLookupToken(string? value)
     {
@@ -3882,6 +4146,7 @@ public sealed partial class DataverseService
         public DateTimeOffset? VerifiedAt { get; set; }
         public string? VerifiedBy { get; set; } = "";
         public List<ScoreMonthlyClosureSnapshot> MonthlyClosures { get; set; } = new();
+        public List<ScoreMonthlyUploadedLineSnapshot> UploadedLines { get; set; } = new();
         public DateTimeOffset? LastClosedAt { get; set; }
         public string? LastClosedBy { get; set; } = "";
     }
@@ -3907,6 +4172,22 @@ public sealed partial class DataverseService
         public int AppliedQuantity { get; set; }
         public int FinalQuantity { get; set; }
         public List<string> Warnings { get; set; } = new();
+    }
+
+    private sealed class ScoreMonthlyUploadedLineSnapshot
+    {
+        public string LineKey { get; set; } = "";
+        public string LineId { get; set; } = "";
+        public string ProductId { get; set; } = "";
+        public string ProductName { get; set; } = "";
+        public string PeriodKey { get; set; } = "";
+        public string BatchId { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string SalesPerformanceRecordId { get; set; } = "";
+        public int AppliedQuantity { get; set; }
+        public int FinalQuantity { get; set; }
+        public DateTimeOffset UploadedAt { get; set; }
+        public string UploadedBy { get; set; } = "";
     }
 
     private sealed class ScoreComputationContext
@@ -3966,6 +4247,8 @@ public sealed partial class DataverseService
         public string LineKey { get; set; } = "";
         public SalesPerformanceCompactRecord? ExistingMatch { get; set; }
         public ScoreMonthlyClosureLineSnapshot? ExistingClosure { get; set; }
+        public ScoreMonthlyUploadedLineSnapshot? ExistingUpload { get; set; }
+        public bool IsLegacyRecordClosed { get; set; }
         public bool IsAlreadyClosed { get; set; }
         public bool IsRenewalContract { get; set; }
         public bool SelectedByDefault { get; set; }

@@ -157,6 +157,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardCopiersUnitValueBeforeVatField = "cr07a_valorunidadantesdeiva";
     private const string DefaultDashboardCopiersBillingDayField = "cr07a_diadefacturacion";
     private const string DefaultDashboardCopiersIncludedOperationsField = "cr07a_operacionesincluidas";
+    private const string DefaultDashboardCopiersGroupField = "cr07a_agrupar";
     private const string DefaultDashboardCopiersClientField = "cr07a_cliente";
     private const string DefaultDashboardCopiersUnitValueWithVatField = "cr07a_valorunidadconiva";
     private const string DefaultDashboardCopiersTotalWithVatField = "cr07a_totalconiva";
@@ -310,6 +311,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardCopiersUnitValueBeforeVatField;
     private readonly string _dashboardCopiersBillingDayField;
     private readonly string _dashboardCopiersIncludedOperationsField;
+    private readonly string _dashboardCopiersGroupField;
     private readonly string _dashboardCopiersClientField;
     private readonly string _dashboardCopiersUnitValueWithVatField;
     private readonly string _dashboardCopiersTotalWithVatField;
@@ -576,6 +578,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardCopiersBillingDayField;
         _dashboardCopiersIncludedOperationsField = configuration["Dashboard:CopiersIncludedOperationsField"]
             ?? DefaultDashboardCopiersIncludedOperationsField;
+        _dashboardCopiersGroupField = configuration["Dashboard:CopiersGroupField"]
+            ?? DefaultDashboardCopiersGroupField;
         _dashboardCopiersClientField = configuration["Dashboard:CopiersClientField"]
             ?? DefaultDashboardCopiersClientField;
         _dashboardCopiersUnitValueWithVatField = configuration["Dashboard:CopiersUnitValueWithVatField"]
@@ -610,6 +614,7 @@ public sealed partial class DataverseService : IDataverseService
         _tasksPortfolioAssigneeEmails = configuration["Tasks:PortfolioAssigneeEmails"] ?? _tasksPortfolioAssigneeEmails;
         _tasksHardwarePaymentAssigneeEmail = configuration["Tasks:HardwarePaymentAssigneeEmail"] ?? _tasksHardwarePaymentAssigneeEmail;
         _tasksHardwareInvoiceAssigneeEmail = configuration["Tasks:HardwareInvoiceAssigneeEmail"] ?? _tasksHardwareInvoiceAssigneeEmail;
+        _tasksCopiersInventoryAssigneeEmail = configuration["Tasks:CopiersInventoryAssigneeEmail"] ?? _tasksCopiersInventoryAssigneeEmail;
     }
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)

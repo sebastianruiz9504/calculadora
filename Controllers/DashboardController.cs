@@ -610,6 +610,16 @@ public sealed class DashboardController : Controller
                 clientName,
                 ct);
 
+            if (!dashboard.CanExport)
+            {
+                var details = dashboard.ExportBlockers?.Select(static item => item.Message).Where(static value => !string.IsNullOrWhiteSpace(value)).Take(8).ToList()
+                    ?? new List<string>();
+                var message = details.Count == 0
+                    ? "Hay pendientes por solucionar antes de exportar el reporte de contadores."
+                    : $"Soluciona estos pendientes antes de exportar: {string.Join(" ", details)}";
+                return BadRequest(message);
+            }
+
             var content = BuildCopiersCountersPdf(dashboard);
             var periodToken = string.IsNullOrWhiteSpace(dashboard.PeriodValue)
                 ? $"{dashboard.Year:D4}-{dashboard.Month:D2}"
@@ -1123,26 +1133,30 @@ public sealed class DashboardController : Controller
         const double pageHeight = 595.28;
         const double marginX = 24;
         const double topY = 572;
-        const double tableTopY = 505;
+        const double tableTopY = 485;
         const double bottomY = 34;
         const double headerHeight = 19;
         const double rowHeight = 15.5;
 
         var rows = (dashboard.EquipmentRows ?? Array.Empty<CopiersCountersEquipmentRowDto>()).ToList();
+        var summaries = dashboard.ClientSummaries ?? Array.Empty<CopiersCountersClientSummaryDto>();
+        var totalIncludedOperations = summaries.Sum(static row => row.IncludedOperations);
+        var totalExcessQuantity = summaries.Sum(static row => row.ExcessQuantity);
+        var totalExcessValue = summaries.Sum(static row => row.ExcessTotal);
         var columns = new[]
         {
-            new PdfTableColumn("Equipo", 90, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
-            new PdfTableColumn("Ubicacion", 90, false, row => row.Area),
-            new PdfTableColumn("Fecha ant.", 58, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
-            new PdfTableColumn("Fecha act.", 58, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
-            new PdfTableColumn("Act. copias", 65, true, row => FormatPdfNumber(row.CurrentCopiesCounter)),
-            new PdfTableColumn("Ant. copias", 65, true, row => FormatPdfNumber(row.PreviousCopiesCounter)),
-            new PdfTableColumn("Copias", 55, true, row => FormatPdfNumber(row.CopiesConsumption)),
-            new PdfTableColumn("Act. esc.", 65, true, row => FormatPdfNumber(row.CurrentScansCounter)),
-            new PdfTableColumn("Ant. esc.", 65, true, row => FormatPdfNumber(row.PreviousScansCounter)),
-            new PdfTableColumn("Escaneos", 55, true, row => FormatPdfNumber(row.ScansConsumption)),
-            new PdfTableColumn("Dias", 40, true, row => FormatPdfNumber(row.DaysBetweenReadings)),
-            new PdfTableColumn("Total", 54, true, row => FormatPdfNumber(row.TotalConsumption))
+            new PdfTableColumn("Equipo", 76, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
+            new PdfTableColumn("Ubicacion", 68, false, row => FirstNonEmpty(row.Area, row.Site)),
+            new PdfTableColumn("Linea", 86, false, row => row.IsBackup ? "Backup" : FirstNonEmpty(row.ProductLineName, row.AssignmentStatus)),
+            new PdfTableColumn("Fecha ant.", 49, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
+            new PdfTableColumn("Fecha act.", 49, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
+            new PdfTableColumn("Copias", 48, true, row => FormatPdfNumber(row.CopiesConsumption)),
+            new PdfTableColumn("Escaneos", 52, true, row => FormatPdfNumber(row.ScansConsumption)),
+            new PdfTableColumn("Total ops.", 54, true, row => FormatPdfNumber(row.TotalConsumption)),
+            new PdfTableColumn("Incluidas", 58, true, row => FormatPdfDecimal(row.IncludedOperations)),
+            new PdfTableColumn("Exced.", 50, true, row => row.ExcessQuantity > 0 ? FormatPdfNumber(row.ExcessQuantity) : "-"),
+            new PdfTableColumn("Unitario", 60, true, row => row.UnitExcessCost > 0m ? FormatPdfCurrency(row.UnitExcessCost) : "-"),
+            new PdfTableColumn("Total exc.", 64, true, row => row.ExcessTotal > 0m ? FormatPdfCurrency(row.ExcessTotal) : "-")
         };
 
         var tableWidth = columns.Sum(static column => column.Width);
@@ -1176,6 +1190,22 @@ public sealed class DashboardController : Controller
                 7.5,
                 "F1",
                 620);
+            AppendPdfText(
+                content,
+                $"Operaciones incluidas: {FormatPdfDecimal(totalIncludedOperations)} | Cantidad de excedentes: {FormatPdfNumber(totalExcessQuantity)} | Valor total excedentes: {FormatPdfCurrency(totalExcessValue)}",
+                marginX,
+                topY - 43,
+                7.5,
+                "F2",
+                640);
+            AppendPdfText(
+                content,
+                $"Costo unitario de excedentes: {BuildCopiersCountersPdfUnitCostSummary(summaries)}",
+                marginX,
+                topY - 56,
+                7.5,
+                "F1",
+                640);
             AppendPdfText(
                 content,
                 $"Pagina {pageIndex + 1} de {totalPages}",
@@ -1379,6 +1409,29 @@ public sealed class DashboardController : Controller
 
     private static string FormatPdfNumber(long value) =>
         value.ToString("N0", PdfCulture);
+
+    private static string FormatPdfDecimal(decimal value) =>
+        value == 0m ? "-" : value.ToString("N0", PdfCulture);
+
+    private static string FormatPdfCurrency(decimal value) =>
+        value == 0m ? "$0" : value.ToString("C0", PdfCulture);
+
+    private static string BuildCopiersCountersPdfUnitCostSummary(IReadOnlyList<CopiersCountersClientSummaryDto> summaries)
+    {
+        var values = summaries
+            .Select(static row => row.UnitExcessCost)
+            .Where(static value => value > 0m)
+            .Distinct()
+            .OrderBy(static value => value)
+            .ToList();
+
+        return values.Count switch
+        {
+            0 => "$0",
+            1 => FormatPdfCurrency(values[0]),
+            _ => string.Join(", ", values.Select(FormatPdfCurrency))
+        };
+    }
 
     private static string FitPdfText(string value, double maxWidth, double fontSize)
     {
