@@ -56,6 +56,13 @@
     const suggestionDetail = document.getElementById("rpcSuggestionDetail");
     const useAverageButton = document.getElementById("rpcUseAverageBtn");
     const useLatestButton = document.getElementById("rpcUseLatestBtn");
+    const solutionModal = document.getElementById("rpcSolutionModal");
+    const solutionCloseButton = document.getElementById("rpcSolutionCloseBtn");
+    const solutionCancelButton = document.getElementById("rpcSolutionCancelBtn");
+    const solutionStatus = document.getElementById("rpcSolutionStatus");
+    const solutionSubtitle = document.getElementById("rpcSolutionSubtitle");
+    const solutionDetailBox = document.getElementById("rpcSolutionDetail");
+    const solutionApplyButton = document.getElementById("rpcSolutionApplyBtn");
 
     const currencyFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -65,13 +72,38 @@
     const numberFormatter = new Intl.NumberFormat("es-CO", {
         maximumFractionDigits: 4
     });
+    const retentionTolerance = 5000;
+    const reteFteOptions = [
+        { value: 0, label: "Sin retefuente" },
+        { value: 0.025, label: "Compras 2,5%" },
+        { value: 0.035, label: "Otros ingresos 3,5%" },
+        { value: 0.04, label: "Servicios declarantes 4%" },
+        { value: 0.06, label: "Servicios no declarantes 6%" },
+        { value: 0.10, label: "Honorarios 10%" },
+        { value: 0.11, label: "Honorarios 11%" }
+    ];
+    const reteIcaOptions = [
+        { value: 0, label: "Sin ReteICA" },
+        { value: 4.14, label: "ICA 4,14 x mil" },
+        { value: 6.9, label: "ICA 6,9 x mil" },
+        { value: 7, label: "ICA 7 x mil" },
+        { value: 8, label: "ICA 8 x mil" },
+        { value: 9.66, label: "ICA 9,66 x mil" },
+        { value: 11.04, label: "ICA 11,04 x mil" },
+        { value: 13.8, label: "ICA 13,8 x mil" }
+    ];
+    const rteIvaOptions = [
+        { value: 0, label: "Sin ReteIVA" },
+        { value: 0.15, label: "ReteIVA 15%" }
+    ];
 
     const state = {
         board: null,
         rows: [],
         filteredRows: [],
         activeTab: "all",
-        currentInvoice: null
+        currentInvoice: null,
+        currentSolution: null
     };
 
     function setStatus(element, message, tone) {
@@ -262,7 +294,7 @@
             const emptyMessage = state.activeTab === "pending-retentions"
                 ? "No hay retenciones pendientes para mostrar."
                 : "No hay facturas para mostrar.";
-            rowsBody.innerHTML = `<tr><td colspan="7" class="rpc-table__empty">${escapeHtml(emptyMessage)}</td></tr>`;
+            rowsBody.innerHTML = `<tr><td colspan="8" class="rpc-table__empty">${escapeHtml(emptyMessage)}</td></tr>`;
             emptyState && (emptyState.hidden = false);
             emptyState && (emptyState.textContent = emptyMessage);
             return;
@@ -278,6 +310,7 @@
                 <td class="text-end rpc-pending-only" title="${escapeHtml(formatCurrency(row.paymentValue))}">${escapeHtml(formatCurrency(row.paymentValue))}</td>
                 <td class="rpc-all-only"><span class="rpc-status-badge is-${escapeHtml(row.paymentStatusTone || "pending")}">${escapeHtml(row.paymentStatusLabel || "-")}</span></td>
                 <td class="text-end rpc-pending-only" title="${escapeHtml(formatCurrency(row.differenceValue))}">${escapeHtml(formatCurrency(row.differenceValue))}</td>
+                <td class="rpc-pending-only">${renderSuggestedSolutionCell(row)}</td>
             </tr>
         `).join("");
 
@@ -288,6 +321,13 @@
                     event.preventDefault();
                     openInvoice(rowElement.dataset.recordId || "");
                 }
+            });
+        });
+        rowsBody.querySelectorAll("[data-rpc-solution-record-id]").forEach((button) => {
+            button.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openSuggestedSolution(button.dataset.rpcSolutionRecordId || "");
             });
         });
     }
@@ -404,6 +444,162 @@
         return roundCurrency(totalNumber - (totalNumber / 1.19));
     }
 
+    function normalizeRate(value) {
+        return roundPercent(Number(value || 0));
+    }
+
+    function calculateRetentionForRates(invoice, rates) {
+        const total = Number(invoice?.totalInvoice || 0);
+        const vatValue = Number(invoice?.vatValue || 0);
+        const payment = roundCurrency(Number(invoice?.paymentValue || 0));
+        const baseBeforeVat = getBaseBeforeVat(total, vatValue);
+        const vatFromIncludedTotal = getVatFromIncludedTotal(total);
+        const reteFte = roundCurrency(baseBeforeVat * normalizeRate(rates?.reteFte));
+        const reteIca = roundCurrency((baseBeforeVat * normalizeRate(rates?.reteIca)) / 1000);
+        const rteIva = roundCurrency(vatFromIncludedTotal * normalizeRate(rates?.rteIva));
+        const difference = roundCurrency(total - payment - reteFte - reteIca - rteIva);
+
+        return {
+            total,
+            payment,
+            baseBeforeVat,
+            vatFromIncludedTotal,
+            reteFte,
+            reteIca,
+            rteIva,
+            difference
+        };
+    }
+
+    function getCurrentRates(invoice) {
+        return {
+            reteFte: normalizeRate(invoice?.reteFtePercent),
+            reteIca: normalizeRate(invoice?.reteIcaPercent),
+            rteIva: normalizeRate(invoice?.rteIvaPercent)
+        };
+    }
+
+    function getOptionLabel(options, value) {
+        const normalized = normalizeRate(value);
+        const match = options.find(option => Math.abs(normalizeRate(option.value) - normalized) < 0.0001);
+        return match?.label || formatRate(normalized);
+    }
+
+    function getRteIvaOptionsForInvoice(invoice) {
+        const hasVat = Number(invoice?.vatValue || 0) > 0 || normalizeRate(invoice?.rteIvaPercent) > 0;
+        return hasVat ? rteIvaOptions : rteIvaOptions.filter(option => option.value === 0);
+    }
+
+    function countRateChanges(currentRates, candidateRates) {
+        return [
+            Math.abs(currentRates.reteFte - candidateRates.reteFte) > 0.0001,
+            Math.abs(currentRates.reteIca - candidateRates.reteIca) > 0.0001,
+            Math.abs(currentRates.rteIva - candidateRates.rteIva) > 0.0001
+        ].filter(Boolean).length;
+    }
+
+    function getRateDistance(currentRates, candidateRates) {
+        return Math.abs(currentRates.reteFte - candidateRates.reteFte)
+            + (Math.abs(currentRates.reteIca - candidateRates.reteIca) / 1000)
+            + Math.abs(currentRates.rteIva - candidateRates.rteIva);
+    }
+
+    function compareSolutions(left, right) {
+        if (!right) {
+            return -1;
+        }
+
+        const leftAbs = Math.abs(left.calculation.difference);
+        const rightAbs = Math.abs(right.calculation.difference);
+        if (Math.abs(leftAbs - rightAbs) > 0.01) {
+            return leftAbs - rightAbs;
+        }
+
+        if (left.changeCount !== right.changeCount) {
+            return left.changeCount - right.changeCount;
+        }
+
+        return left.rateDistance - right.rateDistance;
+    }
+
+    function getSuggestedRetentionSolution(invoice) {
+        const currentRates = getCurrentRates(invoice);
+        const currentCalculation = calculateRetentionForRates(invoice, currentRates);
+        const rteIvaCandidates = getRteIvaOptionsForInvoice(invoice);
+        let best = null;
+
+        reteFteOptions.forEach((reteFteOption) => {
+            reteIcaOptions.forEach((reteIcaOption) => {
+                rteIvaCandidates.forEach((rteIvaOption) => {
+                    const rates = {
+                        reteFte: normalizeRate(reteFteOption.value),
+                        reteIca: normalizeRate(reteIcaOption.value),
+                        rteIva: normalizeRate(rteIvaOption.value)
+                    };
+                    const calculation = calculateRetentionForRates(invoice, rates);
+                    const candidate = {
+                        rates,
+                        labels: {
+                            reteFte: reteFteOption.label,
+                            reteIca: reteIcaOption.label,
+                            rteIva: rteIvaOption.label
+                        },
+                        calculation,
+                        changeCount: countRateChanges(currentRates, rates),
+                        rateDistance: getRateDistance(currentRates, rates)
+                    };
+
+                    if (compareSolutions(candidate, best) < 0) {
+                        best = candidate;
+                    }
+                });
+            });
+        });
+
+        const currentAbs = Math.abs(currentCalculation.difference);
+        const bestAbs = Math.abs(best?.calculation?.difference || 0);
+        const improves = bestAbs + 0.01 < currentAbs;
+        const balanced = bestAbs <= retentionTolerance;
+
+        return {
+            currentRates,
+            currentCalculation,
+            best,
+            improves,
+            balanced,
+            canApply: Boolean(best && improves)
+        };
+    }
+
+    function renderSuggestedSolutionCell(invoice) {
+        const suggestion = getSuggestedRetentionSolution(invoice);
+        const best = suggestion.best;
+        if (!best) {
+            return '<span class="text-muted">Sin sugerencia</span>';
+        }
+
+        const tone = suggestion.balanced
+            ? "is-balanced"
+            : suggestion.improves ? "" : "is-limited";
+        const title = suggestion.improves
+            ? `Aplicar sugerencia para ${invoice.invoiceNumber || "factura"}`
+            : "Ver combinacion mas cercana";
+        const label = suggestion.balanced
+            ? "Cuadra en rango"
+            : suggestion.improves ? "Mejor opcion" : "Sin mejora";
+        const detail = `Dif. ${formatCurrency(best.calculation.difference)}`;
+
+        return `
+            <button type="button"
+                    class="rpc-solution-btn ${tone}"
+                    data-rpc-solution-record-id="${escapeHtml(invoice.recordId)}"
+                    title="${escapeHtml(title)}">
+                <span>${escapeHtml(label)}</span>
+                <small>${escapeHtml(detail)}</small>
+            </button>
+        `;
+    }
+
     function getCalculation() {
         const total = Number(state.currentInvoice?.totalInvoice || 0);
         const vatValue = Number(state.currentInvoice?.vatValue || 0);
@@ -480,6 +676,24 @@
         return "";
     }
 
+    function updateInvoiceAfterSave(responsePayload) {
+        const updatedInvoice = responsePayload?.invoice;
+        if (!updatedInvoice?.recordId) {
+            return null;
+        }
+
+        const index = state.rows.findIndex(row => String(row.recordId).toLowerCase() === String(updatedInvoice.recordId).toLowerCase());
+        if (index >= 0) {
+            state.rows[index] = updatedInvoice;
+        }
+        state.currentInvoice = updatedInvoice;
+        updateModalSummary(updatedInvoice);
+        renderSuggestion(updatedInvoice);
+        updateSummaryFromRows();
+        applyFilters();
+        return updatedInvoice;
+    }
+
     async function savePayment(event) {
         event?.preventDefault();
         if (!saveUrl) {
@@ -518,18 +732,7 @@
                 throw new Error(responsePayload.detail || responsePayload.message || "No fue posible registrar el pago.");
             }
 
-            const updatedInvoice = responsePayload.invoice;
-            if (updatedInvoice?.recordId) {
-                const index = state.rows.findIndex(row => String(row.recordId).toLowerCase() === String(updatedInvoice.recordId).toLowerCase());
-                if (index >= 0) {
-                    state.rows[index] = updatedInvoice;
-                }
-                state.currentInvoice = updatedInvoice;
-                updateModalSummary(updatedInvoice);
-                renderSuggestion(updatedInvoice);
-                updateSummaryFromRows();
-                applyFilters();
-            }
+            updateInvoiceAfterSave(responsePayload);
 
             setStatus(modalStatus, responsePayload.message || "Pago registrado correctamente.", "success");
             setStatus(statusBanner, responsePayload.message || "Pago registrado correctamente.", "success");
@@ -540,6 +743,160 @@
         }
     }
 
+    function renderSolutionLine(label, value) {
+        return `
+            <div class="rpc-solution-line">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(value)}</strong>
+            </div>
+        `;
+    }
+
+    function renderSolutionRateLine(label, value, optionLabel) {
+        const suffix = optionLabel ? ` - ${optionLabel}` : "";
+        return renderSolutionLine(label, `${formatRate(value)}${suffix}`);
+    }
+
+    function openSuggestedSolution(recordId) {
+        const invoice = findInvoice(recordId);
+        if (!invoice || !solutionModal || !solutionDetailBox) {
+            return;
+        }
+
+        const suggestion = getSuggestedRetentionSolution(invoice);
+        const best = suggestion.best;
+        if (!best) {
+            return;
+        }
+
+        state.currentSolution = { invoice, suggestion };
+        setStatus(solutionStatus, "", "");
+        solutionSubtitle && (solutionSubtitle.textContent = `${invoice.invoiceNumber || "-"} - ${invoice.clientName || "Cliente sin nombre"}`);
+
+        const noteTone = suggestion.balanced
+            ? "is-balanced"
+            : suggestion.improves ? "" : "is-limited";
+        const note = suggestion.balanced
+            ? "La combinacion sugerida deja la diferencia dentro del rango objetivo."
+            : suggestion.improves
+                ? "No queda en cero, pero es la combinacion vigente mas cercana encontrada."
+                : "El catalogo vigente no mejora la combinacion actual; se muestra la opcion mas cercana.";
+
+        solutionDetailBox.innerHTML = `
+            <div class="rpc-solution-note ${noteTone}">
+                ${escapeHtml(note)}
+            </div>
+            <div class="rpc-solution-grid">
+                <article class="rpc-solution-card">
+                    <h3>Actual</h3>
+                    <div class="rpc-solution-lines">
+                        ${renderSolutionRateLine("ReteFuente", suggestion.currentRates.reteFte, getOptionLabel(reteFteOptions, suggestion.currentRates.reteFte))}
+                        ${renderSolutionRateLine("ReteICA", suggestion.currentRates.reteIca, getOptionLabel(reteIcaOptions, suggestion.currentRates.reteIca))}
+                        ${renderSolutionRateLine("ReteIVA", suggestion.currentRates.rteIva, getOptionLabel(rteIvaOptions, suggestion.currentRates.rteIva))}
+                        ${renderSolutionLine("Valor pago", formatCurrency(suggestion.currentCalculation.payment))}
+                        ${renderSolutionLine("Diferencia", formatCurrency(suggestion.currentCalculation.difference))}
+                    </div>
+                </article>
+                <article class="rpc-solution-card">
+                    <h3>Sugerida</h3>
+                    <div class="rpc-solution-lines">
+                        ${renderSolutionRateLine("ReteFuente", best.rates.reteFte, best.labels.reteFte)}
+                        ${renderSolutionRateLine("ReteICA", best.rates.reteIca, best.labels.reteIca)}
+                        ${renderSolutionRateLine("ReteIVA", best.rates.rteIva, best.labels.rteIva)}
+                        ${renderSolutionLine("RTE FTE valor", formatCurrency(best.calculation.reteFte))}
+                        ${renderSolutionLine("ReteICA valor", formatCurrency(best.calculation.reteIca))}
+                        ${renderSolutionLine("RTE IVA valor", formatCurrency(best.calculation.rteIva))}
+                        ${renderSolutionLine("Diferencia", formatCurrency(best.calculation.difference))}
+                    </div>
+                </article>
+            </div>
+        `;
+
+        if (solutionApplyButton) {
+            solutionApplyButton.disabled = !suggestion.canApply;
+        }
+
+        solutionModal.hidden = false;
+        document.body.classList.add("rpc-modal-open");
+    }
+
+    function closeSolutionModal() {
+        if (solutionModal) {
+            solutionModal.hidden = true;
+        }
+        state.currentSolution = null;
+        if (!modal || modal.hidden) {
+            document.body.classList.remove("rpc-modal-open");
+        }
+    }
+
+    function applyRatesToPaymentModal(invoice, rates) {
+        openInvoice(invoice.recordId);
+        reteFtePercentInput && (reteFtePercentInput.value = formatInputNumber(rates.reteFte, 4, false));
+        reteIcaPercentInput && (reteIcaPercentInput.value = formatInputNumber(rates.reteIca, 4, false));
+        rteIvaPercentInput && (rteIvaPercentInput.value = formatInputNumber(rates.rteIva, 4, false));
+        updateCalculation();
+        setStatus(modalStatus, "Sugerencia aplicada. Revisa y guarda la factura.", "info");
+    }
+
+    async function applySuggestedSolution() {
+        const current = state.currentSolution;
+        const invoice = current?.invoice;
+        const best = current?.suggestion?.best;
+        if (!invoice || !best || !saveUrl) {
+            return;
+        }
+
+        if (!current.suggestion.canApply) {
+            setStatus(solutionStatus, "La sugerencia no mejora la combinacion actual.", "info");
+            return;
+        }
+
+        if (!invoice.paymentDateValue) {
+            closeSolutionModal();
+            applyRatesToPaymentModal(invoice, best.rates);
+            return;
+        }
+
+        const payload = {
+            recordId: invoice.recordId || "",
+            paymentValue: roundCurrency(Number(invoice.paymentValue || 0)),
+            paymentDateValue: invoice.paymentDateValue || "",
+            reteFtePercent: best.rates.reteFte,
+            reteIcaPercent: best.rates.reteIca,
+            rteIvaPercent: best.rates.rteIva
+        };
+        const validationMessage = validateSavePayload(payload);
+        if (validationMessage) {
+            setStatus(solutionStatus, validationMessage, "error");
+            return;
+        }
+
+        solutionApplyButton && (solutionApplyButton.disabled = true);
+        setStatus(solutionStatus, "Aplicando sugerencia en Dataverse...", "info");
+
+        try {
+            const response = await fetch(saveUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+            const responsePayload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(responsePayload.detail || responsePayload.message || "No fue posible aplicar la sugerencia.");
+            }
+
+            updateInvoiceAfterSave(responsePayload);
+            closeSolutionModal();
+            setStatus(statusBanner, responsePayload.message || "Sugerencia aplicada correctamente.", "success");
+        } catch (error) {
+            setStatus(solutionStatus, error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
+            solutionApplyButton && (solutionApplyButton.disabled = false);
+        }
+    }
+
     async function loadData(showSuccess = false) {
         if (!loadUrl) {
             setStatus(statusBanner, "No se encontro la ruta para cargar facturas.", "error");
@@ -547,7 +904,7 @@
         }
 
         setStatus(statusBanner, "Cargando facturas desde Dataverse...", "info");
-        rowsBody && (rowsBody.innerHTML = '<tr><td colspan="7" class="rpc-table__empty">Cargando facturas...</td></tr>');
+        rowsBody && (rowsBody.innerHTML = '<tr><td colspan="8" class="rpc-table__empty">Cargando facturas...</td></tr>');
 
         try {
             const response = await fetch(loadUrl, {
@@ -602,12 +959,22 @@
     modalCloseButton?.addEventListener("click", closeModal);
     modalCancelButton?.addEventListener("click", closeModal);
     modal?.querySelector("[data-rpc-close]")?.addEventListener("click", closeModal);
+    solutionCloseButton?.addEventListener("click", closeSolutionModal);
+    solutionCancelButton?.addEventListener("click", closeSolutionModal);
+    solutionModal?.querySelector("[data-rpc-solution-close]")?.addEventListener("click", closeSolutionModal);
+    solutionApplyButton?.addEventListener("click", applySuggestedSolution);
     paymentForm?.addEventListener("submit", savePayment);
     useAverageButton?.addEventListener("click", () => applySuggestionFromButton(useAverageButton));
     useLatestButton?.addEventListener("click", () => applySuggestionFromButton(useLatestButton));
 
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && modal && !modal.hidden) {
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        if (solutionModal && !solutionModal.hidden) {
+            closeSolutionModal();
+        } else if (modal && !modal.hidden) {
             closeModal();
         }
     });

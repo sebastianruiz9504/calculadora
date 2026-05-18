@@ -85,6 +85,7 @@
                     <col class="rpc-col-payment rpc-pending-only" />
                     <col class="rpc-col-status rpc-all-only" />
                     <col class="rpc-col-difference rpc-pending-only" />
+                    <col class="rpc-col-solution rpc-pending-only" />
                 </colgroup>
                 <thead>
                     <tr>
@@ -95,6 +96,7 @@
                         <th class="text-end rpc-pending-only">Valor pago</th>
                         <th class="rpc-all-only">Estado</th>
                         <th class="text-end rpc-pending-only">Diferencia</th>
+                        <th class="rpc-pending-only">Solucion sugerida</th>
                     </tr>
                     <tr class="rpc-filter-row">
                         <th>
@@ -126,11 +128,12 @@
                             </select>
                         </th>
                         <th class="rpc-pending-only"></th>
+                        <th class="rpc-pending-only"></th>
                     </tr>
                 </thead>
                 <tbody id="rpcRowsBody">
                     <tr>
-                        <td colspan="7" class="rpc-table__empty">Cargando facturas...</td>
+                        <td colspan="8" class="rpc-table__empty">Cargando facturas...</td>
                     </tr>
                 </tbody>
             </table>
@@ -138,6 +141,31 @@
 
         <div id="rpcEmptyState" class="rpc-empty" hidden>No hay facturas para los filtros seleccionados.</div>
     </section>
+</div>
+
+<div class="rpc-modal" id="rpcSolutionModal" hidden>
+    <div class="rpc-modal__backdrop" data-rpc-solution-close></div>
+    <div class="rpc-modal__dialog rpc-modal__dialog--compact" role="dialog" aria-modal="true" aria-labelledby="rpcSolutionTitle">
+        <div class="rpc-modal__header">
+            <div>
+                <div class="rpc-kicker">Retenciones pendientes</div>
+                <h2 class="rpc-modal__title" id="rpcSolutionTitle">Solucion sugerida</h2>
+                <p class="rpc-modal__subtitle" id="rpcSolutionSubtitle">Factura seleccionada</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="rpcSolutionCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="rpcSolutionStatus" class="rpc-status" role="status" aria-live="polite"></div>
+        <div class="rpc-solution-detail" id="rpcSolutionDetail"></div>
+
+        <div class="rpc-modal__footer">
+            <span class="rpc-modal__meta" id="rpcSolutionMeta">Se evaluan solo tarifas del catalogo tributario configurado.</span>
+            <div class="rpc-modal__actions">
+                <button type="button" class="btn btn-outline-secondary" id="rpcSolutionCancelBtn">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="rpcSolutionApplyBtn">Aplicar sugerencia</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="rpc-modal" id="rpcPaymentModal" hidden>
