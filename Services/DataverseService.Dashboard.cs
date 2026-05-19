@@ -19,7 +19,6 @@ public sealed partial class DataverseService
     private const string DashboardExpensePaymentDateFieldKind = "date-only";
     private const string DashboardExpensePaymentValueField = "cr07a_valorpago";
     private const string DashboardExpenseReteFuenteField = "cr07a_retefuente";
-    private const string DashboardExpenseInvoiceNumberField = "cr07a_name";
     private const string DashboardExpenseRecipientNameField = "cr07a_nombrereceptor";
     private const string DashboardExpenseRecipientNitField = "cr07a_nitreceptor";
     private const string DashboardExpenseCloudField = "cr07a_cloud";
@@ -2612,22 +2611,16 @@ public sealed partial class DataverseService
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var select = string.Join(",", new[]
-        {
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _supplierExpensesTableName,
+            _supplierExpensesTableSetName,
             _supplierExpensesIdField,
-            DashboardExpenseInvoiceNumberField,
-            DashboardExpenseEmissionDateField,
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentValueField,
-            DashboardExpenseReteFuenteField,
-            DashboardExpenseTotalField,
-            DashboardExpenseVatField,
-            DashboardExpenseIssuerNameField,
-            DashboardExpenseRecipientNameField,
-            DashboardExpenseRecipientNitField,
-            DashboardExpenseCloudField,
-            DashboardExpenseCopiersField
-        });
+            "",
+            user,
+            ct);
+        var invoiceNumberField = FirstNonEmpty(
+            _supplierExpensesInvoiceNumberField,
+            metadata.PrimaryNameField).Trim();
 
         var paymentDateFilter = BuildBillingDateFilter(
             DashboardExpensePaymentDateField,
@@ -2640,33 +2633,88 @@ public sealed partial class DataverseService
             startInclusive,
             endExclusive);
         var filter = $"({paymentDateFilter}) or ({emissionDateFilter})";
+        var effectiveInvoiceNumberField = invoiceNumberField;
 
-        var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
-        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        string BuildSelect(string currentInvoiceNumberField) => string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            currentInvoiceNumberField,
+            DashboardExpenseEmissionDateField,
+            DashboardExpensePaymentDateField,
+            DashboardExpensePaymentValueField,
+            DashboardExpenseReteFuenteField,
+            DashboardExpenseTotalField,
+            DashboardExpenseVatField,
+            DashboardExpenseIssuerNameField,
+            DashboardExpenseRecipientNameField,
+            DashboardExpenseRecipientNitField,
+            DashboardExpenseCloudField,
+            DashboardExpenseCopiersField
+        }
+        .Where(static field => !string.IsNullOrWhiteSpace(field))
+        .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        string BuildRelativeUrl(string selectFields) =>
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={selectFields}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
+
+        List<JsonElement> items;
+        try
+        {
+            items = await GetDataverseEntitiesAsync(
+                BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
+                user,
+                ct,
+                AddFormattedValueHeaders);
+        }
+        catch (InvalidOperationException ex) when (
+            !ct.IsCancellationRequested
+            && IsMissingDataversePropertyError(ex, effectiveInvoiceNumberField))
+        {
+            _logger.LogWarning(
+                ex,
+                "El campo configurado como numero de factura de gastos ({FieldName}) no existe en Dataverse. Se consulta sin ese campo.",
+                effectiveInvoiceNumberField);
+            effectiveInvoiceNumberField = "";
+            items = await GetDataverseEntitiesAsync(
+                BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
+                user,
+                ct,
+                AddFormattedValueHeaders);
+        }
 
         return items
-            .Select(ParseTaxExpenseRow)
+            .Select(item => ParseTaxExpenseRow(item, metadata.PrimaryIdField, effectiveInvoiceNumberField))
             .Where(static row => row is not null)
             .Cast<TaxExpenseRow>()
             .ToList();
     }
 
-    private TaxExpenseRow? ParseTaxExpenseRow(JsonElement item)
+    private static bool IsMissingDataversePropertyError(Exception ex, string fieldName) =>
+        !string.IsNullOrWhiteSpace(fieldName)
+        && ex.Message.Contains($"property named '{fieldName}'", StringComparison.OrdinalIgnoreCase);
+
+    private TaxExpenseRow? ParseTaxExpenseRow(
+        JsonElement item,
+        string idField,
+        string invoiceNumberField)
     {
         var recordId = FirstNonEmpty(
-            ReadString(item, _supplierExpensesIdField),
+            ReadString(item, idField),
             $"{ReadString(item, DashboardExpenseRecipientNitField)}|{ReadString(item, DashboardExpenseRecipientNameField)}|{ReadString(item, DashboardExpensePaymentDateField)}");
 
         if (string.IsNullOrWhiteSpace(recordId))
             return null;
 
+        var invoiceNumber = string.IsNullOrWhiteSpace(invoiceNumberField)
+            ? ""
+            : FirstNonEmpty(
+                ReadString(item, $"{invoiceNumberField}{FormattedValueAnnotationSuffix}"),
+                ReadString(item, invoiceNumberField));
+
         return new TaxExpenseRow
         {
             RecordId = recordId.Trim(),
-            InvoiceNumber = FirstNonEmpty(
-                ReadString(item, $"{DashboardExpenseInvoiceNumberField}{FormattedValueAnnotationSuffix}"),
-                ReadString(item, DashboardExpenseInvoiceNumberField),
-                recordId).Trim(),
+            InvoiceNumber = invoiceNumber.Trim(),
             EmissionDate = ReadDateOnly(item, DashboardExpenseEmissionDateField),
             PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
             PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),

@@ -60,6 +60,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultSupplierExpensesIdField = "cr07a_gastodelaempresaid";
     private const string DefaultSupplierExpensesDateField = "createdon";
     private const string DefaultSupplierExpensesDateFieldKind = "date-time";
+    private const string DefaultSupplierExpensesInvoiceNumberField = "";
     private const string DefaultScoresTableSetName = "cr07a_contractrecord1s";
     private const string DefaultScoresTableName = "cr07a_contractrecord1";
     private const string DefaultScoresIdField = "cr07a_contractrecord1id";
@@ -207,6 +208,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _supplierExpensesIdField;
     private readonly string _supplierExpensesDateField;
     private readonly string _supplierExpensesDateFieldKind;
+    private readonly string _supplierExpensesInvoiceNumberField;
     private readonly string _scoresTableSetName;
     private readonly string _scoresTableName;
     private readonly string _scoresIdField;
@@ -383,6 +385,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultSupplierExpensesDateField;
         _supplierExpensesDateFieldKind = configuration["SupplierPortal:ExpensesDateFieldKind"]
             ?? DefaultSupplierExpensesDateFieldKind;
+        _supplierExpensesInvoiceNumberField = (configuration["SupplierPortal:ExpensesInvoiceNumberField"]
+            ?? DefaultSupplierExpensesInvoiceNumberField).Trim();
         _scoresTableSetName = configuration["Scores:TableSetName"]
             ?? DefaultScoresTableSetName;
         _scoresTableName = configuration["Scores:TableName"]
