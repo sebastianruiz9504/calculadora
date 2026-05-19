@@ -260,7 +260,21 @@ public sealed partial class DataverseService
                 });
             }
 
-            lines.Add(new UtilityTheoreticalLine(row.RecordId, bucket, sale, cost, hasCost));
+            lines.Add(new UtilityTheoreticalLine(
+                row.RecordId,
+                bucket,
+                row.ClientName,
+                row.ProductName,
+                row.ProductLineLabel,
+                row.ContractTypeLabel,
+                row.Quantity,
+                row.BillingDay,
+                row.UnitSaleUsd,
+                hasCost ? unitCostUsd : 0m,
+                sale,
+                cost,
+                RoundCurrency(sale - cost),
+                hasCost));
         }
 
         return lines;
@@ -274,7 +288,7 @@ public sealed partial class DataverseService
         var lines = sourceLines.ToList();
         var sales = RoundCurrency(lines.Sum(static line => line.Sales));
         var cost = RoundCurrency(lines.Sum(static line => line.Cost));
-        var utility = RoundCurrency(sales - cost);
+        var utility = RoundCurrency(lines.Sum(static line => line.Utility));
 
         return new UtilityTheoreticalCardDto
         {
@@ -285,7 +299,28 @@ public sealed partial class DataverseService
             Utility = utility,
             UtilityPercent = CalculateUtilityPercent(utility, sales),
             RecordsCount = lines.Count,
-            MissingCostCount = lines.Count(static line => !line.HasCost)
+            MissingCostCount = lines.Count(static line => !line.HasCost),
+            Breakdown = lines
+                .OrderBy(static line => line.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static line => line.ProductName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static line => line.RecordId, StringComparer.OrdinalIgnoreCase)
+                .Select(static line => new UtilityTheoreticalBreakdownRowDto
+                {
+                    RecordId = line.RecordId,
+                    ClientName = line.ClientName,
+                    ProductName = line.ProductName,
+                    ProductLineLabel = line.ProductLineLabel,
+                    ContractTypeLabel = line.ContractTypeLabel,
+                    Quantity = line.Quantity,
+                    BillingDay = line.BillingDay,
+                    UnitSaleUsd = line.UnitSaleUsd,
+                    UnitCostUsd = line.UnitCostUsd,
+                    Sales = line.Sales,
+                    Cost = line.Cost,
+                    Utility = line.Utility,
+                    HasCost = line.HasCost
+                })
+                .ToList()
         };
     }
 
@@ -743,8 +778,17 @@ public sealed partial class DataverseService
     private sealed record UtilityTheoreticalLine(
         string RecordId,
         UtilityBucket Bucket,
+        string ClientName,
+        string ProductName,
+        string ProductLineLabel,
+        string ContractTypeLabel,
+        int Quantity,
+        int BillingDay,
+        decimal UnitSaleUsd,
+        decimal UnitCostUsd,
         decimal Sales,
         decimal Cost,
+        decimal Utility,
         bool HasCost);
 
     private sealed record UtilityRealSegments(UtilityRealSegmentDto Monthly, UtilityRealSegmentDto Prepaid);

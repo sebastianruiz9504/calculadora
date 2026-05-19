@@ -226,7 +226,6 @@
     const copiersEquipmentSaveBtn = document.getElementById("copiersEquipmentSaveBtn");
     const copiersEquipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
 
-    const taxesRetentionExportButton = document.getElementById("taxesRetentionExportBtn");
     const taxesRecurringCards = document.getElementById("taxesRecurringCards");
     const taxesOtherCards = document.getElementById("taxesOtherCards");
     const taxesRecurringDetail = document.getElementById("taxesRecurringDetail");
@@ -298,6 +297,13 @@
     const utilityPrepaidChart = document.getElementById("utilityPrepaidChart");
     const utilityUnresolvedResultsCount = document.getElementById("utilityUnresolvedResultsCount");
     const utilityUnresolvedBody = document.getElementById("utilityUnresolvedBody");
+    const utilityBreakdownModal = document.getElementById("utilityBreakdownModal");
+    const utilityBreakdownCloseBtn = document.getElementById("utilityBreakdownCloseBtn");
+    const utilityBreakdownTitle = document.getElementById("utilityBreakdownTitle");
+    const utilityBreakdownSubtitle = document.getElementById("utilityBreakdownSubtitle");
+    const utilityBreakdownSummary = document.getElementById("utilityBreakdownSummary");
+    const utilityBreakdownBody = document.getElementById("utilityBreakdownBody");
+    const utilityBreakdownFooter = document.getElementById("utilityBreakdownFooter");
 
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
@@ -310,7 +316,8 @@
     const currentFourMonthly = Math.floor((currentMonth - 1) / 4) + 1;
     const licenciamientoDefaultYear = Math.max(currentYear - 1, 2000);
     const licenciamientoDefaultMonth = 12;
-    const taxesRetentionsExportUrl = app.dataset.taxesRetentionsExportUrl || "";
+    const taxesReteFuenteExportUrl = app.dataset.taxesRetefuenteExportUrl || app.dataset.taxesReteFuenteExportUrl || "";
+    const taxesVatExportUrl = app.dataset.taxesVatExportUrl || "";
     const billingClientReportExportUrl = app.dataset.billingClientReportExportUrl || "";
     const copiersCountersPdfUrl = app.dataset.copiersCountersPdfUrl || "";
 
@@ -326,6 +333,13 @@
         currency: "USD",
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
+    });
+
+    const usdUnitFormatter = new Intl.NumberFormat("es-CO", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
     });
 
     const numberFormatter = new Intl.NumberFormat("es-CO", {
@@ -379,6 +393,9 @@
         taxesDashboard: null,
         taxesActiveRecurringKey: "retefuente",
         taxesActiveOtherKey: "income-tax",
+        taxesReteFuenteTableKey: "autofuente",
+        taxesVatTableKey: "generated",
+        taxesVatVerticalKey: "all",
         taxesFilters: {
             reteFuenteYear: currentYear,
             reteFuenteMonth: currentMonth,
@@ -906,6 +923,39 @@
 
     function isPnlDetailOpen() {
         return Boolean(pnlDetailModal && !pnlDetailModal.hidden);
+    }
+
+    function isUtilityBreakdownOpen() {
+        return Boolean(utilityBreakdownModal && !utilityBreakdownModal.hidden);
+    }
+
+    function closeUtilityBreakdownModal() {
+        if (!utilityBreakdownModal) {
+            return;
+        }
+
+        utilityBreakdownModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+
+        if (utilityBreakdownTitle) {
+            utilityBreakdownTitle.textContent = "Detalle de utilidad teorica";
+        }
+
+        if (utilityBreakdownSubtitle) {
+            utilityBreakdownSubtitle.textContent = "Filas incluidas en el calculo seleccionado.";
+        }
+
+        if (utilityBreakdownSummary) {
+            utilityBreakdownSummary.innerHTML = "";
+        }
+
+        if (utilityBreakdownBody) {
+            utilityBreakdownBody.innerHTML = '<tr><td colspan="9" class="dashboard-table__empty">Selecciona una tarjeta de utilidad para ver el desglose.</td></tr>';
+        }
+
+        if (utilityBreakdownFooter) {
+            utilityBreakdownFooter.innerHTML = "";
+        }
     }
 
     function setBillingSectionExpanded(section, button, expanded, expandedLabel, collapsedLabel) {
@@ -2953,13 +3003,22 @@
         return `Error al ${action}. ${status}Detalle: ${message}.${route}`;
     }
 
-    function buildTaxesRetentionsExportUrl() {
+    function buildTaxesReteFuenteExportUrl() {
         const params = new URLSearchParams({
             reteFuenteYear: String(state.taxesFilters.reteFuenteYear),
             reteFuenteMonth: String(state.taxesFilters.reteFuenteMonth)
         });
 
-        return `${taxesRetentionsExportUrl}?${params.toString()}`;
+        return `${taxesReteFuenteExportUrl}?${params.toString()}`;
+    }
+
+    function buildTaxesVatExportUrl() {
+        const params = new URLSearchParams({
+            ivaYear: String(state.taxesFilters.ivaYear),
+            ivaPeriod: String(state.taxesFilters.ivaPeriod)
+        });
+
+        return `${taxesVatExportUrl}?${params.toString()}`;
     }
 
     function buildPortfolioUrl() {
@@ -4118,14 +4177,125 @@
         return formatPercent(value);
     }
 
+    function getUtilityTheoreticalCard(cardKey) {
+        const dashboard = state.utilityDashboard || {};
+        return cardKey === "prepaid"
+            ? dashboard.theoreticalPrepaid
+            : dashboard.theoreticalMonthly;
+    }
+
+    function renderUtilityBreakdownModal(card) {
+        const rows = Array.isArray(card?.breakdown) ? card.breakdown : [];
+        const sales = Number(card?.sales || 0);
+        const cost = Number(card?.cost || 0);
+        const utility = Number(card?.utility || 0);
+
+        if (utilityBreakdownTitle) {
+            utilityBreakdownTitle.textContent = card?.label || "Detalle de utilidad teorica";
+        }
+
+        if (utilityBreakdownSubtitle) {
+            utilityBreakdownSubtitle.textContent = `${state.utilityDashboard?.periodLabel || "Periodo activo"} · ${numberFormatter.format(rows.length)} fila(s)`;
+        }
+
+        if (utilityBreakdownSummary) {
+            utilityBreakdownSummary.innerHTML = `
+                <div class="utility-breakdown-summary__item">
+                    <span>Venta</span>
+                    <strong>${escapeHtml(currencyFormatter.format(sales))}</strong>
+                </div>
+                <div class="utility-breakdown-summary__item">
+                    <span>Costo</span>
+                    <strong>${escapeHtml(currencyFormatter.format(cost))}</strong>
+                </div>
+                <div class="utility-breakdown-summary__item">
+                    <span>Total tarjeta</span>
+                    <strong>${escapeHtml(formatSignedCurrency(utility))}</strong>
+                </div>
+                <div class="utility-breakdown-summary__item">
+                    <span>Margen</span>
+                    <strong>${escapeHtml(formatUtilityPercent(card?.utilityPercent))}</strong>
+                </div>
+            `;
+        }
+
+        if (utilityBreakdownBody) {
+            utilityBreakdownBody.innerHTML = rows.length
+                ? rows.map(row => {
+                    const hasCost = row?.hasCost !== false;
+                    const costValue = Number(row?.cost || 0);
+                    const lineUtility = Number(row?.utility || 0);
+                    const lineTone = lineUtility >= 0 ? "positive" : "negative";
+                    const billingDay = Number(row?.billingDay || 0);
+                    return `
+                        <tr>
+                            <td>
+                                <div class="utility-row-main">${escapeHtml(row?.clientName || "Sin cliente")}</div>
+                                <div class="utility-row-muted">${billingDay > 0 ? `Dia ${escapeHtml(numberFormatter.format(billingDay))}` : ""}</div>
+                            </td>
+                            <td>
+                                <div class="utility-row-main">${escapeHtml(row?.productName || "Sin producto")}</div>
+                                <div class="utility-row-muted">${escapeHtml(row?.productLineLabel || "")}</div>
+                            </td>
+                            <td>${escapeHtml(row?.contractTypeLabel || "-")}</td>
+                            <td class="text-end">${escapeHtml(numberFormatter.format(Number(row?.quantity || 0)))}</td>
+                            <td class="text-end">${escapeHtml(usdUnitFormatter.format(Number(row?.unitSaleUsd || 0)))}</td>
+                            <td class="text-end">${hasCost
+                                ? escapeHtml(usdUnitFormatter.format(Number(row?.unitCostUsd || 0)))
+                                : '<span class="utility-breakdown__missing-cost">Sin costo</span>'}</td>
+                            <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row?.sales || 0)))}</td>
+                            <td class="text-end">${escapeHtml(currencyFormatter.format(costValue))}</td>
+                            <td class="text-end utility-breakdown__line-total is-${lineTone}">${escapeHtml(formatSignedCurrency(lineUtility))}</td>
+                        </tr>
+                    `;
+                }).join("")
+                : '<tr><td colspan="9" class="dashboard-table__empty">Esta tarjeta no tiene filas para desglosar.</td></tr>';
+        }
+
+        if (utilityBreakdownFooter) {
+            utilityBreakdownFooter.innerHTML = `
+                <tr class="dashboard-table__total">
+                    <td colspan="6">Total tarjeta</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(sales))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(cost))}</td>
+                    <td class="text-end">${escapeHtml(formatSignedCurrency(utility))}</td>
+                </tr>
+            `;
+        }
+    }
+
+    function openUtilityBreakdownModal(cardKey) {
+        if (!utilityBreakdownModal) {
+            return;
+        }
+
+        const card = getUtilityTheoreticalCard(cardKey);
+        if (!card) {
+            return;
+        }
+
+        renderUtilityBreakdownModal(card);
+        utilityBreakdownModal.hidden = false;
+        document.body.classList.add("dashboard-modal-open");
+        window.setTimeout(() => utilityBreakdownCloseBtn?.focus(), 30);
+    }
+
     function renderUtilitySummaryCard(card, accentClass) {
         const sales = Number(card?.sales || 0);
         const cost = Number(card?.cost || 0);
         const utility = Number(card?.utility || 0);
         const tone = utility >= 0 ? "positive" : "negative";
+        const cardKey = card?.key || "";
+        const rows = Array.isArray(card?.breakdown) ? card.breakdown.length : Number(card?.recordsCount || 0);
         return `
             <article class="utility-summary-card ${accentClass} is-${tone}">
-                <span class="utility-summary-card__label">${escapeHtml(card?.label || "")}</span>
+                <div class="utility-summary-card__header">
+                    <span class="utility-summary-card__label">${escapeHtml(card?.label || "")}</span>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary utility-summary-card__breakdown-btn"
+                            data-utility-breakdown="${escapeHtml(cardKey)}"
+                            ${rows > 0 ? "" : "disabled"}>Desglose</button>
+                </div>
                 <strong class="utility-summary-card__value">${escapeHtml(formatSignedCurrency(utility))}</strong>
                 <div class="utility-summary-card__meta">
                     <span>Venta ${escapeHtml(currencyFormatter.format(sales))}</span>
@@ -4729,9 +4899,43 @@
         }
 
         const filterMarkup = renderTaxesFilterControls(section);
-        const retentionTable = section.key === "retefuente"
-            ? renderTaxesRetentionDetailTable(section)
-            : "";
+        const isVatSection = section.key === "reteiva";
+        const isReteFuenteSection = section.key === "retefuente";
+        const detailContent = isVatSection
+            ? `
+                ${renderTaxesVatSummary(section)}
+                <div class="dashboard-tax-verticals">
+                    <div class="dashboard-tax-verticals__header">
+                        <span>Por vertical</span>
+                        <strong>${escapeHtml(section.totalLabel || "Total")}</strong>
+                    </div>
+                    <div class="dashboard-tax-vertical-grid" data-taxes-detail-verticals></div>
+                </div>
+                ${renderTaxesVatTable(section)}
+            `
+            : isReteFuenteSection
+                ? `
+                    ${renderTaxesReteFuenteSummary(section)}
+                    <div class="dashboard-tax-verticals">
+                        <div class="dashboard-tax-verticals__header">
+                            <span>Por vertical</span>
+                            <strong>${escapeHtml(section.totalLabel || "Total")}</strong>
+                        </div>
+                        <div class="dashboard-tax-vertical-grid" data-taxes-detail-verticals></div>
+                    </div>
+                    ${renderTaxesReportTable(section, "retefuente")}
+                `
+            : `
+                <div class="dashboard-metric-grid" data-taxes-detail-metrics></div>
+                <div class="dashboard-tax-calculation-grid" data-taxes-detail-calculation></div>
+                <div class="dashboard-tax-verticals">
+                    <div class="dashboard-tax-verticals__header">
+                        <span>Por vertical</span>
+                        <strong>${escapeHtml(section.totalLabel || "Total")}</strong>
+                    </div>
+                    <div class="dashboard-tax-vertical-grid" data-taxes-detail-verticals></div>
+                </div>
+            `;
 
         container.innerHTML = `
             <div class="dashboard-tax-detail-panel__header">
@@ -4740,28 +4944,26 @@
                     <h3>${escapeHtml(section.label || "Impuesto")}</h3>
                     <p>${escapeHtml(section.description || "")}</p>
                 </div>
-                <strong>${escapeHtml(formatMetric(section.totalValue, "currency"))}</strong>
+                <div class="dashboard-tax-detail-panel__actions">
+                    <strong>${escapeHtml(formatMetric(section.totalValue, "currency"))}</strong>
+                    ${isVatSection ? '<button type="button" class="btn btn-primary" data-taxes-vat-export>Generar reporte</button>' : ""}
+                    ${isReteFuenteSection ? '<button type="button" class="btn btn-primary" data-taxes-retefuente-export>Generar reporte</button>' : ""}
+                </div>
             </div>
             ${filterMarkup}
-            <div class="dashboard-metric-grid" data-taxes-detail-metrics></div>
-            <div class="dashboard-tax-calculation-grid" data-taxes-detail-calculation></div>
-            <div class="dashboard-tax-verticals">
-                <div class="dashboard-tax-verticals__header">
-                    <span>Por vertical</span>
-                    <strong>${escapeHtml(section.totalLabel || "Total")}</strong>
-                </div>
-                <div class="dashboard-tax-vertical-grid" data-taxes-detail-verticals></div>
-            </div>
-            ${retentionTable}
+            ${detailContent}
         `;
 
-        renderComparativeKpis(
-            container.querySelector("[data-taxes-detail-metrics]"),
-            Array.isArray(section.metrics) ? section.metrics : [],
-            dashboard?.compareYear);
-        renderTaxCalculationDetails(
-            container.querySelector("[data-taxes-detail-calculation]"),
-            Array.isArray(section.calculationDetails) ? section.calculationDetails : []);
+        if (!isVatSection && !isReteFuenteSection) {
+            renderComparativeKpis(
+                container.querySelector("[data-taxes-detail-metrics]"),
+                Array.isArray(section.metrics) ? section.metrics : [],
+                dashboard?.compareYear);
+            renderTaxCalculationDetails(
+                container.querySelector("[data-taxes-detail-calculation]"),
+                Array.isArray(section.calculationDetails) ? section.calculationDetails : []);
+        }
+
         renderTaxVerticalSummaries(
             container.querySelector("[data-taxes-detail-verticals]"),
             Array.isArray(section.verticalSummaries) ? section.verticalSummaries : [],
@@ -4847,6 +5049,275 @@
                     </tbody>
                 </table>
             </div>
+        `;
+    }
+
+    function getTaxesVatTables(section) {
+        return Array.isArray(section?.vatDetails?.tables) ? section.vatDetails.tables : [];
+    }
+
+    function getTaxesVatTable(section, tableKey = state.taxesVatTableKey) {
+        const tables = getTaxesVatTables(section);
+        return tables.find(table => table.key === tableKey) || tables[0] || null;
+    }
+
+    function getTaxesVatTableTotal(section, tableKey) {
+        return Number(getTaxesVatTable(section, tableKey)?.totalValue || 0);
+    }
+
+    function renderTaxesVatSummary(section) {
+        const generated = getTaxesVatTableTotal(section, "generated");
+        const spent = getTaxesVatTableTotal(section, "spent");
+        const reteiva = getTaxesVatTableTotal(section, "reteiva");
+        const payable = Number(section?.totalValue || 0);
+
+        return `
+            <article class="dashboard-tax-vat-summary">
+                <div class="dashboard-tax-vat-summary__main">
+                    <span>${escapeHtml(section?.totalLabel || "IVA total a pagar")}</span>
+                    <strong>${escapeHtml(formatMetric(payable, "currency"))}</strong>
+                </div>
+                <div class="dashboard-tax-vat-summary__formula" aria-label="Formula IVA">
+                    <div class="dashboard-tax-vat-summary__component dashboard-tax-vat-summary__component--debit">
+                        <span>IVA generado</span>
+                        <strong>${escapeHtml(formatMetric(generated, "currency"))}</strong>
+                    </div>
+                    <span class="dashboard-tax-vat-summary__operator">-</span>
+                    <div class="dashboard-tax-vat-summary__group">
+                        <div class="dashboard-tax-vat-summary__component dashboard-tax-vat-summary__component--credit">
+                            <span>IVA gastado</span>
+                            <strong>${escapeHtml(formatMetric(spent, "currency"))}</strong>
+                        </div>
+                        <div class="dashboard-tax-vat-summary__component dashboard-tax-vat-summary__component--credit">
+                            <span>ReteIVA a favor</span>
+                            <strong>${escapeHtml(formatMetric(reteiva, "currency"))}</strong>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function getTaxesVatVerticalOptions(table) {
+        const rows = Array.isArray(table?.rows) ? table.rows : [];
+        const hasUnassigned = rows.some(row => Number(row.unassignedTaxValue || 0) > 0);
+        const options = [
+            { key: "all", label: "Todas" },
+            { key: "cloud", label: "Cloud" },
+            { key: "copiers", label: "Copiers" }
+        ];
+
+        if (hasUnassigned) {
+            options.push({ key: "unassigned", label: "Sin vertical" });
+        }
+
+        return options;
+    }
+
+    function getTaxesVatRowAmount(row, verticalKey, amountKey) {
+        if (verticalKey === "cloud") {
+            return Number(row[`cloud${amountKey}`] || 0);
+        }
+
+        if (verticalKey === "copiers") {
+            return Number(row[`copiers${amountKey}`] || 0);
+        }
+
+        if (verticalKey === "unassigned") {
+            return Number(row[`unassigned${amountKey}`] || 0);
+        }
+
+        return Number(row[amountKey.charAt(0).toLowerCase() + amountKey.slice(1)] || 0);
+    }
+
+    function renderTaxesVatTable(section) {
+        const tables = getTaxesVatTables(section);
+        const table = getTaxesVatTable(section);
+        if (!table) {
+            return '<div class="dashboard-table__empty">No hay detalle de IVA para este periodo.</div>';
+        }
+
+        const verticalOptions = getTaxesVatVerticalOptions(table);
+        if (!verticalOptions.some(option => option.key === state.taxesVatVerticalKey)) {
+            state.taxesVatVerticalKey = "all";
+        }
+
+        const verticalKey = state.taxesVatVerticalKey;
+        const rows = (Array.isArray(table.rows) ? table.rows : [])
+            .map(row => ({
+                ...row,
+                displayTotal: getTaxesVatRowAmount(row, verticalKey, "TotalValue"),
+                displayTax: getTaxesVatRowAmount(row, verticalKey, "TaxValue")
+            }))
+            .filter(row => Number(row.displayTax || 0) > 0);
+        const totalInvoice = rows.reduce((sum, row) => sum + Number(row.displayTotal || 0), 0);
+        const totalTax = rows.reduce((sum, row) => sum + Number(row.displayTax || 0), 0);
+
+        return `
+            <section class="dashboard-tax-vat-table">
+                <div class="dashboard-tax-vat-table__toolbar">
+                    <label class="dashboard-filter dashboard-filter--compact">
+                        <span class="dashboard-filter__label">Tabla</span>
+                        <select class="form-select dashboard-select" data-taxes-vat-table>
+                            ${tables.map(option => `<option value="${escapeHtml(option.key || "")}" ${option.key === table.key ? "selected" : ""}>${escapeHtml(option.label || "")}</option>`).join("")}
+                        </select>
+                    </label>
+                    <label class="dashboard-filter dashboard-filter--compact">
+                        <span class="dashboard-filter__label">Vertical</span>
+                        <select class="form-select dashboard-select" data-taxes-vat-vertical>
+                            ${verticalOptions.map(option => `<option value="${escapeHtml(option.key)}" ${option.key === verticalKey ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+                        </select>
+                    </label>
+                    <div class="dashboard-tax-vat-table__total">
+                        <span>${escapeHtml(table.valueLabel || "Total")}</span>
+                        <strong>${escapeHtml(formatMetric(totalTax, "currency"))}</strong>
+                    </div>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha emision</th>
+                                <th>Numero factura</th>
+                                <th>${escapeHtml(table.nameColumnLabel || "Nombre")}</th>
+                                <th class="text-end">Total factura</th>
+                                <th class="text-end">${escapeHtml(table.valueLabel || "Valor")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.length ? rows.map(row => `
+                                <tr>
+                                    <td>${escapeHtml(row.dateDisplay || "Sin fecha")}</td>
+                                    <td>${escapeHtml(row.invoiceNumber || "-")}</td>
+                                    <td>${escapeHtml(row.name || "")}</td>
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.displayTotal || 0)))}</td>
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.displayTax || 0)))}</td>
+                                </tr>
+                            `).join("") : '<tr><td colspan="5" class="dashboard-table__empty">No hay filas para esta combinacion de tabla y vertical.</td></tr>'}
+                            ${rows.length ? `
+                                <tr class="dashboard-table__total">
+                                    <td colspan="3">${escapeHtml(`${numberFormatter.format(rows.length)} registros`)}</td>
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalInvoice))}</td>
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalTax))}</td>
+                                </tr>
+                            ` : ""}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        `;
+    }
+
+    function getTaxesReportTables(section) {
+        return Array.isArray(section?.reportDetails?.tables) ? section.reportDetails.tables : [];
+    }
+
+    function getTaxesReportTable(section, tableKey) {
+        const tables = getTaxesReportTables(section);
+        return tables.find(table => table.key === tableKey) || tables[0] || null;
+    }
+
+    function getTaxesReportTableTotal(section, tableKey) {
+        return Number(getTaxesReportTable(section, tableKey)?.totalAmountValue || 0);
+    }
+
+    function renderTaxesReteFuenteSummary(section) {
+        const autofuente = getTaxesReportTableTotal(section, "autofuente");
+        const expenses = getTaxesReportTableTotal(section, "retefuente-gastos");
+        const payable = Number(section?.totalValue || 0);
+
+        return `
+            <article class="dashboard-tax-vat-summary">
+                <div class="dashboard-tax-vat-summary__main">
+                    <span>${escapeHtml(section?.totalLabel || "Total retefuente a pagar")}</span>
+                    <strong>${escapeHtml(formatMetric(payable, "currency"))}</strong>
+                </div>
+                <div class="dashboard-tax-vat-summary__formula" aria-label="Formula Retefuente">
+                    <div class="dashboard-tax-vat-summary__component dashboard-tax-vat-summary__component--debit">
+                        <span>Autofuente</span>
+                        <strong>${escapeHtml(formatMetric(autofuente, "currency"))}</strong>
+                    </div>
+                    <span class="dashboard-tax-vat-summary__operator">+</span>
+                    <div class="dashboard-tax-vat-summary__component dashboard-tax-vat-summary__component--debit">
+                        <span>ReteFuente gastos</span>
+                        <strong>${escapeHtml(formatMetric(expenses, "currency"))}</strong>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderTaxesReportTable(section, kind) {
+        const tableKey = kind === "retefuente" ? state.taxesReteFuenteTableKey : "";
+        const tables = getTaxesReportTables(section);
+        const table = getTaxesReportTable(section, tableKey);
+        if (!table) {
+            return '<div class="dashboard-table__empty">No hay detalle para este periodo.</div>';
+        }
+
+        if (kind === "retefuente" && !tables.some(option => option.key === state.taxesReteFuenteTableKey)) {
+            state.taxesReteFuenteTableKey = table.key || "autofuente";
+        }
+
+        const rows = Array.isArray(table.rows) ? table.rows : [];
+        const totalColumns = 5 + (table.showCategoryColumn ? 1 : 0) + (table.showBaseColumn ? 1 : 0);
+        const categoryHeader = table.showCategoryColumn ? `<th>${escapeHtml(table.categoryColumnLabel || "Categoria")}</th>` : "";
+        const baseHeader = table.showBaseColumn ? `<th class="text-end">${escapeHtml(table.baseColumnLabel || "Base")}</th>` : "";
+        const categoryTotalCell = table.showCategoryColumn ? "<td></td>" : "";
+        const baseTotalCell = table.showBaseColumn ? `<td class="text-end">${escapeHtml(currencyFormatter.format(Number(table.totalBaseValue || 0)))}</td>` : "";
+
+        return `
+            <section class="dashboard-tax-vat-table">
+                <div class="dashboard-tax-vat-table__toolbar">
+                    <label class="dashboard-filter dashboard-filter--compact">
+                        <span class="dashboard-filter__label">Tabla</span>
+                        <select class="form-select dashboard-select" data-taxes-report-table="${escapeHtml(kind || "")}">
+                            ${tables.map(option => `<option value="${escapeHtml(option.key || "")}" ${option.key === table.key ? "selected" : ""}>${escapeHtml(option.label || "")}</option>`).join("")}
+                        </select>
+                    </label>
+                    <div class="dashboard-tax-vat-table__total">
+                        <span>${escapeHtml(table.amountColumnLabel || "Total")}</span>
+                        <strong>${escapeHtml(formatMetric(table.totalAmountValue, "currency"))}</strong>
+                    </div>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>${escapeHtml(table.dateColumnLabel || "Fecha")}</th>
+                                <th>Numero factura</th>
+                                <th>${escapeHtml(table.nameColumnLabel || "Nombre")}</th>
+                                ${categoryHeader}
+                                <th class="text-end">${escapeHtml(table.totalColumnLabel || "Total")}</th>
+                                ${baseHeader}
+                                <th class="text-end">${escapeHtml(table.amountColumnLabel || "Valor")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.length ? rows.map(row => `
+                                <tr>
+                                    <td>${escapeHtml(row.dateDisplay || "Sin fecha")}</td>
+                                    <td>${escapeHtml(row.invoiceNumber || "-")}</td>
+                                    <td>${escapeHtml(row.name || "")}</td>
+                                    ${table.showCategoryColumn ? `<td>${escapeHtml(row.category || "")}</td>` : ""}
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalValue || 0)))}</td>
+                                    ${table.showBaseColumn ? `<td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.baseValue || 0)))}</td>` : ""}
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.amountValue || 0)))}</td>
+                                </tr>
+                            `).join("") : `<tr><td colspan="${escapeHtml(String(totalColumns))}" class="dashboard-table__empty">No hay filas para esta tabla.</td></tr>`}
+                            ${rows.length ? `
+                                <tr class="dashboard-table__total">
+                                    <td colspan="3">${escapeHtml(`${numberFormatter.format(rows.length)} registros`)}</td>
+                                    ${categoryTotalCell}
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(table.totalValue || 0)))}</td>
+                                    ${baseTotalCell}
+                                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(table.totalAmountValue || 0)))}</td>
+                                </tr>
+                            ` : ""}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         `;
     }
 
@@ -8277,14 +8748,6 @@
             syncSiigoInvoicesSelectionSummary();
         }
     });
-    taxesRetentionExportButton?.addEventListener("click", () => {
-        if (!taxesRetentionsExportUrl) {
-            setStatus(taxesStatusBanner, "error", "No hay una URL configurada para descargar el detalle.");
-            return;
-        }
-
-        window.location.href = buildTaxesRetentionsExportUrl();
-    });
     [taxesRecurringCards, taxesOtherCards].forEach(container => {
         container?.addEventListener("click", event => {
             const card = event.target.closest("[data-taxes-card]");
@@ -8303,7 +8766,58 @@
         });
     });
     [taxesRecurringDetail, taxesOtherDetail].forEach(container => {
+        container?.addEventListener("click", event => {
+            const reteFuenteExportButton = event.target.closest("[data-taxes-retefuente-export]");
+            if (reteFuenteExportButton) {
+                if (!taxesReteFuenteExportUrl) {
+                    setStatus(taxesStatusBanner, "error", "No hay una URL configurada para generar el reporte de retefuente.");
+                    return;
+                }
+
+                window.location.href = buildTaxesReteFuenteExportUrl();
+                return;
+            }
+
+            const exportButton = event.target.closest("[data-taxes-vat-export]");
+            if (!exportButton) {
+                return;
+            }
+
+            if (!taxesVatExportUrl) {
+                setStatus(taxesStatusBanner, "error", "No hay una URL configurada para generar el reporte de IVA.");
+                return;
+            }
+
+            window.location.href = buildTaxesVatExportUrl();
+        });
+
         container?.addEventListener("change", event => {
+            const reportTableSelect = event.target.closest("[data-taxes-report-table]");
+            if (reportTableSelect) {
+                const reportKind = reportTableSelect.dataset.taxesReportTable || "";
+                if (reportKind === "retefuente") {
+                    state.taxesReteFuenteTableKey = reportTableSelect.value || "autofuente";
+                }
+
+                renderTaxesDashboard(state.taxesDashboard);
+                return;
+            }
+
+            const vatTableSelect = event.target.closest("[data-taxes-vat-table]");
+            if (vatTableSelect) {
+                state.taxesVatTableKey = vatTableSelect.value || "generated";
+                state.taxesVatVerticalKey = "all";
+                renderTaxesDashboard(state.taxesDashboard);
+                return;
+            }
+
+            const vatVerticalSelect = event.target.closest("[data-taxes-vat-vertical]");
+            if (vatVerticalSelect) {
+                state.taxesVatVerticalKey = vatVerticalSelect.value || "all";
+                renderTaxesDashboard(state.taxesDashboard);
+                return;
+            }
+
             const select = event.target.closest("[data-taxes-filter]");
             if (select) {
                 handleTaxesFilterChange(select);
@@ -8366,6 +8880,14 @@
     pnlRefreshButton?.addEventListener("click", loadPnl);
     licenciamientoRefreshButton?.addEventListener("click", loadLicenciamiento);
     utilityRefreshButton?.addEventListener("click", loadUtility);
+    utilitySummaryCards?.addEventListener("click", event => {
+        const button = event.target.closest("[data-utility-breakdown]");
+        if (!button) {
+            return;
+        }
+
+        openUtilityBreakdownModal(button.dataset.utilityBreakdown || "monthly");
+    });
     utilityUnresolvedBody?.addEventListener("click", event => {
         const button = event.target.closest("[data-utility-assign]");
         if (!button) {
@@ -8439,6 +8961,10 @@
     licenciamientoMonthFilter?.addEventListener("change", () => {
         state.licenciamientoMonth = Number(licenciamientoMonthFilter.value || licenciamientoDefaultMonth);
         loadLicenciamiento();
+    });
+    utilityBreakdownCloseBtn?.addEventListener("click", closeUtilityBreakdownModal);
+    utilityBreakdownModal?.querySelectorAll("[data-utility-breakdown-close]").forEach(element => {
+        element.addEventListener("click", closeUtilityBreakdownModal);
     });
     pnlDetailCloseBtn?.addEventListener("click", closePnlDetailModal);
     pnlDetailModal?.querySelectorAll("[data-pnl-detail-close]").forEach(element => {
@@ -8678,6 +9204,11 @@
 
         if (event.key === "Escape" && isCopiersEditorOpen()) {
             closeCopiersEditorModal();
+            return;
+        }
+
+        if (event.key === "Escape" && isUtilityBreakdownOpen()) {
+            closeUtilityBreakdownModal();
             return;
         }
 

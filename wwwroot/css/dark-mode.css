@@ -748,6 +748,10 @@ html[data-bs-theme="dark"] body.app-shell :is(
   .dashboard-tax-card,
   .dashboard-tax-detail-panel,
   .dashboard-tax-filters,
+  .dashboard-tax-vat-summary,
+  .dashboard-tax-vat-summary__main,
+  .dashboard-tax-vat-table__toolbar,
+  .dashboard-tax-vat-table__total,
   .dashboard-copiers-detail-row td,
   .dashboard-copiers-detail__section,
   .dashboard-copiers-detail__header,
@@ -798,6 +802,20 @@ html[data-bs-theme="dark"] body.app-shell :is(
   border-color: var(--app-dark-border) !important;
   background: var(--app-dark-surface) !important;
   color: var(--app-dark-text) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .dashboard-tax-vat-summary__component--debit {
+  border-color: rgba(248, 113, 113, 0.34) !important;
+  background: rgba(248, 113, 113, 0.12) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .dashboard-tax-vat-summary__component--credit {
+  border-color: rgba(74, 222, 128, 0.34) !important;
+  background: rgba(74, 222, 128, 0.12) !important;
+}
+
+html[data-bs-theme="dark"] body.app-shell .dashboard-tax-vat-summary__component--credit strong {
+  color: #86efac !important;
 }
 
 html[data-bs-theme="dark"] body.app-shell :is(
@@ -1061,6 +1079,9 @@ html[data-bs-theme="dark"] body.app-shell :is(
   .dashboard-tax-card__vertical strong,
   .dashboard-tax-detail-panel__header h3,
   .dashboard-tax-detail-panel__header > strong,
+  .dashboard-tax-detail-panel__actions > strong,
+  .dashboard-tax-vat-summary__main strong,
+  .dashboard-tax-vat-table__total strong,
   .lic-summary-card__value,
   .lic-chart-card__title,
   .lic-section-heading__title,
@@ -1117,6 +1138,9 @@ html[data-bs-theme="dark"] body.app-shell :is(
   .dashboard-tax-card__period,
   .dashboard-tax-card__vertical span,
   .dashboard-tax-detail-panel__header p,
+  .dashboard-tax-vat-summary__main span,
+  .dashboard-tax-vat-summary__component span,
+  .dashboard-tax-vat-table__total span,
   .lic-summary-card__label,
   .lic-summary-card__hint,
   .lic-chart-card__eyebrow,

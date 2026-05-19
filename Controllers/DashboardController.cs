@@ -1003,6 +1003,64 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> TaxesReteFuenteExport([FromQuery] TaxesDashboardRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            request ??= new TaxesDashboardRequestDto();
+            request.Year ??= today.Year;
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(request, ct);
+            var content = BuildTaxesReteFuenteExcel(dashboard);
+            var periodToken = BuildSafeFileName(FirstNonEmpty(dashboard.ReteFuente.Filter.ValueLabel, dashboard.ReteFuente.PeriodLabel, "retefuente"));
+            var fileName = $"reporte-retefuente-{dashboard.ReteFuente.Filter.Year}-{periodToken}-{ResolveBogotaToday():yyyyMMdd}.xlsx";
+
+            return File(
+                content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible generar el reporte de retefuente.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> TaxesVatExport([FromQuery] TaxesDashboardRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            request ??= new TaxesDashboardRequestDto();
+            request.Year ??= today.Year;
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(request, ct);
+            var content = BuildTaxesVatExcel(dashboard);
+            var periodToken = BuildSafeFileName(FirstNonEmpty(dashboard.ReteIva.Filter.ValueLabel, dashboard.ReteIva.PeriodLabel, "iva"));
+            var fileName = $"reporte-iva-{dashboard.ReteIva.Filter.Year}-{periodToken}-{ResolveBogotaToday():yyyyMMdd}.xlsx";
+
+            return File(
+                content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible generar el reporte de IVA.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Licenciamiento([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
         try
@@ -1137,6 +1195,262 @@ public sealed class DashboardController : Controller
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible actualizar el registro del detalle P&L.");
         }
     }
+
+    private static byte[] BuildTaxesVatExcel(TaxesDashboardDto dashboard)
+    {
+        using var workbook = new XLWorkbook();
+        var vatSection = dashboard.ReteIva;
+        var generatedTable = FindVatTable(vatSection, "generated") ?? new TaxVatTableDto { Label = "IVA generado", ValueLabel = "IVA", NameColumnLabel = "Cliente" };
+        var spentTable = FindVatTable(vatSection, "spent") ?? new TaxVatTableDto { Label = "IVA gastado", ValueLabel = "IVA", NameColumnLabel = "Nombre emisor" };
+        var reteIvaTable = FindVatTable(vatSection, "reteiva") ?? new TaxVatTableDto { Label = "ReteIVA a favor", ValueLabel = "Valor reteiva", NameColumnLabel = "Cliente" };
+
+        AddVatSummaryWorksheet(workbook, vatSection, generatedTable, spentTable, reteIvaTable);
+        AddVatDetailWorksheet(workbook, "Iva generado", generatedTable);
+        AddVatDetailWorksheet(workbook, "Iva gastado", spentTable);
+        AddVatDetailWorksheet(workbook, "Reteiva a favor", reteIvaTable);
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private static byte[] BuildTaxesReteFuenteExcel(TaxesDashboardDto dashboard)
+    {
+        using var workbook = new XLWorkbook();
+        var section = dashboard.ReteFuente;
+        var autoTable = FindTaxReportTable(section, "autofuente") ?? new TaxReportTableDto
+        {
+            Label = "Autofuente",
+            DateColumnLabel = "Fecha emision",
+            NameColumnLabel = "Cliente",
+            TotalColumnLabel = "Total factura",
+            BaseColumnLabel = "Base antes de IVA",
+            AmountColumnLabel = "Autofuente",
+            ShowBaseColumn = true
+        };
+        var expensesTable = FindTaxReportTable(section, "retefuente-gastos") ?? new TaxReportTableDto
+        {
+            Label = "ReteFuente gastos",
+            DateColumnLabel = "Fecha pago",
+            NameColumnLabel = "Receptor",
+            TotalColumnLabel = "Valor pago",
+            AmountColumnLabel = "ReteFuente",
+            CategoryColumnLabel = "Tipo persona",
+            ShowCategoryColumn = true
+        };
+
+        AddReteFuenteSummaryWorksheet(workbook, section, autoTable, expensesTable);
+        AddTaxReportWorksheet(workbook, "Autofuente", autoTable);
+        AddTaxReportWorksheet(workbook, "ReteFuente gastos", expensesTable);
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private static TaxReportTableDto? FindTaxReportTable(TaxesSectionDto section, string key) =>
+        section.ReportDetails.Tables.FirstOrDefault(table => string.Equals(table.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    private static void AddReteFuenteSummaryWorksheet(
+        XLWorkbook workbook,
+        TaxesSectionDto section,
+        TaxReportTableDto autoTable,
+        TaxReportTableDto expensesTable)
+    {
+        var worksheet = workbook.Worksheets.Add("Resumen");
+
+        worksheet.Cell(1, 1).Value = "Resumen Retefuente";
+        worksheet.Cell(2, 1).Value = section.PeriodLabel;
+        worksheet.Cell(2, 2).Value = section.DateRangeLabel;
+        worksheet.Cell(4, 1).Value = "Concepto";
+        worksheet.Cell(4, 2).Value = "Valor";
+        worksheet.Cell(5, 1).Value = "Autofuente";
+        worksheet.Cell(5, 2).Value = autoTable.TotalAmountValue;
+        worksheet.Cell(6, 1).Value = "ReteFuente gastos";
+        worksheet.Cell(6, 2).Value = expensesTable.TotalAmountValue;
+        worksheet.Cell(7, 1).Value = "Total retefuente a pagar";
+        worksheet.Cell(7, 2).Value = section.TotalValue;
+        worksheet.Cell(9, 1).Value = "Formula";
+        worksheet.Cell(9, 2).Value = "Autofuente + ReteFuente gastos";
+
+        var usedRange = worksheet.Range(1, 1, 9, 2);
+        usedRange.Style.Font.FontName = "Aptos";
+        var titleRange = worksheet.Range(1, 1, 1, 2).Merge();
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 16;
+        worksheet.Range(4, 1, 4, 2).Style.Font.Bold = true;
+        worksheet.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
+        worksheet.Range(7, 1, 7, 2).Style.Font.Bold = true;
+        worksheet.Range(7, 1, 7, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+        worksheet.Range(5, 2, 7, 2).Style.NumberFormat.Format = "$ #,##0";
+        worksheet.Columns().AdjustToContents();
+    }
+
+    private static void AddTaxReportWorksheet(XLWorkbook workbook, string sheetName, TaxReportTableDto table)
+    {
+        var worksheet = workbook.Worksheets.Add(sheetName);
+        var headers = new List<string>
+        {
+            table.DateColumnLabel,
+            "Numero factura",
+            table.NameColumnLabel
+        };
+
+        if (table.ShowCategoryColumn)
+            headers.Add(table.CategoryColumnLabel);
+
+        headers.Add(table.TotalColumnLabel);
+
+        if (table.ShowBaseColumn)
+            headers.Add(table.BaseColumnLabel);
+
+        headers.Add(table.AmountColumnLabel);
+
+        worksheet.Cell(1, 1).Value = table.Label;
+        for (var index = 0; index < headers.Count; index++)
+        {
+            worksheet.Cell(3, index + 1).Value = headers[index];
+        }
+
+        var rowIndex = 4;
+        foreach (var row in table.Rows)
+        {
+            var columnIndex = 1;
+            worksheet.Cell(rowIndex, columnIndex++).Value = row.DateDisplay;
+            worksheet.Cell(rowIndex, columnIndex++).Value = row.InvoiceNumber;
+            worksheet.Cell(rowIndex, columnIndex++).Value = row.Name;
+
+            if (table.ShowCategoryColumn)
+                worksheet.Cell(rowIndex, columnIndex++).Value = row.Category;
+
+            worksheet.Cell(rowIndex, columnIndex++).Value = row.TotalValue;
+
+            if (table.ShowBaseColumn)
+                worksheet.Cell(rowIndex, columnIndex++).Value = row.BaseValue;
+
+            worksheet.Cell(rowIndex, columnIndex).Value = row.AmountValue;
+            rowIndex++;
+        }
+
+        var totalColumnIndex = 4 + (table.ShowCategoryColumn ? 1 : 0);
+        var amountColumnIndex = headers.Count;
+        worksheet.Cell(rowIndex, 1).Value = "Total";
+        worksheet.Cell(rowIndex, 2).Value = $"{table.Rows.Count:N0} registros";
+        worksheet.Cell(rowIndex, totalColumnIndex).Value = table.TotalValue;
+
+        if (table.ShowBaseColumn)
+            worksheet.Cell(rowIndex, totalColumnIndex + 1).Value = table.TotalBaseValue;
+
+        worksheet.Cell(rowIndex, amountColumnIndex).Value = table.TotalAmountValue;
+
+        var usedRange = worksheet.Range(1, 1, rowIndex, headers.Count);
+        usedRange.Style.Font.FontName = "Aptos";
+        var titleRange = worksheet.Range(1, 1, 1, headers.Count).Merge();
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 16;
+        worksheet.Range(3, 1, 3, headers.Count).Style.Font.Bold = true;
+        worksheet.Range(3, 1, 3, headers.Count).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
+        worksheet.Range(rowIndex, 1, rowIndex, headers.Count).Style.Font.Bold = true;
+        worksheet.Range(rowIndex, 1, rowIndex, headers.Count).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+        worksheet.Range(4, totalColumnIndex, rowIndex, amountColumnIndex).Style.NumberFormat.Format = "$ #,##0";
+        worksheet.SheetView.FreezeRows(3);
+        worksheet.Columns().AdjustToContents();
+    }
+
+    private static TaxVatTableDto? FindVatTable(TaxesSectionDto section, string key) =>
+        section.VatDetails.Tables.FirstOrDefault(table => string.Equals(table.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    private static void AddVatSummaryWorksheet(
+        XLWorkbook workbook,
+        TaxesSectionDto vatSection,
+        TaxVatTableDto generatedTable,
+        TaxVatTableDto spentTable,
+        TaxVatTableDto reteIvaTable)
+    {
+        var worksheet = workbook.Worksheets.Add("Resumen");
+        var generated = SumVatTableTax(generatedTable);
+        var spent = SumVatTableTax(spentTable);
+        var reteIva = SumVatTableTax(reteIvaTable);
+
+        worksheet.Cell(1, 1).Value = "Resumen IVA";
+        worksheet.Cell(2, 1).Value = vatSection.PeriodLabel;
+        worksheet.Cell(2, 2).Value = vatSection.DateRangeLabel;
+        worksheet.Cell(4, 1).Value = "Concepto";
+        worksheet.Cell(4, 2).Value = "Valor";
+        worksheet.Cell(5, 1).Value = "IVA generado";
+        worksheet.Cell(5, 2).Value = generated;
+        worksheet.Cell(6, 1).Value = "IVA gastado";
+        worksheet.Cell(6, 2).Value = spent;
+        worksheet.Cell(7, 1).Value = "ReteIVA a favor";
+        worksheet.Cell(7, 2).Value = reteIva;
+        worksheet.Cell(8, 1).Value = "IVA total a pagar";
+        worksheet.Cell(8, 2).Value = vatSection.TotalValue;
+        worksheet.Cell(10, 1).Value = "Formula";
+        worksheet.Cell(10, 2).Value = "IVA generado - (IVA gastado + ReteIVA a favor)";
+
+        var usedRange = worksheet.Range(1, 1, 10, 2);
+        usedRange.Style.Font.FontName = "Aptos";
+        var titleRange = worksheet.Range(1, 1, 1, 2).Merge();
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 16;
+        worksheet.Range(4, 1, 4, 2).Style.Font.Bold = true;
+        worksheet.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
+        worksheet.Range(8, 1, 8, 2).Style.Font.Bold = true;
+        worksheet.Range(8, 1, 8, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+        worksheet.Range(5, 2, 8, 2).Style.NumberFormat.Format = "$ #,##0";
+        worksheet.Columns().AdjustToContents();
+    }
+
+    private static void AddVatDetailWorksheet(XLWorkbook workbook, string sheetName, TaxVatTableDto table)
+    {
+        var worksheet = workbook.Worksheets.Add(sheetName);
+        var headers = new[]
+        {
+            "Fecha emision",
+            "Numero factura",
+            table.NameColumnLabel,
+            "Total factura",
+            table.ValueLabel
+        };
+
+        worksheet.Cell(1, 1).Value = table.Label;
+        for (var index = 0; index < headers.Length; index++)
+        {
+            worksheet.Cell(3, index + 1).Value = headers[index];
+        }
+
+        var rowIndex = 4;
+        foreach (var row in table.Rows)
+        {
+            worksheet.Cell(rowIndex, 1).Value = row.DateDisplay;
+            worksheet.Cell(rowIndex, 2).Value = row.InvoiceNumber;
+            worksheet.Cell(rowIndex, 3).Value = row.Name;
+            worksheet.Cell(rowIndex, 4).Value = row.TotalValue;
+            worksheet.Cell(rowIndex, 5).Value = row.TaxValue;
+            rowIndex++;
+        }
+
+        worksheet.Cell(rowIndex, 1).Value = "Total";
+        worksheet.Cell(rowIndex, 2).Value = $"{table.Rows.Count:N0} registros";
+        worksheet.Cell(rowIndex, 4).Value = table.Rows.Sum(static row => row.TotalValue);
+        worksheet.Cell(rowIndex, 5).Value = SumVatTableTax(table);
+
+        var usedRange = worksheet.Range(1, 1, rowIndex, headers.Length);
+        usedRange.Style.Font.FontName = "Aptos";
+        var titleRange = worksheet.Range(1, 1, 1, headers.Length).Merge();
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 16;
+        worksheet.Range(3, 1, 3, headers.Length).Style.Font.Bold = true;
+        worksheet.Range(3, 1, 3, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
+        worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Font.Bold = true;
+        worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+        worksheet.Range(4, 4, rowIndex, 5).Style.NumberFormat.Format = "$ #,##0";
+        worksheet.SheetView.FreezeRows(3);
+        worksheet.Columns().AdjustToContents();
+    }
+
+    private static decimal SumVatTableTax(TaxVatTableDto table) =>
+        table.Rows.Sum(static row => row.TaxValue);
 
     private static DateOnly ResolveBogotaToday()
     {

@@ -668,6 +668,8 @@ public sealed class TaxesSectionDto
     public IReadOnlyList<TaxCalculationDetailDto> CalculationDetails { get; set; } = Array.Empty<TaxCalculationDetailDto>();
     public IReadOnlyList<TaxVerticalSummaryDto> VerticalSummaries { get; set; } = Array.Empty<TaxVerticalSummaryDto>();
     public IReadOnlyList<TaxExpenseDetailDto> RetentionDetails { get; set; } = Array.Empty<TaxExpenseDetailDto>();
+    public TaxVatDetailsDto VatDetails { get; set; } = new();
+    public TaxReportDetailsDto ReportDetails { get; set; } = new();
 }
 
 public sealed class TaxesSectionFilterDto
@@ -739,6 +741,72 @@ public sealed class TaxExpenseDetailDto
     public string RecipientNit { get; set; } = "";
     public decimal CloudValue { get; set; }
     public decimal CopiersValue { get; set; }
+}
+
+public sealed class TaxVatDetailsDto
+{
+    public IReadOnlyList<TaxVatTableDto> Tables { get; set; } = Array.Empty<TaxVatTableDto>();
+}
+
+public sealed class TaxVatTableDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string NameColumnLabel { get; set; } = "";
+    public string ValueLabel { get; set; } = "";
+    public decimal TotalValue { get; set; }
+    public IReadOnlyList<TaxVatRowDto> Rows { get; set; } = Array.Empty<TaxVatRowDto>();
+}
+
+public sealed class TaxVatRowDto
+{
+    public string DateDisplay { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string VerticalKey { get; set; } = "";
+    public string VerticalLabel { get; set; } = "";
+    public decimal TotalValue { get; set; }
+    public decimal TaxValue { get; set; }
+    public decimal CloudTotalValue { get; set; }
+    public decimal CloudTaxValue { get; set; }
+    public decimal CopiersTotalValue { get; set; }
+    public decimal CopiersTaxValue { get; set; }
+    public decimal UnassignedTotalValue { get; set; }
+    public decimal UnassignedTaxValue { get; set; }
+}
+
+public sealed class TaxReportDetailsDto
+{
+    public IReadOnlyList<TaxReportTableDto> Tables { get; set; } = Array.Empty<TaxReportTableDto>();
+}
+
+public sealed class TaxReportTableDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string DateColumnLabel { get; set; } = "Fecha";
+    public string NameColumnLabel { get; set; } = "Nombre";
+    public string TotalColumnLabel { get; set; } = "Total";
+    public string BaseColumnLabel { get; set; } = "";
+    public string AmountColumnLabel { get; set; } = "Valor";
+    public string CategoryColumnLabel { get; set; } = "";
+    public bool ShowBaseColumn { get; set; }
+    public bool ShowCategoryColumn { get; set; }
+    public decimal TotalBaseValue { get; set; }
+    public decimal TotalValue { get; set; }
+    public decimal TotalAmountValue { get; set; }
+    public IReadOnlyList<TaxReportRowDto> Rows { get; set; } = Array.Empty<TaxReportRowDto>();
+}
+
+public sealed class TaxReportRowDto
+{
+    public string DateDisplay { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Category { get; set; } = "";
+    public decimal BaseValue { get; set; }
+    public decimal TotalValue { get; set; }
+    public decimal AmountValue { get; set; }
 }
 
 public sealed class PortfolioKpiDto

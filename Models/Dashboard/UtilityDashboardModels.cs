@@ -29,6 +29,24 @@ public sealed class UtilityTheoreticalCardDto
     public decimal? UtilityPercent { get; set; }
     public int RecordsCount { get; set; }
     public int MissingCostCount { get; set; }
+    public IReadOnlyList<UtilityTheoreticalBreakdownRowDto> Breakdown { get; set; } = Array.Empty<UtilityTheoreticalBreakdownRowDto>();
+}
+
+public sealed class UtilityTheoreticalBreakdownRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string ProductLineLabel { get; set; } = "";
+    public string ContractTypeLabel { get; set; } = "";
+    public int Quantity { get; set; }
+    public int BillingDay { get; set; }
+    public decimal UnitSaleUsd { get; set; }
+    public decimal UnitCostUsd { get; set; }
+    public decimal Sales { get; set; }
+    public decimal Cost { get; set; }
+    public decimal Utility { get; set; }
+    public bool HasCost { get; set; }
 }
 
 public sealed class UtilityRealSegmentDto

@@ -30,7 +30,7 @@
      data-copiers-inventory-url="@Url.Action("CopiersInventory", "Dashboard")"
      data-copiers-inventory-export-url="@Url.Action("CopiersInventoryExport", "Dashboard")"
      data-copiers-counters-url="@Url.Action("CopiersCounters", "Dashboard")"
-     data-copiers-counters-pdf-url="@Url.Action("CopiersCountersPdf", "Dashboard")"
+      data-copiers-counters-pdf-url="@Url.Action("CopiersCountersPdf", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
      data-copiers-equipment-assignment-url="@Url.Action("CopiersEquipmentAssignment", "Dashboard")"
      data-copiers-line-equipment-assignment-url="@Url.Action("CopiersLineEquipmentAssignment", "Dashboard")"
@@ -38,9 +38,10 @@
      data-copiers-maintenance-file-url="@Url.Action("CopiersMaintenanceAttachment", "Dashboard")"
      data-copiers-client-search-url="@Url.Action("CopiersClientSearch", "Dashboard")"
      data-copiers-product-search-url="@Url.Action("CopiersProductSearch", "Dashboard")"
-     data-taxes-url="@Url.Action("Taxes", "Dashboard")"
-     data-taxes-retentions-export-url="@Url.Action("TaxesRetentionsExport", "Dashboard")"
-     data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
+      data-taxes-url="@Url.Action("Taxes", "Dashboard")"
+      data-taxes-retefuente-export-url="@Url.Action("TaxesReteFuenteExport", "Dashboard")"
+      data-taxes-vat-export-url="@Url.Action("TaxesVatExport", "Dashboard")"
+      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-licenciamiento-url="@Url.Action("Licenciamiento", "Dashboard")"
      data-utility-url="@Url.Action("Utility", "Dashboard")"
      data-utility-assignment-url="@Url.Action("UtilityAssignment", "Dashboard")"
@@ -790,7 +791,6 @@
                     <div class="dashboard-panel__kicker">Impuestos recurrentes</div>
                     <h2 class="dashboard-panel__title">Cortes fiscales operativos</h2>
                 </div>
-                <button type="button" class="btn btn-outline-primary" id="taxesRetentionExportBtn">Descargar retefuente</button>
             </div>
             <div class="dashboard-tax-card-grid" id="taxesRecurringCards"></div>
             <article class="dashboard-tax-detail-panel" id="taxesRecurringDetail"></article>
@@ -1382,6 +1382,46 @@
                 </div>
             </article>
         </section>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="utilityBreakdownModal" hidden>
+    <div class="dashboard-modal__backdrop" data-utility-breakdown-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="utilityBreakdownTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Desglose utilidad</div>
+                <h2 class="dashboard-modal__title" id="utilityBreakdownTitle">Detalle de utilidad teorica</h2>
+                <p class="dashboard-modal__subtitle" id="utilityBreakdownSubtitle">Filas incluidas en el calculo seleccionado.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="utilityBreakdownCloseBtn">Cerrar</button>
+        </div>
+
+        <div class="utility-breakdown-summary" id="utilityBreakdownSummary"></div>
+
+        <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+            <table class="table dashboard-table utility-breakdown-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Producto</th>
+                        <th>Tipo</th>
+                        <th class="text-end">Cant.</th>
+                        <th class="text-end">Venta unit. USD</th>
+                        <th class="text-end">Costo unit. USD</th>
+                        <th class="text-end">Venta</th>
+                        <th class="text-end">Costo</th>
+                        <th class="text-end">Total fila</th>
+                    </tr>
+                </thead>
+                <tbody id="utilityBreakdownBody">
+                    <tr>
+                        <td colspan="9" class="dashboard-table__empty">Selecciona una tarjeta de utilidad para ver el desglose.</td>
+                    </tr>
+                </tbody>
+                <tfoot id="utilityBreakdownFooter"></tfoot>
+            </table>
+        </div>
     </div>
 </div>
 

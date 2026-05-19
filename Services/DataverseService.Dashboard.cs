@@ -19,6 +19,7 @@ public sealed partial class DataverseService
     private const string DashboardExpensePaymentDateFieldKind = "date-only";
     private const string DashboardExpensePaymentValueField = "cr07a_valorpago";
     private const string DashboardExpenseReteFuenteField = "cr07a_retefuente";
+    private const string DashboardExpenseInvoiceNumberField = "cr07a_name";
     private const string DashboardExpenseRecipientNameField = "cr07a_nombrereceptor";
     private const string DashboardExpenseRecipientNitField = "cr07a_nitreceptor";
     private const string DashboardExpenseCloudField = "cr07a_cloud";
@@ -640,17 +641,25 @@ public sealed partial class DataverseService
             .ToList();
         var incomeTaxPayments = FilterBillingPaymentByPeriod(paymentRecords, incomeTaxPeriod);
         var vatEmission = FilterBillingEmissionByPeriod(emissionRecords, vatPeriod);
-        var vatPayments = FilterBillingPaymentByPeriod(paymentRecords, vatPeriod);
-        var vatExpenses = FilterTaxExpensesByPeriod(expenseRecords, vatPeriod);
+        var vatExpenses = FilterTaxExpensesByEmissionPeriod(expenseRecords, vatPeriod);
+        var vatGeneratedRows = vatEmission
+            .Where(static row => row.VatValue > 0m)
+            .ToList();
+        var reteIvaFavorRows = vatEmission
+            .Where(static row => row.RteIvaValue > 0m)
+            .ToList();
+        var vatExpensesWithVat = vatExpenses
+            .Where(static row => row.VatValue > 0m)
+            .ToList();
 
         var hasData = reteFuenteEmission.Count > 0
             || reteFuenteExpenses.Count > 0
             || reteIcaEmission.Count > 0
             || reteIcaPaymentRows.Count > 0
             || incomeTaxPayments.Count > 0
-            || vatEmission.Count > 0
-            || vatPayments.Count > 0
-            || vatExpenses.Count > 0;
+            || vatGeneratedRows.Count > 0
+            || reteIvaFavorRows.Count > 0
+            || vatExpensesWithVat.Count > 0;
 
         var reteFuenteDetails = BuildTaxExpenseDetails(reteFuenteExpenses);
         var reteFuenteLegalRows = reteFuenteExpenses
@@ -664,7 +673,6 @@ public sealed partial class DataverseService
             .ToList();
 
         var reteFuenteBase = SumCurrency(reteFuenteEmission, static row => CalculateInvoiceTaxBase(row));
-        var reteFuenteInvoiceTotal = SumCurrency(reteFuenteEmission, static row => row.TotalInvoice);
         var reteFuenteAutoFuente = CalculateAutoFuente(reteFuenteEmission);
         var reteFuenteLegal = SumExpenseCurrency(reteFuenteLegalRows, static row => row.ReteFuenteValue);
         var reteFuenteNatural = SumExpenseCurrency(reteFuenteNaturalRows, static row => row.ReteFuenteValue);
@@ -674,6 +682,7 @@ public sealed partial class DataverseService
         var reteFuentePayableVerticals = SumTaxVerticalAmounts(
             SumBillingCurrencyByVertical(reteFuenteEmission, static row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate),
             CalculateExpenseRetentionByVertical(reteFuenteExpenses));
+        var reteFuenteReportDetails = BuildReteFuenteReportDetails(reteFuenteEmission, reteFuenteExpenses);
 
         var reteIcaBase = SumCurrency(reteIcaEmission, static row => CalculateInvoiceTaxBase(row));
         var reteIcaInvoiceTotal = SumCurrency(reteIcaEmission, static row => row.TotalInvoice);
@@ -693,57 +702,20 @@ public sealed partial class DataverseService
         var incomeTaxVerticals = SumBillingCurrencyByVertical(incomeTaxRetentionRows, static row => row.RteFteValue);
 
         var vatBase = SumCurrency(vatEmission, static row => CalculateInvoiceTaxBase(row));
-        var vatInvoiceTotal = SumCurrency(vatEmission, static row => row.TotalInvoice);
-        var generatedVat = SumCurrency(vatEmission, static row => row.VatValue);
-        var reteIvaFavorRows = vatPayments
-            .Where(static row => row.RteIvaValue > 0m)
-            .ToList();
+        var generatedVat = SumCurrency(vatGeneratedRows, static row => row.VatValue);
         var reteIvaFavor = SumCurrency(reteIvaFavorRows, static row => row.RteIvaValue);
-        var vatExpensesTotal = SumExpenseCurrency(vatExpenses, static row => row.TotalValue);
-        var vatExpenseVat = SumExpenseCurrency(vatExpenses, static row => row.VatValue);
-        var vatPayable = RoundCurrency(generatedVat - vatExpenseVat);
+        var vatExpensesTotal = SumExpenseCurrency(vatExpensesWithVat, static row => row.TotalValue);
+        var vatExpenseVat = SumExpenseCurrency(vatExpensesWithVat, static row => row.VatValue);
+        var vatPayable = RoundCurrency(generatedVat - (vatExpenseVat + reteIvaFavor));
         var vatPayableVerticals = SubtractTaxVerticalAmounts(
-            SumBillingCurrencyByVertical(vatEmission, static row => row.VatValue),
-            CalculateExpenseCurrencyByVertical(vatExpenses, static row => row.VatValue));
+            SubtractTaxVerticalAmounts(
+                SumBillingCurrencyByVertical(vatGeneratedRows, static row => row.VatValue),
+                CalculateExpenseCurrencyByVertical(vatExpensesWithVat, static row => row.VatValue)),
+            SumBillingCurrencyByVertical(reteIvaFavorRows, static row => row.RteIvaValue));
+        var vatDetails = BuildVatDetails(vatGeneratedRows, vatExpensesWithVat, reteIvaFavorRows);
 
         var incomeTaxYearOptions = BuildIncomeTaxYearOptions(paymentRecords, incomeTaxYear, today.Year);
         var compareYear = Math.Min(Math.Min(reteFuenteYear, reteIcaYear), Math.Min(ivaYear, incomeTaxYear)) - 1;
-
-        var reteFuenteCalculationDetails = new[]
-        {
-            BuildTaxCalculationDetail(
-                "retefuente-total",
-                "Detalle retefuente mensual",
-                "Total facturado antes de IVA x 0,414% + retenciones a juridicas + retenciones a naturales + sin clasificar",
-                reteFuenteBase,
-                reteFuenteInvoiceTotal,
-                reteFuenteEmission.Count,
-                "Total retefuente a pagar",
-                reteFuentePayable,
-                BuildTaxCalculationLine("Autofuente", reteFuenteAutoFuente),
-                BuildTaxCalculationLine("Retenciones personas juridicas", reteFuenteLegal),
-                BuildTaxCalculationLine("Retenciones personas naturales", reteFuenteNatural),
-                BuildTaxCalculationLine("Retenciones sin clasificar", reteFuenteUnknown),
-                BuildTaxCalculationLine("Base pagos con retefuente", SumExpenseCurrency(reteFuenteExpenses, static row => row.PaymentValue)))
-        };
-
-        var reteIvaCalculationDetails = new[]
-        {
-            BuildTaxCalculationDetail(
-                "reteiva-total",
-                "Detalle IVA cuatrimestral",
-                "IVA generado - IVA gastado",
-                vatBase,
-                vatInvoiceTotal,
-                vatEmission.Count,
-                "IVA total a pagar",
-                vatPayable,
-                BuildTaxCalculationLine("IVA generado", generatedVat),
-                BuildTaxCalculationLine("ReteIVA a favor", reteIvaFavor),
-                BuildTaxCalculationLine("Gastos del periodo", vatExpensesTotal),
-                BuildTaxCalculationLine("IVA gastado", vatExpenseVat),
-                BuildTaxCalculationLine("Total facturas pagadas con reteIVA", SumCurrency(reteIvaFavorRows, static row => row.TotalInvoice)))
-        };
 
         var reteIcaCalculationDetails = new[]
         {
@@ -791,7 +763,7 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos movimientos de impuestos para este periodo.",
             EmptyStateMessage = "Cambia el filtro de cada tarjeta para recalcular los cortes fiscales.",
             HasData = hasData,
-            RecordsCount = reteFuenteEmission.Count + reteFuenteExpenses.Count + reteIcaEmission.Count + reteIcaPaymentRows.Count + incomeTaxRetentionRows.Count + vatEmission.Count + reteIvaFavorRows.Count + vatExpenses.Count,
+            RecordsCount = reteFuenteEmission.Count + reteFuenteExpenses.Count + reteIcaEmission.Count + reteIcaPaymentRows.Count + incomeTaxRetentionRows.Count + vatGeneratedRows.Count + reteIvaFavorRows.Count + vatExpensesWithVat.Count,
             ReteFuente = BuildTaxesSection(
                 "retefuente",
                 "Retefuente",
@@ -813,10 +785,12 @@ public sealed partial class DataverseService
                     (0m, 0m, 0m),
                     new TaxVerticalComponentSet("autofuente", "Autofuente", SumBillingCurrencyByVertical(reteFuenteEmission, static row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate), (0m, 0m, 0m)),
                     new TaxVerticalComponentSet("retentions", "Retenciones", CalculateExpenseRetentionByVertical(reteFuenteExpenses), (0m, 0m, 0m))),
-                reteFuenteCalculationDetails,
+                Array.Empty<TaxCalculationDetailDto>(),
                 reteFuenteDetails,
                 reteFuentePeriod.PeriodLabel,
-                reteFuentePeriod.DateRangeLabel),
+                reteFuentePeriod.DateRangeLabel,
+                null,
+                reteFuenteReportDetails),
             ReteIca = BuildTaxesSection(
                 "reteica",
                 "Rete ICA",
@@ -867,13 +841,13 @@ public sealed partial class DataverseService
             ReteIva = BuildTaxesSection(
                 "reteiva",
                 "IVA",
-                "IVA generado del periodo menos IVA gastado registrado en gastos de la empresa. La ReteIVA se muestra como retencion a favor informativa.",
+                "IVA generado del periodo menos IVA gastado y ReteIVA a favor.",
                 "IVA total a pagar",
                 vatPayable,
                 BuildTaxesSectionFilter("fourmonthly", ivaYear, ivaValue, 2026, today.Year, incomeTaxYearOptions),
                 new[]
                 {
-                    BuildTaxKpi("vat-net", "IVA total a pagar", "IVA generado - IVA gastado.", vatPayable),
+                    BuildTaxKpi("vat-net", "IVA total a pagar", "IVA generado - (IVA gastado + ReteIVA a favor).", vatPayable),
                     BuildTaxKpi("generated-vat", "IVA generado", "IVA generado por facturas emitidas en el cuatrimestre.", generatedVat, "currency", "Base", FormatCurrencyValue(vatBase)),
                     BuildTaxKpi("expense-vat", "IVA gastado", "IVA registrado en gastos de la empresa del cuatrimestre.", vatExpenseVat, "currency", "Gastos", FormatCurrencyValue(vatExpensesTotal)),
                     BuildTaxKpi("client-rteiva", "ReteIVA a favor", "ReteIVA que clientes nos practicaron en pagos del cuatrimestre.", reteIvaFavor)
@@ -882,13 +856,14 @@ public sealed partial class DataverseService
                     "IVA total a pagar",
                     vatPayableVerticals,
                     (0m, 0m, 0m),
-                    new TaxVerticalComponentSet("generated-vat", "IVA generado", SumBillingCurrencyByVertical(vatEmission, static row => row.VatValue), (0m, 0m, 0m)),
-                    new TaxVerticalComponentSet("expense-vat", "IVA gastado", CalculateExpenseCurrencyByVertical(vatExpenses, static row => row.VatValue), (0m, 0m, 0m)),
+                    new TaxVerticalComponentSet("generated-vat", "IVA generado", SumBillingCurrencyByVertical(vatGeneratedRows, static row => row.VatValue), (0m, 0m, 0m)),
+                    new TaxVerticalComponentSet("expense-vat", "IVA gastado", CalculateExpenseCurrencyByVertical(vatExpensesWithVat, static row => row.VatValue), (0m, 0m, 0m)),
                     new TaxVerticalComponentSet("client-rteiva", "ReteIVA a favor", SumBillingCurrencyByVertical(reteIvaFavorRows, static row => row.RteIvaValue), (0m, 0m, 0m))),
-                reteIvaCalculationDetails,
+                Array.Empty<TaxCalculationDetailDto>(),
                 Array.Empty<TaxExpenseDetailDto>(),
                 vatPeriod.PeriodLabel,
-                vatPeriod.DateRangeLabel),
+                vatPeriod.DateRangeLabel,
+                vatDetails),
             ExpenseDetails = reteFuenteDetails
         };
     }
@@ -2096,7 +2071,9 @@ public sealed partial class DataverseService
         IReadOnlyList<TaxCalculationDetailDto>? calculationDetails = null,
         IReadOnlyList<TaxExpenseDetailDto>? retentionDetails = null,
         string periodLabel = "",
-        string dateRangeLabel = "")
+        string dateRangeLabel = "",
+        TaxVatDetailsDto? vatDetails = null,
+        TaxReportDetailsDto? reportDetails = null)
     {
         return new TaxesSectionDto
         {
@@ -2111,7 +2088,9 @@ public sealed partial class DataverseService
             Metrics = metrics,
             CalculationDetails = calculationDetails ?? Array.Empty<TaxCalculationDetailDto>(),
             VerticalSummaries = verticalSummaries ?? Array.Empty<TaxVerticalSummaryDto>(),
-            RetentionDetails = retentionDetails ?? Array.Empty<TaxExpenseDetailDto>()
+            RetentionDetails = retentionDetails ?? Array.Empty<TaxExpenseDetailDto>(),
+            VatDetails = vatDetails ?? new TaxVatDetailsDto(),
+            ReportDetails = reportDetails ?? new TaxReportDetailsDto()
         };
     }
 
@@ -2233,6 +2212,193 @@ public sealed partial class DataverseService
             .Where(static year => year >= 2025)
             .Distinct()
             .OrderByDescending(static year => year)
+            .ToList();
+    }
+
+    private TaxVatDetailsDto BuildVatDetails(
+        IReadOnlyList<BillingRecordRow> generatedRows,
+        IReadOnlyList<TaxExpenseRow> expenseRows,
+        IReadOnlyList<BillingRecordRow> reteIvaRows)
+    {
+        return new TaxVatDetailsDto
+        {
+            Tables = new[]
+            {
+                new TaxVatTableDto
+                {
+                    Key = "generated",
+                    Label = "IVA generado",
+                    NameColumnLabel = "Cliente",
+                    ValueLabel = "IVA",
+                    TotalValue = SumCurrency(generatedRows, static row => row.VatValue),
+                    Rows = BuildVatBillingRows(generatedRows, static row => row.VatValue)
+                },
+                new TaxVatTableDto
+                {
+                    Key = "spent",
+                    Label = "IVA gastado",
+                    NameColumnLabel = "Nombre emisor",
+                    ValueLabel = "IVA",
+                    TotalValue = SumExpenseCurrency(expenseRows, static row => row.VatValue),
+                    Rows = BuildVatExpenseRows(expenseRows)
+                },
+                new TaxVatTableDto
+                {
+                    Key = "reteiva",
+                    Label = "ReteIVA a favor",
+                    NameColumnLabel = "Cliente",
+                    ValueLabel = "Valor reteiva",
+                    TotalValue = SumCurrency(reteIvaRows, static row => row.RteIvaValue),
+                    Rows = BuildVatBillingRows(reteIvaRows, static row => row.RteIvaValue)
+                }
+            }
+        };
+    }
+
+    private IReadOnlyList<TaxVatRowDto> BuildVatBillingRows(
+        IEnumerable<BillingRecordRow> rows,
+        Func<BillingRecordRow, decimal> taxSelector)
+    {
+        return rows
+            .OrderBy(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row =>
+            {
+                var taxValue = RoundCurrency(taxSelector(row));
+                var totalValue = RoundCurrency(row.TotalInvoice);
+                var verticalKey = ResolveTaxVerticalKey(row.VerticalOptionValue);
+
+                return new TaxVatRowDto
+                {
+                    DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    InvoiceNumber = row.InvoiceNumber,
+                    Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
+                    VerticalKey = verticalKey,
+                    VerticalLabel = ResolveDashboardVerticalLabel(row.VerticalOptionValue),
+                    TotalValue = totalValue,
+                    TaxValue = taxValue,
+                    CloudTotalValue = verticalKey == "cloud" ? totalValue : 0m,
+                    CloudTaxValue = verticalKey == "cloud" ? taxValue : 0m,
+                    CopiersTotalValue = verticalKey == "copiers" ? totalValue : 0m,
+                    CopiersTaxValue = verticalKey == "copiers" ? taxValue : 0m,
+                    UnassignedTotalValue = verticalKey == "unassigned" ? totalValue : 0m,
+                    UnassignedTaxValue = verticalKey == "unassigned" ? taxValue : 0m
+                };
+            })
+            .ToList();
+    }
+
+    private IReadOnlyList<TaxVatRowDto> BuildVatExpenseRows(IEnumerable<TaxExpenseRow> rows)
+    {
+        return rows
+            .OrderBy(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row =>
+            {
+                var taxSplit = CalculateExpenseRowVerticalSplit(row, row.VatValue);
+                var totalSplit = CalculateExpenseRowVerticalSplit(row, row.TotalValue);
+
+                return new TaxVatRowDto
+                {
+                    DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    InvoiceNumber = row.InvoiceNumber,
+                    Name = FirstNonEmpty(row.IssuerName, row.RecipientName, "Sin emisor"),
+                    VerticalKey = ResolveDominantExpenseVerticalKey(row),
+                    VerticalLabel = ResolveDominantExpenseVerticalLabel(row),
+                    TotalValue = RoundCurrency(row.TotalValue),
+                    TaxValue = RoundCurrency(row.VatValue),
+                    CloudTotalValue = totalSplit.Cloud,
+                    CloudTaxValue = taxSplit.Cloud,
+                    CopiersTotalValue = totalSplit.Copiers,
+                    CopiersTaxValue = taxSplit.Copiers,
+                    UnassignedTotalValue = totalSplit.Unassigned,
+                    UnassignedTaxValue = taxSplit.Unassigned
+                };
+            })
+            .ToList();
+    }
+
+    private TaxReportDetailsDto BuildReteFuenteReportDetails(
+        IReadOnlyList<BillingRecordRow> emissionRows,
+        IReadOnlyList<TaxExpenseRow> expenseRows)
+    {
+        var autoRows = BuildReteFuenteAutoRows(emissionRows);
+        var expenseReportRows = BuildReteFuenteExpenseRows(expenseRows);
+
+        return new TaxReportDetailsDto
+        {
+            Tables = new[]
+            {
+                new TaxReportTableDto
+                {
+                    Key = "autofuente",
+                    Label = "Autofuente",
+                    DateColumnLabel = "Fecha emision",
+                    NameColumnLabel = "Cliente",
+                    TotalColumnLabel = "Total factura",
+                    BaseColumnLabel = "Base antes de IVA",
+                    AmountColumnLabel = "Autofuente",
+                    ShowBaseColumn = true,
+                    TotalBaseValue = SumCurrency(emissionRows, static row => CalculateInvoiceTaxBase(row)),
+                    TotalValue = SumCurrency(emissionRows, static row => row.TotalInvoice),
+                    TotalAmountValue = CalculateAutoFuente(emissionRows),
+                    Rows = autoRows
+                },
+                new TaxReportTableDto
+                {
+                    Key = "retefuente-gastos",
+                    Label = "ReteFuente gastos",
+                    DateColumnLabel = "Fecha pago",
+                    NameColumnLabel = "Receptor",
+                    TotalColumnLabel = "Valor pago",
+                    AmountColumnLabel = "ReteFuente",
+                    CategoryColumnLabel = "Tipo persona",
+                    ShowCategoryColumn = true,
+                    TotalValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.PaymentValue),
+                    TotalAmountValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.ReteFuenteValue),
+                    Rows = expenseReportRows
+                }
+            }
+        };
+    }
+
+    private IReadOnlyList<TaxReportRowDto> BuildReteFuenteAutoRows(IEnumerable<BillingRecordRow> rows)
+    {
+        return rows
+            .OrderBy(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row =>
+            {
+                var baseValue = CalculateInvoiceTaxBase(row);
+                return new TaxReportRowDto
+                {
+                    DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    InvoiceNumber = row.InvoiceNumber,
+                    Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
+                    BaseValue = baseValue,
+                    TotalValue = RoundCurrency(row.TotalInvoice),
+                    AmountValue = RoundCurrency(baseValue * DashboardAutoFuenteRate)
+                };
+            })
+            .Where(static row => row.BaseValue > 0m)
+            .ToList();
+    }
+
+    private IReadOnlyList<TaxReportRowDto> BuildReteFuenteExpenseRows(IEnumerable<TaxExpenseRow> rows)
+    {
+        return rows
+            .Where(static row => row.ReteFuenteValue > 0m)
+            .OrderBy(static row => row.PaymentDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row => new TaxReportRowDto
+            {
+                DateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                InvoiceNumber = row.InvoiceNumber,
+                Name = FirstNonEmpty(row.RecipientName, row.IssuerName, "Sin receptor"),
+                Category = ResolveTaxPersonTypeLabel(row),
+                TotalValue = RoundCurrency(row.PaymentValue),
+                AmountValue = RoundCurrency(row.ReteFuenteValue)
+            })
             .ToList();
     }
 
@@ -2449,22 +2615,31 @@ public sealed partial class DataverseService
         var select = string.Join(",", new[]
         {
             _supplierExpensesIdField,
+            DashboardExpenseInvoiceNumberField,
+            DashboardExpenseEmissionDateField,
             DashboardExpensePaymentDateField,
             DashboardExpensePaymentValueField,
             DashboardExpenseReteFuenteField,
             DashboardExpenseTotalField,
             DashboardExpenseVatField,
+            DashboardExpenseIssuerNameField,
             DashboardExpenseRecipientNameField,
             DashboardExpenseRecipientNitField,
             DashboardExpenseCloudField,
             DashboardExpenseCopiersField
         });
 
-        var filter = BuildBillingDateFilter(
+        var paymentDateFilter = BuildBillingDateFilter(
             DashboardExpensePaymentDateField,
             DashboardExpensePaymentDateFieldKind,
             startInclusive,
             endExclusive);
+        var emissionDateFilter = BuildBillingDateFilter(
+            DashboardExpenseEmissionDateField,
+            DashboardExpenseEmissionDateFieldKind,
+            startInclusive,
+            endExclusive);
+        var filter = $"({paymentDateFilter}) or ({emissionDateFilter})";
 
         var relativeUrl = $"/api/data/v9.2/{_supplierExpensesTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
@@ -2488,11 +2663,17 @@ public sealed partial class DataverseService
         return new TaxExpenseRow
         {
             RecordId = recordId.Trim(),
+            InvoiceNumber = FirstNonEmpty(
+                ReadString(item, $"{DashboardExpenseInvoiceNumberField}{FormattedValueAnnotationSuffix}"),
+                ReadString(item, DashboardExpenseInvoiceNumberField),
+                recordId).Trim(),
+            EmissionDate = ReadDateOnly(item, DashboardExpenseEmissionDateField),
             PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
             PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
             ReteFuenteValue = RoundCurrency(ReadDecimal(item, DashboardExpenseReteFuenteField) ?? 0m),
             TotalValue = RoundCurrency(ReadDecimal(item, DashboardExpenseTotalField) ?? 0m),
             VatValue = RoundCurrency(ReadDecimal(item, DashboardExpenseVatField) ?? 0m),
+            IssuerName = ReadString(item, DashboardExpenseIssuerNameField).Trim(),
             RecipientName = ReadString(item, DashboardExpenseRecipientNameField).Trim(),
             RecipientNit = ReadString(item, DashboardExpenseRecipientNitField).Trim(),
             CloudValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCloudField) ?? 0m),
@@ -3059,6 +3240,54 @@ public sealed partial class DataverseService
         return CalculateExpenseCurrencyByVertical(rows, static row => row.ReteFuenteValue);
     }
 
+    private static (decimal Cloud, decimal Copiers, decimal Unassigned) CalculateExpenseRowVerticalSplit(
+        TaxExpenseRow row,
+        decimal value)
+    {
+        if (value <= 0m)
+            return (0m, 0m, 0m);
+
+        var cloudBase = Math.Max(row.CloudValue, 0m);
+        var copiersBase = Math.Max(row.CopiersValue, 0m);
+
+        if (cloudBase > 0m && copiersBase <= 0m)
+            return (RoundCurrency(value), 0m, 0m);
+
+        if (copiersBase > 0m && cloudBase <= 0m)
+            return (0m, RoundCurrency(value), 0m);
+
+        var totalBase = cloudBase + copiersBase;
+        if (totalBase <= 0m)
+            return (0m, 0m, RoundCurrency(value));
+
+        return (
+            RoundCurrency(value * (cloudBase / totalBase)),
+            RoundCurrency(value * (copiersBase / totalBase)),
+            0m);
+    }
+
+    private static string ResolveDominantExpenseVerticalKey(TaxExpenseRow row)
+    {
+        var cloudBase = Math.Max(row.CloudValue, 0m);
+        var copiersBase = Math.Max(row.CopiersValue, 0m);
+
+        if (cloudBase <= 0m && copiersBase <= 0m)
+            return "unassigned";
+
+        if (cloudBase >= copiersBase)
+            return "cloud";
+
+        return "copiers";
+    }
+
+    private static string ResolveDominantExpenseVerticalLabel(TaxExpenseRow row) =>
+        ResolveDominantExpenseVerticalKey(row) switch
+        {
+            "cloud" => "Cloud",
+            "copiers" => "Copiers",
+            _ => "Sin vertical"
+        };
+
     private static (decimal Cloud, decimal Copiers, decimal Unassigned) CalculateExpenseCurrencyByVertical(
         IEnumerable<TaxExpenseRow> rows,
         Func<TaxExpenseRow, decimal> selector)
@@ -3101,6 +3330,14 @@ public sealed partial class DataverseService
 
         return (RoundCurrency(cloud), RoundCurrency(copiers), RoundCurrency(unassigned));
     }
+
+    private static string ResolveTaxVerticalKey(int optionValue) =>
+        optionValue switch
+        {
+            DashboardVerticalCloudOption => "cloud",
+            DashboardVerticalCopiersOption => "copiers",
+            _ => "unassigned"
+        };
 
     private static (decimal Cloud, decimal Copiers, decimal Unassigned) SumBillingCurrencyByVertical(
         IEnumerable<BillingRecordRow> rows,
@@ -3190,6 +3427,17 @@ public sealed partial class DataverseService
             .Where(record => record.PaymentDate is not null
                 && record.PaymentDate.Value >= period.CurrentStartInclusive
                 && record.PaymentDate.Value < period.CurrentEndExclusive)
+            .ToList();
+    }
+
+    private static List<TaxExpenseRow> FilterTaxExpensesByEmissionPeriod(
+        IEnumerable<TaxExpenseRow> rows,
+        BillingPeriodDefinition period)
+    {
+        return rows
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value >= period.CurrentStartInclusive
+                && record.EmissionDate.Value < period.CurrentEndExclusive)
             .ToList();
     }
 
@@ -3806,11 +4054,14 @@ public sealed partial class DataverseService
     private sealed class TaxExpenseRow
     {
         public string RecordId { get; set; } = "";
+        public string InvoiceNumber { get; set; } = "";
+        public DateOnly? EmissionDate { get; set; }
         public DateOnly? PaymentDate { get; set; }
         public decimal PaymentValue { get; set; }
         public decimal ReteFuenteValue { get; set; }
         public decimal TotalValue { get; set; }
         public decimal VatValue { get; set; }
+        public string IssuerName { get; set; } = "";
         public string RecipientName { get; set; } = "";
         public string RecipientNit { get; set; } = "";
         public decimal CloudValue { get; set; }
