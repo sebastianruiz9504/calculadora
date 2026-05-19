@@ -752,8 +752,10 @@ public sealed class TaxVatTableDto
 {
     public string Key { get; set; } = "";
     public string Label { get; set; } = "";
+    public string DateColumnLabel { get; set; } = "Fecha";
     public string NameColumnLabel { get; set; } = "";
     public string ValueLabel { get; set; } = "";
+    public bool ShowRetentionRateColumns { get; set; }
     public decimal TotalValue { get; set; }
     public IReadOnlyList<TaxVatRowDto> Rows { get; set; } = Array.Empty<TaxVatRowDto>();
 }
@@ -767,6 +769,8 @@ public sealed class TaxVatRowDto
     public string VerticalLabel { get; set; } = "";
     public decimal TotalValue { get; set; }
     public decimal TaxValue { get; set; }
+    public decimal ReteFuentePercent { get; set; }
+    public decimal ReteIcaPercent { get; set; }
     public decimal CloudTotalValue { get; set; }
     public decimal CloudTaxValue { get; set; }
     public decimal CopiersTotalValue { get; set; }
@@ -792,6 +796,8 @@ public sealed class TaxReportTableDto
     public string CategoryColumnLabel { get; set; } = "";
     public bool ShowBaseColumn { get; set; }
     public bool ShowCategoryColumn { get; set; }
+    public bool ShowReteFuentePercentColumn { get; set; }
+    public bool ShowReteIcaPercentColumn { get; set; }
     public decimal TotalBaseValue { get; set; }
     public decimal TotalValue { get; set; }
     public decimal TotalAmountValue { get; set; }
@@ -807,6 +813,8 @@ public sealed class TaxReportRowDto
     public decimal BaseValue { get; set; }
     public decimal TotalValue { get; set; }
     public decimal AmountValue { get; set; }
+    public decimal ReteFuentePercent { get; set; }
+    public decimal ReteIcaPercent { get; set; }
 }
 
 public sealed class PortfolioKpiDto

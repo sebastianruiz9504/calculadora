@@ -17,7 +17,7 @@ public sealed partial class DataverseService
     private const string DashboardExpenseTotalField = "cr07a_total";
     private const string DashboardExpenseVatField = "cr07a_iva";
     private const string DashboardExpenseTotalBeforeVatField = "cr07a_totalantesdeiva";
-    private const string DashboardExpenseEmissionDateField = "cr07a_fechadeemision";
+    private const string DashboardExpenseEmissionDateField = "cr07a_fechaemision";
     private const string DashboardExpenseEmissionDateFieldKind = "date-only";
     private const string PnlExpensePrimasCesantiasBucket = "primas-cesantias";
     private const string PnlExpenseFinancialIncomeBucket = "financial-income";
@@ -27,7 +27,7 @@ public sealed partial class DataverseService
     private static readonly PnlExpenseDateFieldCandidate[] DashboardExpenseEmissionDateFieldCandidates =
     {
         new(DashboardExpenseEmissionDateField, DashboardExpenseEmissionDateFieldKind),
-        new("cr07a_fechaemision", "date-only"),
+        new("cr07a_fechadeemision", "date-only"),
         new("cr07a_fecha", "date-only")
     };
 

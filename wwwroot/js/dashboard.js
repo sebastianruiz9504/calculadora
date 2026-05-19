@@ -5152,6 +5152,12 @@
             .filter(row => Number(row.displayTax || 0) > 0);
         const totalInvoice = rows.reduce((sum, row) => sum + Number(row.displayTotal || 0), 0);
         const totalTax = rows.reduce((sum, row) => sum + Number(row.displayTax || 0), 0);
+        const showRetentionRateColumns = Boolean(table.showRetentionRateColumns);
+        const retentionRateHeaders = showRetentionRateColumns
+            ? '<th class="text-end">% rte fuente</th><th class="text-end">% rte ica</th>'
+            : "";
+        const retentionRateTotalCells = showRetentionRateColumns ? "<td></td><td></td>" : "";
+        const totalColumns = 5 + (showRetentionRateColumns ? 2 : 0);
 
         return `
             <section class="dashboard-tax-vat-table">
@@ -5177,11 +5183,12 @@
                     <table class="table dashboard-table">
                         <thead>
                             <tr>
-                                <th>Fecha emision</th>
+                                <th>${escapeHtml(table.dateColumnLabel || "Fecha")}</th>
                                 <th>Numero factura</th>
                                 <th>${escapeHtml(table.nameColumnLabel || "Nombre")}</th>
                                 <th class="text-end">Total factura</th>
                                 <th class="text-end">${escapeHtml(table.valueLabel || "Valor")}</th>
+                                ${retentionRateHeaders}
                             </tr>
                         </thead>
                         <tbody>
@@ -5192,13 +5199,15 @@
                                     <td>${escapeHtml(row.name || "")}</td>
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.displayTotal || 0)))}</td>
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.displayTax || 0)))}</td>
+                                    ${showRetentionRateColumns ? `<td class="text-end">${escapeHtml(formatPercent(row.reteFuentePercent || 0))}</td><td class="text-end">${escapeHtml(formatPercent(row.reteIcaPercent || 0))}</td>` : ""}
                                 </tr>
-                            `).join("") : '<tr><td colspan="5" class="dashboard-table__empty">No hay filas para esta combinacion de tabla y vertical.</td></tr>'}
+                            `).join("") : `<tr><td colspan="${escapeHtml(String(totalColumns))}" class="dashboard-table__empty">No hay filas para esta combinacion de tabla y vertical.</td></tr>`}
                             ${rows.length ? `
                                 <tr class="dashboard-table__total">
                                     <td colspan="3">${escapeHtml(`${numberFormatter.format(rows.length)} registros`)}</td>
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(totalInvoice))}</td>
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(totalTax))}</td>
+                                    ${retentionRateTotalCells}
                                 </tr>
                             ` : ""}
                         </tbody>
@@ -5260,11 +5269,17 @@
         }
 
         const rows = Array.isArray(table.rows) ? table.rows : [];
-        const totalColumns = 5 + (table.showCategoryColumn ? 1 : 0) + (table.showBaseColumn ? 1 : 0);
+        const showReteFuentePercentColumn = Boolean(table.showReteFuentePercentColumn);
+        const showReteIcaPercentColumn = Boolean(table.showReteIcaPercentColumn);
+        const percentColumnsCount = (showReteFuentePercentColumn ? 1 : 0) + (showReteIcaPercentColumn ? 1 : 0);
+        const totalColumns = 5 + (table.showCategoryColumn ? 1 : 0) + (table.showBaseColumn ? 1 : 0) + percentColumnsCount;
         const categoryHeader = table.showCategoryColumn ? `<th>${escapeHtml(table.categoryColumnLabel || "Categoria")}</th>` : "";
         const baseHeader = table.showBaseColumn ? `<th class="text-end">${escapeHtml(table.baseColumnLabel || "Base")}</th>` : "";
+        const reteFuentePercentHeader = showReteFuentePercentColumn ? '<th class="text-end">% rte fuente</th>' : "";
+        const reteIcaPercentHeader = showReteIcaPercentColumn ? '<th class="text-end">% rte ica</th>' : "";
         const categoryTotalCell = table.showCategoryColumn ? "<td></td>" : "";
         const baseTotalCell = table.showBaseColumn ? `<td class="text-end">${escapeHtml(currencyFormatter.format(Number(table.totalBaseValue || 0)))}</td>` : "";
+        const percentTotalCells = `${showReteFuentePercentColumn ? "<td></td>" : ""}${showReteIcaPercentColumn ? "<td></td>" : ""}`;
 
         return `
             <section class="dashboard-tax-vat-table">
@@ -5291,6 +5306,8 @@
                                 <th class="text-end">${escapeHtml(table.totalColumnLabel || "Total")}</th>
                                 ${baseHeader}
                                 <th class="text-end">${escapeHtml(table.amountColumnLabel || "Valor")}</th>
+                                ${reteFuentePercentHeader}
+                                ${reteIcaPercentHeader}
                             </tr>
                         </thead>
                         <tbody>
@@ -5303,6 +5320,8 @@
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.totalValue || 0)))}</td>
                                     ${table.showBaseColumn ? `<td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.baseValue || 0)))}</td>` : ""}
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.amountValue || 0)))}</td>
+                                    ${showReteFuentePercentColumn ? `<td class="text-end">${escapeHtml(formatPercent(row.reteFuentePercent || 0))}</td>` : ""}
+                                    ${showReteIcaPercentColumn ? `<td class="text-end">${escapeHtml(formatPercent(row.reteIcaPercent || 0))}</td>` : ""}
                                 </tr>
                             `).join("") : `<tr><td colspan="${escapeHtml(String(totalColumns))}" class="dashboard-table__empty">No hay filas para esta tabla.</td></tr>`}
                             ${rows.length ? `
@@ -5312,6 +5331,7 @@
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(table.totalValue || 0)))}</td>
                                     ${baseTotalCell}
                                     <td class="text-end">${escapeHtml(currencyFormatter.format(Number(table.totalAmountValue || 0)))}</td>
+                                    ${percentTotalCells}
                                 </tr>
                             ` : ""}
                         </tbody>

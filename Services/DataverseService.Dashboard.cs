@@ -19,6 +19,7 @@ public sealed partial class DataverseService
     private const string DashboardExpensePaymentDateFieldKind = "date-only";
     private const string DashboardExpensePaymentValueField = "cr07a_valorpago";
     private const string DashboardExpenseReteFuenteField = "cr07a_retefuente";
+    private const string DashboardExpenseReteIcaField = "cr07a_reteica";
     private const string DashboardExpenseRecipientNameField = "cr07a_nombrereceptor";
     private const string DashboardExpenseRecipientNitField = "cr07a_nitreceptor";
     private const string DashboardExpenseCloudField = "cr07a_cloud";
@@ -40,6 +41,7 @@ public sealed partial class DataverseService
         "UNION TEMPORAL"
     };
     private readonly ConcurrentDictionary<string, string> _dashboardAttributeTypeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string[]> _dashboardEntityAttributeNamesCache = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default)
     {
@@ -644,7 +646,7 @@ public sealed partial class DataverseService
         var vatGeneratedRows = vatEmission
             .Where(static row => row.VatValue > 0m)
             .ToList();
-        var reteIvaFavorRows = vatEmission
+        var reteIvaFavorRows = FilterBillingPaymentByPeriod(paymentRecords, vatPeriod)
             .Where(static row => row.RteIvaValue > 0m)
             .ToList();
         var vatExpensesWithVat = vatExpenses
@@ -2227,17 +2229,23 @@ public sealed partial class DataverseService
                 {
                     Key = "generated",
                     Label = "IVA generado",
+                    DateColumnLabel = "Fecha emision",
                     NameColumnLabel = "Cliente",
                     ValueLabel = "IVA",
                     TotalValue = SumCurrency(generatedRows, static row => row.VatValue),
-                    Rows = BuildVatBillingRows(generatedRows, static row => row.VatValue)
+                    Rows = BuildVatBillingRows(
+                        generatedRows,
+                        static row => row.EmissionDate,
+                        static row => row.VatValue)
                 },
                 new TaxVatTableDto
                 {
                     Key = "spent",
                     Label = "IVA gastado",
+                    DateColumnLabel = "Fecha emision",
                     NameColumnLabel = "Nombre emisor",
                     ValueLabel = "IVA",
+                    ShowRetentionRateColumns = true,
                     TotalValue = SumExpenseCurrency(expenseRows, static row => row.VatValue),
                     Rows = BuildVatExpenseRows(expenseRows)
                 },
@@ -2245,10 +2253,14 @@ public sealed partial class DataverseService
                 {
                     Key = "reteiva",
                     Label = "ReteIVA a favor",
+                    DateColumnLabel = "Fecha pago",
                     NameColumnLabel = "Cliente",
                     ValueLabel = "Valor reteiva",
                     TotalValue = SumCurrency(reteIvaRows, static row => row.RteIvaValue),
-                    Rows = BuildVatBillingRows(reteIvaRows, static row => row.RteIvaValue)
+                    Rows = BuildVatBillingRows(
+                        reteIvaRows,
+                        static row => row.PaymentDate,
+                        static row => row.RteIvaValue)
                 }
             }
         };
@@ -2256,20 +2268,22 @@ public sealed partial class DataverseService
 
     private IReadOnlyList<TaxVatRowDto> BuildVatBillingRows(
         IEnumerable<BillingRecordRow> rows,
+        Func<BillingRecordRow, DateOnly?> dateSelector,
         Func<BillingRecordRow, decimal> taxSelector)
     {
         return rows
-            .OrderBy(static row => row.EmissionDate)
+            .OrderBy(dateSelector)
             .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .Select(row =>
             {
                 var taxValue = RoundCurrency(taxSelector(row));
                 var totalValue = RoundCurrency(row.TotalInvoice);
                 var verticalKey = ResolveTaxVerticalKey(row.VerticalOptionValue);
+                var rowDate = dateSelector(row);
 
                 return new TaxVatRowDto
                 {
-                    DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    DateDisplay = rowDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
                     InvoiceNumber = row.InvoiceNumber,
                     Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
                     VerticalKey = verticalKey,
@@ -2306,6 +2320,8 @@ public sealed partial class DataverseService
                     VerticalLabel = ResolveDominantExpenseVerticalLabel(row),
                     TotalValue = RoundCurrency(row.TotalValue),
                     TaxValue = RoundCurrency(row.VatValue),
+                    ReteFuentePercent = CalculateExpenseRetentionPercent(row.ReteFuenteValue, row),
+                    ReteIcaPercent = CalculateExpenseRetentionPercent(row.ReteIcaValue, row),
                     CloudTotalValue = totalSplit.Cloud,
                     CloudTaxValue = taxSplit.Cloud,
                     CopiersTotalValue = totalSplit.Copiers,
@@ -2349,11 +2365,16 @@ public sealed partial class DataverseService
                     Label = "ReteFuente gastos",
                     DateColumnLabel = "Fecha pago",
                     NameColumnLabel = "Receptor",
-                    TotalColumnLabel = "Valor pago",
+                    TotalColumnLabel = "Total factura",
+                    BaseColumnLabel = "Base antes de IVA",
                     AmountColumnLabel = "ReteFuente",
                     CategoryColumnLabel = "Tipo persona",
+                    ShowBaseColumn = true,
                     ShowCategoryColumn = true,
-                    TotalValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.PaymentValue),
+                    ShowReteFuentePercentColumn = true,
+                    ShowReteIcaPercentColumn = true,
+                    TotalBaseValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), CalculateExpenseTaxBase),
+                    TotalValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.TotalValue),
                     TotalAmountValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.ReteFuenteValue),
                     Rows = expenseReportRows
                 }
@@ -2395,8 +2416,11 @@ public sealed partial class DataverseService
                 InvoiceNumber = row.InvoiceNumber,
                 Name = FirstNonEmpty(row.RecipientName, row.IssuerName, "Sin receptor"),
                 Category = ResolveTaxPersonTypeLabel(row),
-                TotalValue = RoundCurrency(row.PaymentValue),
-                AmountValue = RoundCurrency(row.ReteFuenteValue)
+                BaseValue = CalculateExpenseTaxBase(row),
+                TotalValue = RoundCurrency(row.TotalValue),
+                AmountValue = RoundCurrency(row.ReteFuenteValue),
+                ReteFuentePercent = CalculateExpenseRetentionPercent(row.ReteFuenteValue, row),
+                ReteIcaPercent = CalculateExpenseRetentionPercent(row.ReteIcaValue, row)
             })
             .ToList();
     }
@@ -2618,44 +2642,54 @@ public sealed partial class DataverseService
             "",
             user,
             ct);
-        var invoiceNumberField = FirstNonEmpty(
-            _supplierExpensesInvoiceNumberField,
-            metadata.PrimaryNameField).Trim();
+        var attributes = await GetDashboardEntityAttributeNamesAsync(metadata.LogicalName, user, ct);
+        var fields = ResolveTaxExpenseFieldMap(metadata, attributes);
 
-        var paymentDateFilter = BuildBillingDateFilter(
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentDateFieldKind,
-            startInclusive,
-            endExclusive);
-        var emissionDateFilter = BuildBillingDateFilter(
-            DashboardExpenseEmissionDateField,
-            DashboardExpenseEmissionDateFieldKind,
-            startInclusive,
-            endExclusive);
-        var filter = $"({paymentDateFilter}) or ({emissionDateFilter})";
-        var effectiveInvoiceNumberField = invoiceNumberField;
+        var dateFilters = new[]
+        {
+            BuildBillingDateFilter(
+                fields.PaymentDateField.FieldName,
+                fields.PaymentDateField.FieldKind,
+                startInclusive,
+                endExclusive),
+            BuildBillingDateFilter(
+                fields.EmissionDateField.FieldName,
+                fields.EmissionDateField.FieldKind,
+                startInclusive,
+                endExclusive)
+        }
+        .Where(static filterValue => !string.IsNullOrWhiteSpace(filterValue))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+        if (dateFilters.Count == 0)
+            throw new InvalidOperationException("No encontramos un campo de fecha valido en la tabla de gastos para calcular impuestos.");
+
+        var filter = string.Join(" or ", dateFilters.Select(static filterValue => $"({filterValue})"));
+        var orderByField = FirstNonEmpty(fields.PaymentDateField.FieldName, fields.EmissionDateField.FieldName, metadata.PrimaryIdField);
+        var effectiveInvoiceNumberField = fields.InvoiceNumberField;
 
         string BuildSelect(string currentInvoiceNumberField) => string.Join(",", new[]
         {
             metadata.PrimaryIdField,
             currentInvoiceNumberField,
-            DashboardExpenseEmissionDateField,
-            DashboardExpensePaymentDateField,
-            DashboardExpensePaymentValueField,
-            DashboardExpenseReteFuenteField,
-            DashboardExpenseTotalField,
-            DashboardExpenseVatField,
-            DashboardExpenseIssuerNameField,
-            DashboardExpenseRecipientNameField,
-            DashboardExpenseRecipientNitField,
-            DashboardExpenseCloudField,
-            DashboardExpenseCopiersField
+            fields.EmissionDateField.FieldName,
+            fields.PaymentDateField.FieldName,
+            fields.PaymentValueField,
+            fields.ReteFuenteField,
+            fields.ReteIcaField,
+            fields.TotalField,
+            fields.VatField,
+            fields.IssuerNameField,
+            fields.RecipientNameField,
+            fields.RecipientNitField,
+            fields.CloudField,
+            fields.CopiersField
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
         .Distinct(StringComparer.OrdinalIgnoreCase));
 
         string BuildRelativeUrl(string selectFields) =>
-            $"/api/data/v9.2/{metadata.EntitySetName}?$select={selectFields}&$filter={Uri.EscapeDataString(filter)}&$orderby={DashboardExpensePaymentDateField} asc";
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={selectFields}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderByField} asc";
 
         List<JsonElement> items;
         try
@@ -2683,7 +2717,7 @@ public sealed partial class DataverseService
         }
 
         return items
-            .Select(item => ParseTaxExpenseRow(item, metadata.PrimaryIdField, effectiveInvoiceNumberField))
+            .Select(item => ParseTaxExpenseRow(item, metadata.PrimaryIdField, fields with { InvoiceNumberField = effectiveInvoiceNumberField }))
             .Where(static row => row is not null)
             .Cast<TaxExpenseRow>()
             .ToList();
@@ -2693,41 +2727,228 @@ public sealed partial class DataverseService
         !string.IsNullOrWhiteSpace(fieldName)
         && ex.Message.Contains($"property named '{fieldName}'", StringComparison.OrdinalIgnoreCase);
 
+    private async Task<HashSet<string>> GetDashboardEntityAttributeNamesAsync(
+        string entityLogicalName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var cacheKey = entityLogicalName?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(cacheKey))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!_dashboardEntityAttributeNamesCache.TryGetValue(cacheKey, out var cached))
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(cacheKey)}')" +
+                "/Attributes?$select=LogicalName";
+
+            try
+            {
+                var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct);
+                cached = items
+                    .Select(static item => ReadString(item, "LogicalName").Trim())
+                    .Where(static field => !string.IsNullOrWhiteSpace(field))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
+            catch (Exception userEx) when (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct);
+                    cached = items
+                        .Select(static item => ReadString(item, "LogicalName").Trim())
+                        .Where(static field => !string.IsNullOrWhiteSpace(field))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                }
+                catch (Exception appEx) when (!ct.IsCancellationRequested)
+                {
+                    _logger.LogWarning(
+                        appEx,
+                        "No fue posible consultar la metadata de atributos de {EntityLogicalName}. Se usaran los campos configurados. Error usuario: {UserMetadataError}",
+                        cacheKey,
+                        userEx.Message);
+                    cached = Array.Empty<string>();
+                }
+            }
+
+            _dashboardEntityAttributeNamesCache[cacheKey] = cached;
+        }
+
+        return new HashSet<string>(cached, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private TaxExpenseFieldMap ResolveTaxExpenseFieldMap(
+        RhEntityMetadata metadata,
+        IReadOnlySet<string> attributes)
+    {
+        var emissionDateField = ResolveTaxExpenseDateField(
+            BuildTaxExpenseEmissionDateCandidates(),
+            attributes);
+        var paymentDateField = ResolveTaxExpenseDateField(
+            BuildTaxExpensePaymentDateCandidates(),
+            attributes);
+
+        return new TaxExpenseFieldMap(
+            InvoiceNumberField: ResolveTaxExpenseField(
+                attributes,
+                _supplierExpensesInvoiceNumberField,
+                metadata.PrimaryNameField,
+                "cr07a_numerofactura",
+                "cr07a_numfactura",
+                "cr07a_factura",
+                "cr07a_numero"),
+            EmissionDateField: emissionDateField,
+            PaymentDateField: paymentDateField,
+            PaymentValueField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpensePaymentValueField,
+                DashboardExpenseTotalField,
+                "cr07a_totalfactura"),
+            ReteFuenteField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseReteFuenteField,
+                "cr07a_retefuentevalor",
+                "cr07a_rteftevalor",
+                "cr07a_retencionfuente"),
+            ReteIcaField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseReteIcaField,
+                "cr07a_reteicavalor"),
+            TotalField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseTotalField,
+                "cr07a_totalfactura",
+                DashboardExpensePaymentValueField),
+            VatField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseVatField,
+                "cr07a_ivavalor"),
+            IssuerNameField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseIssuerNameField,
+                "cr07a_emisor",
+                "cr07a_nombreproveedor",
+                "cr07a_proveedor"),
+            RecipientNameField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseRecipientNameField,
+                "cr07a_receptor"),
+            RecipientNitField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseRecipientNitField,
+                "cr07a_nit"),
+            CloudField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseCloudField),
+            CopiersField: ResolveTaxExpenseField(
+                attributes,
+                DashboardExpenseCopiersField));
+    }
+
+    private IEnumerable<PnlExpenseDateFieldCandidate> BuildTaxExpenseEmissionDateCandidates()
+    {
+        foreach (var candidate in DashboardExpenseEmissionDateFieldCandidates)
+            yield return candidate;
+
+        yield return new PnlExpenseDateFieldCandidate(_supplierExpensesDateField, _supplierExpensesDateFieldKind);
+        yield return new PnlExpenseDateFieldCandidate("createdon", "date-time");
+    }
+
+    private IEnumerable<PnlExpenseDateFieldCandidate> BuildTaxExpensePaymentDateCandidates()
+    {
+        yield return new PnlExpenseDateFieldCandidate(DashboardExpensePaymentDateField, DashboardExpensePaymentDateFieldKind);
+        yield return new PnlExpenseDateFieldCandidate(_supplierExpensesDateField, _supplierExpensesDateFieldKind);
+        yield return new PnlExpenseDateFieldCandidate("createdon", "date-time");
+    }
+
+    private static PnlExpenseDateFieldCandidate ResolveTaxExpenseDateField(
+        IEnumerable<PnlExpenseDateFieldCandidate> candidates,
+        IReadOnlySet<string> attributes)
+    {
+        return candidates
+            .Where(static candidate => !string.IsNullOrWhiteSpace(candidate.FieldName))
+            .DistinctBy(static candidate => candidate.FieldName, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(candidate => IsDashboardDataverseFieldAvailable(candidate.FieldName, attributes))
+            ?? new PnlExpenseDateFieldCandidate("", "date-only");
+    }
+
+    private static string ResolveTaxExpenseField(
+        IReadOnlySet<string> attributes,
+        params string[] candidates)
+    {
+        return candidates
+            .Where(static field => !string.IsNullOrWhiteSpace(field))
+            .Select(static field => field.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(field => IsDashboardDataverseFieldAvailable(field, attributes))
+            ?? "";
+    }
+
+    private static bool IsDashboardDataverseFieldAvailable(string? field, IReadOnlySet<string> attributes)
+    {
+        if (string.IsNullOrWhiteSpace(field))
+            return false;
+
+        if (attributes.Count == 0)
+            return true;
+
+        var normalizedField = NormalizeDashboardDataverseAttributeName(field);
+        return !string.IsNullOrWhiteSpace(normalizedField)
+            && attributes.Contains(normalizedField);
+    }
+
+    private static string NormalizeDashboardDataverseAttributeName(string field)
+    {
+        var trimmed = field.Trim();
+        if (trimmed.StartsWith('_') && trimmed.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+            return trimmed[1..^6];
+
+        return trimmed;
+    }
+
     private TaxExpenseRow? ParseTaxExpenseRow(
         JsonElement item,
         string idField,
-        string invoiceNumberField)
+        TaxExpenseFieldMap fields)
     {
         var recordId = FirstNonEmpty(
             ReadString(item, idField),
-            $"{ReadString(item, DashboardExpenseRecipientNitField)}|{ReadString(item, DashboardExpenseRecipientNameField)}|{ReadString(item, DashboardExpensePaymentDateField)}");
+            $"{ReadString(item, fields.RecipientNitField)}|{ReadString(item, fields.RecipientNameField)}|{ReadString(item, fields.PaymentDateField.FieldName)}");
 
         if (string.IsNullOrWhiteSpace(recordId))
             return null;
 
-        var invoiceNumber = string.IsNullOrWhiteSpace(invoiceNumberField)
+        var invoiceNumber = string.IsNullOrWhiteSpace(fields.InvoiceNumberField)
             ? ""
             : FirstNonEmpty(
-                ReadString(item, $"{invoiceNumberField}{FormattedValueAnnotationSuffix}"),
-                ReadString(item, invoiceNumberField));
+                ReadString(item, $"{fields.InvoiceNumberField}{FormattedValueAnnotationSuffix}"),
+                ReadString(item, fields.InvoiceNumberField));
 
         return new TaxExpenseRow
         {
             RecordId = recordId.Trim(),
             InvoiceNumber = invoiceNumber.Trim(),
-            EmissionDate = ReadDateOnly(item, DashboardExpenseEmissionDateField),
-            PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
-            PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
-            ReteFuenteValue = RoundCurrency(ReadDecimal(item, DashboardExpenseReteFuenteField) ?? 0m),
-            TotalValue = RoundCurrency(ReadDecimal(item, DashboardExpenseTotalField) ?? 0m),
-            VatValue = RoundCurrency(ReadDecimal(item, DashboardExpenseVatField) ?? 0m),
-            IssuerName = ReadString(item, DashboardExpenseIssuerNameField).Trim(),
-            RecipientName = ReadString(item, DashboardExpenseRecipientNameField).Trim(),
-            RecipientNit = ReadString(item, DashboardExpenseRecipientNitField).Trim(),
-            CloudValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCloudField) ?? 0m),
-            CopiersValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCopiersField) ?? 0m)
+            EmissionDate = ReadDateOnly(item, fields.EmissionDateField.FieldName),
+            PaymentDate = ReadDateOnly(item, fields.PaymentDateField.FieldName),
+            PaymentValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.PaymentValueField)),
+            ReteFuenteValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.ReteFuenteField)),
+            ReteIcaValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.ReteIcaField)),
+            TotalValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.TotalField)),
+            VatValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.VatField)),
+            IssuerName = ReadString(item, fields.IssuerNameField).Trim(),
+            RecipientName = ReadString(item, fields.RecipientNameField).Trim(),
+            RecipientNit = ReadString(item, fields.RecipientNitField).Trim(),
+            CloudValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.CloudField)),
+            CopiersValue = RoundCurrency(ReadTaxExpenseDecimal(item, fields.CopiersField))
         };
     }
+
+    private static decimal ReadTaxExpenseDecimal(JsonElement item, string fieldName) =>
+        string.IsNullOrWhiteSpace(fieldName)
+            ? 0m
+            : ReadDecimal(item, fieldName) ?? 0m;
 
     private IReadOnlyList<BillingTrendPointDto> BuildBillingTrend(
         BillingPeriodDefinition period,
@@ -3445,6 +3666,17 @@ public sealed partial class DataverseService
     private static decimal CalculateInvoiceTaxBase(BillingRecordRow row) =>
         RoundCurrency(Math.Max(row.TotalInvoice - row.VatValue, 0m));
 
+    private static decimal CalculateExpenseTaxBase(TaxExpenseRow row) =>
+        RoundCurrency(Math.Max(row.TotalValue - row.VatValue, 0m));
+
+    private static decimal CalculateExpenseRetentionPercent(decimal retentionValue, TaxExpenseRow row)
+    {
+        var baseBeforeVat = CalculateExpenseTaxBase(row);
+        return baseBeforeVat <= 0m
+            ? 0m
+            : RoundCurrency((retentionValue / baseBeforeVat) * 100m);
+    }
+
     private static List<BillingRecordRow> FilterBillingEmissionByPeriod(
         IEnumerable<BillingRecordRow> rows,
         BillingPeriodDefinition period)
@@ -3883,6 +4115,9 @@ public sealed partial class DataverseService
 
     private static string BuildBillingDateFilter(string fieldName, string fieldKind, DateOnly startInclusive, DateOnly endExclusive)
     {
+        if (string.IsNullOrWhiteSpace(fieldName))
+            return "";
+
         if (string.Equals(fieldKind, "date-time", StringComparison.OrdinalIgnoreCase))
         {
             var startDateTime = new DateTimeOffset(startInclusive.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
@@ -4107,6 +4342,7 @@ public sealed partial class DataverseService
         public DateOnly? PaymentDate { get; set; }
         public decimal PaymentValue { get; set; }
         public decimal ReteFuenteValue { get; set; }
+        public decimal ReteIcaValue { get; set; }
         public decimal TotalValue { get; set; }
         public decimal VatValue { get; set; }
         public string IssuerName { get; set; } = "";
@@ -4115,6 +4351,21 @@ public sealed partial class DataverseService
         public decimal CloudValue { get; set; }
         public decimal CopiersValue { get; set; }
     }
+
+    private sealed record TaxExpenseFieldMap(
+        string InvoiceNumberField,
+        PnlExpenseDateFieldCandidate EmissionDateField,
+        PnlExpenseDateFieldCandidate PaymentDateField,
+        string PaymentValueField,
+        string ReteFuenteField,
+        string ReteIcaField,
+        string TotalField,
+        string VatField,
+        string IssuerNameField,
+        string RecipientNameField,
+        string RecipientNitField,
+        string CloudField,
+        string CopiersField);
 
     private sealed record TaxVerticalComponentSet(
         string Key,

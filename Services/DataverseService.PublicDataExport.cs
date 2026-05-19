@@ -116,7 +116,7 @@ public sealed partial class DataverseService
         return new[]
         {
             PublicDateColumn("createdOn", "Fecha creacion", "createdon"),
-            PublicDateColumn("emissionDate", "Fecha emision", "cr07a_fechadeemision", "cr07a_fechaemision", "cr07a_fecha"),
+            PublicDateColumn("emissionDate", "Fecha emision", "cr07a_fechaemision", "cr07a_fechadeemision", "cr07a_fecha"),
             PublicDateColumn("paymentDate", "Fecha pago", DashboardExpensePaymentDateField),
             PublicTextColumn("issuerName", "Emisor", DashboardExpenseIssuerNameField),
             PublicTextColumn("issuerNit", "NIT emisor", "cr07a_nitemisor"),

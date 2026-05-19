@@ -1200,9 +1200,9 @@ public sealed class DashboardController : Controller
     {
         using var workbook = new XLWorkbook();
         var vatSection = dashboard.ReteIva;
-        var generatedTable = FindVatTable(vatSection, "generated") ?? new TaxVatTableDto { Label = "IVA generado", ValueLabel = "IVA", NameColumnLabel = "Cliente" };
-        var spentTable = FindVatTable(vatSection, "spent") ?? new TaxVatTableDto { Label = "IVA gastado", ValueLabel = "IVA", NameColumnLabel = "Nombre emisor" };
-        var reteIvaTable = FindVatTable(vatSection, "reteiva") ?? new TaxVatTableDto { Label = "ReteIVA a favor", ValueLabel = "Valor reteiva", NameColumnLabel = "Cliente" };
+        var generatedTable = FindVatTable(vatSection, "generated") ?? new TaxVatTableDto { Label = "IVA generado", DateColumnLabel = "Fecha emision", ValueLabel = "IVA", NameColumnLabel = "Cliente" };
+        var spentTable = FindVatTable(vatSection, "spent") ?? new TaxVatTableDto { Label = "IVA gastado", DateColumnLabel = "Fecha emision", ValueLabel = "IVA", NameColumnLabel = "Nombre emisor", ShowRetentionRateColumns = true };
+        var reteIvaTable = FindVatTable(vatSection, "reteiva") ?? new TaxVatTableDto { Label = "ReteIVA a favor", DateColumnLabel = "Fecha pago", ValueLabel = "Valor reteiva", NameColumnLabel = "Cliente" };
 
         AddVatSummaryWorksheet(workbook, vatSection, generatedTable, spentTable, reteIvaTable);
         AddVatDetailWorksheet(workbook, "Iva generado", generatedTable);
@@ -1233,9 +1233,13 @@ public sealed class DashboardController : Controller
             Label = "ReteFuente gastos",
             DateColumnLabel = "Fecha pago",
             NameColumnLabel = "Receptor",
-            TotalColumnLabel = "Valor pago",
+            TotalColumnLabel = "Total factura",
+            BaseColumnLabel = "Base antes de IVA",
             AmountColumnLabel = "ReteFuente",
             CategoryColumnLabel = "Tipo persona",
+            ShowBaseColumn = true,
+            ShowReteFuentePercentColumn = true,
+            ShowReteIcaPercentColumn = true,
             ShowCategoryColumn = true
         };
 
@@ -1306,6 +1310,12 @@ public sealed class DashboardController : Controller
 
         headers.Add(table.AmountColumnLabel);
 
+        if (table.ShowReteFuentePercentColumn)
+            headers.Add("% rte fuente");
+
+        if (table.ShowReteIcaPercentColumn)
+            headers.Add("% rte ica");
+
         worksheet.Cell(1, 1).Value = table.Label;
         for (var index = 0; index < headers.Count; index++)
         {
@@ -1328,12 +1338,19 @@ public sealed class DashboardController : Controller
             if (table.ShowBaseColumn)
                 worksheet.Cell(rowIndex, columnIndex++).Value = row.BaseValue;
 
-            worksheet.Cell(rowIndex, columnIndex).Value = row.AmountValue;
+            worksheet.Cell(rowIndex, columnIndex++).Value = row.AmountValue;
+
+            if (table.ShowReteFuentePercentColumn)
+                worksheet.Cell(rowIndex, columnIndex++).Value = row.ReteFuentePercent;
+
+            if (table.ShowReteIcaPercentColumn)
+                worksheet.Cell(rowIndex, columnIndex++).Value = row.ReteIcaPercent;
+
             rowIndex++;
         }
 
         var totalColumnIndex = 4 + (table.ShowCategoryColumn ? 1 : 0);
-        var amountColumnIndex = headers.Count;
+        var amountColumnIndex = totalColumnIndex + (table.ShowBaseColumn ? 1 : 0) + 1;
         worksheet.Cell(rowIndex, 1).Value = "Total";
         worksheet.Cell(rowIndex, 2).Value = $"{table.Rows.Count:N0} registros";
         worksheet.Cell(rowIndex, totalColumnIndex).Value = table.TotalValue;
@@ -1353,6 +1370,8 @@ public sealed class DashboardController : Controller
         worksheet.Range(rowIndex, 1, rowIndex, headers.Count).Style.Font.Bold = true;
         worksheet.Range(rowIndex, 1, rowIndex, headers.Count).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
         worksheet.Range(4, totalColumnIndex, rowIndex, amountColumnIndex).Style.NumberFormat.Format = "$ #,##0";
+        if (table.ShowReteFuentePercentColumn || table.ShowReteIcaPercentColumn)
+            worksheet.Range(4, amountColumnIndex + 1, rowIndex, headers.Count).Style.NumberFormat.Format = "0.00\"%\"";
         worksheet.SheetView.FreezeRows(3);
         worksheet.Columns().AdjustToContents();
     }
@@ -1404,17 +1423,22 @@ public sealed class DashboardController : Controller
     private static void AddVatDetailWorksheet(XLWorkbook workbook, string sheetName, TaxVatTableDto table)
     {
         var worksheet = workbook.Worksheets.Add(sheetName);
-        var headers = new[]
+        var headers = new List<string>
         {
-            "Fecha emision",
+            string.IsNullOrWhiteSpace(table.DateColumnLabel) ? "Fecha" : table.DateColumnLabel,
             "Numero factura",
             table.NameColumnLabel,
             "Total factura",
             table.ValueLabel
         };
+        if (table.ShowRetentionRateColumns)
+        {
+            headers.Add("% rte fuente");
+            headers.Add("% rte ica");
+        }
 
         worksheet.Cell(1, 1).Value = table.Label;
-        for (var index = 0; index < headers.Length; index++)
+        for (var index = 0; index < headers.Count; index++)
         {
             worksheet.Cell(3, index + 1).Value = headers[index];
         }
@@ -1427,6 +1451,12 @@ public sealed class DashboardController : Controller
             worksheet.Cell(rowIndex, 3).Value = row.Name;
             worksheet.Cell(rowIndex, 4).Value = row.TotalValue;
             worksheet.Cell(rowIndex, 5).Value = row.TaxValue;
+            if (table.ShowRetentionRateColumns)
+            {
+                worksheet.Cell(rowIndex, 6).Value = row.ReteFuentePercent;
+                worksheet.Cell(rowIndex, 7).Value = row.ReteIcaPercent;
+            }
+
             rowIndex++;
         }
 
@@ -1435,16 +1465,18 @@ public sealed class DashboardController : Controller
         worksheet.Cell(rowIndex, 4).Value = table.Rows.Sum(static row => row.TotalValue);
         worksheet.Cell(rowIndex, 5).Value = SumVatTableTax(table);
 
-        var usedRange = worksheet.Range(1, 1, rowIndex, headers.Length);
+        var usedRange = worksheet.Range(1, 1, rowIndex, headers.Count);
         usedRange.Style.Font.FontName = "Aptos";
-        var titleRange = worksheet.Range(1, 1, 1, headers.Length).Merge();
+        var titleRange = worksheet.Range(1, 1, 1, headers.Count).Merge();
         titleRange.Style.Font.Bold = true;
         titleRange.Style.Font.FontSize = 16;
-        worksheet.Range(3, 1, 3, headers.Length).Style.Font.Bold = true;
-        worksheet.Range(3, 1, 3, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
-        worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Font.Bold = true;
-        worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+        worksheet.Range(3, 1, 3, headers.Count).Style.Font.Bold = true;
+        worksheet.Range(3, 1, 3, headers.Count).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
+        worksheet.Range(rowIndex, 1, rowIndex, headers.Count).Style.Font.Bold = true;
+        worksheet.Range(rowIndex, 1, rowIndex, headers.Count).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
         worksheet.Range(4, 4, rowIndex, 5).Style.NumberFormat.Format = "$ #,##0";
+        if (table.ShowRetentionRateColumns)
+            worksheet.Range(4, 6, rowIndex, 7).Style.NumberFormat.Format = "0.00\"%\"";
         worksheet.SheetView.FreezeRows(3);
         worksheet.Columns().AdjustToContents();
     }
