@@ -1403,6 +1403,7 @@
             <table class="table dashboard-table utility-breakdown-table">
                 <thead>
                     <tr>
+                        <th>Cuenta</th>
                         <th>Cliente</th>
                         <th>Producto</th>
                         <th>Tipo</th>
@@ -1416,10 +1417,48 @@
                 </thead>
                 <tbody id="utilityBreakdownBody">
                     <tr>
-                        <td colspan="9" class="dashboard-table__empty">Selecciona una tarjeta de utilidad para ver el desglose.</td>
+                        <td colspan="10" class="dashboard-table__empty">Selecciona una tarjeta de utilidad para ver el desglose.</td>
                     </tr>
                 </tbody>
                 <tfoot id="utilityBreakdownFooter"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="utilityOrphansModal" hidden>
+    <div class="dashboard-modal__backdrop" data-utility-orphans-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="utilityOrphansTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Productos Cloud</div>
+                <h2 class="dashboard-modal__title" id="utilityOrphansTitle">Filas hu&eacute;rfanas</h2>
+                <p class="dashboard-modal__subtitle" id="utilityOrphansSubtitle">Filas que no entraron en Monthly ni Annual por no tener tipo de contrato reconocible.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="utilityOrphansCloseBtn">Cerrar</button>
+        </div>
+
+        <div id="utilityOrphansStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+            <table class="table dashboard-table utility-orphans-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Producto</th>
+                        <th>Tipo actual</th>
+                        <th>Motivo</th>
+                        <th class="text-end">Venta</th>
+                        <th class="text-end">Costo</th>
+                        <th class="text-end">Total fila</th>
+                        <th>Asignar a</th>
+                    </tr>
+                </thead>
+                <tbody id="utilityOrphansBody">
+                    <tr>
+                        <td colspan="8" class="dashboard-table__empty">No hay filas hu&eacute;rfanas.</td>
+                    </tr>
+                </tbody>
             </table>
         </div>
     </div>

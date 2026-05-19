@@ -15,6 +15,7 @@ public sealed class UtilityDashboardDto
     public UtilityTheoreticalCardDto TheoreticalPrepaid { get; set; } = new();
     public UtilityRealSegmentDto RealMonthly { get; set; } = new();
     public UtilityRealSegmentDto RealPrepaid { get; set; } = new();
+    public IReadOnlyList<UtilityTheoreticalOrphanRowDto> TheoreticalOrphanRows { get; set; } = Array.Empty<UtilityTheoreticalOrphanRowDto>();
     public IReadOnlyList<UtilityUnresolvedRowDto> UnresolvedRows { get; set; } = Array.Empty<UtilityUnresolvedRowDto>();
     public string EmptyStateMessage { get; set; } = "";
 }
@@ -32,7 +33,7 @@ public sealed class UtilityTheoreticalCardDto
     public IReadOnlyList<UtilityTheoreticalBreakdownRowDto> Breakdown { get; set; } = Array.Empty<UtilityTheoreticalBreakdownRowDto>();
 }
 
-public sealed class UtilityTheoreticalBreakdownRowDto
+public class UtilityTheoreticalBreakdownRowDto
 {
     public string RecordId { get; set; } = "";
     public string ClientName { get; set; } = "";
@@ -47,6 +48,12 @@ public sealed class UtilityTheoreticalBreakdownRowDto
     public decimal Cost { get; set; }
     public decimal Utility { get; set; }
     public bool HasCost { get; set; }
+}
+
+public sealed class UtilityTheoreticalOrphanRowDto : UtilityTheoreticalBreakdownRowDto
+{
+    public string Reason { get; set; } = "";
+    public string SuggestedBucket { get; set; } = "";
 }
 
 public sealed class UtilityRealSegmentDto

@@ -30,6 +30,7 @@ public sealed partial class DataverseService
         var endExclusive = today.AddDays(1);
         var months = BuildUtilityMonthSequence(startDate, today);
         var unresolvedRows = new List<UtilityUnresolvedRowDto>();
+        var theoreticalOrphanRows = new List<UtilityTheoreticalOrphanRowDto>();
 
         var user = httpContext.User;
         var billingMetadata = await ResolveRhEntityMetadataAsync(
@@ -52,7 +53,7 @@ public sealed partial class DataverseService
             ct);
         var consumptionRows = await GetUtilityConsumptionRowsAsync(user, ct);
 
-        var theoreticalLines = BuildUtilityTheoreticalLines(productRows, priceMap, unresolvedRows);
+        var theoreticalLines = BuildUtilityTheoreticalLines(productRows, priceMap, unresolvedRows, theoreticalOrphanRows);
         var theoreticalMonthly = BuildUtilityTheoreticalCard(
             "monthly",
             "Utilidad teorica Monthly",
@@ -64,7 +65,8 @@ public sealed partial class DataverseService
 
         var realSegments = BuildUtilityRealSegments(months, billingRows, consumptionRows, startDate, today, unresolvedRows);
 
-        var recordsCount = productRows.Count(static row => row.BillingDay > 0)
+        var recordsCount = theoreticalLines.Count
+            + theoreticalOrphanRows.Count
             + realSegments.Monthly.BillingRecordsCount
             + realSegments.Monthly.CostRecordsCount
             + realSegments.Prepaid.BillingRecordsCount
@@ -85,6 +87,11 @@ public sealed partial class DataverseService
             TheoreticalPrepaid = theoreticalPrepaid,
             RealMonthly = realSegments.Monthly,
             RealPrepaid = realSegments.Prepaid,
+            TheoreticalOrphanRows = theoreticalOrphanRows
+                .OrderBy(static row => row.ClientName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static row => row.ProductName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
             UnresolvedRows = unresolvedRows
                 .OrderBy(static row => row.SourceLabel, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static row => row.Reason, StringComparer.OrdinalIgnoreCase)
@@ -212,10 +219,11 @@ public sealed partial class DataverseService
     private List<UtilityTheoreticalLine> BuildUtilityTheoreticalLines(
         IReadOnlyList<BusinessRecordRow> productRows,
         UtilityProductPriceMap priceMap,
-        List<UtilityUnresolvedRowDto> unresolvedRows)
+        List<UtilityUnresolvedRowDto> unresolvedRows,
+        List<UtilityTheoreticalOrphanRowDto> orphanRows)
     {
         var lines = new List<UtilityTheoreticalLine>();
-        foreach (var row in productRows.Where(static item => item.BillingDay > 0))
+        foreach (var row in productRows)
         {
             var bucket = ClassifyUtilityContract(row.ContractTypeValue, row.ContractTypeLabel, "sales-performance");
             var sale = RoundCurrency(row.Quantity * row.UnitSaleUsd * UtilityStandardTrm);
@@ -223,9 +231,28 @@ public sealed partial class DataverseService
             var cost = hasCost
                 ? RoundCurrency(row.Quantity * unitCostUsd * UtilityStandardTrm)
                 : 0m;
+            var utility = RoundCurrency(sale - cost);
 
             if (bucket == UtilityBucket.Unknown)
             {
+                var reason = "Producto Cloud sin tipo de contrato Monthly/Annual reconocible.";
+                orphanRows.Add(new UtilityTheoreticalOrphanRowDto
+                {
+                    RecordId = row.RecordId,
+                    ClientName = row.ClientName,
+                    ProductName = row.ProductName,
+                    ProductLineLabel = row.ProductLineLabel,
+                    ContractTypeLabel = FirstNonEmpty(row.ContractTypeLabel, "Sin contrato"),
+                    Quantity = row.Quantity,
+                    BillingDay = row.BillingDay,
+                    UnitSaleUsd = row.UnitSaleUsd,
+                    UnitCostUsd = hasCost ? unitCostUsd : 0m,
+                    Sales = sale,
+                    Cost = cost,
+                    Utility = utility,
+                    HasCost = hasCost,
+                    Reason = reason
+                });
                 unresolvedRows.Add(new UtilityUnresolvedRowDto
                 {
                     SourceType = "sales-performance",
@@ -235,7 +262,7 @@ public sealed partial class DataverseService
                     ClientName = row.ClientName,
                     ProductName = row.ProductName,
                     CurrentContractType = FirstNonEmpty(row.ContractTypeLabel, "Sin contrato"),
-                    Reason = "Producto Cloud con dia de facturacion, pero sin tipo Monthly/Prepaid claro.",
+                    Reason = reason,
                     Amount = sale,
                     CanAssign = true
                 });
@@ -273,7 +300,7 @@ public sealed partial class DataverseService
                 hasCost ? unitCostUsd : 0m,
                 sale,
                 cost,
-                RoundCurrency(sale - cost),
+                utility,
                 hasCost));
         }
 

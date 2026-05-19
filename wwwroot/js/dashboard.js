@@ -304,6 +304,12 @@
     const utilityBreakdownSummary = document.getElementById("utilityBreakdownSummary");
     const utilityBreakdownBody = document.getElementById("utilityBreakdownBody");
     const utilityBreakdownFooter = document.getElementById("utilityBreakdownFooter");
+    const utilityOrphansModal = document.getElementById("utilityOrphansModal");
+    const utilityOrphansCloseBtn = document.getElementById("utilityOrphansCloseBtn");
+    const utilityOrphansTitle = document.getElementById("utilityOrphansTitle");
+    const utilityOrphansSubtitle = document.getElementById("utilityOrphansSubtitle");
+    const utilityOrphansStatus = document.getElementById("utilityOrphansStatus");
+    const utilityOrphansBody = document.getElementById("utilityOrphansBody");
 
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
@@ -467,6 +473,8 @@
         utilitySignature: "",
         utilityLoading: false,
         utilityAssigningRecordId: "",
+        utilityBreakdownCardKey: "",
+        utilityExcludedTheoreticalRowIds: new Set(),
         pnlDetail: null,
         pnlDetailContext: null,
         pnlDetailLoading: false,
@@ -929,6 +937,10 @@
         return Boolean(utilityBreakdownModal && !utilityBreakdownModal.hidden);
     }
 
+    function isUtilityOrphansOpen() {
+        return Boolean(utilityOrphansModal && !utilityOrphansModal.hidden);
+    }
+
     function closeUtilityBreakdownModal() {
         if (!utilityBreakdownModal) {
             return;
@@ -936,6 +948,7 @@
 
         utilityBreakdownModal.hidden = true;
         document.body.classList.remove("dashboard-modal-open");
+        state.utilityBreakdownCardKey = "";
 
         if (utilityBreakdownTitle) {
             utilityBreakdownTitle.textContent = "Detalle de utilidad teorica";
@@ -950,11 +963,33 @@
         }
 
         if (utilityBreakdownBody) {
-            utilityBreakdownBody.innerHTML = '<tr><td colspan="9" class="dashboard-table__empty">Selecciona una tarjeta de utilidad para ver el desglose.</td></tr>';
+            utilityBreakdownBody.innerHTML = '<tr><td colspan="10" class="dashboard-table__empty">Selecciona una tarjeta de utilidad para ver el desglose.</td></tr>';
         }
 
         if (utilityBreakdownFooter) {
             utilityBreakdownFooter.innerHTML = "";
+        }
+    }
+
+    function closeUtilityOrphansModal() {
+        if (!utilityOrphansModal) {
+            return;
+        }
+
+        utilityOrphansModal.hidden = true;
+        document.body.classList.remove("dashboard-modal-open");
+        setStatus(utilityOrphansStatus, "", "");
+
+        if (utilityOrphansTitle) {
+            utilityOrphansTitle.textContent = "Filas huerfanas";
+        }
+
+        if (utilityOrphansSubtitle) {
+            utilityOrphansSubtitle.textContent = "Filas que no entraron en Monthly ni Annual por no tener tipo de contrato reconocible.";
+        }
+
+        if (utilityOrphansBody) {
+            utilityOrphansBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">No hay filas huerfanas.</td></tr>';
         }
     }
 
@@ -4184,53 +4219,181 @@
             : dashboard.theoreticalMonthly;
     }
 
-    function renderUtilityBreakdownModal(card) {
-        const rows = Array.isArray(card?.breakdown) ? card.breakdown : [];
-        const sales = Number(card?.sales || 0);
-        const cost = Number(card?.cost || 0);
-        const utility = Number(card?.utility || 0);
+    function getUtilityRowId(row) {
+        return row?.recordId || `${row?.clientName || ""}|${row?.productName || ""}|${row?.contractTypeLabel || ""}`;
+    }
 
-        if (utilityBreakdownTitle) {
-            utilityBreakdownTitle.textContent = card?.label || "Detalle de utilidad teorica";
+    function isUtilityRowIncluded(row) {
+        const rowId = getUtilityRowId(row);
+        return !rowId || !state.utilityExcludedTheoreticalRowIds.has(rowId);
+    }
+
+    function calculateUtilityPercentValue(utility, sales) {
+        return Math.abs(Number(sales || 0)) < 0.01
+            ? null
+            : Math.round((Number(utility || 0) / Number(sales || 0)) * 10000) / 100;
+    }
+
+    function getUtilityCardRows(card) {
+        return Array.isArray(card?.breakdown) ? card.breakdown : [];
+    }
+
+    function getUtilityEffectiveCard(card) {
+        const rows = getUtilityCardRows(card);
+        if (!rows.length) {
+            return {
+                ...(card || {}),
+                includedRecordsCount: Number(card?.recordsCount || 0),
+                totalRecordsCount: Number(card?.recordsCount || 0)
+            };
         }
 
+        const includedRows = rows.filter(isUtilityRowIncluded);
+        const sales = includedRows.reduce((sum, row) => sum + Number(row?.sales || 0), 0);
+        const cost = includedRows.reduce((sum, row) => sum + Number(row?.cost || 0), 0);
+        const utility = sales - cost;
+
+        return {
+            ...(card || {}),
+            sales,
+            cost,
+            utility,
+            utilityPercent: calculateUtilityPercentValue(utility, sales),
+            recordsCount: includedRows.length,
+            includedRecordsCount: includedRows.length,
+            totalRecordsCount: rows.length,
+            missingCostCount: includedRows.filter(row => row?.hasCost === false).length
+        };
+    }
+
+    function groupUtilityRowsByClient(rows) {
+        const groups = new Map();
+        rows.forEach(row => {
+            const clientName = row?.clientName || "Sin cliente";
+            const key = normalizeText(clientName) || clientName;
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    key,
+                    clientName,
+                    rows: []
+                });
+            }
+
+            groups.get(key).rows.push(row);
+        });
+
+        return Array.from(groups.values())
+            .sort((left, right) => left.clientName.localeCompare(right.clientName, "es", { sensitivity: "base" }));
+    }
+
+    function renderUtilityBreakdownSummary(card, rows) {
+        const includedRows = rows.filter(isUtilityRowIncluded);
+        const sales = includedRows.reduce((sum, row) => sum + Number(row?.sales || 0), 0);
+        const cost = includedRows.reduce((sum, row) => sum + Number(row?.cost || 0), 0);
+        const utility = sales - cost;
+        const utilityPercent = calculateUtilityPercentValue(utility, sales);
+
         if (utilityBreakdownSubtitle) {
-            utilityBreakdownSubtitle.textContent = `${state.utilityDashboard?.periodLabel || "Periodo activo"} · ${numberFormatter.format(rows.length)} fila(s)`;
+            utilityBreakdownSubtitle.textContent = `${state.utilityDashboard?.periodLabel || "Periodo activo"} · ${numberFormatter.format(includedRows.length)} de ${numberFormatter.format(rows.length)} fila(s) incluidas`;
         }
 
         if (utilityBreakdownSummary) {
             utilityBreakdownSummary.innerHTML = `
                 <div class="utility-breakdown-summary__item">
-                    <span>Venta</span>
+                    <span>Venta incluida</span>
                     <strong>${escapeHtml(currencyFormatter.format(sales))}</strong>
                 </div>
                 <div class="utility-breakdown-summary__item">
-                    <span>Costo</span>
+                    <span>Costo incluido</span>
                     <strong>${escapeHtml(currencyFormatter.format(cost))}</strong>
                 </div>
                 <div class="utility-breakdown-summary__item">
-                    <span>Total tarjeta</span>
+                    <span>Total teorico</span>
                     <strong>${escapeHtml(formatSignedCurrency(utility))}</strong>
                 </div>
                 <div class="utility-breakdown-summary__item">
                     <span>Margen</span>
-                    <strong>${escapeHtml(formatUtilityPercent(card?.utilityPercent))}</strong>
+                    <strong>${escapeHtml(formatUtilityPercent(utilityPercent))}</strong>
                 </div>
             `;
         }
 
+        if (utilityBreakdownFooter) {
+            utilityBreakdownFooter.innerHTML = `
+                <tr class="dashboard-table__total">
+                    <td colspan="7">Total incluido</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(sales))}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(cost))}</td>
+                    <td class="text-end">${escapeHtml(formatSignedCurrency(utility))}</td>
+                </tr>
+            `;
+        }
+    }
+
+    function syncUtilityBreakdownGroupCheckboxes() {
+        utilityBreakdownBody?.querySelectorAll("[data-utility-client-count]").forEach(checkbox => {
+            checkbox.indeterminate = checkbox.dataset.indeterminate === "true";
+        });
+    }
+
+    function renderUtilityBreakdownModal(card) {
+        const rows = Array.isArray(card?.breakdown) ? card.breakdown : [];
+
+        if (utilityBreakdownTitle) {
+            utilityBreakdownTitle.textContent = card?.label || "Detalle de utilidad teorica";
+        }
+
+        renderUtilityBreakdownSummary(card, rows);
+
         if (utilityBreakdownBody) {
             utilityBreakdownBody.innerHTML = rows.length
-                ? rows.map(row => {
+                ? groupUtilityRowsByClient(rows).map(group => {
+                    const groupRows = group.rows || [];
+                    const includedRows = groupRows.filter(isUtilityRowIncluded);
+                    const allIncluded = includedRows.length === groupRows.length;
+                    const noneIncluded = includedRows.length === 0;
+                    const groupSales = includedRows.reduce((sum, row) => sum + Number(row?.sales || 0), 0);
+                    const groupCost = includedRows.reduce((sum, row) => sum + Number(row?.cost || 0), 0);
+                    const groupUtility = groupSales - groupCost;
+                    const groupTone = groupUtility >= 0 ? "positive" : "negative";
+                    const groupRow = `
+                        <tr class="utility-breakdown-group-row">
+                            <td>
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       data-utility-client-count="${escapeHtml(group.key)}"
+                                       data-indeterminate="${!allIncluded && !noneIncluded ? "true" : "false"}"
+                                       ${allIncluded ? "checked" : ""}
+                                       aria-label="Contar cliente ${escapeHtml(group.clientName)}">
+                            </td>
+                            <td colspan="6">
+                                <div class="utility-row-main">${escapeHtml(group.clientName)}</div>
+                                <div class="utility-row-muted">${escapeHtml(numberFormatter.format(includedRows.length))} de ${escapeHtml(numberFormatter.format(groupRows.length))} fila(s) incluidas</div>
+                            </td>
+                            <td class="text-end">${escapeHtml(currencyFormatter.format(groupSales))}</td>
+                            <td class="text-end">${escapeHtml(currencyFormatter.format(groupCost))}</td>
+                            <td class="text-end utility-breakdown__line-total is-${groupTone}">${escapeHtml(formatSignedCurrency(groupUtility))}</td>
+                        </tr>
+                    `;
+
+                    const detailRows = groupRows.map(row => {
                     const hasCost = row?.hasCost !== false;
                     const costValue = Number(row?.cost || 0);
                     const lineUtility = Number(row?.utility || 0);
                     const lineTone = lineUtility >= 0 ? "positive" : "negative";
                     const billingDay = Number(row?.billingDay || 0);
+                    const rowId = getUtilityRowId(row);
+                    const included = isUtilityRowIncluded(row);
                     return `
-                        <tr>
+                        <tr class="${included ? "" : "is-excluded"}">
                             <td>
-                                <div class="utility-row-main">${escapeHtml(row?.clientName || "Sin cliente")}</div>
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       data-utility-row-count="${escapeHtml(rowId)}"
+                                       ${included ? "checked" : ""}
+                                       aria-label="Contar fila ${escapeHtml(row?.productName || "")}">
+                            </td>
+                            <td>
                                 <div class="utility-row-muted">${billingDay > 0 ? `Dia ${escapeHtml(numberFormatter.format(billingDay))}` : ""}</div>
                             </td>
                             <td>
@@ -4248,19 +4411,13 @@
                             <td class="text-end utility-breakdown__line-total is-${lineTone}">${escapeHtml(formatSignedCurrency(lineUtility))}</td>
                         </tr>
                     `;
-                }).join("")
-                : '<tr><td colspan="9" class="dashboard-table__empty">Esta tarjeta no tiene filas para desglosar.</td></tr>';
-        }
+                    }).join("");
 
-        if (utilityBreakdownFooter) {
-            utilityBreakdownFooter.innerHTML = `
-                <tr class="dashboard-table__total">
-                    <td colspan="6">Total tarjeta</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(sales))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(cost))}</td>
-                    <td class="text-end">${escapeHtml(formatSignedCurrency(utility))}</td>
-                </tr>
-            `;
+                    return groupRow + detailRows;
+                }).join("")
+                : '<tr><td colspan="10" class="dashboard-table__empty">Esta tarjeta no tiene filas para desglosar.</td></tr>';
+
+            syncUtilityBreakdownGroupCheckboxes();
         }
     }
 
@@ -4274,27 +4431,148 @@
             return;
         }
 
+        state.utilityBreakdownCardKey = cardKey === "prepaid" ? "prepaid" : "monthly";
         renderUtilityBreakdownModal(card);
         utilityBreakdownModal.hidden = false;
         document.body.classList.add("dashboard-modal-open");
         window.setTimeout(() => utilityBreakdownCloseBtn?.focus(), 30);
     }
 
+    function renderUtilityOrphansModal() {
+        const rows = Array.isArray(state.utilityDashboard?.theoreticalOrphanRows)
+            ? state.utilityDashboard.theoreticalOrphanRows
+            : [];
+
+        if (utilityOrphansTitle) {
+            utilityOrphansTitle.textContent = `Filas huerfanas (${numberFormatter.format(rows.length)})`;
+        }
+
+        if (utilityOrphansSubtitle) {
+            utilityOrphansSubtitle.textContent = rows.length
+                ? "Estas filas no entraron en Monthly ni Annual porque el tipo de contrato esta vacio o no se reconoce. Asignarlas actualiza la columna de tipo de contrato en Productos Cloud."
+                : "No hay filas huerfanas: todas las filas de Productos Cloud tienen tipo Monthly o Annual reconocible.";
+        }
+
+        if (!utilityOrphansBody) {
+            return;
+        }
+
+        utilityOrphansBody.innerHTML = rows.length
+            ? rows.map(row => {
+                const rowUtility = Number(row?.utility || 0);
+                const rowTone = rowUtility >= 0 ? "positive" : "negative";
+                const isAssigning = state.utilityAssigningRecordId && state.utilityAssigningRecordId === row.recordId;
+                return `
+                    <tr>
+                        <td>
+                            <div class="utility-row-main">${escapeHtml(row?.clientName || "Sin cliente")}</div>
+                            <div class="utility-row-muted">${Number(row?.billingDay || 0) > 0 ? `Dia ${escapeHtml(numberFormatter.format(Number(row?.billingDay || 0)))}` : "Sin dia"}</div>
+                        </td>
+                        <td>
+                            <div class="utility-row-main">${escapeHtml(row?.productName || "Sin producto")}</div>
+                            <div class="utility-row-muted">${escapeHtml(row?.productLineLabel || "")}</div>
+                        </td>
+                        <td>${escapeHtml(row?.contractTypeLabel || "Sin contrato")}</td>
+                        <td>${escapeHtml(row?.reason || "")}</td>
+                        <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row?.sales || 0)))}</td>
+                        <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row?.cost || 0)))}</td>
+                        <td class="text-end utility-breakdown__line-total is-${rowTone}">${escapeHtml(formatSignedCurrency(rowUtility))}</td>
+                        <td>
+                            <div class="utility-assign-control">
+                                <select class="form-select form-select-sm dashboard-select" data-utility-target>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="prepaid">Annual</option>
+                                </select>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary"
+                                        data-utility-assign
+                                        data-source-type="sales-performance"
+                                        data-record-id="${escapeHtml(row?.recordId || "")}"
+                                        ${isAssigning ? "disabled" : ""}>${isAssigning ? "Guardando..." : "Asignar"}</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join("")
+            : '<tr><td colspan="8" class="dashboard-table__empty">No hay filas huerfanas.</td></tr>';
+    }
+
+    function openUtilityOrphansModal() {
+        if (!utilityOrphansModal) {
+            return;
+        }
+
+        renderUtilityOrphansModal();
+        utilityOrphansModal.hidden = false;
+        document.body.classList.add("dashboard-modal-open");
+        window.setTimeout(() => utilityOrphansCloseBtn?.focus(), 30);
+    }
+
+    function handleUtilityBreakdownCountChange(input) {
+        const card = getUtilityTheoreticalCard(state.utilityBreakdownCardKey);
+        if (!card) {
+            return;
+        }
+
+        if (input.matches("[data-utility-row-count]")) {
+            const rowId = input.dataset.utilityRowCount || "";
+            if (rowId) {
+                if (input.checked) {
+                    state.utilityExcludedTheoreticalRowIds.delete(rowId);
+                } else {
+                    state.utilityExcludedTheoreticalRowIds.add(rowId);
+                }
+            }
+        }
+
+        if (input.matches("[data-utility-client-count]")) {
+            const clientKey = input.dataset.utilityClientCount || "";
+            const group = groupUtilityRowsByClient(getUtilityCardRows(card))
+                .find(item => item.key === clientKey);
+            (group?.rows || []).forEach(row => {
+                const rowId = getUtilityRowId(row);
+                if (!rowId) {
+                    return;
+                }
+
+                if (input.checked) {
+                    state.utilityExcludedTheoreticalRowIds.delete(rowId);
+                } else {
+                    state.utilityExcludedTheoreticalRowIds.add(rowId);
+                }
+            });
+        }
+
+        renderUtilitySummary(state.utilityDashboard);
+        renderUtilityBreakdownModal(card);
+    }
+
     function renderUtilitySummaryCard(card, accentClass) {
-        const sales = Number(card?.sales || 0);
-        const cost = Number(card?.cost || 0);
-        const utility = Number(card?.utility || 0);
+        const effectiveCard = getUtilityEffectiveCard(card);
+        const sales = Number(effectiveCard?.sales || 0);
+        const cost = Number(effectiveCard?.cost || 0);
+        const utility = Number(effectiveCard?.utility || 0);
         const tone = utility >= 0 ? "positive" : "negative";
         const cardKey = card?.key || "";
-        const rows = Array.isArray(card?.breakdown) ? card.breakdown.length : Number(card?.recordsCount || 0);
+        const rows = getUtilityCardRows(card);
+        const totalRows = rows.length || Number(card?.recordsCount || 0);
+        const includedRows = Number(effectiveCard?.includedRecordsCount ?? effectiveCard?.recordsCount ?? 0);
+        const orphanRows = Array.isArray(state.utilityDashboard?.theoreticalOrphanRows)
+            ? state.utilityDashboard.theoreticalOrphanRows.length
+            : 0;
         return `
             <article class="utility-summary-card ${accentClass} is-${tone}">
                 <div class="utility-summary-card__header">
                     <span class="utility-summary-card__label">${escapeHtml(card?.label || "")}</span>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary utility-summary-card__breakdown-btn"
-                            data-utility-breakdown="${escapeHtml(cardKey)}"
-                            ${rows > 0 ? "" : "disabled"}>Desglose</button>
+                    <div class="utility-summary-card__actions">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary utility-summary-card__breakdown-btn"
+                                data-utility-breakdown="${escapeHtml(cardKey)}"
+                                ${totalRows > 0 ? "" : "disabled"}>Desglose</button>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary utility-summary-card__breakdown-btn"
+                                data-utility-orphans>Filas huerfanas${orphanRows > 0 ? ` (${escapeHtml(numberFormatter.format(orphanRows))})` : ""}</button>
+                    </div>
                 </div>
                 <strong class="utility-summary-card__value">${escapeHtml(formatSignedCurrency(utility))}</strong>
                 <div class="utility-summary-card__meta">
@@ -4302,9 +4580,9 @@
                     <span>Costo ${escapeHtml(currencyFormatter.format(cost))}</span>
                 </div>
                 <div class="utility-summary-card__footer">
-                    <span>${escapeHtml(numberFormatter.format(Number(card?.recordsCount || 0)))} filas</span>
-                    <span>${escapeHtml(formatUtilityPercent(card?.utilityPercent))}</span>
-                    ${Number(card?.missingCostCount || 0) > 0 ? `<span>${escapeHtml(numberFormatter.format(Number(card?.missingCostCount || 0)))} sin costo</span>` : ""}
+                    <span>${escapeHtml(numberFormatter.format(includedRows))} de ${escapeHtml(numberFormatter.format(totalRows))} filas</span>
+                    <span>${escapeHtml(formatUtilityPercent(effectiveCard?.utilityPercent))}</span>
+                    ${Number(effectiveCard?.missingCostCount || 0) > 0 ? `<span>${escapeHtml(numberFormatter.format(Number(effectiveCard?.missingCostCount || 0)))} sin costo</span>` : ""}
                 </div>
             </article>
         `;
@@ -7736,6 +8014,14 @@
             closePnlDetailModal();
         }
 
+        if (tabKey !== "utility" && isUtilityBreakdownOpen()) {
+            closeUtilityBreakdownModal();
+        }
+
+        if (tabKey !== "utility" && isUtilityOrphansOpen()) {
+            closeUtilityOrphansModal();
+        }
+
         if (tabKey !== "billing" && isBillingInvoiceEditorOpen()) {
             closeBillingInvoiceEditorModal();
         }
@@ -8522,8 +8808,12 @@
 
     async function assignUtilityRow(button) {
         const url = buildUtilityAssignmentUrl();
+        const statusTarget = button.closest("#utilityOrphansModal")
+            ? utilityOrphansStatus
+            : utilityStatusBanner;
+        const wasOrphansOpen = isUtilityOrphansOpen();
         if (!url) {
-            setStatus(utilityStatusBanner, "error", "No hay una URL configurada para asignar filas.");
+            setStatus(statusTarget, "error", "No hay una URL configurada para asignar filas.");
             return;
         }
 
@@ -8538,21 +8828,30 @@
         state.utilityAssigningRecordId = payload.recordId;
         setUtilityLoading(true);
         renderUtilityUnresolvedRows(state.utilityDashboard);
-        setStatus(utilityStatusBanner, "info", "Guardando asignacion...");
+        if (wasOrphansOpen) {
+            renderUtilityOrphansModal();
+        }
+        setStatus(statusTarget, "info", "Guardando asignacion...");
 
         try {
             const result = await fetchJson(url, {
                 method: "POST",
                 body: JSON.stringify(payload)
             });
-            setStatus(utilityStatusBanner, "success", result?.message || "Fila asignada correctamente.");
+            setStatus(statusTarget, "success", result?.message || "Fila asignada correctamente.");
             await loadUtility();
+            if (wasOrphansOpen) {
+                renderUtilityOrphansModal();
+            }
         } catch (error) {
-            setStatus(utilityStatusBanner, "error", error instanceof Error ? error.message : "No fue posible asignar la fila.");
+            setStatus(statusTarget, "error", error instanceof Error ? error.message : "No fue posible asignar la fila.");
         } finally {
             state.utilityAssigningRecordId = "";
             setUtilityLoading(false);
             renderUtilityUnresolvedRows(state.utilityDashboard);
+            if (wasOrphansOpen) {
+                renderUtilityOrphansModal();
+            }
         }
     }
 
@@ -8901,6 +9200,12 @@
     licenciamientoRefreshButton?.addEventListener("click", loadLicenciamiento);
     utilityRefreshButton?.addEventListener("click", loadUtility);
     utilitySummaryCards?.addEventListener("click", event => {
+        const orphansButton = event.target.closest("[data-utility-orphans]");
+        if (orphansButton) {
+            openUtilityOrphansModal();
+            return;
+        }
+
         const button = event.target.closest("[data-utility-breakdown]");
         if (!button) {
             return;
@@ -8908,7 +9213,23 @@
 
         openUtilityBreakdownModal(button.dataset.utilityBreakdown || "monthly");
     });
+    utilityBreakdownBody?.addEventListener("change", event => {
+        const input = event.target.closest("[data-utility-row-count], [data-utility-client-count]");
+        if (!input) {
+            return;
+        }
+
+        handleUtilityBreakdownCountChange(input);
+    });
     utilityUnresolvedBody?.addEventListener("click", event => {
+        const button = event.target.closest("[data-utility-assign]");
+        if (!button) {
+            return;
+        }
+
+        assignUtilityRow(button);
+    });
+    utilityOrphansBody?.addEventListener("click", event => {
         const button = event.target.closest("[data-utility-assign]");
         if (!button) {
             return;
@@ -8985,6 +9306,10 @@
     utilityBreakdownCloseBtn?.addEventListener("click", closeUtilityBreakdownModal);
     utilityBreakdownModal?.querySelectorAll("[data-utility-breakdown-close]").forEach(element => {
         element.addEventListener("click", closeUtilityBreakdownModal);
+    });
+    utilityOrphansCloseBtn?.addEventListener("click", closeUtilityOrphansModal);
+    utilityOrphansModal?.querySelectorAll("[data-utility-orphans-close]").forEach(element => {
+        element.addEventListener("click", closeUtilityOrphansModal);
     });
     pnlDetailCloseBtn?.addEventListener("click", closePnlDetailModal);
     pnlDetailModal?.querySelectorAll("[data-pnl-detail-close]").forEach(element => {
@@ -9229,6 +9554,11 @@
 
         if (event.key === "Escape" && isUtilityBreakdownOpen()) {
             closeUtilityBreakdownModal();
+            return;
+        }
+
+        if (event.key === "Escape" && isUtilityOrphansOpen()) {
+            closeUtilityOrphansModal();
             return;
         }
 
