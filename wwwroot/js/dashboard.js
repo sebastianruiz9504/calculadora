@@ -303,6 +303,16 @@
     const licenciamientoCostPeriodLabel = document.getElementById("licenciamientoCostPeriodLabel");
     const licenciamientoCostCards = document.getElementById("licenciamientoCostCards");
 
+    const utilityRefreshButton = document.getElementById("utilityRefreshBtn");
+    const utilityStatusBanner = document.getElementById("utilityStatusBanner");
+    const utilityPeriodLabel = document.getElementById("utilityPeriodLabel");
+    const utilityDateRangeLabel = document.getElementById("utilityDateRangeLabel");
+    const utilitySummaryCards = document.getElementById("utilitySummaryCards");
+    const utilityMonthlyChart = document.getElementById("utilityMonthlyChart");
+    const utilityPrepaidChart = document.getElementById("utilityPrepaidChart");
+    const utilityUnresolvedResultsCount = document.getElementById("utilityUnresolvedResultsCount");
+    const utilityUnresolvedBody = document.getElementById("utilityUnresolvedBody");
+
     const tabButtons = Array.from(document.querySelectorAll("[data-dashboard-tab]"));
     const tabPanels = Array.from(document.querySelectorAll("[data-dashboard-panel]"));
 
@@ -436,6 +446,10 @@
         licenciamientoSignature: "",
         licenciamientoYear: licenciamientoDefaultYear,
         licenciamientoMonth: licenciamientoDefaultMonth,
+        utilityDashboard: null,
+        utilitySignature: "",
+        utilityLoading: false,
+        utilityAssigningRecordId: "",
         pnlDetail: null,
         pnlDetailContext: null,
         pnlDetailLoading: false,
@@ -475,6 +489,10 @@
 
     function getLicenciamientoSignature() {
         return `${state.licenciamientoYear}|${state.licenciamientoMonth}`;
+    }
+
+    function getUtilitySignature() {
+        return "2025-to-date";
     }
 
     function getCopiersCountersSignature() {
@@ -534,6 +552,18 @@
 
     function formatPercent(value) {
         return `${numberFormatter.format(Number(value || 0))}%`;
+    }
+
+    function formatCompactMillions(value) {
+        const numericValue = Number(value || 0);
+        const sign = numericValue < 0 ? "-" : "";
+        const millions = Math.abs(numericValue) / 1000000;
+        const roundedTenths = Math.round(millions * 10) / 10;
+        const hasDecimal = Math.abs(roundedTenths - Math.round(roundedTenths)) >= 0.05;
+        return `${sign}${roundedTenths.toLocaleString("es-CO", {
+            minimumFractionDigits: hasDecimal ? 1 : 0,
+            maximumFractionDigits: hasDecimal ? 1 : 0
+        })}M`;
     }
 
     function setStatus(target, type, message) {
@@ -848,6 +878,15 @@
         [licenciamientoYearFilter, licenciamientoMonthFilter, licenciamientoRefreshButton].forEach(element => {
             if (element) {
                 element.disabled = loading;
+            }
+        });
+    }
+
+    function setUtilityLoading(loading) {
+        state.utilityLoading = loading;
+        [utilityRefreshButton].forEach(element => {
+            if (element) {
+                element.disabled = loading || Boolean(state.utilityAssigningRecordId);
             }
         });
     }
@@ -3024,6 +3063,14 @@
         return `${app.dataset.licenciamientoUrl || ""}?${params.toString()}`;
     }
 
+    function buildUtilityUrl() {
+        return app.dataset.utilityUrl || "";
+    }
+
+    function buildUtilityAssignmentUrl() {
+        return app.dataset.utilityAssignmentUrl || "";
+    }
+
     function buildPnlDetailUrl(rowKey, cellMonth) {
         const params = new URLSearchParams({
             year: String(state.pnlYear),
@@ -4045,6 +4092,202 @@
         renderLicenciamientoChart(licenciamientoMonthlyChart, dashboard?.monthly, "#0f766e");
         renderLicenciamientoChart(licenciamientoPrepaidChart, dashboard?.prepaid, "#b45309");
         renderLicenciamientoCostCards(dashboard);
+    }
+
+    function formatUtilityPercent(value) {
+        if (value === null || value === undefined || value === "") {
+            return "Sin margen";
+        }
+
+        return formatPercent(value);
+    }
+
+    function renderUtilitySummaryCard(card, accentClass) {
+        const sales = Number(card?.sales || 0);
+        const cost = Number(card?.cost || 0);
+        const utility = Number(card?.utility || 0);
+        const tone = utility >= 0 ? "positive" : "negative";
+        return `
+            <article class="utility-summary-card ${accentClass} is-${tone}">
+                <span class="utility-summary-card__label">${escapeHtml(card?.label || "")}</span>
+                <strong class="utility-summary-card__value">${escapeHtml(formatSignedCurrency(utility))}</strong>
+                <div class="utility-summary-card__meta">
+                    <span>Venta ${escapeHtml(currencyFormatter.format(sales))}</span>
+                    <span>Costo ${escapeHtml(currencyFormatter.format(cost))}</span>
+                </div>
+                <div class="utility-summary-card__footer">
+                    <span>${escapeHtml(numberFormatter.format(Number(card?.recordsCount || 0)))} filas</span>
+                    <span>${escapeHtml(formatUtilityPercent(card?.utilityPercent))}</span>
+                    ${Number(card?.missingCostCount || 0) > 0 ? `<span>${escapeHtml(numberFormatter.format(Number(card?.missingCostCount || 0)))} sin costo</span>` : ""}
+                </div>
+            </article>
+        `;
+    }
+
+    function renderUtilitySummary(dashboard) {
+        if (!utilitySummaryCards) {
+            return;
+        }
+
+        utilitySummaryCards.innerHTML = [
+            renderUtilitySummaryCard(dashboard?.theoreticalMonthly, "utility-summary-card--monthly"),
+            renderUtilitySummaryCard(dashboard?.theoreticalPrepaid, "utility-summary-card--prepaid")
+        ].join("");
+    }
+
+    function renderUtilityChart(container, segment, accent) {
+        if (!container) {
+            return;
+        }
+
+        const points = Array.isArray(segment?.months) ? segment.months : [];
+        const hasData = points.some(point => Number(point.billingRecordsCount || 0) > 0 || Number(point.costRecordsCount || 0) > 0);
+        const values = points.map(point => Number(point.utility || 0));
+        let minValue = Math.min(0, ...values);
+        let maxValue = Math.max(0, ...values);
+        if (minValue === 0 && maxValue === 0) {
+            minValue = -1;
+            maxValue = 1;
+        }
+        const range = maxValue === minValue ? 1 : maxValue - minValue;
+        const width = Math.max(900, points.length * 54);
+        const height = 320;
+        const padding = { top: 36, right: 24, bottom: 46, left: 68 };
+        const plotWidth = width - padding.left - padding.right;
+        const plotHeight = height - padding.top - padding.bottom;
+        const barSlot = plotWidth / Math.max(points.length, 1);
+        const barWidth = Math.min(30, Math.max(14, barSlot * 0.44));
+        const yForValue = value => padding.top + ((maxValue - value) / range) * plotHeight;
+        const baselineY = yForValue(0);
+        const gridValues = [maxValue, (maxValue + minValue) / 2, minValue]
+            .filter((value, index, all) => index === all.findIndex(item => Math.abs(item - value) < 0.01));
+        const gradientId = `utility-chart-gradient-${segment?.key || "segment"}`;
+
+        const grid = gridValues.map(value => {
+            const y = yForValue(value);
+            return `
+                <line class="utility-chart__grid" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"></line>
+                <text class="utility-chart__axis" x="${padding.left - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(formatCompactMillions(value))}</text>
+            `;
+        }).join("");
+
+        const bars = points.map((point, index) => {
+            const utility = Number(point.utility || 0);
+            const sales = Number(point.sales || 0);
+            const cost = Number(point.cost || 0);
+            const x = padding.left + (barSlot * index) + ((barSlot - barWidth) / 2);
+            const y = utility >= 0 ? yForValue(utility) : baselineY;
+            const barHeight = Math.max(2, Math.abs(yForValue(utility) - baselineY));
+            const labelX = padding.left + (barSlot * index) + (barSlot / 2);
+            const labelY = utility >= 0
+                ? Math.max(14, y - 7)
+                : Math.min(height - padding.bottom - 4, y + barHeight + 14);
+            const tone = utility >= 0 ? "positive" : "negative";
+            return `
+                <g>
+                    <title>${escapeHtml(`${point.label || ""}: utilidad ${currencyFormatter.format(utility)} - venta ${currencyFormatter.format(sales)} - costo ${currencyFormatter.format(cost)}`)}</title>
+                    <rect class="utility-chart__bar is-${tone}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="4"></rect>
+                    <text class="utility-chart__bar-label is-${tone}" x="${labelX.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="middle">${escapeHtml(formatCompactMillions(utility))}</text>
+                    <text class="utility-chart__month" x="${labelX.toFixed(2)}" y="${height - 16}" text-anchor="middle">${escapeHtml(point.label || "")}</text>
+                </g>
+            `;
+        }).join("");
+
+        container.innerHTML = `
+            <div class="utility-chart-card__header">
+                <div>
+                    <span class="utility-chart-card__eyebrow">Cloud</span>
+                    <h2 class="utility-chart-card__title">${escapeHtml(segment?.label || "Utilidad real")}</h2>
+                </div>
+                <span class="utility-chart-card__badge">${escapeHtml(formatUtilityPercent(segment?.utilityPercent))}</span>
+            </div>
+            <div class="utility-chart-card__metrics">
+                <span><strong>${escapeHtml(currencyFormatter.format(Number(segment?.sales || 0)))}</strong> ventas</span>
+                <span><strong>${escapeHtml(currencyFormatter.format(Number(segment?.cost || 0)))}</strong> costos</span>
+                <span><strong>${escapeHtml(formatSignedCurrency(segment?.utility || 0))}</strong> utilidad</span>
+            </div>
+            <div class="utility-chart-card__canvas ${hasData ? "" : "is-empty"}">
+                ${hasData ? `
+                    <svg class="utility-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(segment?.label || "Utilidad real")}">
+                        <defs>
+                            <linearGradient id="${escapeHtml(gradientId)}" x1="0" x2="0" y1="0" y2="1">
+                                <stop offset="0%" stop-color="${accent}" stop-opacity=".24"></stop>
+                                <stop offset="100%" stop-color="${accent}" stop-opacity=".06"></stop>
+                            </linearGradient>
+                        </defs>
+                        <rect class="utility-chart__plot" x="${padding.left}" y="${padding.top}" width="${plotWidth}" height="${plotHeight}" fill="url(#${escapeHtml(gradientId)})"></rect>
+                        ${grid}
+                        <line class="utility-chart__baseline" x1="${padding.left}" y1="${baselineY}" x2="${width - padding.right}" y2="${baselineY}"></line>
+                        ${bars}
+                    </svg>
+                ` : '<div class="utility-empty">Sin ventas o costos para este periodo.</div>'}
+            </div>
+        `;
+    }
+
+    function renderUtilityUnresolvedRows(dashboard) {
+        if (!utilityUnresolvedBody) {
+            return;
+        }
+
+        const rows = Array.isArray(dashboard?.unresolvedRows) ? dashboard.unresolvedRows : [];
+        if (utilityUnresolvedResultsCount) {
+            utilityUnresolvedResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} fila(s)`;
+        }
+
+        if (!rows.length) {
+            utilityUnresolvedBody.innerHTML = '<tr><td colspan="8" class="dashboard-table__empty">No hay filas pendientes por asignar.</td></tr>';
+            return;
+        }
+
+        utilityUnresolvedBody.innerHTML = rows.map(row => {
+            const canAssign = Boolean(row?.canAssign) && row?.sourceType !== "price";
+            const isAssigning = state.utilityAssigningRecordId && state.utilityAssigningRecordId === row.recordId;
+            const selectedBucket = row?.suggestedBucket === "prepaid" ? "prepaid" : "monthly";
+            const classification = [
+                row?.currentVertical,
+                row?.currentContractType
+            ].filter(Boolean).join(" / ") || "Sin clasificar";
+            const targetControl = canAssign
+                ? `
+                    <div class="utility-assign-control">
+                        <select class="form-select form-select-sm dashboard-select" data-utility-target>
+                            <option value="monthly" ${selectedBucket === "monthly" ? "selected" : ""}>Monthly</option>
+                            <option value="prepaid" ${selectedBucket === "prepaid" ? "selected" : ""}>Prepaid</option>
+                        </select>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                data-utility-assign
+                                data-source-type="${escapeHtml(row?.sourceType || "")}"
+                                data-record-id="${escapeHtml(row?.recordId || "")}"
+                                ${isAssigning ? "disabled" : ""}>${isAssigning ? "Guardando..." : "Asignar"}</button>
+                    </div>
+                `
+                : '<span class="dashboard-pnl-detail__static">Revisar origen</span>';
+
+            return `
+                <tr>
+                    <td>${escapeHtml(row?.sourceLabel || "")}</td>
+                    <td>${escapeHtml(row?.reference || row?.recordId || "")}</td>
+                    <td>
+                        <div class="utility-row-main">${escapeHtml(row?.clientName || "Sin cliente")}</div>
+                        <div class="utility-row-muted">${escapeHtml(row?.productName || "")}</div>
+                    </td>
+                    <td>${escapeHtml(row?.dateDisplay || "-")}</td>
+                    <td>${escapeHtml(classification)}</td>
+                    <td>${escapeHtml(row?.reason || "")}</td>
+                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row?.amount || 0)))}</td>
+                    <td>${targetControl}</td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    function renderUtilityDashboard(dashboard) {
+        renderUtilitySummary(dashboard);
+        renderUtilityChart(utilityMonthlyChart, dashboard?.realMonthly, "#0f766e");
+        renderUtilityChart(utilityPrepaidChart, dashboard?.realPrepaid, "#b45309");
+        renderUtilityUnresolvedRows(dashboard);
     }
 
     function getNiceMaxValue(value) {
@@ -6532,6 +6775,12 @@
         recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
     }
 
+    function updateHeroForUtility(dashboard) {
+        compareLabel && (compareLabel.textContent = dashboard?.periodLabel ? `Utilidad ${dashboard.periodLabel}` : "Utilidad Cloud");
+        granularityLabel && (granularityLabel.textContent = dashboard?.focusLabel || "Cloud Monthly y Prepaid");
+        recordCount && (recordCount.textContent = numberFormatter.format(Number(dashboard?.recordsCount || 0)));
+    }
+
     function updateBillingContext(dashboard) {
         state.billingDashboard = dashboard;
         state.billingSignature = getPeriodSignature();
@@ -6659,6 +6908,17 @@
         }
     }
 
+    function updateUtilityContext(dashboard) {
+        state.utilityDashboard = dashboard;
+        state.utilitySignature = getUtilitySignature();
+        utilityPeriodLabel && (utilityPeriodLabel.textContent = dashboard?.periodLabel || "Ene 2025 - hoy");
+        utilityDateRangeLabel && (utilityDateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
+
+        if (state.activeTab === "utility") {
+            updateHeroForUtility(dashboard);
+        }
+    }
+
     function syncPeriodScopeVisibility() {
         if (dashboardPeriodScope) {
             dashboardPeriodScope.hidden = state.activeTab === "portfolio"
@@ -6666,6 +6926,7 @@
                 || state.activeTab === "copiers"
                 || state.activeTab === "pnl"
                 || state.activeTab === "licenciamiento"
+                || state.activeTab === "utility"
                 || state.activeTab === "support-cloud";
         }
     }
@@ -6816,6 +7077,15 @@
                 updateHeroForLicenciamiento(state.licenciamientoDashboard);
             } else {
                 loadLicenciamiento();
+            }
+            return;
+        }
+
+        if (tabKey === "utility") {
+            if (state.utilityDashboard && state.utilitySignature === getUtilitySignature()) {
+                updateHeroForUtility(state.utilityDashboard);
+            } else {
+                loadUtility();
             }
             return;
         }
@@ -7518,6 +7788,65 @@
         }
     }
 
+    async function loadUtility() {
+        if (!app.dataset.utilityUrl) {
+            return;
+        }
+
+        setUtilityLoading(true);
+        setStatus(utilityStatusBanner, "info", "Actualizando tablero de utilidad...");
+
+        try {
+            const dashboard = await fetchJson(buildUtilityUrl());
+            updateUtilityContext(dashboard);
+            renderUtilityDashboard(dashboard);
+            setStatus(
+                utilityStatusBanner,
+                dashboard?.hasData ? "" : "info",
+                dashboard?.hasData ? "" : (dashboard?.emptyStateMessage || "No hay datos de utilidad desde enero de 2025."));
+        } catch (error) {
+            setStatus(utilityStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard de utilidad.");
+        } finally {
+            setUtilityLoading(false);
+        }
+    }
+
+    async function assignUtilityRow(button) {
+        const url = buildUtilityAssignmentUrl();
+        if (!url) {
+            setStatus(utilityStatusBanner, "error", "No hay una URL configurada para asignar filas.");
+            return;
+        }
+
+        const row = button.closest("tr");
+        const targetSelect = row?.querySelector("[data-utility-target]");
+        const payload = {
+            sourceType: button.dataset.sourceType || "",
+            recordId: button.dataset.recordId || "",
+            targetBucket: targetSelect?.value || "monthly"
+        };
+
+        state.utilityAssigningRecordId = payload.recordId;
+        setUtilityLoading(true);
+        renderUtilityUnresolvedRows(state.utilityDashboard);
+        setStatus(utilityStatusBanner, "info", "Guardando asignacion...");
+
+        try {
+            const result = await fetchJson(url, {
+                method: "POST",
+                body: JSON.stringify(payload)
+            });
+            setStatus(utilityStatusBanner, "success", result?.message || "Fila asignada correctamente.");
+            await loadUtility();
+        } catch (error) {
+            setStatus(utilityStatusBanner, "error", error instanceof Error ? error.message : "No fue posible asignar la fila.");
+        } finally {
+            state.utilityAssigningRecordId = "";
+            setUtilityLoading(false);
+            renderUtilityUnresolvedRows(state.utilityDashboard);
+        }
+    }
+
     yearFilter?.addEventListener("change", () => {
         state.year = Number(yearFilter.value || currentYear);
         state.value = getDefaultValue(state.period, state.year);
@@ -7793,6 +8122,15 @@
     });
     pnlRefreshButton?.addEventListener("click", loadPnl);
     licenciamientoRefreshButton?.addEventListener("click", loadLicenciamiento);
+    utilityRefreshButton?.addEventListener("click", loadUtility);
+    utilityUnresolvedBody?.addEventListener("click", event => {
+        const button = event.target.closest("[data-utility-assign]");
+        if (!button) {
+            return;
+        }
+
+        assignUtilityRow(button);
+    });
     portfolioClientSearch?.addEventListener("input", () => {
         state.portfolioSearchTerm = portfolioClientSearch.value || "";
         renderPortfolioTable();

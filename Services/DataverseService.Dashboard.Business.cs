@@ -72,6 +72,7 @@ public sealed partial class DataverseService
         var productLookupProperty = DetectLookupValueProperty(item, SalesPerformanceProductLookupFieldCandidates, "producto");
         var quantity = ReadIntFlexible(item, DefaultSalesPerformanceQuantityField);
         var unitSaleUsd = RoundCurrency(ReadDecimal(item, DefaultSalesPerformanceUnitSaleUsdField) ?? 0m);
+        var billingDay = ReadIntFlexible(item, _salesPerformanceBillingDayField);
         var productLineValue = ReadOptionValue(item, _salesPerformanceProductLineField);
         var contractTypeValue = ReadOptionValue(item, _salesPerformanceContractTypeField);
         var clientName = FirstNonEmpty(
@@ -99,6 +100,7 @@ public sealed partial class DataverseService
             ContractTypeLabel = ResolveBusinessContractTypeLabel(item, contractTypeValue),
             Quantity = quantity,
             UnitSaleUsd = unitSaleUsd,
+            BillingDay = billingDay,
             RenewalDate = ReadDateOnly(item, _salesPerformanceRenewalDateField),
             MonthlyBillingUsd = RoundCurrency(quantity * unitSaleUsd),
             AnnualValueUsd = RoundCurrency(quantity * unitSaleUsd * 12m)
@@ -377,6 +379,7 @@ public sealed partial class DataverseService
         public string ContractTypeLabel { get; set; } = "";
         public int Quantity { get; set; }
         public decimal UnitSaleUsd { get; set; }
+        public int BillingDay { get; set; }
         public DateOnly? RenewalDate { get; set; }
         public decimal MonthlyBillingUsd { get; set; }
         public decimal AnnualValueUsd { get; set; }

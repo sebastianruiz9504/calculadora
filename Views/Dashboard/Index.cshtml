@@ -42,6 +42,8 @@
      data-taxes-retentions-export-url="@Url.Action("TaxesRetentionsExport", "Dashboard")"
      data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
      data-licenciamiento-url="@Url.Action("Licenciamiento", "Dashboard")"
+     data-utility-url="@Url.Action("Utility", "Dashboard")"
+     data-utility-assignment-url="@Url.Action("UtilityAssignment", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
      data-pnl-detail-url="@Url.Action("PnlDetail", "Dashboard")"
      data-pnl-detail-update-url="@Url.Action("PnlDetailRecord", "Dashboard")"
@@ -63,6 +65,7 @@
         <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="licenciamiento">Licenciamiento</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="utility">Utilidad</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
     </section>
 
@@ -1336,6 +1339,64 @@
                 </div>
                 <div class="lic-cost-grid" id="licenciamientoCostCards"></div>
             </section>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="utility" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static utility-dashboard-toolbar">
+            <div class="dashboard-toolbar__summary">
+                <span class="dashboard-toolbar__summary-label">Periodo activo</span>
+                <strong id="utilityPeriodLabel">Ene 2025 - hoy</strong>
+                <span id="utilityDateRangeLabel">-</span>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="utilityRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="utilityStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="utility-dashboard">
+            <div class="utility-dashboard__summary" id="utilitySummaryCards"></div>
+
+            <section class="utility-dashboard__charts" aria-label="Utilidad real Cloud">
+                <article class="utility-chart-card" id="utilityMonthlyChart"></article>
+                <article class="utility-chart-card" id="utilityPrepaidChart"></article>
+            </section>
+
+            <article class="dashboard-panel dashboard-panel--full utility-unresolved-panel">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Calidad de datos</div>
+                        <h2 class="dashboard-panel__title">Filas por asignar</h2>
+                        <p class="dashboard-panel__description">Filas que no entraron de forma limpia al bucket Monthly o Prepaid, o que necesitan costo en Precios Cloud.</p>
+                    </div>
+                </div>
+                <div class="dashboard-table-toolbar">
+                    <div class="dashboard-table-meta" id="utilityUnresolvedResultsCount">Mostrando 0 filas</div>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table utility-unresolved-table">
+                        <thead>
+                            <tr>
+                                <th>Fuente</th>
+                                <th>Referencia</th>
+                                <th>Cliente / producto</th>
+                                <th>Fecha</th>
+                                <th>Clasificacion actual</th>
+                                <th>Motivo</th>
+                                <th class="text-end">Valor</th>
+                                <th>Asignar</th>
+                            </tr>
+                        </thead>
+                        <tbody id="utilityUnresolvedBody">
+                            <tr>
+                                <td colspan="8" class="dashboard-table__empty">Cargando filas por asignar...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
         </section>
     </div>
 
