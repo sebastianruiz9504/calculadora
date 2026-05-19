@@ -895,16 +895,14 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Taxes([FromQuery] int? year, [FromQuery] string? period, [FromQuery] int? value, CancellationToken ct)
+    public async Task<IActionResult> Taxes([FromQuery] TaxesDashboardRequestDto request, CancellationToken ct)
     {
         try
         {
             var today = ResolveBogotaToday();
-            var dashboard = await _dataverse.GetTaxesDashboardAsync(
-                year ?? today.Year,
-                BillingPeriodKindExtensions.ParseOrDefault(period),
-                value,
-                ct);
+            request ??= new TaxesDashboardRequestDto();
+            request.Year ??= today.Year;
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(request, ct);
 
             return Json(dashboard);
         }
@@ -920,16 +918,14 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> TaxesRetentionsExport([FromQuery] int? year, [FromQuery] string? period, [FromQuery] int? value, CancellationToken ct)
+    public async Task<IActionResult> TaxesRetentionsExport([FromQuery] TaxesDashboardRequestDto request, CancellationToken ct)
     {
         try
         {
             var today = ResolveBogotaToday();
-            var dashboard = await _dataverse.GetTaxesDashboardAsync(
-                year ?? today.Year,
-                BillingPeriodKindExtensions.ParseOrDefault(period),
-                value,
-                ct);
+            request ??= new TaxesDashboardRequestDto();
+            request.Year ??= today.Year;
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(request, ct);
 
             var rows = dashboard.ReteFuente.RetentionDetails;
             using var workbook = new XLWorkbook();

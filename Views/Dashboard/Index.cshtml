@@ -784,105 +784,27 @@
     <div class="dashboard-tab-panel" data-dashboard-panel="taxes" hidden>
         <div id="taxesStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
 
-        <section class="dashboard-grid">
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Impuesto de Retefuente mensual</h2>
-                        <p class="dashboard-panel__description" id="taxesReteFuenteDescription"></p>
-                    </div>
-                    <div class="dashboard-panel__actions">
-                        <button type="button" class="btn btn-outline-primary" id="taxesRetentionExportBtn">Descargar Excel</button>
-                    </div>
+        <section class="dashboard-tax-section">
+            <div class="dashboard-section-heading">
+                <div>
+                    <div class="dashboard-panel__kicker">Impuestos recurrentes</div>
+                    <h2 class="dashboard-panel__title">Cortes fiscales operativos</h2>
                 </div>
-                <div class="dashboard-metric-grid" id="taxesReteFuenteContainer"></div>
-                <div class="dashboard-tax-calculation-grid" id="taxesReteFuenteCalculationContainer"></div>
-                <div class="dashboard-tax-verticals">
-                    <div class="dashboard-tax-verticals__header">
-                        <span>Por vertical</span>
-                        <strong>Total a pagar = autofuente + retefuente en gastos</strong>
-                    </div>
-                    <div class="dashboard-tax-vertical-grid" id="taxesReteFuenteVerticalContainer"></div>
-                </div>
-                <div class="dashboard-table-meta">
-                    <span id="taxesExpenseResultsCount">Mostrando 0 registros</span>
-                </div>
-                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
-                    <table class="table dashboard-table">
-                        <thead>
-                            <tr>
-                                <th>Fecha pago</th>
-                                <th class="text-end">Valor pago</th>
-                                <th class="text-end">Retefuente</th>
-                                <th>Tipo persona</th>
-                                <th>Receptor</th>
-                                <th>NIT receptor</th>
-                                <th class="text-end">Cloud</th>
-                                <th class="text-end">Copiers</th>
-                            </tr>
-                        </thead>
-                        <tbody id="taxesExpenseBody"></tbody>
-                    </table>
-                </div>
-            </article>
+                <button type="button" class="btn btn-outline-primary" id="taxesRetentionExportBtn">Descargar retefuente</button>
+            </div>
+            <div class="dashboard-tax-card-grid" id="taxesRecurringCards"></div>
+            <article class="dashboard-tax-detail-panel" id="taxesRecurringDetail"></article>
+        </section>
 
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Impuesto Rete ICA bimensual</h2>
-                        <p class="dashboard-panel__description" id="taxesReteIcaDescription"></p>
-                    </div>
+        <section class="dashboard-tax-section">
+            <div class="dashboard-section-heading">
+                <div>
+                    <div class="dashboard-panel__kicker">Otros impuestos</div>
+                    <h2 class="dashboard-panel__title">Declaraci&oacute;n anual</h2>
                 </div>
-                <div class="dashboard-metric-grid" id="taxesReteIcaContainer"></div>
-                <div class="dashboard-tax-calculation-grid" id="taxesReteIcaCalculationContainer"></div>
-                <div class="dashboard-tax-verticals">
-                    <div class="dashboard-tax-verticals__header">
-                        <span>Por vertical</span>
-                        <strong>Total facturado antes de IVA x 0,0069</strong>
-                    </div>
-                    <div class="dashboard-tax-vertical-grid" id="taxesReteIcaVerticalContainer"></div>
-                </div>
-            </article>
-
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Impuesto Declaraci&oacute;n de renta</h2>
-                        <p class="dashboard-panel__description" id="taxesIncomeTaxDescription"></p>
-                    </div>
-                </div>
-                <div class="dashboard-metric-grid" id="taxesIncomeTaxContainer"></div>
-                <div class="dashboard-tax-calculation-grid" id="taxesIncomeTaxCalculationContainer"></div>
-                <div class="dashboard-tax-verticals">
-                    <div class="dashboard-tax-verticals__header">
-                        <span>Por vertical</span>
-                        <strong>Retenciones hechas en pagos de clientes</strong>
-                    </div>
-                    <div class="dashboard-tax-vertical-grid" id="taxesIncomeTaxVerticalContainer"></div>
-                </div>
-            </article>
-
-            <article class="dashboard-panel dashboard-panel--full">
-                <div class="dashboard-panel__header">
-                    <div>
-                        <div class="dashboard-panel__kicker">Impuestos</div>
-                        <h2 class="dashboard-panel__title">Impuesto IVA cuatrimestral</h2>
-                        <p class="dashboard-panel__description" id="taxesReteIvaDescription"></p>
-                    </div>
-                </div>
-                <div class="dashboard-metric-grid" id="taxesReteIvaContainer"></div>
-                <div class="dashboard-tax-calculation-grid" id="taxesReteIvaCalculationContainer"></div>
-                <div class="dashboard-tax-verticals">
-                    <div class="dashboard-tax-verticals__header">
-                        <span>Por vertical</span>
-                        <strong>Total IVA - reteIVA a favor</strong>
-                    </div>
-                    <div class="dashboard-tax-vertical-grid" id="taxesReteIvaVerticalContainer"></div>
-                </div>
-            </article>
+            </div>
+            <div class="dashboard-tax-card-grid dashboard-tax-card-grid--single" id="taxesOtherCards"></div>
+            <article class="dashboard-tax-detail-panel" id="taxesOtherDetail"></article>
         </section>
     </div>
 

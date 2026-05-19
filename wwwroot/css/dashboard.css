@@ -857,6 +857,173 @@
     text-align: right;
 }
 
+.dashboard-tax-vertical-card--cloud {
+    border-color: rgba(15, 108, 189, .32);
+    box-shadow: inset 4px 0 0 var(--dashboard-brand);
+}
+
+.dashboard-tax-vertical-card--copiers {
+    border-color: rgba(196, 49, 75, .32);
+    box-shadow: inset 4px 0 0 var(--dashboard-danger);
+}
+
+.dashboard-tax-section {
+    display: grid;
+    gap: 16px;
+    padding: 22px;
+    border: 1px solid var(--dashboard-line);
+    border-radius: 28px;
+    background: var(--dashboard-panel);
+    box-shadow: var(--dashboard-shadow);
+}
+
+.dashboard-section-heading,
+.dashboard-tax-detail-panel__header,
+.dashboard-tax-filters {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.dashboard-tax-card-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.dashboard-tax-card-grid--single {
+    grid-template-columns: minmax(260px, 420px);
+}
+
+.dashboard-tax-card {
+    display: grid;
+    gap: 8px;
+    min-height: 230px;
+    padding: 18px;
+    border: 1px solid var(--dashboard-line);
+    border-radius: 18px;
+    background: linear-gradient(180deg, var(--dashboard-panel) 0%, var(--dashboard-panel-soft) 100%);
+    color: var(--dashboard-ink);
+    text-align: left;
+    box-shadow: none;
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.dashboard-tax-card:hover,
+.dashboard-tax-card.is-active {
+    border-color: rgba(15, 108, 189, .4);
+    box-shadow: 0 18px 34px rgba(15, 108, 189, .14);
+    transform: translateY(-1px);
+}
+
+.dashboard-tax-card.is-active {
+    box-shadow: 0 18px 34px rgba(15, 108, 189, .18), inset 0 0 0 1px rgba(15, 108, 189, .18);
+}
+
+.dashboard-tax-card__kicker,
+.dashboard-tax-card__total-label,
+.dashboard-tax-card__period,
+.dashboard-tax-card__vertical span {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.dashboard-tax-card__title {
+    color: var(--dashboard-ink);
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.dashboard-tax-card__value {
+    color: var(--dashboard-ink);
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-tax-card__period {
+    min-height: 32px;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.35;
+}
+
+.dashboard-tax-card__verticals {
+    display: grid;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.dashboard-tax-card__vertical {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: rgba(15, 108, 189, .08);
+}
+
+.dashboard-tax-card__vertical strong {
+    color: var(--dashboard-ink);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.dashboard-tax-card__vertical--cloud {
+    border-left: 4px solid var(--dashboard-brand);
+}
+
+.dashboard-tax-card__vertical--copiers {
+    border-left: 4px solid var(--dashboard-danger);
+    background: rgba(196, 49, 75, .08);
+}
+
+.dashboard-tax-detail-panel {
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid #d7e4f2;
+    border-radius: 18px;
+    background: var(--dashboard-panel-soft);
+}
+
+.dashboard-tax-detail-panel__header h3 {
+    margin: 0;
+    color: var(--dashboard-ink);
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.dashboard-tax-detail-panel__header p {
+    max-width: 760px;
+    margin: 6px 0 0;
+    color: var(--dashboard-muted);
+    line-height: 1.5;
+}
+
+.dashboard-tax-detail-panel__header > strong {
+    color: var(--dashboard-ink);
+    font-size: 26px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.dashboard-tax-filters {
+    justify-content: flex-start;
+    padding: 14px;
+    border: 1px solid #d7e4f2;
+    border-radius: 14px;
+    background: var(--dashboard-panel);
+}
+
 .dashboard-trend-card,
 .dashboard-retention-card {
     display: grid;

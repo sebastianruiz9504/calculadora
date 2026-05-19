@@ -60,7 +60,7 @@ public interface IDataverseService
     Task<BillingInvoiceSaveResultDto> SaveBillingInvoiceAsync(BillingInvoiceSaveRequestDto request, CancellationToken ct = default);
     Task<BillingInvoicesDeleteResultDto> DeleteBillingInvoicesAsync(BillingInvoicesDeleteRequestDto request, CancellationToken ct = default);
     Task<BillingInvoicesContractTypeUpdateResultDto> UpdateBillingInvoicesContractTypeAsync(BillingInvoicesContractTypeUpdateRequestDto request, CancellationToken ct = default);
-    Task<TaxesDashboardDto> GetTaxesDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
+    Task<TaxesDashboardDto> GetTaxesDashboardAsync(TaxesDashboardRequestDto request, CancellationToken ct = default);
     Task<BusinessDashboardDto> GetBusinessDashboardAsync(CancellationToken ct = default);
     Task<PnlDashboardDto> GetPnlDashboardAsync(int year, int? monthCutoff = null, string? vertical = null, CancellationToken ct = default);
     Task<PnlCellDetailDto> GetPnlCellDetailAsync(int year, int? monthCutoff, string? vertical, string rowKey, int? cellMonth = null, CancellationToken ct = default);

@@ -640,6 +640,20 @@ public sealed class TaxesDashboardDto
     public IReadOnlyList<TaxExpenseDetailDto> ExpenseDetails { get; set; } = Array.Empty<TaxExpenseDetailDto>();
 }
 
+public sealed class TaxesDashboardRequestDto
+{
+    public int? Year { get; set; }
+    public string? Period { get; set; }
+    public int? Value { get; set; }
+    public int? ReteFuenteYear { get; set; }
+    public int? ReteFuenteMonth { get; set; }
+    public int? ReteIcaYear { get; set; }
+    public int? ReteIcaPeriod { get; set; }
+    public int? IvaYear { get; set; }
+    public int? IvaPeriod { get; set; }
+    public int? IncomeTaxYear { get; set; }
+}
+
 public sealed class TaxesSectionDto
 {
     public string Key { get; set; } = "";
@@ -647,10 +661,29 @@ public sealed class TaxesSectionDto
     public string Description { get; set; } = "";
     public string PeriodLabel { get; set; } = "";
     public string DateRangeLabel { get; set; } = "";
+    public string TotalLabel { get; set; } = "";
+    public decimal TotalValue { get; set; }
+    public TaxesSectionFilterDto Filter { get; set; } = new();
     public IReadOnlyList<BillingKpiDto> Metrics { get; set; } = Array.Empty<BillingKpiDto>();
     public IReadOnlyList<TaxCalculationDetailDto> CalculationDetails { get; set; } = Array.Empty<TaxCalculationDetailDto>();
     public IReadOnlyList<TaxVerticalSummaryDto> VerticalSummaries { get; set; } = Array.Empty<TaxVerticalSummaryDto>();
     public IReadOnlyList<TaxExpenseDetailDto> RetentionDetails { get; set; } = Array.Empty<TaxExpenseDetailDto>();
+}
+
+public sealed class TaxesSectionFilterDto
+{
+    public string Kind { get; set; } = "";
+    public int Year { get; set; }
+    public int Value { get; set; }
+    public string ValueLabel { get; set; } = "";
+    public IReadOnlyList<TaxesFilterOptionDto> YearOptions { get; set; } = Array.Empty<TaxesFilterOptionDto>();
+    public IReadOnlyList<TaxesFilterOptionDto> ValueOptions { get; set; } = Array.Empty<TaxesFilterOptionDto>();
+}
+
+public sealed class TaxesFilterOptionDto
+{
+    public int Value { get; set; }
+    public string Label { get; set; } = "";
 }
 
 public sealed class TaxCalculationDetailDto

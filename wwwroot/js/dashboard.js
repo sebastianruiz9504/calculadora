@@ -226,25 +226,11 @@
     const copiersEquipmentSaveBtn = document.getElementById("copiersEquipmentSaveBtn");
     const copiersEquipmentMaintenanceBody = document.getElementById("copiersEquipmentMaintenanceBody");
 
-    const taxesReteFuenteDescription = document.getElementById("taxesReteFuenteDescription");
-    const taxesReteIvaDescription = document.getElementById("taxesReteIvaDescription");
-    const taxesReteIcaDescription = document.getElementById("taxesReteIcaDescription");
-    const taxesIncomeTaxDescription = document.getElementById("taxesIncomeTaxDescription");
-    const taxesReteFuenteContainer = document.getElementById("taxesReteFuenteContainer");
-    const taxesReteIvaContainer = document.getElementById("taxesReteIvaContainer");
-    const taxesReteIcaContainer = document.getElementById("taxesReteIcaContainer");
-    const taxesIncomeTaxContainer = document.getElementById("taxesIncomeTaxContainer");
-    const taxesReteFuenteCalculationContainer = document.getElementById("taxesReteFuenteCalculationContainer");
-    const taxesReteIvaCalculationContainer = document.getElementById("taxesReteIvaCalculationContainer");
-    const taxesReteIcaCalculationContainer = document.getElementById("taxesReteIcaCalculationContainer");
-    const taxesIncomeTaxCalculationContainer = document.getElementById("taxesIncomeTaxCalculationContainer");
-    const taxesReteFuenteVerticalContainer = document.getElementById("taxesReteFuenteVerticalContainer");
-    const taxesReteIvaVerticalContainer = document.getElementById("taxesReteIvaVerticalContainer");
-    const taxesReteIcaVerticalContainer = document.getElementById("taxesReteIcaVerticalContainer");
-    const taxesIncomeTaxVerticalContainer = document.getElementById("taxesIncomeTaxVerticalContainer");
-    const taxesExpenseBody = document.getElementById("taxesExpenseBody");
-    const taxesExpenseResultsCount = document.getElementById("taxesExpenseResultsCount");
     const taxesRetentionExportButton = document.getElementById("taxesRetentionExportBtn");
+    const taxesRecurringCards = document.getElementById("taxesRecurringCards");
+    const taxesOtherCards = document.getElementById("taxesOtherCards");
+    const taxesRecurringDetail = document.getElementById("taxesRecurringDetail");
+    const taxesOtherDetail = document.getElementById("taxesOtherDetail");
 
     const portfolioAsOfLabel = document.getElementById("portfolioAsOfLabel");
     const portfolioFocusLabel = document.getElementById("portfolioFocusLabel");
@@ -319,6 +305,9 @@
     const currentYear = Number(app.dataset.initialYear || new Date().getFullYear());
     const currentPeriod = app.dataset.initialPeriod || "month";
     const currentValue = Number(app.dataset.initialValue || 1);
+    const currentMonth = new Date().getMonth() + 1;
+    const currentBimonthly = Math.floor((currentMonth - 1) / 2) + 1;
+    const currentFourMonthly = Math.floor((currentMonth - 1) / 4) + 1;
     const licenciamientoDefaultYear = Math.max(currentYear - 1, 2000);
     const licenciamientoDefaultMonth = 12;
     const taxesRetentionsExportUrl = app.dataset.taxesRetentionsExportUrl || "";
@@ -388,6 +377,17 @@
         copiersCountersDashboard: null,
         copiersCountersSignature: "",
         taxesDashboard: null,
+        taxesActiveRecurringKey: "retefuente",
+        taxesActiveOtherKey: "income-tax",
+        taxesFilters: {
+            reteFuenteYear: currentYear,
+            reteFuenteMonth: currentMonth,
+            reteIcaYear: Math.max(currentYear, 2026),
+            reteIcaPeriod: currentBimonthly,
+            ivaYear: Math.max(currentYear, 2026),
+            ivaPeriod: currentFourMonthly,
+            incomeTaxYear: Math.max(currentYear, 2025)
+        },
         portfolioDashboard: null,
         businessDashboard: null,
         pnlDashboard: null,
@@ -481,6 +481,19 @@
 
     function getPeriodSignature() {
         return `${state.year}|${state.period}|${state.value}`;
+    }
+
+    function getTaxesSignature() {
+        const filters = state.taxesFilters || {};
+        return [
+            filters.reteFuenteYear,
+            filters.reteFuenteMonth,
+            filters.reteIcaYear,
+            filters.reteIcaPeriod,
+            filters.ivaYear,
+            filters.ivaPeriod,
+            filters.incomeTaxYear
+        ].join("|");
     }
 
     function getPnlSignature() {
@@ -2738,9 +2751,13 @@
 
     function buildTaxesUrl() {
         const params = new URLSearchParams({
-            year: String(state.year),
-            period: state.period,
-            value: String(state.value)
+            reteFuenteYear: String(state.taxesFilters.reteFuenteYear),
+            reteFuenteMonth: String(state.taxesFilters.reteFuenteMonth),
+            reteIcaYear: String(state.taxesFilters.reteIcaYear),
+            reteIcaPeriod: String(state.taxesFilters.reteIcaPeriod),
+            ivaYear: String(state.taxesFilters.ivaYear),
+            ivaPeriod: String(state.taxesFilters.ivaPeriod),
+            incomeTaxYear: String(state.taxesFilters.incomeTaxYear)
         });
 
         return `${app.dataset.taxesUrl}?${params.toString()}`;
@@ -2938,9 +2955,8 @@
 
     function buildTaxesRetentionsExportUrl() {
         const params = new URLSearchParams({
-            year: String(state.year),
-            period: state.period,
-            value: String(state.value)
+            reteFuenteYear: String(state.taxesFilters.reteFuenteYear),
+            reteFuenteMonth: String(state.taxesFilters.reteFuenteMonth)
         });
 
         return `${taxesRetentionsExportUrl}?${params.toString()}`;
@@ -4498,21 +4514,6 @@
         }).join("");
     }
 
-    function renderTaxesSection(descriptionElement, container, calculationContainer, verticalContainer, section, compareYear) {
-        if (descriptionElement) {
-            const periodText = section?.dateRangeLabel
-                ? `${section.periodLabel || "Periodo"}: ${section.dateRangeLabel}`
-                : "";
-            descriptionElement.textContent = [section?.description || "", periodText]
-                .filter(Boolean)
-                .join(" ");
-        }
-
-        renderComparativeKpis(container, Array.isArray(section?.metrics) ? section.metrics : [], compareYear);
-        renderTaxCalculationDetails(calculationContainer, Array.isArray(section?.calculationDetails) ? section.calculationDetails : []);
-        renderTaxVerticalSummaries(verticalContainer, Array.isArray(section?.verticalSummaries) ? section.verticalSummaries : [], compareYear);
-    }
-
     function renderTaxCalculationDetails(container, details) {
         if (!container) {
             return;
@@ -4587,7 +4588,7 @@
                     : "";
 
             return `
-                <article class="dashboard-tax-vertical-card dashboard-tax-vertical-card--${escapeHtml(item.tone || "neutral")}">
+                <article class="dashboard-tax-vertical-card dashboard-tax-vertical-card--${escapeHtml(item.tone || "neutral")} dashboard-tax-vertical-card--${escapeHtml(item.key || "vertical")}">
                     <div class="dashboard-tax-vertical-card__header">
                         <span class="dashboard-tax-vertical-card__label">${escapeHtml(item.label)}</span>
                         ${item.showComparison === false ? "" : `<span class="dashboard-growth ${growthClass}">${escapeHtml(formatGrowth(item.growthPercent))}</span>`}
@@ -4613,45 +4614,264 @@
         }).join("");
     }
 
-    function renderTaxesExpenseTable(dashboard) {
-        const rows = Array.isArray(dashboard?.reteFuente?.retentionDetails)
-            ? dashboard.reteFuente.retentionDetails
-            : Array.isArray(dashboard?.expenseDetails) ? dashboard.expenseDetails : [];
-        if (taxesExpenseResultsCount) {
-            taxesExpenseResultsCount.textContent = `Mostrando ${numberFormatter.format(rows.length)} registros`;
+    function getTaxesRecurringSections(dashboard) {
+        return [dashboard?.reteFuente, dashboard?.reteIca, dashboard?.reteIva]
+            .filter(section => section && section.key);
+    }
+
+    function getTaxesOtherSections(dashboard) {
+        return [dashboard?.incomeTax]
+            .filter(section => section && section.key);
+    }
+
+    function getTaxesFilterMap(sectionKey) {
+        const map = {
+            retefuente: { year: "reteFuenteYear", value: "reteFuenteMonth" },
+            reteica: { year: "reteIcaYear", value: "reteIcaPeriod" },
+            reteiva: { year: "ivaYear", value: "ivaPeriod" },
+            "income-tax": { year: "incomeTaxYear" }
+        };
+
+        return map[sectionKey] || null;
+    }
+
+    function syncTaxesFiltersFromDashboard(dashboard) {
+        [...getTaxesRecurringSections(dashboard), ...getTaxesOtherSections(dashboard)].forEach(section => {
+            const mapping = getTaxesFilterMap(section.key);
+            const filter = section?.filter || {};
+            if (!mapping || !filter) {
+                return;
+            }
+
+            if (mapping.year && Number.isFinite(Number(filter.year))) {
+                state.taxesFilters[mapping.year] = Number(filter.year);
+            }
+
+            if (mapping.value && Number.isFinite(Number(filter.value))) {
+                state.taxesFilters[mapping.value] = Number(filter.value);
+            }
+        });
+    }
+
+    function renderTaxesDashboard(dashboard) {
+        const recurringSections = getTaxesRecurringSections(dashboard);
+        const otherSections = getTaxesOtherSections(dashboard);
+
+        if (!recurringSections.some(section => section.key === state.taxesActiveRecurringKey)) {
+            state.taxesActiveRecurringKey = recurringSections[0]?.key || "retefuente";
         }
 
-        if (!taxesExpenseBody) {
+        if (!otherSections.some(section => section.key === state.taxesActiveOtherKey)) {
+            state.taxesActiveOtherKey = otherSections[0]?.key || "income-tax";
+        }
+
+        renderTaxesCards(taxesRecurringCards, recurringSections, state.taxesActiveRecurringKey, "recurring");
+        renderTaxesCards(taxesOtherCards, otherSections, state.taxesActiveOtherKey, "other");
+        renderTaxesDetail(taxesRecurringDetail, recurringSections.find(section => section.key === state.taxesActiveRecurringKey), dashboard);
+        renderTaxesDetail(taxesOtherDetail, otherSections.find(section => section.key === state.taxesActiveOtherKey), dashboard);
+    }
+
+    function renderTaxesCards(container, sections, activeKey, groupKey) {
+        if (!container) {
             return;
         }
 
+        container.innerHTML = sections.length
+            ? sections.map(section => renderTaxesCard(section, section.key === activeKey, groupKey)).join("")
+            : '<div class="dashboard-table__empty">No hay tarjetas de impuestos para mostrar.</div>';
+    }
+
+    function renderTaxesCard(section, isActive, groupKey) {
+        const cloud = getTaxesVerticalValue(section, "cloud");
+        const copiers = getTaxesVerticalValue(section, "copiers");
+        const total = Number(section?.totalValue || 0);
+        const activeClass = isActive ? " is-active" : "";
+        const period = [section?.periodLabel, section?.dateRangeLabel].filter(Boolean).join(" | ");
+
+        return `
+            <button type="button"
+                    class="dashboard-tax-card${activeClass}"
+                    data-taxes-card="${escapeHtml(section.key || "")}"
+                    data-taxes-card-group="${escapeHtml(groupKey || "")}"
+                    aria-pressed="${isActive ? "true" : "false"}">
+                <span class="dashboard-tax-card__kicker">${escapeHtml(section?.filter?.valueLabel || section?.periodLabel || "Periodo")}</span>
+                <strong class="dashboard-tax-card__title">${escapeHtml(section?.label || "Impuesto")}</strong>
+                <span class="dashboard-tax-card__total-label">${escapeHtml(section?.totalLabel || "Total")}</span>
+                <span class="dashboard-tax-card__value">${escapeHtml(formatMetric(total, "currency"))}</span>
+                <span class="dashboard-tax-card__period">${escapeHtml(period || "-")}</span>
+                <span class="dashboard-tax-card__verticals">
+                    <span class="dashboard-tax-card__vertical dashboard-tax-card__vertical--cloud">
+                        <span>Cloud</span>
+                        <strong>${escapeHtml(formatMetric(cloud, "currency"))}</strong>
+                    </span>
+                    <span class="dashboard-tax-card__vertical dashboard-tax-card__vertical--copiers">
+                        <span>Copiers</span>
+                        <strong>${escapeHtml(formatMetric(copiers, "currency"))}</strong>
+                    </span>
+                </span>
+            </button>
+        `;
+    }
+
+    function getTaxesVerticalValue(section, verticalKey) {
+        const summaries = Array.isArray(section?.verticalSummaries) ? section.verticalSummaries : [];
+        return Number(summaries.find(item => item.key === verticalKey)?.primaryValue || 0);
+    }
+
+    function renderTaxesDetail(container, section, dashboard) {
+        if (!container) {
+            return;
+        }
+
+        if (!section) {
+            container.innerHTML = '<div class="dashboard-table__empty">Selecciona una tarjeta para ver el detalle.</div>';
+            return;
+        }
+
+        const filterMarkup = renderTaxesFilterControls(section);
+        const retentionTable = section.key === "retefuente"
+            ? renderTaxesRetentionDetailTable(section)
+            : "";
+
+        container.innerHTML = `
+            <div class="dashboard-tax-detail-panel__header">
+                <div>
+                    <div class="dashboard-panel__kicker">${escapeHtml(section.periodLabel || "Periodo")}</div>
+                    <h3>${escapeHtml(section.label || "Impuesto")}</h3>
+                    <p>${escapeHtml(section.description || "")}</p>
+                </div>
+                <strong>${escapeHtml(formatMetric(section.totalValue, "currency"))}</strong>
+            </div>
+            ${filterMarkup}
+            <div class="dashboard-metric-grid" data-taxes-detail-metrics></div>
+            <div class="dashboard-tax-calculation-grid" data-taxes-detail-calculation></div>
+            <div class="dashboard-tax-verticals">
+                <div class="dashboard-tax-verticals__header">
+                    <span>Por vertical</span>
+                    <strong>${escapeHtml(section.totalLabel || "Total")}</strong>
+                </div>
+                <div class="dashboard-tax-vertical-grid" data-taxes-detail-verticals></div>
+            </div>
+            ${retentionTable}
+        `;
+
+        renderComparativeKpis(
+            container.querySelector("[data-taxes-detail-metrics]"),
+            Array.isArray(section.metrics) ? section.metrics : [],
+            dashboard?.compareYear);
+        renderTaxCalculationDetails(
+            container.querySelector("[data-taxes-detail-calculation]"),
+            Array.isArray(section.calculationDetails) ? section.calculationDetails : []);
+        renderTaxVerticalSummaries(
+            container.querySelector("[data-taxes-detail-verticals]"),
+            Array.isArray(section.verticalSummaries) ? section.verticalSummaries : [],
+            dashboard?.compareYear);
+    }
+
+    function renderTaxesFilterControls(section) {
+        const filter = section?.filter || {};
+        const yearOptions = Array.isArray(filter.yearOptions) ? filter.yearOptions : [];
+        const valueOptions = Array.isArray(filter.valueOptions) ? filter.valueOptions : [];
+        const valueControl = valueOptions.length
+            ? `
+                <label class="dashboard-filter dashboard-filter--compact">
+                    <span class="dashboard-filter__label">Periodo</span>
+                    <select class="form-select dashboard-select" data-taxes-filter="value" data-taxes-section="${escapeHtml(section.key || "")}">
+                        ${valueOptions.map(option => `<option value="${escapeHtml(String(option.value))}" ${Number(option.value) === Number(filter.value) ? "selected" : ""}>${escapeHtml(option.label || String(option.value))}</option>`).join("")}
+                    </select>
+                </label>
+            `
+            : "";
+
+        return `
+            <div class="dashboard-tax-filters">
+                <label class="dashboard-filter dashboard-filter--compact">
+                    <span class="dashboard-filter__label">Año</span>
+                    <select class="form-select dashboard-select" data-taxes-filter="year" data-taxes-section="${escapeHtml(section.key || "")}">
+                        ${yearOptions.map(option => `<option value="${escapeHtml(String(option.value))}" ${Number(option.value) === Number(filter.year) ? "selected" : ""}>${escapeHtml(option.label || String(option.value))}</option>`).join("")}
+                    </select>
+                </label>
+                ${valueControl}
+            </div>
+        `;
+    }
+
+    function renderTaxesRetentionDetailTable(section) {
+        const rows = Array.isArray(section?.retentionDetails) ? section.retentionDetails : [];
         const totalPayment = rows.reduce((sum, row) => sum + Number(row.paymentValue || 0), 0);
         const totalReteFuente = rows.reduce((sum, row) => sum + Number(row.reteFuenteValue || 0), 0);
         const totalCloud = rows.reduce((sum, row) => sum + Number(row.cloudValue || 0), 0);
         const totalCopiers = rows.reduce((sum, row) => sum + Number(row.copiersValue || 0), 0);
 
-        taxesExpenseBody.innerHTML = rows.length
-            ? `${rows.map(row => `
-                <tr>
-                    <td>${escapeHtml(row.paymentDateDisplay)}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.reteFuenteValue || 0)))}</td>
-                    <td>${escapeHtml(row.personTypeLabel || "Sin clasificar")}</td>
-                    <td>${escapeHtml(row.recipientName)}</td>
-                    <td>${escapeHtml(row.recipientNit)}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.cloudValue || 0)))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.copiersValue || 0)))}</td>
-                </tr>
-            `).join("")}
-                <tr class="dashboard-table__total">
-                    <td>Total</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalPayment))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalReteFuente))}</td>
-                    <td colspan="3">${escapeHtml(numberFormatter.format(rows.length))} registros</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalCloud))}</td>
-                    <td class="text-end">${escapeHtml(currencyFormatter.format(totalCopiers))}</td>
-                </tr>`
-            : '<tr><td colspan="8" class="dashboard-table__empty">No hay retenciones de retefuente para este mes.</td></tr>';
+        return `
+            <div class="dashboard-table-meta">
+                <span>${escapeHtml(`Mostrando ${numberFormatter.format(rows.length)} registros de retefuente en gastos`)}</span>
+            </div>
+            <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                <table class="table dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha pago</th>
+                            <th class="text-end">Valor pago</th>
+                            <th class="text-end">Retefuente</th>
+                            <th>Tipo persona</th>
+                            <th>Receptor</th>
+                            <th>NIT receptor</th>
+                            <th class="text-end">Cloud</th>
+                            <th class="text-end">Copiers</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.length ? rows.map(row => `
+                            <tr>
+                                <td>${escapeHtml(row.paymentDateDisplay || "")}</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.paymentValue || 0)))}</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.reteFuenteValue || 0)))}</td>
+                                <td>${escapeHtml(row.personTypeLabel || "Sin clasificar")}</td>
+                                <td>${escapeHtml(row.recipientName || "")}</td>
+                                <td>${escapeHtml(row.recipientNit || "")}</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.cloudValue || 0)))}</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(Number(row.copiersValue || 0)))}</td>
+                            </tr>
+                        `).join("") : '<tr><td colspan="8" class="dashboard-table__empty">No hay retenciones de retefuente para este mes.</td></tr>'}
+                        ${rows.length ? `
+                            <tr class="dashboard-table__total">
+                                <td>Total</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(totalPayment))}</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(totalReteFuente))}</td>
+                                <td colspan="3">${escapeHtml(numberFormatter.format(rows.length))} registros</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(totalCloud))}</td>
+                                <td class="text-end">${escapeHtml(currencyFormatter.format(totalCopiers))}</td>
+                            </tr>
+                        ` : ""}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function handleTaxesFilterChange(select) {
+        const sectionKey = select?.dataset?.taxesSection || "";
+        const filterKind = select?.dataset?.taxesFilter || "";
+        const mapping = getTaxesFilterMap(sectionKey);
+        if (!mapping) {
+            return;
+        }
+
+        const value = Number(select.value || 0);
+        if (!Number.isFinite(value) || value <= 0) {
+            return;
+        }
+
+        if (filterKind === "year" && mapping.year) {
+            state.taxesFilters[mapping.year] = value;
+        }
+
+        if (filterKind === "value" && mapping.value) {
+            state.taxesFilters[mapping.value] = value;
+        }
+
+        loadTaxes();
     }
 
     function buildFallbackCopiersGroups(rows) {
@@ -6793,8 +7013,9 @@
     }
 
     function updateTaxesContext(dashboard) {
+        syncTaxesFiltersFromDashboard(dashboard);
         state.taxesDashboard = dashboard;
-        state.taxesSignature = getPeriodSignature();
+        state.taxesSignature = getTaxesSignature();
         periodLabel && (periodLabel.textContent = dashboard?.periodLabel || "Sin periodo");
         dateRangeLabel && (dateRangeLabel.textContent = dashboard?.dateRangeLabel || "-");
 
@@ -6927,6 +7148,7 @@
                 || state.activeTab === "pnl"
                 || state.activeTab === "licenciamiento"
                 || state.activeTab === "utility"
+                || state.activeTab === "taxes"
                 || state.activeTab === "support-cloud";
         }
     }
@@ -7118,8 +7340,9 @@
         }
 
         if (tabKey === "taxes") {
-            if (state.taxesDashboard && state.taxesSignature === getPeriodSignature()) {
+            if (state.taxesDashboard && state.taxesSignature === getTaxesSignature()) {
                 updateHeroForTaxes(state.taxesDashboard);
+                renderTaxesDashboard(state.taxesDashboard);
             } else {
                 loadTaxes();
             }
@@ -7135,7 +7358,6 @@
 
     function loadActivePeriodTab() {
         if (state.activeTab === "taxes") {
-            loadTaxes();
             return;
         }
 
@@ -7388,11 +7610,7 @@
         try {
             const dashboard = await fetchJson(buildTaxesUrl());
             updateTaxesContext(dashboard);
-            renderTaxesSection(taxesReteFuenteDescription, taxesReteFuenteContainer, taxesReteFuenteCalculationContainer, taxesReteFuenteVerticalContainer, dashboard?.reteFuente, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIcaDescription, taxesReteIcaContainer, taxesReteIcaCalculationContainer, taxesReteIcaVerticalContainer, dashboard?.reteIca, dashboard?.compareYear);
-            renderTaxesSection(taxesIncomeTaxDescription, taxesIncomeTaxContainer, taxesIncomeTaxCalculationContainer, taxesIncomeTaxVerticalContainer, dashboard?.incomeTax, dashboard?.compareYear);
-            renderTaxesSection(taxesReteIvaDescription, taxesReteIvaContainer, taxesReteIvaCalculationContainer, taxesReteIvaVerticalContainer, dashboard?.reteIva, dashboard?.compareYear);
-            renderTaxesExpenseTable(dashboard);
+            renderTaxesDashboard(dashboard);
             setStatus(taxesStatusBanner, "", "");
         } catch (error) {
             setStatus(taxesStatusBanner, "error", error instanceof Error ? error.message : "No fue posible cargar el dashboard de impuestos.");
@@ -8066,6 +8284,31 @@
         }
 
         window.location.href = buildTaxesRetentionsExportUrl();
+    });
+    [taxesRecurringCards, taxesOtherCards].forEach(container => {
+        container?.addEventListener("click", event => {
+            const card = event.target.closest("[data-taxes-card]");
+            if (!card) {
+                return;
+            }
+
+            const group = card.dataset.taxesCardGroup || "recurring";
+            if (group === "other") {
+                state.taxesActiveOtherKey = card.dataset.taxesCard || "income-tax";
+            } else {
+                state.taxesActiveRecurringKey = card.dataset.taxesCard || "retefuente";
+            }
+
+            renderTaxesDashboard(state.taxesDashboard);
+        });
+    });
+    [taxesRecurringDetail, taxesOtherDetail].forEach(container => {
+        container?.addEventListener("change", event => {
+            const select = event.target.closest("[data-taxes-filter]");
+            if (select) {
+                handleTaxesFilterChange(select);
+            }
+        });
     });
     portfolioRefreshButton?.addEventListener("click", loadPortfolio);
     businessRefreshButton?.addEventListener("click", loadBusiness);

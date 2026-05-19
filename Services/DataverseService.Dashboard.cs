@@ -558,22 +558,48 @@ public sealed partial class DataverseService
     }
 
     public async Task<TaxesDashboardDto> GetTaxesDashboardAsync(
-        int year,
-        BillingPeriodKind periodKind,
-        int? periodValue = null,
+        TaxesDashboardRequestDto request,
         CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
         var today = GetBogotaToday();
-        var resolvedYear = year is < 2000 or > 2100 ? today.Year : year;
-        var compareYear = resolvedYear - 1;
-        var referenceMonth = ResolveTaxReferenceMonth(resolvedYear, periodKind, periodValue, today);
-        var reteFuentePeriod = BuildMonthPeriod(resolvedYear, compareYear, referenceMonth);
-        var reteIcaPeriod = BuildBimonthlyPeriod(resolvedYear, compareYear, ((referenceMonth - 1) / 2) + 1);
-        var incomeTaxPeriod = BuildYearPeriod(resolvedYear, compareYear);
-        var vatPeriod = BuildFourMonthlyPeriod(resolvedYear, compareYear, ((referenceMonth - 1) / 4) + 1);
+        request ??= new TaxesDashboardRequestDto();
+        var legacyPeriodKind = BillingPeriodKindExtensions.ParseOrDefault(request.Period);
+        var legacyYear = NormalizeTaxYear(request.Year, today.Year, 2000);
+        var legacyMonth = ResolveTaxReferenceMonth(legacyYear, legacyPeriodKind, request.Value, today);
+        var currentBimonthly = ((today.Month - 1) / 2) + 1;
+        var currentFourMonthly = ((today.Month - 1) / 4) + 1;
+
+        var reteFuenteYear = NormalizeTaxYear(request.ReteFuenteYear ?? request.Year, today.Year, 2000);
+        var reteFuenteMonth = Math.Clamp(request.ReteFuenteMonth ?? (legacyPeriodKind == BillingPeriodKind.Month ? request.Value ?? legacyMonth : today.Month), 1, 12);
+        var reteIcaYear = NormalizeTaxYear(request.ReteIcaYear ?? (legacyYear >= 2026 ? legacyYear : today.Year), Math.Max(today.Year, 2026), 2026);
+        var reteIcaValue = Math.Clamp(request.ReteIcaPeriod ?? (legacyPeriodKind == BillingPeriodKind.Bimonthly ? request.Value ?? currentBimonthly : currentBimonthly), 1, 6);
+        var ivaYear = NormalizeTaxYear(request.IvaYear ?? (legacyYear >= 2026 ? legacyYear : today.Year), Math.Max(today.Year, 2026), 2026);
+        var ivaValue = Math.Clamp(request.IvaPeriod ?? currentFourMonthly, 1, 3);
+        var incomeTaxYear = NormalizeTaxYear(request.IncomeTaxYear ?? request.Year, today.Year, 2025);
+
+        var reteFuentePeriod = BuildMonthPeriod(reteFuenteYear, reteFuenteYear - 1, reteFuenteMonth);
+        var reteIcaPeriod = BuildBimonthlyPeriod(reteIcaYear, reteIcaYear - 1, reteIcaValue);
+        var incomeTaxPeriod = BuildYearPeriod(incomeTaxYear, incomeTaxYear - 1);
+        var vatPeriod = BuildFourMonthlyPeriod(ivaYear, ivaYear - 1, ivaValue);
+        var queryStart = new[]
+        {
+            new DateOnly(2025, 1, 1),
+            reteFuentePeriod.CurrentStartInclusive,
+            reteIcaPeriod.CurrentStartInclusive,
+            incomeTaxPeriod.CurrentStartInclusive,
+            vatPeriod.CurrentStartInclusive
+        }.Min();
+        var queryEnd = new[]
+        {
+            new DateOnly(Math.Max(Math.Max(today.Year, incomeTaxYear), Math.Max(reteIcaYear, ivaYear)) + 2, 1, 1),
+            reteFuentePeriod.CurrentEndExclusive,
+            reteIcaPeriod.CurrentEndExclusive,
+            incomeTaxPeriod.CurrentEndExclusive,
+            vatPeriod.CurrentEndExclusive
+        }.Max();
         var metadata = await ResolveRhEntityMetadataAsync(
             _dashboardBillingTableLogicalName,
             _dashboardBillingTableSetName,
@@ -584,8 +610,8 @@ public sealed partial class DataverseService
 
         var emissionRecords = await GetBillingRecordsAsync(
             metadata,
-            incomeTaxPeriod.CurrentStartInclusive,
-            incomeTaxPeriod.CurrentEndExclusive,
+            queryStart,
+            queryEnd,
             _dashboardBillingEmissionDateField,
             _dashboardBillingEmissionDateFieldKind,
             httpContext.User,
@@ -593,32 +619,38 @@ public sealed partial class DataverseService
 
         var paymentRecords = await GetBillingRecordsAsync(
             metadata,
-            incomeTaxPeriod.CurrentStartInclusive,
-            incomeTaxPeriod.CurrentEndExclusive,
+            queryStart,
+            queryEnd,
             _dashboardBillingPaymentDateField,
             _dashboardBillingPaymentDateFieldKind,
             httpContext.User,
             ct);
 
         var expenseRecords = await GetTaxExpenseRowsAsync(
-            incomeTaxPeriod.CurrentStartInclusive,
-            incomeTaxPeriod.CurrentEndExclusive,
+            queryStart,
+            queryEnd,
             httpContext.User,
             ct);
 
         var reteFuenteEmission = FilterBillingEmissionByPeriod(emissionRecords, reteFuentePeriod);
         var reteFuenteExpenses = FilterTaxExpensesByPeriod(expenseRecords, reteFuentePeriod);
         var reteIcaEmission = FilterBillingEmissionByPeriod(emissionRecords, reteIcaPeriod);
+        var reteIcaPaymentRows = FilterBillingPaymentByPeriod(paymentRecords, reteIcaPeriod)
+            .Where(static row => row.ReteIcaValue > 0m)
+            .ToList();
         var incomeTaxPayments = FilterBillingPaymentByPeriod(paymentRecords, incomeTaxPeriod);
         var vatEmission = FilterBillingEmissionByPeriod(emissionRecords, vatPeriod);
         var vatPayments = FilterBillingPaymentByPeriod(paymentRecords, vatPeriod);
+        var vatExpenses = FilterTaxExpensesByPeriod(expenseRecords, vatPeriod);
 
         var hasData = reteFuenteEmission.Count > 0
             || reteFuenteExpenses.Count > 0
             || reteIcaEmission.Count > 0
+            || reteIcaPaymentRows.Count > 0
             || incomeTaxPayments.Count > 0
             || vatEmission.Count > 0
-            || vatPayments.Count > 0;
+            || vatPayments.Count > 0
+            || vatExpenses.Count > 0;
 
         var reteFuenteDetails = BuildTaxExpenseDetails(reteFuenteExpenses);
         var reteFuenteLegalRows = reteFuenteExpenses
@@ -646,7 +678,11 @@ public sealed partial class DataverseService
         var reteIcaBase = SumCurrency(reteIcaEmission, static row => CalculateInvoiceTaxBase(row));
         var reteIcaInvoiceTotal = SumCurrency(reteIcaEmission, static row => row.TotalInvoice);
         var reteIcaTotal = CalculateIcaGenerated(reteIcaEmission);
-        var reteIcaVerticals = SumBillingCurrencyByVertical(reteIcaEmission, static row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
+        var reteIcaFavor = SumCurrency(reteIcaPaymentRows, static row => row.ReteIcaValue);
+        var reteIcaPayable = RoundCurrency(reteIcaTotal - reteIcaFavor);
+        var reteIcaGeneratedVerticals = SumBillingCurrencyByVertical(reteIcaEmission, static row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
+        var reteIcaFavorVerticals = SumBillingCurrencyByVertical(reteIcaPaymentRows, static row => row.ReteIcaValue);
+        var reteIcaPayableVerticals = SubtractTaxVerticalAmounts(reteIcaGeneratedVerticals, reteIcaFavorVerticals);
 
         var incomeTaxRetentionRows = incomeTaxPayments
             .Where(static row => row.RteFteValue > 0m)
@@ -663,10 +699,15 @@ public sealed partial class DataverseService
             .Where(static row => row.RteIvaValue > 0m)
             .ToList();
         var reteIvaFavor = SumCurrency(reteIvaFavorRows, static row => row.RteIvaValue);
-        var vatPayable = RoundCurrency(generatedVat - reteIvaFavor);
+        var vatExpensesTotal = SumExpenseCurrency(vatExpenses, static row => row.TotalValue);
+        var vatExpenseVat = SumExpenseCurrency(vatExpenses, static row => row.VatValue);
+        var vatPayable = RoundCurrency(generatedVat - vatExpenseVat);
         var vatPayableVerticals = SubtractTaxVerticalAmounts(
             SumBillingCurrencyByVertical(vatEmission, static row => row.VatValue),
-            SumBillingCurrencyByVertical(reteIvaFavorRows, static row => row.RteIvaValue));
+            CalculateExpenseCurrencyByVertical(vatExpenses, static row => row.VatValue));
+
+        var incomeTaxYearOptions = BuildIncomeTaxYearOptions(paymentRecords, incomeTaxYear, today.Year);
+        var compareYear = Math.Min(Math.Min(reteFuenteYear, reteIcaYear), Math.Min(ivaYear, incomeTaxYear)) - 1;
 
         var reteFuenteCalculationDetails = new[]
         {
@@ -677,7 +718,7 @@ public sealed partial class DataverseService
                 reteFuenteBase,
                 reteFuenteInvoiceTotal,
                 reteFuenteEmission.Count,
-                "Total retefuente",
+                "Total retefuente a pagar",
                 reteFuentePayable,
                 BuildTaxCalculationLine("Autofuente", reteFuenteAutoFuente),
                 BuildTaxCalculationLine("Retenciones personas juridicas", reteFuenteLegal),
@@ -691,14 +732,16 @@ public sealed partial class DataverseService
             BuildTaxCalculationDetail(
                 "reteiva-total",
                 "Detalle IVA cuatrimestral",
-                "Total IVA - reteIVA a favor",
+                "IVA generado - IVA gastado",
                 vatBase,
                 vatInvoiceTotal,
                 vatEmission.Count,
-                "IVA cuatrimestral",
+                "IVA total a pagar",
                 vatPayable,
-                BuildTaxCalculationLine("Total IVA", generatedVat),
+                BuildTaxCalculationLine("IVA generado", generatedVat),
                 BuildTaxCalculationLine("ReteIVA a favor", reteIvaFavor),
+                BuildTaxCalculationLine("Gastos del periodo", vatExpensesTotal),
+                BuildTaxCalculationLine("IVA gastado", vatExpenseVat),
                 BuildTaxCalculationLine("Total facturas pagadas con reteIVA", SumCurrency(reteIvaFavorRows, static row => row.TotalInvoice)))
         };
 
@@ -707,13 +750,15 @@ public sealed partial class DataverseService
             BuildTaxCalculationDetail(
                 "reteica-total",
                 "Detalle Rete ICA bimensual",
-                "Total facturado antes de IVA x 0,69%",
+                "Base antes de IVA x 0,69% - ReteICA a favor",
                 reteIcaBase,
                 reteIcaInvoiceTotal,
                 reteIcaEmission.Count,
-                "Total Rete ICA",
-                reteIcaTotal,
+                "Total ICA a pagar",
+                reteIcaPayable,
                 BuildTaxCalculationLine("Base antes de IVA", reteIcaBase),
+                BuildTaxCalculationLine("ICA generado", reteIcaTotal),
+                BuildTaxCalculationLine("ReteICA a favor", reteIcaFavor),
                 BuildTaxCalculationLine("Tarifa", DashboardIcaRate * 100m, "percent"))
         };
 
@@ -734,26 +779,29 @@ public sealed partial class DataverseService
 
         return new TaxesDashboardDto
         {
-            Year = resolvedYear,
+            Year = Math.Max(Math.Max(reteFuenteYear, reteIcaYear), Math.Max(ivaYear, incomeTaxYear)),
             CompareYear = compareYear,
-            PeriodKind = periodKind.ToKey(),
-            PeriodKindLabel = periodKind.ToLabel(),
-            PeriodValue = referenceMonth,
-            PeriodLabel = ToTitleCase(new DateOnly(resolvedYear, referenceMonth, 1).ToString("MMMM", DashboardCulture)),
-            DateRangeLabel = $"Referencia: {ToTitleCase(new DateOnly(resolvedYear, referenceMonth, 1).ToString("MMMM", DashboardCulture))} {resolvedYear}",
-            CompareLabel = "Periodos fiscales fijos",
-            GranularityLabel = "Mensual / bimensual / cuatrimestral",
+            PeriodKind = "custom",
+            PeriodKindLabel = "Filtros independientes",
+            PeriodValue = 0,
+            PeriodLabel = "Impuestos",
+            DateRangeLabel = "Cada tarjeta tiene su propio periodo fiscal.",
+            CompareLabel = "Periodos por impuesto",
+            GranularityLabel = "Mensual / bimensual / cuatrimestral / anual",
             EmptyStateTitle = "No encontramos movimientos de impuestos para este periodo.",
-            EmptyStateMessage = "Cambia el periodo de referencia para recalcular los cortes fiscales.",
+            EmptyStateMessage = "Cambia el filtro de cada tarjeta para recalcular los cortes fiscales.",
             HasData = hasData,
-            RecordsCount = reteFuenteEmission.Count + reteFuenteExpenses.Count + reteIcaEmission.Count + incomeTaxRetentionRows.Count + vatEmission.Count + reteIvaFavorRows.Count,
+            RecordsCount = reteFuenteEmission.Count + reteFuenteExpenses.Count + reteIcaEmission.Count + reteIcaPaymentRows.Count + incomeTaxRetentionRows.Count + vatEmission.Count + reteIvaFavorRows.Count + vatExpenses.Count,
             ReteFuente = BuildTaxesSection(
                 "retefuente",
-                "Impuesto de Retefuente mensual",
-                "Total facturado antes de IVA x 0.00414 (autofuente) + retenciones realizadas a personas juridicas + retenciones realizadas a personas naturales.",
+                "Retefuente",
+                "Autofuente sobre base antes de IVA mas retefuente registrada en gastos pagados del mes.",
+                "Total retefuente a pagar",
+                reteFuentePayable,
+                BuildTaxesSectionFilter("month", reteFuenteYear, reteFuenteMonth, 2000, today.Year, incomeTaxYearOptions),
                 new[]
                 {
-                    BuildTaxKpi("rtefte-payable", "Total retefuente", "Autofuente + retenciones practicadas a juridicas, naturales y pendientes de clasificacion.", reteFuentePayable),
+                    BuildTaxKpi("rtefte-payable", "Total retefuente a pagar", "Autofuente + retenciones practicadas a juridicas, naturales y pendientes de clasificacion.", reteFuentePayable),
                     BuildTaxKpi("autofuente", "Autofuente", "Total facturado antes de IVA x 0.00414.", reteFuenteAutoFuente, "currency", "Base", FormatCurrencyValue(reteFuenteBase)),
                     BuildTaxKpi("legal-rtefte", "Personas juridicas", "Retenciones realizadas a personas juridicas durante el mes.", reteFuenteLegal, "currency", "Registros", reteFuenteLegalRows.Count.ToString("N0", DashboardCulture)),
                     BuildTaxKpi("natural-rtefte", "Personas naturales", "Retenciones realizadas a personas naturales durante el mes.", reteFuenteNatural, "currency", "Registros", reteFuenteNaturalRows.Count.ToString("N0", DashboardCulture)),
@@ -771,27 +819,36 @@ public sealed partial class DataverseService
                 reteFuentePeriod.DateRangeLabel),
             ReteIca = BuildTaxesSection(
                 "reteica",
-                "Impuesto Rete ICA bimensual",
-                "Total facturado antes de IVA x 0.0069.",
+                "Rete ICA",
+                "ICA generado sobre base antes de IVA menos ReteICA practicada a favor en pagos del bimestre.",
+                "Total ICA a pagar",
+                reteIcaPayable,
+                BuildTaxesSectionFilter("bimonthly", reteIcaYear, reteIcaValue, 2026, today.Year, incomeTaxYearOptions),
                 new[]
                 {
-                    BuildTaxKpi("ica-total", "Total Rete ICA", "Base antes de IVA x 0.0069.", reteIcaTotal),
+                    BuildTaxKpi("ica-payable", "Total ICA a pagar", "ICA generado - ReteICA a favor.", reteIcaPayable),
+                    BuildTaxKpi("ica-total", "ICA generado", "Base antes de IVA x 0.0069.", reteIcaTotal),
+                    BuildTaxKpi("ica-favor", "ReteICA a favor", "ReteICA que clientes practicaron en pagos del bimestre.", reteIcaFavor),
                     BuildTaxKpi("ica-base", "Total antes de IVA", "Base usada para el impuesto.", reteIcaBase),
                     BuildTaxKpi("ica-invoices", "Total facturas", "Valor total de las facturas del bimestre.", reteIcaInvoiceTotal, "currency", "Facturas", reteIcaEmission.Count.ToString("N0", DashboardCulture))
                 },
                 BuildTaxVerticalSummaries(
-                    "Total Rete ICA",
-                    reteIcaVerticals,
+                    "Total ICA a pagar",
+                    reteIcaPayableVerticals,
                     (0m, 0m, 0m),
-                    new TaxVerticalComponentSet("generated-ica", "Rete ICA", reteIcaVerticals, (0m, 0m, 0m))),
+                    new TaxVerticalComponentSet("generated-ica", "ICA generado", reteIcaGeneratedVerticals, (0m, 0m, 0m)),
+                    new TaxVerticalComponentSet("reteica-favor", "ReteICA a favor", reteIcaFavorVerticals, (0m, 0m, 0m))),
                 reteIcaCalculationDetails,
                 Array.Empty<TaxExpenseDetailDto>(),
                 reteIcaPeriod.PeriodLabel,
                 reteIcaPeriod.DateRangeLabel),
             IncomeTax = BuildTaxesSection(
                 "income-tax",
-                "Impuesto Declaracion de renta",
+                "Retenciones a favor declaracion de renta",
                 "Retenciones hechas en los pagos de nuestros clientes a nuestro favor.",
+                "Retenciones a favor",
+                incomeTaxWithheld,
+                BuildTaxesSectionFilter("year", incomeTaxYear, 1, 2025, today.Year, incomeTaxYearOptions),
                 new[]
                 {
                     BuildTaxKpi("income-tax-retentions", "Retenciones a favor", "ReteFuente que clientes nos practicaron en pagos del ano.", incomeTaxWithheld),
@@ -805,23 +862,28 @@ public sealed partial class DataverseService
                     new TaxVerticalComponentSet("client-rtefte", "Clientes", incomeTaxVerticals, (0m, 0m, 0m))),
                 incomeTaxCalculationDetails,
                 Array.Empty<TaxExpenseDetailDto>(),
-                resolvedYear.ToString(CultureInfo.InvariantCulture),
+                incomeTaxYear.ToString(CultureInfo.InvariantCulture),
                 incomeTaxPeriod.DateRangeLabel),
             ReteIva = BuildTaxesSection(
                 "reteiva",
-                "Impuesto IVA cuatrimestral",
-                "Total IVA generado menos reteIVA a favor.",
+                "IVA",
+                "IVA generado del periodo menos IVA gastado registrado en gastos de la empresa. La ReteIVA se muestra como retencion a favor informativa.",
+                "IVA total a pagar",
+                vatPayable,
+                BuildTaxesSectionFilter("fourmonthly", ivaYear, ivaValue, 2026, today.Year, incomeTaxYearOptions),
                 new[]
                 {
-                    BuildTaxKpi("vat-net", "IVA cuatrimestral", "Total IVA - reteIVA a favor.", vatPayable),
-                    BuildTaxKpi("generated-vat", "Total IVA", "IVA generado por facturas emitidas en el cuatrimestre.", generatedVat),
+                    BuildTaxKpi("vat-net", "IVA total a pagar", "IVA generado - IVA gastado.", vatPayable),
+                    BuildTaxKpi("generated-vat", "IVA generado", "IVA generado por facturas emitidas en el cuatrimestre.", generatedVat, "currency", "Base", FormatCurrencyValue(vatBase)),
+                    BuildTaxKpi("expense-vat", "IVA gastado", "IVA registrado en gastos de la empresa del cuatrimestre.", vatExpenseVat, "currency", "Gastos", FormatCurrencyValue(vatExpensesTotal)),
                     BuildTaxKpi("client-rteiva", "ReteIVA a favor", "ReteIVA que clientes nos practicaron en pagos del cuatrimestre.", reteIvaFavor)
                 },
                 BuildTaxVerticalSummaries(
-                    "IVA cuatrimestral",
+                    "IVA total a pagar",
                     vatPayableVerticals,
                     (0m, 0m, 0m),
                     new TaxVerticalComponentSet("generated-vat", "IVA generado", SumBillingCurrencyByVertical(vatEmission, static row => row.VatValue), (0m, 0m, 0m)),
+                    new TaxVerticalComponentSet("expense-vat", "IVA gastado", CalculateExpenseCurrencyByVertical(vatExpenses, static row => row.VatValue), (0m, 0m, 0m)),
                     new TaxVerticalComponentSet("client-rteiva", "ReteIVA a favor", SumBillingCurrencyByVertical(reteIvaFavorRows, static row => row.RteIvaValue), (0m, 0m, 0m))),
                 reteIvaCalculationDetails,
                 Array.Empty<TaxExpenseDetailDto>(),
@@ -2026,6 +2088,9 @@ public sealed partial class DataverseService
         string key,
         string label,
         string description,
+        string totalLabel,
+        decimal totalValue,
+        TaxesSectionFilterDto filter,
         IReadOnlyList<BillingKpiDto> metrics,
         IReadOnlyList<TaxVerticalSummaryDto>? verticalSummaries = null,
         IReadOnlyList<TaxCalculationDetailDto>? calculationDetails = null,
@@ -2040,11 +2105,135 @@ public sealed partial class DataverseService
             Description = description,
             PeriodLabel = periodLabel,
             DateRangeLabel = dateRangeLabel,
+            TotalLabel = totalLabel,
+            TotalValue = RoundCurrency(totalValue),
+            Filter = filter,
             Metrics = metrics,
             CalculationDetails = calculationDetails ?? Array.Empty<TaxCalculationDetailDto>(),
             VerticalSummaries = verticalSummaries ?? Array.Empty<TaxVerticalSummaryDto>(),
             RetentionDetails = retentionDetails ?? Array.Empty<TaxExpenseDetailDto>()
         };
+    }
+
+    private static TaxesSectionFilterDto BuildTaxesSectionFilter(
+        string kind,
+        int year,
+        int value,
+        int minYear,
+        int currentYear,
+        IReadOnlyList<int>? incomeTaxYearOptions = null)
+    {
+        var yearOptions = string.Equals(kind, "year", StringComparison.OrdinalIgnoreCase)
+            ? BuildTaxYearOptionsFromValues(incomeTaxYearOptions, year, minYear, currentYear)
+            : BuildRollingTaxYearOptions(year, minYear, currentYear);
+        var valueOptions = BuildTaxPeriodValueOptions(kind);
+        var valueLabel = valueOptions.FirstOrDefault(option => option.Value == value)?.Label
+            ?? year.ToString(CultureInfo.InvariantCulture);
+
+        return new TaxesSectionFilterDto
+        {
+            Kind = kind,
+            Year = year,
+            Value = value,
+            ValueLabel = valueLabel,
+            YearOptions = yearOptions,
+            ValueOptions = valueOptions
+        };
+    }
+
+    private static IReadOnlyList<TaxesFilterOptionDto> BuildRollingTaxYearOptions(int selectedYear, int minYear, int currentYear)
+    {
+        var maxYear = Math.Max(currentYear + 1, selectedYear);
+        var startYear = Math.Max(minYear, maxYear - 6);
+        return Enumerable.Range(startYear, maxYear - startYear + 1)
+            .Append(selectedYear)
+            .Where(year => year >= minYear)
+            .Distinct()
+            .OrderByDescending(static year => year)
+            .Select(static year => new TaxesFilterOptionDto
+            {
+                Value = year,
+                Label = year.ToString(CultureInfo.InvariantCulture)
+            })
+            .ToList();
+    }
+
+    private static IReadOnlyList<TaxesFilterOptionDto> BuildTaxYearOptionsFromValues(
+        IReadOnlyList<int>? years,
+        int selectedYear,
+        int minYear,
+        int currentYear)
+    {
+        var values = (years ?? Array.Empty<int>())
+            .Append(2025)
+            .Append(currentYear)
+            .Append(selectedYear)
+            .Where(year => year >= minYear)
+            .Distinct()
+            .OrderByDescending(static year => year)
+            .ToList();
+
+        return values.Select(static year => new TaxesFilterOptionDto
+        {
+            Value = year,
+            Label = year.ToString(CultureInfo.InvariantCulture)
+        }).ToList();
+    }
+
+    private static IReadOnlyList<TaxesFilterOptionDto> BuildTaxPeriodValueOptions(string kind)
+    {
+        if (string.Equals(kind, "bimonthly", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                new TaxesFilterOptionDto { Value = 1, Label = "B1 Ene-Feb" },
+                new TaxesFilterOptionDto { Value = 2, Label = "B2 Mar-Abr" },
+                new TaxesFilterOptionDto { Value = 3, Label = "B3 May-Jun" },
+                new TaxesFilterOptionDto { Value = 4, Label = "B4 Jul-Ago" },
+                new TaxesFilterOptionDto { Value = 5, Label = "B5 Sep-Oct" },
+                new TaxesFilterOptionDto { Value = 6, Label = "B6 Nov-Dic" }
+            };
+        }
+
+        if (string.Equals(kind, "fourmonthly", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                new TaxesFilterOptionDto { Value = 1, Label = "C1 Ene-Abr" },
+                new TaxesFilterOptionDto { Value = 2, Label = "C2 May-Ago" },
+                new TaxesFilterOptionDto { Value = 3, Label = "C3 Sep-Dic" }
+            };
+        }
+
+        if (string.Equals(kind, "year", StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<TaxesFilterOptionDto>();
+        }
+
+        return Enumerable.Range(1, 12)
+            .Select(month => new TaxesFilterOptionDto
+            {
+                Value = month,
+                Label = ToTitleCase(new DateOnly(2024, month, 1).ToString("MMMM", DashboardCulture))
+            })
+            .ToList();
+    }
+
+    private static IReadOnlyList<int> BuildIncomeTaxYearOptions(
+        IEnumerable<BillingRecordRow> paymentRecords,
+        int selectedYear,
+        int currentYear)
+    {
+        return paymentRecords
+            .Where(static row => row.PaymentDate is not null && row.RteFteValue > 0m)
+            .Select(static row => row.PaymentDate!.Value.Year)
+            .Append(2025)
+            .Append(currentYear)
+            .Append(selectedYear)
+            .Where(static year => year >= 2025)
+            .Distinct()
+            .OrderByDescending(static year => year)
+            .ToList();
     }
 
     private static TaxCalculationDetailDto BuildTaxCalculationDetail(
@@ -2263,6 +2452,8 @@ public sealed partial class DataverseService
             DashboardExpensePaymentDateField,
             DashboardExpensePaymentValueField,
             DashboardExpenseReteFuenteField,
+            DashboardExpenseTotalField,
+            DashboardExpenseVatField,
             DashboardExpenseRecipientNameField,
             DashboardExpenseRecipientNitField,
             DashboardExpenseCloudField,
@@ -2300,6 +2491,8 @@ public sealed partial class DataverseService
             PaymentDate = ReadDateOnly(item, DashboardExpensePaymentDateField),
             PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
             ReteFuenteValue = RoundCurrency(ReadDecimal(item, DashboardExpenseReteFuenteField) ?? 0m),
+            TotalValue = RoundCurrency(ReadDecimal(item, DashboardExpenseTotalField) ?? 0m),
+            VatValue = RoundCurrency(ReadDecimal(item, DashboardExpenseVatField) ?? 0m),
             RecipientName = ReadString(item, DashboardExpenseRecipientNameField).Trim(),
             RecipientNit = ReadString(item, DashboardExpenseRecipientNitField).Trim(),
             CloudValue = RoundCurrency(ReadDecimal(item, DashboardExpenseCloudField) ?? 0m),
@@ -2863,13 +3056,21 @@ public sealed partial class DataverseService
 
     private static (decimal Cloud, decimal Copiers, decimal Unassigned) CalculateExpenseRetentionByVertical(IEnumerable<TaxExpenseRow> rows)
     {
+        return CalculateExpenseCurrencyByVertical(rows, static row => row.ReteFuenteValue);
+    }
+
+    private static (decimal Cloud, decimal Copiers, decimal Unassigned) CalculateExpenseCurrencyByVertical(
+        IEnumerable<TaxExpenseRow> rows,
+        Func<TaxExpenseRow, decimal> selector)
+    {
         decimal cloud = 0m;
         decimal copiers = 0m;
         decimal unassigned = 0m;
 
         foreach (var row in rows)
         {
-            if (row.ReteFuenteValue <= 0m)
+            var value = selector(row);
+            if (value <= 0m)
                 continue;
 
             var cloudBase = Math.Max(row.CloudValue, 0m);
@@ -2877,25 +3078,25 @@ public sealed partial class DataverseService
 
             if (cloudBase > 0m && copiersBase <= 0m)
             {
-                cloud += row.ReteFuenteValue;
+                cloud += value;
                 continue;
             }
 
             if (copiersBase > 0m && cloudBase <= 0m)
             {
-                copiers += row.ReteFuenteValue;
+                copiers += value;
                 continue;
             }
 
             var totalBase = cloudBase + copiersBase;
             if (totalBase <= 0m)
             {
-                unassigned += row.ReteFuenteValue;
+                unassigned += value;
                 continue;
             }
 
-            cloud += row.ReteFuenteValue * (cloudBase / totalBase);
-            copiers += row.ReteFuenteValue * (copiersBase / totalBase);
+            cloud += value * (cloudBase / totalBase);
+            copiers += value * (copiersBase / totalBase);
         }
 
         return (RoundCurrency(cloud), RoundCurrency(copiers), RoundCurrency(unassigned));
@@ -3178,6 +3379,15 @@ public sealed partial class DataverseService
             BillingPeriodKind.Year => resolvedYear == today.Year ? today.Month : 12,
             _ => Math.Clamp(periodValue ?? (resolvedYear == today.Year ? today.Month : 1), 1, 12)
         };
+    }
+
+    private static int NormalizeTaxYear(int? rawYear, int fallbackYear, int minYear)
+    {
+        var year = rawYear is >= 2000 and <= 2100
+            ? rawYear.Value
+            : fallbackYear;
+
+        return Math.Clamp(year, minYear, 2100);
     }
 
     private static BillingPeriodDefinition BuildMonthPeriod(int year, int compareYear, int month)
@@ -3599,6 +3809,8 @@ public sealed partial class DataverseService
         public DateOnly? PaymentDate { get; set; }
         public decimal PaymentValue { get; set; }
         public decimal ReteFuenteValue { get; set; }
+        public decimal TotalValue { get; set; }
+        public decimal VatValue { get; set; }
         public string RecipientName { get; set; } = "";
         public string RecipientNit { get; set; } = "";
         public decimal CloudValue { get; set; }
