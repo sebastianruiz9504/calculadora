@@ -748,6 +748,7 @@ html[data-bs-theme="dark"] body.app-shell :is(
   .dashboard-tax-card,
   .dashboard-tax-detail-panel,
   .dashboard-tax-filters,
+  .dashboard-tax-base-card,
   .dashboard-tax-vat-summary,
   .dashboard-tax-vat-summary__main,
   .dashboard-tax-vat-table__toolbar,

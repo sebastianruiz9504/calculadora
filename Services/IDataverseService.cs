@@ -13,6 +13,7 @@ using CotizadorInterno.Web.Models.PlanRio;
 using CotizadorInterno.Web.Models.PortalProveedores;
 using CotizadorInterno.Web.Models.PublicDataExport;
 using CotizadorInterno.Web.Models.Puntajes;
+using CotizadorInterno.Web.Models.Reconciliation;
 using CotizadorInterno.Web.Models.RebatesInversiones;
 using CotizadorInterno.Web.Models.RegistroPagosClientes;
 using CotizadorInterno.Web.Models.RH;
@@ -56,6 +57,16 @@ public interface IDataverseService
     Task<string> GetVacationRequestDocumentHtmlAsync(string recordId, bool autoPrint = false, CancellationToken ct = default);
     Task<MetricsDashboardDto> GetMetricsDashboardAsync(MetricsRangeFilter filter, MetricsViewMode view, string? sellerKey = null, CancellationToken ct = default);
     Task<BillingDashboardDto> GetBillingDashboardAsync(int year, BillingPeriodKind periodKind, int? periodValue = null, CancellationToken ct = default);
+    Task<IReadOnlyList<ReconciliationDataverseBillingRow>> GetFinancialReconciliationBillingRowsAsync(DateOnly startInclusive, DateOnly endExclusive, CancellationToken ct = default);
+    Task<IReadOnlyList<ReconciliationDataverseCreditNoteRow>> GetFinancialReconciliationCreditNoteRowsAsync(DateOnly startInclusive, DateOnly endExclusive, CancellationToken ct = default);
+    Task<IReadOnlyList<ReconciliationDataverseExpenseRow>> GetFinancialReconciliationExpenseRowsAsync(DateOnly startInclusive, DateOnly endExclusive, CancellationToken ct = default);
+    Task<FinancialReconciliationCorrectionResult> ApplyFinancialReconciliationBillingCorrectionsAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        IReadOnlyList<ReconciliationDataverseBillingRow> dataverseBilling,
+        IReadOnlyList<ReconciliationDataverseCreditNoteRow> dataverseCreditNotes,
+        SiigoFinancialReconciliationData siigo,
+        CancellationToken ct = default);
     Task<BillingInvoicesTableDto> GetBillingInvoicesAsync(CancellationToken ct = default);
     Task<BillingInvoiceSaveResultDto> SaveBillingInvoiceAsync(BillingInvoiceSaveRequestDto request, CancellationToken ct = default);
     Task<BillingInvoicesDeleteResultDto> DeleteBillingInvoicesAsync(BillingInvoicesDeleteRequestDto request, CancellationToken ct = default);

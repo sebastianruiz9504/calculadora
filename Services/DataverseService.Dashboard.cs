@@ -703,6 +703,7 @@ public sealed partial class DataverseService
         var incomeTaxVerticals = SumBillingCurrencyByVertical(incomeTaxRetentionRows, static row => row.RteFteValue);
 
         var vatBase = SumCurrency(vatEmission, static row => CalculateInvoiceTaxBase(row));
+        var vatGeneratedInvoiceTotal = SumCurrency(vatGeneratedRows, static row => row.TotalInvoice);
         var generatedVat = SumCurrency(vatGeneratedRows, static row => row.VatValue);
         var reteIvaFavor = SumCurrency(reteIvaFavorRows, static row => row.RteIvaValue);
         var vatExpensesTotal = SumExpenseCurrency(vatExpensesWithVat, static row => row.TotalValue);
@@ -791,7 +792,9 @@ public sealed partial class DataverseService
                 reteFuentePeriod.PeriodLabel,
                 reteFuentePeriod.DateRangeLabel,
                 null,
-                reteFuenteReportDetails),
+                reteFuenteReportDetails,
+                calculationBaseLabel: "Valor facturado antes de IVA",
+                calculationBaseValue: reteFuenteBase),
             ReteIca = BuildTaxesSection(
                 "reteica",
                 "Rete ICA",
@@ -816,7 +819,9 @@ public sealed partial class DataverseService
                 reteIcaCalculationDetails,
                 Array.Empty<TaxExpenseDetailDto>(),
                 reteIcaPeriod.PeriodLabel,
-                reteIcaPeriod.DateRangeLabel),
+                reteIcaPeriod.DateRangeLabel,
+                calculationBaseLabel: "Valor facturado antes de IVA",
+                calculationBaseValue: reteIcaBase),
             IncomeTax = BuildTaxesSection(
                 "income-tax",
                 "Retenciones a favor declaracion de renta",
@@ -864,7 +869,9 @@ public sealed partial class DataverseService
                 Array.Empty<TaxExpenseDetailDto>(),
                 vatPeriod.PeriodLabel,
                 vatPeriod.DateRangeLabel,
-                vatDetails),
+                vatDetails,
+                calculationBaseLabel: "Facturado con IVA",
+                calculationBaseValue: vatGeneratedInvoiceTotal),
             ExpenseDetails = reteFuenteDetails
         };
     }
@@ -2074,7 +2081,9 @@ public sealed partial class DataverseService
         string periodLabel = "",
         string dateRangeLabel = "",
         TaxVatDetailsDto? vatDetails = null,
-        TaxReportDetailsDto? reportDetails = null)
+        TaxReportDetailsDto? reportDetails = null,
+        string calculationBaseLabel = "",
+        decimal calculationBaseValue = 0m)
     {
         return new TaxesSectionDto
         {
@@ -2085,6 +2094,8 @@ public sealed partial class DataverseService
             DateRangeLabel = dateRangeLabel,
             TotalLabel = totalLabel,
             TotalValue = RoundCurrency(totalValue),
+            CalculationBaseLabel = calculationBaseLabel,
+            CalculationBaseValue = RoundCurrency(calculationBaseValue),
             Filter = filter,
             Metrics = metrics,
             CalculationDetails = calculationDetails ?? Array.Empty<TaxCalculationDetailDto>(),

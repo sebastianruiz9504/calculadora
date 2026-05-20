@@ -31,6 +31,7 @@ builder.Services.Configure<SiigoOptions>(builder.Configuration.GetSection("Siigo
 builder.Services.Configure<M365Options>(builder.Configuration.GetSection("M365"));
 builder.Services.Configure<AzureOpenAIOptions>(builder.Configuration.GetSection("AzureOpenAI"));
 builder.Services.Configure<ReportesOptions>(builder.Configuration.GetSection("Reportes"));
+builder.Services.Configure<FinancialReconciliationOptions>(builder.Configuration.GetSection("FinancialReconciliation"));
 builder.Services.AddHttpClient<ISiigoService, SiigoService>((serviceProvider, client) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -62,9 +63,12 @@ builder.Services.AddScoped<IUserCalendarService, UserCalendarService>();
 builder.Services.AddScoped<IReportesDataverseRepository, ReportesDataverseRepository>();
 builder.Services.AddScoped<IAzureOpenAIReportService, AzureOpenAIReportService>();
 builder.Services.AddScoped<IAzureOpenAIQuoteProposalService, AzureOpenAIQuoteProposalService>();
+builder.Services.AddScoped<IReconciliationReportSender, ReconciliationReportSender>();
+builder.Services.AddScoped<IFinancialReconciliationService, FinancialReconciliationService>();
 builder.Services.AddSingleton<ReportesGenerationQueue>();
 builder.Services.AddSingleton<IReportesGenerationQueue>(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
+builder.Services.AddHostedService<MonthlyFinancialReconciliationHostedService>();
 builder.Services.AddSingleton<IPublicDataExportSettingsStore, PublicDataExportSettingsStore>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
@@ -83,7 +87,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
 });
 var app = builder.Build();

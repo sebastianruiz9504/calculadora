@@ -663,6 +663,8 @@ public sealed class TaxesSectionDto
     public string DateRangeLabel { get; set; } = "";
     public string TotalLabel { get; set; } = "";
     public decimal TotalValue { get; set; }
+    public string CalculationBaseLabel { get; set; } = "";
+    public decimal CalculationBaseValue { get; set; }
     public TaxesSectionFilterDto Filter { get; set; } = new();
     public IReadOnlyList<BillingKpiDto> Metrics { get; set; } = Array.Empty<BillingKpiDto>();
     public IReadOnlyList<TaxCalculationDetailDto> CalculationDetails { get; set; } = Array.Empty<TaxCalculationDetailDto>();

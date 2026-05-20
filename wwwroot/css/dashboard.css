@@ -570,6 +570,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 12px;
     flex-wrap: wrap;
 }
@@ -1031,6 +1032,40 @@
     border: 1px solid #d7e4f2;
     border-radius: 14px;
     background: var(--dashboard-panel);
+}
+
+.dashboard-tax-base-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid #d7e4f2;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(14, 116, 144, .10), rgba(22, 163, 74, .08));
+}
+
+.dashboard-tax-base-card div {
+    display: grid;
+    gap: 4px;
+}
+
+.dashboard-tax-base-card span {
+    color: var(--dashboard-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.dashboard-tax-base-card strong {
+    color: var(--dashboard-ink);
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-tax-base-card > strong {
+    font-size: 24px;
+    text-align: right;
 }
 
 .dashboard-tax-vat-summary {

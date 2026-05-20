@@ -5229,6 +5229,7 @@
                 </div>
             </div>
             ${filterMarkup}
+            ${renderTaxesCalculationBase(section)}
             ${detailContent}
         `;
 
@@ -5246,6 +5247,23 @@
             container.querySelector("[data-taxes-detail-verticals]"),
             Array.isArray(section.verticalSummaries) ? section.verticalSummaries : [],
             dashboard?.compareYear);
+    }
+
+    function renderTaxesCalculationBase(section) {
+        const label = section?.calculationBaseLabel || "";
+        if (!label) {
+            return "";
+        }
+
+        return `
+            <article class="dashboard-tax-base-card">
+                <div>
+                    <span>Base del calculo</span>
+                    <strong>${escapeHtml(label)}</strong>
+                </div>
+                <strong>${escapeHtml(formatMetric(section?.calculationBaseValue || 0, "currency"))}</strong>
+            </article>
+        `;
     }
 
     function renderTaxesFilterControls(section) {

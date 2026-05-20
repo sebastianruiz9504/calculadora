@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CotizadorInterno.Web.Models.Dashboard;
+using CotizadorInterno.Web.Models.Reconciliation;
 using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Services;
@@ -201,6 +202,45 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    public async Task<SiigoFinancialReconciliationData> GetFinancialReconciliationDocumentsAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        if (startDate > endDate)
+            throw new InvalidOperationException("La fecha inicial no puede ser mayor que la fecha final.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var dateParameters = new[]
+        {
+            Pair("date_start", FormatSiigoDate(startDate)),
+            Pair("date_end", FormatSiigoDate(endDate))
+        };
+
+        var invoicesTask = GetAllPagedAsync<SiigoInvoiceApiDto>("v1/invoices", dateParameters, pageSize, maxPages, ct);
+        var creditNotesTask = GetAllPagedAsync<SiigoCreditNoteApiDto>("v1/credit-notes", dateParameters, pageSize, maxPages, ct);
+        var purchasesTask = GetAllPagedAsync<SiigoPurchaseApiDto>("v1/purchases", dateParameters, pageSize, maxPages, ct);
+
+        await Task.WhenAll(invoicesTask, creditNotesTask, purchasesTask);
+
+        return new SiigoFinancialReconciliationData
+        {
+            Invoices = invoicesTask.Result
+                .Select(MapReconciliationInvoice)
+                .Where(row => IsInsidePeriod(row.Date, startDate, endDate))
+                .ToList(),
+            CreditNotes = creditNotesTask.Result
+                .Select(MapReconciliationCreditNote)
+                .Where(row => IsInsidePeriod(row.Date, startDate, endDate))
+                .ToList(),
+            Purchases = purchasesTask.Result
+                .Select(MapReconciliationPurchase)
+                .Where(row => IsInsidePeriod(row.Date, startDate, endDate))
+                .ToList()
+        };
+    }
+
     public async Task<SiigoInvoiceDownloadResult> DownloadInvoicePdfsAsync(
         IReadOnlyList<SiigoInvoiceDownloadItemDto> invoices,
         CancellationToken ct = default)
@@ -318,6 +358,34 @@ public sealed class SiigoService : ISiigoService
         CancellationToken ct)
     {
         return await GetAuthorizedJsonAsync<SiigoPagedResponse<T>>(BuildRelativeUrl(path, parameters), ct);
+    }
+
+    private async Task<IReadOnlyList<T>> GetAllPagedAsync<T>(
+        string path,
+        IEnumerable<KeyValuePair<string, string?>> parameters,
+        int pageSize,
+        int maxPages,
+        CancellationToken ct)
+    {
+        var results = new List<T>();
+        var baseParameters = parameters.ToList();
+
+        for (var page = 1; page <= maxPages; page++)
+        {
+            var pageParameters = baseParameters
+                .Concat(new[]
+                {
+                    Pair("page", page.ToString(CultureInfo.InvariantCulture)),
+                    Pair("page_size", pageSize.ToString(CultureInfo.InvariantCulture))
+                });
+            var response = await GetPagedAsync<T>(path, pageParameters, ct);
+            results.AddRange(response.Results);
+
+            if (ShouldStopPaging(response.Pagination, page, pageSize, response.Results.Count))
+                break;
+        }
+
+        return results;
     }
 
     private async Task<T> GetAuthorizedJsonAsync<T>(string relativeUrl, CancellationToken ct)
@@ -573,6 +641,67 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    private static SiigoReconciliationInvoice MapReconciliationInvoice(SiigoInvoiceApiDto invoice)
+    {
+        return new SiigoReconciliationInvoice
+        {
+            Id = invoice.Id?.Trim() ?? "",
+            Name = invoice.Name?.Trim() ?? "",
+            Prefix = invoice.Prefix?.Trim() ?? "",
+            Number = invoice.Number,
+            Date = ParseSiigoDate(invoice.Date),
+            CustomerId = invoice.Customer?.Id?.Trim() ?? "",
+            CustomerIdentification = invoice.Customer?.Identification?.Trim() ?? "",
+            Total = RoundCurrency(invoice.Total),
+            Vat = SumVat(invoice.Items),
+            Annulled = invoice.Annulled,
+            RawJson = JsonSerializer.Serialize(invoice, JsonOptions)
+        };
+    }
+
+    private static SiigoReconciliationCreditNote MapReconciliationCreditNote(SiigoCreditNoteApiDto creditNote)
+    {
+        return new SiigoReconciliationCreditNote
+        {
+            Id = creditNote.Id?.Trim() ?? "",
+            Name = creditNote.Name?.Trim() ?? "",
+            Number = creditNote.Number,
+            Date = ParseSiigoDate(creditNote.Date),
+            CreatedAt = ParseSiigoDateTimeOffset(creditNote.Metadata?.Created),
+            InvoiceId = creditNote.Invoice?.Id?.Trim() ?? "",
+            InvoiceName = creditNote.Invoice?.Name?.Trim() ?? "",
+            InvoicePrefix = creditNote.InvoiceData?.Prefix?.Trim() ?? "",
+            InvoiceNumber = creditNote.InvoiceData?.Number,
+            CustomerId = creditNote.Customer?.Id?.Trim() ?? "",
+            CustomerIdentification = creditNote.Customer?.Identification?.Trim() ?? "",
+            StampStatus = creditNote.Stamp?.Status?.Trim() ?? "",
+            Cude = creditNote.Stamp?.Cude?.Trim() ?? "",
+            Total = RoundCurrency(creditNote.Total),
+            Vat = SumVat(creditNote.Items),
+            RawJson = JsonSerializer.Serialize(creditNote, JsonOptions)
+        };
+    }
+
+    private static SiigoReconciliationPurchase MapReconciliationPurchase(SiigoPurchaseApiDto purchase)
+    {
+        var providerPrefix = purchase.ProviderInvoice?.Prefix?.Trim() ?? "";
+        var providerNumber = purchase.ProviderInvoice?.Number?.Trim() ?? "";
+
+        return new SiigoReconciliationPurchase
+        {
+            Id = purchase.Id?.Trim() ?? "",
+            Name = purchase.Name?.Trim() ?? "",
+            Date = ParseSiigoDate(purchase.Date),
+            SupplierIdentification = purchase.Supplier?.Identification?.Trim() ?? "",
+            ProviderInvoicePrefix = providerPrefix,
+            ProviderInvoiceNumber = providerNumber,
+            ProviderInvoiceFullNumber = BuildProviderInvoiceFullNumber(providerPrefix, providerNumber),
+            Total = RoundCurrency(purchase.Total),
+            Vat = SumVat(purchase.Items),
+            Balance = RoundCurrency(purchase.Balance)
+        };
+    }
+
     private static void AddCustomerResults(
         Dictionary<string, SiigoCustomerLookupItemDto> target,
         IEnumerable<SiigoCustomerLookupItemDto> source,
@@ -644,8 +773,59 @@ public sealed class SiigoService : ISiigoService
     private static string FormatSiigoDate(DateOnly value) =>
         value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    private static DateOnly? ParseSiigoDate(string? value) =>
+        DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed
+            : null;
+
+    private static bool IsInsidePeriod(DateOnly? date, DateOnly startDate, DateOnly endDate) =>
+        date.HasValue && date.Value >= startDate && date.Value <= endDate;
+
+    private static DateTimeOffset? ParseSiigoDateTimeOffset(string? value) =>
+        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
+
     private static string ExtractDigits(string? value) =>
         new((value ?? "").Where(char.IsDigit).ToArray());
+
+    private static decimal SumVat(IReadOnlyList<SiigoDocumentItemApiDto>? items)
+    {
+        if (items is null || items.Count == 0)
+            return 0m;
+
+        var total = items
+            .SelectMany(static item => item.Taxes ?? Array.Empty<SiigoDocumentTaxApiDto>())
+            .Where(static tax => IsVatTax(tax.Type) || IsVatTax(tax.Name))
+            .Sum(static tax => tax.Value);
+
+        return RoundCurrency(total);
+    }
+
+    private static bool IsVatTax(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Trim();
+        return normalized.Equals("IVA", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("IVA", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("VAT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static decimal RoundCurrency(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static string BuildProviderInvoiceFullNumber(string prefix, string number)
+    {
+        if (string.IsNullOrWhiteSpace(prefix))
+            return number.Trim();
+
+        if (string.IsNullOrWhiteSpace(number))
+            return prefix.Trim();
+
+        return $"{prefix.Trim()}-{number.Trim()}";
+    }
 
     private static string BuildRelativeUrl(string path, IEnumerable<KeyValuePair<string, string?>> parameters)
     {
@@ -784,12 +964,144 @@ public sealed class SiigoService : ISiigoService
         [JsonPropertyName("mail")]
         public SiigoInvoiceMailApiDto? Mail { get; set; }
 
+        [JsonPropertyName("items")]
+        public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+
         [JsonPropertyName("annulled")]
         public bool Annulled { get; set; }
     }
 
+    private sealed class SiigoCreditNoteApiDto
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("number")]
+        public long? Number { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = "";
+
+        [JsonPropertyName("invoice")]
+        public SiigoDocumentReferenceApiDto? Invoice { get; set; }
+
+        [JsonPropertyName("invoice_data")]
+        public SiigoInvoiceDataApiDto? InvoiceData { get; set; }
+
+        [JsonPropertyName("customer")]
+        public SiigoInvoiceCustomerApiDto? Customer { get; set; }
+
+        [JsonPropertyName("metadata")]
+        public SiigoMetadataApiDto? Metadata { get; set; }
+
+        [JsonPropertyName("stamp")]
+        public SiigoCreditNoteStampApiDto? Stamp { get; set; }
+
+        [JsonPropertyName("total")]
+        public decimal Total { get; set; }
+
+        [JsonPropertyName("items")]
+        public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+    }
+
+    private sealed class SiigoPurchaseApiDto
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = "";
+
+        [JsonPropertyName("supplier")]
+        public SiigoPurchaseSupplierApiDto? Supplier { get; set; }
+
+        [JsonPropertyName("provider_invoice")]
+        public SiigoProviderInvoiceApiDto? ProviderInvoice { get; set; }
+
+        [JsonPropertyName("total")]
+        public decimal Total { get; set; }
+
+        [JsonPropertyName("balance")]
+        public decimal Balance { get; set; }
+
+        [JsonPropertyName("items")]
+        public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+    }
+
+    private sealed class SiigoDocumentReferenceApiDto
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+    }
+
+    private sealed class SiigoPurchaseSupplierApiDto
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("identification")]
+        public string Identification { get; set; } = "";
+
+        [JsonPropertyName("branch_office")]
+        public int BranchOffice { get; set; }
+    }
+
+    private sealed class SiigoProviderInvoiceApiDto
+    {
+        [JsonPropertyName("prefix")]
+        public string Prefix { get; set; } = "";
+
+        [JsonPropertyName("number")]
+        public string Number { get; set; } = "";
+    }
+
+    private sealed class SiigoInvoiceDataApiDto
+    {
+        [JsonPropertyName("prefix")]
+        public string Prefix { get; set; } = "";
+
+        [JsonPropertyName("number")]
+        public long? Number { get; set; }
+    }
+
+    private sealed class SiigoMetadataApiDto
+    {
+        [JsonPropertyName("created")]
+        public string Created { get; set; } = "";
+    }
+
+    private sealed class SiigoDocumentItemApiDto
+    {
+        [JsonPropertyName("taxes")]
+        public IReadOnlyList<SiigoDocumentTaxApiDto> Taxes { get; set; } = Array.Empty<SiigoDocumentTaxApiDto>();
+    }
+
+    private sealed class SiigoDocumentTaxApiDto
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public decimal Value { get; set; }
+    }
+
     private sealed class SiigoInvoiceCustomerApiDto
     {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
         [JsonPropertyName("identification")]
         public string Identification { get; set; } = "";
 
@@ -807,6 +1119,15 @@ public sealed class SiigoService : ISiigoService
 
         [JsonPropertyName("errors")]
         public string Errors { get; set; } = "";
+    }
+
+    private sealed class SiigoCreditNoteStampApiDto
+    {
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = "";
+
+        [JsonPropertyName("cude")]
+        public string Cude { get; set; } = "";
     }
 
     private sealed class SiigoInvoiceMailApiDto
