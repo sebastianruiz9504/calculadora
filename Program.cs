@@ -32,6 +32,11 @@ builder.Services.Configure<M365Options>(builder.Configuration.GetSection("M365")
 builder.Services.Configure<AzureOpenAIOptions>(builder.Configuration.GetSection("AzureOpenAI"));
 builder.Services.Configure<ReportesOptions>(builder.Configuration.GetSection("Reportes"));
 builder.Services.Configure<FinancialReconciliationOptions>(builder.Configuration.GetSection("FinancialReconciliation"));
+builder.Services.Configure<SiigoAccountCatalogSyncOptions>(builder.Configuration.GetSection("SiigoAccountCatalogSync"));
+builder.Services.Configure<ExpenseAccountingRulesOptions>(builder.Configuration.GetSection("ExpenseAccountingRules"));
+builder.Services.Configure<ExpenseAccountingTemplateOptions>(builder.Configuration.GetSection("ExpenseAccountingTemplates"));
+builder.Services.Configure<CashFlowImportOptions>(builder.Configuration.GetSection("CashFlowImport"));
+builder.Services.Configure<CashFlowMatchingOptions>(builder.Configuration.GetSection("CashFlowMatching"));
 builder.Services.AddHttpClient<ISiigoService, SiigoService>((serviceProvider, client) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -65,10 +70,20 @@ builder.Services.AddScoped<IAzureOpenAIReportService, AzureOpenAIReportService>(
 builder.Services.AddScoped<IAzureOpenAIQuoteProposalService, AzureOpenAIQuoteProposalService>();
 builder.Services.AddScoped<IReconciliationReportSender, ReconciliationReportSender>();
 builder.Services.AddScoped<IFinancialReconciliationService, FinancialReconciliationService>();
+builder.Services.AddScoped<ISiigoAccountCatalogSyncService, SiigoAccountCatalogSyncService>();
+builder.Services.AddScoped<IExpenseAccountingRuleService, ExpenseAccountingRuleService>();
+builder.Services.AddScoped<IExpenseAccountingTemplateService, ExpenseAccountingTemplateService>();
+builder.Services.AddScoped<ICashFlowImportService, CashFlowImportService>();
+builder.Services.AddScoped<ICashFlowMatchingService, CashFlowMatchingService>();
 builder.Services.AddSingleton<ReportesGenerationQueue>();
 builder.Services.AddSingleton<IReportesGenerationQueue>(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
 builder.Services.AddHostedService<MonthlyFinancialReconciliationHostedService>();
+builder.Services.AddHostedService<MonthlySiigoAccountCatalogSyncHostedService>();
+builder.Services.AddHostedService<WeeklyExpenseAccountingRulesHostedService>();
+builder.Services.AddHostedService<WeeklyExpenseAccountingTemplateHostedService>();
+builder.Services.AddHostedService<WeeklyCashFlowImportHostedService>();
+builder.Services.AddHostedService<WeeklyCashFlowMatchingHostedService>();
 builder.Services.AddSingleton<IPublicDataExportSettingsStore, PublicDataExportSettingsStore>();
 builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("Calculator"));
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));

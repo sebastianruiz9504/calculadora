@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Reconciliation;
 using Microsoft.Extensions.Options;
@@ -239,6 +240,40 @@ public sealed class SiigoService : ISiigoService
                 .Where(row => IsInsidePeriod(row.Date, startDate, endDate))
                 .ToList()
         };
+    }
+
+    public async Task<IReadOnlyList<SiigoObservedAccountDto>> GetObservedAccountCatalogAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        if (startDate > endDate)
+            throw new InvalidOperationException("La fecha inicial no puede ser mayor que la fecha final.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var dateParameters = new[]
+        {
+            Pair("date_start", FormatSiigoDate(startDate)),
+            Pair("date_end", FormatSiigoDate(endDate))
+        };
+
+        var journalsTask = GetAllPagedAsync<SiigoAccountingDocumentApiDto>("v1/journals", dateParameters, pageSize, maxPages, ct);
+        var paymentReceiptsTask = GetAllPagedAsync<SiigoAccountingDocumentApiDto>("v1/payment-receipts", dateParameters, pageSize, maxPages, ct);
+        var vouchersTask = GetAllPagedAsync<SiigoAccountingDocumentApiDto>("v1/vouchers", dateParameters, pageSize, maxPages, ct);
+        var purchasesTask = GetAllPagedAsync<SiigoAccountingDocumentApiDto>("v1/purchases", dateParameters, pageSize, maxPages, ct);
+
+        await Task.WhenAll(journalsTask, paymentReceiptsTask, vouchersTask, purchasesTask);
+
+        var accounts = new Dictionary<string, SiigoObservedAccountDto>(StringComparer.OrdinalIgnoreCase);
+        AddObservedAccounts(accounts, "Journals", journalsTask.Result, startDate, endDate);
+        AddObservedAccounts(accounts, "Payment receipts", paymentReceiptsTask.Result, startDate, endDate);
+        AddObservedAccounts(accounts, "Vouchers", vouchersTask.Result, startDate, endDate);
+        AddObservedAccounts(accounts, "Purchases", purchasesTask.Result, startDate, endDate);
+
+        return accounts.Values
+            .OrderBy(account => account.Code, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<SiigoInvoiceDownloadResult> DownloadInvoicePdfsAsync(
@@ -702,6 +737,153 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    private static void AddObservedAccounts(
+        IDictionary<string, SiigoObservedAccountDto> target,
+        string source,
+        IEnumerable<SiigoAccountingDocumentApiDto> documents,
+        DateOnly startDate,
+        DateOnly endDate)
+    {
+        foreach (var document in documents)
+        {
+            var documentDate = ParseSiigoDate(document.Date);
+            if (!IsInsidePeriod(documentDate, startDate, endDate))
+                continue;
+
+            foreach (var item in document.Items ?? Array.Empty<SiigoDocumentItemApiDto>())
+            {
+                var code = FirstNonEmpty(item.Account?.Code, item.Code);
+                if (string.IsNullOrWhiteSpace(code))
+                    continue;
+
+                var name = NormalizeObservedAccountName(FirstNonEmpty(
+                    item.Account?.Name,
+                    item.Description,
+                    code));
+
+                if (!target.TryGetValue(code, out var existing))
+                {
+                    target[code] = new SiigoObservedAccountDto
+                    {
+                        Code = code,
+                        Name = name,
+                        Type = ResolveObservedAccountType(code, name),
+                        Source = source,
+                        Uses = 1,
+                        LastSeenDate = documentDate
+                    };
+                    continue;
+                }
+
+                existing.Uses++;
+                existing.Source = MergeObservedAccountSources(existing.Source, source);
+                if (documentDate.HasValue
+                    && (!existing.LastSeenDate.HasValue || documentDate.Value > existing.LastSeenDate.Value))
+                {
+                    existing.LastSeenDate = documentDate;
+                }
+
+                if (ShouldReplaceObservedAccountName(existing.Name, name, code))
+                {
+                    existing.Name = name;
+                    existing.Type = ResolveObservedAccountType(code, name);
+                }
+            }
+        }
+    }
+
+    private static bool ShouldReplaceObservedAccountName(string current, string candidate, string code)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(current) || string.Equals(current, code, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return current.Contains(" Base:", StringComparison.OrdinalIgnoreCase)
+            && !candidate.Contains(" Base:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeObservedAccountName(string value)
+    {
+        var normalized = (value ?? "").Trim();
+        var baseIndex = normalized.IndexOf(" Base:", StringComparison.OrdinalIgnoreCase);
+        if (baseIndex > 0)
+            normalized = normalized[..baseIndex].Trim();
+
+        return Truncate(normalized, 120);
+    }
+
+    private static string MergeObservedAccountSources(string current, string source)
+    {
+        var values = (current ?? "")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Concat(new[] { source })
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        return string.Join("; ", values);
+    }
+
+    private static string ResolveObservedAccountType(string code, string name)
+    {
+        var normalizedName = (name ?? "").ToLowerInvariant();
+        if (code.StartsWith("1110", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("1105", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains("bancolombia", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains("caja", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Banco/Caja";
+        }
+
+        if (code.StartsWith("1305", StringComparison.OrdinalIgnoreCase))
+            return "Cliente";
+
+        if (code.StartsWith("2205", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("2335", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Proveedor/CxP";
+        }
+
+        if (code.StartsWith("1355", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("1351", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("2365", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("2368", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Retencion";
+        }
+
+        if (code.StartsWith("2408", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains("iva", StringComparison.OrdinalIgnoreCase))
+        {
+            return "IVA";
+        }
+
+        if (string.Equals(code, "42958101", StringComparison.OrdinalIgnoreCase)
+            || normalizedName.Contains("ajuste", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Ajuste";
+        }
+
+        if (code.StartsWith("4", StringComparison.OrdinalIgnoreCase))
+            return "Ingreso";
+
+        if (code.StartsWith("5", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("6", StringComparison.OrdinalIgnoreCase)
+            || code.StartsWith("7", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gasto/Costo";
+        }
+
+        if (code.StartsWith("2", StringComparison.OrdinalIgnoreCase))
+            return "Pasivo";
+
+        if (code.StartsWith("1", StringComparison.OrdinalIgnoreCase))
+            return "Activo";
+
+        return "Otro";
+    }
+
     private static void AddCustomerResults(
         Dictionary<string, SiigoCustomerLookupItemDto> target,
         IEnumerable<SiigoCustomerLookupItemDto> source,
@@ -768,6 +950,17 @@ public sealed class SiigoService : ISiigoService
         return name.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
             ? ""
             : name.ToString().Trim();
+    }
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            return value;
+
+        return value[..maxLength];
     }
 
     private static string FormatSiigoDate(DateOnly value) =>
@@ -1034,6 +1227,21 @@ public sealed class SiigoService : ISiigoService
         public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
     }
 
+    private sealed class SiigoAccountingDocumentApiDto
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = "";
+
+        [JsonPropertyName("items")]
+        public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+    }
+
     private sealed class SiigoDocumentReferenceApiDto
     {
         [JsonPropertyName("id")]
@@ -1081,8 +1289,35 @@ public sealed class SiigoService : ISiigoService
 
     private sealed class SiigoDocumentItemApiDto
     {
+        [JsonPropertyName("account")]
+        public SiigoDocumentAccountApiDto? Account { get; set; }
+
+        [JsonPropertyName("code")]
+        public string Code { get; set; } = "";
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "";
+
+        [JsonPropertyName("description")]
+        public string Description { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public decimal Value { get; set; }
+
         [JsonPropertyName("taxes")]
         public IReadOnlyList<SiigoDocumentTaxApiDto> Taxes { get; set; } = Array.Empty<SiigoDocumentTaxApiDto>();
+    }
+
+    private sealed class SiigoDocumentAccountApiDto
+    {
+        [JsonPropertyName("code")]
+        public string Code { get; set; } = "";
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("movement")]
+        public string Movement { get; set; } = "";
     }
 
     private sealed class SiigoDocumentTaxApiDto

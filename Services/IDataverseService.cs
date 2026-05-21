@@ -1,5 +1,7 @@
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Conciliacion;
 using CotizadorInterno.Web.Models.CuentasCobro;
 using CotizadorInterno.Web.Models.Copiers;
 using CotizadorInterno.Web.Models.Dashboard;
@@ -66,6 +68,35 @@ public interface IDataverseService
         IReadOnlyList<ReconciliationDataverseBillingRow> dataverseBilling,
         IReadOnlyList<ReconciliationDataverseCreditNoteRow> dataverseCreditNotes,
         SiigoFinancialReconciliationData siigo,
+        CancellationToken ct = default);
+    Task<AccountCatalogSyncResultDto> UpsertSiigoAccountCatalogAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        IReadOnlyList<SiigoObservedAccountDto> accounts,
+        CancellationToken ct = default);
+    Task<ExpenseAccountingRuleApplyResultDto> ApplyExpenseAccountingRulesAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        string movementType = "Compra",
+        bool overwrite = false,
+        CancellationToken ct = default);
+    Task<ExpenseAccountingTemplateApplyResultDto> ApplyExpenseAccountingTemplatesAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        string movementType = "Compra",
+        bool overwrite = false,
+        bool dryRun = false,
+        CancellationToken ct = default);
+
+    Task<CashFlowDataverseUpsertResultDto> UpsertCashFlowRowsAsync(
+        IReadOnlyList<CashFlowImportRowDto> rows,
+        bool dryRun = false,
+        CancellationToken ct = default);
+    Task<CashFlowClientPaymentMatchResultDto> MatchCashFlowClientPaymentsAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        bool dryRun = false,
+        decimal differenceTolerance = 5000m,
         CancellationToken ct = default);
     Task<BillingInvoicesTableDto> GetBillingInvoicesAsync(CancellationToken ct = default);
     Task<BillingInvoiceSaveResultDto> SaveBillingInvoiceAsync(BillingInvoiceSaveRequestDto request, CancellationToken ct = default);
@@ -135,6 +166,8 @@ public interface IDataverseService
     Task<CuentaCobroRowDto> GetCuentaCobroByIdAsync(string recordId, CancellationToken ct = default);
     Task<RegistroPagosClientesBoardDto> GetRegistroPagosClientesBoardAsync(CancellationToken ct = default);
     Task<RegistroPagosClientesPaymentSaveResult> SaveRegistroPagosClientePaymentAsync(RegistroPagosClientesPaymentSaveRequest request, CancellationToken ct = default);
+    Task<ConciliacionBoardDto> GetConciliacionBoardAsync(int year, int month, CancellationToken ct = default);
+    Task<ConciliacionActionResultDto> UpdateConciliacionClientPaymentStatusAsync(ConciliacionClientPaymentStatusRequest request, CancellationToken ct = default);
     Task<LicenciamientoBoardDto> GetLicenciamientoBoardAsync(CancellationToken ct = default);
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<LicenciamientoHistoricalPreviewResultDto> PreviewLicenciamientoHistoricalUploadAsync(IReadOnlyList<LicenciamientoHistoricalFileUploadDto> files, string trmText, string acronisBreakdownText, CancellationToken ct = default);

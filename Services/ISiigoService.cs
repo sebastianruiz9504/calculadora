@@ -1,3 +1,4 @@
+using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Reconciliation;
 
@@ -17,6 +18,11 @@ public interface ISiigoService
         CancellationToken ct = default);
 
     Task<SiigoFinancialReconciliationData> GetFinancialReconciliationDocumentsAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<SiigoObservedAccountDto>> GetObservedAccountCatalogAsync(
         DateOnly startDate,
         DateOnly endDate,
         CancellationToken ct = default);

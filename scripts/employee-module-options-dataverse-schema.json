@@ -109,6 +109,11 @@
       "label": "Registro pagos clientes",
       "value": 645250021,
       "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Conciliacion",
+      "value": 645250022,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
     }
   ]
 }

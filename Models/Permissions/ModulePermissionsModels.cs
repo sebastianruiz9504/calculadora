@@ -27,7 +27,8 @@ public enum AppModule
     Transportador = 19,
     RebatesInversiones = 20,
     CruceLicenciamiento = 21,
-    RegistroPagosClientes = 22
+    RegistroPagosClientes = 22,
+    Conciliacion = 23
 }
 
 public sealed class AppModuleDefinition
@@ -271,6 +272,16 @@ public static class AppModuleCatalog
         Controller = "RegistroPagosClientes"
     };
 
+    public static readonly AppModuleDefinition Conciliacion = new()
+    {
+        Key = AppModule.Conciliacion,
+        Label = "Conciliacion",
+        Category = "Finanzas",
+        Description = "Supervisa el cierre mensual, cruces automaticos, excepciones y siguiente paso por fase.",
+        OptionValue = 645250022,
+        Controller = "Conciliacion"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -295,6 +306,7 @@ public static class AppModuleCatalog
         Transportador,
         RebatesInversiones,
         RegistroPagosClientes,
+        Conciliacion,
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
@@ -348,6 +360,11 @@ public static class AppModuleCatalog
         {
             Label = "Dashboard",
             Modules = new[] { Dashboard }
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Conciliacion",
+            Modules = new[] { Conciliacion }
         }
     };
 

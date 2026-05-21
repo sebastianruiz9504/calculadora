@@ -1,0 +1,259 @@
+@model ConciliacionPageViewModel
+@using System.Globalization
+@{
+    ViewData["Title"] = "Conciliacion";
+    var culture = CultureInfo.GetCultureInfo("es-CO");
+    var board = Model.Board;
+    var activePhase = "pagos-clientes";
+    string Money(decimal value) => value.ToString("C0", culture);
+    string Number(int value) => value.ToString("N0", culture);
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/conciliacion.css" asp-append-version="true" />
+}
+
+<div class="cnc-shell"
+     id="conciliacionApp"
+     data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")">
+    <section class="cnc-heading">
+        <div class="cnc-heading__copy">
+            <div class="cnc-kicker">Cierre mensual</div>
+            <h1 class="cnc-title">Conciliacion</h1>
+            <p class="cnc-subtitle">
+                Centro de supervision para DIAN, gastos, flujo de caja, pagos, comprobantes y reportes.
+            </p>
+        </div>
+        <form class="cnc-period" method="get" asp-controller="Conciliacion" asp-action="Index">
+            <label>
+                <span>Periodo</span>
+                <select name="month" class="form-select">
+                    @for (var month = 1; month <= 12; month++)
+                    {
+                        <option value="@month" selected="@(board.Month == month ? "selected" : null)">
+                            @culture.DateTimeFormat.GetMonthName(month)
+                        </option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Ano</span>
+                <input class="form-control" type="number" name="year" value="@board.Year" min="2020" max="2100" />
+            </label>
+            <button type="submit" class="btn btn-primary">Ver</button>
+        </form>
+    </section>
+
+    <section class="cnc-overview" aria-label="Resumen del cierre">
+        <article class="cnc-metric">
+            <span>Periodo</span>
+            <strong>@board.PeriodLabel</strong>
+        </article>
+        <article class="cnc-metric">
+            <span>Estado</span>
+            <strong class="cnc-tone-@board.StatusTone">@board.StatusLabel</strong>
+        </article>
+        <article class="cnc-metric">
+            <span>Sugeridos</span>
+            <strong>@Number(board.TotalSuggested)</strong>
+        </article>
+        <article class="cnc-metric">
+            <span>Pendientes</span>
+            <strong>@Number(board.TotalPendingReview)</strong>
+        </article>
+        <article class="cnc-metric">
+            <span>Valor pagos clientes</span>
+            <strong>@Money(board.ClientPaymentEntries)</strong>
+        </article>
+    </section>
+
+    <div id="cncStatus" class="cnc-status" role="status" aria-live="polite"></div>
+
+    <section class="cnc-workspace">
+        <div class="cnc-phase-nav" role="tablist" aria-label="Fases de conciliacion">
+            @foreach (var phase in board.Phases)
+            {
+                var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
+                <button type="button"
+                        class="cnc-phase-tab @(isActive ? "is-active" : "")"
+                        data-cnc-tab="@phase.Key"
+                        role="tab"
+                        aria-selected="@(isActive ? "true" : "false")">
+                    <span>@phase.Label</span>
+                    <small class="cnc-badge cnc-badge--@phase.StatusTone">@phase.StatusLabel</small>
+                </button>
+            }
+        </div>
+
+        <div class="cnc-phase-panels">
+            @foreach (var phase in board.Phases)
+            {
+                var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
+                <section class="cnc-phase-panel @(isActive ? "is-active" : "")"
+                         data-cnc-panel="@phase.Key"
+                         role="tabpanel"
+                         @(isActive ? null : "hidden")>
+                    <div class="cnc-panel-header">
+                        <div>
+                            <div class="cnc-kicker">@phase.CadenceLabel</div>
+                            <h2>@phase.Label</h2>
+                        </div>
+                        <div class="cnc-run-log">
+                            <span>Ultima ejecucion</span>
+                            <strong>@phase.LastRunLabel</strong>
+                            <small>@phase.RunSummary</small>
+                        </div>
+                    </div>
+
+                    <div class="cnc-flow" aria-label="Flujo automatizado">
+                        @foreach (var step in phase.Steps)
+                        {
+                            <article class="cnc-flow-step cnc-flow-step--@step.StatusTone">
+                                <span class="cnc-flow-step__dot"></span>
+                                <div>
+                                    <strong>@step.Label</strong>
+                                    <span>@step.StatusLabel</span>
+                                    <small>@step.Summary</small>
+                                </div>
+                            </article>
+                        }
+                    </div>
+
+                    <div class="cnc-next-step">
+                        <span>Siguiente paso</span>
+                        <strong>@phase.NextStep</strong>
+                    </div>
+
+                    @if (phase.Key == "pagos-clientes")
+                    {
+                        <section class="cnc-payment-panel">
+                            <div class="cnc-payment-summary">
+                                <div>
+                                    <span>Total cruces</span>
+                                    <strong>@Number(board.ClientPayments.TotalRows)</strong>
+                                </div>
+                                <div>
+                                    <span>Sugeridos</span>
+                                    <strong>@Number(board.ClientPayments.Suggested)</strong>
+                                </div>
+                                <div>
+                                    <span>Aprobados</span>
+                                    <strong>@Number(board.ClientPayments.Approved)</strong>
+                                </div>
+                                <div>
+                                    <span>Revision</span>
+                                    <strong>@Number(board.ClientPayments.PendingReview)</strong>
+                                </div>
+                                <div>
+                                    <span>Valor sugerido</span>
+                                    <strong>@Money(board.ClientPayments.SuggestedEntries)</strong>
+                                </div>
+                            </div>
+
+                            <div class="cnc-table-toolbar">
+                                <div class="cnc-filter-grid">
+                                    <input id="cncPaymentSearch" class="form-control" type="search" placeholder="Buscar cliente, factura o descripcion" />
+                                    <select id="cncPaymentStatusFilter" class="form-select">
+                                        <option value="">Todos los estados</option>
+                                        <option value="Sugerido">Sugerido</option>
+                                        <option value="Aprobado">Aprobado</option>
+                                        <option value="RevisionManual">Revision manual</option>
+                                        <option value="DiferenciaFueraRango">Diferencia fuera de rango</option>
+                                        <option value="SinFacturaDescripcion">Sin factura en descripcion</option>
+                                        <option value="FacturaNoEncontrada">Factura no encontrada</option>
+                                        <option value="FacturaAmbigua">Factura ambigua</option>
+                                        <option value="Rechazado">Rechazado</option>
+                                    </select>
+                                    <select id="cncPaymentFlowFilter" class="form-select">
+                                        <option value="">Todos los bancos</option>
+                                        <option value="Cloud">Cloud</option>
+                                        <option value="Copiers">Copiers</option>
+                                    </select>
+                                </div>
+                                <span class="cnc-counter" id="cncPaymentCount">@Number(board.ClientPayments.Rows.Count) filas</span>
+                            </div>
+
+                            <div class="cnc-table-wrap">
+                                <table class="table align-middle cnc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Banco</th>
+                                            <th>Factura / cliente</th>
+                                            <th class="text-end">Entrada</th>
+                                            <th class="text-end">Diferencia</th>
+                                            <th>Estado</th>
+                                            <th>Accion</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cncPaymentRows">
+                                        @foreach (var row in board.ClientPayments.Rows)
+                                        {
+                                            var search = $"{row.InvoiceNumbers} {row.ClientNames} {row.Description} {row.BankAccountName}".ToLowerInvariant();
+                                            <tr data-record-id="@row.RecordId"
+                                                data-status="@row.Status"
+                                                data-flow="@row.SourceFlow"
+                                                data-search="@search">
+                                                <td>
+                                                    <strong>@row.MovementDateDisplay</strong>
+                                                    <small>@row.SourceFlow</small>
+                                                </td>
+                                                <td>
+                                                    <strong>@row.BankAccountCode</strong>
+                                                    <small>@row.BankAccountName</small>
+                                                </td>
+                                                <td>
+                                                    <strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong>
+                                                    <small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? row.Description : row.ClientNames)</small>
+                                                </td>
+                                                <td class="text-end">@Money(row.EntryValue)</td>
+                                                <td class="text-end @(Math.Abs(row.DifferenceValue) > 5000 ? "cnc-money-warning" : "")">@Money(row.DifferenceValue)</td>
+                                                <td>
+                                                    <span class="cnc-badge cnc-badge--@row.StatusTone" data-status-label>@row.StatusLabel</span>
+                                                    <small class="cnc-confidence">@row.Confidence% confianza</small>
+                                                </td>
+                                                <td>
+                                                    <div class="cnc-row-actions">
+                                                        <button type="button" class="btn btn-sm btn-outline-success" data-cnc-action="Aprobado">Aprobar</button>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-action="RevisionManual">Revisar</button>
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" data-cnc-action="Rechazado">Rechazar</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr class="cnc-detail-row" data-detail-for="@row.RecordId">
+                                                <td colspan="7">
+                                                    <details>
+                                                        <summary>Ver detalle y borrador</summary>
+                                                        <div class="cnc-detail-grid">
+                                                            <div>
+                                                                <span>Motivo</span>
+                                                                <p>@row.Reason</p>
+                                                            </div>
+                                                            <div>
+                                                                <span>Descripcion banco</span>
+                                                                <p>@row.Description</p>
+                                                            </div>
+                                                            <div>
+                                                                <span>Totales</span>
+                                                                <p>Factura @Money(row.InvoiceTotal) · Retenciones @Money(row.RetentionsTotal)</p>
+                                                            </div>
+                                                            <pre>@row.DraftJson</pre>
+                                                        </div>
+                                                    </details>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    }
+                </section>
+            }
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/conciliacion.js" asp-append-version="true"></script>
+}
