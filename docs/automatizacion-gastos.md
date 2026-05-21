@@ -212,6 +212,8 @@ Fuente Siigo: `/v1/document-types`.
 | CC | 7509 | 8 | Nomina |
 | CC | 7502 | 1 | Ajustes contables |
 
+Nota: el flujo automatico `Facturacion con TRM` debe emitir facturas de venta con el documento FV codigo 2, id 31072.
+
 ### Medios de pago / bancos activos
 
 Fuente Siigo: `/v1/payment-types`.
@@ -776,26 +778,82 @@ Estado implementado el 2026-05-21:
 - Opcion de acceso en `cr07a_empleado.cr07a_modulos`: `Conciliacion`
   (`645250022`).
 - Acceso piloto asignado solo a `sruiz@digitaltechcolombia.com`.
-- Vista inicial con las 9 fases como pestanas, resumen del periodo, diagrama de
-  pasos por fase, ultimo log/resumen y siguiente paso.
-- Primera pestana funcional: `5. Pagos de clientes`.
+- Vista simplificada con menu lateral como filtros. Las fases actuales son:
+  `Flujo de caja por banco`, `Registro de Salidas FE`,
+  `Registro de Entradas FE`, `Registro de cuentas de cobro`,
+  `Registro de comprobantes contables` y `Registros huerfanos`.
+- Cada fase muestra un cuadro `Ya esta` / `Hace falta`, pasos de estado y una
+  tabla filtrada del periodo.
+- `Flujo de caja por banco` muestra las filas importadas con tipo de
+  comprobante detectado, estado de validacion y estado Dataverse/Siigo.
+- `Registro de Entradas FE` sigue siendo la primera fase funcional completa:
+  usa `cr07a_cruceflujocaja` para aprobar, revisar, rechazar y prevalidar.
 - Acciones disponibles sobre `cr07a_cruceflujocaja`: aprobar, marcar revision
   manual y rechazar. Estas acciones solo actualizan Dataverse; no crean
   documentos en Siigo.
+- Prevalidacion pre-Siigo agregada para pagos de clientes. El boton `Validar`
+  revisa el borrador contable antes de cualquier envio: debe estar balanceado,
+  tener factura, cliente, banco, cuenta contable por linea y cuentas activas en
+  el catalogo Siigo de Dataverse.
+- Estados de preparacion:
+  - `ValidadoPendienteAprobacion`: el borrador cuadra, pero aun falta aprobar.
+  - `ListoSiigo`: el cruce esta aprobado y paso prevalidacion.
+  - `BloqueadoSiigo`: falta corregir cuenta, datos base o balance contable.
+- Campos agregados a `cr07a_cruceflujocaja`: `cr07a_preflightestado`,
+  `cr07a_preflightmensaje`, `cr07a_preflightfecha`,
+  `cr07a_preflightdebito`, `cr07a_preflightcredito`.
+- La prevalidacion tampoco envia nada a Siigo; solo deja el registro preparado
+  o bloqueado para supervision.
+- El popup de reasignacion de categoria ya existe a nivel visual y restringe
+  opciones segun `Entrada`, `Salida` o `Traslado`. Falta guardar la
+  reasignacion en Dataverse y reprocesar la fila.
 
 Estado por fase dentro del modulo:
 
-| Fase | Estado UI actual | Siguiente conexion |
+| Fase | Ya esta | Hace falta |
 | --- | --- | --- |
-| 1. Importador DIAN robusto | Visual | Staging CUFE/CUDE y errores por fila |
-| 2. Autoclasificacion de gastos | Visual | Reglas reales y correcciones como reglas |
-| 3. Cuentas de cobro a Siigo | Visual | Crear documento soporte via API Siigo |
-| 4. Flujo de caja a Dataverse | Visual con conteos del periodo | Usar salidas para proveedores/comprobantes |
-| 5. Pagos de clientes | Funcional | Crear borrador/recibo Siigo despues de aprobacion |
-| 6. Pagos a proveedores | Visual | Match salidas contra gastos/documentos |
-| 7. Comprobantes contables manuales | Visual | Plantillas por banco/texto y borradores |
-| 8. Bandeja de supervision | Contenedor activo | Unificar excepciones de todas las fases |
-| 9. Conciliacion y reportes | Visual | Integrar aprobaciones al correo mensual |
+| Flujo de caja por banco | Importacion Cloud/Copiers a Dataverse; traslados internos separados; columna visual de tipo detectado | Guardar categoria reasignada; cruce mensual con extractos; bloqueo de envio Siigo si no esta validado/completo |
+| Registro de Salidas FE | Filtro y tabla de salidas con factura electronica; checks visuales Dataverse/Siigo/pago/saldo | Cruce real contra DIAN/Dataverse; consulta de factura y saldo en Siigo; prevalidacion completa antes del envio |
+| Registro de Entradas FE | Cruce de entradas contra facturacion Dataverse; aprobacion/revision/rechazo; prevalidacion pre-Siigo con retenciones | Envio real a Siigo para `ListoSiigo`; marca definitiva de pago registrado; sincronizacion posterior Siigo -> Dataverse |
+| Registro de cuentas de cobro | Deteccion inicial desde flujo; formulario actual de retenciones en modulo cuentas de cobro | Crear automaticamente la cuenta de cobro desde flujo; subir a Siigo al completar retenciones; marcar subida a Dataverse en importacion DIAN siguiente |
+| Registro de comprobantes contables | Deteccion de MI PLANILLA, ENEL, ETB, intereses, inversiones, gravamen y gastos bancarios; catalogo y plantillas base | Consolidar gravamen mensual; partir MI PLANILLA por concepto; validar asiento completo antes de crear Siigo/Dataverse |
+| Registros huerfanos | Vista dedicada y popup visual de reasignacion por entrada/salida | Guardar la reasignacion en Dataverse; crear reglas desde correcciones; reprocesar filas |
+
+Clasificacion objetivo desde flujo de caja:
+
+| Direccion | Tipo de comprobante | Criterio inicial |
+| --- | --- | --- |
+| Entrada | Pago de factura | La descripcion contiene numero de factura, por ejemplo `FV`, `FEV`, `FE`, `FEDT`, `FEKT` |
+| Entrada | Comprobante contable | Abono de intereses, apertura/cancelacion de inversion, rendimientos u otros ingresos sin factura |
+| Entrada/Salida | Traslado interno | Solo entre cuentas; traslados de bolsillos se ignoran |
+| Salida | Factura electronica | Factura electronica de proveedor |
+| Salida | Documento soporte | Cuenta de cobro/documento soporte |
+| Salida | Comprobante contable | MI PLANILLA, ETB, ENEL, cancelacion de inversion, gravamen, comisiones, intereses, impuestos |
+
+Pendientes operativos:
+
+- Gravamen/GMF: no se debe subir fila por fila si el extracto lo consolida
+  mensual. La propuesta es acumular por banco y periodo en una tabla
+  `cr07a_consolidadogmf`, validar contra extracto al cierre y crear un solo
+  comprobante de fin de mes por banco con debito a `53050502` y credito al
+  banco correspondiente.
+- MI PLANILLA: el flujo de caja trae un solo valor, pero el comprobante debe
+  dividirse en salud, pension, ARL y caja de compensacion. La propuesta es una
+  plantilla multi-linea obligatoria con captura/carga del soporte de planilla;
+  la prevalidacion bloquea si la suma de lineas no coincide con la salida
+  bancaria.
+- Cambios posteriores en Siigo: guardar siempre `siigoDocumentId`, numero,
+  fecha, saldo, estado y hash de lineas en Dataverse. Un job de sincronizacion
+  mensual debe consultar Siigo por ids/documentos del periodo, actualizar el
+  espejo en Dataverse y marcar `DiferenciaSiigo` cuando cambien saldo, estado
+  o lineas despues de conciliado.
+- Frecuencia base mientras el flujo siga en Excel: importar/actualizar flujo de
+  caja a Dataverse semanalmente o cada vez que se cierre una jornada de pagos.
+  Una vez al mes se carga el extracto bancario, se cruza banco vs flujo y se
+  llena una tabla de cierre mensual con saldo inicial, entradas, salidas,
+  traslados, saldo final extracto y diferencia por banco. El mes solo se cierra
+  si todas las filas estan clasificadas, validadas y los saldos finales
+  coinciden.
 
 ### `cr07a_excepcionautomatizacion`
 

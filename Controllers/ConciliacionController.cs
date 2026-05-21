@@ -56,6 +56,29 @@ public sealed class ConciliacionController : Controller
         }
     }
 
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ValidateClientPaymentPreflight(
+        [FromBody] ConciliacionClientPaymentStatusRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el cruce a validar."));
+
+        try
+        {
+            return Ok(await _dataverse.ValidateConciliacionClientPaymentPreflightAsync(request.RecordId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible validar el borrador pre-Siigo.", ex));
+        }
+    }
+
     private static (int Year, int Month) ResolvePeriod(int? year, int? month)
     {
         var now = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, MonthlyFinancialReconciliationHostedService.ResolveTimeZone("SA Pacific Standard Time"));

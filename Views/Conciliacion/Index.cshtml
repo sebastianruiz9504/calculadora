@@ -4,9 +4,22 @@
     ViewData["Title"] = "Conciliacion";
     var culture = CultureInfo.GetCultureInfo("es-CO");
     var board = Model.Board;
-    var activePhase = "pagos-clientes";
+    var cashFlow = board.CashFlow;
+    var activePhase = "flujo-caja";
     string Money(decimal value) => value.ToString("C0", culture);
     string Number(int value) => value.ToString("N0", culture);
+    string SearchText(ConciliacionCashFlowRowDto row) =>
+        $"{row.MovementDateDisplay} {row.SourceFlow} {row.BankAccountName} {row.Description} {row.Recipient} {row.DestinationBank} {row.DocumentType} {row.DetectedTypeLabel} {row.ValidationStatus} {row.RegistrationStatus}".ToLowerInvariant();
+    IReadOnlyList<ConciliacionCashFlowRowDto> CashRowsFor(string key) => key switch
+    {
+        "salidas-fe" => cashFlow.Rows.Where(row => string.Equals(row.DetectedTypeKey, "salida-fe", StringComparison.OrdinalIgnoreCase)).ToArray(),
+        "cuentas-cobro" => cashFlow.Rows.Where(row => string.Equals(row.DetectedTypeKey, "cuenta-cobro", StringComparison.OrdinalIgnoreCase)).ToArray(),
+        "comprobantes" => cashFlow.Rows.Where(row =>
+            string.Equals(row.DetectedTypeKey, "comprobante-contable", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.DetectedTypeKey, "entrada-comprobante", StringComparison.OrdinalIgnoreCase)).ToArray(),
+        "huerfanos" => cashFlow.Rows.Where(row => string.Equals(row.DetectedTypeKey, "huerfano", StringComparison.OrdinalIgnoreCase)).ToArray(),
+        _ => cashFlow.Rows
+    };
 }
 
 @section Styles {
@@ -15,13 +28,14 @@
 
 <div class="cnc-shell"
      id="conciliacionApp"
-     data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")">
+     data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")"
+     data-preflight-payment-url="@Url.Action("ValidateClientPaymentPreflight", "Conciliacion")">
     <section class="cnc-heading">
         <div class="cnc-heading__copy">
             <div class="cnc-kicker">Cierre mensual</div>
             <h1 class="cnc-title">Conciliacion</h1>
             <p class="cnc-subtitle">
-                Centro de supervision para DIAN, gastos, flujo de caja, pagos, comprobantes y reportes.
+                Flujo de caja por banco, registros FE, cuentas de cobro, comprobantes y huerfanos del periodo.
             </p>
         </div>
         <form class="cnc-period" method="get" asp-controller="Conciliacion" asp-action="Index">
@@ -54,23 +68,23 @@
             <strong class="cnc-tone-@board.StatusTone">@board.StatusLabel</strong>
         </article>
         <article class="cnc-metric">
-            <span>Sugeridos</span>
-            <strong>@Number(board.TotalSuggested)</strong>
+            <span>Flujo caja</span>
+            <strong>@Number(cashFlow.TotalRows)</strong>
         </article>
         <article class="cnc-metric">
-            <span>Pendientes</span>
-            <strong>@Number(board.TotalPendingReview)</strong>
+            <span>Por validar</span>
+            <strong>@Number(cashFlow.PendingValidationRows)</strong>
         </article>
         <article class="cnc-metric">
-            <span>Valor pagos clientes</span>
-            <strong>@Money(board.ClientPaymentEntries)</strong>
+            <span>Huerfanos</span>
+            <strong>@Number(cashFlow.OrphanRows)</strong>
         </article>
     </section>
 
     <div id="cncStatus" class="cnc-status" role="status" aria-live="polite"></div>
 
     <section class="cnc-workspace">
-        <div class="cnc-phase-nav" role="tablist" aria-label="Fases de conciliacion">
+        <div class="cnc-phase-nav" role="tablist" aria-label="Filtros de conciliacion">
             @foreach (var phase in board.Phases)
             {
                 var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
@@ -89,6 +103,7 @@
             @foreach (var phase in board.Phases)
             {
                 var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
+                var phaseRows = CashRowsFor(phase.Key);
                 <section class="cnc-phase-panel @(isActive ? "is-active" : "")"
                          data-cnc-panel="@phase.Key"
                          role="tabpanel"
@@ -99,10 +114,31 @@
                             <h2>@phase.Label</h2>
                         </div>
                         <div class="cnc-run-log">
-                            <span>Ultima ejecucion</span>
+                            <span>Ultima actualizacion</span>
                             <strong>@phase.LastRunLabel</strong>
                             <small>@phase.RunSummary</small>
                         </div>
+                    </div>
+
+                    <div class="cnc-readiness" aria-label="Estado de la fase">
+                        <article>
+                            <h3>Ya esta</h3>
+                            <ul>
+                                @foreach (var item in phase.ReadyItems.DefaultIfEmpty("Sin avances registrados todavia."))
+                                {
+                                    <li>@item</li>
+                                }
+                            </ul>
+                        </article>
+                        <article>
+                            <h3>Hace falta</h3>
+                            <ul>
+                                @foreach (var item in phase.MissingItems.DefaultIfEmpty("Sin pendientes declarados."))
+                                {
+                                    <li>@item</li>
+                                }
+                            </ul>
+                        </article>
                     </div>
 
                     <div class="cnc-flow" aria-label="Flujo automatizado">
@@ -124,7 +160,7 @@
                         <strong>@phase.NextStep</strong>
                     </div>
 
-                    @if (phase.Key == "pagos-clientes")
+                    @if (phase.Key == "entradas-fe")
                     {
                         <section class="cnc-payment-panel">
                             <div class="cnc-payment-summary">
@@ -133,20 +169,24 @@
                                     <strong>@Number(board.ClientPayments.TotalRows)</strong>
                                 </div>
                                 <div>
-                                    <span>Sugeridos</span>
-                                    <strong>@Number(board.ClientPayments.Suggested)</strong>
+                                    <span>Factura Dataverse</span>
+                                    <strong>@Number(board.ClientPayments.Suggested + board.ClientPayments.Approved + board.ClientPayments.ReadyForSiigo)</strong>
                                 </div>
                                 <div>
-                                    <span>Aprobados</span>
-                                    <strong>@Number(board.ClientPayments.Approved)</strong>
+                                    <span>Pago Dataverse</span>
+                                    <strong>@Number(board.ClientPayments.TotalRows)</strong>
+                                </div>
+                                <div>
+                                    <span>Listos Siigo</span>
+                                    <strong>@Number(board.ClientPayments.ReadyForSiigo)</strong>
                                 </div>
                                 <div>
                                     <span>Revision</span>
                                     <strong>@Number(board.ClientPayments.PendingReview)</strong>
                                 </div>
                                 <div>
-                                    <span>Valor sugerido</span>
-                                    <strong>@Money(board.ClientPayments.SuggestedEntries)</strong>
+                                    <span>Valor entradas</span>
+                                    <strong>@Money(board.ClientPayments.TotalEntries)</strong>
                                 </div>
                             </div>
 
@@ -157,6 +197,8 @@
                                         <option value="">Todos los estados</option>
                                         <option value="Sugerido">Sugerido</option>
                                         <option value="Aprobado">Aprobado</option>
+                                        <option value="ListoSiigo">Listo Siigo</option>
+                                        <option value="BloqueadoSiigo">Bloqueado pre-Siigo</option>
                                         <option value="RevisionManual">Revision manual</option>
                                         <option value="DiferenciaFueraRango">Diferencia fuera de rango</option>
                                         <option value="SinFacturaDescripcion">Sin factura en descripcion</option>
@@ -181,8 +223,9 @@
                                             <th>Banco</th>
                                             <th>Factura / cliente</th>
                                             <th class="text-end">Entrada</th>
-                                            <th class="text-end">Diferencia</th>
-                                            <th>Estado</th>
+                                            <th>Factura DV</th>
+                                            <th>Pago DV</th>
+                                            <th>Siigo</th>
                                             <th>Accion</th>
                                         </tr>
                                     </thead>
@@ -190,10 +233,18 @@
                                         @foreach (var row in board.ClientPayments.Rows)
                                         {
                                             var search = $"{row.InvoiceNumbers} {row.ClientNames} {row.Description} {row.BankAccountName}".ToLowerInvariant();
-                                            <tr data-record-id="@row.RecordId"
+                                            var invoiceOk = !string.IsNullOrWhiteSpace(row.InvoiceNumbers)
+                                                && !string.Equals(row.Status, "FacturaNoEncontrada", StringComparison.OrdinalIgnoreCase)
+                                                && !string.Equals(row.Status, "FacturaAmbigua", StringComparison.OrdinalIgnoreCase);
+                                            <tr class="cnc-click-row"
+                                                data-cnc-reassign
+                                                data-record-id="@row.RecordId"
                                                 data-status="@row.Status"
                                                 data-flow="@row.SourceFlow"
-                                                data-search="@search">
+                                                data-search="@search"
+                                                data-direction="Entrada"
+                                                data-current-type="entrada-fe"
+                                                data-description="@row.Description">
                                                 <td>
                                                     <strong>@row.MovementDateDisplay</strong>
                                                     <small>@row.SourceFlow</small>
@@ -207,13 +258,30 @@
                                                     <small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? row.Description : row.ClientNames)</small>
                                                 </td>
                                                 <td class="text-end">@Money(row.EntryValue)</td>
-                                                <td class="text-end @(Math.Abs(row.DifferenceValue) > 5000 ? "cnc-money-warning" : "")">@Money(row.DifferenceValue)</td>
                                                 <td>
-                                                    <span class="cnc-badge cnc-badge--@row.StatusTone" data-status-label>@row.StatusLabel</span>
-                                                    <small class="cnc-confidence">@row.Confidence% confianza</small>
+                                                    <span class="cnc-badge cnc-badge--@(invoiceOk ? "success" : "warning")">@(invoiceOk ? "Encontrada" : "Pendiente")</span>
+                                                    <small>@row.StatusLabel</small>
+                                                </td>
+                                                <td>
+                                                    <span class="cnc-badge cnc-badge--success">Registrado</span>
+                                                    <small>Retenciones @Money(row.RetentionsTotal)</small>
+                                                </td>
+                                                <td>
+                                                    <span class="cnc-badge cnc-badge--@row.PreflightStatusTone" data-preflight-label>@row.PreflightStatusLabel</span>
+                                                    <small data-preflight-totals>
+                                                        @if (row.PreflightDebitTotal > 0 || row.PreflightCreditTotal > 0)
+                                                        {
+                                                            @($"Db {Money(row.PreflightDebitTotal)} / Cr {Money(row.PreflightCreditTotal)}")
+                                                        }
+                                                        else
+                                                        {
+                                                            @row.PreflightValidatedOnDisplay
+                                                        }
+                                                    </small>
                                                 </td>
                                                 <td>
                                                     <div class="cnc-row-actions">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-preflight>Validar</button>
                                                         <button type="button" class="btn btn-sm btn-outline-success" data-cnc-action="Aprobado">Aprobar</button>
                                                         <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-action="RevisionManual">Revisar</button>
                                                         <button type="button" class="btn btn-sm btn-outline-danger" data-cnc-action="Rechazado">Rechazar</button>
@@ -221,7 +289,7 @@
                                                 </td>
                                             </tr>
                                             <tr class="cnc-detail-row" data-detail-for="@row.RecordId">
-                                                <td colspan="7">
+                                                <td colspan="8">
                                                     <details>
                                                         <summary>Ver detalle y borrador</summary>
                                                         <div class="cnc-detail-grid">
@@ -235,7 +303,11 @@
                                                             </div>
                                                             <div>
                                                                 <span>Totales</span>
-                                                                <p>Factura @Money(row.InvoiceTotal) · Retenciones @Money(row.RetentionsTotal)</p>
+                                                                <p>Factura @Money(row.InvoiceTotal) / Retenciones @Money(row.RetentionsTotal) / Diferencia @Money(row.DifferenceValue)</p>
+                                                            </div>
+                                                            <div>
+                                                                <span>Pre-Siigo</span>
+                                                                <p data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? "Sin validacion pre-Siigo." : row.PreflightMessage)</p>
                                                             </div>
                                                             <pre>@row.DraftJson</pre>
                                                         </div>
@@ -248,10 +320,158 @@
                             </div>
                         </section>
                     }
+                    else
+                    {
+                        <section class="cnc-payment-panel">
+                            <div class="cnc-payment-summary">
+                                <div>
+                                    <span>Filas</span>
+                                    <strong>@Number(phaseRows.Count)</strong>
+                                </div>
+                                <div>
+                                    <span>Entradas</span>
+                                    <strong>@Money(phaseRows.Sum(row => row.EntryValue))</strong>
+                                </div>
+                                <div>
+                                    <span>Salidas</span>
+                                    <strong>@Money(phaseRows.Sum(row => row.ExitValue))</strong>
+                                </div>
+                                <div>
+                                    <span>Por validar</span>
+                                    <strong>@Number(phaseRows.Count(row => string.Equals(row.ValidationStatus, "Pendiente validar", StringComparison.OrdinalIgnoreCase) || string.Equals(row.ValidationStatus, "Revisar", StringComparison.OrdinalIgnoreCase)))</strong>
+                                </div>
+                            </div>
+
+                            <div class="cnc-table-toolbar">
+                                <input class="form-control cnc-table-search" type="search" placeholder="Buscar banco, descripcion o estado" data-cnc-table-search="@phase.Key" />
+                                <span class="cnc-counter" data-cnc-table-count="@phase.Key">@Number(phaseRows.Count) filas</span>
+                            </div>
+
+                            <div class="cnc-table-wrap">
+                                <table class="table align-middle cnc-table">
+                                    <thead>
+                                        @if (phase.Key == "flujo-caja")
+                                        {
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Banco</th>
+                                                <th>Descripcion</th>
+                                                <th>Tipo detectado</th>
+                                                <th class="text-end">Valor</th>
+                                                <th>Validacion</th>
+                                                <th>Registro</th>
+                                                <th>Accion</th>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Banco</th>
+                                                <th>Descripcion</th>
+                                                <th class="text-end">Valor</th>
+                                                <th>Dataverse</th>
+                                                <th>Siigo</th>
+                                                <th>Pago / saldo</th>
+                                                <th>Accion</th>
+                                            </tr>
+                                        }
+                                    </thead>
+                                    <tbody data-cnc-table-body="@phase.Key">
+                                        @foreach (var row in phaseRows)
+                                        {
+                                            <tr class="cnc-click-row"
+                                                data-cnc-reassign
+                                                data-record-id="@row.RecordId"
+                                                data-search="@SearchText(row)"
+                                                data-direction="@row.Direction"
+                                                data-current-type="@row.DetectedTypeKey"
+                                                data-description="@row.Description">
+                                                <td>
+                                                    <strong>@row.MovementDateDisplay</strong>
+                                                    <small>@row.SourceFlow</small>
+                                                </td>
+                                                <td>
+                                                    <strong>@(string.IsNullOrWhiteSpace(row.BankAccountCode) ? row.SourceFlow : row.BankAccountCode)</strong>
+                                                    <small>@row.BankAccountName</small>
+                                                </td>
+                                                <td>
+                                                    <strong>@(string.IsNullOrWhiteSpace(row.Description) ? row.Recipient : row.Description)</strong>
+                                                    <small>@row.DocumentType @row.Observations</small>
+                                                </td>
+                                                @if (phase.Key == "flujo-caja")
+                                                {
+                                                    <td>
+                                                        <span class="cnc-badge cnc-badge--@row.DetectedTypeTone" data-cnc-type-label>@row.DetectedTypeLabel</span>
+                                                        <small>@row.Direction</small>
+                                                    </td>
+                                                    <td class="text-end">@Money(row.Amount)</td>
+                                                    <td>
+                                                        <span class="cnc-badge cnc-badge--@row.ValidationTone">@row.ValidationStatus</span>
+                                                        <small>@row.InvoiceStatus</small>
+                                                    </td>
+                                                    <td>
+                                                        <span class="cnc-badge cnc-badge--@row.RegistrationTone">@row.RegistrationStatus</span>
+                                                        <small>@row.SiigoStatus</small>
+                                                    </td>
+                                                }
+                                                else
+                                                {
+                                                    <td class="text-end">@Money(row.Amount)</td>
+                                                    <td>
+                                                        <span class="cnc-badge cnc-badge--@row.InvoiceStatusTone">@row.InvoiceStatus</span>
+                                                        <small>@row.DataversePaymentStatus</small>
+                                                    </td>
+                                                    <td>
+                                                        <span class="cnc-badge cnc-badge--@row.SiigoDocumentTone">@row.SiigoDocumentStatus</span>
+                                                        <small>@row.RegistrationStatus</small>
+                                                    </td>
+                                                    <td>
+                                                        <span class="cnc-badge cnc-badge--@row.SiigoPaymentTone">@row.SiigoPaymentStatus</span>
+                                                        <small>@row.InvoiceBalanceStatus</small>
+                                                    </td>
+                                                }
+                                                <td>
+                                                    <div class="cnc-row-actions">
+                                                        @if (row.CanValidate && !string.IsNullOrWhiteSpace(row.ActionTargetKey))
+                                                        {
+                                                            <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-tab-target="@row.ActionTargetKey">Validar</button>
+                                                        }
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-open-reassign>Categoria</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    }
                 </section>
             }
         </div>
     </section>
+
+    <div class="cnc-modal" id="cncReassignModal" role="dialog" aria-modal="true" aria-labelledby="cncReassignTitle" hidden>
+        <div class="cnc-modal__panel">
+            <div class="cnc-modal__header">
+                <div>
+                    <div class="cnc-kicker">Reasignacion</div>
+                    <h2 id="cncReassignTitle">Categoria del registro</h2>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-close-modal>Cerrar</button>
+            </div>
+            <p class="cnc-modal__description" id="cncReassignDescription"></p>
+            <label class="cnc-modal__field">
+                <span>Categoria</span>
+                <select class="form-select" id="cncReassignCategory"></select>
+            </label>
+            <div class="cnc-modal__actions">
+                <button type="button" class="btn btn-outline-secondary" data-cnc-close-modal>Cancelar</button>
+                <button type="button" class="btn btn-primary" id="cncReassignApply">Aplicar</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {

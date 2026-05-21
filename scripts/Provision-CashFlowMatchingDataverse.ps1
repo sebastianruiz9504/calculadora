@@ -267,6 +267,27 @@ function New-DateAttribute([string]$Entity, [string]$SchemaName, [string]$Label)
     Write-Host "  Creada columna: $Entity.$logicalName"
 }
 
+function New-DateTimeAttribute([string]$Entity, [string]$SchemaName, [string]$Label) {
+    $logicalName = $SchemaName.ToLowerInvariant()
+    if (Test-AttributeExists $Entity $logicalName) {
+        Write-Host "  OK columna existente: $Entity.$logicalName"
+        return
+    }
+
+    $payload = @{
+        "@odata.type" = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+        "AttributeType" = "DateTime"
+        "AttributeTypeName" = New-Value "DateTimeType"
+        "SchemaName" = $SchemaName
+        "DisplayName" = New-Label $Label
+        "Description" = New-Label $Label
+        "RequiredLevel" = New-RequiredNone
+        "Format" = "DateAndTime"
+    }
+    Invoke-Dataverse -Method "POST" -Path "/api/data/v9.2/EntityDefinitions(LogicalName='$Entity')/Attributes" -Body $payload | Out-Null
+    Write-Host "  Creada columna: $Entity.$logicalName"
+}
+
 $appsettings = Get-Content -LiteralPath "appsettings.json" -Raw | ConvertFrom-Json
 $secrets = Get-UserSecretMap
 
@@ -312,6 +333,11 @@ New-DecimalAttribute $table "cr07a_ReteFteValor" "ReteFte valor"
 New-DecimalAttribute $table "cr07a_ReteIcaValor" "ReteICA valor"
 New-DecimalAttribute $table "cr07a_RteIvaValor" "RteIVA valor"
 New-MemoAttribute $table "cr07a_JsonBorradorSiigo" "Json borrador Siigo" 100000
+New-StringAttribute $table "cr07a_PreflightEstado" "Preflight estado" 100
+New-MemoAttribute $table "cr07a_PreflightMensaje" "Preflight mensaje" 4000
+New-DateTimeAttribute $table "cr07a_PreflightFecha" "Preflight fecha"
+New-DecimalAttribute $table "cr07a_PreflightDebito" "Preflight debito"
+New-DecimalAttribute $table "cr07a_PreflightCredito" "Preflight credito"
 New-StringAttribute $table "cr07a_ClaveExterna" "Clave externa" 300
 New-StringAttribute $table "cr07a_HashOrigen" "Hash origen" 100
 
