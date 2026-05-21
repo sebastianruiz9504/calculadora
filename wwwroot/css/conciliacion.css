@@ -178,6 +178,44 @@
     line-height: 1.25;
 }
 
+.cnc-phase-tasks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.cnc-phase-task {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.22rem 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
+.cnc-phase-task--siigo {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+
+.cnc-phase-task--dataverse {
+    background: #dcfce7;
+    color: #15803d;
+    border-color: #bbf7d0;
+}
+
+.cnc-phase-task--app {
+    background: #fef3c7;
+    color: #a16207;
+    border-color: #fde68a;
+}
+
 .cnc-badge {
     display: inline-flex;
     align-items: center;

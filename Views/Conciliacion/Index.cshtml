@@ -10,6 +10,38 @@
     string Number(int value) => value.ToString("N0", culture);
     string SearchText(ConciliacionCashFlowRowDto row) =>
         $"{row.MovementDateDisplay} {row.SourceFlow} {row.BankAccountName} {row.Description} {row.Recipient} {row.DestinationBank} {row.DocumentType} {row.DetectedTypeLabel} {row.ValidationStatus} {row.RegistrationStatus}".ToLowerInvariant();
+    IReadOnlyList<(string Text, string System)> PhaseTasks(string key) => key switch
+    {
+        "flujo-caja" => new[]
+        {
+            ("Asignar categorias", "dataverse"),
+            ("Revisar punto de partida para conciliar", "app")
+        },
+        "salidas-fe" => new[]
+        {
+            ("Cruzar con factura", "siigo"),
+            ("Aplicar pago a gastos", "siigo")
+        },
+        "entradas-fe" => new[]
+        {
+            ("Aplicar pagos facturas de clientes", "dataverse"),
+            ("Subir comprobantes contables", "siigo")
+        },
+        "cuentas-cobro" => new[]
+        {
+            ("Detectar retenciones en pagos", "dataverse"),
+            ("Subir documentos soporte", "siigo")
+        },
+        "comprobantes" => new[]
+        {
+            ("Entradas y salidas sin FE", "siigo")
+        },
+        "huerfanos" => new[]
+        {
+            ("Asignar categoria", "app")
+        },
+        _ => Array.Empty<(string Text, string System)>()
+    };
     IReadOnlyList<ConciliacionCashFlowRowDto> CashRowsFor(string key) => key switch
     {
         "salidas-fe" => cashFlow.Rows.Where(row => string.Equals(row.DetectedTypeKey, "salida-fe", StringComparison.OrdinalIgnoreCase)).ToArray(),
@@ -94,6 +126,12 @@
                         role="tab"
                         aria-selected="@(isActive ? "true" : "false")">
                     <span>@phase.Label</span>
+                    <span class="cnc-phase-tasks">
+                        @foreach (var task in PhaseTasks(phase.Key))
+                        {
+                            <small class="cnc-phase-task cnc-phase-task--@task.System">@task.Text</small>
+                        }
+                    </span>
                     <small class="cnc-badge cnc-badge--@phase.StatusTone">@phase.StatusLabel</small>
                 </button>
             }
