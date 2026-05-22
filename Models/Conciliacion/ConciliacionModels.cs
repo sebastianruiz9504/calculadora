@@ -191,3 +191,16 @@ public sealed class ConciliacionPreflightResultDto
     public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
     public ConciliacionClientPaymentRowDto? Row { get; set; }
 }
+
+public sealed class ConciliacionSiigoDryRunResultDto
+{
+    public string Message { get; set; } = "";
+    public bool IsReadyForSiigo { get; set; }
+    public string TargetEndpoint { get; set; } = "";
+    public string PayloadJson { get; set; } = "";
+    public int LineCount { get; set; }
+    public decimal DebitTotal { get; set; }
+    public decimal CreditTotal { get; set; }
+    public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
+    public ConciliacionClientPaymentRowDto? Row { get; set; }
+}

@@ -129,6 +129,59 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<ConciliacionSiigoDryRunResultDto> SimulateConciliacionClientPaymentSiigoSendAsync(
+        string recordId,
+        CancellationToken ct = default)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ClientPaymentMatchLogicalName,
+            ClientPaymentMatchSetName,
+            ClientPaymentMatchIdField,
+            ClientPaymentMatchPrimaryNameField,
+            ct);
+        var row = await GetConciliacionClientPaymentByIdAsync(metadata, normalizedRecordId, ct)
+            ?? throw new InvalidOperationException("No encontramos el cruce de pago a simular.");
+
+        var catalog = await GetConciliacionAccountCatalogAsync(ct);
+        var preflight = ValidateConciliacionClientPaymentDraft(row, catalog);
+        var issues = new List<string>(preflight.Issues);
+        if (!string.Equals(row.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase))
+            issues.Add("El cruce debe estar en estado Listo Siigo antes de habilitar el envio real.");
+
+        var payloadJson = "";
+        var lineCount = 0;
+        try
+        {
+            var payload = BuildConciliacionClientPaymentSiigoDryRunPayload(row, preflight, out lineCount);
+            payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonOptions) { WriteIndented = true });
+        }
+        catch (InvalidOperationException ex)
+        {
+            issues.Add(ex.Message);
+        }
+        catch (JsonException)
+        {
+            issues.Add("El JSON de borrador Siigo no es valido y no se puede simular.");
+        }
+
+        var ready = issues.Count == 0;
+        return new ConciliacionSiigoDryRunResultDto
+        {
+            Message = ready
+                ? "Simulacion correcta. El payload esta completo y aun no se envio nada a Siigo."
+                : "Simulacion con pendientes. Corrige los puntos indicados antes del envio real.",
+            IsReadyForSiigo = ready,
+            TargetEndpoint = "DRY-RUN /v1/vouchers",
+            PayloadJson = payloadJson,
+            LineCount = lineCount,
+            DebitTotal = preflight.DebitTotal,
+            CreditTotal = preflight.CreditTotal,
+            Issues = issues,
+            Row = row
+        };
+    }
+
     public async Task<ConciliacionActionResultDto> UpdateConciliacionClientPaymentStatusAsync(
         ConciliacionClientPaymentStatusRequest request,
         CancellationToken ct = default)
@@ -1181,6 +1234,140 @@ public sealed partial class DataverseService
         }
 
         return new ConciliacionPreflightValidation(RoundCurrency(debitTotal), RoundCurrency(creditTotal), issues);
+    }
+
+    private static object BuildConciliacionClientPaymentSiigoDryRunPayload(
+        ConciliacionClientPaymentRowDto row,
+        ConciliacionPreflightValidation preflight,
+        out int lineCount)
+    {
+        if (string.IsNullOrWhiteSpace(row.DraftJson))
+            throw new InvalidOperationException("No existe JSON de borrador Siigo para armar la simulacion.");
+
+        using var doc = JsonDocument.Parse(row.DraftJson);
+        var root = doc.RootElement;
+        var type = ReadString(root, "type");
+        if (!string.Equals(type, "ComprobanteIngresoSiigoBorrador", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("El borrador no corresponde al tipo ComprobanteIngresoSiigoBorrador.");
+        if (!root.TryGetProperty("lines", out var linesElement)
+            || linesElement.ValueKind != JsonValueKind.Array
+            || linesElement.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException("El borrador no tiene lineas contables para simular.");
+        }
+
+        var lines = new List<object>();
+        foreach (var line in linesElement.EnumerateArray())
+        {
+            var debit = RoundCurrency(ReadDecimal(line, "debit") ?? 0m);
+            var credit = RoundCurrency(ReadDecimal(line, "credit") ?? 0m);
+            if (debit == 0m && credit == 0m)
+                continue;
+
+            var accountCode = ReadString(line, "accountCode").Trim();
+            lines.Add(new
+            {
+                account = new
+                {
+                    code = accountCode,
+                    name = ReadString(line, "accountName").Trim()
+                },
+                description = FirstNonEmpty(
+                    ReadString(line, "description"),
+                    ReadString(line, "detail"),
+                    row.InvoiceNumbers,
+                    row.Description).Trim(),
+                thirdParty = FirstNonEmpty(ReadString(line, "thirdParty"), row.ClientNames).Trim(),
+                detail = FirstNonEmpty(ReadString(line, "detail"), row.InvoiceNumbers).Trim(),
+                debit,
+                credit
+            });
+        }
+
+        lineCount = lines.Count;
+        if (lineCount == 0)
+            throw new InvalidOperationException("El borrador no tiene lineas con debito o credito.");
+
+        var paymentType = ResolveConciliacionClientPaymentType(row.SourceFlow, row.BankAccountCode);
+        var movementDate = FirstNonEmpty(row.MovementDateValue, ReadString(root, "movement.date")).Trim();
+        var invoices = ReadConciliacionDraftInvoices(root);
+
+        return new
+        {
+            dryRun = true,
+            targetEndpoint = "/v1/vouchers",
+            note = "Payload de prueba generado por Conciliacion. No fue enviado a Siigo.",
+            document = new
+            {
+                type = "RC",
+                id = 7480,
+                code = "1",
+                name = "Recibo de caja"
+            },
+            paymentType,
+            date = movementDate,
+            customer = new
+            {
+                name = row.ClientNames,
+                invoices = row.InvoiceNumbers
+            },
+            movement = new
+            {
+                id = row.MovementId,
+                externalKey = row.MovementExternalKey,
+                sourceFlow = row.SourceFlow,
+                bankAccountCode = row.BankAccountCode,
+                bankAccountName = row.BankAccountName,
+                description = row.Description,
+                entry = row.EntryValue
+            },
+            totals = new
+            {
+                invoiceTotal = row.InvoiceTotal,
+                payment = row.EntryValue,
+                retentions = row.RetentionsTotal,
+                difference = row.DifferenceValue,
+                debit = preflight.DebitTotal,
+                credit = preflight.CreditTotal
+            },
+            invoices,
+            items = lines
+        };
+    }
+
+    private static object ResolveConciliacionClientPaymentType(string sourceFlow, string bankAccountCode)
+    {
+        var isCopiers = sourceFlow.Contains("Copiers", StringComparison.OrdinalIgnoreCase)
+            || bankAccountCode.Contains("11100505", StringComparison.OrdinalIgnoreCase);
+
+        return new
+        {
+            documentType = "RC",
+            id = isCopiers ? 13568 : 13566,
+            name = isCopiers ? "Bancolombia Copiers Ventas" : "Bancolombia Cloud Ventas"
+        };
+    }
+
+    private static IReadOnlyList<object> ReadConciliacionDraftInvoices(JsonElement root)
+    {
+        if (!root.TryGetProperty("invoices", out var invoicesElement)
+            || invoicesElement.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<object>();
+        }
+
+        return invoicesElement
+            .EnumerateArray()
+            .Select(invoice => new
+            {
+                recordId = ReadString(invoice, "recordId").Trim(),
+                number = ReadString(invoice, "number").Trim(),
+                client = ReadString(invoice, "client").Trim(),
+                total = RoundCurrency(ReadDecimal(invoice, "total") ?? 0m),
+                vat = RoundCurrency(ReadDecimal(invoice, "vat") ?? 0m)
+            })
+            .Cast<object>()
+            .ToArray();
     }
 
     private static string NormalizeConciliacionClientPaymentStatus(string? rawStatus)

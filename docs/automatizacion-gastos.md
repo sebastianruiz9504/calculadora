@@ -804,6 +804,11 @@ Estado implementado el 2026-05-21:
   `cr07a_preflightdebito`, `cr07a_preflightcredito`.
 - La prevalidacion tampoco envia nada a Siigo; solo deja el registro preparado
   o bloqueado para supervision.
+- Simulacion pre-envio a Siigo agregada para Entradas FE. El boton
+  `Simular envio` solo arma el payload de prueba desde
+  `cr07a_jsonborradorsiigo`, valida que el cruce este `ListoSiigo` y muestra
+  el JSON que se enviaria; no llama ningun endpoint de Siigo ni cambia el
+  estado del registro.
 - El popup de reasignacion de categoria ya existe a nivel visual y restringe
   opciones segun `Entrada`, `Salida` o `Traslado`. Falta guardar la
   reasignacion en Dataverse y reprocesar la fila.

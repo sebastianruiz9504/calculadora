@@ -6,6 +6,7 @@
 
     const updatePaymentUrl = app.dataset.updatePaymentUrl || "";
     const preflightPaymentUrl = app.dataset.preflightPaymentUrl || "";
+    const dryRunPaymentUrl = app.dataset.dryRunPaymentUrl || "";
     const statusBox = document.getElementById("cncStatus");
     const tabButtons = Array.from(app.querySelectorAll("[data-cnc-tab]"));
     const panels = Array.from(app.querySelectorAll("[data-cnc-panel]"));
@@ -284,7 +285,7 @@
             return;
         }
 
-        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight]"));
+        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run]"));
         buttons.forEach((item) => { item.disabled = true; });
         setStatus("Validando borrador pre-Siigo...", "info");
 
@@ -302,6 +303,59 @@
             updateRowStatus(row, payload.row, payload.row?.status || row.dataset.status || "");
             applyPaymentFilters();
             setStatus(payload.message || "Validacion pre-Siigo finalizada.", payload.isReadyForSiigo ? "success" : "info");
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
+        } finally {
+            buttons.forEach((item) => { item.disabled = false; });
+        }
+    };
+
+    const simulatePaymentSiigoDryRun = async (button) => {
+        const row = button.closest("tr[data-record-id]");
+        if (!row) {
+            return;
+        }
+
+        const recordId = row.dataset.recordId || "";
+        if (!recordId || !dryRunPaymentUrl) {
+            setStatus("No se encontro la ruta o el registro para simular.", "error");
+            return;
+        }
+
+        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run]"));
+        buttons.forEach((item) => { item.disabled = true; });
+        setStatus("Simulando payload de envio a Siigo...", "info");
+
+        try {
+            const response = await fetch(dryRunPaymentUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recordId })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible simular el envio.");
+            }
+
+            const message = row.querySelector("[data-siigo-dryrun-message]");
+            const preview = row.querySelector("[data-siigo-dryrun-preview]");
+            const payloadBox = row.querySelector("[data-siigo-dryrun-payload]");
+            const issues = Array.isArray(payload.issues) && payload.issues.length
+                ? ` Pendientes: ${payload.issues.join(" ")}`
+                : "";
+
+            if (message) {
+                message.textContent = `${payload.message || "Simulacion finalizada."}${issues}`;
+                message.className = payload.isReadyForSiigo ? "cnc-tone-success" : "cnc-tone-warning";
+            }
+            if (payloadBox) {
+                payloadBox.textContent = payload.payloadJson || "";
+            }
+            if (preview) {
+                preview.hidden = !payload.payloadJson;
+            }
+
+            setStatus(payload.message || "Simulacion finalizada.", payload.isReadyForSiigo ? "success" : "info");
         } catch (error) {
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
         } finally {
@@ -398,6 +452,10 @@
 
     paymentRowsBody?.querySelectorAll("[data-cnc-preflight]").forEach((button) => {
         button.addEventListener("click", () => validatePaymentPreflight(button));
+    });
+
+    paymentRowsBody?.querySelectorAll("[data-cnc-dry-run]").forEach((button) => {
+        button.addEventListener("click", () => simulatePaymentSiigoDryRun(button));
     });
 
     app.querySelectorAll("[data-cnc-reassign]").forEach((row) => {

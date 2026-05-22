@@ -609,6 +609,29 @@
     white-space: normal;
 }
 
+.cnc-json-preview {
+    margin-top: 0.35rem;
+}
+
+.cnc-json-preview summary {
+    cursor: pointer;
+    color: #1d4ed8;
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.cnc-json-preview pre {
+    max-height: 15rem;
+    margin: 0.35rem 0 0;
+    padding: 0.55rem;
+    overflow: auto;
+    border-radius: 6px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 0.74rem;
+    white-space: pre-wrap;
+}
+
 .cnc-pipeline {
     display: grid;
     gap: 1rem;

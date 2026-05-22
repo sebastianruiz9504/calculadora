@@ -79,6 +79,29 @@ public sealed class ConciliacionController : Controller
         }
     }
 
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SimulateClientPaymentSiigoSend(
+        [FromBody] ConciliacionClientPaymentStatusRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el cruce a simular."));
+
+        try
+        {
+            return Ok(await _dataverse.SimulateConciliacionClientPaymentSiigoSendAsync(request.RecordId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible simular el envio a Siigo.", ex));
+        }
+    }
+
     private static (int Year, int Month) ResolvePeriod(int? year, int? month)
     {
         var now = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, MonthlyFinancialReconciliationHostedService.ResolveTimeZone("SA Pacific Standard Time"));

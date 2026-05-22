@@ -91,7 +91,8 @@
 <div class="cnc-shell"
      id="conciliacionApp"
      data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")"
-     data-preflight-payment-url="@Url.Action("ValidateClientPaymentPreflight", "Conciliacion")">
+     data-preflight-payment-url="@Url.Action("ValidateClientPaymentPreflight", "Conciliacion")"
+     data-dry-run-payment-url="@Url.Action("SimulateClientPaymentSiigoSend", "Conciliacion")">
     <section class="cnc-heading">
         <div class="cnc-heading__copy">
             <div class="cnc-kicker">Cierre mensual</div>
@@ -429,12 +430,21 @@
                                                         <td><strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong><small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? row.Description : row.ClientNames)</small></td>
                                                         <td><strong>@row.BankAccountCode</strong><small>@row.BankAccountName</small></td>
                                                         <td class="text-end">@Money(row.EntryValue)</td>
-                                                        <td><span class="cnc-badge cnc-badge--@row.PreflightStatusTone" data-preflight-label>@row.PreflightStatusLabel</span><small data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? "Sin validacion pre-Siigo." : row.PreflightMessage)</small></td>
+                                                        <td>
+                                                            <span class="cnc-badge cnc-badge--@row.PreflightStatusTone" data-preflight-label>@row.PreflightStatusLabel</span>
+                                                            <small data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? "Sin validacion pre-Siigo." : row.PreflightMessage)</small>
+                                                            <small data-siigo-dryrun-message>Sin simulacion de envio.</small>
+                                                            <details class="cnc-json-preview" data-siigo-dryrun-preview hidden>
+                                                                <summary>Payload dry-run</summary>
+                                                                <pre data-siigo-dryrun-payload></pre>
+                                                            </details>
+                                                        </td>
                                                         <td><small data-preflight-totals>Db @Money(row.PreflightDebitTotal) / Cr @Money(row.PreflightCreditTotal)</small></td>
                                                         <td>
                                                             <div class="cnc-row-actions">
                                                                 <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-preflight>Validar</button>
                                                                 <button type="button" class="btn btn-sm btn-outline-success" data-cnc-action="Aprobado">Aprobar</button>
+                                                                <button type="button" class="btn btn-sm btn-outline-dark" data-cnc-dry-run>Simular envio</button>
                                                             </div>
                                                         </td>
                                                     </tr>

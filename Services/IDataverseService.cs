@@ -169,6 +169,7 @@ public interface IDataverseService
     Task<ConciliacionBoardDto> GetConciliacionBoardAsync(int year, int month, CancellationToken ct = default);
     Task<ConciliacionActionResultDto> UpdateConciliacionClientPaymentStatusAsync(ConciliacionClientPaymentStatusRequest request, CancellationToken ct = default);
     Task<ConciliacionPreflightResultDto> ValidateConciliacionClientPaymentPreflightAsync(string recordId, CancellationToken ct = default);
+    Task<ConciliacionSiigoDryRunResultDto> SimulateConciliacionClientPaymentSiigoSendAsync(string recordId, CancellationToken ct = default);
     Task<LicenciamientoBoardDto> GetLicenciamientoBoardAsync(CancellationToken ct = default);
     Task<LicenciamientoPreviewResultDto> PreviewLicenciamientoUploadAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<LicenciamientoHistoricalPreviewResultDto> PreviewLicenciamientoHistoricalUploadAsync(IReadOnlyList<LicenciamientoHistoricalFileUploadDto> files, string trmText, string acronisBreakdownText, CancellationToken ct = default);
