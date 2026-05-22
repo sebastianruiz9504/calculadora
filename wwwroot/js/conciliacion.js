@@ -211,7 +211,7 @@
             }
 
             const detail = getDetailRow(row.dataset.recordId || "");
-            const message = detail?.querySelector("[data-preflight-message]");
+            const message = row.querySelector("[data-preflight-message]") || detail?.querySelector("[data-preflight-message]");
             if (message) {
                 message.textContent = payloadRow.preflightMessage || "Sin validacion pre-Siigo.";
             }

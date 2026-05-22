@@ -153,7 +153,7 @@
     width: var(--cnc-menu-expanded);
     border-right: 1px solid var(--cnc-line);
     background: var(--cnc-soft);
-    box-shadow: 10px 0 26px rgba(15, 23, 42, 0.08);
+    box-shadow: 4px 0 14px rgba(15, 23, 42, 0.06);
     overflow-y: auto;
     transform: translateX(calc(var(--cnc-menu-collapsed) - var(--cnc-menu-expanded)));
     transition: transform 180ms ease, box-shadow 180ms ease;
@@ -162,7 +162,7 @@
 .cnc-phase-nav:hover,
 .cnc-phase-nav:focus-within {
     transform: translateX(0);
-    box-shadow: 18px 0 38px rgba(15, 23, 42, 0.18);
+    box-shadow: 12px 0 28px rgba(15, 23, 42, 0.14);
 }
 
 .cnc-phase-nav::after {
@@ -311,7 +311,7 @@
     min-width: 0;
     width: 100%;
     max-width: 100%;
-    padding: 1rem;
+    padding: 1rem 1rem 1rem calc(var(--cnc-menu-collapsed) + 1rem);
     overflow: hidden;
 }
 
@@ -469,7 +469,7 @@
 
 .cnc-payment-panel {
     display: grid;
-    gap: 1rem;
+    gap: 0.85rem;
     min-width: 0;
     max-width: 100%;
 }
@@ -557,6 +557,17 @@
     padding: 0.55rem;
 }
 
+.cnc-table--pipeline th,
+.cnc-table--pipeline td {
+    padding: 0.46rem;
+    font-size: 0.86rem;
+}
+
+.cnc-table--pipeline .cnc-badge {
+    font-size: 0.7rem;
+    padding: 0.18rem 0.42rem;
+}
+
 .cnc-table td strong,
 .cnc-table td small {
     display: block;
@@ -596,6 +607,40 @@
 
 .cnc-row-actions .btn {
     white-space: normal;
+}
+
+.cnc-pipeline {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.cnc-pipeline-stage {
+    display: grid;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.cnc-pipeline-stage__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--cnc-line);
+}
+
+.cnc-pipeline-stage__header h3 {
+    margin: 0;
+    color: var(--cnc-ink);
+    font-size: 1rem;
+    font-weight: 850;
+}
+
+.cnc-pipeline-stage__header span {
+    color: var(--cnc-muted);
+    font-size: 0.78rem;
+    font-weight: 800;
 }
 
 .cnc-detail-row td {
