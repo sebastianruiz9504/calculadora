@@ -104,6 +104,17 @@ public interface IDataverseService
     Task<ConciliacionActionResultDto> AssignConciliacionClientPaymentInvoiceAsync(
         ConciliacionAssignInvoiceRequest request,
         CancellationToken ct = default);
+    Task<ConciliacionSiigoSendPreparedDto> PrepareConciliacionClientPaymentSiigoSendAsync(
+        string recordId,
+        CancellationToken ct = default);
+    Task<ConciliacionActionResultDto> MarkConciliacionClientPaymentSiigoSendResultAsync(
+        string recordId,
+        bool success,
+        string message,
+        string siigoId = "",
+        string siigoName = "",
+        string responseJson = "",
+        CancellationToken ct = default);
     Task<BillingInvoicesTableDto> GetBillingInvoicesAsync(CancellationToken ct = default);
     Task<BillingInvoiceSaveResultDto> SaveBillingInvoiceAsync(BillingInvoiceSaveRequestDto request, CancellationToken ct = default);
     Task<BillingInvoicesDeleteResultDto> DeleteBillingInvoicesAsync(BillingInvoicesDeleteRequestDto request, CancellationToken ct = default);

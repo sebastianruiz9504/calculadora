@@ -910,8 +910,8 @@ public sealed partial class DataverseService
                 if (supplierDocumentType == HardwareSupplierDocumentTypePurchaseOrder)
                 {
                     message = currentRecords.Count == 1
-                        ? "Documentación registrada con ODC al proveedor. Se omitió Ok para pago a proveedor y el hardware pasó a Pagada a proveedor."
-                        : $"Documentación registrada con ODC al proveedor en {currentRecords.Count} fila(s). Se omitió Ok para pago a proveedor y el hardware pasó a Pagada a proveedor.";
+                        ? "Documentación registrada con ODC al proveedor. Se omitió Ok para pago a proveedor y el hardware pasó a Ok pago proveedor."
+                        : $"Documentación registrada con ODC al proveedor en {currentRecords.Count} fila(s). Se omitió Ok para pago a proveedor y el hardware pasó a Ok pago proveedor.";
                 }
                 else
                 {
@@ -942,8 +942,8 @@ public sealed partial class DataverseService
                 expectedStateAfterSave = HardwareStatePaidToSupplier;
                 requiredPerRecordFileAfterSave = HardwareSupplierPaymentFileLogicalName;
                 message = currentRecords.Count == 1
-                    ? "Pago a proveedor registrado. El hardware pasó a Pagada a proveedor."
-                    : $"Pago a proveedor registrado en {currentRecords.Count} fila(s). El hardware pasó a Pagada a proveedor.";
+                    ? "Pago a proveedor registrado. El hardware pasó a Ok pago proveedor."
+                    : $"Pago a proveedor registrado en {currentRecords.Count} fila(s). El hardware pasó a Ok pago proveedor.";
                 break;
 
             case "register-received":

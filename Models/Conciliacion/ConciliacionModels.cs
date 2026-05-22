@@ -154,6 +154,7 @@ public sealed class ConciliacionClientPaymentRowDto
     public string BankAccountCode { get; set; } = "";
     public string BankAccountName { get; set; } = "";
     public string Description { get; set; } = "";
+    public string InvoiceRecordIds { get; set; } = "";
     public string InvoiceNumbers { get; set; } = "";
     public string ClientNames { get; set; } = "";
     public decimal EntryValue { get; set; }
@@ -236,6 +237,39 @@ public sealed class ConciliacionSiigoDryRunResultDto
     public decimal CreditTotal { get; set; }
     public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
     public ConciliacionClientPaymentRowDto? Row { get; set; }
+}
+
+public sealed class ConciliacionSiigoSendPreparedDto
+{
+    public string Message { get; set; } = "";
+    public bool CanSend { get; set; }
+    public string TargetEndpoint { get; set; } = "";
+    public object? Payload { get; set; }
+    public string PayloadJson { get; set; } = "";
+    public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
+    public ConciliacionClientPaymentRowDto? Row { get; set; }
+}
+
+public sealed class ConciliacionSiigoSendResultDto
+{
+    public string Message { get; set; } = "";
+    public bool IsSuccess { get; set; }
+    public string SiigoId { get; set; } = "";
+    public string SiigoName { get; set; } = "";
+    public string TargetEndpoint { get; set; } = "";
+    public string PayloadJson { get; set; } = "";
+    public string ResponseJson { get; set; } = "";
+    public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
+    public ConciliacionClientPaymentRowDto? Row { get; set; }
+}
+
+public sealed class SiigoVoucherCreateResultDto
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Number { get; set; } = "";
+    public string Date { get; set; } = "";
+    public string RawJson { get; set; } = "";
 }
 
 public sealed class ConciliacionSyncHealthDto

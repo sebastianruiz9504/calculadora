@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CotizadorInterno.Web.Models.Automation;
+using CotizadorInterno.Web.Models.Conciliacion;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Reconciliation;
 using Microsoft.Extensions.Options;
@@ -342,6 +343,33 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    public async Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
+        object payload,
+        CancellationToken ct = default)
+    {
+        if (payload is null)
+            throw new ArgumentNullException(nameof(payload));
+
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/vouchers", payload, ct);
+        try
+        {
+            using var document = JsonDocument.Parse(rawBody);
+            var root = document.RootElement;
+            return new SiigoVoucherCreateResultDto
+            {
+                Id = ReadJsonString(root, "id"),
+                Name = ReadJsonString(root, "name"),
+                Number = ReadJsonString(root, "number"),
+                Date = ReadJsonString(root, "date"),
+                RawJson = JsonSerializer.Serialize(root, new JsonSerializerOptions(JsonOptions) { WriteIndented = true })
+            };
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Siigo creo el recibo, pero no fue posible interpretar la respuesta.", ex);
+        }
+    }
+
     private async Task<SiigoCustomerLookupItemDto> ResolveCustomerAsync(string? customerId, string? customerQuery, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(customerId))
@@ -436,12 +464,46 @@ public sealed class SiigoService : ISiigoService
         return await ReadJsonResponseAsync<T>(response, ct);
     }
 
-    private async Task<HttpResponseMessage> SendAuthorizedAsync(HttpMethod method, string relativeUrl, CancellationToken ct)
+    private async Task<string> SendAuthorizedJsonAsync(
+        HttpMethod method,
+        string relativeUrl,
+        object payload,
+        CancellationToken ct)
+    {
+        using var response = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            InvalidateToken();
+            using var retryResponse = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, ct);
+            return await ReadRawJsonResponseAsync(retryResponse, ct);
+        }
+
+        return await ReadRawJsonResponseAsync(response, ct);
+    }
+
+    private async Task<HttpResponseMessage> SendAuthorizedWithJsonAsync(
+        HttpMethod method,
+        string relativeUrl,
+        object payload,
+        CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await SendAuthorizedAsync(method, relativeUrl, ct, content);
+    }
+
+    private async Task<HttpResponseMessage> SendAuthorizedAsync(
+        HttpMethod method,
+        string relativeUrl,
+        CancellationToken ct,
+        HttpContent? content = null)
     {
         var token = await GetAccessTokenAsync(ct);
         var request = new HttpRequestMessage(method, relativeUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue(_tokenType, token);
         request.Headers.TryAddWithoutValidation("Partner-Id", ResolvePartnerId());
+        if (content is not null)
+            request.Content = content;
         return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
     }
 
@@ -522,6 +584,20 @@ public sealed class SiigoService : ISiigoService
 
     private async Task<T> ReadJsonResponseAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
+        var rawBody = await ReadRawJsonResponseAsync(response, ct);
+        try
+        {
+            return JsonSerializer.Deserialize<T>(rawBody, JsonOptions)
+                ?? throw new InvalidOperationException("Siigo devolvio una respuesta sin datos.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("No fue posible interpretar la respuesta de Siigo.", ex);
+        }
+    }
+
+    private async Task<string> ReadRawJsonResponseAsync(HttpResponseMessage response, CancellationToken ct)
+    {
         var rawBody = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
@@ -533,15 +609,7 @@ public sealed class SiigoService : ISiigoService
         if (string.IsNullOrWhiteSpace(rawBody))
             throw new InvalidOperationException("Siigo devolvio una respuesta vacia.");
 
-        try
-        {
-            return JsonSerializer.Deserialize<T>(rawBody, JsonOptions)
-                ?? throw new InvalidOperationException("Siigo devolvio una respuesta sin datos.");
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException("No fue posible interpretar la respuesta de Siigo.", ex);
-        }
+        return rawBody;
     }
 
     private static string ResolveSiigoErrorMessage(string rawBody)
@@ -607,6 +675,19 @@ public sealed class SiigoService : ISiigoService
 
         value = property.GetString() ?? "";
         return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static string ReadJsonString(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var property))
+            return "";
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString() ?? "",
+            JsonValueKind.Number => property.ToString(),
+            _ => ""
+        };
     }
 
     private static SiigoCustomerLookupItemDto MapCustomer(SiigoCustomerApiDto customer)

@@ -93,6 +93,7 @@
      data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")"
      data-preflight-payment-url="@Url.Action("ValidateClientPaymentPreflight", "Conciliacion")"
      data-dry-run-payment-url="@Url.Action("SimulateClientPaymentSiigoSend", "Conciliacion")"
+     data-send-payment-url="@Url.Action("SendClientPaymentToSiigo", "Conciliacion")"
      data-invoice-search-url="@Url.Action("SearchDataverseInvoices", "Conciliacion")"
      data-invoice-assign-url="@Url.Action("AssignClientPaymentInvoice", "Conciliacion")"
      data-sync-health-url="@Url.Action("SyncHealth", "Conciliacion", new { year = board.Year, month = board.Month })"
@@ -444,12 +445,24 @@
                                                                 <summary>Payload dry-run</summary>
                                                                 <pre data-siigo-dryrun-payload></pre>
                                                             </details>
+                                                            <small data-siigo-send-message>Sin envio real.</small>
+                                                            <ul class="cnc-issue-list" data-siigo-send-issues hidden></ul>
+                                                            <details class="cnc-json-preview" data-siigo-send-preview hidden>
+                                                                <summary>Respuesta Siigo</summary>
+                                                                <pre data-siigo-send-response></pre>
+                                                            </details>
                                                         </td>
                                                         <td><small data-preflight-totals>Db @Money(row.PreflightDebitTotal) / Cr @Money(row.PreflightCreditTotal)</small></td>
                                                         <td>
                                                             <div class="cnc-row-actions">
                                                                 <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-preflight>Validar pre-Siigo</button>
                                                                 <button type="button" class="btn btn-sm btn-outline-dark" data-cnc-dry-run>Simular envio</button>
+                                                                <button type="button"
+                                                                        class="btn btn-sm btn-danger"
+                                                                        data-cnc-send-siigo
+                                                                        @(HasPaymentStatus(row, "ListoSiigo") ? null : "disabled")>
+                                                                    Enviar a Siigo
+                                                                </button>
                                                             </div>
                                                         </td>
                                                     </tr>

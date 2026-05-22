@@ -7,6 +7,7 @@
     const updatePaymentUrl = app.dataset.updatePaymentUrl || "";
     const preflightPaymentUrl = app.dataset.preflightPaymentUrl || "";
     const dryRunPaymentUrl = app.dataset.dryRunPaymentUrl || "";
+    const sendPaymentUrl = app.dataset.sendPaymentUrl || "";
     const invoiceSearchUrl = app.dataset.invoiceSearchUrl || "";
     const invoiceAssignUrl = app.dataset.invoiceAssignUrl || "";
     const syncHealthUrl = app.dataset.syncHealthUrl || "";
@@ -222,9 +223,12 @@
         switch (status) {
             case "Aprobado":
             case "ListoSiigo":
+            case "EnviadoSiigo":
+            case "Conciliado":
                 return "success";
             case "Rechazado":
             case "BloqueadoSiigo":
+            case "ErrorSiigo":
                 return "danger";
             case "RevisionManual":
             case "DiferenciaFueraRango":
@@ -243,6 +247,12 @@
                 return "Revision manual";
             case "ListoSiigo":
                 return "Listo Siigo";
+            case "EnviadoSiigo":
+                return "Enviado Siigo";
+            case "ErrorSiigo":
+                return "Error Siigo";
+            case "Conciliado":
+                return "Conciliado";
             case "BloqueadoSiigo":
                 return "Bloqueado pre-Siigo";
             case "DiferenciaFueraRango":
@@ -474,6 +484,11 @@
             if (message) {
                 message.textContent = payloadRow.preflightMessage || "Sin validacion pre-Siigo.";
             }
+
+            const sendButton = row.querySelector("[data-cnc-send-siigo]");
+            if (sendButton) {
+                sendButton.disabled = nextStatus !== "ListoSiigo";
+            }
         }
     };
 
@@ -531,6 +546,10 @@
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
         } finally {
             buttons.forEach((item) => { item.disabled = false; });
+            const sendButton = row.querySelector("[data-cnc-send-siigo]");
+            if (sendButton) {
+                sendButton.disabled = (row.dataset.status || "") !== "ListoSiigo";
+            }
         }
     };
 
@@ -546,7 +565,7 @@
             return;
         }
 
-        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run]"));
+        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run], [data-cnc-send-siigo]"));
         buttons.forEach((item) => { item.disabled = true; });
         setStatus("Validando borrador pre-Siigo...", "info");
 
@@ -573,6 +592,10 @@
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
         } finally {
             buttons.forEach((item) => { item.disabled = false; });
+            const sendButton = row.querySelector("[data-cnc-send-siigo]");
+            if (sendButton) {
+                sendButton.disabled = (row.dataset.status || "") !== "ListoSiigo";
+            }
         }
     };
 
@@ -588,7 +611,7 @@
             return;
         }
 
-        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run]"));
+        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run], [data-cnc-send-siigo]"));
         buttons.forEach((item) => { item.disabled = true; });
         setStatus("Simulando payload de envio a Siigo...", "info");
 
@@ -627,6 +650,74 @@
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
         } finally {
             buttons.forEach((item) => { item.disabled = false; });
+        }
+    };
+
+    const sendPaymentToSiigo = async (button) => {
+        const row = button.closest("tr[data-record-id]");
+        if (!row) {
+            return;
+        }
+
+        const recordId = row.dataset.recordId || "";
+        if (!recordId || !sendPaymentUrl) {
+            setStatus("No se encontro la ruta o el registro para enviar a Siigo.", "error");
+            return;
+        }
+
+        if ((row.dataset.status || "") !== "ListoSiigo") {
+            setStatus("El cruce debe estar Listo Siigo antes del envio real.", "info");
+            return;
+        }
+
+        const confirmed = window.confirm("Esto creara un recibo/comprobante real en Siigo. Revisa que la fila sea la correcta antes de continuar.");
+        if (!confirmed) {
+            return;
+        }
+
+        const buttons = Array.from(row.querySelectorAll("[data-cnc-action], [data-cnc-preflight], [data-cnc-dry-run], [data-cnc-send-siigo]"));
+        buttons.forEach((item) => { item.disabled = true; });
+        setStatus("Enviando pago real a Siigo...", "info");
+
+        try {
+            const response = await fetch(sendPaymentUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recordId })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible enviar a Siigo.");
+            }
+
+            updateRowStatus(row, payload.row, payload.row?.status || row.dataset.status || "");
+            renderIssueList(row, "[data-siigo-send-issues]", payload.issues || []);
+
+            const message = row.querySelector("[data-siigo-send-message]");
+            const preview = row.querySelector("[data-siigo-send-preview]");
+            const responseBox = row.querySelector("[data-siigo-send-response]");
+            if (message) {
+                message.textContent = payload.message || "Envio finalizado.";
+                message.className = payload.isSuccess ? "cnc-tone-success" : "cnc-tone-warning";
+            }
+            if (responseBox) {
+                responseBox.textContent = payload.responseJson || "";
+            }
+            if (preview) {
+                preview.hidden = !payload.responseJson;
+            }
+
+            setStatus(payload.message || "Envio finalizado.", payload.isSuccess ? "success" : "info");
+            if (payload.isSuccess) {
+                window.setTimeout(() => window.location.reload(), 900);
+            } else {
+                buttons.forEach((item) => { item.disabled = false; });
+                button.disabled = (row.dataset.status || "") !== "ListoSiigo";
+            }
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
+            buttons.forEach((item) => { item.disabled = false; });
+            button.disabled = (row.dataset.status || "") !== "ListoSiigo";
         }
     };
 
@@ -908,6 +999,10 @@
 
     paymentRowsBody?.querySelectorAll("[data-cnc-dry-run]").forEach((button) => {
         button.addEventListener("click", () => simulatePaymentSiigoDryRun(button));
+    });
+
+    paymentRowsBody?.querySelectorAll("[data-cnc-send-siigo]").forEach((button) => {
+        button.addEventListener("click", () => sendPaymentToSiigo(button));
     });
 
     app.querySelectorAll("[data-cnc-reassign]").forEach((row) => {

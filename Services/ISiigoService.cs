@@ -1,4 +1,5 @@
 using CotizadorInterno.Web.Models.Automation;
+using CotizadorInterno.Web.Models.Conciliacion;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Reconciliation;
 
@@ -29,5 +30,9 @@ public interface ISiigoService
 
     Task<SiigoInvoiceDownloadResult> DownloadInvoicePdfsAsync(
         IReadOnlyList<SiigoInvoiceDownloadItemDto> invoices,
+        CancellationToken ct = default);
+
+    Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
+        object payload,
         CancellationToken ct = default);
 }

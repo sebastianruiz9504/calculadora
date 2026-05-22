@@ -15,13 +15,16 @@ public sealed class ConciliacionController : Controller
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private readonly IDataverseService _dataverse;
     private readonly IFinancialReconciliationService _financialReconciliation;
+    private readonly ISiigoService _siigo;
 
     public ConciliacionController(
         IDataverseService dataverse,
-        IFinancialReconciliationService financialReconciliation)
+        IFinancialReconciliationService financialReconciliation,
+        ISiigoService siigo)
     {
         _dataverse = dataverse;
         _financialReconciliation = financialReconciliation;
+        _siigo = siigo;
     }
 
     [HttpGet]
@@ -170,6 +173,114 @@ public sealed class ConciliacionController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible simular el envio a Siigo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SendClientPaymentToSiigo(
+        [FromBody] ConciliacionClientPaymentStatusRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el cruce a enviar."));
+
+        ConciliacionSiigoSendPreparedDto prepared;
+        try
+        {
+            prepared = await _dataverse.PrepareConciliacionClientPaymentSiigoSendAsync(request.RecordId, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible preparar el envio real a Siigo.", ex));
+        }
+
+        if (!prepared.CanSend || prepared.Payload is null)
+        {
+            return Ok(new ConciliacionSiigoSendResultDto
+            {
+                Message = prepared.Message,
+                IsSuccess = false,
+                TargetEndpoint = prepared.TargetEndpoint,
+                PayloadJson = prepared.PayloadJson,
+                Issues = prepared.Issues,
+                Row = prepared.Row
+            });
+        }
+
+        try
+        {
+            var siigoResult = await _siigo.CreateVoucherAsync(prepared.Payload, ct);
+            var documentLabel = string.IsNullOrWhiteSpace(siigoResult.Name)
+                ? siigoResult.Id
+                : siigoResult.Name;
+            var message = string.IsNullOrWhiteSpace(documentLabel)
+                ? "Pago enviado a Siigo."
+                : $"Pago enviado a Siigo: {documentLabel}.";
+            var dataverseResult = await _dataverse.MarkConciliacionClientPaymentSiigoSendResultAsync(
+                request.RecordId,
+                success: true,
+                message: message,
+                siigoId: siigoResult.Id,
+                siigoName: siigoResult.Name,
+                responseJson: siigoResult.RawJson,
+                ct);
+
+            return Ok(new ConciliacionSiigoSendResultDto
+            {
+                Message = dataverseResult.Message,
+                IsSuccess = true,
+                SiigoId = siigoResult.Id,
+                SiigoName = siigoResult.Name,
+                TargetEndpoint = prepared.TargetEndpoint,
+                PayloadJson = prepared.PayloadJson,
+                ResponseJson = siigoResult.RawJson,
+                Row = dataverseResult.Row
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            var message = BuildExceptionDetail(ex);
+            var dataverseResult = await _dataverse.MarkConciliacionClientPaymentSiigoSendResultAsync(
+                request.RecordId,
+                success: false,
+                message: "Siigo rechazo el envio real.",
+                responseJson: message,
+                ct: ct);
+
+            return Ok(new ConciliacionSiigoSendResultDto
+            {
+                Message = "Siigo rechazo el envio real. Revisa el detalle visible en la fila.",
+                IsSuccess = false,
+                TargetEndpoint = prepared.TargetEndpoint,
+                PayloadJson = prepared.PayloadJson,
+                Issues = new[] { message },
+                Row = dataverseResult.Row
+            });
+        }
+        catch (Exception ex)
+        {
+            var message = BuildExceptionDetail(ex);
+            var dataverseResult = await _dataverse.MarkConciliacionClientPaymentSiigoSendResultAsync(
+                request.RecordId,
+                success: false,
+                message: "No fue posible completar el envio real a Siigo.",
+                responseJson: message,
+                ct: ct);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new ConciliacionSiigoSendResultDto
+            {
+                Message = "No fue posible completar el envio real a Siigo.",
+                IsSuccess = false,
+                TargetEndpoint = prepared.TargetEndpoint,
+                PayloadJson = prepared.PayloadJson,
+                Issues = new[] { message },
+                Row = dataverseResult.Row
+            });
         }
     }
 

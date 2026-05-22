@@ -11,6 +11,7 @@
      data-hw-allow-create="@(Model.AllowCreate ? "true" : "false")"
      data-hw-allow-commercial-draft-edit="@(Model.AllowCommercialDraftEdit ? "true" : "false")"
      data-hw-supplier-payment-email="@HardwareAccessPolicy.SupplierPaymentEmail"
+     data-hw-billing-email="@HardwareAccessPolicy.BillingEmail"
      data-preview-url="@Model.PreviewUrl"
      data-provision-url="@Model.ProvisionUrl"
      data-board-url="@Model.BoardUrl"
@@ -242,7 +243,7 @@
                             <div class="hardware-file-card" data-hw-create-file-card="cr07a_adjuntarproforma">
                                 <div>
                                     <div class="hardware-file-card__title">Proforma proveedor</div>
-                                    <div class="hardware-file-card__hint">Se guardará en la primera línea de la orden.</div>
+                                    <div class="hardware-file-card__hint">Se guardará en la línea seleccionada.</div>
                                 </div>
                                 <div class="hardware-file-card__actions">
                                     <div class="hardware-file-card__name" data-hw-create-file-name="cr07a_adjuntarproforma">Sin archivo</div>
@@ -262,6 +263,24 @@
                         </div>
                     </section>
 
+                    <section class="hardware-stage-panel" data-hw-create-proformas-section>
+                        <div class="hardware-stage-panel__header">
+                            <h3>Proformas proveedor</h3>
+                        </div>
+                        <div class="hardware-table-wrap hardware-commercial-create__lines">
+                            <table class="table align-middle hardware-stage-table hardware-create-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Archivo</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody data-hw-create-proformas></tbody>
+                            </table>
+                        </div>
+                    </section>
+
                     <section class="hardware-stage-panel">
                         <div class="hardware-stage-panel__header">
                             <h3>Líneas de hardware</h3>
@@ -275,6 +294,7 @@
                                         <th class="text-end">Costo unit. proveedor</th>
                                         <th class="text-end">Venta unidad</th>
                                         <th>Proveedor</th>
+                                        <th>Proforma</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -286,6 +306,7 @@
                     <div class="hardware-modal__footer">
                         <div class="hardware-modal__meta" data-hw-create-modal-meta>ODC y Proforma se cargan una sola vez por orden.</div>
                         <div class="hardware-actions">
+                            <button type="button" class="btn btn-outline-primary" data-hw-add-create-proforma>Agregar proforma</button>
                             <button type="button" class="btn btn-outline-primary" data-hw-add-create-line>Agregar fila</button>
                             <button type="button" class="btn btn-outline-secondary" data-hw-close-create-modal>Cancelar</button>
                             <button type="submit" class="btn btn-primary" data-hw-save-create>Guardar orden</button>

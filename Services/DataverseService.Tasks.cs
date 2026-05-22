@@ -63,7 +63,7 @@ public sealed partial class DataverseService
     private string _tasksCuentasCobroAssigneeEmail = "msuarez@digitaltechcolombia.com";
     private string _tasksPortfolioAssigneeEmails = "adaza@digitaltechcolombia.com;sruiz@digitaltechcolombia.com";
     private string _tasksHardwarePaymentAssigneeEmail = "cartera@digitaltechcolombia.com";
-    private string _tasksHardwareInvoiceAssigneeEmail = "";
+    private string _tasksHardwareInvoiceAssigneeEmail = HardwareAccessPolicy.BillingEmail;
     private string _tasksCopiersInventoryAssigneeEmail = "lrivera@digitaltechcopiers.com";
 
     public async Task<TaskSyncResultDto> SyncAutomaticTasksAsync(CancellationToken ct = default)
@@ -333,7 +333,8 @@ public sealed partial class DataverseService
                 taskType: "register-invoice",
                 descriptionPrefix: "ODC completa lista para facturar",
                 valueSelector: static row => row.TotalSale,
-                actionUrl: $"/Hardware?stateValue={HardwareStateDeliveredAwaitingBilling}");
+                actionUrl: $"/Hardware?stateValue={HardwareStateDeliveredAwaitingBilling}",
+                includeSupplierDocument: false);
         }
 
         foreach (var group in board.Rows
@@ -366,7 +367,8 @@ public sealed partial class DataverseService
         string taskType,
         string descriptionPrefix,
         Func<HardwareBoardRowDto, decimal> valueSelector,
-        string actionUrl)
+        string actionUrl,
+        bool includeSupplierDocument = true)
     {
         if (rows.Count == 0)
             return;
@@ -379,6 +381,12 @@ public sealed partial class DataverseService
         var client = ResolveCommonHardwareTaskValue(rows, static row => row.ClientName, "Varios clientes");
         var provider = ResolveCommonHardwareTaskValue(rows, static row => row.Provider, "Varios proveedores");
         var value = rows.Sum(valueSelector);
+        var description = includeSupplierDocument
+            ? $"{descriptionPrefix}. ODC: {orderNumber}. Proforma: {proforma}. Proveedor: {provider}. Cliente: {client}. Líneas: {rows.Count:N0}."
+            : $"{descriptionPrefix}. ODC: {orderNumber}. Proveedor: {provider}. Cliente: {client}. Líneas: {rows.Count:N0}.";
+        var reference = includeSupplierDocument
+            ? $"{orderNumber} · {proforma}"
+            : orderNumber;
 
         rules.Add(new TaskRuleDefinition
         {
@@ -386,11 +394,13 @@ public sealed partial class DataverseService
             Title = title,
             Module = "Hardware",
             TaskType = taskType,
-            SourceId = FirstNonEmpty(first.SupplierDocumentGroupKey, first.PurchaseOrderNumber, first.RecordId),
+            SourceId = includeSupplierDocument
+                ? FirstNonEmpty(first.SupplierDocumentGroupKey, first.PurchaseOrderNumber, first.RecordId)
+                : FirstNonEmpty(first.PurchaseOrderNumber, first.RecordId),
             AssigneeId = assignee.Id,
             AssigneeEmail = assignee.Email,
             AssigneeName = assignee.Name,
-            Description = $"{descriptionPrefix}. ODC: {orderNumber}. Proforma: {proforma}. Proveedor: {provider}. Cliente: {client}. Líneas: {rows.Count:N0}.",
+            Description = description,
             ActionUrl = actionUrl,
             PendingCount = rows.Count,
             ShouldBeOpen = true,
@@ -398,7 +408,7 @@ public sealed partial class DataverseService
             {
                 new TaskNotificationTableRow
                 {
-                    Reference = $"{orderNumber} · {proforma}",
+                    Reference = reference,
                     Client = client,
                     Detail = $"{provider} · {rows.Count:N0} línea(s)",
                     Value = value
