@@ -693,6 +693,7 @@ public sealed partial class DataverseService
         var reteIcaGeneratedVerticals = SumBillingCurrencyByVertical(reteIcaEmission, static row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
         var reteIcaFavorVerticals = SumBillingCurrencyByVertical(reteIcaPaymentRows, static row => row.ReteIcaValue);
         var reteIcaPayableVerticals = SubtractTaxVerticalAmounts(reteIcaGeneratedVerticals, reteIcaFavorVerticals);
+        var reteIcaReportDetails = BuildReteIcaReportDetails(reteIcaEmission, reteIcaPaymentRows);
 
         var incomeTaxRetentionRows = incomeTaxPayments
             .Where(static row => row.RteFteValue > 0m)
@@ -820,6 +821,7 @@ public sealed partial class DataverseService
                 Array.Empty<TaxExpenseDetailDto>(),
                 reteIcaPeriod.PeriodLabel,
                 reteIcaPeriod.DateRangeLabel,
+                reportDetails: reteIcaReportDetails,
                 calculationBaseLabel: "Valor facturado antes de IVA",
                 calculationBaseValue: reteIcaBase),
             IncomeTax = BuildTaxesSection(
@@ -2393,6 +2395,53 @@ public sealed partial class DataverseService
         };
     }
 
+    private TaxReportDetailsDto BuildReteIcaReportDetails(
+        IReadOnlyList<BillingRecordRow> generatedRows,
+        IReadOnlyList<BillingRecordRow> favorRows)
+    {
+        var generatedReportRows = BuildReteIcaGeneratedRows(generatedRows);
+        var favorReportRows = BuildReteIcaFavorRows(favorRows);
+
+        return new TaxReportDetailsDto
+        {
+            Tables = new[]
+            {
+                new TaxReportTableDto
+                {
+                    Key = "reteica-generado",
+                    Label = "Rete ICA generado",
+                    DateColumnLabel = "Fecha emision",
+                    NameColumnLabel = "Cliente",
+                    TotalColumnLabel = "Total factura",
+                    BaseColumnLabel = "Base antes de IVA",
+                    AmountColumnLabel = "Rete ICA generado",
+                    ShowBaseColumn = true,
+                    ShowReteIcaPercentColumn = true,
+                    TotalBaseValue = RoundCurrency(generatedReportRows.Sum(static row => row.BaseValue)),
+                    TotalValue = RoundCurrency(generatedReportRows.Sum(static row => row.TotalValue)),
+                    TotalAmountValue = RoundCurrency(generatedReportRows.Sum(static row => row.AmountValue)),
+                    Rows = generatedReportRows
+                },
+                new TaxReportTableDto
+                {
+                    Key = "reteica-favor",
+                    Label = "Rete ICA a favor",
+                    DateColumnLabel = "Fecha pago",
+                    NameColumnLabel = "Cliente",
+                    TotalColumnLabel = "Valor pago",
+                    BaseColumnLabel = "Total factura",
+                    AmountColumnLabel = "Rete ICA a favor",
+                    ShowBaseColumn = true,
+                    ShowReteIcaPercentColumn = true,
+                    TotalBaseValue = RoundCurrency(favorReportRows.Sum(static row => row.BaseValue)),
+                    TotalValue = RoundCurrency(favorReportRows.Sum(static row => row.TotalValue)),
+                    TotalAmountValue = RoundCurrency(favorReportRows.Sum(static row => row.AmountValue)),
+                    Rows = favorReportRows
+                }
+            }
+        };
+    }
+
     private IReadOnlyList<TaxReportRowDto> BuildReteFuenteAutoRows(IEnumerable<BillingRecordRow> rows)
     {
         return rows
@@ -2432,6 +2481,48 @@ public sealed partial class DataverseService
                 AmountValue = RoundCurrency(row.ReteFuenteValue),
                 ReteFuentePercent = CalculateExpenseRetentionPercent(row.ReteFuenteValue, row),
                 ReteIcaPercent = CalculateExpenseRetentionPercent(row.ReteIcaValue, row)
+            })
+            .ToList();
+    }
+
+    private IReadOnlyList<TaxReportRowDto> BuildReteIcaGeneratedRows(IEnumerable<BillingRecordRow> rows)
+    {
+        return rows
+            .OrderBy(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row =>
+            {
+                var baseValue = CalculateInvoiceTaxBase(row);
+                return new TaxReportRowDto
+                {
+                    DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    InvoiceNumber = row.InvoiceNumber,
+                    Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
+                    BaseValue = baseValue,
+                    TotalValue = RoundCurrency(row.TotalInvoice),
+                    AmountValue = RoundCurrency(baseValue * DashboardIcaRate),
+                    ReteIcaPercent = DashboardIcaRate * 100m
+                };
+            })
+            .Where(static row => row.BaseValue > 0m)
+            .ToList();
+    }
+
+    private IReadOnlyList<TaxReportRowDto> BuildReteIcaFavorRows(IEnumerable<BillingRecordRow> rows)
+    {
+        return rows
+            .Where(static row => row.ReteIcaValue > 0m)
+            .OrderBy(static row => row.PaymentDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row => new TaxReportRowDto
+            {
+                DateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                InvoiceNumber = row.InvoiceNumber,
+                Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
+                BaseValue = RoundCurrency(row.TotalInvoice),
+                TotalValue = RoundCurrency(row.PaymentValue),
+                AmountValue = RoundCurrency(row.ReteIcaValue),
+                ReteIcaPercent = CalculateBillingRetentionPercent(row.ReteIcaValue, row)
             })
             .ToList();
     }
@@ -3683,6 +3774,14 @@ public sealed partial class DataverseService
     private static decimal CalculateExpenseRetentionPercent(decimal retentionValue, TaxExpenseRow row)
     {
         var baseBeforeVat = CalculateExpenseTaxBase(row);
+        return baseBeforeVat <= 0m
+            ? 0m
+            : RoundCurrency((retentionValue / baseBeforeVat) * 100m);
+    }
+
+    private static decimal CalculateBillingRetentionPercent(decimal retentionValue, BillingRecordRow row)
+    {
+        var baseBeforeVat = CalculateInvoiceTaxBase(row);
         return baseBeforeVat <= 0m
             ? 0m
             : RoundCurrency((retentionValue / baseBeforeVat) * 100m);

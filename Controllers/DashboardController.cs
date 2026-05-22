@@ -1061,6 +1061,35 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> TaxesReteIcaExport([FromQuery] TaxesDashboardRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            request ??= new TaxesDashboardRequestDto();
+            request.Year ??= today.Year;
+            var dashboard = await _dataverse.GetTaxesDashboardAsync(request, ct);
+            var content = BuildTaxesReteIcaExcel(dashboard);
+            var periodToken = BuildSafeFileName(FirstNonEmpty(dashboard.ReteIca.Filter.ValueLabel, dashboard.ReteIca.PeriodLabel, "reteica"));
+            var fileName = $"reporte-reteica-{dashboard.ReteIca.Filter.Year}-{periodToken}-{ResolveBogotaToday():yyyyMMdd}.xlsx";
+
+            return File(
+                content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible generar el reporte de Rete ICA.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Licenciamiento([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
         try
@@ -1252,6 +1281,42 @@ public sealed class DashboardController : Controller
         return stream.ToArray();
     }
 
+    private static byte[] BuildTaxesReteIcaExcel(TaxesDashboardDto dashboard)
+    {
+        using var workbook = new XLWorkbook();
+        var section = dashboard.ReteIca;
+        var generatedTable = FindTaxReportTable(section, "reteica-generado") ?? new TaxReportTableDto
+        {
+            Label = "Rete ICA generado",
+            DateColumnLabel = "Fecha emision",
+            NameColumnLabel = "Cliente",
+            TotalColumnLabel = "Total factura",
+            BaseColumnLabel = "Base antes de IVA",
+            AmountColumnLabel = "Rete ICA generado",
+            ShowBaseColumn = true,
+            ShowReteIcaPercentColumn = true
+        };
+        var favorTable = FindTaxReportTable(section, "reteica-favor") ?? new TaxReportTableDto
+        {
+            Label = "Rete ICA a favor",
+            DateColumnLabel = "Fecha pago",
+            NameColumnLabel = "Cliente",
+            TotalColumnLabel = "Valor pago",
+            BaseColumnLabel = "Total factura",
+            AmountColumnLabel = "Rete ICA a favor",
+            ShowBaseColumn = true,
+            ShowReteIcaPercentColumn = true
+        };
+
+        AddReteIcaSummaryWorksheet(workbook, section, generatedTable, favorTable);
+        AddTaxReportWorksheet(workbook, "Rete ICA generado", generatedTable);
+        AddTaxReportWorksheet(workbook, "Rete ICA a favor", favorTable);
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
     private static TaxReportTableDto? FindTaxReportTable(TaxesSectionDto section, string key) =>
         section.ReportDetails.Tables.FirstOrDefault(table => string.Equals(table.Key, key, StringComparison.OrdinalIgnoreCase));
 
@@ -1287,6 +1352,48 @@ public sealed class DashboardController : Controller
         worksheet.Range(7, 1, 7, 2).Style.Font.Bold = true;
         worksheet.Range(7, 1, 7, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
         worksheet.Range(5, 2, 7, 2).Style.NumberFormat.Format = "$ #,##0";
+        worksheet.Columns().AdjustToContents();
+    }
+
+    private static void AddReteIcaSummaryWorksheet(
+        XLWorkbook workbook,
+        TaxesSectionDto section,
+        TaxReportTableDto generatedTable,
+        TaxReportTableDto favorTable)
+    {
+        var worksheet = workbook.Worksheets.Add("Resumen del calculo");
+
+        worksheet.Cell(1, 1).Value = "Resumen del calculo Rete ICA";
+        worksheet.Cell(2, 1).Value = section.PeriodLabel;
+        worksheet.Cell(2, 2).Value = section.DateRangeLabel;
+        worksheet.Cell(4, 1).Value = "Concepto";
+        worksheet.Cell(4, 2).Value = "Valor";
+        worksheet.Cell(5, 1).Value = "Base antes de IVA";
+        worksheet.Cell(5, 2).Value = generatedTable.TotalBaseValue;
+        worksheet.Cell(6, 1).Value = "Rete ICA generado";
+        worksheet.Cell(6, 2).Value = generatedTable.TotalAmountValue;
+        worksheet.Cell(7, 1).Value = "Rete ICA a favor";
+        worksheet.Cell(7, 2).Value = favorTable.TotalAmountValue;
+        worksheet.Cell(8, 1).Value = "Total ICA a pagar";
+        worksheet.Cell(8, 2).Value = section.TotalValue;
+        worksheet.Cell(10, 1).Value = "Formula";
+        worksheet.Cell(10, 2).Value = "Rete ICA generado - Rete ICA a favor";
+        worksheet.Cell(11, 1).Value = "Registros generado";
+        worksheet.Cell(11, 2).Value = generatedTable.Rows.Count;
+        worksheet.Cell(12, 1).Value = "Registros a favor";
+        worksheet.Cell(12, 2).Value = favorTable.Rows.Count;
+
+        var usedRange = worksheet.Range(1, 1, 12, 2);
+        usedRange.Style.Font.FontName = "Aptos";
+        var titleRange = worksheet.Range(1, 1, 1, 2).Merge();
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 16;
+        worksheet.Range(4, 1, 4, 2).Style.Font.Bold = true;
+        worksheet.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF3FF");
+        worksheet.Range(8, 1, 8, 2).Style.Font.Bold = true;
+        worksheet.Range(8, 1, 8, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
+        worksheet.Range(5, 2, 8, 2).Style.NumberFormat.Format = "$ #,##0";
+        worksheet.Range(11, 2, 12, 2).Style.NumberFormat.Format = "#,##0";
         worksheet.Columns().AdjustToContents();
     }
 

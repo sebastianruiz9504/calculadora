@@ -323,6 +323,7 @@
     const licenciamientoDefaultYear = Math.max(currentYear - 1, 2000);
     const licenciamientoDefaultMonth = 12;
     const taxesReteFuenteExportUrl = app.dataset.taxesRetefuenteExportUrl || app.dataset.taxesReteFuenteExportUrl || "";
+    const taxesReteIcaExportUrl = app.dataset.taxesReteicaExportUrl || app.dataset.taxesReteIcaExportUrl || "";
     const taxesVatExportUrl = app.dataset.taxesVatExportUrl || "";
     const billingClientReportExportUrl = app.dataset.billingClientReportExportUrl || "";
     const copiersCountersPdfUrl = app.dataset.copiersCountersPdfUrl || "";
@@ -3047,6 +3048,15 @@
         return `${taxesReteFuenteExportUrl}?${params.toString()}`;
     }
 
+    function buildTaxesReteIcaExportUrl() {
+        const params = new URLSearchParams({
+            reteIcaYear: String(state.taxesFilters.reteIcaYear),
+            reteIcaPeriod: String(state.taxesFilters.reteIcaPeriod)
+        });
+
+        return `${taxesReteIcaExportUrl}?${params.toString()}`;
+    }
+
     function buildTaxesVatExportUrl() {
         const params = new URLSearchParams({
             ivaYear: String(state.taxesFilters.ivaYear),
@@ -5280,6 +5290,9 @@
                 </label>
             `
             : "";
+        const exportControl = section?.key === "reteica"
+            ? '<button type="button" class="btn btn-primary" data-taxes-reteica-export>Exportar reporte</button>'
+            : "";
 
         return `
             <div class="dashboard-tax-filters">
@@ -5290,6 +5303,7 @@
                     </select>
                 </label>
                 ${valueControl}
+                ${exportControl}
             </div>
         `;
     }
@@ -9112,6 +9126,17 @@
                 }
 
                 window.location.href = buildTaxesReteFuenteExportUrl();
+                return;
+            }
+
+            const reteIcaExportButton = event.target.closest("[data-taxes-reteica-export]");
+            if (reteIcaExportButton) {
+                if (!taxesReteIcaExportUrl) {
+                    setStatus(taxesStatusBanner, "error", "No hay una URL configurada para generar el reporte de Rete ICA.");
+                    return;
+                }
+
+                window.location.href = buildTaxesReteIcaExportUrl();
                 return;
             }
 
