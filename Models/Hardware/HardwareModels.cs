@@ -25,6 +25,7 @@ public sealed class HardwareWorkspaceViewModel
     public string OwnerSearchUrl { get; set; } = "";
     public string ImpersonationUsersUrl { get; set; } = "";
     public string EditUrl { get; set; } = "";
+    public string DeleteUrl { get; set; } = "";
     public string InitialStartDate { get; set; } = "";
     public string InitialEndDate { get; set; } = "";
     public string CurrentUserId { get; set; } = "";
@@ -100,6 +101,8 @@ public sealed class HardwareBoardRowDto
     public string ActionLabel { get; set; } = "";
     public bool HasAction { get; set; }
     public string Provider { get; set; } = "";
+    public string SupplierDocumentGroupKey { get; set; } = "";
+    public string SupplierDocumentGroupLabel { get; set; } = "";
     public string InvoiceNumber { get; set; } = "";
     public string PurchaseOrderNumber { get; set; } = "";
     public decimal SupplierUnitCost { get; set; }
@@ -142,6 +145,8 @@ public sealed class HardwareStageSaveRequest
     public string DeliveryRecordDateValue { get; set; } = "";
     public string InvoiceNumber { get; set; } = "";
     public string SupplierDocumentType { get; set; } = "";
+    public string SupplierDocumentGroupKey { get; set; } = "";
+    public string SupplierDocumentGroupLabel { get; set; } = "";
     public List<HardwareDocumentationLineSaveRequest> DocumentationRows { get; set; } = new();
 }
 
@@ -151,6 +156,8 @@ public sealed class HardwareDocumentationLineSaveRequest
     public string OdcDateValue { get; set; } = "";
     public decimal? SupplierUnitCost { get; set; }
     public string Provider { get; set; } = "";
+    public string SupplierDocumentGroupKey { get; set; } = "";
+    public string SupplierDocumentGroupLabel { get; set; } = "";
 }
 
 public sealed class HardwareBulkEditRequest
@@ -211,6 +218,8 @@ public sealed class HardwareOrderLineCreateRequest
     public decimal? SupplierUnitCost { get; set; }
     public decimal? SaleUnit { get; set; }
     public string Provider { get; set; } = "";
+    public string SupplierDocumentGroupKey { get; set; } = "";
+    public string SupplierDocumentGroupLabel { get; set; } = "";
 }
 
 public sealed class HardwarePurchaseOrderRequest
@@ -245,6 +254,13 @@ public sealed class HardwareOrderLineEditRequest
     public decimal? SupplierUnitCost { get; set; }
     public decimal? SaleUnit { get; set; }
     public string Provider { get; set; } = "";
+    public string SupplierDocumentGroupKey { get; set; } = "";
+    public string SupplierDocumentGroupLabel { get; set; } = "";
+}
+
+public sealed class HardwareDeleteRecordRequest
+{
+    public string RecordId { get; set; } = "";
 }
 
 public sealed class HardwareOrderCreateResultDto

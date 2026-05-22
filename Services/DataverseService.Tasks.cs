@@ -272,40 +272,184 @@ public sealed partial class DataverseService
     {
         var board = await GetHardwareBoardAsync(null, null, null, ct);
         var rules = new List<TaskRuleDefinition>();
-        foreach (var row in board.Rows.Where(static row => row.HasAction))
-        {
-            var assignee = await ResolveHardwareAssigneeAsync(row, user, ct);
-            if (string.IsNullOrWhiteSpace(assignee.Email) && string.IsNullOrWhiteSpace(assignee.Id))
-                continue;
 
-            rules.Add(new TaskRuleDefinition
-            {
-                UniqueKey = $"hardware:{row.RecordId}:{row.StateValue}",
-                Title = $"Hardware - {row.ActionLabel}",
-                Module = "Hardware",
-                TaskType = row.ActionKey,
-                SourceId = row.RecordId,
-                AssigneeId = assignee.Id,
-                AssigneeEmail = assignee.Email,
-                AssigneeName = assignee.Name,
-                Description = $"Cliente: {row.ClientName}. Registro: {row.Name}. Estado actual: {row.StateLabel}.",
-                ActionUrl = $"/Hardware?stateValue={row.StateValue}",
-                PendingCount = 1,
-                ShouldBeOpen = true,
-                NotificationRows = new[]
-                {
-                    new TaskNotificationTableRow
-                    {
-                        Reference = row.Name,
-                        Client = row.ClientName,
-                        Detail = row.StateLabel,
-                        Value = row.TotalSale
-                    }
-                }
-            });
+        foreach (var group in board.Rows
+                     .Where(static row =>
+                         row.StateValue == HardwareStateOkForSupplierPayment
+                         && !row.HasSupplierPaymentProof)
+                     .GroupBy(BuildHardwareSupplierDocumentTaskKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var rows = group.ToList();
+            var assignee = await ResolveTaskAssigneeByEmailAsync(_tasksHardwarePaymentAssigneeEmail, user, ct);
+            AddHardwareGroupedTaskRule(
+                rules,
+                rows,
+                assignee,
+                uniqueKey: $"hardware:pago-proveedor:{group.Key}",
+                title: "Hardware - Registrar pago a proveedor",
+                taskType: HardwareAccessPolicy.SupplierPaymentActionKey,
+                descriptionPrefix: "Pago a proveedor pendiente",
+                valueSelector: static row => row.SupplierTotal,
+                actionUrl: $"/Hardware?stateValue={HardwareStateOkForSupplierPayment}");
+        }
+
+        foreach (var group in board.Rows
+                     .Where(static row => row.StateValue == HardwareStatePaidToSupplier)
+                     .GroupBy(BuildHardwareSupplierDocumentTaskKey, StringComparer.OrdinalIgnoreCase))
+        {
+            var rows = group.ToList();
+            var first = rows[0];
+            var assignee = await ResolveTaskAssigneeByUserIdAsync(first.OwnerId, first.OwnerName, "", user, ct);
+            AddHardwareGroupedTaskRule(
+                rules,
+                rows,
+                assignee,
+                uniqueKey: $"hardware:acta-entrega:{group.Key}",
+                title: "Hardware - Registrar acta de entrega",
+                taskType: "register-client-received",
+                descriptionPrefix: "Pago a proveedor confirmado",
+                valueSelector: static row => row.TotalSale,
+                actionUrl: $"/Hardware?stateValue={HardwareStatePaidToSupplier}");
+        }
+
+        foreach (var group in board.Rows
+                     .Where(static row => !string.IsNullOrWhiteSpace(row.PurchaseOrderNumber))
+                     .GroupBy(static row => NormalizeHardwareTaskKey(row.PurchaseOrderNumber), StringComparer.OrdinalIgnoreCase)
+                     .Where(static group => group.All(row =>
+                         row.StateValue == HardwareStateDeliveredAwaitingBilling
+                         && row.HasDeliveryRecord)))
+        {
+            var rows = group.ToList();
+            var assignee = await ResolveTaskAssigneeByEmailAsync(
+                FirstNonEmpty(_tasksHardwareInvoiceAssigneeEmail, HardwareAccessPolicy.BillingEmail),
+                user,
+                ct);
+            AddHardwareGroupedTaskRule(
+                rules,
+                rows,
+                assignee,
+                uniqueKey: $"hardware:facturar-odc:{group.Key}",
+                title: "Hardware - Facturar ODC completa",
+                taskType: "register-invoice",
+                descriptionPrefix: "ODC completa lista para facturar",
+                valueSelector: static row => row.TotalSale,
+                actionUrl: $"/Hardware?stateValue={HardwareStateDeliveredAwaitingBilling}");
+        }
+
+        foreach (var group in board.Rows
+                     .Where(static row => row.StateValue == HardwareStateBilledAwaitingPayment)
+                     .GroupBy(static row => NormalizeHardwareTaskKey(FirstNonEmpty(row.InvoiceNumber, row.PurchaseOrderNumber, row.RecordId)), StringComparer.OrdinalIgnoreCase))
+        {
+            var rows = group.ToList();
+            var assignee = await ResolveTaskAssigneeByEmailAsync(_tasksHardwarePaymentAssigneeEmail, user, ct);
+            AddHardwareGroupedTaskRule(
+                rules,
+                rows,
+                assignee,
+                uniqueKey: $"hardware:pago-cliente:{group.Key}",
+                title: "Hardware - Registrar pago cliente",
+                taskType: "register-client-payment",
+                descriptionPrefix: "Pago de cliente pendiente",
+                valueSelector: static row => row.TotalSale,
+                actionUrl: $"/Hardware?stateValue={HardwareStateBilledAwaitingPayment}");
         }
 
         return rules;
+    }
+
+    private static void AddHardwareGroupedTaskRule(
+        List<TaskRuleDefinition> rules,
+        IReadOnlyList<HardwareBoardRowDto> rows,
+        TaskRuleAssignee assignee,
+        string uniqueKey,
+        string title,
+        string taskType,
+        string descriptionPrefix,
+        Func<HardwareBoardRowDto, decimal> valueSelector,
+        string actionUrl)
+    {
+        if (rows.Count == 0)
+            return;
+        if (string.IsNullOrWhiteSpace(assignee.Email) && string.IsNullOrWhiteSpace(assignee.Id))
+            return;
+
+        var first = rows[0];
+        var orderNumber = FirstNonEmpty(first.PurchaseOrderNumber, "Sin ODC");
+        var proforma = FirstNonEmpty(first.SupplierDocumentGroupLabel, first.Provider, "Sin proforma");
+        var client = ResolveCommonHardwareTaskValue(rows, static row => row.ClientName, "Varios clientes");
+        var provider = ResolveCommonHardwareTaskValue(rows, static row => row.Provider, "Varios proveedores");
+        var value = rows.Sum(valueSelector);
+
+        rules.Add(new TaskRuleDefinition
+        {
+            UniqueKey = uniqueKey,
+            Title = title,
+            Module = "Hardware",
+            TaskType = taskType,
+            SourceId = FirstNonEmpty(first.SupplierDocumentGroupKey, first.PurchaseOrderNumber, first.RecordId),
+            AssigneeId = assignee.Id,
+            AssigneeEmail = assignee.Email,
+            AssigneeName = assignee.Name,
+            Description = $"{descriptionPrefix}. ODC: {orderNumber}. Proforma: {proforma}. Proveedor: {provider}. Cliente: {client}. Líneas: {rows.Count:N0}.",
+            ActionUrl = actionUrl,
+            PendingCount = rows.Count,
+            ShouldBeOpen = true,
+            NotificationRows = new[]
+            {
+                new TaskNotificationTableRow
+                {
+                    Reference = $"{orderNumber} · {proforma}",
+                    Client = client,
+                    Detail = $"{provider} · {rows.Count:N0} línea(s)",
+                    Value = value
+                }
+            }
+        });
+    }
+
+    private static string BuildHardwareSupplierDocumentTaskKey(HardwareBoardRowDto row) =>
+        $"{NormalizeHardwareTaskKey(row.PurchaseOrderNumber)}:{NormalizeHardwareTaskKey(FirstNonEmpty(row.SupplierDocumentGroupKey, row.SupplierDocumentGroupLabel, row.Provider, row.RecordId))}";
+
+    private static string ResolveCommonHardwareTaskValue(
+        IReadOnlyList<HardwareBoardRowDto> rows,
+        Func<HardwareBoardRowDto, string> selector,
+        string fallback)
+    {
+        var values = rows
+            .Select(selector)
+            .Select(static value => (value ?? "").Trim())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return values.Count == 1 ? values[0] : fallback;
+    }
+
+    private static string NormalizeHardwareTaskKey(string? value)
+    {
+        var normalized = RemoveHardwareDiacritics((value ?? "").Trim()).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "sin-valor";
+
+        var builder = new StringBuilder(normalized.Length);
+        var lastWasDash = false;
+        foreach (var ch in normalized)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(ch);
+                lastWasDash = false;
+                continue;
+            }
+
+            if (!lastWasDash)
+            {
+                builder.Append('-');
+                lastWasDash = true;
+            }
+        }
+
+        var result = builder.ToString().Trim('-');
+        return string.IsNullOrWhiteSpace(result) ? "sin-valor" : result;
     }
 
     private async Task<IReadOnlyList<TaskRuleDefinition>> BuildCrossLicensingTaskRulesAsync(ClaimsPrincipal user, CancellationToken ct)

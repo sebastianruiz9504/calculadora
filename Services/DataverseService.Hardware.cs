@@ -36,6 +36,8 @@ public sealed partial class DataverseService
     private const string HardwareFreightValueLogicalName = "cr07a_valorflete";
     private const string HardwarePurchaseOrderNumberLogicalName = "cr07a_noorden";
     private const string HardwareSupplierLogicalName = "cr07a_proveedor";
+    private const string HardwareSupplierDocumentGroupKeyLogicalName = "cr07a_grupoproforma";
+    private const string HardwareSupplierDocumentGroupLabelLogicalName = "cr07a_nombreproforma";
     private const string HardwareOdcDateLogicalName = "cr07a_fechaodc";
     private const string HardwareSupplierPaymentDateLogicalName = "cr07a_fechapagoaproveedor";
     private const string HardwareDeliveryRecordDateLogicalName = "cr07a_fechaactadeentrega";
@@ -104,10 +106,10 @@ public sealed partial class DataverseService
         new HardwareStateOptionDto
         {
             Value = HardwareStatePaidToSupplier,
-            Label = "Pagada a proveedor",
+            Label = "Ok pago proveedor",
             Tone = "supplier-paid",
-            ActionKey = "register-received",
-            ActionLabel = "Registrar recibido",
+            ActionKey = "register-client-received",
+            ActionLabel = "Registrar acta de entrega",
             HasAction = true
         },
         new HardwareStateOptionDto
@@ -289,6 +291,26 @@ public sealed partial class DataverseService
             SourceHeader = "Proveedor",
             LogicalName = HardwareSupplierLogicalName,
             SchemaName = "cr07a_Proveedor",
+            Kind = HardwareAttributeKind.String,
+            MaxLength = 200,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "Grupo proforma",
+            SourceHeader = "Grupo proforma",
+            LogicalName = HardwareSupplierDocumentGroupKeyLogicalName,
+            SchemaName = "cr07a_GrupoProforma",
+            Kind = HardwareAttributeKind.String,
+            MaxLength = 120,
+            IsSystemColumn = false
+        },
+        new HardwareManagedColumnDefinition
+        {
+            DisplayLabel = "Nombre proforma",
+            SourceHeader = "Nombre proforma",
+            LogicalName = HardwareSupplierDocumentGroupLabelLogicalName,
+            SchemaName = "cr07a_NombreProforma",
             Kind = HardwareAttributeKind.String,
             MaxLength = 200,
             IsSystemColumn = false
@@ -560,6 +582,8 @@ public sealed partial class DataverseService
                      HardwareSupplierTotalLogicalName,
                      HardwarePurchaseOrderNumberLogicalName,
                      HardwareSupplierLogicalName,
+                     HardwareSupplierDocumentGroupKeyLogicalName,
+                     HardwareSupplierDocumentGroupLabelLogicalName,
                      HardwareOdcDateLogicalName,
                      HardwareSupplierDocumentTypeLogicalName
                  })
@@ -659,6 +683,8 @@ public sealed partial class DataverseService
                      HardwareSupplierTotalLogicalName,
                      HardwarePurchaseOrderNumberLogicalName,
                      HardwareSupplierLogicalName,
+                     HardwareSupplierDocumentGroupKeyLogicalName,
+                     HardwareSupplierDocumentGroupLabelLogicalName,
                      HardwareOdcDateLogicalName,
                      HardwareClientLookupLogicalName,
                      HardwareSupplierDocumentTypeLogicalName
@@ -672,7 +698,7 @@ public sealed partial class DataverseService
         EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, currentUser);
         EnsureHardwareActionState(
             NormalizeHardwareStateValue(currentRecord.StateValue),
-            HardwareStateOkForSupplierPayment,
+            HardwareStateWaitingDocumentation,
             currentRecord.StateLabel);
 
         var primaryNameField = string.IsNullOrWhiteSpace(metadata.PrimaryNameField)
@@ -717,6 +743,16 @@ public sealed partial class DataverseService
             [HardwareMarginValueLogicalName] = marginValue,
             [HardwarePurchaseOrderNumberLogicalName] = purchaseOrderNumber,
             [HardwareSupplierLogicalName] = RequireHardwareText(request.Provider, "cr07a_proveedor"),
+            [HardwareSupplierDocumentGroupKeyLogicalName] = ResolveHardwareSupplierDocumentGroupKey(
+                request.SupplierDocumentGroupKey,
+                request.SupplierDocumentGroupLabel,
+                purchaseOrderNumber,
+                request.Provider,
+                0),
+            [HardwareSupplierDocumentGroupLabelLogicalName] = ResolveHardwareSupplierDocumentGroupLabel(
+                request.SupplierDocumentGroupLabel,
+                request.Provider,
+                0),
             [HardwareOdcDateLogicalName] = odcDate,
             [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})"
         };
@@ -728,6 +764,46 @@ public sealed partial class DataverseService
         {
             Records = new[] { updatedRecord },
             Message = "Se actualizó la línea de Hardware."
+        };
+    }
+
+    public async Task<HardwareBulkEditResultDto> DeleteHardwareCommercialDraftAsync(
+        string recordId,
+        CancellationToken ct = default,
+        CurrentUserInfo? ownerOverride = null)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var user = httpContext.User;
+        var currentUser = ownerOverride ?? await GetCurrentUserAsync(ct);
+        if (string.IsNullOrWhiteSpace(currentUser?.SystemUserId))
+            throw new InvalidOperationException("No fue posible resolver el owner autenticado para eliminar Hardware.");
+
+        await EnsureProvisioningHardwareSchemaAsync(user, ct);
+
+        var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var currentRecord = await GetHardwareRecordByIdAsync(metadata, normalizedRecordId, user, ct);
+        EnsureHardwareRecordsOwnedByCurrentUser(new[] { currentRecord }, currentUser);
+        EnsureHardwareActionState(
+            NormalizeHardwareStateValue(currentRecord.StateValue),
+            HardwareStateWaitingDocumentation,
+            currentRecord.StateLabel);
+
+        using var response = await CallRhDataverseResponseAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({normalizedRecordId})",
+            "DELETE",
+            user,
+            ct,
+            customizeRequest: request => request.Headers.TryAddWithoutValidation("If-Match", "*"));
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Dataverse error {(int)response.StatusCode} {response.ReasonPhrase}. Body: {body}");
+
+        return new HardwareBulkEditResultDto
+        {
+            Message = "Se eliminó la línea de Hardware."
         };
     }
 
@@ -783,7 +859,10 @@ public sealed partial class DataverseService
                 }
                 else
                 {
-                    EnsureHardwareOrderFilePresent(currentRecords, HardwareProformaFileLogicalName, "Adjuntar proforma");
+                    EnsureHardwareSupplierDocumentFilePresentForEachGroup(
+                        currentRecords,
+                        HardwareProformaFileLogicalName,
+                        "Adjuntar proforma");
                 }
 
                 var nextDocumentationState = supplierDocumentType == HardwareSupplierDocumentTypePurchaseOrder
@@ -813,6 +892,16 @@ public sealed partial class DataverseService
                         [HardwareUtilityLogicalName] = utility,
                         [HardwareMarginValueLogicalName] = marginValue,
                         [HardwareSupplierLogicalName] = RequireHardwareText(row.Provider, "Proveedor"),
+                        [HardwareSupplierDocumentGroupKeyLogicalName] = ResolveHardwareSupplierDocumentGroupKey(
+                            row.SupplierDocumentGroupKey,
+                            row.SupplierDocumentGroupLabel,
+                            purchaseOrderNumber,
+                            row.Provider,
+                            index),
+                        [HardwareSupplierDocumentGroupLabelLogicalName] = ResolveHardwareSupplierDocumentGroupLabel(
+                            row.SupplierDocumentGroupLabel,
+                            row.Provider,
+                            index),
                         [HardwareSupplierDocumentTypeLogicalName] = supplierDocumentType,
                         [HardwareStateLogicalName] = nextDocumentationState
                     };
@@ -874,7 +963,10 @@ public sealed partial class DataverseService
                 break;
 
             case "register-client-received":
-                EnsureHardwareActionState(currentState, HardwareStateInTransit, currentRecords[0].StateLabel);
+                EnsureHardwareActionStateOneOf(
+                    currentState,
+                    new[] { HardwareStatePaidToSupplier, HardwareStateInTransit },
+                    currentRecords[0].StateLabel);
                 await EnsureHardwareFilePresentOnEachRecordAsync(
                     metadata,
                     currentRecords,
@@ -2105,6 +2197,17 @@ public sealed partial class DataverseService
             [HardwareMarginValueLogicalName] = marginValue,
             [HardwarePurchaseOrderNumberLogicalName] = purchaseOrderNumber,
             [HardwareSupplierLogicalName] = RequireHardwareText(line.Provider, $"cr07a_proveedor de la fila {lineIndex + 1}"),
+            [HardwareSupplierDocumentGroupKeyLogicalName] = ResolveHardwareSupplierDocumentGroupKey(
+                line.SupplierDocumentGroupKey,
+                line.SupplierDocumentGroupLabel,
+                purchaseOrderNumber,
+                line.Provider,
+                lineIndex),
+            [HardwareSupplierDocumentGroupLabelLogicalName] = ResolveHardwareSupplierDocumentGroupLabel(
+                line.SupplierDocumentGroupLabel,
+                line.Provider,
+                lineIndex),
+            [HardwareSupplierDocumentTypeLogicalName] = HardwareSupplierDocumentTypeProforma,
             [HardwareOdcDateLogicalName] = odcDate,
             [HardwareStateLogicalName] = HardwareStateWaitingDocumentation,
             [$"{clientNavigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({NormalizeGuid(clientId, nameof(clientId))})",
@@ -2136,6 +2239,8 @@ public sealed partial class DataverseService
                      HardwareFreightValueLogicalName,
                      HardwarePurchaseOrderNumberLogicalName,
                      HardwareSupplierLogicalName,
+                     HardwareSupplierDocumentGroupKeyLogicalName,
+                     HardwareSupplierDocumentGroupLabelLogicalName,
                      HardwareOdcDateLogicalName,
                      HardwareSupplierPaymentDateLogicalName,
                      HardwareDeliveryRecordDateLogicalName,
@@ -2218,6 +2323,16 @@ public sealed partial class DataverseService
             ActionLabel = state.ActionLabel,
             HasAction = state.HasAction,
             Provider = ReadString(item, HardwareSupplierLogicalName).Trim(),
+            SupplierDocumentGroupKey = ResolveHardwareSupplierDocumentGroupKey(
+                ReadString(item, HardwareSupplierDocumentGroupKeyLogicalName),
+                ReadString(item, HardwareSupplierDocumentGroupLabelLogicalName),
+                ReadString(item, HardwarePurchaseOrderNumberLogicalName),
+                ReadString(item, HardwareSupplierLogicalName),
+                0),
+            SupplierDocumentGroupLabel = ResolveHardwareSupplierDocumentGroupLabel(
+                ReadString(item, HardwareSupplierDocumentGroupLabelLogicalName),
+                ReadString(item, HardwareSupplierLogicalName),
+                0),
             InvoiceNumber = ReadString(item, HardwareInvoiceNumberLogicalName).Trim(),
             PurchaseOrderNumber = ReadString(item, HardwarePurchaseOrderNumberLogicalName).Trim(),
             SupplierUnitCost = RoundCurrency(ReadDecimal(item, HardwareSupplierUnitCostLogicalName) ?? 0m),
@@ -2602,7 +2717,9 @@ public sealed partial class DataverseService
                 RecordId = currentRecords[0].RecordId,
                 OdcDateValue = request.OdcDateValue,
                 SupplierUnitCost = request.SupplierUnitCost,
-                Provider = request.Provider
+                Provider = request.Provider,
+                SupplierDocumentGroupKey = request.SupplierDocumentGroupKey,
+                SupplierDocumentGroupLabel = request.SupplierDocumentGroupLabel
             };
         }
 
@@ -2705,6 +2822,27 @@ public sealed partial class DataverseService
             throw new InvalidOperationException($"Debes cargar el archivo '{fieldLabel}' de la orden antes de avanzar esta etapa.");
     }
 
+    private static void EnsureHardwareSupplierDocumentFilePresentForEachGroup(
+        IReadOnlyList<HardwareBoardRowDto> records,
+        string fieldName,
+        string fieldLabel)
+    {
+        var missingGroups = records
+            .GroupBy(
+                ResolveHardwareSupplierDocumentGroupKey,
+                StringComparer.OrdinalIgnoreCase)
+            .Where(group => !group.Any(record => HasHardwareFile(record, fieldName)))
+            .Select(group => ResolveHardwareSupplierDocumentGroupLabel(group.First()))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (missingGroups.Count == 0)
+            return;
+
+        throw new InvalidOperationException(
+            $"Debes cargar el archivo '{fieldLabel}' para cada proforma. Pendiente: {string.Join(", ", missingGroups)}.");
+    }
+
     private static bool HasHardwareFile(HardwareBoardRowDto record, string fieldName) =>
         fieldName switch
         {
@@ -2715,6 +2853,86 @@ public sealed partial class DataverseService
             HardwareDeliveryRecordFileLogicalName => record.HasDeliveryRecord,
             _ => false
         };
+
+    private static string ResolveHardwareSupplierDocumentGroupKey(HardwareBoardRowDto row) =>
+        ResolveHardwareSupplierDocumentGroupKey(
+            row.SupplierDocumentGroupKey,
+            row.SupplierDocumentGroupLabel,
+            row.PurchaseOrderNumber,
+            row.Provider,
+            0);
+
+    private static string ResolveHardwareSupplierDocumentGroupLabel(HardwareBoardRowDto row) =>
+        ResolveHardwareSupplierDocumentGroupLabel(row.SupplierDocumentGroupLabel, row.Provider, 0);
+
+    private static string ResolveHardwareSupplierDocumentGroupKey(
+        string? key,
+        string? label,
+        string? purchaseOrderNumber,
+        string? provider,
+        int index)
+    {
+        var normalizedKey = NormalizeHardwareGroupToken(key);
+        if (!string.IsNullOrWhiteSpace(normalizedKey))
+            return normalizedKey;
+
+        var normalizedLabel = NormalizeHardwareGroupToken(label);
+        if (!string.IsNullOrWhiteSpace(normalizedLabel))
+            return normalizedLabel;
+
+        var orderPart = NormalizeHardwareGroupToken(purchaseOrderNumber);
+        var providerPart = NormalizeHardwareGroupToken(provider);
+        var fallback = string.Join("|", new[] { orderPart, providerPart }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return fallback;
+
+        return $"proforma-{index + 1}";
+    }
+
+    private static string ResolveHardwareSupplierDocumentGroupLabel(string? label, string? provider, int index)
+    {
+        var normalizedLabel = NormalizeHardwareCell(label);
+        if (!string.IsNullOrWhiteSpace(normalizedLabel))
+            return normalizedLabel.Length <= 200 ? normalizedLabel : normalizedLabel[..200];
+
+        var normalizedProvider = NormalizeHardwareCell(provider);
+        if (!string.IsNullOrWhiteSpace(normalizedProvider))
+        {
+            var value = $"Proforma {normalizedProvider}";
+            return value.Length <= 200 ? value : value[..200];
+        }
+
+        return $"Proforma {index + 1}";
+    }
+
+    private static string NormalizeHardwareGroupToken(string? value)
+    {
+        var normalized = RemoveHardwareDiacritics(NormalizeHardwareCell(value))
+            .ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "";
+
+        var builder = new StringBuilder(normalized.Length);
+        var lastWasDash = false;
+        foreach (var ch in normalized)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(ch);
+                lastWasDash = false;
+                continue;
+            }
+
+            if (!lastWasDash)
+            {
+                builder.Append('-');
+                lastWasDash = true;
+            }
+        }
+
+        var result = builder.ToString().Trim('-');
+        return result.Length <= 120 ? result : result[..120];
+    }
 
     private static string NormalizeHardwareSupplierDocumentType(string? rawValue)
     {

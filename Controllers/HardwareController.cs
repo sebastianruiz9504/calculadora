@@ -36,6 +36,7 @@ public sealed class HardwareController : Controller
     {
         var currentUser = await GetCurrentUserAsync(ct);
         var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(currentUser);
+        var isBillingUser = HardwareAccessPolicy.IsBillingUser(currentUser);
         return View(new HardwareWorkspaceViewModel
         {
             RootId = "hardwareApp",
@@ -46,8 +47,8 @@ public sealed class HardwareController : Controller
             CurrentUserId = currentUser.SystemUserId,
             CurrentUserEmail = currentUser.Email,
             CanImpersonate = HardwareAccessPolicy.IsImpersonationUser(currentUser),
-            AllowCreate = !isSupplierPaymentUser,
-            AllowCommercialDraftEdit = !isSupplierPaymentUser,
+            AllowCreate = !isSupplierPaymentUser && !isBillingUser,
+            AllowCommercialDraftEdit = !isSupplierPaymentUser && !isBillingUser,
             PreviewUrl = Url.Action(nameof(Preview), "Hardware") ?? "",
             ProvisionUrl = Url.Action(nameof(Provision), "Hardware") ?? "",
             BoardUrl = Url.Action(nameof(CommercialBoard), "Hardware") ?? "",
@@ -55,6 +56,7 @@ public sealed class HardwareController : Controller
             PurchaseOrderUrl = Url.Action(nameof(SubmitPurchaseOrder), "Hardware") ?? "",
             SaveUrl = Url.Action(nameof(CommercialSaveStage), "Hardware") ?? "",
             EditUrl = Url.Action(nameof(CommercialEditRecord), "Hardware") ?? "",
+            DeleteUrl = Url.Action(nameof(CommercialDeleteRecord), "Hardware") ?? "",
             UploadUrl = Url.Action(nameof(CommercialUploadFile), "Hardware") ?? "",
             DownloadUrl = Url.Action(nameof(CommercialDownloadFile), "Hardware") ?? "",
             InvoiceSearchUrl = Url.Action(nameof(InvoiceSearch), "Hardware") ?? "",
@@ -175,19 +177,33 @@ public sealed class HardwareController : Controller
         try
         {
             var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
-            var board = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser)
-                ? await _dataverse.GetHardwareBoardAsync(
+            HardwareBoardDto board;
+            if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser))
+            {
+                board = await _dataverse.GetHardwareBoardAsync(
                     HardwareAccessPolicy.OkForSupplierPaymentStateValue,
                     startDate,
                     endDate,
-                    ct)
-                : await _dataverse.GetHardwareBoardAsync(
+                    ct);
+            }
+            else if (HardwareAccessPolicy.IsBillingUser(effectiveUser))
+            {
+                board = await _dataverse.GetHardwareBoardAsync(
+                    null,
+                    startDate,
+                    endDate,
+                    ct);
+            }
+            else
+            {
+                board = await _dataverse.GetHardwareBoardAsync(
                     stateValue,
                     startDate,
                     endDate,
                     ct,
                     currentOwnerOnly: true,
                     ownerOverride: effectiveUser);
+            }
 
             ApplyCommercialBoardAccess(board, effectiveUser);
             return Json(board);
@@ -251,6 +267,32 @@ public sealed class HardwareController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible editar la línea comercial de Hardware.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CommercialDeleteRecord(
+        [FromBody] HardwareDeleteRecordRequest? request,
+        [FromQuery] string? impersonatedOwnerId,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar la línea de Hardware que quieres eliminar."));
+
+        try
+        {
+            var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
+            EnsureCommercialDraftAllowed(effectiveUser);
+            return Ok(await _dataverse.DeleteHardwareCommercialDraftAsync(request.RecordId, ct, effectiveUser));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible eliminar la línea comercial de Hardware.", ex));
         }
     }
 
@@ -336,6 +378,13 @@ public sealed class HardwareController : Controller
                 return Json(board);
             }
 
+            if (HardwareAccessPolicy.IsBillingUser(currentUser))
+            {
+                var board = await _dataverse.GetHardwareBoardAsync(null, startDate, endDate, ct);
+                ApplyCommercialBoardAccess(board, currentUser);
+                return Json(board);
+            }
+
             return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct));
         }
         catch (Exception ex)
@@ -383,6 +432,7 @@ public sealed class HardwareController : Controller
         {
             var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
             var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
+            var isBillingUser = HardwareAccessPolicy.IsBillingUser(effectiveUser);
             if (IsSupplierPaymentAction(request.ActionKey))
             {
                 if (!isSupplierPaymentUser)
@@ -391,8 +441,16 @@ public sealed class HardwareController : Controller
                 return Ok(await _dataverse.SaveHardwareStageAsync(request, ct));
             }
 
-            if (isSupplierPaymentUser)
-                return BadRequest(CreateErrorPayload("Cartera solo puede registrar pagos a proveedor en Hardware."));
+            if (IsBillingAction(request.ActionKey))
+            {
+                if (!isBillingUser)
+                    return BadRequest(CreateErrorPayload("Solo facturación puede registrar facturas de Hardware."));
+
+                return Ok(await _dataverse.SaveHardwareStageAsync(request, ct));
+            }
+
+            if (isSupplierPaymentUser || isBillingUser)
+                return BadRequest(CreateErrorPayload("Tu usuario solo puede gestionar las etapas asignadas en Hardware."));
 
             return Ok(await _dataverse.SaveHardwareStageAsync(
                 request,
@@ -491,6 +549,10 @@ public sealed class HardwareController : Controller
         {
             var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
             var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
+            var isBillingUser = HardwareAccessPolicy.IsBillingUser(effectiveUser);
+            if (isBillingUser)
+                return BadRequest(CreateErrorPayload("Facturación no carga adjuntos en Hardware."));
+
             if (isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName))
                 return BadRequest(CreateErrorPayload("Cartera solo puede cargar el soporte de pago a proveedor."));
 
@@ -571,13 +633,14 @@ public sealed class HardwareController : Controller
         {
             var effectiveUser = await ResolveEffectiveHardwareUserAsync(impersonatedOwnerId, ct);
             var isSupplierPaymentUser = HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser);
+            var isBillingUser = HardwareAccessPolicy.IsBillingUser(effectiveUser);
 
             var file = await _dataverse.DownloadHardwareFileAsync(
                 recordId,
                 fieldName,
                 ct,
-                requireCurrentOwner: !isSupplierPaymentUser,
-                ownerOverride: isSupplierPaymentUser ? null : effectiveUser,
+                requireCurrentOwner: !isSupplierPaymentUser && !isBillingUser,
+                ownerOverride: isSupplierPaymentUser || isBillingUser ? null : effectiveUser,
                 requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null);
             if (file is null || file.Content.Length == 0)
                 return NotFound();
@@ -702,6 +765,12 @@ public sealed class HardwareController : Controller
             return;
         }
 
+        if (HardwareAccessPolicy.IsBillingUser(effectiveUser))
+        {
+            ApplyBillingBoardAccess(board);
+            return;
+        }
+
         foreach (var row in board.Rows.Where(row => row.StateValue == HardwareAccessPolicy.OkForSupplierPaymentStateValue))
         {
             row.ActionKey = "";
@@ -749,16 +818,65 @@ public sealed class HardwareController : Controller
             : $"Se cargaron {rows.Count} línea(s) de Hardware en estado {HardwareAccessPolicy.OkForSupplierPaymentStateLabel} pendientes de comprobante de pago a proveedor.";
     }
 
+    private static void ApplyBillingBoardAccess(HardwareBoardDto board)
+    {
+        var completeBillingRows = board.Rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.PurchaseOrderNumber))
+            .GroupBy(row => row.PurchaseOrderNumber.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.All(row =>
+                row.StateValue == HardwareAccessPolicy.DeliveredAwaitingBillingStateValue
+                && row.HasDeliveryRecord))
+            .SelectMany(group => group)
+            .ToList();
+
+        var billingOption = board.StateOptions.FirstOrDefault(option => option.Value == HardwareAccessPolicy.DeliveredAwaitingBillingStateValue)
+            ?? new HardwareStateOptionDto
+            {
+                Value = HardwareAccessPolicy.DeliveredAwaitingBillingStateValue,
+                Label = "Entregado en espera de facturación",
+                Tone = "awaiting-billing",
+                ActionKey = "register-invoice",
+                ActionLabel = "Registrar factura",
+                HasAction = true
+            };
+
+        board.Rows = completeBillingRows;
+        board.TotalCount = completeBillingRows.Count;
+        board.SelectedStateValue = HardwareAccessPolicy.DeliveredAwaitingBillingStateValue;
+        board.StateOptions = new[] { billingOption };
+        board.StateSummaries = completeBillingRows.Count == 0
+            ? Array.Empty<HardwareStateSummaryDto>()
+            : new[]
+            {
+                new HardwareStateSummaryDto
+                {
+                    Value = billingOption.Value,
+                    Label = billingOption.Label,
+                    Tone = billingOption.Tone,
+                    Count = completeBillingRows.Count
+                }
+            };
+        board.Message = completeBillingRows.Count == 0
+            ? "No hay ODC completas listas para facturar."
+            : $"Se cargaron {completeBillingRows.Select(row => row.PurchaseOrderNumber).Distinct(StringComparer.OrdinalIgnoreCase).Count()} ODC completa(s) listas para facturar.";
+    }
+
     private static void EnsureCommercialDraftAllowed(CurrentUserInfo effectiveUser)
     {
-        if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser))
-            throw new InvalidOperationException("Cartera solo puede gestionar pagos a proveedor en Hardware.");
+        if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser) || HardwareAccessPolicy.IsBillingUser(effectiveUser))
+            throw new InvalidOperationException("Tu usuario solo puede gestionar las etapas asignadas en Hardware.");
     }
 
     private static bool IsSupplierPaymentAction(string? actionKey) =>
         string.Equals(
             (actionKey ?? "").Trim(),
             HardwareAccessPolicy.SupplierPaymentActionKey,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBillingAction(string? actionKey) =>
+        string.Equals(
+            (actionKey ?? "").Trim(),
+            "register-invoice",
             StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSupplierPaymentFile(string? fieldName) =>

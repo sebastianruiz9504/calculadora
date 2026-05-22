@@ -198,6 +198,7 @@ public interface IDataverseService
     Task<HardwareBoardDto> GetHardwareBoardAsync(int? stateValue = null, DateOnly? startDate = null, DateOnly? endDate = null, CancellationToken ct = default, bool currentOwnerOnly = false, CurrentUserInfo? ownerOverride = null);
     Task<HardwareOrderCreateResultDto> CreateHardwareOrderDraftAsync(HardwareOrderCreateRequest request, CancellationToken ct = default, CurrentUserInfo? ownerOverride = null);
     Task<HardwareBulkEditResultDto> UpdateHardwareCommercialDraftAsync(HardwareOrderLineEditRequest request, CancellationToken ct = default, CurrentUserInfo? ownerOverride = null);
+    Task<HardwareBulkEditResultDto> DeleteHardwareCommercialDraftAsync(string recordId, CancellationToken ct = default, CurrentUserInfo? ownerOverride = null);
     Task<HardwareSaveResultDto> SaveHardwareStageAsync(HardwareStageSaveRequest request, CancellationToken ct = default, bool requireCurrentOwner = false, CurrentUserInfo? ownerOverride = null);
     Task<HardwareBulkEditResultDto> SaveHardwareRecordsAsync(HardwareBulkEditRequest request, CancellationToken ct = default);
     Task<HardwareFileUploadResultDto> UploadHardwareFileAsync(string recordId, string fieldName, string fileName, string contentType, byte[] content, CancellationToken ct = default, bool requireCurrentOwner = false, CurrentUserInfo? ownerOverride = null, int? requiredStateValue = null, IReadOnlyCollection<int>? allowedStateValues = null);

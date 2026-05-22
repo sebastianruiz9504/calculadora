@@ -396,6 +396,7 @@ public static class AppModuleAccessPolicy
         return module switch
         {
             AppModule.Hardware => HardwareAccessPolicy.IsSupplierPaymentUser(currentUser)
+                || HardwareAccessPolicy.IsBillingUser(currentUser)
                 || HardwareAccessPolicy.IsImpersonationUser(currentUser),
             _ => false
         };
