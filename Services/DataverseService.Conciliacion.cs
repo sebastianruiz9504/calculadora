@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Conciliacion;
 
 namespace CotizadorInterno.Web.Services;
@@ -231,6 +232,108 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<ConciliacionInvoiceSearchResultDto> SearchConciliacionDataverseInvoicesAsync(
+        ConciliacionInvoiceSearchRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var query = (request.Query ?? "").Trim();
+        var top = Math.Clamp(request.Top <= 0 ? 20 : request.Top, 1, 50);
+        var value = request.Value is > 0m ? RoundCurrency(request.Value.Value) : (decimal?)null;
+        if (string.IsNullOrWhiteSpace(query) && value is null)
+            throw new InvalidOperationException("Busca por cliente, numero de factura o valor de factura.");
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            ct);
+        var rows = await GetCashFlowClientPaymentBillingRowsAsync(metadata, ct);
+        var queryKey = NormalizeConciliacionLookupKey(query);
+        var queryText = NormalizeConciliacionLookupText(query);
+        var queryDigits = NormalizeConciliacionDigits(query);
+
+        var items = rows
+            .Select(row => new
+            {
+                Row = row,
+                Score = ScoreConciliacionInvoiceLookup(row, queryKey, queryText, queryDigits, value)
+            })
+            .Where(static item => item.Score > 0)
+            .OrderByDescending(static item => item.Score)
+            .ThenByDescending(static item => item.Row.EmissionDate)
+            .ThenBy(static item => item.Row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Take(top)
+            .Select(item => BuildConciliacionInvoiceLookupDto(item.Row, value))
+            .ToArray();
+
+        return new ConciliacionInvoiceSearchResultDto
+        {
+            Message = items.Length == 0
+                ? "No encontramos facturas con esos criterios."
+                : $"Encontramos {items.Length:N0} factura{(items.Length == 1 ? "" : "s")} en Dataverse.",
+            Items = items
+        };
+    }
+
+    public async Task<ConciliacionActionResultDto> AssignConciliacionClientPaymentInvoiceAsync(
+        ConciliacionAssignInvoiceRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
+        var invoiceRecordId = NormalizeGuid(request.InvoiceRecordId, nameof(request.InvoiceRecordId));
+        var matchMetadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ClientPaymentMatchLogicalName,
+            ClientPaymentMatchSetName,
+            ClientPaymentMatchIdField,
+            ClientPaymentMatchPrimaryNameField,
+            ct);
+        var matchAttributes = await GetFinancialReconciliationAttributeNamesAppAsync(matchMetadata.LogicalName, ct);
+        matchAttributes = BuildCashFlowClientPaymentMatchAttributeSet(matchMetadata, matchAttributes);
+
+        var current = await GetConciliacionClientPaymentByIdAsync(matchMetadata, recordId, ct)
+            ?? throw new InvalidOperationException("No encontramos el cruce de pago a editar.");
+
+        var billingMetadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            ct);
+        var invoice = await GetConciliacionBillingRecordByIdAppAsync(billingMetadata, invoiceRecordId, ct)
+            ?? throw new InvalidOperationException("No encontramos la factura seleccionada en Dataverse.");
+
+        var matchRow = BuildConciliacionManualClientPaymentMatchRow(current, invoice);
+        var payload = BuildCashFlowClientPaymentMatchPayload(matchMetadata, matchAttributes, matchRow);
+        SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightStatusField, null, "", force: true);
+        SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightMessageField, null, "Factura reasignada. Falta validar pre-Siigo.", force: true);
+        SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightValidatedOnField, (DateTimeOffset?)null, null, force: true);
+        SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightDebitField, (decimal?)null, 0m, force: true);
+        SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightCreditField, (decimal?)null, 0m, force: true);
+
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para asignar la factura.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{matchMetadata.EntitySetName}({recordId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionClientPaymentByIdAsync(matchMetadata, recordId, ct);
+        return new ConciliacionActionResultDto
+        {
+            Message = $"Factura {invoice.InvoiceNumber} asignada al cruce. Revisa y aprueba la sugerencia para pasar a prevalidacion.",
+            Row = updated
+        };
+    }
+
     private async Task<IReadOnlyList<ConciliacionClientPaymentRowDto>> GetConciliacionClientPaymentsAsync(
         DateOnly startInclusive,
         DateOnly endExclusive,
@@ -278,6 +381,148 @@ public sealed partial class DataverseService
         using var doc = JsonDocument.Parse(json);
         return ParseConciliacionClientPaymentRow(doc.RootElement, metadata);
     }
+
+    private async Task<BillingRecordRow?> GetConciliacionBillingRecordByIdAppAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        CancellationToken ct)
+    {
+        var select = BuildBillingSelectClause(metadata);
+        var json = await CallDataverseAppGetJsonAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({recordId})?$select={select}",
+            ct,
+            AddFormattedValueHeaders);
+
+        using var doc = JsonDocument.Parse(json);
+        return ParseBillingRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
+    }
+
+    private CashFlowClientPaymentMatchRowDto BuildConciliacionManualClientPaymentMatchRow(
+        ConciliacionClientPaymentRowDto current,
+        BillingRecordRow invoice)
+    {
+        var tokens = ExtractCashFlowClientPaymentInvoiceTokens(current.Description).ToList();
+        if (tokens.Count == 0 && !string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
+            tokens.Add(NormalizeDocumentToken(invoice.InvoiceNumber));
+
+        var reteFteValue = ResolveCashFlowClientPaymentReteFteValue(invoice);
+        var reteIcaValue = ResolveCashFlowClientPaymentReteIcaValue(invoice);
+        var rteIvaValue = ResolveCashFlowClientPaymentRteIvaValue(invoice);
+        var retentions = RoundCurrency(reteFteValue + reteIcaValue + rteIvaValue);
+        var difference = RoundCurrency(invoice.TotalInvoice - current.EntryValue - retentions);
+        var inTolerance = Math.Abs(difference) <= RegistroPagosClientesBalancedTolerance;
+        var movementDate = DateOnly.TryParseExact(
+            current.MovementDateValue,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsedMovementDate)
+            ? parsedMovementDate
+            : (DateOnly?)null;
+
+        var row = new CashFlowClientPaymentMatchRowDto
+        {
+            MovementId = current.MovementId,
+            MovementExternalKey = current.MovementExternalKey,
+            MovementDate = movementDate,
+            SourceFlow = current.SourceFlow,
+            BankAccountCode = current.BankAccountCode,
+            BankAccountName = current.BankAccountName,
+            Description = current.Description,
+            EntryValue = current.EntryValue,
+            InvoiceTokens = tokens,
+            InvoiceTotal = invoice.TotalInvoice,
+            ReteFteValue = reteFteValue,
+            ReteIcaValue = reteIcaValue,
+            RteIvaValue = rteIvaValue,
+            RetentionsTotal = retentions,
+            DifferenceValue = difference,
+            Confidence = inTolerance ? 90 : 70,
+            Status = inTolerance ? "Sugerido" : "DiferenciaFueraRango",
+            Reason = inTolerance
+                ? "Factura asignada manualmente y diferencia dentro del rango."
+                : $"Factura asignada manualmente, pero la diferencia supera {RegistroPagosClientesBalancedTolerance:N0}."
+        };
+
+        return FinalizeCashFlowClientPaymentMatchRow(row, new[] { invoice });
+    }
+
+    private static int ScoreConciliacionInvoiceLookup(
+        BillingRecordRow row,
+        string queryKey,
+        string queryText,
+        string queryDigits,
+        decimal? value)
+    {
+        var score = 0;
+        var invoiceKey = NormalizeConciliacionLookupKey(row.InvoiceNumber);
+        var clientKey = NormalizeConciliacionLookupKey(row.ClientName);
+        var taxIdDigits = NormalizeConciliacionDigits(row.CompanyTaxId);
+        var clientText = NormalizeConciliacionLookupText(row.ClientName);
+
+        if (!string.IsNullOrWhiteSpace(queryKey))
+        {
+            if (string.Equals(invoiceKey, queryKey, StringComparison.OrdinalIgnoreCase))
+                score += 120;
+            else if (invoiceKey.Contains(queryKey, StringComparison.OrdinalIgnoreCase) || queryKey.Contains(invoiceKey, StringComparison.OrdinalIgnoreCase))
+                score += 85;
+
+            if (clientKey.Contains(queryKey, StringComparison.OrdinalIgnoreCase))
+                score += 45;
+        }
+
+        if (!string.IsNullOrWhiteSpace(queryText) && clientText.Contains(queryText, StringComparison.OrdinalIgnoreCase))
+            score += 35;
+
+        if (!string.IsNullOrWhiteSpace(queryDigits))
+        {
+            if (NormalizeConciliacionDigits(row.InvoiceNumber).Contains(queryDigits, StringComparison.OrdinalIgnoreCase))
+                score += 55;
+            if (!string.IsNullOrWhiteSpace(taxIdDigits) && taxIdDigits.Contains(queryDigits, StringComparison.OrdinalIgnoreCase))
+                score += 20;
+        }
+
+        if (value.HasValue)
+        {
+            var difference = Math.Abs(row.TotalInvoice - value.Value);
+            if (difference <= 1m)
+                score += 80;
+            else if (difference <= RegistroPagosClientesBalancedTolerance)
+                score += 55;
+            else if (difference <= 50000m)
+                score += 25;
+        }
+
+        return score;
+    }
+
+    private static ConciliacionInvoiceLookupDto BuildConciliacionInvoiceLookupDto(
+        BillingRecordRow row,
+        decimal? searchedValue) =>
+        new()
+        {
+            RecordId = row.RecordId,
+            InvoiceNumber = row.InvoiceNumber,
+            ClientName = row.ClientName,
+            EmissionDateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+            TotalInvoice = row.TotalInvoice,
+            PaymentValue = row.PaymentValue,
+            ReteFteValue = ResolveCashFlowClientPaymentReteFteValue(row),
+            ReteIcaValue = ResolveCashFlowClientPaymentReteIcaValue(row),
+            RteIvaValue = ResolveCashFlowClientPaymentRteIvaValue(row),
+            DifferenceWithEntry = searchedValue.HasValue
+                ? RoundCurrency(row.TotalInvoice - searchedValue.Value)
+                : 0m
+        };
+
+    private static string NormalizeConciliacionLookupText(string? value) =>
+        Regex.Replace((value ?? "").Trim().ToUpperInvariant(), @"\s+", " ", RegexOptions.CultureInvariant);
+
+    private static string NormalizeConciliacionLookupKey(string? value) =>
+        Regex.Replace((value ?? "").ToUpperInvariant(), @"[^A-Z0-9]", "", RegexOptions.CultureInvariant);
+
+    private static string NormalizeConciliacionDigits(string? value) =>
+        Regex.Replace(value ?? "", @"\D", "", RegexOptions.CultureInvariant);
 
     private async Task<IReadOnlyList<ConciliacionCashFlowRowDto>> GetConciliacionCashFlowRowsAsync(
         DateOnly startInclusive,

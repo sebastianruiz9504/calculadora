@@ -7,20 +7,34 @@
     const updatePaymentUrl = app.dataset.updatePaymentUrl || "";
     const preflightPaymentUrl = app.dataset.preflightPaymentUrl || "";
     const dryRunPaymentUrl = app.dataset.dryRunPaymentUrl || "";
+    const invoiceSearchUrl = app.dataset.invoiceSearchUrl || "";
+    const invoiceAssignUrl = app.dataset.invoiceAssignUrl || "";
     const statusBox = document.getElementById("cncStatus");
     const tabButtons = Array.from(app.querySelectorAll("[data-cnc-tab]"));
     const panels = Array.from(app.querySelectorAll("[data-cnc-panel]"));
     const paymentSearch = document.getElementById("cncPaymentSearch");
     const paymentStatusFilter = document.getElementById("cncPaymentStatusFilter");
-    const paymentFlowFilter = document.getElementById("cncPaymentFlowFilter");
     const paymentRowsBody = document.getElementById("cncPaymentRows");
     const paymentCount = document.getElementById("cncPaymentCount");
     const genericTableSearches = Array.from(app.querySelectorAll("[data-cnc-table-search]"));
+    const verticalButtons = Array.from(app.querySelectorAll("[data-cnc-vertical]"));
+    const verticalCount = document.getElementById("cncVerticalCount");
     const reassignModal = document.getElementById("cncReassignModal");
     const reassignDescription = document.getElementById("cncReassignDescription");
     const reassignCategory = document.getElementById("cncReassignCategory");
     const reassignApply = document.getElementById("cncReassignApply");
+    const invoiceModal = document.getElementById("cncInvoiceModal");
+    const invoiceDescription = document.getElementById("cncInvoiceDescription");
+    const invoiceQuery = document.getElementById("cncInvoiceQuery");
+    const invoiceValue = document.getElementById("cncInvoiceValue");
+    const invoiceSearchButton = document.getElementById("cncInvoiceSearchButton");
+    const invoiceResults = document.getElementById("cncInvoiceResults");
+    const invoiceSelected = document.getElementById("cncInvoiceSelected");
+    const invoiceSave = document.getElementById("cncInvoiceSave");
     let activeReassignRow = null;
+    let activeInvoiceRow = null;
+    let selectedInvoiceId = "";
+    let activeVertical = app.dataset.activeVertical || "Cloud";
 
     const categoryOptions = {
         Entrada: [
@@ -88,6 +102,38 @@
 
     const normalizeText = (value) => String(value || "").trim().toLowerCase();
 
+    const rowCountLabel = (value) => `${value.toLocaleString("es-CO")} fila${value === 1 ? "" : "s"}`;
+
+    const verticalMatches = (flow) => {
+        const normalizedFlow = normalizeText(flow);
+        if (!normalizedFlow) {
+            return true;
+        }
+
+        return normalizedFlow.includes(normalizeText(activeVertical));
+    };
+
+    const updateVerticalButtons = () => {
+        verticalButtons.forEach((button) => {
+            const active = button.dataset.cncVertical === activeVertical;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        app.dataset.activeVertical = activeVertical;
+    };
+
+    const updateVerticalCount = () => {
+        if (!verticalCount) {
+            return;
+        }
+
+        const activePanel = panels.find((panel) => !panel.hidden);
+        const visibleRows = activePanel
+            ? Array.from(activePanel.querySelectorAll("tr[data-record-id]")).filter((row) => !row.hidden).length
+            : 0;
+        verticalCount.textContent = `${activeVertical}: ${rowCountLabel(visibleRows)}`;
+    };
+
     const applyGenericTableFilter = (key) => {
         const input = app.querySelector(`[data-cnc-table-search="${CSS.escape(key)}"]`);
         const body = app.querySelector(`[data-cnc-table-body="${CSS.escape(key)}"]`);
@@ -96,7 +142,8 @@
         let visible = 0;
 
         Array.from(body?.querySelectorAll("tr[data-record-id]") || []).forEach((row) => {
-            const matches = !query || normalizeText(row.dataset.search).includes(query);
+            const matches = verticalMatches(row.dataset.flow)
+                && (!query || normalizeText(row.dataset.search).includes(query));
             row.hidden = !matches;
             if (matches) {
                 visible += 1;
@@ -104,8 +151,9 @@
         });
 
         if (count) {
-            count.textContent = `${visible.toLocaleString("es-CO")} fila${visible === 1 ? "" : "s"}`;
+            count.textContent = rowCountLabel(visible);
         }
+        updateVerticalCount();
     };
 
     const getPaymentRows = () => Array.from(paymentRowsBody?.querySelectorAll("tr[data-record-id]") || []);
@@ -115,8 +163,9 @@
     const applyPaymentFilters = () => {
         const query = normalizeText(paymentSearch?.value);
         const status = String(paymentStatusFilter?.value || "").trim();
-        const flow = String(paymentFlowFilter?.value || "").trim();
         let visible = 0;
+        const stageCounters = Array.from(paymentRowsBody?.querySelectorAll("[data-cnc-stage-count]") || []);
+        const stageCounts = new Map(stageCounters.map((counter) => [counter, 0]));
 
         getPaymentRows().forEach((row) => {
             const rowStatus = row.dataset.status || "";
@@ -124,7 +173,7 @@
             const rowSearch = normalizeText(row.dataset.search);
             const matches = (!query || rowSearch.includes(query))
                 && (!status || rowStatus === status)
-                && (!flow || rowFlow === flow);
+                && verticalMatches(rowFlow);
             row.hidden = !matches;
             const detail = getDetailRow(row.dataset.recordId || "");
             if (detail) {
@@ -132,12 +181,27 @@
             }
             if (matches) {
                 visible += 1;
+                const counter = row.closest(".cnc-pipeline-stage")?.querySelector("[data-cnc-stage-count]");
+                if (counter) {
+                    stageCounts.set(counter, (stageCounts.get(counter) || 0) + 1);
+                }
             }
         });
 
         if (paymentCount) {
-            paymentCount.textContent = `${visible.toLocaleString("es-CO")} fila${visible === 1 ? "" : "s"}`;
+            paymentCount.textContent = rowCountLabel(visible);
         }
+        stageCounters.forEach((counter) => {
+            counter.textContent = rowCountLabel(stageCounts.get(counter) || 0);
+        });
+        updateVerticalCount();
+    };
+
+    const refreshAllFilters = () => {
+        updateVerticalButtons();
+        applyPaymentFilters();
+        genericTableSearches.forEach((input) => applyGenericTableFilter(input.dataset.cncTableSearch || ""));
+        updateVerticalCount();
     };
 
     const statusTone = (status) => {
@@ -266,6 +330,9 @@
             updateRowStatus(row, payload.row, action);
             applyPaymentFilters();
             setStatus(payload.message || "Cruce actualizado.", "success");
+            if (action === "Aprobado") {
+                window.setTimeout(() => window.location.reload(), 550);
+            }
         } catch (error) {
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
         } finally {
@@ -421,10 +488,184 @@
         setStatus("Categoria aplicada en esta vista. Falta conectar el guardado en Dataverse.", "info");
     };
 
+    const closeInvoiceModal = () => {
+        if (invoiceModal) {
+            invoiceModal.hidden = true;
+        }
+        activeInvoiceRow = null;
+        selectedInvoiceId = "";
+    };
+
+    const setSelectedInvoice = (invoice) => {
+        selectedInvoiceId = invoice?.recordId || "";
+        if (invoiceSelected) {
+            invoiceSelected.hidden = !invoice;
+            invoiceSelected.textContent = invoice
+                ? `Seleccionada: ${invoice.invoiceNumber || "Sin factura"} - ${invoice.clientName || "Sin cliente"} - ${money(invoice.totalInvoice)}`
+                : "";
+        }
+        if (invoiceSave) {
+            invoiceSave.disabled = !selectedInvoiceId;
+        }
+    };
+
+    const renderInvoiceResults = (items) => {
+        if (!invoiceResults) {
+            return;
+        }
+
+        invoiceResults.innerHTML = "";
+        if (!Array.isArray(items) || items.length === 0) {
+            const empty = document.createElement("small");
+            empty.textContent = "No hay resultados con esos criterios.";
+            invoiceResults.appendChild(empty);
+            setSelectedInvoice(null);
+            return;
+        }
+
+        items.forEach((invoice) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "cnc-invoice-result";
+            button.dataset.invoiceId = invoice.recordId || "";
+            const title = document.createElement("strong");
+            const amount = document.createElement("span");
+            const client = document.createElement("small");
+            const retentions = document.createElement("small");
+            title.textContent = invoice.invoiceNumber || "Sin factura";
+            amount.textContent = money(invoice.totalInvoice);
+            client.textContent = `${invoice.clientName || "Sin cliente"} - ${invoice.emissionDateDisplay || "Sin fecha"}`;
+            retentions.textContent = `Retenciones: ${money((invoice.reteFteValue || 0) + (invoice.reteIcaValue || 0) + (invoice.rteIvaValue || 0))}`;
+            title.appendChild(amount);
+            button.append(title, client, retentions);
+            button.addEventListener("click", () => {
+                invoiceResults.querySelectorAll(".cnc-invoice-result").forEach((item) => item.classList.remove("is-selected"));
+                button.classList.add("is-selected");
+                setSelectedInvoice(invoice);
+            });
+            invoiceResults.appendChild(button);
+        });
+    };
+
+    const searchDataverseInvoices = async () => {
+        if (!invoiceSearchUrl) {
+            setStatus("No se encontro la ruta para buscar facturas.", "error");
+            return;
+        }
+
+        const query = String(invoiceQuery?.value || "").trim();
+        const rawValue = Number(invoiceValue?.value || 0);
+        const value = Number.isFinite(rawValue) && rawValue > 0 ? rawValue : null;
+        if (!query && !value) {
+            setStatus("Busca por cliente, numero de factura o valor.", "info");
+            return;
+        }
+
+        setSelectedInvoice(null);
+        if (invoiceSearchButton) {
+            invoiceSearchButton.disabled = true;
+        }
+        if (invoiceResults) {
+            invoiceResults.innerHTML = "<small>Buscando facturas en Dataverse...</small>";
+        }
+
+        try {
+            const response = await fetch(invoiceSearchUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, value, top: 20 })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible buscar facturas.");
+            }
+
+            renderInvoiceResults(payload.items || []);
+            setStatus(payload.message || "Busqueda finalizada.", "info");
+        } catch (error) {
+            if (invoiceResults) {
+                invoiceResults.innerHTML = "<small>No fue posible buscar facturas.</small>";
+            }
+            setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
+        } finally {
+            if (invoiceSearchButton) {
+                invoiceSearchButton.disabled = false;
+            }
+        }
+    };
+
+    const openInvoiceModal = (row) => {
+        activeInvoiceRow = row;
+        selectedInvoiceId = "";
+        const flowInvoice = row.dataset.flowInvoice || "";
+        const dataverseInvoice = row.dataset.dataverseInvoice || "";
+        const dataverseClient = row.dataset.dataverseClient || "";
+        const entryValue = row.dataset.entryValue || "";
+
+        if (invoiceDescription) {
+            invoiceDescription.textContent = `${row.dataset.description || "Pago sin descripcion."} Entrada: ${money(Number(entryValue || 0))}`;
+        }
+        if (invoiceQuery) {
+            invoiceQuery.value = flowInvoice || dataverseInvoice || dataverseClient || "";
+        }
+        if (invoiceValue) {
+            invoiceValue.value = entryValue;
+        }
+        if (invoiceResults) {
+            invoiceResults.innerHTML = "<small>Busca por cliente, numero de factura o valor para seleccionar la factura correcta.</small>";
+        }
+        setSelectedInvoice(null);
+
+        if (invoiceModal) {
+            invoiceModal.hidden = false;
+        }
+    };
+
+    const saveInvoiceAssignment = async () => {
+        if (!activeInvoiceRow || !selectedInvoiceId || !invoiceAssignUrl) {
+            setStatus("Selecciona una factura para guardar la asignacion.", "info");
+            return;
+        }
+
+        const recordId = activeInvoiceRow.dataset.recordId || "";
+        if (!recordId) {
+            setStatus("No se encontro el cruce a actualizar.", "error");
+            return;
+        }
+
+        if (invoiceSave) {
+            invoiceSave.disabled = true;
+        }
+        setStatus("Guardando asignacion de factura en Dataverse...", "info");
+
+        try {
+            const response = await fetch(invoiceAssignUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recordId, invoiceRecordId: selectedInvoiceId })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible asignar la factura.");
+            }
+
+            setStatus(payload.message || "Factura asignada.", "success");
+            window.setTimeout(() => window.location.reload(), 650);
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
+            if (invoiceSave) {
+                invoiceSave.disabled = false;
+            }
+        }
+    };
+
     const shouldIgnoreRowClick = (target) => Boolean(target.closest("button, a, input, select, textarea, details, summary, label"));
 
     tabButtons.forEach((button) => {
-        button.addEventListener("click", () => setActiveTab(button.dataset.cncTab || ""));
+        button.addEventListener("click", () => {
+            setActiveTab(button.dataset.cncTab || "");
+            refreshAllFilters();
+        });
     });
 
     app.querySelectorAll("[data-cnc-tab-target]").forEach((button) => {
@@ -434,16 +675,22 @@
         });
     });
 
-    [paymentSearch, paymentStatusFilter, paymentFlowFilter].forEach((input) => {
+    [paymentSearch, paymentStatusFilter].forEach((input) => {
         input?.addEventListener("input", applyPaymentFilters);
         input?.addEventListener("change", applyPaymentFilters);
+    });
+
+    verticalButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            activeVertical = button.dataset.cncVertical || "Cloud";
+            refreshAllFilters();
+        });
     });
 
     genericTableSearches.forEach((input) => {
         const key = input.dataset.cncTableSearch || "";
         input.addEventListener("input", () => applyGenericTableFilter(key));
         input.addEventListener("change", () => applyGenericTableFilter(key));
-        applyGenericTableFilter(key);
     });
 
     paymentRowsBody?.querySelectorAll("[data-cnc-action]").forEach((button) => {
@@ -468,6 +715,16 @@
         });
     });
 
+    app.querySelectorAll("[data-cnc-invoice-assign]").forEach((row) => {
+        row.addEventListener("click", (event) => {
+            if (shouldIgnoreRowClick(event.target)) {
+                return;
+            }
+
+            openInvoiceModal(row);
+        });
+    });
+
     app.querySelectorAll("[data-cnc-open-reassign]").forEach((button) => {
         button.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -489,6 +746,24 @@
     });
 
     reassignApply?.addEventListener("click", applyReassignCategory);
+    app.querySelectorAll("[data-cnc-close-invoice-modal]").forEach((button) => {
+        button.addEventListener("click", closeInvoiceModal);
+    });
+    invoiceModal?.addEventListener("click", (event) => {
+        if (event.target === invoiceModal) {
+            closeInvoiceModal();
+        }
+    });
+    invoiceSearchButton?.addEventListener("click", searchDataverseInvoices);
+    invoiceSave?.addEventListener("click", saveInvoiceAssignment);
+    [invoiceQuery, invoiceValue].forEach((input) => {
+        input?.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                searchDataverseInvoices();
+            }
+        });
+    });
 
-    applyPaymentFilters();
+    refreshAllFilters();
 })();

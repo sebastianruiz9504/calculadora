@@ -178,6 +178,39 @@ public sealed class ConciliacionClientPaymentStatusRequest
     public string Reason { get; set; } = "";
 }
 
+public sealed class ConciliacionInvoiceSearchRequest
+{
+    public string Query { get; set; } = "";
+    public decimal? Value { get; set; }
+    public int Top { get; set; } = 20;
+}
+
+public sealed class ConciliacionInvoiceSearchResultDto
+{
+    public string Message { get; set; } = "";
+    public IReadOnlyList<ConciliacionInvoiceLookupDto> Items { get; set; } = Array.Empty<ConciliacionInvoiceLookupDto>();
+}
+
+public sealed class ConciliacionInvoiceLookupDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string EmissionDateDisplay { get; set; } = "";
+    public decimal TotalInvoice { get; set; }
+    public decimal PaymentValue { get; set; }
+    public decimal ReteFteValue { get; set; }
+    public decimal ReteIcaValue { get; set; }
+    public decimal RteIvaValue { get; set; }
+    public decimal DifferenceWithEntry { get; set; }
+}
+
+public sealed class ConciliacionAssignInvoiceRequest
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceRecordId { get; set; } = "";
+}
+
 public sealed class ConciliacionActionResultDto
 {
     public string Message { get; set; } = "";

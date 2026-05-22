@@ -81,6 +81,52 @@ public sealed class ConciliacionController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SearchDataverseInvoices(
+        [FromBody] ConciliacionInvoiceSearchRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Indica el texto o valor para buscar facturas."));
+
+        try
+        {
+            return Ok(await _dataverse.SearchConciliacionDataverseInvoicesAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible buscar facturas en Dataverse.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AssignClientPaymentInvoice(
+        [FromBody] ConciliacionAssignInvoiceRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId) || string.IsNullOrWhiteSpace(request.InvoiceRecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el cruce y la factura a asignar."));
+
+        try
+        {
+            return Ok(await _dataverse.AssignConciliacionClientPaymentInvoiceAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible asignar la factura.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SimulateClientPaymentSiigoSend(
         [FromBody] ConciliacionClientPaymentStatusRequest? request,
         CancellationToken ct)

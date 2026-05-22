@@ -98,6 +98,12 @@ public interface IDataverseService
         bool dryRun = false,
         decimal differenceTolerance = 5000m,
         CancellationToken ct = default);
+    Task<ConciliacionInvoiceSearchResultDto> SearchConciliacionDataverseInvoicesAsync(
+        ConciliacionInvoiceSearchRequest request,
+        CancellationToken ct = default);
+    Task<ConciliacionActionResultDto> AssignConciliacionClientPaymentInvoiceAsync(
+        ConciliacionAssignInvoiceRequest request,
+        CancellationToken ct = default);
     Task<BillingInvoicesTableDto> GetBillingInvoicesAsync(CancellationToken ct = default);
     Task<BillingInvoiceSaveResultDto> SaveBillingInvoiceAsync(BillingInvoiceSaveRequestDto request, CancellationToken ct = default);
     Task<BillingInvoicesDeleteResultDto> DeleteBillingInvoicesAsync(BillingInvoicesDeleteRequestDto request, CancellationToken ct = default);

@@ -92,7 +92,10 @@
      id="conciliacionApp"
      data-update-payment-url="@Url.Action("UpdateClientPaymentStatus", "Conciliacion")"
      data-preflight-payment-url="@Url.Action("ValidateClientPaymentPreflight", "Conciliacion")"
-     data-dry-run-payment-url="@Url.Action("SimulateClientPaymentSiigoSend", "Conciliacion")">
+     data-dry-run-payment-url="@Url.Action("SimulateClientPaymentSiigoSend", "Conciliacion")"
+     data-invoice-search-url="@Url.Action("SearchDataverseInvoices", "Conciliacion")"
+     data-invoice-assign-url="@Url.Action("AssignClientPaymentInvoice", "Conciliacion")"
+     data-active-vertical="Cloud">
     <section class="cnc-heading">
         <div class="cnc-heading__copy">
             <div class="cnc-kicker">Cierre mensual</div>
@@ -121,29 +124,6 @@
         </form>
     </section>
 
-    <section class="cnc-overview" aria-label="Resumen del cierre">
-        <article class="cnc-metric">
-            <span>Periodo</span>
-            <strong>@board.PeriodLabel</strong>
-        </article>
-        <article class="cnc-metric">
-            <span>Estado</span>
-            <strong class="cnc-tone-@board.StatusTone">@board.StatusLabel</strong>
-        </article>
-        <article class="cnc-metric">
-            <span>Flujo caja</span>
-            <strong>@Number(cashFlow.TotalRows)</strong>
-        </article>
-        <article class="cnc-metric">
-            <span>Por validar</span>
-            <strong>@Number(cashFlow.PendingValidationRows)</strong>
-        </article>
-        <article class="cnc-metric">
-            <span>Huerfanos</span>
-            <strong>@Number(cashFlow.OrphanRows)</strong>
-        </article>
-    </section>
-
     <div id="cncStatus" class="cnc-status" role="status" aria-live="polite"></div>
 
     <section class="cnc-workspace">
@@ -169,6 +149,24 @@
         </div>
 
         <div class="cnc-phase-panels">
+            <div class="cnc-vertical-bar" aria-label="Seleccion de vertical">
+                <div class="cnc-vertical-switch" role="group">
+                    <button type="button"
+                            class="cnc-vertical-button cnc-vertical-button--cloud is-active"
+                            data-cnc-vertical="Cloud"
+                            aria-pressed="true">
+                        Cloud
+                    </button>
+                    <button type="button"
+                            class="cnc-vertical-button cnc-vertical-button--copiers"
+                            data-cnc-vertical="Copiers"
+                            aria-pressed="false">
+                        Copiers
+                    </button>
+                </div>
+                <span class="cnc-counter" id="cncVerticalCount">Cloud</span>
+            </div>
+
             @foreach (var phase in board.Phases)
             {
                 var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
@@ -182,11 +180,6 @@
                             <div class="cnc-kicker">@phase.CadenceLabel</div>
                             <h2>@phase.Label</h2>
                         </div>
-                        <div class="cnc-run-log">
-                            <span>Ultima actualizacion</span>
-                            <strong>@phase.LastRunLabel</strong>
-                            <small>@phase.RunSummary</small>
-                        </div>
                     </div>
 
                     @if (phase.Key == "entradas-fe")
@@ -197,33 +190,6 @@
                         var preflightRows = ClientPaymentRowsFor("prevalidacion");
                         var sentRows = ClientPaymentRowsFor("enviados");
                         <section class="cnc-payment-panel">
-                            <div class="cnc-payment-summary">
-                                <div>
-                                    <span>Total cruces</span>
-                                    <strong>@Number(board.ClientPayments.TotalRows)</strong>
-                                </div>
-                                <div>
-                                    <span>Factura Dataverse</span>
-                                    <strong>@Number(board.ClientPayments.Suggested + board.ClientPayments.Approved + board.ClientPayments.ReadyForSiigo)</strong>
-                                </div>
-                                <div>
-                                    <span>Pago Dataverse</span>
-                                    <strong>@Number(board.ClientPayments.TotalRows)</strong>
-                                </div>
-                                <div>
-                                    <span>Listos Siigo</span>
-                                    <strong>@Number(board.ClientPayments.ReadyForSiigo)</strong>
-                                </div>
-                                <div>
-                                    <span>Revision</span>
-                                    <strong>@Number(board.ClientPayments.PendingReview)</strong>
-                                </div>
-                                <div>
-                                    <span>Valor entradas</span>
-                                    <strong>@Money(board.ClientPayments.TotalEntries)</strong>
-                                </div>
-                            </div>
-
                             <div class="cnc-table-toolbar">
                                 <div class="cnc-filter-grid">
                                     <input id="cncPaymentSearch" class="form-control" type="search" placeholder="Buscar cliente, factura o descripcion" />
@@ -240,11 +206,6 @@
                                         <option value="FacturaAmbigua">Factura ambigua</option>
                                         <option value="Rechazado">Rechazado</option>
                                     </select>
-                                    <select id="cncPaymentFlowFilter" class="form-select">
-                                        <option value="">Todos los bancos</option>
-                                        <option value="Cloud">Cloud</option>
-                                        <option value="Copiers">Copiers</option>
-                                    </select>
                                 </div>
                                 <span class="cnc-counter" id="cncPaymentCount">@Number(board.ClientPayments.Rows.Count) filas</span>
                             </div>
@@ -253,7 +214,7 @@
                                 <section class="cnc-pipeline-stage">
                                     <header class="cnc-pipeline-stage__header">
                                         <h3>1. Entradas detectadas</h3>
-                                        <span>@Number(detectedRows.Count) filas</span>
+                                        <span data-cnc-stage-count>@Number(detectedRows.Count) filas</span>
                                     </header>
                                     <div class="cnc-table-wrap">
                                         <table class="table align-middle cnc-table cnc-table--pipeline">
@@ -297,7 +258,7 @@
                                 <section class="cnc-pipeline-stage">
                                     <header class="cnc-pipeline-stage__header">
                                         <h3>2. Cruce con factura</h3>
-                                        <span>@Number(crossRows.Count) filas</span>
+                                        <span data-cnc-stage-count>@Number(crossRows.Count) filas</span>
                                     </header>
                                     <div class="cnc-table-wrap">
                                         <table class="table align-middle cnc-table cnc-table--pipeline">
@@ -320,14 +281,16 @@
                                                     var flowInvoice = InvoiceFromFlow(row);
                                                     var sameInvoice = InvoiceVisualMatch(flowInvoice, row.InvoiceNumbers);
                                                     <tr class="cnc-click-row"
-                                                        data-cnc-reassign
+                                                        data-cnc-invoice-assign
                                                         data-record-id="@row.RecordId"
                                                         data-status="@row.Status"
                                                         data-flow="@row.SourceFlow"
                                                         data-search="@search"
-                                                        data-direction="Entrada"
-                                                        data-current-type="entrada-fe"
-                                                        data-description="@row.Description">
+                                                        data-description="@row.Description"
+                                                        data-flow-invoice="@flowInvoice"
+                                                        data-dataverse-invoice="@row.InvoiceNumbers"
+                                                        data-dataverse-client="@row.ClientNames"
+                                                        data-entry-value="@row.EntryValue.ToString(CultureInfo.InvariantCulture)">
                                                         <td><strong>@row.MovementDateDisplay</strong><small>@row.SourceFlow</small></td>
                                                         <td><strong>@row.BankAccountCode</strong><small>@row.BankAccountName</small></td>
                                                         <td><strong>@(string.IsNullOrWhiteSpace(flowInvoice) ? "Sin factura" : flowInvoice)</strong><small>Excel flujo de caja</small></td>
@@ -338,7 +301,18 @@
                                                         <td>@(string.IsNullOrWhiteSpace(row.ClientNames) ? "Sin cliente" : row.ClientNames)</td>
                                                         <td class="text-end">@Money(row.EntryValue)</td>
                                                         <td class="text-end @(Math.Abs(row.DifferenceValue) > 5000 ? "cnc-money-warning" : "")">@Money(row.DifferenceValue)</td>
-                                                        <td><span class="cnc-badge cnc-badge--@row.StatusTone">@row.StatusLabel</span></td>
+                                                        <td>
+                                                            @if (HasPaymentStatus(row, "Sugerido"))
+                                                            {
+                                                                <button type="button" class="btn btn-sm btn-outline-success" data-cnc-action="Aprobado">Aprobar sugerencia</button>
+                                                                <small>Click en la fila para cambiar la factura.</small>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="cnc-badge cnc-badge--@row.StatusTone" data-status-label>@row.StatusLabel</span>
+                                                                <small>Click en la fila para buscar factura.</small>
+                                                            }
+                                                        </td>
                                                     </tr>
                                                 }
                                             </tbody>
@@ -349,7 +323,7 @@
                                 <section class="cnc-pipeline-stage">
                                     <header class="cnc-pipeline-stage__header">
                                         <h3>3. Pendientes de revision</h3>
-                                        <span>@Number(reviewRows.Count) filas</span>
+                                        <span data-cnc-stage-count>@Number(reviewRows.Count) filas</span>
                                     </header>
                                     <div class="cnc-table-wrap">
                                         <table class="table align-middle cnc-table cnc-table--pipeline">
@@ -369,14 +343,10 @@
                                                 {
                                                     var search = $"{row.InvoiceNumbers} {row.ClientNames} {row.Description} {row.BankAccountName}".ToLowerInvariant();
                                                     <tr class="cnc-click-row"
-                                                        data-cnc-reassign
                                                         data-record-id="@row.RecordId"
                                                         data-status="@row.Status"
                                                         data-flow="@row.SourceFlow"
-                                                        data-search="@search"
-                                                        data-direction="Entrada"
-                                                        data-current-type="entrada-fe"
-                                                        data-description="@row.Description">
+                                                        data-search="@search">
                                                         <td><strong>@row.MovementDateDisplay</strong><small>@row.BankAccountName</small></td>
                                                         <td><strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong><small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? row.Description : row.ClientNames)</small></td>
                                                         <td class="text-end">@Money(row.EntryValue)</td>
@@ -400,15 +370,17 @@
                                 <section class="cnc-pipeline-stage">
                                     <header class="cnc-pipeline-stage__header">
                                         <h3>4. Prevalidacion y listos Siigo</h3>
-                                        <span>@Number(preflightRows.Count) filas</span>
+                                        <span data-cnc-stage-count>@Number(preflightRows.Count) filas</span>
                                     </header>
                                     <div class="cnc-table-wrap">
                                         <table class="table align-middle cnc-table cnc-table--pipeline">
                                             <thead>
                                                 <tr>
-                                                    <th>Factura / cliente</th>
+                                                    <th>Factura / cliente flujo de caja</th>
+                                                    <th>Factura / cliente Dataverse</th>
                                                     <th>Banco</th>
                                                     <th class="text-end">Entrada</th>
+                                                    <th class="text-end">Valor Dataverse</th>
                                                     <th>Pre-Siigo</th>
                                                     <th>Debito / credito</th>
                                                     <th>Accion</th>
@@ -418,18 +390,17 @@
                                                 @foreach (var row in preflightRows)
                                                 {
                                                     var search = $"{row.InvoiceNumbers} {row.ClientNames} {row.Description} {row.BankAccountName}".ToLowerInvariant();
+                                                    var flowInvoice = InvoiceFromFlow(row);
                                                     <tr class="cnc-click-row"
-                                                        data-cnc-reassign
                                                         data-record-id="@row.RecordId"
                                                         data-status="@row.Status"
                                                         data-flow="@row.SourceFlow"
-                                                        data-search="@search"
-                                                        data-direction="Entrada"
-                                                        data-current-type="entrada-fe"
-                                                        data-description="@row.Description">
-                                                        <td><strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong><small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? row.Description : row.ClientNames)</small></td>
+                                                        data-search="@search">
+                                                        <td><strong>@(string.IsNullOrWhiteSpace(flowInvoice) ? "Sin factura" : flowInvoice)</strong><small>@row.Description</small></td>
+                                                        <td><strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong><small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? "Sin cliente" : row.ClientNames)</small></td>
                                                         <td><strong>@row.BankAccountCode</strong><small>@row.BankAccountName</small></td>
                                                         <td class="text-end">@Money(row.EntryValue)</td>
+                                                        <td class="text-end">@Money(row.InvoiceTotal)</td>
                                                         <td>
                                                             <span class="cnc-badge cnc-badge--@row.PreflightStatusTone" data-preflight-label>@row.PreflightStatusLabel</span>
                                                             <small data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? "Sin validacion pre-Siigo." : row.PreflightMessage)</small>
@@ -442,8 +413,7 @@
                                                         <td><small data-preflight-totals>Db @Money(row.PreflightDebitTotal) / Cr @Money(row.PreflightCreditTotal)</small></td>
                                                         <td>
                                                             <div class="cnc-row-actions">
-                                                                <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-preflight>Validar</button>
-                                                                <button type="button" class="btn btn-sm btn-outline-success" data-cnc-action="Aprobado">Aprobar</button>
+                                                                <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-preflight>Validar pre-Siigo</button>
                                                                 <button type="button" class="btn btn-sm btn-outline-dark" data-cnc-dry-run>Simular envio</button>
                                                             </div>
                                                         </td>
@@ -457,7 +427,7 @@
                                 <section class="cnc-pipeline-stage">
                                     <header class="cnc-pipeline-stage__header">
                                         <h3>5. Enviados / errores Siigo</h3>
-                                        <span>@Number(sentRows.Count) filas</span>
+                                        <span data-cnc-stage-count>@Number(sentRows.Count) filas</span>
                                     </header>
                                     <div class="cnc-table-wrap">
                                         <table class="table align-middle cnc-table cnc-table--pipeline">
@@ -496,25 +466,6 @@
                     else
                     {
                         <section class="cnc-payment-panel">
-                            <div class="cnc-payment-summary">
-                                <div>
-                                    <span>Filas</span>
-                                    <strong>@Number(phaseRows.Count)</strong>
-                                </div>
-                                <div>
-                                    <span>Entradas</span>
-                                    <strong>@Money(phaseRows.Sum(row => row.EntryValue))</strong>
-                                </div>
-                                <div>
-                                    <span>Salidas</span>
-                                    <strong>@Money(phaseRows.Sum(row => row.ExitValue))</strong>
-                                </div>
-                                <div>
-                                    <span>Por validar</span>
-                                    <strong>@Number(phaseRows.Count(row => string.Equals(row.ValidationStatus, "Pendiente validar", StringComparison.OrdinalIgnoreCase) || string.Equals(row.ValidationStatus, "Revisar", StringComparison.OrdinalIgnoreCase)))</strong>
-                                </div>
-                            </div>
-
                             <div class="cnc-table-toolbar">
                                 <input class="form-control cnc-table-search" type="search" placeholder="Buscar banco, descripcion o estado" data-cnc-table-search="@phase.Key" />
                                 <span class="cnc-counter" data-cnc-table-count="@phase.Key">@Number(phaseRows.Count) filas</span>
@@ -556,6 +507,7 @@
                                             <tr class="cnc-click-row"
                                                 data-cnc-reassign
                                                 data-record-id="@row.RecordId"
+                                                data-flow="@row.SourceFlow"
                                                 data-search="@SearchText(row)"
                                                 data-direction="@row.Direction"
                                                 data-current-type="@row.DetectedTypeKey"
@@ -642,6 +594,38 @@
             <div class="cnc-modal__actions">
                 <button type="button" class="btn btn-outline-secondary" data-cnc-close-modal>Cancelar</button>
                 <button type="button" class="btn btn-primary" id="cncReassignApply">Aplicar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cnc-modal" id="cncInvoiceModal" role="dialog" aria-modal="true" aria-labelledby="cncInvoiceTitle" hidden>
+        <div class="cnc-modal__panel cnc-modal__panel--wide">
+            <div class="cnc-modal__header">
+                <div>
+                    <div class="cnc-kicker">Factura Dataverse</div>
+                    <h2 id="cncInvoiceTitle">Asignar factura al pago</h2>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-close-invoice-modal>Cerrar</button>
+            </div>
+            <p class="cnc-modal__description" id="cncInvoiceDescription"></p>
+            <div class="cnc-invoice-search">
+                <label class="cnc-modal__field">
+                    <span>Cliente o factura</span>
+                    <input class="form-control" id="cncInvoiceQuery" type="search" placeholder="Cliente, numero de factura o NIT" />
+                </label>
+                <label class="cnc-modal__field">
+                    <span>Valor factura</span>
+                    <input class="form-control" id="cncInvoiceValue" type="number" min="0" step="1" />
+                </label>
+                <button type="button" class="btn btn-outline-primary" id="cncInvoiceSearchButton">Buscar</button>
+            </div>
+            <div class="cnc-invoice-selected" id="cncInvoiceSelected" hidden></div>
+            <div class="cnc-invoice-results" id="cncInvoiceResults">
+                <small>Busca por cliente, numero de factura o valor para seleccionar la factura correcta.</small>
+            </div>
+            <div class="cnc-modal__actions">
+                <button type="button" class="btn btn-outline-secondary" data-cnc-close-invoice-modal>Cancelar</button>
+                <button type="button" class="btn btn-primary" id="cncInvoiceSave" disabled>Guardar asignacion</button>
             </div>
         </div>
     </div>
