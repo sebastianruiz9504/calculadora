@@ -343,6 +343,24 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    public async Task<IReadOnlyList<SiigoTaxLookupDto>> GetTaxesAsync(CancellationToken ct = default)
+    {
+        var taxes = await GetAuthorizedJsonAsync<List<SiigoTaxApiDto>>("v1/taxes", ct);
+        return taxes
+            .Select(static tax => new SiigoTaxLookupDto
+            {
+                Id = tax.Id,
+                Name = tax.Name?.Trim() ?? "",
+                Type = tax.Type?.Trim() ?? "",
+                Percentage = tax.Percentage,
+                Active = tax.Active
+            })
+            .Where(static tax => tax.Id > 0)
+            .OrderBy(static tax => tax.Type, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static tax => tax.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public async Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
         string? idempotencyKey = null,
@@ -1419,6 +1437,24 @@ public sealed class SiigoService : ISiigoService
 
         [JsonPropertyName("value")]
         public decimal Value { get; set; }
+    }
+
+    private sealed class SiigoTaxApiDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("percentage")]
+        public decimal Percentage { get; set; }
+
+        [JsonPropertyName("active")]
+        public bool Active { get; set; }
     }
 
     private sealed class SiigoInvoiceCustomerApiDto

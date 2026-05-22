@@ -106,7 +106,8 @@ public interface IDataverseService
         CancellationToken ct = default);
     Task<ConciliacionSiigoSendPreparedDto> PrepareConciliacionClientPaymentSiigoSendAsync(
         string recordId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        IReadOnlyList<SiigoTaxLookupDto>? siigoTaxes = null);
     Task<ConciliacionActionResultDto> MarkConciliacionClientPaymentSiigoSendResultAsync(
         string recordId,
         bool success,

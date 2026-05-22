@@ -272,6 +272,15 @@ public sealed class SiigoVoucherCreateResultDto
     public string RawJson { get; set; } = "";
 }
 
+public sealed class SiigoTaxLookupDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public decimal Percentage { get; set; }
+    public bool Active { get; set; }
+}
+
 public sealed class ConciliacionSyncHealthDto
 {
     public int Year { get; set; }

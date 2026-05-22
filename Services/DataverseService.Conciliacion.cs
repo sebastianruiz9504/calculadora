@@ -341,7 +341,8 @@ public sealed partial class DataverseService
 
     public async Task<ConciliacionSiigoSendPreparedDto> PrepareConciliacionClientPaymentSiigoSendAsync(
         string recordId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IReadOnlyList<SiigoTaxLookupDto>? siigoTaxes = null)
     {
         var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
         var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
@@ -356,12 +357,8 @@ public sealed partial class DataverseService
         var catalog = await GetConciliacionAccountCatalogAsync(ct);
         var preflight = ValidateConciliacionClientPaymentDraft(row, catalog);
         var issues = new List<string>(preflight.Issues);
-        if (!string.Equals(row.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase))
-            issues.Add("El cruce debe estar en estado Listo Siigo antes de habilitar el envio real.");
-        if (row.RetentionsTotal > 0m)
-            issues.Add("El envio real inicial solo esta habilitado para pagos sin retenciones; falta mapear los impuestos/retenciones de Siigo.");
-        if (Math.Abs(row.DifferenceValue) > 0.009m)
-            issues.Add($"El envio real inicial por abono a deuda solo esta habilitado sin ajuste al peso. Diferencia actual: {row.DifferenceValue:N2}.");
+        if (!IsConciliacionReadyForRealSendStatus(row.Status))
+            issues.Add("El cruce debe estar en estado Listo Siigo o Error Siigo antes de habilitar el envio real.");
 
         var payloadJson = "";
         object? payload = null;
@@ -398,11 +395,17 @@ public sealed partial class DataverseService
                 issues.Add("Las facturas asociadas tienen NIT de cliente diferentes; envia un recibo por cliente.");
 
             var invoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.TotalInvoice));
+            var actualRetentions = RoundCurrency(invoices.Sum(ResolveConciliacionInvoiceRetentionsTotal));
             if (invoices.Count > 0 && Math.Abs(invoiceTotal - row.InvoiceTotal) > 1m)
                 issues.Add($"El total de facturas Dataverse ({invoiceTotal:N2}) no coincide con el total del cruce ({row.InvoiceTotal:N2}).");
-            var expectedPayment = RoundCurrency(invoiceTotal - row.RetentionsTotal);
-            if (invoices.Count > 0 && Math.Abs(expectedPayment - row.EntryValue) > 0.009m)
+            if (invoices.Count > 0 && Math.Abs(actualRetentions - row.RetentionsTotal) > 1m)
+                issues.Add($"Las retenciones calculadas desde la factura ({actualRetentions:N2}) no coinciden con las del cruce ({row.RetentionsTotal:N2}).");
+            var expectedPayment = RoundCurrency(invoiceTotal - actualRetentions);
+            var expectedDifference = RoundCurrency(expectedPayment - row.EntryValue);
+            if (invoices.Count > 0 && Math.Abs(expectedDifference) > 1m)
                 issues.Add($"El pago ({row.EntryValue:N2}) debe coincidir con factura menos retenciones ({expectedPayment:N2}) para aplicar el vencimiento en Siigo.");
+            if (invoices.Count > 0 && actualRetentions <= 0m && Math.Abs(expectedDifference) > 0.009m)
+                issues.Add($"Los pagos sin retenciones no pueden llevar ajuste al peso en este envio inicial. Diferencia actual: {expectedDifference:N2}.");
 
             var movementDate = row.MovementDateValue.Trim();
             if (!DateOnly.TryParseExact(movementDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
@@ -417,7 +420,14 @@ public sealed partial class DataverseService
                     continue;
                 }
 
-                invoiceDues.Add(new ConciliacionSiigoInvoiceDueItem(invoice, due));
+                var retentionTaxes = ResolveConciliacionInvoiceRetentionTaxes(invoice, siigoTaxes ?? Array.Empty<SiigoTaxLookupDto>(), issues);
+                if (retentionTaxes.Count > 1)
+                {
+                    issues.Add($"La factura {invoice.InvoiceNumber} tiene mas de una retencion. Por ahora el envio real solo arma un impuesto por vencimiento.");
+                    continue;
+                }
+
+                invoiceDues.Add(new ConciliacionSiigoInvoiceDueItem(invoice, due, retentionTaxes.FirstOrDefault()));
             }
 
             if (issues.Count == 0)
@@ -1778,22 +1788,35 @@ public sealed partial class DataverseService
     {
         var paymentTypeId = ResolveConciliacionClientPaymentTypeId(row.SourceFlow, row.BankAccountCode);
         var items = invoiceDues
-            .Select(item => new
+            .Select(item =>
             {
-                account = new
+                var payloadItem = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                 {
-                    code = row.BankAccountCode,
-                    movement = "Credit"
-                },
-                description = TruncateAccountCatalogText($"Pago factura {item.Invoice.InvoiceNumber}".Trim(), 200),
-                due = new
+                    ["account"] = new
+                    {
+                        code = row.BankAccountCode,
+                        movement = "Credit"
+                    },
+                    ["description"] = TruncateAccountCatalogText($"Pago factura {item.Invoice.InvoiceNumber}".Trim(), 200),
+                    ["due"] = new
+                    {
+                        prefix = item.Due.Prefix,
+                        consecutive = item.Due.Consecutive,
+                        quote = 1,
+                        date = movementDate
+                    },
+                    ["value"] = RoundCurrency(item.Invoice.TotalInvoice)
+                };
+
+                if (item.RetentionTax is not null)
                 {
-                    prefix = item.Due.Prefix,
-                    consecutive = item.Due.Consecutive,
-                    quote = 1,
-                    date = movementDate
-                },
-                value = RoundCurrency(item.Invoice.TotalInvoice)
+                    payloadItem["tax"] = new
+                    {
+                        id = item.RetentionTax.TaxId
+                    };
+                }
+
+                return payloadItem;
             })
             .ToArray();
 
@@ -1899,6 +1922,138 @@ public sealed partial class DataverseService
     private static string NormalizeConciliacionIdentificationDigits(string? value) =>
         NormalizeConciliacionDigits(value);
 
+    private static decimal ResolveConciliacionInvoiceRetentionsTotal(BillingRecordRow invoice) =>
+        RoundCurrency(
+            ResolveCashFlowClientPaymentReteFteValue(invoice)
+            + ResolveCashFlowClientPaymentReteIcaValue(invoice)
+            + ResolveCashFlowClientPaymentRteIvaValue(invoice));
+
+    private static IReadOnlyList<ConciliacionRetentionTax> ResolveConciliacionInvoiceRetentionTaxes(
+        BillingRecordRow invoice,
+        IReadOnlyList<SiigoTaxLookupDto> siigoTaxes,
+        ICollection<string> issues)
+    {
+        var result = new List<ConciliacionRetentionTax>();
+        AddConciliacionRetentionTax(
+            result,
+            issues,
+            siigoTaxes,
+            invoice.InvoiceNumber,
+            kind: "ReteFte",
+            label: "retefuente",
+            value: ResolveCashFlowClientPaymentReteFteValue(invoice),
+            baseValue: ResolveConciliacionRetentionBase(invoice));
+        AddConciliacionRetentionTax(
+            result,
+            issues,
+            siigoTaxes,
+            invoice.InvoiceNumber,
+            kind: "ReteIca",
+            label: "ReteICA",
+            value: ResolveCashFlowClientPaymentReteIcaValue(invoice),
+            baseValue: ResolveConciliacionRetentionBase(invoice));
+        AddConciliacionRetentionTax(
+            result,
+            issues,
+            siigoTaxes,
+            invoice.InvoiceNumber,
+            kind: "RteIva",
+            label: "RteIVA",
+            value: ResolveCashFlowClientPaymentRteIvaValue(invoice),
+            baseValue: invoice.VatValue);
+
+        return result;
+    }
+
+    private static void AddConciliacionRetentionTax(
+        ICollection<ConciliacionRetentionTax> result,
+        ICollection<string> issues,
+        IReadOnlyList<SiigoTaxLookupDto> siigoTaxes,
+        string invoiceNumber,
+        string kind,
+        string label,
+        decimal value,
+        decimal baseValue)
+    {
+        value = RoundCurrency(value);
+        if (value <= 0m)
+            return;
+
+        if (baseValue <= 0m)
+        {
+            issues.Add($"La factura {invoiceNumber} tiene {label}, pero no hay base para calcular el porcentaje.");
+            return;
+        }
+
+        var percentage = Math.Round(value / baseValue * 100m, 4, MidpointRounding.AwayFromZero);
+        var tax = FindConciliacionRetentionTax(siigoTaxes, kind, percentage);
+        if (tax is null)
+        {
+            issues.Add($"No encontre impuesto Siigo activo para {label} {percentage:N4}% de la factura {invoiceNumber}.");
+            return;
+        }
+
+        result.Add(new ConciliacionRetentionTax(kind, tax.Id, value, percentage));
+    }
+
+    private static SiigoTaxLookupDto? FindConciliacionRetentionTax(
+        IReadOnlyList<SiigoTaxLookupDto> siigoTaxes,
+        string kind,
+        decimal percentage)
+    {
+        return siigoTaxes
+            .Where(tax => tax.Active
+                && tax.Id > 0
+                && MatchesConciliacionRetentionTaxKind(tax, kind))
+            .Select(tax => new
+            {
+                Tax = tax,
+                Difference = Math.Abs(tax.Percentage - percentage)
+            })
+            .Where(static item => item.Difference <= 0.1m)
+            .OrderBy(static item => item.Difference)
+            .ThenBy(static item => item.Tax.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(static item => item.Tax)
+            .FirstOrDefault();
+    }
+
+    private static bool MatchesConciliacionRetentionTaxKind(SiigoTaxLookupDto tax, string kind)
+    {
+        var text = NormalizeConciliacionTaxText($"{tax.Type} {tax.Name}");
+        return kind switch
+        {
+            "ReteIca" => text.Contains("ICA", StringComparison.OrdinalIgnoreCase),
+            "RteIva" => text.Contains("IVA", StringComparison.OrdinalIgnoreCase)
+                && (text.Contains("RETE", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("RETENCION", StringComparison.OrdinalIgnoreCase)),
+            _ => text.Contains("FUENTE", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("RETEFTE", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("RETEFUENTE", StringComparison.OrdinalIgnoreCase)
+                || (text.Contains("RETENCION", StringComparison.OrdinalIgnoreCase)
+                    && !text.Contains("ICA", StringComparison.OrdinalIgnoreCase)
+                    && !text.Contains("IVA", StringComparison.OrdinalIgnoreCase))
+        };
+    }
+
+    private static decimal ResolveConciliacionRetentionBase(BillingRecordRow invoice)
+    {
+        var baseValue = RoundCurrency(invoice.TotalInvoice - invoice.VatValue);
+        return baseValue > 0m ? baseValue : invoice.TotalInvoice;
+    }
+
+    private static string NormalizeConciliacionTaxText(string value)
+    {
+        var text = (value ?? "").Trim().ToUpperInvariant();
+        return text
+            .Replace("Á", "A", StringComparison.Ordinal)
+            .Replace("É", "E", StringComparison.Ordinal)
+            .Replace("Í", "I", StringComparison.Ordinal)
+            .Replace("Ó", "O", StringComparison.Ordinal)
+            .Replace("Ú", "U", StringComparison.Ordinal)
+            .Replace("Ü", "U", StringComparison.Ordinal)
+            .Replace("Ñ", "N", StringComparison.Ordinal);
+    }
+
     private static object ResolveConciliacionClientPaymentType(string sourceFlow, string bankAccountCode)
     {
         var id = ResolveConciliacionClientPaymentTypeId(sourceFlow, bankAccountCode);
@@ -1975,11 +2130,16 @@ public sealed partial class DataverseService
         string.Equals(status, "Aprobado", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "ListoSiigo", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsConciliacionReadyForRealSendStatus(string status) =>
+        string.Equals(status, "ListoSiigo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "ErrorSiigo", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsConciliacionSiigoCandidateStatus(string status) =>
         string.Equals(status, "Sugerido", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "Aprobado", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "ListoSiigo", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(status, "BloqueadoSiigo", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(status, "BloqueadoSiigo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "ErrorSiigo", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveConciliacionStatusLabel(string status)
     {
@@ -2081,7 +2241,14 @@ public sealed partial class DataverseService
 
     private sealed record ConciliacionSiigoInvoiceDueItem(
         BillingRecordRow Invoice,
-        ConciliacionSiigoDue Due);
+        ConciliacionSiigoDue Due,
+        ConciliacionRetentionTax? RetentionTax);
+
+    private sealed record ConciliacionRetentionTax(
+        string Kind,
+        int TaxId,
+        decimal Value,
+        decimal Percentage);
 
     private sealed record ConciliacionAccountCatalogItem(
         string Code,

@@ -268,6 +268,8 @@
         }
     };
 
+    const canSendPaymentStatus = (status) => status === "ListoSiigo" || status === "ErrorSiigo";
+
     const money = (value) => Number(value || 0).toLocaleString("es-CO", {
         style: "currency",
         currency: "COP",
@@ -487,7 +489,7 @@
 
             const sendButton = row.querySelector("[data-cnc-send-siigo]");
             if (sendButton) {
-                sendButton.disabled = nextStatus !== "ListoSiigo";
+                sendButton.disabled = !canSendPaymentStatus(nextStatus);
             }
         }
     };
@@ -548,7 +550,7 @@
             buttons.forEach((item) => { item.disabled = false; });
             const sendButton = row.querySelector("[data-cnc-send-siigo]");
             if (sendButton) {
-                sendButton.disabled = (row.dataset.status || "") !== "ListoSiigo";
+                sendButton.disabled = !canSendPaymentStatus(row.dataset.status || "");
             }
         }
     };
@@ -594,7 +596,7 @@
             buttons.forEach((item) => { item.disabled = false; });
             const sendButton = row.querySelector("[data-cnc-send-siigo]");
             if (sendButton) {
-                sendButton.disabled = (row.dataset.status || "") !== "ListoSiigo";
+                sendButton.disabled = !canSendPaymentStatus(row.dataset.status || "");
             }
         }
     };
@@ -665,8 +667,8 @@
             return;
         }
 
-        if ((row.dataset.status || "") !== "ListoSiigo") {
-            setStatus("El cruce debe estar Listo Siigo antes del envio real.", "info");
+        if (!canSendPaymentStatus(row.dataset.status || "")) {
+            setStatus("El cruce debe estar Listo Siigo o Error Siigo antes del envio real.", "info");
             return;
         }
 
@@ -720,12 +722,12 @@
                 window.setTimeout(() => window.location.reload(), 900);
             } else {
                 buttons.forEach((item) => { item.disabled = false; });
-                button.disabled = (row.dataset.status || "") !== "ListoSiigo";
+                button.disabled = !canSendPaymentStatus(row.dataset.status || "");
             }
         } catch (error) {
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
             buttons.forEach((item) => { item.disabled = false; });
-            button.disabled = (row.dataset.status || "") !== "ListoSiigo";
+            button.disabled = !canSendPaymentStatus(row.dataset.status || "");
         }
     };
 

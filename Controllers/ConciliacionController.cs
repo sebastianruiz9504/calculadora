@@ -188,7 +188,8 @@ public sealed class ConciliacionController : Controller
         ConciliacionSiigoSendPreparedDto prepared;
         try
         {
-            prepared = await _dataverse.PrepareConciliacionClientPaymentSiigoSendAsync(request.RecordId, ct);
+            var taxes = await _siigo.GetTaxesAsync(ct);
+            prepared = await _dataverse.PrepareConciliacionClientPaymentSiigoSendAsync(request.RecordId, ct, taxes);
         }
         catch (InvalidOperationException ex)
         {

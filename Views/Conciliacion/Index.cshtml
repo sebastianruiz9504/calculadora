@@ -490,6 +490,7 @@
                                                     <th class="text-end">Entrada</th>
                                                     <th>Estado Siigo</th>
                                                     <th>Detalle</th>
+                                                    <th>Accion</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -504,8 +505,26 @@
                                                         <td><strong>@row.MovementDateDisplay</strong><small>@row.SourceFlow</small></td>
                                                         <td><strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong><small>@row.ClientNames</small></td>
                                                         <td class="text-end">@Money(row.EntryValue)</td>
-                                                        <td><span class="cnc-badge cnc-badge--@row.StatusTone">@row.StatusLabel</span></td>
-                                                        <td>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? row.Reason : row.PreflightMessage)</td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.StatusTone" data-status-label>@row.StatusLabel</span></td>
+                                                        <td>
+                                                            <small data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? row.Reason : row.PreflightMessage)</small>
+                                                            <small data-siigo-send-message>Listo para reintento si corriges el origen del error.</small>
+                                                            <ul class="cnc-issue-list" data-siigo-send-issues hidden></ul>
+                                                            <details class="cnc-json-preview" data-siigo-send-payload-preview hidden>
+                                                                <summary>Payload real</summary>
+                                                                <pre data-siigo-send-payload></pre>
+                                                            </details>
+                                                            <details class="cnc-json-preview" data-siigo-send-preview hidden>
+                                                                <summary>Respuesta Siigo</summary>
+                                                                <pre data-siigo-send-response></pre>
+                                                            </details>
+                                                        </td>
+                                                        <td>
+                                                            @if (HasPaymentStatus(row, "ErrorSiigo"))
+                                                            {
+                                                                <button type="button" class="btn btn-sm btn-danger" data-cnc-send-siigo>Reintentar envio</button>
+                                                            }
+                                                        </td>
                                                     </tr>
                                                 }
                                             </tbody>

@@ -32,6 +32,8 @@ public interface ISiigoService
         IReadOnlyList<SiigoInvoiceDownloadItemDto> invoices,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<SiigoTaxLookupDto>> GetTaxesAsync(CancellationToken ct = default);
+
     Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
         string? idempotencyKey = null,
