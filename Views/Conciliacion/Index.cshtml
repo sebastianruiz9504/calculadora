@@ -95,6 +95,7 @@
      data-dry-run-payment-url="@Url.Action("SimulateClientPaymentSiigoSend", "Conciliacion")"
      data-invoice-search-url="@Url.Action("SearchDataverseInvoices", "Conciliacion")"
      data-invoice-assign-url="@Url.Action("AssignClientPaymentInvoice", "Conciliacion")"
+     data-sync-health-url="@Url.Action("SyncHealth", "Conciliacion", new { year = board.Year, month = board.Month })"
      data-active-vertical="Cloud">
     <section class="cnc-heading">
         <div class="cnc-heading__copy">
@@ -128,6 +129,18 @@
 
     <section class="cnc-workspace">
         <div class="cnc-phase-nav" role="tablist" aria-label="Filtros de conciliacion">
+            <button type="button"
+                    class="cnc-phase-tab"
+                    data-cnc-tab="sincronizacion"
+                    role="tab"
+                    aria-selected="false">
+                <span>Sincronizacion</span>
+                <span class="cnc-phase-tasks">
+                    <small class="cnc-phase-task cnc-phase-task--dataverse">Dataverse</small>
+                    <small class="cnc-phase-task cnc-phase-task--siigo">Siigo</small>
+                </span>
+                <small class="cnc-badge cnc-badge--info">Cruces</small>
+            </button>
             @foreach (var phase in board.Phases)
             {
                 var isActive = string.Equals(phase.Key, activePhase, StringComparison.OrdinalIgnoreCase);
@@ -166,6 +179,26 @@
                 </div>
                 <span class="cnc-counter" id="cncVerticalCount">Cloud</span>
             </div>
+
+            <section class="cnc-phase-panel"
+                     data-cnc-panel="sincronizacion"
+                     role="tabpanel"
+                     hidden>
+                <div class="cnc-panel-header">
+                    <div>
+                        <div class="cnc-kicker">Dataverse vs Siigo</div>
+                        <h2>Salud de sincronizacion</h2>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary" data-cnc-sync-refresh>Actualizar</button>
+                </div>
+                <div class="cnc-sync-summary" data-cnc-sync-summary>
+                    <span class="cnc-badge cnc-badge--neutral">Sin consultar</span>
+                    <strong>Selecciona la pestana para cargar los cruces del periodo.</strong>
+                </div>
+                <div class="cnc-sync-grid" data-cnc-sync-grid>
+                    <div class="cnc-sync-empty">Los resultados apareceran aqui.</div>
+                </div>
+            </section>
 
             @foreach (var phase in board.Phases)
             {
@@ -404,7 +437,9 @@
                                                         <td>
                                                             <span class="cnc-badge cnc-badge--@row.PreflightStatusTone" data-preflight-label>@row.PreflightStatusLabel</span>
                                                             <small data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? "Sin validacion pre-Siigo." : row.PreflightMessage)</small>
+                                                            <ul class="cnc-issue-list" data-preflight-issues hidden></ul>
                                                             <small data-siigo-dryrun-message>Sin simulacion de envio.</small>
+                                                            <ul class="cnc-issue-list" data-siigo-dryrun-issues hidden></ul>
                                                             <details class="cnc-json-preview" data-siigo-dryrun-preview hidden>
                                                                 <summary>Payload dry-run</summary>
                                                                 <pre data-siigo-dryrun-payload></pre>

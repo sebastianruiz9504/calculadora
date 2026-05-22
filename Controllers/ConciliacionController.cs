@@ -2,6 +2,7 @@ using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Conciliacion;
 using CotizadorInterno.Web.Models.Permissions;
+using CotizadorInterno.Web.Models.Reconciliation;
 using CotizadorInterno.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
@@ -13,10 +14,14 @@ public sealed class ConciliacionController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private readonly IDataverseService _dataverse;
+    private readonly IFinancialReconciliationService _financialReconciliation;
 
-    public ConciliacionController(IDataverseService dataverse)
+    public ConciliacionController(
+        IDataverseService dataverse,
+        IFinancialReconciliationService financialReconciliation)
     {
         _dataverse = dataverse;
+        _financialReconciliation = financialReconciliation;
     }
 
     [HttpGet]
@@ -31,6 +36,26 @@ public sealed class ConciliacionController : Controller
         };
 
         return View(model);
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SyncHealth([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
+    {
+        try
+        {
+            var (resolvedYear, resolvedMonth) = ResolvePeriod(year, month);
+            var snapshot = await _financialReconciliation.BuildSnapshotAsync(resolvedYear, resolvedMonth, ct);
+            return Ok(BuildSyncHealth(snapshot));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible consultar la salud de sincronizacion.", ex));
+        }
     }
 
     [HttpPost]
@@ -159,6 +184,99 @@ public sealed class ConciliacionController : Controller
             resolvedYear = now.Year;
 
         return (resolvedYear, resolvedMonth);
+    }
+
+    private static ConciliacionSyncHealthDto BuildSyncHealth(FinancialReconciliationSnapshotResult snapshot)
+    {
+        var summary = snapshot.Summary;
+        var items = new[]
+        {
+            BuildSyncHealthItem(
+                key: "facturacion",
+                label: "Facturacion",
+                description: "Facturas de venta netas: facturas menos notas credito.",
+                dataverseTotal: summary.DataverseBillingNet,
+                siigoTotal: summary.SiigoBillingNet,
+                differenceTotal: summary.BillingDifference,
+                dataverseVat: summary.DataverseVatNet,
+                siigoVat: summary.SiigoVatNet,
+                vatDifference: summary.BillingVatDifference,
+                dataverseCount: summary.DataverseBillingInvoiceCount,
+                siigoCount: summary.SiigoBillingInvoiceCount,
+                differenceRows: summary.BillingDifferenceCount,
+                notes: $"NC Dataverse: {summary.DataverseBillingCreditNoteCount:N0}. NC Siigo: {summary.SiigoBillingCreditNoteCount:N0}."),
+            BuildSyncHealthItem(
+                key: "gastos",
+                label: "Gastos",
+                description: "Compras y gastos del periodo comparados por documento/proveedor/fecha/valor.",
+                dataverseTotal: summary.PowerAppsExpenses,
+                siigoTotal: summary.SiigoExpenses,
+                differenceTotal: summary.PowerAppsExpenses - summary.SiigoExpenses,
+                dataverseVat: summary.PowerAppsExpenseVat,
+                siigoVat: summary.SiigoExpenseVat,
+                vatDifference: summary.PowerAppsExpenseVat - summary.SiigoExpenseVat,
+                dataverseCount: summary.PowerAppsExpenseCount,
+                siigoCount: summary.SiigoExpenseCount,
+                differenceRows: summary.ExpenseDifferenceCount,
+                notes: "Dataverse corresponde a Power Apps/tabla de gastos.")
+        };
+        var totalDifferenceRows = items.Sum(static item => item.DifferenceRows);
+
+        return new ConciliacionSyncHealthDto
+        {
+            Year = snapshot.Year,
+            Month = snapshot.Month,
+            PeriodLabel = snapshot.PeriodLabel,
+            GeneratedAtDisplay = FormatSyncHealthDateTime(snapshot.GeneratedAt),
+            StatusLabel = totalDifferenceRows == 0 ? "Sincronizado" : "Con diferencias",
+            StatusTone = totalDifferenceRows == 0 ? "success" : "warning",
+            TotalDifferenceRows = totalDifferenceRows,
+            Items = items
+        };
+    }
+
+    private static ConciliacionSyncHealthItemDto BuildSyncHealthItem(
+        string key,
+        string label,
+        string description,
+        decimal dataverseTotal,
+        decimal siigoTotal,
+        decimal differenceTotal,
+        decimal dataverseVat,
+        decimal siigoVat,
+        decimal vatDifference,
+        int dataverseCount,
+        int siigoCount,
+        int differenceRows,
+        string notes)
+    {
+        var countDifference = dataverseCount - siigoCount;
+        return new ConciliacionSyncHealthItemDto
+        {
+            Key = key,
+            Label = label,
+            Description = description,
+            DataverseTotal = dataverseTotal,
+            SiigoTotal = siigoTotal,
+            DifferenceTotal = differenceTotal,
+            DataverseVat = dataverseVat,
+            SiigoVat = siigoVat,
+            VatDifference = vatDifference,
+            DataverseCount = dataverseCount,
+            SiigoCount = siigoCount,
+            CountDifference = countDifference,
+            DifferenceRows = differenceRows,
+            StatusLabel = differenceRows == 0 ? "Conciliado" : "Revisar",
+            StatusTone = differenceRows == 0 ? "success" : "warning",
+            Notes = notes
+        };
+    }
+
+    private static string FormatSyncHealthDateTime(DateTimeOffset value)
+    {
+        var timeZone = MonthlyFinancialReconciliationHostedService.ResolveTimeZone("SA Pacific Standard Time");
+        var local = TimeZoneInfo.ConvertTime(value, timeZone);
+        return local.ToString("yyyy-MM-dd HH:mm");
     }
 
     private object CreateErrorPayload(string message, Exception? ex = null)

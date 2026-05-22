@@ -1289,7 +1289,7 @@
         function renderHardwareFlowMini(row) {
             const steps = [
                 { value: 645250000, label: "Documentación", tone: "documentation" },
-                { value: 645250001, label: "Ok pago proveedor", tone: "supplier-ready" },
+                { value: 645250001, label: "Ok para pago a proveedor", tone: "supplier-ready" },
                 { value: 645250002, label: "Pagada proveedor", tone: "supplier-paid" },
                 { value: 645250003, label: "Tránsito", tone: "in-transit" },
                 { value: 645250004, label: "Entrega", tone: "awaiting-billing" },
@@ -1919,6 +1919,7 @@
             setFieldValue(
                 elements.fields.supplierDocumentType,
                 normalizeSupplierDocumentType(getCommonValue(state.modalRecords, "supplierDocumentType") || "proforma"));
+            setFieldValue(elements.fields.provider, resolveModalProviderDisplay(state.modalRecords));
             setFieldValue(elements.fields.supplierPaymentDate, getCommonValue(state.modalRecords, "supplierPaymentDateValue"));
             setFieldValue(elements.fields.deliveryRecordDate, getCommonValue(state.modalRecords, "deliveryRecordDateValue"));
             setFieldValue(elements.fields.invoiceNumber, getCommonValue(state.modalRecords, "invoiceNumber"));
@@ -1956,6 +1957,19 @@
             }
 
             return parts.join(" · ");
+        }
+
+        function resolveModalProviderDisplay(records) {
+            const commonProvider = getCommonValue(records, "provider");
+            if (commonProvider) {
+                return commonProvider;
+            }
+
+            if (records.length > 1) {
+                return "Varios proveedores";
+            }
+
+            return records[0]?.provider || "Sin proveedor";
         }
 
         function renderDocumentationRows() {

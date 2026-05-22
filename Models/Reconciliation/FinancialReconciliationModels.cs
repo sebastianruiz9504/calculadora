@@ -126,15 +126,28 @@ public sealed class FinancialReconciliationRunResult
     public string EmailStatus { get; set; } = "";
 }
 
+public sealed class FinancialReconciliationSnapshotResult
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string PeriodLabel { get; set; } = "";
+    public DateTimeOffset GeneratedAt { get; set; }
+    public FinancialReconciliationSummary Summary { get; set; } = new();
+}
+
 public sealed class FinancialReconciliationSummary
 {
     public decimal SiigoBillingGross { get; set; }
     public decimal SiigoBillingCreditNotes { get; set; }
     public decimal SiigoBillingNet { get; set; }
+    public int SiigoBillingInvoiceCount { get; set; }
+    public int SiigoBillingCreditNoteCount { get; set; }
     public decimal DataverseBillingGross { get; set; }
     public decimal DataverseBillingCreditNotes { get; set; }
     public decimal DataverseBillingNet { get; set; }
     public decimal DataverseBilling { get; set; }
+    public int DataverseBillingInvoiceCount { get; set; }
+    public int DataverseBillingCreditNoteCount { get; set; }
     public decimal BillingDifference { get; set; }
     public decimal SiigoVatGross { get; set; }
     public decimal SiigoVatCreditNotes { get; set; }
@@ -147,6 +160,8 @@ public sealed class FinancialReconciliationSummary
     public decimal PowerAppsExpenses { get; set; }
     public decimal SiigoExpenses { get; set; }
     public decimal ExpenseDifference { get; set; }
+    public int PowerAppsExpenseCount { get; set; }
+    public int SiigoExpenseCount { get; set; }
     public decimal PowerAppsExpenseVat { get; set; }
     public decimal SiigoExpenseVat { get; set; }
     public decimal ExpenseVatDifference { get; set; }

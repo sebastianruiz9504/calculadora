@@ -698,9 +698,7 @@ public sealed class HardwareController : Controller
     {
         if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser))
         {
-            board.StateOptions = board.StateOptions
-                .Where(option => option.Value == HardwareAccessPolicy.OkForSupplierPaymentStateValue)
-                .ToList();
+            ApplySupplierPaymentBoardAccess(board);
             return;
         }
 
@@ -710,6 +708,45 @@ public sealed class HardwareController : Controller
             row.ActionLabel = "";
             row.HasAction = false;
         }
+    }
+
+    private static void ApplySupplierPaymentBoardAccess(HardwareBoardDto board)
+    {
+        var rows = board.Rows
+            .Where(row =>
+                row.StateValue == HardwareAccessPolicy.OkForSupplierPaymentStateValue
+                && !row.HasSupplierPaymentProof)
+            .ToList();
+        var okOption = board.StateOptions.FirstOrDefault(option => option.Value == HardwareAccessPolicy.OkForSupplierPaymentStateValue)
+            ?? new HardwareStateOptionDto
+            {
+                Value = HardwareAccessPolicy.OkForSupplierPaymentStateValue,
+                Label = HardwareAccessPolicy.OkForSupplierPaymentStateLabel,
+                Tone = "supplier-ready",
+                ActionKey = HardwareAccessPolicy.SupplierPaymentActionKey,
+                ActionLabel = "Registrar pago a proveedor",
+                HasAction = true
+            };
+
+        board.Rows = rows;
+        board.TotalCount = rows.Count;
+        board.SelectedStateValue = HardwareAccessPolicy.OkForSupplierPaymentStateValue;
+        board.StateOptions = new[] { okOption };
+        board.StateSummaries = rows.Count == 0
+            ? Array.Empty<HardwareStateSummaryDto>()
+            : new[]
+            {
+                new HardwareStateSummaryDto
+                {
+                    Value = okOption.Value,
+                    Label = okOption.Label,
+                    Tone = okOption.Tone,
+                    Count = rows.Count
+                }
+            };
+        board.Message = rows.Count == 0
+            ? $"No hay líneas de Hardware en estado {HardwareAccessPolicy.OkForSupplierPaymentStateLabel} pendientes de comprobante de pago a proveedor."
+            : $"Se cargaron {rows.Count} línea(s) de Hardware en estado {HardwareAccessPolicy.OkForSupplierPaymentStateLabel} pendientes de comprobante de pago a proveedor.";
     }
 
     private static void EnsureCommercialDraftAllowed(CurrentUserInfo effectiveUser)

@@ -9,9 +9,11 @@
     const dryRunPaymentUrl = app.dataset.dryRunPaymentUrl || "";
     const invoiceSearchUrl = app.dataset.invoiceSearchUrl || "";
     const invoiceAssignUrl = app.dataset.invoiceAssignUrl || "";
+    const syncHealthUrl = app.dataset.syncHealthUrl || "";
     const statusBox = document.getElementById("cncStatus");
     const tabButtons = Array.from(app.querySelectorAll("[data-cnc-tab]"));
     const panels = Array.from(app.querySelectorAll("[data-cnc-panel]"));
+    const verticalBar = app.querySelector(".cnc-vertical-bar");
     const paymentSearch = document.getElementById("cncPaymentSearch");
     const paymentStatusFilter = document.getElementById("cncPaymentStatusFilter");
     const paymentRowsBody = document.getElementById("cncPaymentRows");
@@ -31,10 +33,15 @@
     const invoiceResults = document.getElementById("cncInvoiceResults");
     const invoiceSelected = document.getElementById("cncInvoiceSelected");
     const invoiceSave = document.getElementById("cncInvoiceSave");
+    const syncSummary = app.querySelector("[data-cnc-sync-summary]");
+    const syncGrid = app.querySelector("[data-cnc-sync-grid]");
+    const syncRefreshButton = app.querySelector("[data-cnc-sync-refresh]");
     let activeReassignRow = null;
     let activeInvoiceRow = null;
     let selectedInvoiceId = "";
     let activeVertical = app.dataset.activeVertical || "Cloud";
+    let syncLoaded = false;
+    let syncLoading = false;
 
     const categoryOptions = {
         Entrada: [
@@ -98,6 +105,13 @@
             panel.classList.toggle("is-active", active);
             panel.hidden = !active;
         });
+
+        if (verticalBar) {
+            verticalBar.hidden = key === "sincronizacion";
+        }
+        if (key === "sincronizacion") {
+            loadSyncHealth();
+        }
     };
 
     const normalizeText = (value) => String(value || "").trim().toLowerCase();
@@ -250,6 +264,186 @@
         maximumFractionDigits: 0
     });
 
+    const renderIssueList = (row, selector, issues) => {
+        const list = row.querySelector(selector);
+        if (!list) {
+            return;
+        }
+
+        list.innerHTML = "";
+        const values = Array.isArray(issues)
+            ? issues.filter((issue) => String(issue || "").trim())
+            : [];
+        list.hidden = values.length === 0;
+        values.forEach((issue) => {
+            const item = document.createElement("li");
+            item.textContent = issue;
+            list.appendChild(item);
+        });
+    };
+
+    const moneyPrecise = (value) => Number(value || 0).toLocaleString("es-CO", {
+        style: "currency",
+        currency: "COP",
+        maximumFractionDigits: 2
+    });
+
+    const numberLabel = (value) => Number(value || 0).toLocaleString("es-CO");
+
+    const setSyncLoading = () => {
+        if (syncSummary) {
+            syncSummary.innerHTML = "";
+            const badge = document.createElement("span");
+            badge.className = "cnc-badge cnc-badge--info";
+            badge.textContent = "Consultando";
+            const text = document.createElement("strong");
+            text.textContent = "Calculando totales de Dataverse y Siigo...";
+            syncSummary.append(badge, text);
+        }
+        if (syncGrid) {
+            syncGrid.innerHTML = "";
+            const empty = document.createElement("div");
+            empty.className = "cnc-sync-empty";
+            empty.textContent = "Consultando fuentes del periodo.";
+            syncGrid.appendChild(empty);
+        }
+    };
+
+    const renderSyncMetric = (label, value) => {
+        const item = document.createElement("div");
+        item.className = "cnc-sync-metric";
+        const title = document.createElement("span");
+        title.textContent = label;
+        const number = document.createElement("strong");
+        number.textContent = value;
+        item.append(title, number);
+        return item;
+    };
+
+    const renderSyncSystem = (label, total, count, vat) => {
+        const system = document.createElement("div");
+        system.className = "cnc-sync-system";
+        const title = document.createElement("span");
+        title.textContent = label;
+        const amount = document.createElement("strong");
+        amount.textContent = moneyPrecise(total);
+        const meta = document.createElement("small");
+        meta.textContent = `${numberLabel(count)} registros | IVA ${moneyPrecise(vat)}`;
+        system.append(title, amount, meta);
+        return system;
+    };
+
+    const renderSyncHealth = (payload) => {
+        syncLoaded = true;
+        if (syncSummary) {
+            syncSummary.innerHTML = "";
+            const badge = document.createElement("span");
+            badge.className = `cnc-badge cnc-badge--${payload.statusTone || "neutral"}`;
+            badge.textContent = payload.statusLabel || "Sin estado";
+            const text = document.createElement("strong");
+            text.textContent = `${payload.periodLabel || "Periodo"} | ${numberLabel(payload.totalDifferenceRows)} filas con diferencia`;
+            const time = document.createElement("small");
+            time.textContent = `Ultima consulta: ${payload.generatedAtDisplay || "sin fecha"}`;
+            syncSummary.append(badge, text, time);
+        }
+
+        if (!syncGrid) {
+            return;
+        }
+
+        syncGrid.innerHTML = "";
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        if (items.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "cnc-sync-empty";
+            empty.textContent = "No hay cruces configurados para este periodo.";
+            syncGrid.appendChild(empty);
+            return;
+        }
+
+        items.forEach((item) => {
+            const card = document.createElement("article");
+            card.className = `cnc-sync-card cnc-sync-card--${item.statusTone || "neutral"}`;
+
+            const header = document.createElement("header");
+            const heading = document.createElement("div");
+            const title = document.createElement("h3");
+            title.textContent = item.label || "Cruce";
+            const description = document.createElement("p");
+            description.textContent = item.description || "";
+            heading.append(title, description);
+            const badge = document.createElement("span");
+            badge.className = `cnc-badge cnc-badge--${item.statusTone || "neutral"}`;
+            badge.textContent = item.statusLabel || "Sin estado";
+            header.append(heading, badge);
+
+            const systems = document.createElement("div");
+            systems.className = "cnc-sync-systems";
+            systems.append(
+                renderSyncSystem(item.dataverseLabel || "Dataverse", item.dataverseTotal, item.dataverseCount, item.dataverseVat),
+                renderSyncSystem(item.siigoLabel || "Siigo", item.siigoTotal, item.siigoCount, item.siigoVat)
+            );
+
+            const metrics = document.createElement("div");
+            metrics.className = "cnc-sync-metrics";
+            metrics.append(
+                renderSyncMetric("Diferencia Dataverse - Siigo", moneyPrecise(item.differenceTotal)),
+                renderSyncMetric("Diferencia registros", numberLabel(item.countDifference)),
+                renderSyncMetric("Diferencia IVA", moneyPrecise(item.vatDifference)),
+                renderSyncMetric("Filas por revisar", rowCountLabel(Number(item.differenceRows || 0)))
+            );
+
+            const notes = document.createElement("small");
+            notes.className = "cnc-sync-notes";
+            notes.textContent = item.notes || "";
+            card.append(header, systems, metrics, notes);
+            syncGrid.appendChild(card);
+        });
+    };
+
+    const loadSyncHealth = async (force = false) => {
+        if (!syncHealthUrl || syncLoading || (syncLoaded && !force)) {
+            return;
+        }
+
+        syncLoading = true;
+        if (syncRefreshButton) {
+            syncRefreshButton.disabled = true;
+        }
+        setSyncLoading();
+
+        try {
+            const response = await fetch(syncHealthUrl, { headers: { "Accept": "application/json" } });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible consultar la salud de sincronizacion.");
+            }
+            renderSyncHealth(payload);
+        } catch (error) {
+            if (syncSummary) {
+                syncSummary.innerHTML = "";
+                const badge = document.createElement("span");
+                badge.className = "cnc-badge cnc-badge--danger";
+                badge.textContent = "Error";
+                const text = document.createElement("strong");
+                text.textContent = error instanceof Error ? error.message : "Ocurrio un error inesperado.";
+                syncSummary.append(badge, text);
+            }
+            if (syncGrid) {
+                syncGrid.innerHTML = "";
+                const empty = document.createElement("div");
+                empty.className = "cnc-sync-empty";
+                empty.textContent = "No se pudieron cargar los cruces.";
+                syncGrid.appendChild(empty);
+            }
+        } finally {
+            syncLoading = false;
+            if (syncRefreshButton) {
+                syncRefreshButton.disabled = false;
+            }
+        }
+    };
+
     const updateRowStatus = (row, payloadRow, fallbackStatus) => {
         const nextStatus = payloadRow?.status || fallbackStatus;
         row.dataset.status = nextStatus;
@@ -368,8 +562,13 @@
             }
 
             updateRowStatus(row, payload.row, payload.row?.status || row.dataset.status || "");
+            renderIssueList(row, "[data-preflight-issues]", payload.issues || []);
             applyPaymentFilters();
-            setStatus(payload.message || "Validacion pre-Siigo finalizada.", payload.isReadyForSiigo ? "success" : "info");
+            setStatus(
+                payload.isReadyForSiigo
+                    ? (payload.message || "Validacion pre-Siigo finalizada.")
+                    : `${payload.message || "Validacion pre-Siigo finalizada."} Revisa los pendientes visibles en la fila.`,
+                payload.isReadyForSiigo ? "success" : "info");
         } catch (error) {
             setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
         } finally {
@@ -407,14 +606,15 @@
             const message = row.querySelector("[data-siigo-dryrun-message]");
             const preview = row.querySelector("[data-siigo-dryrun-preview]");
             const payloadBox = row.querySelector("[data-siigo-dryrun-payload]");
-            const issues = Array.isArray(payload.issues) && payload.issues.length
-                ? ` Pendientes: ${payload.issues.join(" ")}`
-                : "";
+            const issues = Array.isArray(payload.issues) ? payload.issues : [];
 
             if (message) {
-                message.textContent = `${payload.message || "Simulacion finalizada."}${issues}`;
+                message.textContent = issues.length
+                    ? `${payload.message || "Simulacion finalizada."} Pendientes abajo.`
+                    : (payload.message || "Simulacion finalizada.");
                 message.className = payload.isReadyForSiigo ? "cnc-tone-success" : "cnc-tone-warning";
             }
+            renderIssueList(row, "[data-siigo-dryrun-issues]", issues);
             if (payloadBox) {
                 payloadBox.textContent = payload.payloadJson || "";
             }
@@ -666,6 +866,11 @@
             setActiveTab(button.dataset.cncTab || "");
             refreshAllFilters();
         });
+    });
+
+    syncRefreshButton?.addEventListener("click", () => {
+        syncLoaded = false;
+        loadSyncHealth(true);
     });
 
     app.querySelectorAll("[data-cnc-tab-target]").forEach((button) => {

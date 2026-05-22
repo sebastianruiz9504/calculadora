@@ -237,3 +237,37 @@ public sealed class ConciliacionSiigoDryRunResultDto
     public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
     public ConciliacionClientPaymentRowDto? Row { get; set; }
 }
+
+public sealed class ConciliacionSyncHealthDto
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string PeriodLabel { get; set; } = "";
+    public string GeneratedAtDisplay { get; set; } = "";
+    public string StatusLabel { get; set; } = "";
+    public string StatusTone { get; set; } = "";
+    public int TotalDifferenceRows { get; set; }
+    public IReadOnlyList<ConciliacionSyncHealthItemDto> Items { get; set; } = Array.Empty<ConciliacionSyncHealthItemDto>();
+}
+
+public sealed class ConciliacionSyncHealthItemDto
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string StatusLabel { get; set; } = "";
+    public string StatusTone { get; set; } = "";
+    public string DataverseLabel { get; set; } = "Dataverse";
+    public string SiigoLabel { get; set; } = "Siigo";
+    public decimal DataverseTotal { get; set; }
+    public decimal SiigoTotal { get; set; }
+    public decimal DifferenceTotal { get; set; }
+    public decimal DataverseVat { get; set; }
+    public decimal SiigoVat { get; set; }
+    public decimal VatDifference { get; set; }
+    public int DataverseCount { get; set; }
+    public int SiigoCount { get; set; }
+    public int CountDifference { get; set; }
+    public int DifferenceRows { get; set; }
+    public string Notes { get; set; } = "";
+}

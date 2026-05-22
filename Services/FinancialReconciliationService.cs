@@ -10,6 +10,7 @@ namespace CotizadorInterno.Web.Services;
 
 public interface IFinancialReconciliationService
 {
+    Task<FinancialReconciliationSnapshotResult> BuildSnapshotAsync(int year, int month, CancellationToken ct = default);
     Task<FinancialReconciliationReportResult> BuildReportAsync(int year, int month, CancellationToken ct = default);
     Task<FinancialReconciliationRunResult> RunAndSendAsync(int year, int month, CancellationToken ct = default);
     Task<FinancialReconciliationRunResult> RunConfiguredPeriodAsync(DateTimeOffset? now = null, CancellationToken ct = default);
@@ -45,6 +46,48 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         CancellationToken ct = default)
     {
         return await BuildReportCoreAsync(year, month, applyBillingCorrections: false, ct);
+    }
+
+    public async Task<FinancialReconciliationSnapshotResult> BuildSnapshotAsync(
+        int year,
+        int month,
+        CancellationToken ct = default)
+    {
+        if (year is < 2000 or > 2100 || month is < 1 or > 12)
+            throw new InvalidOperationException("El periodo de conciliacion financiera no es valido.");
+
+        var start = new DateOnly(year, month, 1);
+        var end = start.AddMonths(1);
+        var periodLabel = ToTitleCase(start.ToString("MMMM yyyy", ColombianCulture));
+
+        var dataverseBillingTask = _dataverse.GetFinancialReconciliationBillingRowsAsync(start, end, ct);
+        var dataverseCreditNotesTask = _dataverse.GetFinancialReconciliationCreditNoteRowsAsync(start, end, ct);
+        var dataverseExpensesTask = _dataverse.GetFinancialReconciliationExpenseRowsAsync(start, end, ct);
+        var siigoTask = _siigo.GetFinancialReconciliationDocumentsAsync(start, end.AddDays(-1), ct);
+
+        await Task.WhenAll(dataverseBillingTask, dataverseCreditNotesTask, dataverseExpensesTask, siigoTask);
+
+        var billingComparisons = BuildBillingComparisons(
+            dataverseBillingTask.Result,
+            dataverseCreditNotesTask.Result,
+            siigoTask.Result);
+        var expenseComparisons = BuildExpenseComparisons(dataverseExpensesTask.Result, siigoTask.Result.Purchases);
+        var summary = BuildSummary(
+            dataverseBillingTask.Result,
+            dataverseCreditNotesTask.Result,
+            dataverseExpensesTask.Result,
+            siigoTask.Result,
+            billingComparisons,
+            expenseComparisons);
+
+        return new FinancialReconciliationSnapshotResult
+        {
+            Year = year,
+            Month = month,
+            PeriodLabel = periodLabel,
+            GeneratedAt = DateTimeOffset.UtcNow,
+            Summary = summary
+        };
     }
 
     private async Task<FinancialReconciliationReportResult> BuildReportCoreAsync(
@@ -206,10 +249,14 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
             SiigoBillingGross = siigoBillingGross,
             SiigoBillingCreditNotes = siigoBillingCreditNotes,
             SiigoBillingNet = RoundCurrency(siigoBillingGross - siigoBillingCreditNotes),
+            SiigoBillingInvoiceCount = activeInvoices.Count,
+            SiigoBillingCreditNoteCount = siigo.CreditNotes.Count,
             DataverseBillingGross = dataverseBillingGross,
             DataverseBillingCreditNotes = dataverseBillingCreditNotes,
             DataverseBillingNet = dataverseBillingNet,
             DataverseBilling = dataverseBillingNet,
+            DataverseBillingInvoiceCount = dataverseBilling.Count,
+            DataverseBillingCreditNoteCount = dataverseCreditNotes.Count,
             BillingDifference = RoundCurrency(dataverseBillingNet - (siigoBillingGross - siigoBillingCreditNotes)),
             SiigoVatGross = siigoVatGross,
             SiigoVatCreditNotes = siigoVatCreditNotes,
@@ -222,6 +269,8 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
             PowerAppsExpenses = powerAppsExpenses,
             SiigoExpenses = siigoExpenses,
             ExpenseDifference = RoundCurrency(siigoExpenses - powerAppsExpenses),
+            PowerAppsExpenseCount = dataverseExpenses.Count,
+            SiigoExpenseCount = siigo.Purchases.Count,
             PowerAppsExpenseVat = powerAppsExpenseVat,
             SiigoExpenseVat = siigoExpenseVat,
             ExpenseVatDifference = RoundCurrency(siigoExpenseVat - powerAppsExpenseVat),

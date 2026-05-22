@@ -148,7 +148,11 @@ public sealed partial class DataverseService
         var preflight = ValidateConciliacionClientPaymentDraft(row, catalog);
         var issues = new List<string>(preflight.Issues);
         if (!string.Equals(row.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase))
-            issues.Add("El cruce debe estar en estado Listo Siigo antes de habilitar el envio real.");
+        {
+            issues.Add(string.Equals(row.Status, "Aprobado", StringComparison.OrdinalIgnoreCase)
+                ? "Haz clic en Validar pre-Siigo. Si la prevalidacion no encuentra errores, el cruce pasa a Listo Siigo."
+                : "El cruce debe estar aprobado y luego validado pre-Siigo antes de habilitar el envio real.");
+        }
 
         var payloadJson = "";
         var lineCount = 0;
