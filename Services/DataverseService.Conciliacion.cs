@@ -360,8 +360,8 @@ public sealed partial class DataverseService
             issues.Add("El cruce debe estar en estado Listo Siigo antes de habilitar el envio real.");
         if (row.RetentionsTotal > 0m)
             issues.Add("El envio real inicial solo esta habilitado para pagos sin retenciones; falta mapear los impuestos/retenciones de Siigo.");
-        if (Math.Abs(row.DifferenceValue) > 1m)
-            issues.Add("El envio real inicial solo esta habilitado sin ajuste al peso. Revisa la diferencia antes de enviar.");
+        if (Math.Abs(row.DifferenceValue) > 0.009m)
+            issues.Add($"El envio real inicial por abono a deuda solo esta habilitado sin ajuste al peso. Diferencia actual: {row.DifferenceValue:N2}.");
 
         var payloadJson = "";
         object? payload = null;
@@ -400,8 +400,9 @@ public sealed partial class DataverseService
             var invoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.TotalInvoice));
             if (invoices.Count > 0 && Math.Abs(invoiceTotal - row.InvoiceTotal) > 1m)
                 issues.Add($"El total de facturas Dataverse ({invoiceTotal:N2}) no coincide con el total del cruce ({row.InvoiceTotal:N2}).");
-            if (invoices.Count > 0 && Math.Abs(invoiceTotal - row.EntryValue) > 1m)
-                issues.Add($"El pago ({row.EntryValue:N2}) no coincide con el total de facturas ({invoiceTotal:N2}) para un envio sin retenciones.");
+            var expectedPayment = RoundCurrency(invoiceTotal - row.RetentionsTotal);
+            if (invoices.Count > 0 && Math.Abs(expectedPayment - row.EntryValue) > 0.009m)
+                issues.Add($"El pago ({row.EntryValue:N2}) debe coincidir con factura menos retenciones ({expectedPayment:N2}) para aplicar el vencimiento en Siigo.");
 
             var movementDate = row.MovementDateValue.Trim();
             if (!DateOnly.TryParseExact(movementDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
@@ -1781,7 +1782,7 @@ public sealed partial class DataverseService
             {
                 account = new
                 {
-                    code = "13050501",
+                    code = row.BankAccountCode,
                     movement = "Credit"
                 },
                 description = TruncateAccountCatalogText($"Pago factura {item.Invoice.InvoiceNumber}".Trim(), 200),

@@ -694,11 +694,19 @@
             renderIssueList(row, "[data-siigo-send-issues]", payload.issues || []);
 
             const message = row.querySelector("[data-siigo-send-message]");
+            const payloadPreview = row.querySelector("[data-siigo-send-payload-preview]");
+            const payloadBox = row.querySelector("[data-siigo-send-payload]");
             const preview = row.querySelector("[data-siigo-send-preview]");
             const responseBox = row.querySelector("[data-siigo-send-response]");
             if (message) {
                 message.textContent = payload.message || "Envio finalizado.";
                 message.className = payload.isSuccess ? "cnc-tone-success" : "cnc-tone-warning";
+            }
+            if (payloadBox) {
+                payloadBox.textContent = payload.payloadJson || "";
+            }
+            if (payloadPreview) {
+                payloadPreview.hidden = !payload.payloadJson;
             }
             if (responseBox) {
                 responseBox.textContent = payload.responseJson || "";

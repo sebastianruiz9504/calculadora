@@ -345,12 +345,13 @@ public sealed class SiigoService : ISiigoService
 
     public async Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         if (payload is null)
             throw new ArgumentNullException(nameof(payload));
 
-        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/vouchers", payload, ct);
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/vouchers", payload, idempotencyKey, ct);
         try
         {
             using var document = JsonDocument.Parse(rawBody);
@@ -468,13 +469,14 @@ public sealed class SiigoService : ISiigoService
         HttpMethod method,
         string relativeUrl,
         object payload,
+        string? idempotencyKey,
         CancellationToken ct)
     {
-        using var response = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, ct);
+        using var response = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, idempotencyKey, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             InvalidateToken();
-            using var retryResponse = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, ct);
+            using var retryResponse = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, idempotencyKey, ct);
             return await ReadRawJsonResponseAsync(retryResponse, ct);
         }
 
@@ -485,23 +487,27 @@ public sealed class SiigoService : ISiigoService
         HttpMethod method,
         string relativeUrl,
         object payload,
+        string? idempotencyKey,
         CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(payload, JsonOptions);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
-        return await SendAuthorizedAsync(method, relativeUrl, ct, content);
+        return await SendAuthorizedAsync(method, relativeUrl, ct, content, idempotencyKey);
     }
 
     private async Task<HttpResponseMessage> SendAuthorizedAsync(
         HttpMethod method,
         string relativeUrl,
         CancellationToken ct,
-        HttpContent? content = null)
+        HttpContent? content = null,
+        string? idempotencyKey = null)
     {
         var token = await GetAccessTokenAsync(ct);
         var request = new HttpRequestMessage(method, relativeUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue(_tokenType, token);
         request.Headers.TryAddWithoutValidation("Partner-Id", ResolvePartnerId());
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey.Trim());
         if (content is not null)
             request.Content = content;
         return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -622,10 +628,12 @@ public sealed class SiigoService : ISiigoService
             using var document = JsonDocument.Parse(rawBody);
             var root = document.RootElement;
 
-            if (TryGetStringProperty(root, "message", out var message))
+            if (TryGetStringProperty(root, "message", out var message)
+                || TryGetStringProperty(root, "Message", out message))
                 return message;
 
-            if (TryGetStringProperty(root, "error", out var error))
+            if (TryGetStringProperty(root, "error", out var error)
+                || TryGetStringProperty(root, "Error", out error))
                 return error;
 
             foreach (var propertyName in new[] { "errors", "Errors" })

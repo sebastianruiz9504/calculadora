@@ -214,7 +214,10 @@ public sealed class ConciliacionController : Controller
 
         try
         {
-            var siigoResult = await _siigo.CreateVoucherAsync(prepared.Payload, ct);
+            var siigoResult = await _siigo.CreateVoucherAsync(
+                prepared.Payload,
+                BuildSiigoIdempotencyKey(request.RecordId),
+                ct);
             var documentLabel = string.IsNullOrWhiteSpace(siigoResult.Name)
                 ? siigoResult.Id
                 : siigoResult.Name;
@@ -418,5 +421,17 @@ public sealed class ConciliacionController : Controller
         }
 
         return string.Join(" | ", messages);
+    }
+
+    private static string BuildSiigoIdempotencyKey(string recordId)
+    {
+        var compact = new string((recordId ?? "")
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
+        if (compact.Length == 0)
+            compact = Guid.NewGuid().ToString("N");
+
+        var key = $"CNC{compact}";
+        return key[..Math.Min(30, key.Length)];
     }
 }

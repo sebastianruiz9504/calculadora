@@ -34,5 +34,6 @@ public interface ISiigoService
 
     Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
+        string? idempotencyKey = null,
         CancellationToken ct = default);
 }
