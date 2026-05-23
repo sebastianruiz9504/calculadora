@@ -1053,7 +1053,7 @@
             }
 
             const ownerTables = buildOwnerTables(rows);
-            state.displayItems = ownerTables.flatMap(owner => owner.items);
+            state.displayItems = ownerTables.flatMap(owner => flattenDisplayItems(owner.items));
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
@@ -1079,8 +1079,8 @@
         }
 
         function renderSupplierPaymentRows(rows) {
-            const groups = buildSupplierDocumentGroups(rows);
-            state.displayItems = groups;
+            const groups = buildCommercialGroups(rows, "supplier-payment");
+            state.displayItems = flattenGroupTree(groups);
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
@@ -1105,7 +1105,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${groups.map(renderSupplierPaymentGroupRow).join("")}
+                            ${groups.map(renderSupplierPaymentOrderGroupRows).join("")}
                         </tbody>
                     </table>
                 </div>
@@ -1114,7 +1114,7 @@
 
         function renderCommercialStateSections(rows) {
             const sections = buildCommercialStateSections(rows);
-            state.displayItems = sections.flatMap(section => section.groups);
+            state.displayItems = flattenGroupTree(sections.flatMap(section => section.groups));
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
@@ -1181,9 +1181,7 @@
         }
 
         function buildCommercialStateSection(option, rows, stateValue) {
-            const groups = shouldGroupCommercialStateBySupplierDocument(stateValue)
-                ? buildSupplierDocumentGroups(rows, `state-${stateValue}`)
-                : buildCommercialGroups(rows, `state-${stateValue}`);
+            const groups = buildCommercialGroups(rows, `state-${stateValue}`);
             return {
                 option,
                 rows,
@@ -1238,21 +1236,21 @@
             const validAction = validateActionRecords(group.rows);
             const editableRows = group.rows.filter(isCommercialLineEditable);
             const draftAction = isDraftDocumentationGroup(group.rows);
-            const groupCanOpenSingleEdit = editableRows.length === 1;
+            const expanded = state.expandedGroups.has(group.key);
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
             const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
             const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
             const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
-            const groupEditAttributes = groupCanOpenSingleEdit
-                ? ` data-hw-edit-group="${escapeHtml(group.key)}" title="Editar línea"`
-                : "";
             return `
-                <tr class="hardware-table__row hardware-commercial-table__group ${groupCanOpenSingleEdit ? "is-editable" : ""} ${toneClass(first.stateTone)}"${groupEditAttributes}>
+                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
                     <td colspan="7">
                         <div class="hardware-commercial-order">
                             <div>
-                                <strong>${escapeHtml(group.orderNumber)}</strong>
-                                <span>${escapeHtml(clientLabel)} · ${escapeHtml(odcDate)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(totalSale)}</span>
+                                <div class="hardware-table__title">
+                                    ${renderGroupToggle(group.key, expanded, `ODC ${group.orderNumber || "sin orden"}`)}
+                                    <strong>${escapeHtml(group.orderNumber)}</strong>
+                                </div>
+                                <span>${escapeHtml(clientLabel)} · ${escapeHtml(odcDate)} · ${formatNumber(group.proformaGroups?.length || 0)} proforma(s) · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(totalSale)}</span>
                                 <div class="hardware-commercial-order__files">
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_ordendecompra")}
                                     ${renderCommercialGroupSupplierDocumentLink(group.rows)}
@@ -1265,7 +1263,7 @@
                                 ${draftAction && validAction.ok
                                     ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">Enviar</button>`
                                     : editableRows.length > 0
-                                    ? `<span class="hardware-table__submeta">${escapeHtml(groupCanOpenSingleEdit ? "Click para editar" : "Click en una línea para editarla")}</span>`
+                                    ? `<span class="hardware-table__submeta">Expande para editar líneas</span>`
                                     : validAction.ok
                                     ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(resolveActionButtonLabel(group.rows[0]))}</button>`
                                     : `<span class="hardware-table__submeta">${escapeHtml(validAction.message || "Sin botón")}</span>`}
@@ -1273,7 +1271,45 @@
                         </div>
                     </td>
                 </tr>
-                ${group.rows.map(row => renderCommercialStateRecordRow(row)).join("")}
+                ${expanded ? (group.proformaGroups || []).map(proforma => renderCommercialStateProformaGroup(proforma)).join("") : ""}
+            `;
+        }
+
+        function renderCommercialStateProformaGroup(group) {
+            const first = group.rows[0] || {};
+            const expanded = state.expandedGroups.has(group.key);
+            const validation = validateActionRecords(group.rows);
+            const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
+            const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const draftAction = isDraftDocumentationGroup(group.rows);
+            return `
+                <tr class="hardware-table__row hardware-table__group--proforma ${toneClass(first.stateTone)}">
+                    <td colspan="7">
+                        <div class="hardware-commercial-order hardware-commercial-order--nested">
+                            <div>
+                                <div class="hardware-table__title">
+                                    ${renderGroupToggle(group.key, expanded, `Proforma ${group.supplierDocumentLabel || ""}`)}
+                                    <strong>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</strong>
+                                </div>
+                                <span>${escapeHtml(providerLabel)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(totalSale)}</span>
+                                <div class="hardware-commercial-order__files">
+                                    ${renderCommercialGroupFileLink(group.rows, resolveSupplierDocumentField(first), group.supplierDocumentLabel || "")}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_pagoaproveedor")}
+                                    ${renderCommercialGroupFileLink(group.rows, "cr07a_actadeentrega")}
+                                </div>
+                            </div>
+                            <div class="hardware-commercial-order__status">
+                                ${draftAction
+                                    ? `<span class="hardware-table__submeta">Se envía desde la ODC</span>`
+                                    : validation.ok
+                                    ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(resolveActionButtonLabel(first))}</button>`
+                                    : `<span class="hardware-table__submeta">${escapeHtml(validation.message || "Sin botón")}</span>`}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                ${expanded ? group.rows.map(row => renderCommercialStateRecordRow(row)).join("") : ""}
             `;
         }
 
@@ -1316,12 +1352,14 @@
             rows.forEach((row, index) => {
                 const orderNumber = String(row?.purchaseOrderNumber || "").trim() || "Sin orden";
                 const baseKey = normalizeText(orderNumber) || `sin-orden-${index}`;
-                const key = keyPrefix ? `${keyPrefix}|${baseKey}` : baseKey;
+                const key = keyPrefix ? `${keyPrefix}|odc|${baseKey}` : `odc|${baseKey}`;
                 if (!groups.has(key)) {
                     groups.set(key, {
                         type: "group",
+                        groupKind: "odc",
                         key,
                         orderNumber,
+                        proformaGroups: [],
                         rows: [],
                         index
                     });
@@ -1331,6 +1369,10 @@
             });
 
             return Array.from(groups.values())
+                .map(group => ({
+                    ...group,
+                    proformaGroups: buildSupplierDocumentGroups(group.rows, `${group.key}|proforma`)
+                }))
                 .sort((left, right) => left.index - right.index);
         }
 
@@ -1344,6 +1386,7 @@
                 if (!groups.has(key)) {
                     groups.set(key, {
                         type: "group",
+                        groupKind: "proforma",
                         key,
                         orderNumber,
                         supplierDocumentKey: documentKey,
@@ -1363,6 +1406,38 @@
         function shouldGroupCommercialStateBySupplierDocument(stateValue) {
             const value = Number(stateValue || 0);
             return value === hardwareStateOkForSupplierPayment || value === hardwareStatePaidToSupplier;
+        }
+
+        function flattenGroupTree(groups) {
+            const result = [];
+            (Array.isArray(groups) ? groups : []).forEach(group => {
+                result.push(group);
+                (group.proformaGroups || []).forEach(proforma => result.push(proforma));
+            });
+            return result;
+        }
+
+        function flattenDisplayItems(items) {
+            const result = [];
+            (Array.isArray(items) ? items : []).forEach(item => {
+                result.push(item);
+                if (item.type === "group") {
+                    (item.proformaGroups || []).forEach(proforma => result.push(proforma));
+                }
+            });
+            return result;
+        }
+
+        function renderGroupToggle(groupKey, expanded, label) {
+            return `
+                <button type="button"
+                        class="hardware-group-toggle"
+                        data-hw-toggle-group="${escapeHtml(groupKey)}"
+                        aria-expanded="${expanded ? "true" : "false"}"
+                        aria-label="${escapeHtml((expanded ? "Resumir " : "Expandir ") + (label || "grupo"))}">
+                    ${expanded ? "-" : "+"}
+                </button>
+            `;
         }
 
         function renderHardwareFlowTableRow(row, columnCount, isChild = false, extraClass = "") {
@@ -1474,17 +1549,48 @@
             `;
         }
 
+        function renderSupplierPaymentOrderGroupRows(group) {
+            const first = group.rows[0] || {};
+            const expanded = state.expandedGroups.has(group.key);
+            const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
+            const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const paymentTotal = calculateSupplierPaymentTotal(group.rows);
+            return `
+                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
+                    <td colspan="7">
+                        <div class="hardware-commercial-order">
+                            <div>
+                                <div class="hardware-table__title">
+                                    ${renderGroupToggle(group.key, expanded, `ODC ${group.orderNumber || "sin orden"}`)}
+                                    <strong>${escapeHtml(group.orderNumber || "Sin ODC")}</strong>
+                                </div>
+                                <span>${escapeHtml(clientLabel)} · ${formatNumber(group.proformaGroups?.length || 0)} proforma(s) · ${formatNumber(group.rows.length)} línea(s) · ${escapeHtml(providerLabel)}</span>
+                            </div>
+                            <div class="hardware-commercial-order__status">
+                                <strong>${formatCurrency(paymentTotal)}</strong>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                ${expanded ? (group.proformaGroups || []).map(renderSupplierPaymentGroupRow).join("") : ""}
+            `;
+        }
+
         function renderSupplierPaymentGroupRow(group) {
             const first = group.rows[0] || {};
+            const expanded = state.expandedGroups.has(group.key);
             const validation = validateActionRecords(group.rows);
             const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
             const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
             const paymentTotal = calculateSupplierPaymentTotal(group.rows);
             const downloads = resolveSupplierPaymentDocumentDownloads(group.rows);
             return `
-                <tr class="hardware-table__row hardware-supplier-payment-row ${toneClass(first.stateTone)}" data-hw-open-group="${escapeHtml(group.key)}" title="Abrir gestión de pago a proveedor">
+                <tr class="hardware-table__row hardware-supplier-payment-row hardware-table__group--proforma ${toneClass(first.stateTone)}" data-hw-open-group="${escapeHtml(group.key)}" title="Abrir gestión de pago a proveedor">
                     <td class="hardware-table__order-cell">
-                        <span class="hardware-order-number">${escapeHtml(group.orderNumber || "Sin ODC")}</span>
+                        <div class="hardware-table__title">
+                            ${renderGroupToggle(group.key, expanded, `Proforma ${group.supplierDocumentLabel || ""}`)}
+                            <span class="hardware-order-number">${escapeHtml(group.orderNumber || "Sin ODC")}</span>
+                        </div>
                     </td>
                     <td>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</td>
                     <td class="hardware-table__client-cell">
@@ -1506,6 +1612,26 @@
                                 : `<span class="hardware-table__submeta">${escapeHtml(validation.message || "Sin acción")}</span>`}
                         </div>
                     </td>
+                </tr>
+                ${expanded ? group.rows.map(renderSupplierPaymentLineRow).join("") : ""}
+            `;
+        }
+
+        function renderSupplierPaymentLineRow(row) {
+            return `
+                <tr class="hardware-table__row hardware-table__row--child ${toneClass(row?.stateTone)}">
+                    <td></td>
+                    <td>
+                        <div class="hardware-table__title">
+                            <strong>${escapeHtml(row?.name || "Hardware")}</strong>
+                            <div class="hardware-table__submeta">${formatNumber(row?.quantity || 0)} und</div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(row?.clientName || "-")}</td>
+                    <td>${escapeHtml(row?.provider || "-")}</td>
+                    <td class="text-end">${formatCurrency(Number(row?.supplierTotal || 0) || Number(row?.quantity || 0) * Number(row?.supplierUnitCost || 0))}</td>
+                    <td>${renderCommercialLineProformaLink(row, findSupplierDocumentRows(row, state.rows))}</td>
+                    <td><span class="hardware-table__submeta">${escapeHtml(row?.actionLabel || row?.stateLabel || "")}</span></td>
                 </tr>
             `;
         }
@@ -1790,6 +1916,7 @@
             const allSelected = group.rows.every(row => state.selectedRecordIds.has(row.recordId));
             const first = group.rows[0] || {};
             const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
+            const validation = validateActionRecords(group.rows);
 
             return `
                 <tr class="hardware-table__row hardware-table__group ${toneClass(first.stateTone)}">
@@ -1798,11 +1925,9 @@
                     </td>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
-                            <button type="button" class="hardware-group-toggle" data-hw-toggle-group="${escapeHtml(group.key)}" aria-expanded="${expanded ? "true" : "false"}">
-                                ${expanded ? "-" : "+"}
-                            </button>
+                            ${renderGroupToggle(group.key, expanded, `ODC ${group.orderNumber || "sin orden"}`)}
                             <strong>${escapeHtml(clientLabel)}</strong>
-                            <div class="hardware-table__submeta">${formatNumber(group.rows.length)} filas agrupadas</div>
+                            <div class="hardware-table__submeta">${formatNumber(group.proformaGroups?.length || 0)} proforma(s) · ${formatNumber(group.rows.length)} filas agrupadas</div>
                         </div>
                     </td>
                     <td class="hardware-table__order-cell"><span class="hardware-order-number">${escapeHtml(group.orderNumber)}</span></td>
@@ -1813,13 +1938,53 @@
                     <td class="hardware-table__state-cell">${renderStatePill(first.stateLabel || "Sin estado", first.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
-                            ${first.hasAction
-                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(first.actionLabel || "Gestionar")}</button>`
-                                : `<span class="hardware-table__submeta">Sin botón</span>`}
+                            ${validation.ok
+                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(resolveActionButtonLabel(first))}</button>`
+                                : `<span class="hardware-table__submeta">${escapeHtml(validation.message || "Sin botón")}</span>`}
                         </div>
                     </td>
                 </tr>
-                ${expanded ? group.rows.map(row => renderRecordRow(row, true)).join("") : renderHardwareFlowTableRow(first, 9, false, "hardware-flow-row--group")}
+                ${expanded
+                    ? (group.proformaGroups || []).map(renderGenericProformaGroupRows).join("")
+                    : renderHardwareFlowTableRow(first, 9, false, "hardware-flow-row--group")}
+            `;
+        }
+
+        function renderGenericProformaGroupRows(group) {
+            const expanded = state.expandedGroups.has(group.key);
+            const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
+            const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const allSelected = group.rows.every(row => state.selectedRecordIds.has(row.recordId));
+            const first = group.rows[0] || {};
+            const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const validation = validateActionRecords(group.rows);
+            return `
+                <tr class="hardware-table__row hardware-table__group--proforma ${toneClass(first.stateTone)}">
+                    <td>
+                        <input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar proforma ${escapeHtml(group.supplierDocumentLabel || "")}" />
+                    </td>
+                    <td class="hardware-table__client-cell">
+                        <div class="hardware-table__title">
+                            ${renderGroupToggle(group.key, expanded, `Proforma ${group.supplierDocumentLabel || ""}`)}
+                            <strong>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</strong>
+                            <div class="hardware-table__submeta">${escapeHtml(providerLabel)} · ${formatNumber(group.rows.length)} filas</div>
+                        </div>
+                    </td>
+                    <td class="hardware-table__order-cell"><span class="hardware-order-number">${escapeHtml(group.orderNumber)}</span></td>
+                    <td>${escapeHtml(getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas")}</td>
+                    <td class="text-end">${formatNumber(totalQuantity)}</td>
+                    <td class="text-end">-</td>
+                    <td class="text-end">${formatCurrency(totalSale)}</td>
+                    <td class="hardware-table__state-cell">${renderStatePill(first.stateLabel || "Sin estado", first.stateTone || "")}</td>
+                    <td>
+                        <div class="hardware-action-cell">
+                            ${validation.ok
+                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(resolveActionButtonLabel(first))}</button>`
+                                : `<span class="hardware-table__submeta">${escapeHtml(validation.message || "Sin botón")}</span>`}
+                        </div>
+                    </td>
+                </tr>
+                ${expanded ? group.rows.map(row => renderRecordRow(row, true)).join("") : ""}
             `;
         }
 
@@ -1868,9 +2033,11 @@
                 if (!groups.has(key)) {
                     groups.set(key, {
                         type: "group",
+                        groupKind: "odc",
                         key,
                         orderNumber,
                         stateValue: row.stateValue,
+                        proformaGroups: [],
                         rows: [],
                         index
                     });
@@ -1880,11 +2047,8 @@
             });
 
             groups.forEach(group => {
-                if (group.rows.length === 1) {
-                    singles.push({ type: "record", row: group.rows[0], index: group.index });
-                } else {
-                    singles.push(group);
-                }
+                group.proformaGroups = buildSupplierDocumentGroups(group.rows, `${group.key}|proforma`);
+                singles.push(group);
             });
 
             return singles.sort((left, right) => left.index - right.index);
