@@ -1328,6 +1328,10 @@ public sealed partial class DataverseService
             metadata.PrimaryIdField,
             metadata.PrimaryNameField,
             _dashboardBillingInvoiceNumberField,
+            ReconciliationBillingSiigoInvoiceIdField,
+            ReconciliationBillingSiigoInvoiceNameField,
+            ReconciliationBillingInvoicePrefixField,
+            ReconciliationBillingInvoiceCodeField,
             _dashboardBillingCompanyTaxIdField,
             _dashboardBillingClientField,
             BuildDashboardLookupValuePropertyName(_dashboardBillingClientField),
@@ -1944,6 +1948,10 @@ public sealed partial class DataverseService
                 ReadString(item, _dashboardBillingInvoiceNumberField),
                 ReadString(item, primaryNameField),
                 recordId),
+            SiigoInvoiceId = ReadString(item, ReconciliationBillingSiigoInvoiceIdField).Trim(),
+            SiigoInvoiceName = ReadString(item, ReconciliationBillingSiigoInvoiceNameField).Trim(),
+            InvoicePrefix = ReadString(item, ReconciliationBillingInvoicePrefixField).Trim(),
+            InvoiceCode = ReadString(item, ReconciliationBillingInvoiceCodeField).Trim(),
             ClientId = ReadString(item, clientLookupProperty).Trim(),
             CompanyTaxId = ReadString(item, _dashboardBillingCompanyTaxIdField).Trim(),
             ClientName = ReadDashboardClientName(item),
@@ -4417,6 +4425,10 @@ public sealed partial class DataverseService
     {
         public string RecordId { get; set; } = "";
         public string InvoiceNumber { get; set; } = "";
+        public string SiigoInvoiceId { get; set; } = "";
+        public string SiigoInvoiceName { get; set; } = "";
+        public string InvoicePrefix { get; set; } = "";
+        public string InvoiceCode { get; set; } = "";
         public string ClientId { get; set; } = "";
         public string CompanyTaxId { get; set; } = "";
         public string ClientName { get; set; } = "";

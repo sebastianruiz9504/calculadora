@@ -414,7 +414,7 @@ public sealed partial class DataverseService
             var invoiceDues = new List<ConciliacionSiigoInvoiceDueItem>();
             foreach (var invoice in invoices)
             {
-                if (!TryBuildConciliacionSiigoDue(invoice.InvoiceNumber, out var due, out var dueIssue))
+                if (!TryBuildConciliacionSiigoDue(invoice, out var due, out var dueIssue))
                 {
                     issues.Add(dueIssue);
                     continue;
@@ -1887,13 +1887,21 @@ public sealed partial class DataverseService
     }
 
     private static bool TryBuildConciliacionSiigoDue(
-        string invoiceNumber,
+        BillingRecordRow invoice,
         out ConciliacionSiigoDue due,
         out string issue)
     {
         due = new ConciliacionSiigoDue("", 0);
         issue = "";
-        var normalized = Regex.Replace((invoiceNumber ?? "").Trim().ToUpperInvariant(), @"\s+", "-", RegexOptions.CultureInvariant);
+        if (!string.IsNullOrWhiteSpace(invoice.InvoicePrefix)
+            && int.TryParse(invoice.InvoiceCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out var siigoCode))
+        {
+            due = new ConciliacionSiigoDue(invoice.InvoicePrefix.Trim(), siigoCode);
+            return true;
+        }
+
+        var label = FirstNonEmpty(invoice.SiigoInvoiceName, invoice.InvoiceNumber);
+        var normalized = Regex.Replace(label.Trim().ToUpperInvariant(), @"\s+", "-", RegexOptions.CultureInvariant);
         normalized = Regex.Replace(normalized, @"-+", "-", RegexOptions.CultureInvariant).Trim('-');
         if (string.IsNullOrWhiteSpace(normalized))
         {
@@ -1904,14 +1912,14 @@ public sealed partial class DataverseService
         var match = Regex.Match(normalized, @"^(?<prefix>.*?)[-]?(?<consecutive>\d+)$", RegexOptions.CultureInvariant);
         if (!match.Success || !int.TryParse(match.Groups["consecutive"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var consecutive))
         {
-            issue = $"No se pudo separar prefijo y consecutivo para la factura {invoiceNumber}.";
+            issue = $"No se pudo separar prefijo y consecutivo para la factura {label}.";
             return false;
         }
 
         var prefix = match.Groups["prefix"].Value.Trim('-');
         if (string.IsNullOrWhiteSpace(prefix))
         {
-            issue = $"La factura {invoiceNumber} no tiene prefijo para el vencimiento Siigo.";
+            issue = $"La factura {label} no tiene prefijo para el vencimiento Siigo.";
             return false;
         }
 
