@@ -44,7 +44,8 @@ public sealed partial class DataverseService
         var cashFlowRowsTask = GetConciliacionCashFlowRowsAsync(start, endExclusive, ct);
         var clientPaymentsTask = GetConciliacionClientPaymentsAsync(start, endExclusive, ct);
         var dianSupplierInvoicesTask = GetConciliacionDianSupplierInvoiceRowsAsync(start, endExclusive, ct);
-        await Task.WhenAll(cashFlowRowsTask, clientPaymentsTask, dianSupplierInvoicesTask);
+        var dianExpenseAccountsTask = GetConciliacionDianExpenseAccountOptionsAsync(ct);
+        await Task.WhenAll(cashFlowRowsTask, clientPaymentsTask, dianSupplierInvoicesTask, dianExpenseAccountsTask);
 
         var clientPayments = BuildConciliacionClientPaymentSummary(clientPaymentsTask.Result);
         var dianSupplierInvoices = BuildConciliacionDianSupplierInvoiceSummary(dianSupplierInvoicesTask.Result);
@@ -71,7 +72,12 @@ public sealed partial class DataverseService
             Phases = phases,
             CashFlow = cashFlow,
             ClientPayments = clientPayments,
-            DianSupplierInvoices = dianSupplierInvoices
+            DianSupplierInvoices = dianSupplierInvoices,
+            DianCategoryOptions = BuildPnlCategoryOptions()
+                .Select(static option => new ConciliacionOptionDto { Value = option.Value?.ToString(CultureInfo.InvariantCulture) ?? option.Key, Label = option.Label })
+                .Where(static option => !string.IsNullOrWhiteSpace(option.Value) && !string.IsNullOrWhiteSpace(option.Label))
+                .ToArray(),
+            DianExpenseAccountOptions = dianExpenseAccountsTask.Result
         };
     }
 
@@ -1255,6 +1261,7 @@ public sealed partial class DataverseService
             CloudValue = taxRow.CloudValue,
             CopiersValue = taxRow.CopiersValue,
             VerticalLabel = ResolveConciliacionDianVerticalLabel(taxRow.CloudValue, taxRow.CopiersValue),
+            CategoryValue = ReadString(item, DashboardExpenseCategoryField).Trim(),
             CategoryLabel = FirstNonEmpty(
                 ReadString(item, $"{DashboardExpenseCategoryField}{FormattedValueAnnotationSuffix}"),
                 ReadString(item, DashboardExpenseCategoryField),
@@ -1318,14 +1325,20 @@ public sealed partial class DataverseService
     private static void CompleteConciliacionDianSupplierInvoiceRow(ConciliacionDianSupplierInvoiceRowDto row)
     {
         var hasSupplierData = !string.IsNullOrWhiteSpace(row.SupplierNit) && !string.IsNullOrWhiteSpace(row.SupplierName);
+        var hasSiigoSupplier = !string.IsNullOrWhiteSpace(row.SiigoSupplierId)
+            || !string.IsNullOrWhiteSpace(row.SiigoSupplierName);
         var classified = !string.IsNullOrWhiteSpace(row.AccountCode)
             && !string.Equals(row.CategoryLabel, "Sin categoria", StringComparison.OrdinalIgnoreCase)
             && !IsConciliacionExpenseClassificationPending(row.AutomationState);
         var sentToSiigo = !string.IsNullOrWhiteSpace(row.SiigoDocumentId)
             || !string.IsNullOrWhiteSpace(row.SiigoDocumentName);
 
-        row.ProviderStatusLabel = hasSupplierData ? "Datos proveedor OK" : "Proveedor incompleto";
-        row.ProviderStatusTone = hasSupplierData ? "success" : "warning";
+        row.ProviderStatusLabel = !hasSupplierData
+            ? "Proveedor incompleto"
+            : hasSiigoSupplier
+                ? "Proveedor Siigo OK"
+                : "Proveedor pendiente Siigo";
+        row.ProviderStatusTone = hasSupplierData && hasSiigoSupplier ? "success" : "warning";
         row.ClassificationStatusLabel = classified ? "Clasificacion OK" : "Pendiente clasificacion";
         row.ClassificationStatusTone = classified ? "success" : "warning";
         row.SiigoStatusLabel = sentToSiigo ? "Documento Siigo OK" : "Pendiente documento Siigo";
@@ -1339,7 +1352,7 @@ public sealed partial class DataverseService
             return;
         }
 
-        if (!hasSupplierData)
+        if (!hasSupplierData || !hasSiigoSupplier)
         {
             row.Stage = "proveedor";
             row.StageLabel = "Proveedor pendiente";

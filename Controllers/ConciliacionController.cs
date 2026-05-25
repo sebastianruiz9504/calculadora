@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Conciliacion;
+using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.Reconciliation;
 using CotizadorInterno.Web.Services;
@@ -154,6 +156,543 @@ public sealed class ConciliacionController : Controller
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible asignar la factura.", ex));
         }
     }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> UpdateDianSupplierDocumentClassification(
+        [FromBody] ConciliacionDianClassificationRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el documento DIAN a actualizar."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateConciliacionDianSupplierDocumentClassificationAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible guardar la clasificacion DIAN.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CreateDianSupplierInSiigo(
+        [FromBody] ConciliacionDianSupplierDocumentRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el documento DIAN."));
+
+        try
+        {
+            var row = await _dataverse.GetConciliacionDianSupplierDocumentAsync(request.RecordId, ct);
+            var supplier = await EnsureDianSupplierInSiigoAsync(row, allowCreate: true, ct);
+            var supplierLabel = FirstNonEmpty(supplier.Customer.DisplayName, supplier.Customer.Name, supplier.Customer.Identification);
+            var message = supplier.Created
+                ? $"Proveedor creado en Siigo: {supplierLabel}."
+                : $"Proveedor encontrado en Siigo y asociado: {supplierLabel}.";
+
+            return Ok(await _dataverse.MarkConciliacionDianSupplierAsync(
+                request.RecordId,
+                supplier.Customer.Id,
+                supplierLabel,
+                message,
+                ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible crear/asociar el proveedor en Siigo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SimulateDianSupplierPurchaseSiigoSend(
+        [FromBody] ConciliacionDianSupplierDocumentRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el documento DIAN a simular."));
+
+        try
+        {
+            var prepared = await PrepareDianSupplierPurchaseForSiigoAsync(request.RecordId, createMissingSupplier: false, ct);
+            return Ok(new ConciliacionDianActionResultDto
+            {
+                Message = prepared.CanSend
+                    ? "Simulacion correcta. El payload de factura esta completo y no se envio nada a Siigo."
+                    : "Simulacion con pendientes. Corrige los puntos indicados antes del envio real.",
+                IsReadyForSiigo = prepared.CanSend,
+                TargetEndpoint = $"DRY-RUN {prepared.TargetEndpoint}",
+                PayloadJson = prepared.PayloadJson,
+                Issues = prepared.Issues,
+                Row = prepared.Row
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible simular la factura de compra Siigo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SendDianSupplierPurchaseToSiigo(
+        [FromBody] ConciliacionDianSupplierDocumentRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
+            return BadRequest(CreateErrorPayload("Debes indicar el documento DIAN a enviar."));
+
+        PreparedDianSupplierPurchase prepared;
+        try
+        {
+            prepared = await PrepareDianSupplierPurchaseForSiigoAsync(request.RecordId, createMissingSupplier: true, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible preparar la factura de compra Siigo.", ex));
+        }
+
+        if (!prepared.CanSend || prepared.Payload is null)
+        {
+            return Ok(new ConciliacionDianActionResultDto
+            {
+                Message = "Envio real bloqueado. Corrige los pendientes visibles antes de enviar.",
+                IsReadyForSiigo = false,
+                TargetEndpoint = prepared.TargetEndpoint,
+                PayloadJson = prepared.PayloadJson,
+                Issues = prepared.Issues,
+                Row = prepared.Row
+            });
+        }
+
+        try
+        {
+            var siigoResult = await _siigo.CreatePurchaseAsync(
+                prepared.Payload,
+                BuildSiigoIdempotencyKey(request.RecordId),
+                ct);
+            var documentLabel = FirstNonEmpty(siigoResult.Name, siigoResult.Id);
+            var message = string.IsNullOrWhiteSpace(documentLabel)
+                ? "Factura de compra enviada a Siigo."
+                : $"Factura de compra enviada a Siigo: {documentLabel}.";
+            var dataverseResult = await _dataverse.MarkConciliacionDianSupplierDocumentSiigoResultAsync(
+                request.RecordId,
+                success: true,
+                message: message,
+                siigoId: siigoResult.Id,
+                siigoName: siigoResult.Name,
+                responseJson: siigoResult.RawJson,
+                ct);
+
+            dataverseResult.TargetEndpoint = prepared.TargetEndpoint;
+            dataverseResult.PayloadJson = prepared.PayloadJson;
+            dataverseResult.ResponseJson = siigoResult.RawJson;
+            return Ok(dataverseResult);
+        }
+        catch (InvalidOperationException ex)
+        {
+            var message = BuildExceptionDetail(ex);
+            var dataverseResult = await _dataverse.MarkConciliacionDianSupplierDocumentSiigoResultAsync(
+                request.RecordId,
+                success: false,
+                message: "Siigo rechazo la factura de compra.",
+                responseJson: message,
+                ct: ct);
+            dataverseResult.TargetEndpoint = prepared.TargetEndpoint;
+            dataverseResult.PayloadJson = prepared.PayloadJson;
+            dataverseResult.Issues = new[] { message };
+            return Ok(dataverseResult);
+        }
+        catch (Exception ex)
+        {
+            var message = BuildExceptionDetail(ex);
+            var dataverseResult = await _dataverse.MarkConciliacionDianSupplierDocumentSiigoResultAsync(
+                request.RecordId,
+                success: false,
+                message: "No fue posible completar el envio real a Siigo.",
+                responseJson: message,
+                ct: ct);
+            dataverseResult.TargetEndpoint = prepared.TargetEndpoint;
+            dataverseResult.PayloadJson = prepared.PayloadJson;
+            dataverseResult.Issues = new[] { message };
+            return StatusCode(StatusCodes.Status500InternalServerError, dataverseResult);
+        }
+    }
+
+    private async Task<PreparedDianSupplierPurchase> PrepareDianSupplierPurchaseForSiigoAsync(
+        string recordId,
+        bool createMissingSupplier,
+        CancellationToken ct)
+    {
+        var row = await _dataverse.GetConciliacionDianSupplierDocumentAsync(recordId, ct);
+        var issues = ValidateDianSupplierPurchaseBase(row).ToList();
+        var targetEndpoint = ResolveDianSupplierDocumentEndpoint(row);
+        object? supplierPayload = null;
+
+        SiigoCustomerLookupItemDto? supplier = null;
+        if (issues.Count == 0 || issues.All(static issue => !issue.Contains("proveedor", StringComparison.OrdinalIgnoreCase)))
+        {
+            var supplierResult = await EnsureDianSupplierInSiigoAsync(row, createMissingSupplier, ct);
+            supplier = supplierResult.Customer;
+            if (supplierResult.Created || supplierResult.WouldCreate)
+                supplierPayload = supplierResult.Payload;
+            if (!supplierResult.ExistsInSiigo && !createMissingSupplier)
+                issues.Add("El proveedor no existe aun en Siigo; el envio real lo creara antes de crear la factura.");
+
+            if (createMissingSupplier && supplierResult.Created)
+            {
+                var supplierLabel = FirstNonEmpty(supplier.DisplayName, supplier.Name, supplier.Identification);
+                await _dataverse.MarkConciliacionDianSupplierAsync(
+                    row.RecordId,
+                    supplier.Id,
+                    supplierLabel,
+                    $"Proveedor creado automaticamente antes de crear la factura: {supplierLabel}.",
+                    ct);
+                row = await _dataverse.GetConciliacionDianSupplierDocumentAsync(recordId, ct);
+            }
+        }
+
+        var documentTypes = await _siigo.GetDocumentTypesAsync("FC", ct);
+        var paymentTypes = await _siigo.GetPaymentTypesAsync("FC", ct);
+        var taxes = await _siigo.GetTaxesAsync(ct);
+        var purchaseDocument = ResolvePurchaseDocumentType(documentTypes);
+        var paymentType = ResolveSupplierPurchasePaymentType(paymentTypes);
+        var payloadIssues = new List<string>();
+        var purchasePayload = BuildDianSupplierPurchasePayload(row, purchaseDocument, paymentType, taxes, payloadIssues);
+        issues.AddRange(payloadIssues);
+
+        var wrapperPayload = supplierPayload is null
+            ? purchasePayload
+            : new { supplier = supplierPayload, purchase = purchasePayload };
+        var payloadJson = JsonSerializer.Serialize(wrapperPayload, new JsonSerializerOptions { WriteIndented = true });
+
+        return new PreparedDianSupplierPurchase(
+            Row: row,
+            CanSend: issues.Count == 0,
+            TargetEndpoint: targetEndpoint,
+            Payload: issues.Count == 0 ? purchasePayload : null,
+            PayloadJson: payloadJson,
+            Issues: issues.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private async Task<SiigoSupplierEnsureResult> EnsureDianSupplierInSiigoAsync(
+        ConciliacionDianSupplierInvoiceRowDto row,
+        bool allowCreate,
+        CancellationToken ct)
+    {
+        var identification = ExtractDigits(row.SupplierNit);
+        if (identification.Length < 5)
+            throw new InvalidOperationException("El documento DIAN no tiene un NIT/identificacion de proveedor valido.");
+
+        var existing = await _siigo.SearchCustomersAsync(identification, top: 10, ct);
+        var exact = existing.FirstOrDefault(customer =>
+            customer.Active
+            && string.Equals(ExtractDigits(customer.Identification), identification, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
+        {
+            return new SiigoSupplierEnsureResult(exact, ExistsInSiigo: true, Created: false, WouldCreate: false, Payload: null);
+        }
+
+        var payload = BuildSiigoSupplierPayload(row);
+        if (!allowCreate)
+        {
+            return new SiigoSupplierEnsureResult(new SiigoCustomerLookupItemDto
+            {
+                Id = "",
+                DisplayName = $"{row.SupplierName} - {identification}",
+                Name = row.SupplierName,
+                CommercialName = row.SupplierName,
+                Identification = identification,
+                Type = "Supplier",
+                BranchOffice = 0,
+                Active = true
+            }, ExistsInSiigo: false, Created: false, WouldCreate: true, Payload: payload);
+        }
+
+        var created = await _siigo.CreateCustomerAsync(
+            payload,
+            BuildSiigoIdempotencyKey($"supplier-{identification}"),
+            ct);
+        return new SiigoSupplierEnsureResult(created, ExistsInSiigo: true, Created: true, WouldCreate: false, Payload: payload);
+    }
+
+    private static IReadOnlyList<string> ValidateDianSupplierPurchaseBase(ConciliacionDianSupplierInvoiceRowDto row)
+    {
+        var issues = new List<string>();
+        if (!IsDianSupplierInvoice(row))
+            issues.Add("El envio automatico inicial esta habilitado solo para facturas electronicas de proveedor. Los documentos soporte se conectan en el siguiente paso.");
+        if (!string.IsNullOrWhiteSpace(row.SiigoDocumentId) || !string.IsNullOrWhiteSpace(row.SiigoDocumentName))
+            issues.Add("Este documento ya tiene documento Siigo asociado.");
+        if (string.IsNullOrWhiteSpace(row.SupplierNit) || string.IsNullOrWhiteSpace(row.SupplierName))
+            issues.Add("Falta NIT o nombre del proveedor.");
+        if (string.IsNullOrWhiteSpace(row.InvoiceNumber) || string.IsNullOrWhiteSpace(row.Folio))
+            issues.Add("Falta numero de factura del proveedor.");
+        if (string.IsNullOrWhiteSpace(row.EmissionDateValue))
+            issues.Add("Falta fecha de emision.");
+        if (row.TotalValue <= 0m)
+            issues.Add("El total de la factura debe ser mayor a cero.");
+        if (string.IsNullOrWhiteSpace(row.AccountCode))
+            issues.Add("Falta cuenta gasto.");
+        if (string.IsNullOrWhiteSpace(row.CategoryLabel) || row.CategoryLabel.Equals("Sin categoria", StringComparison.OrdinalIgnoreCase))
+            issues.Add("Falta categoria.");
+        if (row.BaseAmount <= 0m && row.TotalValue <= row.VatValue)
+            issues.Add("No hay base valida para crear la linea de compra.");
+
+        return issues;
+    }
+
+    private static object BuildDianSupplierPurchasePayload(
+        ConciliacionDianSupplierInvoiceRowDto row,
+        SiigoDocumentTypeLookupDto purchaseDocument,
+        SiigoPaymentTypeLookupDto paymentType,
+        IReadOnlyList<SiigoTaxLookupDto> taxes,
+        List<string> issues)
+    {
+        var identification = ExtractDigits(row.SupplierNit);
+        var providerInvoiceNumber = ExtractDigits(FirstNonEmpty(row.Folio, row.InvoiceNumber));
+        var prefix = (row.Prefix ?? "").Trim();
+        if (prefix.Length > 6)
+            issues.Add("El prefijo de la factura supera 6 caracteres; Siigo puede rechazarlo.");
+        if (string.IsNullOrWhiteSpace(providerInvoiceNumber))
+            issues.Add("El consecutivo de la factura del proveedor debe tener numeros.");
+
+        var emissionDate = DateOnly.TryParseExact(row.EmissionDateValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate)
+            ? parsedDate
+            : DateOnly.FromDateTime(DateTime.UtcNow);
+        var baseAmount = row.BaseAmount > 0m
+            ? row.BaseAmount
+            : Math.Max(0m, row.TotalValue - row.VatValue);
+        var item = new Dictionary<string, object?>
+        {
+            ["type"] = "Account",
+            ["code"] = row.AccountCode.Trim(),
+            ["description"] = TruncateControllerText($"{row.InvoiceNumber} {row.SupplierName}", 100),
+            ["quantity"] = 1,
+            ["price"] = RoundCurrency(baseAmount)
+        };
+
+        var itemTaxes = BuildDianSupplierPurchaseItemTaxes(row, baseAmount, taxes, issues);
+        if (itemTaxes.Count > 0)
+            item["taxes"] = itemTaxes;
+
+        var payment = new Dictionary<string, object?>
+        {
+            ["id"] = paymentType.Id,
+            ["value"] = row.TotalValue
+        };
+        if (paymentType.DueDate)
+            payment["due_date"] = emissionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        return new Dictionary<string, object?>
+        {
+            ["document"] = new { id = purchaseDocument.Id },
+            ["date"] = emissionDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["supplier"] = new
+            {
+                identification,
+                branch_office = 0
+            },
+            ["provider_invoice"] = new
+            {
+                prefix = prefix.Length > 6 ? prefix[..6] : prefix,
+                number = providerInvoiceNumber
+            },
+            ["items"] = new[] { item },
+            ["payments"] = new[] { payment },
+            ["observations"] = TruncateControllerText(
+                $"Importado desde DIAN. CUFE/CUDE: {row.Cufe}. Categoria: {row.CategoryLabel}. Cuenta: {row.AccountCode} {row.AccountName}.",
+                500)
+        };
+    }
+
+    private static IReadOnlyList<object> BuildDianSupplierPurchaseItemTaxes(
+        ConciliacionDianSupplierInvoiceRowDto row,
+        decimal baseAmount,
+        IReadOnlyList<SiigoTaxLookupDto> taxes,
+        List<string> issues)
+    {
+        if (row.VatValue <= 0m || baseAmount <= 0m)
+            return Array.Empty<object>();
+
+        var percent = Math.Round(row.VatValue / baseAmount * 100m, 2, MidpointRounding.AwayFromZero);
+        var tax = taxes
+            .Where(static item => item.Active && item.Type.Contains("IVA", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => Math.Abs(item.Percentage - percent))
+            .FirstOrDefault();
+        if (tax is null || Math.Abs(tax.Percentage - percent) > 0.5m)
+        {
+            issues.Add($"No encontre en Siigo un IVA activo cercano a {percent:N2}%.");
+            return Array.Empty<object>();
+        }
+
+        return new object[] { new { id = tax.Id } };
+    }
+
+    private static object BuildSiigoSupplierPayload(ConciliacionDianSupplierInvoiceRowDto row)
+    {
+        var identification = ExtractDigits(row.SupplierNit);
+        var isCompany = LooksLikeCompany(row.SupplierName);
+        var payload = new Dictionary<string, object?>
+        {
+            ["type"] = "Supplier",
+            ["person_type"] = isCompany ? "Company" : "Person",
+            ["id_type"] = isCompany ? "31" : "13",
+            ["identification"] = identification,
+            ["name"] = BuildSiigoSupplierName(row.SupplierName, isCompany),
+            ["commercial_name"] = TruncateControllerText(row.SupplierName, 100),
+            ["active"] = true,
+            ["vat_responsible"] = isCompany,
+            ["fiscal_responsibilities"] = new[] { new { code = "R-99-PN" } },
+            ["address"] = new
+            {
+                address = "Sin direccion",
+                city = new
+                {
+                    country_code = "Co",
+                    state_code = "11",
+                    city_code = "11001"
+                }
+            },
+            ["phones"] = Array.Empty<object>(),
+            ["contacts"] = Array.Empty<object>()
+        };
+        if (isCompany)
+            payload["check_digit"] = CalculateColombianCheckDigit(identification).ToString(CultureInfo.InvariantCulture);
+
+        return payload;
+    }
+
+    private static IReadOnlyList<string> BuildSiigoSupplierName(string supplierName, bool isCompany)
+    {
+        var cleanName = TruncateControllerText(FirstNonEmpty(supplierName, "Proveedor DIAN"), 100);
+        if (isCompany)
+            return new[] { cleanName };
+
+        var parts = cleanName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length <= 1)
+            return new[] { cleanName, "Proveedor" };
+
+        var lastName = string.Join(" ", parts.Skip(Math.Max(1, parts.Length - 2)));
+        var firstName = string.Join(" ", parts.Take(Math.Max(1, parts.Length - 2)));
+        return new[] { firstName, lastName };
+    }
+
+    private static SiigoDocumentTypeLookupDto ResolvePurchaseDocumentType(IReadOnlyList<SiigoDocumentTypeLookupDto> documentTypes)
+    {
+        var active = documentTypes.Where(static item => item.Active).ToArray();
+        return active.FirstOrDefault(static item =>
+                item.Type.Equals("FC", StringComparison.OrdinalIgnoreCase)
+                && item.Code.Equals("1", StringComparison.OrdinalIgnoreCase)
+                && NormalizeSiigoDocumentTypeText($"{item.Name} {item.Description}").Contains("COMPRA", StringComparison.OrdinalIgnoreCase))
+            ?? active.FirstOrDefault(static item => item.Type.Equals("FC", StringComparison.OrdinalIgnoreCase) && item.Code.Equals("1", StringComparison.OrdinalIgnoreCase))
+            ?? active.FirstOrDefault(static item => item.Type.Equals("FC", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("No encontre en Siigo un tipo de documento FC activo para crear compras.");
+    }
+
+    private static SiigoPaymentTypeLookupDto ResolveSupplierPurchasePaymentType(IReadOnlyList<SiigoPaymentTypeLookupDto> paymentTypes)
+    {
+        var active = paymentTypes.Where(static item => item.Active).ToArray();
+        return active.FirstOrDefault(static item =>
+                item.Name.Contains("Credito proveedores", StringComparison.OrdinalIgnoreCase)
+                || item.Name.Contains("Credito proveedor", StringComparison.OrdinalIgnoreCase))
+            ?? active.FirstOrDefault(static item => item.Id == 1726)
+            ?? active.FirstOrDefault()
+            ?? new SiigoPaymentTypeLookupDto
+            {
+                Id = 1726,
+                Name = "Credito proveedores",
+                Type = "Proveedor",
+                Active = true,
+                DueDate = true
+            };
+    }
+
+    private static bool IsDianSupplierInvoice(ConciliacionDianSupplierInvoiceRowDto row)
+    {
+        var type = NormalizeSiigoDocumentTypeText(row.DocumentType);
+        return type.Contains("FACTURA", StringComparison.OrdinalIgnoreCase)
+            && !type.Contains("SOPORTE", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveDianSupplierDocumentEndpoint(ConciliacionDianSupplierInvoiceRowDto row) =>
+        IsDianSupplierInvoice(row) ? "/v1/purchases" : "/v1/purchase-support-documents";
+
+    private static bool LooksLikeCompany(string name)
+    {
+        var normalized = NormalizeSiigoDocumentTypeText(name);
+        return normalized.Contains(" S A S", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("SAS", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains(" S A", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains(" LTDA", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("LIMITADA", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("SUCURSAL", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("SOCIEDAD", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CalculateColombianCheckDigit(string identification)
+    {
+        var digits = ExtractDigits(identification);
+        var weights = new[] { 71, 67, 59, 53, 47, 43, 41, 37, 29, 23, 19, 17, 13, 7, 3 };
+        var offset = Math.Max(0, weights.Length - digits.Length);
+        var sum = 0;
+        for (var i = 0; i < digits.Length && i + offset < weights.Length; i++)
+            sum += (digits[i] - '0') * weights[i + offset];
+
+        var remainder = sum % 11;
+        return remainder > 1 ? 11 - remainder : remainder;
+    }
+
+    private static string ExtractDigits(string value) =>
+        Regex.Replace(value ?? "", @"\D+", "", RegexOptions.CultureInvariant);
+
+    private static decimal RoundCurrency(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static string TruncateControllerText(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+            return value ?? "";
+
+        return value[..maxLength];
+    }
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? "";
+
+    private sealed record SiigoSupplierEnsureResult(
+        SiigoCustomerLookupItemDto Customer,
+        bool ExistsInSiigo,
+        bool Created,
+        bool WouldCreate,
+        object? Payload);
+
+    private sealed record PreparedDianSupplierPurchase(
+        ConciliacionDianSupplierInvoiceRowDto Row,
+        bool CanSend,
+        string TargetEndpoint,
+        object? Payload,
+        string PayloadJson,
+        IReadOnlyList<string> Issues);
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]

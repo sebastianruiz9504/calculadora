@@ -38,6 +38,20 @@ public interface ISiigoService
         string type,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<SiigoPaymentTypeLookupDto>> GetPaymentTypesAsync(
+        string documentType,
+        CancellationToken ct = default);
+
+    Task<SiigoCustomerLookupItemDto> CreateCustomerAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default);
+
+    Task<SiigoVoucherCreateResultDto> CreatePurchaseAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default);
+
     Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
         string? idempotencyKey = null,

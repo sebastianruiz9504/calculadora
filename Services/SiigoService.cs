@@ -390,6 +390,65 @@ public sealed class SiigoService : ISiigoService
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<SiigoPaymentTypeLookupDto>> GetPaymentTypesAsync(
+        string documentType,
+        CancellationToken ct = default)
+    {
+        var normalizedType = (documentType ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedType))
+            throw new InvalidOperationException("Indica el tipo de documento Siigo para consultar formas de pago.");
+
+        var paymentTypes = await GetAuthorizedJsonAsync<List<SiigoPaymentTypeApiDto>>(
+            BuildRelativeUrl("v1/payment-types", new[] { Pair("document_type", normalizedType) }),
+            ct);
+
+        return paymentTypes
+            .Select(static paymentType => new SiigoPaymentTypeLookupDto
+            {
+                Id = paymentType.Id,
+                Name = paymentType.Name?.Trim() ?? "",
+                Type = paymentType.Type?.Trim() ?? "",
+                Active = paymentType.Active,
+                DueDate = paymentType.DueDate
+            })
+            .Where(static paymentType => paymentType.Id > 0)
+            .OrderBy(static paymentType => paymentType.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<SiigoCustomerLookupItemDto> CreateCustomerAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default)
+    {
+        if (payload is null)
+            throw new ArgumentNullException(nameof(payload));
+
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/customers", payload, idempotencyKey, ct);
+        try
+        {
+            var customer = JsonSerializer.Deserialize<SiigoCustomerApiDto>(rawBody, JsonOptions)
+                ?? throw new InvalidOperationException("Siigo creo el tercero, pero no devolvio datos.");
+            return MapCustomer(customer);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Siigo creo el tercero, pero no fue posible interpretar la respuesta.", ex);
+        }
+    }
+
+    public async Task<SiigoVoucherCreateResultDto> CreatePurchaseAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default)
+    {
+        if (payload is null)
+            throw new ArgumentNullException(nameof(payload));
+
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/purchases", payload, idempotencyKey, ct);
+        return ParseCreatedAccountingDocument(rawBody, "Siigo creo la factura de compra, pero no fue posible interpretar la respuesta.");
+    }
+
     public async Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
         string? idempotencyKey = null,
@@ -1276,6 +1335,24 @@ public sealed class SiigoService : ISiigoService
 
         [JsonPropertyName("active")]
         public bool Active { get; set; }
+    }
+
+    private sealed class SiigoPaymentTypeApiDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "";
+
+        [JsonPropertyName("active")]
+        public bool Active { get; set; }
+
+        [JsonPropertyName("due_date")]
+        public bool DueDate { get; set; }
     }
 
     private sealed class SiigoInvoiceApiDto

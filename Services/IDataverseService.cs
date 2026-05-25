@@ -108,6 +108,26 @@ public interface IDataverseService
     Task<ConciliacionActionResultDto> AssignConciliacionClientPaymentInvoiceAsync(
         ConciliacionAssignInvoiceRequest request,
         CancellationToken ct = default);
+    Task<ConciliacionActionResultDto> UpdateConciliacionDianSupplierDocumentClassificationAsync(
+        ConciliacionDianClassificationRequest request,
+        CancellationToken ct = default);
+    Task<ConciliacionDianSupplierInvoiceRowDto> GetConciliacionDianSupplierDocumentAsync(
+        string recordId,
+        CancellationToken ct = default);
+    Task<ConciliacionDianActionResultDto> MarkConciliacionDianSupplierAsync(
+        string recordId,
+        string siigoSupplierId,
+        string siigoSupplierName,
+        string message,
+        CancellationToken ct = default);
+    Task<ConciliacionDianActionResultDto> MarkConciliacionDianSupplierDocumentSiigoResultAsync(
+        string recordId,
+        bool success,
+        string message,
+        string siigoId = "",
+        string siigoName = "",
+        string responseJson = "",
+        CancellationToken ct = default);
     Task<ConciliacionSiigoSendPreparedDto> PrepareConciliacionClientPaymentSiigoSendAsync(
         string recordId,
         CancellationToken ct = default,

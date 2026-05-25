@@ -23,6 +23,14 @@ public sealed class ConciliacionBoardDto
     public ConciliacionCashFlowSummaryDto CashFlow { get; set; } = new();
     public ConciliacionClientPaymentSummaryDto ClientPayments { get; set; } = new();
     public ConciliacionDianSupplierInvoiceSummaryDto DianSupplierInvoices { get; set; } = new();
+    public IReadOnlyList<ConciliacionOptionDto> DianCategoryOptions { get; set; } = Array.Empty<ConciliacionOptionDto>();
+    public IReadOnlyList<ConciliacionOptionDto> DianExpenseAccountOptions { get; set; } = Array.Empty<ConciliacionOptionDto>();
+}
+
+public sealed class ConciliacionOptionDto
+{
+    public string Value { get; set; } = "";
+    public string Label { get; set; } = "";
 }
 
 public sealed class ConciliacionPhaseDto
@@ -219,6 +227,7 @@ public sealed class ConciliacionDianSupplierInvoiceRowDto
     public decimal CloudValue { get; set; }
     public decimal CopiersValue { get; set; }
     public string VerticalLabel { get; set; } = "";
+    public string CategoryValue { get; set; } = "";
     public string CategoryLabel { get; set; } = "";
     public string AccountCode { get; set; } = "";
     public string AccountName { get; set; } = "";
@@ -278,6 +287,18 @@ public sealed class ConciliacionAssignInvoiceRequest
     public string InvoiceRecordId { get; set; } = "";
 }
 
+public sealed class ConciliacionDianClassificationRequest
+{
+    public string RecordId { get; set; } = "";
+    public int? CategoryValue { get; set; }
+    public string AccountCode { get; set; } = "";
+}
+
+public sealed class ConciliacionDianSupplierDocumentRequest
+{
+    public string RecordId { get; set; } = "";
+}
+
 public sealed class ConciliacionActionResultDto
 {
     public string Message { get; set; } = "";
@@ -331,6 +352,20 @@ public sealed class ConciliacionSiigoSendResultDto
     public ConciliacionClientPaymentRowDto? Row { get; set; }
 }
 
+public sealed class ConciliacionDianActionResultDto
+{
+    public string Message { get; set; } = "";
+    public bool IsSuccess { get; set; }
+    public bool IsReadyForSiigo { get; set; }
+    public string TargetEndpoint { get; set; } = "";
+    public string PayloadJson { get; set; } = "";
+    public string ResponseJson { get; set; } = "";
+    public string SiigoId { get; set; } = "";
+    public string SiigoName { get; set; } = "";
+    public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
+    public ConciliacionDianSupplierInvoiceRowDto? Row { get; set; }
+}
+
 public sealed class SiigoVoucherCreateResultDto
 {
     public string Id { get; set; } = "";
@@ -359,6 +394,15 @@ public sealed class SiigoTaxLookupDto
     public string Type { get; set; } = "";
     public decimal Percentage { get; set; }
     public bool Active { get; set; }
+}
+
+public sealed class SiigoPaymentTypeLookupDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public bool Active { get; set; }
+    public bool DueDate { get; set; }
 }
 
 public sealed class ConciliacionSyncHealthDto

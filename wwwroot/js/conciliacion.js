@@ -10,6 +10,10 @@
     const sendPaymentUrl = app.dataset.sendPaymentUrl || "";
     const invoiceSearchUrl = app.dataset.invoiceSearchUrl || "";
     const invoiceAssignUrl = app.dataset.invoiceAssignUrl || "";
+    const dianClassificationUrl = app.dataset.dianClassificationUrl || "";
+    const dianCreateSupplierUrl = app.dataset.dianCreateSupplierUrl || "";
+    const dianDryRunUrl = app.dataset.dianDryRunUrl || "";
+    const dianSendUrl = app.dataset.dianSendUrl || "";
     const syncHealthUrl = app.dataset.syncHealthUrl || "";
     const statusBox = document.getElementById("cncStatus");
     const tabButtons = Array.from(app.querySelectorAll("[data-cnc-tab]"));
@@ -26,6 +30,11 @@
     const reassignDescription = document.getElementById("cncReassignDescription");
     const reassignCategory = document.getElementById("cncReassignCategory");
     const reassignApply = document.getElementById("cncReassignApply");
+    const dianEditModal = document.getElementById("cncDianEditModal");
+    const dianEditDescription = document.getElementById("cncDianEditDescription");
+    const dianCategory = document.getElementById("cncDianCategory");
+    const dianAccount = document.getElementById("cncDianAccount");
+    const dianSave = document.getElementById("cncDianSave");
     const invoiceModal = document.getElementById("cncInvoiceModal");
     const invoiceDescription = document.getElementById("cncInvoiceDescription");
     const invoiceQuery = document.getElementById("cncInvoiceQuery");
@@ -38,6 +47,7 @@
     const syncGrid = app.querySelector("[data-cnc-sync-grid]");
     const syncRefreshButton = app.querySelector("[data-cnc-sync-refresh]");
     let activeReassignRow = null;
+    let activeDianRow = null;
     let activeInvoiceRow = null;
     let selectedInvoiceId = "";
     let activeVertical = app.dataset.activeVertical || "Cloud";
@@ -886,6 +896,133 @@
         setStatus("Categoria aplicada en esta vista. Falta conectar el guardado en Dataverse.", "info");
     };
 
+    const closeDianEditModal = () => {
+        if (dianEditModal) {
+            dianEditModal.hidden = true;
+        }
+        activeDianRow = null;
+    };
+
+    const openDianEditModal = (row) => {
+        activeDianRow = row;
+        if (dianEditDescription) {
+            dianEditDescription.textContent = row.dataset.description || "Documento DIAN sin descripcion.";
+        }
+        if (dianCategory) {
+            dianCategory.value = row.dataset.categoryValue || "";
+        }
+        if (dianAccount) {
+            dianAccount.value = row.dataset.accountCode || "";
+        }
+        if (dianEditModal) {
+            dianEditModal.hidden = false;
+        }
+    };
+
+    const saveDianClassification = async () => {
+        if (!activeDianRow || !dianClassificationUrl) {
+            setStatus("No se encontro la ruta o el documento DIAN para guardar.", "error");
+            return;
+        }
+
+        const recordId = activeDianRow.dataset.recordId || "";
+        const categoryValue = dianCategory?.value || "";
+        const accountCode = dianAccount?.value || "";
+        if (!recordId || !categoryValue || !accountCode) {
+            setStatus("Selecciona categoria y cuenta gasto antes de guardar.", "info");
+            return;
+        }
+
+        if (dianSave) {
+            dianSave.disabled = true;
+        }
+        setStatus("Guardando categoria y cuenta gasto en Dataverse...", "info");
+
+        try {
+            const response = await fetch(dianClassificationUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recordId, categoryValue: Number(categoryValue), accountCode })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible guardar la clasificacion.");
+            }
+
+            closeDianEditModal();
+            setStatus(payload.message || "Clasificacion guardada.", "success");
+            window.setTimeout(() => window.location.reload(), 650);
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
+            if (dianSave) {
+                dianSave.disabled = false;
+            }
+        }
+    };
+
+    const setDianRowLoading = (row, loading) => {
+        row.querySelectorAll("[data-cnc-dian-create-supplier], [data-cnc-dian-dry-run], [data-cnc-dian-send], [data-cnc-dian-open-edit]")
+            .forEach((button) => { button.disabled = loading; });
+    };
+
+    const renderDianActionPayload = (row, payload) => {
+        const preview = row.querySelector("[data-cnc-dian-preview]");
+        const payloadBox = row.querySelector("[data-cnc-dian-payload]");
+        const responseBox = row.querySelector("[data-cnc-dian-response]");
+        if (payloadBox) {
+            payloadBox.textContent = payload.payloadJson || "";
+        }
+        if (responseBox) {
+            responseBox.textContent = payload.responseJson || "";
+        }
+        if (preview) {
+            preview.hidden = !(payload.payloadJson || payload.responseJson);
+        }
+    };
+
+    const runDianAction = async (button, url, options) => {
+        const row = button.closest("tr[data-record-id]");
+        const recordId = row?.dataset.recordId || "";
+        if (!row || !recordId || !url) {
+            setStatus("No se encontro la ruta o el documento DIAN.", "error");
+            return;
+        }
+
+        if (options.confirmMessage && !window.confirm(options.confirmMessage)) {
+            return;
+        }
+
+        setDianRowLoading(row, true);
+        setStatus(options.loadingMessage, "info");
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ recordId })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || options.errorMessage);
+            }
+
+            renderDianActionPayload(row, payload);
+            const message = row.querySelector("[data-cnc-dian-message]");
+            if (message) {
+                message.textContent = payload.message || options.successMessage;
+            }
+            const hasIssues = Array.isArray(payload.issues) && payload.issues.length > 0;
+            setStatus(payload.message || options.successMessage, hasIssues || payload.isSuccess === false ? "info" : "success");
+            if (options.reloadOnSuccess && payload.isSuccess !== false && !hasIssues) {
+                window.setTimeout(() => window.location.reload(), 800);
+            }
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : options.errorMessage, "error");
+        } finally {
+            setDianRowLoading(row, false);
+        }
+    };
+
     const closeInvoiceModal = () => {
         if (invoiceModal) {
             invoiceModal.hidden = true;
@@ -1123,6 +1260,16 @@
         });
     });
 
+    app.querySelectorAll("[data-cnc-dian-edit]").forEach((row) => {
+        row.addEventListener("click", (event) => {
+            if (shouldIgnoreRowClick(event.target)) {
+                return;
+            }
+
+            openDianEditModal(row);
+        });
+    });
+
     app.querySelectorAll("[data-cnc-invoice-assign]").forEach((row) => {
         row.addEventListener("click", (event) => {
             if (shouldIgnoreRowClick(event.target)) {
@@ -1130,6 +1277,53 @@
             }
 
             openInvoiceModal(row);
+        });
+    });
+
+    app.querySelectorAll("[data-cnc-dian-open-edit]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const row = button.closest("[data-cnc-dian-edit]");
+            if (row) {
+                openDianEditModal(row);
+            }
+        });
+    });
+
+    app.querySelectorAll("[data-cnc-dian-create-supplier]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            runDianAction(button, dianCreateSupplierUrl, {
+                loadingMessage: "Creando o asociando proveedor en Siigo...",
+                successMessage: "Proveedor Siigo asociado.",
+                errorMessage: "No fue posible crear/asociar el proveedor.",
+                reloadOnSuccess: true
+            });
+        });
+    });
+
+    app.querySelectorAll("[data-cnc-dian-dry-run]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            runDianAction(button, dianDryRunUrl, {
+                loadingMessage: "Simulando factura de compra Siigo...",
+                successMessage: "Simulacion finalizada.",
+                errorMessage: "No fue posible simular la factura.",
+                reloadOnSuccess: false
+            });
+        });
+    });
+
+    app.querySelectorAll("[data-cnc-dian-send]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            runDianAction(button, dianSendUrl, {
+                loadingMessage: "Enviando factura de compra real a Siigo...",
+                successMessage: "Factura enviada a Siigo.",
+                errorMessage: "No fue posible enviar la factura a Siigo.",
+                confirmMessage: "Esto creara una factura de compra real en Siigo. Revisa proveedor, categoria, cuenta e impuestos antes de continuar.",
+                reloadOnSuccess: true
+            });
         });
     });
 
@@ -1154,6 +1348,16 @@
     });
 
     reassignApply?.addEventListener("click", applyReassignCategory);
+    app.querySelectorAll("[data-cnc-close-dian-modal]").forEach((button) => {
+        button.addEventListener("click", closeDianEditModal);
+    });
+    dianEditModal?.addEventListener("click", (event) => {
+        if (event.target === dianEditModal) {
+            closeDianEditModal();
+        }
+    });
+    dianSave?.addEventListener("click", saveDianClassification);
+
     app.querySelectorAll("[data-cnc-close-invoice-modal]").forEach((button) => {
         button.addEventListener("click", closeInvoiceModal);
     });

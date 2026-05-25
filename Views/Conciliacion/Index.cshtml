@@ -7,6 +7,8 @@
     var board = Model.Board;
     var cashFlow = board.CashFlow;
     var dianInvoices = board.DianSupplierInvoices;
+    var dianCategoryOptions = board.DianCategoryOptions;
+    var dianExpenseAccountOptions = board.DianExpenseAccountOptions;
     var activePhase = "flujo-caja";
     string Money(decimal value) => value.ToString("C0", culture);
     string Number(int value) => value.ToString("N0", culture);
@@ -98,6 +100,10 @@
      data-send-payment-url="@Url.Action("SendClientPaymentToSiigo", "Conciliacion")"
      data-invoice-search-url="@Url.Action("SearchDataverseInvoices", "Conciliacion")"
      data-invoice-assign-url="@Url.Action("AssignClientPaymentInvoice", "Conciliacion")"
+     data-dian-classification-url="@Url.Action("UpdateDianSupplierDocumentClassification", "Conciliacion")"
+     data-dian-create-supplier-url="@Url.Action("CreateDianSupplierInSiigo", "Conciliacion")"
+     data-dian-dry-run-url="@Url.Action("SimulateDianSupplierPurchaseSiigoSend", "Conciliacion")"
+     data-dian-send-url="@Url.Action("SendDianSupplierPurchaseToSiigo", "Conciliacion")"
      data-sync-health-url="@Url.Action("SyncHealth", "Conciliacion", new { year = board.Year, month = board.Month })"
      data-active-vertical="Cloud">
     <section class="cnc-heading">
@@ -246,7 +252,7 @@
                                                     <th class="text-end">Total</th>
                                                     <th>Dataverse</th>
                                                     <th>Siigo</th>
-                                                    <th>Detalle</th>
+                                                    <th>Accion</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -262,7 +268,13 @@
                                                         <td class="text-end">@Money(row.TotalValue)</td>
                                                         <td><span class="cnc-badge cnc-badge--success">Importada</span><small>@row.SourceLabel</small></td>
                                                         <td><span class="cnc-badge cnc-badge--@row.ProviderStatusTone">@row.ProviderStatusLabel</span><small>@(string.IsNullOrWhiteSpace(row.SiigoSupplierName) ? "Crear o seleccionar proveedor en Siigo." : row.SiigoSupplierName)</small></td>
-                                                        <td><small>@row.ReviewReason</small></td>
+                                                        <td>
+                                                            <button type="button"
+                                                                    class="btn btn-sm btn-outline-primary"
+                                                                    data-cnc-dian-create-supplier>
+                                                                Crear proveedor
+                                                            </button>
+                                                        </td>
                                                     </tr>
                                                 }
                                             </tbody>
@@ -293,6 +305,10 @@
                                                 {
                                                     var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
                                                     <tr data-record-id="@row.RecordId"
+                                                        data-cnc-dian-edit
+                                                        data-description="@($"{row.InvoiceNumber} - {row.SupplierName}")"
+                                                        data-category-value="@row.CategoryValue"
+                                                        data-account-code="@row.AccountCode"
                                                         data-flow="@verticalFlow"
                                                         data-search="@DianSearchText(row)">
                                                         <td><strong>@row.EmissionDateDisplay</strong><small>@row.DocumentType @row.DianGroup</small><small>@row.ReceptionDateDisplay</small></td>
@@ -301,7 +317,11 @@
                                                         <td class="text-end">@Money(row.VatValue)</td>
                                                         <td class="text-end">@Money(row.TotalValue)</td>
                                                         <td><span class="cnc-badge cnc-badge--neutral">@row.VerticalLabel</span><small>Cloud @Money(row.CloudValue) / Copiers @Money(row.CopiersValue)</small></td>
-                                                        <td><span class="cnc-badge cnc-badge--@row.ClassificationStatusTone">@row.ClassificationStatusLabel</span><small>@row.CategoryLabel @row.AccountCode</small></td>
+                                                        <td>
+                                                            <span class="cnc-badge cnc-badge--@row.ClassificationStatusTone">@row.ClassificationStatusLabel</span>
+                                                            <small>@row.CategoryLabel @row.AccountCode</small>
+                                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-dian-open-edit>Editar</button>
+                                                        </td>
                                                     </tr>
                                                 }
                                             </tbody>
@@ -324,7 +344,7 @@
                                                     <th>Categoria</th>
                                                     <th>Cuenta gasto</th>
                                                     <th>Impuestos</th>
-                                                    <th>Estado</th>
+                                                    <th>Estado / accion</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -332,6 +352,10 @@
                                                 {
                                                     var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
                                                     <tr data-record-id="@row.RecordId"
+                                                        data-cnc-dian-edit
+                                                        data-description="@($"{row.InvoiceNumber} - {row.SupplierName}")"
+                                                        data-category-value="@row.CategoryValue"
+                                                        data-account-code="@row.AccountCode"
                                                         data-flow="@verticalFlow"
                                                         data-search="@DianSearchText(row)">
                                                         <td><strong>@row.EmissionDateDisplay</strong><small>@row.VerticalLabel</small></td>
@@ -340,7 +364,20 @@
                                                         <td>@row.CategoryLabel</td>
                                                         <td><strong>@row.AccountCode</strong><small>@row.AccountName</small></td>
                                                         <td><small>IVA @Money(row.VatValue) / RIVA @Money(row.ReteIvaValue) / RF @Money(row.ReteFuenteValue) / RICA @Money(row.ReteIcaValue)</small></td>
-                                                        <td><span class="cnc-badge cnc-badge--@row.StageTone">@row.StageLabel</span><small>Crear FC o DS proveedor en Siigo.</small></td>
+                                                        <td>
+                                                            <span class="cnc-badge cnc-badge--@row.StageTone">@row.StageLabel</span>
+                                                            <small data-cnc-dian-message>Crear FC proveedor en Siigo.</small>
+                                                            <div class="cnc-row-actions">
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-dian-open-edit>Editar</button>
+                                                                <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-dian-dry-run>Simular factura</button>
+                                                                <button type="button" class="btn btn-sm btn-primary" data-cnc-dian-send>Enviar factura</button>
+                                                            </div>
+                                                            <details class="cnc-json-preview" hidden data-cnc-dian-preview>
+                                                                <summary>Payload / respuesta</summary>
+                                                                <pre data-cnc-dian-payload></pre>
+                                                                <pre data-cnc-dian-response></pre>
+                                                            </details>
+                                                        </td>
                                                     </tr>
                                                 }
                                             </tbody>
@@ -964,6 +1001,43 @@
             <div class="cnc-modal__actions">
                 <button type="button" class="btn btn-outline-secondary" data-cnc-close-modal>Cancelar</button>
                 <button type="button" class="btn btn-primary" id="cncReassignApply">Aplicar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cnc-modal" id="cncDianEditModal" role="dialog" aria-modal="true" aria-labelledby="cncDianEditTitle" hidden>
+        <div class="cnc-modal__panel cnc-modal__panel--wide">
+            <div class="cnc-modal__header">
+                <div>
+                    <div class="cnc-kicker">Documento DIAN</div>
+                    <h2 id="cncDianEditTitle">Categoria y cuenta gasto</h2>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-close-dian-modal>Cerrar</button>
+            </div>
+            <p class="cnc-modal__description" id="cncDianEditDescription"></p>
+            <label class="cnc-modal__field">
+                <span>Categoria</span>
+                <select class="form-select" id="cncDianCategory">
+                    <option value="">Selecciona categoria</option>
+                    @foreach (var option in dianCategoryOptions)
+                    {
+                        <option value="@option.Value">@option.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="cnc-modal__field">
+                <span>Cuenta gasto</span>
+                <select class="form-select" id="cncDianAccount">
+                    <option value="">Selecciona cuenta gasto</option>
+                    @foreach (var option in dianExpenseAccountOptions)
+                    {
+                        <option value="@option.Value">@option.Label</option>
+                    }
+                </select>
+            </label>
+            <div class="cnc-modal__actions">
+                <button type="button" class="btn btn-outline-secondary" data-cnc-close-dian-modal>Cancelar</button>
+                <button type="button" class="btn btn-primary" id="cncDianSave">Guardar</button>
             </div>
         </div>
     </div>
