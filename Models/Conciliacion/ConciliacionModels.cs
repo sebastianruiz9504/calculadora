@@ -22,6 +22,7 @@ public sealed class ConciliacionBoardDto
     public IReadOnlyList<ConciliacionPhaseDto> Phases { get; set; } = Array.Empty<ConciliacionPhaseDto>();
     public ConciliacionCashFlowSummaryDto CashFlow { get; set; } = new();
     public ConciliacionClientPaymentSummaryDto ClientPayments { get; set; } = new();
+    public ConciliacionDianSupplierInvoiceSummaryDto DianSupplierInvoices { get; set; } = new();
 }
 
 public sealed class ConciliacionPhaseDto
@@ -169,6 +170,71 @@ public sealed class ConciliacionClientPaymentRowDto
     public decimal PreflightDebitTotal { get; set; }
     public decimal PreflightCreditTotal { get; set; }
     public string PreflightValidatedOnDisplay { get; set; } = "";
+    public string ModifiedOnDisplay { get; set; } = "";
+}
+
+public sealed class ConciliacionDianSupplierInvoiceSummaryDto
+{
+    public int TotalRows { get; set; }
+    public int ProviderPending { get; set; }
+    public int ClassificationPending { get; set; }
+    public int ReadyForPurchase { get; set; }
+    public int SentToSiigo { get; set; }
+    public int WithErrors { get; set; }
+    public decimal TotalValue { get; set; }
+    public string LastRunLabel { get; set; } = "";
+    public IReadOnlyList<ConciliacionDianSupplierInvoiceRowDto> Rows { get; set; } = Array.Empty<ConciliacionDianSupplierInvoiceRowDto>();
+}
+
+public sealed class ConciliacionDianSupplierInvoiceRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string Stage { get; set; } = "";
+    public string StageLabel { get; set; } = "";
+    public string StageTone { get; set; } = "";
+    public string DocumentType { get; set; } = "";
+    public string Prefix { get; set; } = "";
+    public string Folio { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string Cufe { get; set; } = "";
+    public string EmissionDateValue { get; set; } = "";
+    public string EmissionDateDisplay { get; set; } = "";
+    public string ReceptionDateDisplay { get; set; } = "";
+    public string DianStatus { get; set; } = "";
+    public string DianGroup { get; set; } = "";
+    public string PaymentForm { get; set; } = "";
+    public string PaymentMethod { get; set; } = "";
+    public string Currency { get; set; } = "";
+    public string SupplierNit { get; set; } = "";
+    public string SupplierName { get; set; } = "";
+    public string RecipientNit { get; set; } = "";
+    public string RecipientName { get; set; } = "";
+    public decimal BaseAmount { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal ReteFuenteValue { get; set; }
+    public decimal ReteIcaValue { get; set; }
+    public decimal ReteIvaValue { get; set; }
+    public decimal TotalValue { get; set; }
+    public decimal PaymentValue { get; set; }
+    public decimal CloudValue { get; set; }
+    public decimal CopiersValue { get; set; }
+    public string VerticalLabel { get; set; } = "";
+    public string CategoryLabel { get; set; } = "";
+    public string AccountCode { get; set; } = "";
+    public string AccountName { get; set; } = "";
+    public string AutomationState { get; set; } = "";
+    public string ReviewReason { get; set; } = "";
+    public string SiigoDocumentId { get; set; } = "";
+    public string SiigoDocumentName { get; set; } = "";
+    public string SiigoSupplierId { get; set; } = "";
+    public string SiigoSupplierName { get; set; } = "";
+    public string ProviderStatusLabel { get; set; } = "";
+    public string ProviderStatusTone { get; set; } = "";
+    public string ClassificationStatusLabel { get; set; } = "";
+    public string ClassificationStatusTone { get; set; } = "";
+    public string SiigoStatusLabel { get; set; } = "";
+    public string SiigoStatusTone { get; set; } = "";
+    public string SourceLabel { get; set; } = "";
     public string ModifiedOnDisplay { get; set; } = "";
 }
 

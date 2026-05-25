@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -20,6 +21,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
     private readonly M365Options _m365Options;
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IReconciliationReportSender _reportSender;
     private readonly ILogger<CashFlowImportService> _logger;
 
     public CashFlowImportService(
@@ -28,6 +30,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
         IOptions<M365Options> m365Options,
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
+        IReconciliationReportSender reportSender,
         ILogger<CashFlowImportService> logger)
     {
         _dataverse = dataverse;
@@ -35,26 +38,42 @@ public sealed class CashFlowImportService : ICashFlowImportService
         _m365Options = m365Options.Value;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
+        _reportSender = reportSender;
         _logger = logger;
     }
 
     public async Task<CashFlowImportResultDto> ImportAsync(bool dryRun = false, CancellationToken ct = default)
     {
-        using var workbookStream = await DownloadWorkbookAsync(ct);
-        var readResult = ReadWorkbookRowsWithSkipped(workbookStream, _options);
-        var rows = readResult.Rows;
         var resolvedDryRun = dryRun || _options.DryRun;
 
-        _logger.LogInformation(
-            "Flujo de caja leido desde {FileName}: {Rows} filas validas, {Movements} movimientos, {Transfers} traslados. DryRun={DryRun}.",
-            _options.FileName,
-            rows.Count,
-            rows.Count(static row => !row.IsTransfer),
-            rows.Count(static row => row.IsTransfer),
-            resolvedDryRun);
+        try
+        {
+            using var workbookStream = await DownloadWorkbookAsync(ct);
+            var readResult = ReadWorkbookRowsWithSkipped(workbookStream, _options);
+            var rows = readResult.Rows;
 
-        var upsert = await _dataverse.UpsertCashFlowRowsAsync(rows, resolvedDryRun, ct);
-        return BuildResult(rows, readResult.Skipped + upsert.Skipped, readResult.FutureRowsSkipped, upsert, resolvedDryRun);
+            _logger.LogInformation(
+                "Flujo de caja leido desde {FileName}: {Rows} filas validas, {Movements} movimientos, {Transfers} traslados. DryRun={DryRun}.",
+                _options.FileName,
+                rows.Count,
+                rows.Count(static row => !row.IsTransfer),
+                rows.Count(static row => row.IsTransfer),
+                resolvedDryRun);
+
+            var upsert = await _dataverse.UpsertCashFlowRowsAsync(rows, resolvedDryRun, ct);
+            var result = BuildResult(readResult, upsert, resolvedDryRun);
+            await TrySendImportSummaryEmailAsync(result, ct);
+            return result;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await TrySendImportFailureEmailAsync(resolvedDryRun, ex, ct);
+            throw;
+        }
     }
 
     public static IReadOnlyList<CashFlowImportRowDto> ReadWorkbookRows(Stream workbookStream, CashFlowImportOptions options)
@@ -188,15 +207,16 @@ public sealed class CashFlowImportService : ICashFlowImportService
     {
         using var workbook = new XLWorkbook(workbookStream);
         var rows = new List<CashFlowImportRowDto>();
-        var skipped = 0;
+        var blankRowsSkipped = 0;
         var futureRowsSkipped = 0;
+        var skippedRows = new List<CashFlowImportSkippedRowDto>();
         var today = ResolveLocalToday(options);
 
-        skipped += ReadTableRows(workbook, options, options.CloudTableName, "Cloud", options.CloudBankAccountCode, options.CloudBankAccountName, today, rows, out var cloudFutureRows);
-        skipped += ReadTableRows(workbook, options, options.CopiersTableName, "Copiers", options.CopiersBankAccountCode, options.CopiersBankAccountName, today, rows, out var copiersFutureRows);
+        blankRowsSkipped += ReadTableRows(workbook, options, options.CloudTableName, "Cloud", options.CloudBankAccountCode, options.CloudBankAccountName, today, rows, skippedRows, out var cloudFutureRows);
+        blankRowsSkipped += ReadTableRows(workbook, options, options.CopiersTableName, "Copiers", options.CopiersBankAccountCode, options.CopiersBankAccountName, today, rows, skippedRows, out var copiersFutureRows);
         futureRowsSkipped = cloudFutureRows + copiersFutureRows;
 
-        return new CashFlowWorkbookReadResult(rows, skipped, futureRowsSkipped);
+        return new CashFlowWorkbookReadResult(rows, blankRowsSkipped, futureRowsSkipped, skippedRows);
     }
 
     private static int ReadTableRows(
@@ -208,6 +228,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
         string bankAccountName,
         DateOnly today,
         List<CashFlowImportRowDto> output,
+        List<CashFlowImportSkippedRowDto> skippedRows,
         out int futureRowsSkipped)
     {
         var table = FindTable(workbook, tableName)
@@ -252,7 +273,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
             if (!options.IncludeFutureRows && row.Date.HasValue && row.Date.Value > today)
             {
                 futureRowsSkipped++;
-                skipped++;
+                skippedRows.Add(BuildSkippedRow(row, "Fecha futura fuera del periodo importable"));
                 continue;
             }
 
@@ -506,20 +527,33 @@ public sealed class CashFlowImportService : ICashFlowImportService
     }
 
     private static CashFlowImportResultDto BuildResult(
-        IReadOnlyList<CashFlowImportRowDto> rows,
-        int skipped,
-        int futureRowsSkipped,
+        CashFlowWorkbookReadResult readResult,
         CashFlowDataverseUpsertResultDto upsert,
         bool dryRun)
     {
+        var rows = readResult.Rows;
+        var dataverseSkippedRows = rows
+            .Where(static row => row.Date is null || string.IsNullOrWhiteSpace(row.ExternalKey))
+            .Select(static row => BuildSkippedRow(row, row.Date is null
+                ? "Fecha vacia o no valida"
+                : "Clave externa vacia"))
+            .ToArray();
+        var skippedRows = readResult.SkippedRows
+            .Concat(dataverseSkippedRows)
+            .OrderBy(static row => row.SourceFlow, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.RowNumber)
+            .ToArray();
+
         return new CashFlowImportResultDto
         {
             DryRun = dryRun,
             RowsRead = rows.Count,
             MovementsRead = rows.Count(static row => !row.IsTransfer),
             TransfersRead = rows.Count(static row => row.IsTransfer),
-            Skipped = skipped,
-            FutureRowsSkipped = futureRowsSkipped,
+            Skipped = readResult.BlankRowsSkipped + readResult.FutureRowsSkipped + upsert.Skipped,
+            BlankRowsSkipped = readResult.BlankRowsSkipped,
+            FutureRowsSkipped = readResult.FutureRowsSkipped,
+            DataverseRowsSkipped = upsert.Skipped,
             Created = upsert.Created,
             Updated = upsert.Updated,
             Unchanged = upsert.Unchanged,
@@ -540,12 +574,179 @@ public sealed class CashFlowImportService : ICashFlowImportService
                     TransferValue = group.Where(static row => row.IsTransfer).Sum(static row => Math.Max(row.Entry, row.Exit))
                 })
                 .ToArray(),
+            SkippedRows = skippedRows,
             SampleRows = rows
                 .OrderByDescending(static row => row.Date)
                 .ThenBy(static row => row.SourceFlow, StringComparer.OrdinalIgnoreCase)
                 .Take(25)
                 .ToArray()
         };
+    }
+
+    private static CashFlowImportSkippedRowDto BuildSkippedRow(CashFlowImportRowDto row, string reason)
+    {
+        return new CashFlowImportSkippedRowDto
+        {
+            SourceFlow = row.SourceFlow,
+            TableName = row.TableName,
+            RowNumber = row.RowNumber,
+            Date = row.Date,
+            Reason = reason,
+            Entry = row.Entry,
+            Exit = row.Exit,
+            Description = row.Description
+        };
+    }
+
+    private async Task TrySendImportSummaryEmailAsync(CashFlowImportResultDto result, CancellationToken ct)
+    {
+        if (!ShouldSendSummaryEmail(result.DryRun))
+            return;
+
+        try
+        {
+            var localNow = ResolveLocalNow(_options);
+            var hasRowsNotImported = result.FutureRowsSkipped > 0
+                || result.DataverseRowsSkipped > 0
+                || result.SkippedRows.Count > 0;
+            var status = hasRowsNotImported ? "REVISION" : "OK";
+            var dryRunSuffix = result.DryRun ? " - SIMULACION" : "";
+
+            await _reportSender.SendAsync(new ReconciliationEmailMessage
+            {
+                To = _options.SummaryRecipientEmail.Trim(),
+                Subject = $"Importacion flujo de caja - {localNow:yyyy-MM-dd} - {status}{dryRunSuffix}",
+                HtmlBody = BuildImportSummaryEmailHtml(result, localNow, status)
+            }, ct);
+
+            _logger.LogInformation(
+                "Correo resumen de importacion de flujo de caja enviado a {Recipient}. Estado={Status}.",
+                _options.SummaryRecipientEmail,
+                status);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No fue posible enviar el correo resumen de importacion de flujo de caja.");
+        }
+    }
+
+    private async Task TrySendImportFailureEmailAsync(bool dryRun, Exception error, CancellationToken ct)
+    {
+        if (!ShouldSendSummaryEmail(dryRun))
+            return;
+
+        try
+        {
+            var localNow = ResolveLocalNow(_options);
+            await _reportSender.SendAsync(new ReconciliationEmailMessage
+            {
+                To = _options.SummaryRecipientEmail.Trim(),
+                Subject = $"Importacion flujo de caja - {localNow:yyyy-MM-dd} - ERROR",
+                HtmlBody = BuildImportFailureEmailHtml(error, localNow, dryRun)
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No fue posible enviar el correo de error de importacion de flujo de caja.");
+        }
+    }
+
+    private bool ShouldSendSummaryEmail(bool dryRun)
+    {
+        return _options.SendSummaryEmail
+            && (!dryRun || _options.SendSummaryEmailOnDryRun)
+            && !string.IsNullOrWhiteSpace(_options.SummaryRecipientEmail);
+    }
+
+    private string BuildImportSummaryEmailHtml(CashFlowImportResultDto result, DateTimeOffset localNow, string status)
+    {
+        var hasSkippedRows = result.FutureRowsSkipped > 0
+            || result.DataverseRowsSkipped > 0
+            || result.SkippedRows.Count > 0;
+        var statusColor = hasSkippedRows ? "#9a4d00" : "#156f3d";
+        var mode = result.DryRun ? "Simulacion" : "Importacion real";
+
+        var builder = new StringBuilder();
+        builder.AppendLine("<div style=\"font-family:Segoe UI,Arial,sans-serif;color:#17263c;line-height:1.45;\">");
+        builder.AppendLine("<h2 style=\"margin:0 0 8px;\">Resumen importacion flujo de caja</h2>");
+        builder.AppendLine($"<p style=\"margin:0 0 16px;color:#526173;\">Archivo: {EncodeHtml(_options.FileName)} | Modo: {EncodeHtml(mode)} | Corte Bogota: {localNow:yyyy-MM-dd HH:mm}</p>");
+        builder.AppendLine($"<p style=\"margin:0 0 16px;color:{statusColor};\"><strong>Estado: {EncodeHtml(status)}.</strong> {(hasSkippedRows ? "Hay filas omitidas accionables para revisar." : "No se detectaron filas accionables sin importar.")}</p>");
+        builder.AppendLine("<table style=\"border-collapse:collapse;min-width:620px;margin:12px 0 18px;\">");
+        builder.AppendLine(BuildMetricRow("Filas validas leidas", Number(result.RowsRead)));
+        builder.AppendLine(BuildMetricRow("Movimientos", Number(result.MovementsRead)));
+        builder.AppendLine(BuildMetricRow("Traslados internos", Number(result.TransfersRead)));
+        builder.AppendLine(BuildMetricRow("Creadas en Dataverse", Number(result.Created)));
+        builder.AppendLine(BuildMetricRow("Actualizadas en Dataverse", Number(result.Updated)));
+        builder.AppendLine(BuildMetricRow("Sin cambios", Number(result.Unchanged)));
+        builder.AppendLine(BuildMetricRow("Omitidas totales", Number(result.Skipped)));
+        builder.AppendLine(BuildMetricRow("Filas vacias omitidas", Number(result.BlankRowsSkipped)));
+        builder.AppendLine(BuildMetricRow("Fechas futuras omitidas", Number(result.FutureRowsSkipped)));
+        builder.AppendLine(BuildMetricRow("Omitidas por Dataverse", Number(result.DataverseRowsSkipped)));
+        builder.AppendLine(BuildMetricRow("Total entradas", Money(result.TotalEntries)));
+        builder.AppendLine(BuildMetricRow("Total salidas", Money(result.TotalExits)));
+        builder.AppendLine(BuildMetricRow("Valor traslados", Money(result.TransferValue)));
+        builder.AppendLine("</table>");
+
+        builder.AppendLine("<h3 style=\"margin:18px 0 8px;\">Resumen por flujo</h3>");
+        builder.AppendLine("<table style=\"border-collapse:collapse;min-width:720px;margin:8px 0 18px;\">");
+        builder.AppendLine("<tr><th style=\"text-align:left;border:1px solid #d6dee6;padding:8px;background:#eef3f8;\">Flujo</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#eef3f8;\">Filas</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#eef3f8;\">Movimientos</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#eef3f8;\">Traslados</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#eef3f8;\">Entradas</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#eef3f8;\">Salidas</th></tr>");
+        foreach (var flow in result.FlowSummaries)
+        {
+            builder.AppendLine($"<tr><td style=\"border:1px solid #d6dee6;padding:8px;\">{EncodeHtml(flow.SourceFlow)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Number(flow.Rows)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Number(flow.Movements)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Number(flow.Transfers)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Money(flow.Entries)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Money(flow.Exits)}</td></tr>");
+        }
+        builder.AppendLine("</table>");
+
+        builder.AppendLine("<h3 style=\"margin:18px 0 8px;\">Filas no importadas para revisar</h3>");
+        if (result.SkippedRows.Count == 0)
+        {
+            builder.AppendLine("<p style=\"margin:0 0 18px;\">Sin filas accionables omitidas. Solo puede haber filas vacias omitidas.</p>");
+        }
+        else
+        {
+            builder.AppendLine("<table style=\"border-collapse:collapse;min-width:760px;margin:8px 0 18px;\">");
+            builder.AppendLine("<tr><th style=\"text-align:left;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Flujo</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Fila Excel</th><th style=\"text-align:left;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Fecha</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Entrada</th><th style=\"text-align:right;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Salida</th><th style=\"text-align:left;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Motivo</th><th style=\"text-align:left;border:1px solid #d6dee6;padding:8px;background:#fff3cd;\">Descripcion</th></tr>");
+            foreach (var row in result.SkippedRows.Take(75))
+            {
+                builder.AppendLine($"<tr><td style=\"border:1px solid #d6dee6;padding:8px;\">{EncodeHtml(row.SourceFlow)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Number(row.RowNumber)}</td><td style=\"border:1px solid #d6dee6;padding:8px;\">{EncodeHtml(row.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "Sin fecha")}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Money(row.Entry)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{Money(row.Exit)}</td><td style=\"border:1px solid #d6dee6;padding:8px;\">{EncodeHtml(row.Reason)}</td><td style=\"border:1px solid #d6dee6;padding:8px;\">{EncodeHtml(Truncate(row.Description, 160))}</td></tr>");
+            }
+            builder.AppendLine("</table>");
+            if (result.SkippedRows.Count > 75)
+                builder.AppendLine($"<p style=\"font-size:12px;color:#607080;\">Se muestran 75 de {Number(result.SkippedRows.Count)} filas omitidas accionables.</p>");
+        }
+
+        builder.AppendLine("<p style=\"font-size:12px;color:#607080;margin-top:18px;\">Nota: las filas vacias del Excel se cuentan aparte y no se listan como pendientes. Las fechas futuras se omiten cuando CashFlowImport:IncludeFutureRows esta desactivado.</p>");
+        builder.AppendLine("</div>");
+        return builder.ToString();
+    }
+
+    private string BuildImportFailureEmailHtml(Exception error, DateTimeOffset localNow, bool dryRun)
+    {
+        var mode = dryRun ? "Simulacion" : "Importacion real";
+        return $"""
+            <div style="font-family:Segoe UI,Arial,sans-serif;color:#17263c;line-height:1.45;">
+              <h2 style="margin:0 0 8px;">Error importando flujo de caja</h2>
+              <p style="margin:0 0 16px;color:#526173;">Archivo: {EncodeHtml(_options.FileName)} | Modo: {EncodeHtml(mode)} | Corte Bogota: {localNow:yyyy-MM-dd HH:mm}</p>
+              <p style="color:#9b1c1c;"><strong>La importacion no finalizo correctamente.</strong></p>
+              <pre style="white-space:pre-wrap;background:#fff3f3;border:1px solid #f0c4c4;padding:12px;border-radius:4px;">{EncodeHtml(Truncate(error.ToString(), 4000))}</pre>
+            </div>
+            """;
+    }
+
+    private static string BuildMetricRow(string label, string value)
+    {
+        return $"<tr><td style=\"border:1px solid #d6dee6;padding:8px;background:#f8fafc;\">{EncodeHtml(label)}</td><td style=\"border:1px solid #d6dee6;padding:8px;text-align:right;\">{EncodeHtml(value)}</td></tr>";
+    }
+
+    private static string Money(decimal value) => value.ToString("C0", ColombianCulture);
+
+    private static string Number(int value) => value.ToString("N0", ColombianCulture);
+
+    private static string EncodeHtml(string? value) => WebUtility.HtmlEncode(value ?? "");
+
+    private static DateTimeOffset ResolveLocalNow(CashFlowImportOptions options)
+    {
+        var timeZone = MonthlyFinancialReconciliationHostedService.ResolveTimeZone(options.TimeZoneId);
+        return TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, timeZone);
     }
 
     private static string NormalizeHeader(string value)
@@ -622,5 +823,9 @@ public sealed class CashFlowImportService : ICashFlowImportService
         return DateOnly.FromDateTime(localNow.DateTime);
     }
 
-    private sealed record CashFlowWorkbookReadResult(IReadOnlyList<CashFlowImportRowDto> Rows, int Skipped, int FutureRowsSkipped);
+    private sealed record CashFlowWorkbookReadResult(
+        IReadOnlyList<CashFlowImportRowDto> Rows,
+        int BlankRowsSkipped,
+        int FutureRowsSkipped,
+        IReadOnlyList<CashFlowImportSkippedRowDto> SkippedRows);
 }

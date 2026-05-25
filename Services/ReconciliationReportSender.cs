@@ -63,12 +63,16 @@ public sealed class ReconciliationReportSender : IReconciliationReportSender
     private async Task SendWithFlowAsync(ReconciliationEmailMessage message, CancellationToken ct)
     {
         var client = _httpClientFactory.CreateClient();
-        var attachment = new
-        {
-            fileName = message.AttachmentFileName,
-            contentType = message.AttachmentContentType,
-            base64 = Convert.ToBase64String(message.AttachmentContent)
-        };
+        var hasAttachment = message.AttachmentContent.Length > 0;
+        var attachment = hasAttachment
+            ? new
+            {
+                fileName = message.AttachmentFileName,
+                contentType = message.AttachmentContentType,
+                base64 = Convert.ToBase64String(message.AttachmentContent)
+            }
+            : null;
+        var attachments = hasAttachment ? new object[] { attachment! } : Array.Empty<object>();
         var payload = new
         {
             recipientEmail = message.To,
@@ -78,7 +82,7 @@ public sealed class ReconciliationReportSender : IReconciliationReportSender
             attachmentContentType = message.AttachmentContentType,
             attachmentContentBytes = Convert.ToBase64String(message.AttachmentContent),
             attachment,
-            attachments = new[] { attachment }
+            attachments
         };
 
         using var response = await client.PostAsJsonAsync(_reconciliationOptions.EmailFlowUrl, payload, JsonOptions, ct);
@@ -115,36 +119,43 @@ public sealed class ReconciliationReportSender : IReconciliationReportSender
 
     private object BuildGraphSendMailPayload(ReconciliationEmailMessage message)
     {
-        var attachment = new Dictionary<string, object?>
+        var graphMessage = new Dictionary<string, object?>
         {
-            ["@odata.type"] = "#microsoft.graph.fileAttachment",
-            ["name"] = message.AttachmentFileName,
-            ["contentType"] = message.AttachmentContentType,
-            ["contentBytes"] = Convert.ToBase64String(message.AttachmentContent)
+            ["subject"] = message.Subject,
+            ["body"] = new
+            {
+                contentType = "HTML",
+                content = message.HtmlBody
+            },
+            ["toRecipients"] = new[]
+            {
+                new
+                {
+                    emailAddress = new
+                    {
+                        address = message.To
+                    }
+                }
+            }
         };
+
+        if (message.AttachmentContent.Length > 0)
+        {
+            graphMessage["attachments"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["@odata.type"] = "#microsoft.graph.fileAttachment",
+                    ["name"] = message.AttachmentFileName,
+                    ["contentType"] = message.AttachmentContentType,
+                    ["contentBytes"] = Convert.ToBase64String(message.AttachmentContent)
+                }
+            };
+        }
 
         return new
         {
-            message = new
-            {
-                subject = message.Subject,
-                body = new
-                {
-                    contentType = "HTML",
-                    content = message.HtmlBody
-                },
-                toRecipients = new[]
-                {
-                    new
-                    {
-                        emailAddress = new
-                        {
-                            address = message.To
-                        }
-                    }
-                },
-                attachments = new object[] { attachment }
-            },
+            message = graphMessage,
             saveToSentItems = true
         };
     }
@@ -248,8 +259,8 @@ public sealed class ReconciliationReportSender : IReconciliationReportSender
         if (string.IsNullOrWhiteSpace(message.Subject))
             throw new InvalidOperationException("El asunto del correo de conciliacion esta vacio.");
 
-        if (message.AttachmentContent.Length == 0)
-            throw new InvalidOperationException("El informe de conciliacion no tiene contenido para adjuntar.");
+        if (message.AttachmentContent.Length > 0 && string.IsNullOrWhiteSpace(message.AttachmentFileName))
+            throw new InvalidOperationException("El nombre del adjunto de conciliacion esta vacio.");
     }
 
     private static string NormalizeAuthorityHost(string? value)

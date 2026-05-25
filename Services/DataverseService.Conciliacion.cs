@@ -16,6 +16,14 @@ public sealed partial class DataverseService
     private const string ClientPaymentMatchPreflightValidatedOnField = "cr07a_preflightfecha";
     private const string ClientPaymentMatchPreflightDebitField = "cr07a_preflightdebito";
     private const string ClientPaymentMatchPreflightCreditField = "cr07a_preflightcredito";
+    private const string ConciliacionDianDocumentTypeField = "cr07a_tipodocumento";
+    private const string ConciliacionDianPrefixField = "cr07a_prefijo";
+    private const string ConciliacionDianFolioField = "cr07a_folio";
+    private const string ConciliacionDianIssuerNitField = "cr07a_nitemisor";
+    private const string ConciliacionDianSourceField = "cr07a_fuenteautomatizacion";
+    private const string ConciliacionDianExcelKeyField = "cr07a_excelkey";
+    private const string ConciliacionDianSiigoDocumentIdField = "cr07a_siigodocumentid";
+    private const string ConciliacionDianSiigoDocumentNameField = "cr07a_siigodocumentname";
     private const int ConciliacionSiigoIncomeJournalDocumentFallbackId = 31321;
     private const string ConciliacionSiigoIncomeJournalDocumentFallbackName = "Comprobante de ingreso";
     private static readonly CultureInfo ConciliacionCulture = CultureInfo.GetCultureInfo("es-CO");
@@ -35,12 +43,17 @@ public sealed partial class DataverseService
         var endExclusive = start.AddMonths(1);
         var cashFlowRowsTask = GetConciliacionCashFlowRowsAsync(start, endExclusive, ct);
         var clientPaymentsTask = GetConciliacionClientPaymentsAsync(start, endExclusive, ct);
-        await Task.WhenAll(cashFlowRowsTask, clientPaymentsTask);
+        var dianSupplierInvoicesTask = GetConciliacionDianSupplierInvoiceRowsAsync(start, endExclusive, ct);
+        await Task.WhenAll(cashFlowRowsTask, clientPaymentsTask, dianSupplierInvoicesTask);
 
         var clientPayments = BuildConciliacionClientPaymentSummary(clientPaymentsTask.Result);
+        var dianSupplierInvoices = BuildConciliacionDianSupplierInvoiceSummary(dianSupplierInvoicesTask.Result);
         var cashFlow = BuildConciliacionCashFlowSummary(cashFlowRowsTask.Result, clientPayments.Rows);
-        var phases = BuildConciliacionPhases(cashFlow, clientPayments);
-        var pending = clientPayments.PendingReview + cashFlow.PendingValidationRows;
+        var phases = BuildConciliacionPhases(cashFlow, clientPayments, dianSupplierInvoices);
+        var pending = clientPayments.PendingReview
+            + cashFlow.PendingValidationRows
+            + dianSupplierInvoices.ProviderPending
+            + dianSupplierInvoices.ClassificationPending;
         var suggested = clientPayments.Suggested;
         var approved = clientPayments.Approved;
 
@@ -57,7 +70,8 @@ public sealed partial class DataverseService
             ClientPaymentEntries = clientPayments.TotalEntries,
             Phases = phases,
             CashFlow = cashFlow,
-            ClientPayments = clientPayments
+            ClientPayments = clientPayments,
+            DianSupplierInvoices = dianSupplierInvoices
         };
     }
 
@@ -1061,6 +1075,322 @@ public sealed partial class DataverseService
         };
     }
 
+    private async Task<IReadOnlyList<ConciliacionDianSupplierInvoiceRowDto>> GetConciliacionDianSupplierInvoiceRowsAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            _supplierExpensesTableName,
+            _supplierExpensesTableSetName,
+            _supplierExpensesIdField,
+            "",
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        var fields = ResolveTaxExpenseFieldMap(metadata, attributes);
+        if (string.IsNullOrWhiteSpace(fields.EmissionDateField.FieldName))
+            return Array.Empty<ConciliacionDianSupplierInvoiceRowDto>();
+
+        var cufeField = ResolveTaxExpenseField(
+            attributes,
+            DianSupplierDocumentCufeField,
+            "cr07a_cufecude",
+            "cr07a_cufe",
+            "cr07a_cude");
+        var baseAmountField = ResolveTaxExpenseField(
+            attributes,
+            DashboardExpenseTotalBeforeVatField,
+            "cr07a_base",
+            "cr07a_baseiva",
+            "cr07a_totalantesdeimpuestos");
+
+        var select = BuildConciliacionSelectClause(metadata, attributes, new[]
+        {
+            metadata.PrimaryIdField,
+            metadata.PrimaryNameField,
+            fields.InvoiceNumberField,
+            fields.EmissionDateField.FieldName,
+            fields.PaymentDateField.FieldName,
+            fields.PaymentValueField,
+            fields.TotalField,
+            fields.VatField,
+            fields.ReteFuenteField,
+            fields.ReteIcaField,
+            fields.IssuerNameField,
+            ConciliacionDianIssuerNitField,
+            fields.RecipientNameField,
+            fields.RecipientNitField,
+            fields.CloudField,
+            fields.CopiersField,
+            ConciliacionDianDocumentTypeField,
+            ConciliacionDianPrefixField,
+            ConciliacionDianFolioField,
+            cufeField,
+            baseAmountField,
+            DianSupplierDocumentReceptionDateField,
+            DianSupplierDocumentStatusField,
+            DianSupplierDocumentGroupField,
+            DianSupplierDocumentPaymentFormField,
+            DianSupplierDocumentPaymentMethodField,
+            DianSupplierDocumentCurrencyField,
+            DianSupplierDocumentReteIvaField,
+            DianSupplierDocumentSiigoSupplierIdField,
+            DianSupplierDocumentSiigoSupplierNameField,
+            DashboardExpenseCategoryField,
+            ExpenseAccountCodeField,
+            ExpenseAccountNameField,
+            ExpenseAutomationStateField,
+            ExpenseAutomationConfidenceField,
+            ExpenseReviewReasonField,
+            ConciliacionDianSourceField,
+            ConciliacionDianExcelKeyField,
+            ConciliacionDianSiigoDocumentIdField,
+            ConciliacionDianSiigoDocumentNameField,
+            ConciliacionModifiedOnField
+        });
+
+        var filter = BuildBillingDateFilter(
+            fields.EmissionDateField.FieldName,
+            fields.EmissionDateField.FieldKind,
+            startInclusive,
+            endExclusive);
+        var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={fields.EmissionDateField.FieldName} desc";
+        var items = await GetDataverseAppEntitiesAsync(url, ct, AddFormattedValueHeaders);
+
+        return items
+            .Select(item => ParseConciliacionDianSupplierInvoiceRow(item, metadata, fields, cufeField, baseAmountField))
+            .Where(static row => row is not null && IsConciliacionDianSupplierInvoice(row))
+            .Cast<ConciliacionDianSupplierInvoiceRowDto>()
+            .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .OrderByDescending(static row => row.EmissionDateValue, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.SupplierName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static ConciliacionDianSupplierInvoiceSummaryDto BuildConciliacionDianSupplierInvoiceSummary(
+        IReadOnlyList<ConciliacionDianSupplierInvoiceRowDto> rows)
+    {
+        var lastRun = rows
+            .Select(static row => ParseConciliacionDateTimeOffset(row.ModifiedOnDisplay))
+            .Where(static value => value.HasValue)
+            .Select(static value => value!.Value)
+            .DefaultIfEmpty()
+            .Max();
+
+        return new ConciliacionDianSupplierInvoiceSummaryDto
+        {
+            TotalRows = rows.Count,
+            ProviderPending = rows.Count(static row => string.Equals(row.Stage, "proveedor", StringComparison.OrdinalIgnoreCase)),
+            ClassificationPending = rows.Count(static row => string.Equals(row.Stage, "clasificacion", StringComparison.OrdinalIgnoreCase)),
+            ReadyForPurchase = rows.Count(static row => string.Equals(row.Stage, "prevalidacion", StringComparison.OrdinalIgnoreCase)),
+            SentToSiigo = rows.Count(static row => string.Equals(row.Stage, "enviadas", StringComparison.OrdinalIgnoreCase)),
+            WithErrors = rows.Count(static row => string.Equals(row.StageTone, "danger", StringComparison.OrdinalIgnoreCase)),
+            TotalValue = RoundCurrency(rows.Sum(static row => row.TotalValue)),
+            LastRunLabel = FormatConciliacionDateTimeDisplay(lastRun),
+            Rows = rows
+        };
+    }
+
+    private ConciliacionDianSupplierInvoiceRowDto? ParseConciliacionDianSupplierInvoiceRow(
+        JsonElement item,
+        RhEntityMetadata metadata,
+        TaxExpenseFieldMap fields,
+        string cufeField,
+        string baseAmountField)
+    {
+        var taxRow = ParseTaxExpenseRow(item, metadata.PrimaryIdField, fields);
+        if (taxRow is null)
+            return null;
+
+        var prefix = ReadString(item, ConciliacionDianPrefixField).Trim();
+        var folio = ReadString(item, ConciliacionDianFolioField).Trim();
+        var invoiceNumber = BuildConciliacionDianInvoiceNumber(prefix, folio, taxRow.InvoiceNumber);
+        var baseAmount = RoundCurrency(ReadDecimal(item, baseAmountField) ?? Math.Max(0m, taxRow.TotalValue - taxRow.VatValue));
+        var modifiedOn = ParseConciliacionDateTimeOffset(ReadString(item, ConciliacionModifiedOnField));
+        var receptionDate = ParseConciliacionDateTimeOffset(ReadString(item, DianSupplierDocumentReceptionDateField));
+        var documentType = FirstNonEmpty(
+            ReadString(item, $"{ConciliacionDianDocumentTypeField}{FormattedValueAnnotationSuffix}"),
+            ReadString(item, ConciliacionDianDocumentTypeField),
+            "Documento proveedor");
+        var dianGroup = ReadString(item, DianSupplierDocumentGroupField).Trim();
+        var supplierName = taxRow.IssuerName;
+        var supplierNit = ReadString(item, ConciliacionDianIssuerNitField).Trim();
+        var recipientName = taxRow.RecipientName;
+        var recipientNit = taxRow.RecipientNit;
+        if (ShouldFlipConciliacionDianSupportSupplier(documentType, dianGroup, supplierName, recipientName))
+        {
+            (supplierName, recipientName) = (recipientName, supplierName);
+            (supplierNit, recipientNit) = (recipientNit, supplierNit);
+        }
+
+        var row = new ConciliacionDianSupplierInvoiceRowDto
+        {
+            RecordId = taxRow.RecordId,
+            DocumentType = documentType.Trim(),
+            Prefix = prefix,
+            Folio = folio,
+            InvoiceNumber = invoiceNumber,
+            Cufe = ReadString(item, cufeField).Trim(),
+            EmissionDateValue = taxRow.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            EmissionDateDisplay = taxRow.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+            ReceptionDateDisplay = FormatConciliacionDateTimeDisplay(receptionDate),
+            DianStatus = ReadString(item, DianSupplierDocumentStatusField).Trim(),
+            DianGroup = dianGroup,
+            PaymentForm = ReadString(item, DianSupplierDocumentPaymentFormField).Trim(),
+            PaymentMethod = ReadString(item, DianSupplierDocumentPaymentMethodField).Trim(),
+            Currency = ReadString(item, DianSupplierDocumentCurrencyField).Trim(),
+            SupplierNit = supplierNit,
+            SupplierName = supplierName,
+            RecipientNit = recipientNit,
+            RecipientName = recipientName,
+            BaseAmount = baseAmount,
+            VatValue = taxRow.VatValue,
+            ReteFuenteValue = taxRow.ReteFuenteValue,
+            ReteIcaValue = taxRow.ReteIcaValue,
+            ReteIvaValue = RoundCurrency(ReadDecimal(item, DianSupplierDocumentReteIvaField) ?? 0m),
+            TotalValue = taxRow.TotalValue,
+            PaymentValue = taxRow.PaymentValue,
+            CloudValue = taxRow.CloudValue,
+            CopiersValue = taxRow.CopiersValue,
+            VerticalLabel = ResolveConciliacionDianVerticalLabel(taxRow.CloudValue, taxRow.CopiersValue),
+            CategoryLabel = FirstNonEmpty(
+                ReadString(item, $"{DashboardExpenseCategoryField}{FormattedValueAnnotationSuffix}"),
+                ReadString(item, DashboardExpenseCategoryField),
+                "Sin categoria").Trim(),
+            AccountCode = ReadString(item, ExpenseAccountCodeField).Trim(),
+            AccountName = ReadString(item, ExpenseAccountNameField).Trim(),
+            AutomationState = ReadString(item, ExpenseAutomationStateField).Trim(),
+            ReviewReason = ReadString(item, ExpenseReviewReasonField).Trim(),
+            SiigoDocumentId = ReadString(item, ConciliacionDianSiigoDocumentIdField).Trim(),
+            SiigoDocumentName = ReadString(item, ConciliacionDianSiigoDocumentNameField).Trim(),
+            SiigoSupplierId = ReadString(item, DianSupplierDocumentSiigoSupplierIdField).Trim(),
+            SiigoSupplierName = ReadString(item, DianSupplierDocumentSiigoSupplierNameField).Trim(),
+            SourceLabel = FirstNonEmpty(ReadString(item, ConciliacionDianSourceField), ReadString(item, ConciliacionDianExcelKeyField), "Dataverse").Trim(),
+            ModifiedOnDisplay = FormatConciliacionDateTimeDisplay(modifiedOn)
+        };
+
+        CompleteConciliacionDianSupplierInvoiceRow(row);
+        return row;
+    }
+
+    private static bool IsConciliacionDianSupplierInvoice(ConciliacionDianSupplierInvoiceRowDto? row)
+    {
+        if (row is null)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(row.DocumentType))
+            return true;
+
+        var type = NormalizeConciliacionLookupText(row.DocumentType);
+        return (type.Contains("FACTURA", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("DOCUMENTO SOPORTE", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("DOC SOPORTE", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("SOPORTE", StringComparison.OrdinalIgnoreCase))
+            && !type.Contains("NOTA", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldFlipConciliacionDianSupportSupplier(
+        string documentType,
+        string group,
+        string issuerName,
+        string recipientName)
+    {
+        var type = NormalizeConciliacionLookupText(documentType);
+        var normalizedGroup = NormalizeConciliacionLookupText(group);
+        if (!type.Contains("SOPORTE", StringComparison.OrdinalIgnoreCase)
+            || !normalizedGroup.Contains("EMITIDO", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var issuerIsCompany = issuerName.Contains("DIGITAL", StringComparison.OrdinalIgnoreCase)
+            || issuerName.Contains("COPIERS", StringComparison.OrdinalIgnoreCase)
+            || issuerName.Contains("CLOUD", StringComparison.OrdinalIgnoreCase);
+        var recipientIsCompany = recipientName.Contains("DIGITAL", StringComparison.OrdinalIgnoreCase)
+            || recipientName.Contains("COPIERS", StringComparison.OrdinalIgnoreCase)
+            || recipientName.Contains("CLOUD", StringComparison.OrdinalIgnoreCase);
+
+        return issuerIsCompany && !recipientIsCompany;
+    }
+
+    private static void CompleteConciliacionDianSupplierInvoiceRow(ConciliacionDianSupplierInvoiceRowDto row)
+    {
+        var hasSupplierData = !string.IsNullOrWhiteSpace(row.SupplierNit) && !string.IsNullOrWhiteSpace(row.SupplierName);
+        var classified = !string.IsNullOrWhiteSpace(row.AccountCode)
+            && !string.Equals(row.CategoryLabel, "Sin categoria", StringComparison.OrdinalIgnoreCase)
+            && !IsConciliacionExpenseClassificationPending(row.AutomationState);
+        var sentToSiigo = !string.IsNullOrWhiteSpace(row.SiigoDocumentId)
+            || !string.IsNullOrWhiteSpace(row.SiigoDocumentName);
+
+        row.ProviderStatusLabel = hasSupplierData ? "Datos proveedor OK" : "Proveedor incompleto";
+        row.ProviderStatusTone = hasSupplierData ? "success" : "warning";
+        row.ClassificationStatusLabel = classified ? "Clasificacion OK" : "Pendiente clasificacion";
+        row.ClassificationStatusTone = classified ? "success" : "warning";
+        row.SiigoStatusLabel = sentToSiigo ? "Documento Siigo OK" : "Pendiente documento Siigo";
+        row.SiigoStatusTone = sentToSiigo ? "success" : "warning";
+
+        if (sentToSiigo)
+        {
+            row.Stage = "enviadas";
+            row.StageLabel = "Subida a Siigo";
+            row.StageTone = "success";
+            return;
+        }
+
+        if (!hasSupplierData)
+        {
+            row.Stage = "proveedor";
+            row.StageLabel = "Proveedor pendiente";
+            row.StageTone = "warning";
+            return;
+        }
+
+        if (!classified)
+        {
+            row.Stage = "clasificacion";
+            row.StageLabel = "Clasificacion pendiente";
+            row.StageTone = "warning";
+            return;
+        }
+
+        row.Stage = "prevalidacion";
+        row.StageLabel = "Lista para compra";
+        row.StageTone = "info";
+    }
+
+    private static bool IsConciliacionExpenseClassificationPending(string state)
+    {
+        if (string.IsNullOrWhiteSpace(state))
+            return true;
+
+        return state.Contains("Pendiente", StringComparison.OrdinalIgnoreCase)
+            || state.Contains("SinRegla", StringComparison.OrdinalIgnoreCase)
+            || state.Contains("ReglaInvalida", StringComparison.OrdinalIgnoreCase)
+            || state.Contains("Revision", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildConciliacionDianInvoiceNumber(string prefix, string folio, string fallback)
+    {
+        var joined = string.Join("-", new[] { prefix, folio }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+        return FirstNonEmpty(joined, fallback, "Sin factura").Trim();
+    }
+
+    private static string ResolveConciliacionDianVerticalLabel(decimal cloud, decimal copiers)
+    {
+        if (cloud > 0m && copiers > 0m)
+            return "Cloud / Copiers";
+
+        if (cloud > 0m)
+            return "Cloud";
+
+        if (copiers > 0m)
+            return "Copiers";
+
+        return "Sin vertical";
+    }
+
     private static string BuildConciliacionSelectClause(
         RhEntityMetadata metadata,
         ISet<string> attributes,
@@ -1469,7 +1799,8 @@ public sealed partial class DataverseService
 
     private static IReadOnlyList<ConciliacionPhaseDto> BuildConciliacionPhases(
         ConciliacionCashFlowSummaryDto cashFlow,
-        ConciliacionClientPaymentSummaryDto clientPayments)
+        ConciliacionClientPaymentSummaryDto clientPayments,
+        ConciliacionDianSupplierInvoiceSummaryDto dianSupplierInvoices)
     {
         return new[]
         {
@@ -1502,31 +1833,58 @@ public sealed partial class DataverseService
                     "Bloquear envio a Siigo hasta que la fila este validada y completa."
                 }),
             BuildStaticConciliacionPhase(
+                "registro-dian",
+                "Registro DIAN / documentos proveedor",
+                dianSupplierInvoices.TotalRows > 0 ? "Detectado" : "Sin filas",
+                dianSupplierInvoices.TotalRows > 0 ? "info" : "neutral",
+                "Semanal",
+                dianSupplierInvoices.LastRunLabel,
+                "Importar facturas electronicas y documentos soporte recibidos, validar proveedor, clasificacion y documento Siigo antes del cruce con salidas.",
+                new[]
+                {
+                    Step("Documentos recibidos", "Importados", dianSupplierInvoices.TotalRows > 0 ? "success" : "neutral", $"{dianSupplierInvoices.TotalRows:N0} facturas/documentos soporte del periodo."),
+                    Step("Proveedor Siigo", dianSupplierInvoices.ProviderPending > 0 ? "Pendiente" : "OK", dianSupplierInvoices.ProviderPending > 0 ? "warning" : "success", $"{dianSupplierInvoices.ProviderPending:N0} con datos de proveedor incompletos."),
+                    Step("Clasificacion", dianSupplierInvoices.ClassificationPending > 0 ? "Pendiente" : "OK", dianSupplierInvoices.ClassificationPending > 0 ? "warning" : "success", $"{dianSupplierInvoices.ClassificationPending:N0} por categorizar o asignar cuenta."),
+                    Step("Documento Siigo", dianSupplierInvoices.SentToSiigo > 0 ? "Parcial" : "Falta", dianSupplierInvoices.SentToSiigo > 0 ? "info" : "warning", $"{dianSupplierInvoices.ReadyForPurchase:N0} listos para crear FC/DS.")
+                },
+                $"Total documentos proveedor {dianSupplierInvoices.TotalValue:N0}. Listos Siigo {dianSupplierInvoices.ReadyForPurchase:N0}; enviados {dianSupplierInvoices.SentToSiigo:N0}.",
+                new[]
+                {
+                    "Lectura de facturas y documentos soporte desde gastos de la empresa en Dataverse.",
+                    "Separacion por proveedor, clasificacion, prevalidacion y documento Siigo."
+                },
+                new[]
+                {
+                    "Crear importador DIAN desde SharePoint con CUFE como clave externa.",
+                    "Guardar proveedor Siigo seleccionado/creado en Dataverse.",
+                    "Crear FC para factura electronica o DS para documento soporte y guardar el id Siigo."
+                }),
+            BuildStaticConciliacionPhase(
                 "salidas-fe",
                 "Registro de Salidas FE",
                 cashFlow.OutgoingInvoiceRows > 0 ? "Detectado" : "Sin filas",
                 cashFlow.OutgoingInvoiceRows > 0 ? "info" : "neutral",
                 "Por periodo",
                 cashFlow.LastRunLabel,
-                "Cruzar salidas con factura electronica contra Dataverse, Siigo y saldo de factura.",
+                "Cruzar pagos de banco contra documentos proveedor ya importados desde DIAN y creados en Siigo.",
                 new[]
                 {
                     Step("Filas candidatas", "Detectadas", "info", $"{cashFlow.OutgoingInvoiceRows:N0} salidas FE."),
-                    Step("Factura Dataverse", "Falta", "warning", "Cruce DIAN/Dataverse pendiente."),
-                    Step("Factura Siigo", "Falta", "warning", "Consulta de compras/egresos pendiente."),
+                    Step("Documento Dataverse", dianSupplierInvoices.TotalRows > 0 ? "Disponible" : "Falta", dianSupplierInvoices.TotalRows > 0 ? "info" : "warning", $"{dianSupplierInvoices.TotalRows:N0} documentos proveedor en DIAN/Dataverse."),
+                    Step("Documento Siigo", dianSupplierInvoices.SentToSiigo > 0 ? "Parcial" : "Falta", dianSupplierInvoices.SentToSiigo > 0 ? "info" : "warning", $"{dianSupplierInvoices.SentToSiigo:N0} documentos proveedor con id Siigo."),
                     Step("Pago Siigo", "Falta", "warning", "Registro de pago pendiente.")
                 },
                 "",
                 new[]
                 {
                     "Filtro lateral y tabla de salidas con factura electronica.",
-                    "Estado visual para factura Dataverse, factura Siigo, pago Siigo y saldo."
+                    "Estado visual para documento Dataverse, documento Siigo, pago Siigo y saldo."
                 },
                 new[]
                 {
-                    "Conectar cruce real contra gastos DIAN/Dataverse.",
-                    "Consultar saldo de factura y pago en Siigo.",
-                    "Crear prevalidacion completa antes del envio a Siigo."
+                    "Conectar cruce real contra el nuevo Registro DIAN.",
+                    "Consultar saldo de compra y pago en Siigo.",
+                    "Crear prevalidacion de egreso antes del envio a Siigo."
                 }),
             BuildStaticConciliacionPhase(
                 "entradas-fe",

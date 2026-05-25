@@ -92,6 +92,10 @@ public interface IDataverseService
         IReadOnlyList<CashFlowImportRowDto> rows,
         bool dryRun = false,
         CancellationToken ct = default);
+    Task<DianSupplierDocumentDataverseUpsertResultDto> UpsertDianSupplierDocumentRowsAsync(
+        IReadOnlyList<DianSupplierDocumentImportRowDto> rows,
+        bool dryRun = false,
+        CancellationToken ct = default);
     Task<CashFlowClientPaymentMatchResultDto> MatchCashFlowClientPaymentsAsync(
         DateOnly startDate,
         DateOnly endDate,

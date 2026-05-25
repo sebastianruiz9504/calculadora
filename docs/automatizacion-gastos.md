@@ -1,6 +1,6 @@
 # Automatizacion de gastos, pagos y comprobantes
 
-Ultima revision: 2026-05-21
+Ultima revision: 2026-05-25
 
 Este documento deja el mapa base para automatizar gastos, cuentas de cobro,
 flujo de caja, pagos de clientes, pagos a proveedores y comprobantes contables.
@@ -65,6 +65,16 @@ Campos propuestos para agregar:
 | `cr07a_reglacontableid` | Lookup/String | Regla que asigno cuenta contable |
 | `cr07a_confianzaautomatizacion` | Decimal | 0 a 100 |
 | `cr07a_motivorevision` | Multiline text | Motivo por el que queda en bandeja |
+| `cr07a_cufecude` | String | CUFE/CUDE completo del Excel DIAN |
+| `cr07a_fecharecepcion` | DateTime | Fecha/hora de recepcion DIAN |
+| `cr07a_estadodian` | String | Estado DIAN, por ejemplo aprobado con notificacion |
+| `cr07a_grupodian` | String | Grupo DIAN: recibido o emitido |
+| `cr07a_formapago` | String | Forma de pago DIAN |
+| `cr07a_mediopago` | String | Medio de pago DIAN |
+| `cr07a_divisa` | String | Moneda del documento |
+| `cr07a_reteiva` | Decimal | ReteIVA reportada por DIAN |
+| `cr07a_siigoproveedorid` | String | Id del proveedor en Siigo cuando se resuelva |
+| `cr07a_siigoproveedornombre` | String | Nombre del proveedor en Siigo cuando se resuelva |
 
 Estado de implementacion:
 
@@ -72,6 +82,9 @@ Estado de implementacion:
 - `cr07a_confianzaautomatizacion` quedo como Decimal.
 - `cr07a_motivorevision` quedo como Memo.
 - Los demas campos quedaron como texto para facilitar iteracion inicial.
+- Campos DIAN adicionales creados y publicados en Dataverse el 2026-05-25:
+  CUFE/CUDE, fecha recepcion, estado, grupo, forma/medio de pago, divisa,
+  ReteIVA y proveedor Siigo.
 
 Tabla de facturacion:
 
@@ -702,6 +715,62 @@ Validacion posterior de idempotencia:
 
 No se envio nada a Siigo.
 
+### Importador DIAN de documentos proveedor
+
+Objetivo: permitir que el usuario suba el Excel descargado de la DIAN cada
+lunes y que la app cree/actualice en Dataverse los documentos que despues se
+cruzaran contra Siigo y contra el flujo de caja.
+
+Reglas implementadas:
+
+- Se leen las filas del primer worksheet del Excel DIAN.
+- Se importan facturas electronicas con `Grupo = Recibido`.
+- Se importan documentos soporte con no obligados, incluyendo los emitidos por
+  la empresa.
+- Se ignoran facturas emitidas de venta, notas, application response y otros
+  documentos que no sean gasto/proveedor.
+- En factura recibida, el proveedor es el emisor DIAN y la empresa es el
+  receptor.
+- En documento soporte emitido por la empresa, el proveedor es el receptor DIAN
+  y la empresa es el emisor.
+- La llave idempotente guardada en `cr07a_excelkey` es
+  `dian-cufe:{hash corto}` para no superar el limite de Dataverse. El CUFE/CUDE
+  completo queda en `cr07a_cufecude`.
+- Los registros quedan con `cr07a_fuenteautomatizacion = DIAN Excel` y
+  `cr07a_estadoautomatizacion = ImportadoDian`.
+
+Ejecucion manual:
+
+- CLI seco: `dotnet run -- --import-dian-provider-documents --file "<ruta.xlsx>" --dry-run true`.
+- CLI real: `dotnet run -- --import-dian-provider-documents --file "<ruta.xlsx>" --dry-run false`.
+- Endpoint: `POST /automation/dian-provider-documents/import?dryRun=true&localFilePath=<ruta.xlsx>`.
+
+Carga real de prueba ejecutada el 2026-05-25:
+
+| Resultado | Valor |
+| --- | ---: |
+| Filas leidas del Excel | 64 |
+| Filas importables | 21 |
+| Facturas electronicas recibidas | 19 |
+| Documentos soporte | 2 |
+| Filas omitidas | 43 |
+| Registros creados en Dataverse | 21 |
+| Registros actualizados | 0 |
+| Valor total importado | 20.453.683,01 |
+| IVA importado | 1.602.199,31 |
+
+Validacion posterior de idempotencia:
+
+| Resultado dry run posterior | Valor |
+| --- | ---: |
+| Registros nuevos pendientes | 0 |
+| Registros por actualizar | 21 |
+| Registros omitidos por Dataverse | 0 |
+
+No se envio nada a Siigo. Estos documentos quedan visibles en la app en
+`Registro DIAN / documentos proveedor` para resolver proveedor Siigo,
+clasificacion y preparacion del documento de compra/documento soporte.
+
 ### Cruce de pagos de clientes desde flujo de caja
 
 Objetivo: tomar entradas bancarias importadas desde los dos flujos (`Cloud` y
@@ -780,12 +849,16 @@ Estado implementado el 2026-05-21:
 - Acceso piloto asignado solo a `sruiz@digitaltechcolombia.com`.
 - Vista simplificada con menu lateral como filtros. Las fases actuales son:
   `Flujo de caja por banco`, `Registro de Salidas FE`,
-  `Registro de Entradas FE`, `Registro de cuentas de cobro`,
-  `Registro de comprobantes contables` y `Registros huerfanos`.
-- Cada fase muestra un cuadro `Ya esta` / `Hace falta`, pasos de estado y una
-  tabla filtrada del periodo.
+  `Registro de Entradas FE`, `Registro DIAN / documentos proveedor`,
+  `Registro de cuentas de cobro`, `Registro de comprobantes contables` y
+  `Registros huerfanos`.
+- Cada fase muestra tareas operativas por sistema (`Siigo`, `Dataverse`, `App`)
+  y tablas separadas por estado, contraibles por defecto.
 - `Flujo de caja por banco` muestra las filas importadas con tipo de
   comprobante detectado, estado de validacion y estado Dataverse/Siigo.
+- `Registro DIAN / documentos proveedor` muestra las facturas recibidas y
+  documentos soporte importados desde el Excel DIAN, separadas por proveedor
+  pendiente, clasificacion, preparacion Siigo y errores/listos.
 - `Registro de Entradas FE` sigue siendo la primera fase funcional completa:
   usa `cr07a_cruceflujocaja` para aprobar, revisar, rechazar y prevalidar.
 - Acciones disponibles sobre `cr07a_cruceflujocaja`: aprobar, marcar revision

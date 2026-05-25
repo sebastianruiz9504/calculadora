@@ -14,19 +14,22 @@ public sealed class AutomationController : Controller
     private readonly IExpenseAccountingTemplateService _expenseAccountingTemplateService;
     private readonly ICashFlowImportService _cashFlowImportService;
     private readonly ICashFlowMatchingService _cashFlowMatchingService;
+    private readonly IDianSupplierDocumentImportService _dianSupplierDocumentImportService;
 
     public AutomationController(
         ISiigoAccountCatalogSyncService accountCatalogSyncService,
         IExpenseAccountingRuleService expenseAccountingRuleService,
         IExpenseAccountingTemplateService expenseAccountingTemplateService,
         ICashFlowImportService cashFlowImportService,
-        ICashFlowMatchingService cashFlowMatchingService)
+        ICashFlowMatchingService cashFlowMatchingService,
+        IDianSupplierDocumentImportService dianSupplierDocumentImportService)
     {
         _accountCatalogSyncService = accountCatalogSyncService;
         _expenseAccountingRuleService = expenseAccountingRuleService;
         _expenseAccountingTemplateService = expenseAccountingTemplateService;
         _cashFlowImportService = cashFlowImportService;
         _cashFlowMatchingService = cashFlowMatchingService;
+        _dianSupplierDocumentImportService = dianSupplierDocumentImportService;
     }
 
     [HttpPost("siigo-account-catalog/sync")]
@@ -132,7 +135,9 @@ public sealed class AutomationController : Controller
                 movementsRead = result.MovementsRead,
                 transfersRead = result.TransfersRead,
                 skipped = result.Skipped,
+                blankRowsSkipped = result.BlankRowsSkipped,
                 futureRowsSkipped = result.FutureRowsSkipped,
+                dataverseRowsSkipped = result.DataverseRowsSkipped,
                 created = result.Created,
                 updated = result.Updated,
                 unchanged = result.Unchanged,
@@ -140,6 +145,7 @@ public sealed class AutomationController : Controller
                 totalExits = result.TotalExits,
                 transferValue = result.TransferValue,
                 flowSummaries = result.FlowSummaries,
+                skippedRows = result.SkippedRows.Take(100),
                 sampleRows = result.SampleRows.Take(50)
             });
         }
@@ -180,6 +186,43 @@ public sealed class AutomationController : Controller
                 suggestedEntries = result.SuggestedEntries,
                 pendingReviewEntries = result.PendingReviewEntries,
                 rows = result.Rows.Take(250)
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("dian-provider-documents/import")]
+    public async Task<IActionResult> ImportDianProviderDocuments(
+        [FromQuery] string? localFilePath,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _dianSupplierDocumentImportService.ImportAsync(localFilePath, dryRun, ct);
+            return Json(new
+            {
+                dryRun = result.DryRun,
+                sourceFileName = result.SourceFileName,
+                rowsRead = result.RowsRead,
+                importableRows = result.ImportableRows,
+                invoiceRows = result.InvoiceRows,
+                supportDocumentRows = result.SupportDocumentRows,
+                skippedRows = result.SkippedRows,
+                created = result.Created,
+                updated = result.Updated,
+                unchanged = result.Unchanged,
+                dataverseRowsSkipped = result.DataverseRowsSkipped,
+                totalValue = result.TotalValue,
+                vatValue = result.VatValue,
+                reteFuenteValue = result.ReteFuenteValue,
+                reteIcaValue = result.ReteIcaValue,
+                reteIvaValue = result.ReteIvaValue,
+                skipped = result.Skipped.Take(100),
+                sampleRows = result.SampleRows.Take(50)
             });
         }
         catch (InvalidOperationException ex)

@@ -6,6 +6,7 @@
     var culture = CultureInfo.GetCultureInfo("es-CO");
     var board = Model.Board;
     var cashFlow = board.CashFlow;
+    var dianInvoices = board.DianSupplierInvoices;
     var activePhase = "flujo-caja";
     string Money(decimal value) => value.ToString("C0", culture);
     string Number(int value) => value.ToString("N0", culture);
@@ -20,8 +21,14 @@
         },
         "salidas-fe" => new[]
         {
-            ("Cruzar con factura", "siigo"),
-            ("Aplicar pago a gastos", "siigo")
+            ("Cruzar pago con documento", "siigo"),
+            ("Aplicar egreso", "siigo")
+        },
+        "registro-dian" => new[]
+        {
+            ("Importar documentos proveedor", "dataverse"),
+            ("Validar proveedor y Siigo", "siigo"),
+            ("Clasificar gasto", "app")
         },
         "entradas-fe" => new[]
         {
@@ -53,6 +60,11 @@
         "huerfanos" => cashFlow.Rows.Where(row => string.Equals(row.DetectedTypeKey, "huerfano", StringComparison.OrdinalIgnoreCase)).ToArray(),
         _ => cashFlow.Rows
     };
+    IReadOnlyList<ConciliacionDianSupplierInvoiceRowDto> DianRowsFor(string stage) => dianInvoices.Rows
+        .Where(row => string.Equals(row.Stage, stage, StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+    string DianSearchText(ConciliacionDianSupplierInvoiceRowDto row) =>
+        $"{row.InvoiceNumber} {row.Cufe} {row.SupplierName} {row.SupplierNit} {row.RecipientName} {row.CategoryLabel} {row.AccountCode} {row.StageLabel} {row.DianStatus} {row.DianGroup}".ToLowerInvariant();
     bool HasPaymentStatus(ConciliacionClientPaymentRowDto row, params string[] statuses) =>
         statuses.Any(status => string.Equals(row.Status, status, StringComparison.OrdinalIgnoreCase));
     IReadOnlyList<ConciliacionClientPaymentRowDto> ClientPaymentRowsFor(string stage) => stage switch
@@ -71,16 +83,6 @@
             @"\b(?:FV|FVE|FEV|FEM|FE|FEDT|FEKT)[-\s]*\d+(?:[-\s]*\d+)?\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         return match.Success ? match.Value.Trim().ToUpperInvariant() : "";
-    }
-    string NormalizeInvoiceName(string value) =>
-        Regex.Replace(value ?? "", @"[^A-Za-z0-9]", "").ToUpperInvariant();
-    bool InvoiceVisualMatch(string flowInvoice, string dataverseInvoice)
-    {
-        var flow = NormalizeInvoiceName(flowInvoice);
-        var dataverse = NormalizeInvoiceName(dataverseInvoice);
-        return !string.IsNullOrWhiteSpace(flow)
-            && !string.IsNullOrWhiteSpace(dataverse)
-            && dataverse.Contains(flow, StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -216,7 +218,315 @@
                         </div>
                     </div>
 
-                    @if (phase.Key == "entradas-fe")
+                    @if (phase.Key == "registro-dian")
+                    {
+                        var providerRows = DianRowsFor("proveedor");
+                        var classificationRows = DianRowsFor("clasificacion");
+                        var readyRows = DianRowsFor("prevalidacion");
+                        var sentRows = DianRowsFor("enviadas");
+                        <section class="cnc-payment-panel">
+                            <div class="cnc-table-toolbar">
+                                <input class="form-control cnc-table-search" type="search" placeholder="Buscar proveedor, NIT, documento o categoria" data-cnc-table-search="@phase.Key" />
+                                <span class="cnc-counter" data-cnc-table-count="@phase.Key">@Number(dianInvoices.Rows.Count) filas</span>
+                            </div>
+
+                            <div class="cnc-pipeline" data-cnc-table-body="@phase.Key">
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>1. Proveedor pendiente Siigo</h3>
+                                        <span data-cnc-stage-count>@Number(providerRows.Count) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Documento</th>
+                                                    <th>Proveedor</th>
+                                                    <th class="text-end">Total</th>
+                                                    <th>Dataverse</th>
+                                                    <th>Siigo</th>
+                                                    <th>Detalle</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in providerRows)
+                                                {
+                                                    var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
+                                                    <tr data-record-id="@row.RecordId"
+                                                        data-flow="@verticalFlow"
+                                                        data-search="@DianSearchText(row)">
+                                                        <td><strong>@row.EmissionDateDisplay</strong><small>@row.DocumentType @row.DianGroup</small><small>@row.ReceptionDateDisplay</small></td>
+                                                        <td><strong>@row.InvoiceNumber</strong><small>@row.Prefix @row.Folio</small><small>@row.DianStatus</small></td>
+                                                        <td><strong>@row.SupplierName</strong><small>@row.SupplierNit</small></td>
+                                                        <td class="text-end">@Money(row.TotalValue)</td>
+                                                        <td><span class="cnc-badge cnc-badge--success">Importada</span><small>@row.SourceLabel</small></td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.ProviderStatusTone">@row.ProviderStatusLabel</span><small>@(string.IsNullOrWhiteSpace(row.SiigoSupplierName) ? "Crear o seleccionar proveedor en Siigo." : row.SiigoSupplierName)</small></td>
+                                                        <td><small>@row.ReviewReason</small></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>2. Pendientes clasificacion</h3>
+                                        <span data-cnc-stage-count>@Number(classificationRows.Count) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Documento / proveedor</th>
+                                                    <th class="text-end">Base</th>
+                                                    <th class="text-end">IVA</th>
+                                                    <th class="text-end">Total</th>
+                                                    <th>Vertical</th>
+                                                    <th>Clasificacion</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in classificationRows)
+                                                {
+                                                    var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
+                                                    <tr data-record-id="@row.RecordId"
+                                                        data-flow="@verticalFlow"
+                                                        data-search="@DianSearchText(row)">
+                                                        <td><strong>@row.EmissionDateDisplay</strong><small>@row.DocumentType @row.DianGroup</small><small>@row.ReceptionDateDisplay</small></td>
+                                                        <td><strong>@row.InvoiceNumber</strong><small>@row.SupplierName</small></td>
+                                                        <td class="text-end">@Money(row.BaseAmount)</td>
+                                                        <td class="text-end">@Money(row.VatValue)</td>
+                                                        <td class="text-end">@Money(row.TotalValue)</td>
+                                                        <td><span class="cnc-badge cnc-badge--neutral">@row.VerticalLabel</span><small>Cloud @Money(row.CloudValue) / Copiers @Money(row.CopiersValue)</small></td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.ClassificationStatusTone">@row.ClassificationStatusLabel</span><small>@row.CategoryLabel @row.AccountCode</small></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>3. Prevalidacion documento Siigo</h3>
+                                        <span data-cnc-stage-count>@Number(readyRows.Count) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Documento / proveedor</th>
+                                                    <th class="text-end">Total</th>
+                                                    <th>Categoria</th>
+                                                    <th>Cuenta gasto</th>
+                                                    <th>Impuestos</th>
+                                                    <th>Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in readyRows)
+                                                {
+                                                    var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
+                                                    <tr data-record-id="@row.RecordId"
+                                                        data-flow="@verticalFlow"
+                                                        data-search="@DianSearchText(row)">
+                                                        <td><strong>@row.EmissionDateDisplay</strong><small>@row.VerticalLabel</small></td>
+                                                        <td><strong>@row.InvoiceNumber</strong><small>@row.SupplierName</small></td>
+                                                        <td class="text-end">@Money(row.TotalValue)</td>
+                                                        <td>@row.CategoryLabel</td>
+                                                        <td><strong>@row.AccountCode</strong><small>@row.AccountName</small></td>
+                                                        <td><small>IVA @Money(row.VatValue) / RIVA @Money(row.ReteIvaValue) / RF @Money(row.ReteFuenteValue) / RICA @Money(row.ReteIcaValue)</small></td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.StageTone">@row.StageLabel</span><small>Crear FC o DS proveedor en Siigo.</small></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>4. Documentos enviados a Siigo</h3>
+                                        <span data-cnc-stage-count>@Number(sentRows.Count) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Documento / proveedor</th>
+                                                    <th class="text-end">Total</th>
+                                                    <th>Documento Siigo</th>
+                                                    <th>Vertical</th>
+                                                    <th>Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in sentRows)
+                                                {
+                                                    var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
+                                                    <tr data-record-id="@row.RecordId"
+                                                        data-flow="@verticalFlow"
+                                                        data-search="@DianSearchText(row)">
+                                                        <td><strong>@row.EmissionDateDisplay</strong><small>@row.DocumentType @row.DianGroup</small><small>@row.ReceptionDateDisplay</small></td>
+                                                        <td><strong>@row.InvoiceNumber</strong><small>@row.SupplierName</small></td>
+                                                        <td class="text-end">@Money(row.TotalValue)</td>
+                                                        <td><strong>@row.SiigoDocumentName</strong><small>@row.SiigoDocumentId</small></td>
+                                                        <td>@row.VerticalLabel</td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.SiigoStatusTone">@row.SiigoStatusLabel</span></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </div>
+                        </section>
+                    }
+                    else if (phase.Key == "salidas-fe")
+                    {
+                        var supplierReadyRows = dianInvoices.Rows
+                            .Where(row => string.Equals(row.Stage, "prevalidacion", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(row.Stage, "enviadas", StringComparison.OrdinalIgnoreCase))
+                            .ToArray();
+                        var siigoOutgoingRows = phaseRows
+                            .Where(row => row.RegistrationStatus.Contains("Siigo OK", StringComparison.OrdinalIgnoreCase)
+                                || row.SiigoPaymentStatus.Contains("Enviado", StringComparison.OrdinalIgnoreCase)
+                                || row.SiigoPaymentStatus.Contains("OK", StringComparison.OrdinalIgnoreCase))
+                            .ToArray();
+                        var pendingOutgoingRows = phaseRows
+                            .Where(row => !siigoOutgoingRows.Any(sent => string.Equals(sent.RecordId, row.RecordId, StringComparison.OrdinalIgnoreCase)))
+                            .ToArray();
+                        <section class="cnc-payment-panel">
+                            <div class="cnc-table-toolbar">
+                                <input class="form-control cnc-table-search" type="search" placeholder="Buscar proveedor, banco, documento o descripcion" data-cnc-table-search="@phase.Key" />
+                                <span class="cnc-counter" data-cnc-table-count="@phase.Key">@Number(phaseRows.Count + supplierReadyRows.Length) filas</span>
+                            </div>
+
+                            <div class="cnc-pipeline" data-cnc-table-body="@phase.Key">
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>1. Salidas FE del flujo de caja</h3>
+                                        <span data-cnc-stage-count>@Number(pendingOutgoingRows.Length) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Banco</th>
+                                                    <th>Descripcion / proveedor</th>
+                                                    <th class="text-end">Salida</th>
+                                                    <th>Documento Dataverse</th>
+                                                    <th>Documento Siigo</th>
+                                                    <th>Accion</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in pendingOutgoingRows)
+                                                {
+                                                    <tr class="cnc-click-row"
+                                                        data-cnc-reassign
+                                                        data-record-id="@row.RecordId"
+                                                        data-flow="@row.SourceFlow"
+                                                        data-search="@SearchText(row)"
+                                                        data-direction="@row.Direction"
+                                                        data-current-type="@row.DetectedTypeKey"
+                                                        data-description="@row.Description">
+                                                        <td><strong>@row.MovementDateDisplay</strong><small>@row.SourceFlow</small></td>
+                                                        <td><strong>@row.BankAccountCode</strong><small>@row.BankAccountName</small></td>
+                                                        <td><strong>@(string.IsNullOrWhiteSpace(row.Description) ? row.Recipient : row.Description)</strong><small>@row.DocumentType @row.Observations</small></td>
+                                                        <td class="text-end">@Money(row.ExitValue)</td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.InvoiceStatusTone">@row.InvoiceStatus</span><small>@row.DataversePaymentStatus</small></td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.SiigoDocumentTone">@row.SiigoDocumentStatus</span><small>@row.SiigoPaymentStatus</small></td>
+                                                        <td><button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-open-reassign>Categoria</button></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>2. Documentos proveedor disponibles</h3>
+                                        <span data-cnc-stage-count>@Number(supplierReadyRows.Length) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Documento / proveedor</th>
+                                                    <th class="text-end">Total documento</th>
+                                                    <th>Documento Siigo</th>
+                                                    <th>Vertical</th>
+                                                    <th>Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in supplierReadyRows)
+                                                {
+                                                    var verticalFlow = string.Equals(row.VerticalLabel, "Sin vertical", StringComparison.OrdinalIgnoreCase) ? "" : row.VerticalLabel;
+                                                    <tr data-record-id="@row.RecordId"
+                                                        data-flow="@verticalFlow"
+                                                        data-search="@DianSearchText(row)">
+                                                        <td><strong>@row.EmissionDateDisplay</strong><small>@row.DocumentType @row.DianGroup</small><small>@row.ReceptionDateDisplay</small></td>
+                                                        <td><strong>@row.InvoiceNumber</strong><small>@row.SupplierName</small></td>
+                                                        <td class="text-end">@Money(row.TotalValue)</td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.SiigoStatusTone">@row.SiigoStatusLabel</span><small>@row.SiigoDocumentName</small></td>
+                                                        <td>@row.VerticalLabel</td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.StageTone">@row.StageLabel</span></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section class="cnc-pipeline-stage">
+                                    <header class="cnc-pipeline-stage__header">
+                                        <h3>3. Pagos proveedor enviados / errores</h3>
+                                        <span data-cnc-stage-count>@Number(siigoOutgoingRows.Length) filas</span>
+                                    </header>
+                                    <div class="cnc-table-wrap">
+                                        <table class="table align-middle cnc-table cnc-table--pipeline">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Banco</th>
+                                                    <th>Descripcion</th>
+                                                    <th class="text-end">Salida</th>
+                                                    <th>Siigo</th>
+                                                    <th>Saldo</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var row in siigoOutgoingRows)
+                                                {
+                                                    <tr data-record-id="@row.RecordId"
+                                                        data-flow="@row.SourceFlow"
+                                                        data-search="@SearchText(row)">
+                                                        <td><strong>@row.MovementDateDisplay</strong><small>@row.SourceFlow</small></td>
+                                                        <td><strong>@row.BankAccountCode</strong><small>@row.BankAccountName</small></td>
+                                                        <td><strong>@row.Description</strong><small>@row.Recipient</small></td>
+                                                        <td class="text-end">@Money(row.ExitValue)</td>
+                                                        <td><span class="cnc-badge cnc-badge--@row.SiigoPaymentTone">@row.SiigoPaymentStatus</span><small>@row.SiigoDocumentStatus</small></td>
+                                                        <td>@row.InvoiceBalanceStatus</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </div>
+                        </section>
+                    }
+                    else if (phase.Key == "entradas-fe")
                     {
                         var detectedRows = ClientPaymentRowsFor("detectadas");
                         var crossRows = ClientPaymentRowsFor("cruce");
@@ -299,11 +609,11 @@
                                             <thead>
                                                 <tr>
                                                     <th>Fecha</th>
-                                                    <th>Banco</th>
-                                                    <th>Factura flujo</th>
-                                                    <th>Factura Dataverse</th>
-                                                    <th>Cliente</th>
+                                                    <th>Factura / cliente flujo de caja</th>
+                                                    <th>Factura / cliente Dataverse</th>
                                                     <th class="text-end">Entrada</th>
+                                                    <th class="text-end">Valor Dataverse</th>
+                                                    <th>Cliente</th>
                                                     <th class="text-end">Diferencia</th>
                                                     <th>Estado</th>
                                                 </tr>
@@ -313,7 +623,6 @@
                                                 {
                                                     var search = $"{row.InvoiceNumbers} {row.ClientNames} {row.Description} {row.BankAccountName}".ToLowerInvariant();
                                                     var flowInvoice = InvoiceFromFlow(row);
-                                                    var sameInvoice = InvoiceVisualMatch(flowInvoice, row.InvoiceNumbers);
                                                     <tr class="cnc-click-row"
                                                         data-cnc-invoice-assign
                                                         data-record-id="@row.RecordId"
@@ -326,14 +635,11 @@
                                                         data-dataverse-client="@row.ClientNames"
                                                         data-entry-value="@row.EntryValue.ToString(CultureInfo.InvariantCulture)">
                                                         <td><strong>@row.MovementDateDisplay</strong><small>@row.SourceFlow</small></td>
-                                                        <td><strong>@row.BankAccountCode</strong><small>@row.BankAccountName</small></td>
-                                                        <td><strong>@(string.IsNullOrWhiteSpace(flowInvoice) ? "Sin factura" : flowInvoice)</strong><small>Excel flujo de caja</small></td>
-                                                        <td>
-                                                            <strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong>
-                                                            <small class="cnc-tone-@(sameInvoice ? "success" : "warning")">@(sameInvoice ? "Coincide" : "Revisar coincidencia")</small>
-                                                        </td>
-                                                        <td>@(string.IsNullOrWhiteSpace(row.ClientNames) ? "Sin cliente" : row.ClientNames)</td>
+                                                        <td><strong>@(string.IsNullOrWhiteSpace(flowInvoice) ? "Sin factura" : flowInvoice)</strong><small>@row.Description</small></td>
+                                                        <td><strong>@(string.IsNullOrWhiteSpace(row.InvoiceNumbers) ? "Sin factura" : row.InvoiceNumbers)</strong><small>@(string.IsNullOrWhiteSpace(row.ClientNames) ? "Sin cliente" : row.ClientNames)</small></td>
                                                         <td class="text-end">@Money(row.EntryValue)</td>
+                                                        <td class="text-end">@Money(row.InvoiceTotal)</td>
+                                                        <td>@(string.IsNullOrWhiteSpace(row.ClientNames) ? "Sin cliente" : row.ClientNames)</td>
                                                         <td class="text-end @(Math.Abs(row.DifferenceValue) > 5000 ? "cnc-money-warning" : "")">@Money(row.DifferenceValue)</td>
                                                         <td>
                                                             @if (HasPaymentStatus(row, "Sugerido"))
@@ -439,12 +745,6 @@
                                                             <span class="cnc-badge cnc-badge--@row.PreflightStatusTone" data-preflight-label>@row.PreflightStatusLabel</span>
                                                             <small data-preflight-message>@(string.IsNullOrWhiteSpace(row.PreflightMessage) ? "Sin validacion pre-Siigo." : row.PreflightMessage)</small>
                                                             <ul class="cnc-issue-list" data-preflight-issues hidden></ul>
-                                                            <small data-siigo-dryrun-message>Sin simulacion de envio.</small>
-                                                            <ul class="cnc-issue-list" data-siigo-dryrun-issues hidden></ul>
-                                                            <details class="cnc-json-preview" data-siigo-dryrun-preview hidden>
-                                                                <summary>Payload contable interno</summary>
-                                                                <pre data-siigo-dryrun-payload></pre>
-                                                            </details>
                                                             <small data-siigo-send-message>Sin envio real.</small>
                                                             <ul class="cnc-issue-list" data-siigo-send-issues hidden></ul>
                                                             <details class="cnc-json-preview" data-siigo-send-payload-preview hidden>
@@ -460,7 +760,6 @@
                                                         <td>
                                                             <div class="cnc-row-actions">
                                                                 <button type="button" class="btn btn-sm btn-outline-primary" data-cnc-preflight>Validar pre-Siigo</button>
-                                                                <button type="button" class="btn btn-sm btn-outline-dark" data-cnc-dry-run>Simular envio</button>
                                                                 <button type="button"
                                                                         class="btn btn-sm btn-danger"
                                                                         data-cnc-send-siigo

@@ -205,6 +205,8 @@
         const body = app.querySelector(`[data-cnc-table-body="${CSS.escape(key)}"]`);
         const count = app.querySelector(`[data-cnc-table-count="${CSS.escape(key)}"]`);
         const query = normalizeText(input?.value);
+        const stageCounters = Array.from(body?.querySelectorAll("[data-cnc-stage-count]") || []);
+        const stageCounts = new Map(stageCounters.map((counter) => [counter, 0]));
         let visible = 0;
 
         Array.from(body?.querySelectorAll("tr[data-record-id]") || []).forEach((row) => {
@@ -213,12 +215,19 @@
             row.hidden = !matches;
             if (matches) {
                 visible += 1;
+                const counter = row.closest(".cnc-pipeline-stage")?.querySelector("[data-cnc-stage-count]");
+                if (counter) {
+                    stageCounts.set(counter, (stageCounts.get(counter) || 0) + 1);
+                }
             }
         });
 
         if (count) {
             count.textContent = rowCountLabel(visible);
         }
+        stageCounters.forEach((counter) => {
+            counter.textContent = rowCountLabel(stageCounts.get(counter) || 0);
+        });
         updateVerticalCount();
     };
 

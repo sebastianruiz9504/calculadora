@@ -37,6 +37,7 @@ builder.Services.Configure<ExpenseAccountingRulesOptions>(builder.Configuration.
 builder.Services.Configure<ExpenseAccountingTemplateOptions>(builder.Configuration.GetSection("ExpenseAccountingTemplates"));
 builder.Services.Configure<CashFlowImportOptions>(builder.Configuration.GetSection("CashFlowImport"));
 builder.Services.Configure<CashFlowMatchingOptions>(builder.Configuration.GetSection("CashFlowMatching"));
+builder.Services.Configure<DianSupplierDocumentImportOptions>(builder.Configuration.GetSection("DianSupplierDocumentImport"));
 builder.Services.AddHttpClient<ISiigoService, SiigoService>((serviceProvider, client) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -75,6 +76,7 @@ builder.Services.AddScoped<IExpenseAccountingRuleService, ExpenseAccountingRuleS
 builder.Services.AddScoped<IExpenseAccountingTemplateService, ExpenseAccountingTemplateService>();
 builder.Services.AddScoped<ICashFlowImportService, CashFlowImportService>();
 builder.Services.AddScoped<ICashFlowMatchingService, CashFlowMatchingService>();
+builder.Services.AddScoped<IDianSupplierDocumentImportService, DianSupplierDocumentImportService>();
 builder.Services.AddSingleton<ReportesGenerationQueue>();
 builder.Services.AddSingleton<IReportesGenerationQueue>(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<ReportesGenerationQueue>());
@@ -89,6 +91,21 @@ builder.Services.Configure<CalculatorOptions>(builder.Configuration.GetSection("
 builder.Services.Configure<SupplierPortalOptions>(builder.Configuration.GetSection("SupplierPortal"));
 builder.Services.Configure<RhOptions>(builder.Configuration.GetSection("Rh"));
 builder.Services.Configure<HardwareOptions>(builder.Configuration.GetSection("Hardware"));
+
+if (args.Any(static arg => string.Equals(arg, "--import-dian-provider-documents", StringComparison.OrdinalIgnoreCase)))
+{
+    var importFile = ResolveCommandArgument(args, "--file");
+    var dryRun = ResolveCommandFlag(args, "--dry-run", defaultValue: false);
+    using var commandApp = builder.Build();
+    using var scope = commandApp.Services.CreateScope();
+    var service = scope.ServiceProvider.GetRequiredService<IDianSupplierDocumentImportService>();
+    var result = await service.ImportAsync(importFile, dryRun);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+        result,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    return;
+}
+
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.Unspecified;
@@ -128,3 +145,23 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+static string ResolveCommandArgument(string[] args, string name)
+{
+    for (var i = 0; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+            return args[i + 1];
+    }
+
+    return "";
+}
+
+static bool ResolveCommandFlag(string[] args, string name, bool defaultValue)
+{
+    var value = ResolveCommandArgument(args, name);
+    if (bool.TryParse(value, out var parsed))
+        return parsed;
+
+    return defaultValue;
+}

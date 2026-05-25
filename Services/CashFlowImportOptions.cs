@@ -9,6 +9,9 @@ public sealed class CashFlowImportOptions
     public string TimeZoneId { get; set; } = "SA Pacific Standard Time";
     public bool DryRun { get; set; }
     public bool IncludeFutureRows { get; set; }
+    public bool SendSummaryEmail { get; set; } = true;
+    public bool SendSummaryEmailOnDryRun { get; set; }
+    public string SummaryRecipientEmail { get; set; } = "sruiz@digitaltechcolombia.com";
     public string DriveId { get; set; } = "";
     public string ItemId { get; set; } = "";
     public string FileName { get; set; } = "Pagos de facturas copiers y cloud.xlsx";
