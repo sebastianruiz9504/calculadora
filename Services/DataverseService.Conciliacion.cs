@@ -559,8 +559,7 @@ public sealed partial class DataverseService
         var orderBy = Uri.EscapeDataString($"{ClientPaymentMatchMovementDateField} desc");
         var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}";
         var rows = await GetDataverseAppEntitiesAsync(url, ct, AddFormattedValueHeaders);
-
-        return rows
+        var parsedRows = rows
             .Select(item => ParseConciliacionClientPaymentRow(item, metadata))
             .Where(static row => row is not null)
             .Cast<ConciliacionClientPaymentRowDto>()
@@ -570,6 +569,9 @@ public sealed partial class DataverseService
             .ThenBy(static row => row.SourceFlow, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static row => row.ClientNames, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        await AutoValidateConciliacionClientPaymentRowsAsync(metadata, attributes, parsedRows, ct);
+        return parsedRows;
     }
 
     private async Task<ConciliacionClientPaymentRowDto?> GetConciliacionClientPaymentByIdAsync(
@@ -587,6 +589,115 @@ public sealed partial class DataverseService
 
         using var doc = JsonDocument.Parse(json);
         return ParseConciliacionClientPaymentRow(doc.RootElement, metadata);
+    }
+
+    private async Task AutoValidateConciliacionClientPaymentRowsAsync(
+        RhEntityMetadata metadata,
+        ISet<string> attributes,
+        IReadOnlyList<ConciliacionClientPaymentRowDto> rows,
+        CancellationToken ct)
+    {
+        var candidates = rows
+            .Where(IsAutoReadyConciliacionClientPaymentCandidate)
+            .ToArray();
+        if (candidates.Length == 0)
+            return;
+
+        var catalog = await GetConciliacionAccountCatalogAsync(ct);
+        using var throttler = new SemaphoreSlim(4);
+        var tasks = candidates.Select(async row =>
+        {
+            ct.ThrowIfCancellationRequested();
+            await throttler.WaitAsync(ct);
+            try
+            {
+                await TryAutoValidateConciliacionClientPaymentRowAsync(metadata, attributes, row, catalog, ct);
+            }
+            finally
+            {
+                throttler.Release();
+            }
+        }).ToArray();
+
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task TryAutoValidateConciliacionClientPaymentRowAsync(
+        RhEntityMetadata metadata,
+        ISet<string> attributes,
+        ConciliacionClientPaymentRowDto row,
+        IReadOnlyDictionary<string, ConciliacionAccountCatalogItem> catalog,
+        CancellationToken ct)
+    {
+        var preflight = ValidateConciliacionClientPaymentDraft(row, catalog);
+        if (preflight.Issues.Count > 0)
+            return;
+
+        var message = BuildConciliacionAutoReadyMessage(row);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchStatusField, null, "ListoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReasonField, null, message, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightStatusField, null, "ListoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightMessageField, null, message, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightValidatedOnField, (DateTimeOffset?)null, DateTimeOffset.UtcNow, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightDebitField, (decimal?)null, preflight.DebitTotal, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightCreditField, (decimal?)null, preflight.CreditTotal, force: true);
+
+        if (payload.Count == 0)
+            return;
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({row.RecordId})",
+            "PATCH",
+            payload,
+            ct);
+
+        row.Status = "ListoSiigo";
+        row.StatusLabel = ResolveConciliacionStatusLabel(row.Status);
+        row.StatusTone = ResolveConciliacionStatusTone(row.Status);
+        row.Reason = message;
+        row.PreflightStatus = "ListoSiigo";
+        row.PreflightStatusLabel = ResolveConciliacionPreflightStatusLabel(row.PreflightStatus);
+        row.PreflightStatusTone = ResolveConciliacionPreflightStatusTone(row.PreflightStatus);
+        row.PreflightMessage = message;
+        row.PreflightDebitTotal = preflight.DebitTotal;
+        row.PreflightCreditTotal = preflight.CreditTotal;
+        row.PreflightValidatedOnDisplay = FormatConciliacionDateTimeDisplay(DateTimeOffset.UtcNow);
+    }
+
+    private static bool IsAutoReadyConciliacionClientPaymentCandidate(ConciliacionClientPaymentRowDto row)
+    {
+        if (!string.Equals(row.Status, "Sugerido", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (string.Equals(row.PreflightStatus, "ListoSiigo", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (row.Confidence < 90)
+            return false;
+        if (row.EntryValue <= 0m || row.InvoiceTotal <= 0m)
+            return false;
+        if (Math.Abs(row.DifferenceValue) > 5m)
+            return false;
+        if (string.IsNullOrWhiteSpace(row.RecordId)
+            || string.IsNullOrWhiteSpace(row.InvoiceRecordIds)
+            || string.IsNullOrWhiteSpace(row.InvoiceNumbers)
+            || string.IsNullOrWhiteSpace(row.ClientNames)
+            || string.IsNullOrWhiteSpace(row.BankAccountCode)
+            || string.IsNullOrWhiteSpace(row.DraftJson))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string BuildConciliacionAutoReadyMessage(ConciliacionClientPaymentRowDto row)
+    {
+        var adjustment = Math.Abs(row.DifferenceValue) > 0m
+            ? $" Ajuste al peso: {row.DifferenceValue:N2}."
+            : "";
+        return TruncateAccountCatalogText(
+            $"Auto-validado: factura, cliente, banco, retenciones y comprobante contable completos.{adjustment}",
+            1000);
     }
 
     private async Task<BillingRecordRow?> GetConciliacionBillingRecordByIdAppAsync(

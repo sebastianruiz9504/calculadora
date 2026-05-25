@@ -43,6 +43,8 @@
     let activeVertical = app.dataset.activeVertical || "Cloud";
     let syncLoaded = false;
     let syncLoading = false;
+    const validTabKeys = new Set(tabButtons.map((button) => button.dataset.cncTab || "").filter(Boolean));
+    const activeTabStorageKey = `conciliacion.activeTab:${window.location.pathname}:${window.location.search}`;
 
     const categoryOptions = {
         Entrada: [
@@ -94,23 +96,72 @@
         statusBox.classList.toggle("show", Boolean(message));
     };
 
-    const setActiveTab = (key) => {
+    const resolveTabKey = (key) => {
+        const candidate = String(key || "").trim();
+        if (validTabKeys.has(candidate)) {
+            return candidate;
+        }
+
+        return tabButtons.find((button) => button.classList.contains("is-active"))?.dataset.cncTab
+            || tabButtons[0]?.dataset.cncTab
+            || "";
+    };
+
+    const persistActiveTab = (key) => {
+        const resolved = resolveTabKey(key);
+        if (!resolved) {
+            return;
+        }
+
+        try {
+            window.localStorage.setItem(activeTabStorageKey, resolved);
+        } catch {
+            // Local storage can be disabled; the URL hash still preserves the tab.
+        }
+
+        const nextUrl = `${window.location.pathname}${window.location.search}#${encodeURIComponent(resolved)}`;
+        window.history.replaceState(null, "", nextUrl);
+    };
+
+    const resolveInitialTab = () => {
+        const hashTab = decodeURIComponent((window.location.hash || "").replace(/^#/, ""));
+        if (validTabKeys.has(hashTab)) {
+            return hashTab;
+        }
+
+        try {
+            const stored = window.localStorage.getItem(activeTabStorageKey) || "";
+            if (validTabKeys.has(stored)) {
+                return stored;
+            }
+        } catch {
+            // Ignore storage errors and keep the server-rendered active tab.
+        }
+
+        return resolveTabKey("");
+    };
+
+    const setActiveTab = (key, persist = true) => {
+        const resolvedKey = resolveTabKey(key);
         tabButtons.forEach((button) => {
-            const active = button.dataset.cncTab === key;
+            const active = button.dataset.cncTab === resolvedKey;
             button.classList.toggle("is-active", active);
             button.setAttribute("aria-selected", active ? "true" : "false");
         });
 
         panels.forEach((panel) => {
-            const active = panel.dataset.cncPanel === key;
+            const active = panel.dataset.cncPanel === resolvedKey;
             panel.classList.toggle("is-active", active);
             panel.hidden = !active;
         });
 
         if (verticalBar) {
-            verticalBar.hidden = key === "sincronizacion";
+            verticalBar.hidden = resolvedKey === "sincronizacion";
         }
-        if (key === "sincronizacion") {
+        if (persist) {
+            persistActiveTab(resolvedKey);
+        }
+        if (resolvedKey === "sincronizacion") {
             loadSyncHealth();
         }
     };
@@ -217,6 +268,43 @@
         applyPaymentFilters();
         genericTableSearches.forEach((input) => applyGenericTableFilter(input.dataset.cncTableSearch || ""));
         updateVerticalCount();
+    };
+
+    const setCollapsibleState = (section, collapsed) => {
+        section.dataset.cncCollapsed = collapsed ? "true" : "false";
+        const button = section.querySelector(":scope > .cnc-pipeline-stage__header [data-cnc-collapse-toggle], :scope > .cnc-table-toolbar [data-cnc-collapse-toggle]");
+        if (button) {
+            button.textContent = collapsed ? "Expandir" : "Contraer";
+            button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
+    };
+
+    const initializeCollapsibleTables = () => {
+        const sections = Array.from(app.querySelectorAll(".cnc-pipeline-stage, .cnc-payment-panel"))
+            .filter((section) => section.querySelector(":scope > .cnc-table-wrap"));
+
+        sections.forEach((section, index) => {
+            section.dataset.cncCollapsible = "true";
+            const tableWrap = section.querySelector(":scope > .cnc-table-wrap");
+            const header = section.querySelector(":scope > .cnc-pipeline-stage__header")
+                || section.querySelector(":scope > .cnc-table-toolbar");
+            if (!tableWrap || !header || header.querySelector("[data-cnc-collapse-toggle]")) {
+                setCollapsibleState(section, true);
+                return;
+            }
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "cnc-collapse-button";
+            button.dataset.cncCollapseToggle = "";
+            button.setAttribute("aria-controls", `cncTableSection${index}`);
+            tableWrap.id = tableWrap.id || `cncTableSection${index}`;
+            button.addEventListener("click", () => {
+                setCollapsibleState(section, section.dataset.cncCollapsed !== "true");
+            });
+            header.appendChild(button);
+            setCollapsibleState(section, true);
+        });
     };
 
     const statusTone = (status) => {
@@ -978,6 +1066,7 @@
         button.addEventListener("click", (event) => {
             event.stopPropagation();
             setActiveTab(button.dataset.cncTabTarget || "");
+            refreshAllFilters();
         });
     });
 
@@ -1075,5 +1164,7 @@
         });
     });
 
+    initializeCollapsibleTables();
+    setActiveTab(resolveInitialTab(), false);
     refreshAllFilters();
 })();
