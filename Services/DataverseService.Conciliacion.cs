@@ -534,11 +534,79 @@ public sealed partial class DataverseService
             ct);
 
         var row = await GetConciliacionClientPaymentByIdAsync(metadata, normalizedRecordId, ct);
+        if (success && row is not null)
+            await MarkConciliacionCashFlowMovementSiigoResultAsync(row, siigoId, siigoName, detailMessage, ct);
+
         return new ConciliacionActionResultDto
         {
             Message = detailMessage,
             Row = row
         };
+    }
+
+    private async Task MarkConciliacionCashFlowMovementSiigoResultAsync(
+        ConciliacionClientPaymentRowDto row,
+        string siigoId,
+        string siigoName,
+        string detailMessage,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(row.MovementExternalKey)
+            && string.IsNullOrWhiteSpace(row.MovementId))
+        {
+            return;
+        }
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+
+        var movementId = Guid.TryParse(row.MovementId, out var parsedMovementId)
+            ? parsedMovementId.ToString("D")
+            : await FindConciliacionCashFlowMovementIdByExternalKeyAsync(metadata, row.MovementExternalKey, ct);
+        if (string.IsNullOrWhiteSpace(movementId))
+            return;
+
+        var siigoReference = FirstNonEmpty(siigoName, siigoId, "Comprobante enviado a Siigo");
+        var message = TruncateAccountCatalogText(
+            $"Pago cliente enviado a Siigo: {siigoReference}. {detailMessage}".Trim(),
+            1000);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, "EnviadoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoStatusField, null, "EnviadoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentIdField, null, siigoId, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, message, force: true);
+
+        if (payload.Count == 0)
+            return;
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+    }
+
+    private async Task<string> FindConciliacionCashFlowMovementIdByExternalKeyAsync(
+        RhEntityMetadata metadata,
+        string externalKey,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(externalKey))
+            return "";
+
+        var filter = $"{CashFlowExternalKeyField} eq '{EscapeOdataLiteral(externalKey.Trim())}'";
+        var select = Uri.EscapeDataString(metadata.PrimaryIdField);
+        var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var rows = await GetDataverseAppEntitiesAsync(url, ct);
+        return rows
+            .Select(row => ReadString(row, metadata.PrimaryIdField).Trim())
+            .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? "";
     }
 
     private async Task<IReadOnlyList<ConciliacionClientPaymentRowDto>> GetConciliacionClientPaymentsAsync(
@@ -1116,6 +1184,12 @@ public sealed partial class DataverseService
         row.ActionTargetKey = detection.TargetKey;
         row.CanValidate = !string.Equals(detection.Key, "traslado-interno", StringComparison.OrdinalIgnoreCase);
 
+        if (IsConciliacionCashFlowPostSendChange(row.DataverseStatus, siigoStatus))
+        {
+            ApplyConciliacionCashFlowPostSendChange(row);
+            return;
+        }
+
         if (string.Equals(detection.Key, "traslado-interno", StringComparison.OrdinalIgnoreCase))
         {
             row.ValidationStatus = "Interno";
@@ -1163,6 +1237,12 @@ public sealed partial class DataverseService
         row.ActionTargetKey = "entradas-fe";
         row.CanValidate = true;
 
+        if (IsConciliacionCashFlowPostSendChange(row.DataverseStatus, row.SiigoStatus))
+        {
+            ApplyConciliacionCashFlowPostSendChange(row);
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(match.InvoiceNumbers)
             || string.Equals(row.DetectedTypeKey, "huerfano", StringComparison.OrdinalIgnoreCase))
         {
@@ -1173,14 +1253,14 @@ public sealed partial class DataverseService
 
         row.ValidationStatus = match.Status switch
         {
-            "Aprobado" or "ListoSiigo" => "Validada",
+            "Aprobado" or "ListoSiigo" or "EnviadoSiigo" or "Conciliado" => "Validada",
             "Sugerido" => "Pendiente validar",
             "Rechazado" => "Rechazada",
             _ => "Revisar"
         };
         row.ValidationTone = match.Status switch
         {
-            "Aprobado" or "ListoSiigo" => "success",
+            "Aprobado" or "ListoSiigo" or "EnviadoSiigo" or "Conciliado" => "success",
             "Sugerido" => "info",
             "Rechazado" => "danger",
             _ => "warning"
@@ -1193,14 +1273,44 @@ public sealed partial class DataverseService
             ? $"Pago Dataverse OK con retenciones {match.RetentionsTotal:N0}"
             : "Pago Dataverse OK sin retenciones";
         row.DataversePaymentTone = "success";
-        row.SiigoPaymentStatus = string.Equals(match.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase)
-            ? "Listo para envio Siigo"
-            : "Pendiente envio Siigo";
-        row.SiigoPaymentTone = string.Equals(match.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase) ? "info" : "warning";
-        row.RegistrationStatus = string.Equals(match.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase)
-            ? "Dataverse OK / listo Siigo"
-            : "Dataverse OK / Siigo pendiente";
-        row.RegistrationTone = string.Equals(match.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase) ? "info" : "warning";
+        var sentToSiigo = string.Equals(match.Status, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(match.Status, "Conciliado", StringComparison.OrdinalIgnoreCase);
+        var readyForSiigo = string.Equals(match.Status, "ListoSiigo", StringComparison.OrdinalIgnoreCase);
+        row.SiigoPaymentStatus = sentToSiigo
+            ? "Enviado Siigo"
+            : readyForSiigo
+                ? "Listo para envio Siigo"
+                : "Pendiente envio Siigo";
+        row.SiigoPaymentTone = sentToSiigo ? "success" : readyForSiigo ? "info" : "warning";
+        row.RegistrationStatus = sentToSiigo
+            ? "Dataverse OK / Siigo OK"
+            : readyForSiigo
+                ? "Dataverse OK / listo Siigo"
+                : "Dataverse OK / Siigo pendiente";
+        row.RegistrationTone = sentToSiigo ? "success" : readyForSiigo ? "info" : "warning";
+    }
+
+    private static void ApplyConciliacionCashFlowPostSendChange(ConciliacionCashFlowRowDto row)
+    {
+        row.ValidationStatus = "Cambio posterior";
+        row.ValidationTone = "danger";
+        row.RegistrationStatus = "Cambio en Excel despues de Siigo";
+        row.RegistrationTone = "danger";
+        row.InvoiceStatus = "Revisar cambio";
+        row.InvoiceStatusTone = "danger";
+        row.SiigoDocumentStatus = "Siigo ya tenia registro";
+        row.SiigoDocumentTone = "warning";
+        row.SiigoPaymentStatus = "Bloqueado por cambio";
+        row.SiigoPaymentTone = "danger";
+        row.InvoiceBalanceStatus = "Revisar manual";
+        row.DataversePaymentStatus = "No sobreescrito";
+        row.DataversePaymentTone = "warning";
+    }
+
+    private static bool IsConciliacionCashFlowPostSendChange(string status, string siigoStatus)
+    {
+        return string.Equals(status, "CambioPostEnvio", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(siigoStatus, "CambioPostEnvio", StringComparison.OrdinalIgnoreCase);
     }
 
     private static (string Key, string Label, string Tone, string TargetKey) ResolveConciliacionCashFlowDetectedType(
