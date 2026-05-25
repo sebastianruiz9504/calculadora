@@ -465,7 +465,7 @@
                                                                         class="btn btn-sm btn-danger"
                                                                         data-cnc-send-siigo
                                                                         @(HasPaymentStatus(row, "ListoSiigo") ? null : "disabled")>
-                                                                    Enviar a Siigo
+                                                                    Enviar comprobante
                                                                 </button>
                                                             </div>
                                                         </td>
@@ -522,7 +522,7 @@
                                                         <td>
                                                             @if (HasPaymentStatus(row, "ErrorSiigo"))
                                                             {
-                                                                <button type="button" class="btn btn-sm btn-danger" data-cnc-send-siigo>Reintentar envio</button>
+                                                                <button type="button" class="btn btn-sm btn-danger" data-cnc-send-siigo>Reintentar comprobante</button>
                                                             }
                                                         </td>
                                                     </tr>

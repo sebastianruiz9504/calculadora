@@ -672,7 +672,7 @@
             return;
         }
 
-        const confirmed = window.confirm("Esto creara un recibo/comprobante real en Siigo. Revisa que la fila sea la correcta antes de continuar.");
+        const confirmed = window.confirm("Esto creara un comprobante de ingreso real en Siigo. Revisa que la fila sea la correcta antes de continuar.");
         if (!confirmed) {
             return;
         }

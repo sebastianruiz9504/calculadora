@@ -594,12 +594,11 @@ public sealed partial class DataverseService
         {
             lines.Add(new
             {
-                accountCode = "",
-                accountName = "Rete IVA pendiente de mapeo",
+                accountCode = "13551701",
+                accountName = "Rete IVA",
                 description = "RteIVA",
                 debit = row.RteIvaValue,
-                credit = 0m,
-                requiresAccountMapping = true
+                credit = 0m
             });
         }
 

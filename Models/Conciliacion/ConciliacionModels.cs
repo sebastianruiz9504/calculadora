@@ -244,6 +244,8 @@ public sealed class ConciliacionSiigoSendPreparedDto
     public string Message { get; set; } = "";
     public bool CanSend { get; set; }
     public string TargetEndpoint { get; set; } = "";
+    public string CustomerIdentification { get; set; } = "";
+    public IReadOnlyList<string> InvoiceNumbers { get; set; } = Array.Empty<string>();
     public object? Payload { get; set; }
     public string PayloadJson { get; set; } = "";
     public IReadOnlyList<string> Issues { get; set; } = Array.Empty<string>();
@@ -270,6 +272,18 @@ public sealed class SiigoVoucherCreateResultDto
     public string Number { get; set; } = "";
     public string Date { get; set; } = "";
     public string RawJson { get; set; } = "";
+}
+
+public sealed class SiigoDocumentTypeLookupDto
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string Type { get; set; } = "";
+    public bool Active { get; set; }
+    public bool AutomaticNumber { get; set; }
+    public int Consecutive { get; set; }
 }
 
 public sealed class SiigoTaxLookupDto

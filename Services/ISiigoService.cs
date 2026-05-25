@@ -34,7 +34,16 @@ public interface ISiigoService
 
     Task<IReadOnlyList<SiigoTaxLookupDto>> GetTaxesAsync(CancellationToken ct = default);
 
+    Task<IReadOnlyList<SiigoDocumentTypeLookupDto>> GetDocumentTypesAsync(
+        string type,
+        CancellationToken ct = default);
+
     Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default);
+
+    Task<SiigoVoucherCreateResultDto> CreateJournalAsync(
         object payload,
         string? idempotencyKey = null,
         CancellationToken ct = default);

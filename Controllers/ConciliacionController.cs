@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Conciliacion;
@@ -164,7 +166,25 @@ public sealed class ConciliacionController : Controller
 
         try
         {
-            return Ok(await _dataverse.SimulateConciliacionClientPaymentSiigoSendAsync(request.RecordId, ct));
+            var prepared = await PrepareClientPaymentForSiigoSendAsync(request.RecordId, ct);
+            var totals = CalculatePreparedJournalTotals(prepared.PayloadJson);
+
+            return Ok(new ConciliacionSiigoDryRunResultDto
+            {
+                Message = prepared.CanSend
+                    ? "Simulacion correcta. El payload real esta completo y aun no se envio nada a Siigo."
+                    : prepared.Message,
+                IsReadyForSiigo = prepared.CanSend,
+                TargetEndpoint = string.IsNullOrWhiteSpace(prepared.TargetEndpoint)
+                    ? "DRY-RUN /v1/journals"
+                    : $"DRY-RUN {prepared.TargetEndpoint}",
+                PayloadJson = prepared.PayloadJson,
+                LineCount = totals.LineCount,
+                DebitTotal = totals.Debit,
+                CreditTotal = totals.Credit,
+                Issues = prepared.Issues,
+                Row = prepared.Row
+            });
         }
         catch (InvalidOperationException ex)
         {
@@ -188,8 +208,7 @@ public sealed class ConciliacionController : Controller
         ConciliacionSiigoSendPreparedDto prepared;
         try
         {
-            var taxes = await _siigo.GetTaxesAsync(ct);
-            prepared = await _dataverse.PrepareConciliacionClientPaymentSiigoSendAsync(request.RecordId, ct, taxes);
+            prepared = await PrepareClientPaymentForSiigoSendAsync(request.RecordId, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -215,7 +234,7 @@ public sealed class ConciliacionController : Controller
 
         try
         {
-            var siigoResult = await _siigo.CreateVoucherAsync(
+            var siigoResult = await _siigo.CreateJournalAsync(
                 prepared.Payload,
                 BuildSiigoIdempotencyKey(request.RecordId),
                 ct);
@@ -223,8 +242,8 @@ public sealed class ConciliacionController : Controller
                 ? siigoResult.Id
                 : siigoResult.Name;
             var message = string.IsNullOrWhiteSpace(documentLabel)
-                ? "Pago enviado a Siigo."
-                : $"Pago enviado a Siigo: {documentLabel}.";
+                ? "Comprobante de ingreso enviado a Siigo."
+                : $"Comprobante de ingreso enviado a Siigo: {documentLabel}.";
             var dataverseResult = await _dataverse.MarkConciliacionClientPaymentSiigoSendResultAsync(
                 request.RecordId,
                 success: true,
@@ -432,7 +451,171 @@ public sealed class ConciliacionController : Controller
         if (compact.Length == 0)
             compact = Guid.NewGuid().ToString("N");
 
-        var key = $"CNC{compact}";
+        var key = $"CNCJ{compact}";
         return key[..Math.Min(30, key.Length)];
+    }
+
+    private async Task<ConciliacionSiigoSendPreparedDto> PrepareClientPaymentForSiigoSendAsync(
+        string recordId,
+        CancellationToken ct)
+    {
+        var taxes = await _siigo.GetTaxesAsync(ct);
+        var documentTypes = await _siigo.GetDocumentTypesAsync("CC", ct);
+        var incomeJournalDocument = ResolveIncomeJournalDocumentType(documentTypes);
+        var prepared = await _dataverse.PrepareConciliacionClientPaymentSiigoSendAsync(
+            recordId,
+            ct,
+            taxes,
+            incomeJournalDocument);
+
+        return await RefreshPreparedClientPaymentWithSiigoBalancesAsync(
+            recordId,
+            prepared,
+            taxes,
+            incomeJournalDocument,
+            ct);
+    }
+
+    private async Task<ConciliacionSiigoSendPreparedDto> RefreshPreparedClientPaymentWithSiigoBalancesAsync(
+        string recordId,
+        ConciliacionSiigoSendPreparedDto prepared,
+        IReadOnlyList<SiigoTaxLookupDto> taxes,
+        SiigoDocumentTypeLookupDto incomeJournalDocument,
+        CancellationToken ct)
+    {
+        if (!prepared.CanSend
+            || prepared.Row is null
+            || string.IsNullOrWhiteSpace(prepared.CustomerIdentification)
+            || prepared.InvoiceNumbers.Count == 0)
+        {
+            return prepared;
+        }
+
+        var movementDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (DateOnly.TryParseExact(
+            prepared.Row.MovementDateValue,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsedMovementDate))
+        {
+            movementDate = parsedMovementDate;
+        }
+
+        var startDate = movementDate.AddMonths(-18);
+        var endDate = movementDate.AddDays(1);
+        var siigoInvoices = await _siigo.GetInvoicesAsync(
+            customerId: null,
+            customerQuery: prepared.CustomerIdentification,
+            startDate,
+            endDate,
+            ct);
+
+        return await _dataverse.PrepareConciliacionClientPaymentSiigoSendAsync(
+            recordId,
+            ct,
+            taxes,
+            incomeJournalDocument,
+            siigoInvoices.Invoices);
+    }
+
+    private static (int LineCount, decimal Debit, decimal Credit) CalculatePreparedJournalTotals(string payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+            return (0, 0m, 0m);
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (!document.RootElement.TryGetProperty("items", out var items)
+                || items.ValueKind != JsonValueKind.Array)
+            {
+                return (0, 0m, 0m);
+            }
+
+            var lineCount = 0;
+            var debit = 0m;
+            var credit = 0m;
+            foreach (var item in items.EnumerateArray())
+            {
+                var value = ReadDecimal(item, "value");
+                if (value == 0m)
+                    continue;
+
+                lineCount++;
+                var movement = "";
+                if (item.TryGetProperty("account", out var account) && account.ValueKind == JsonValueKind.Object)
+                    movement = ReadString(account, "movement");
+
+                if (string.Equals(movement, "Debit", StringComparison.OrdinalIgnoreCase))
+                    debit += value;
+                else if (string.Equals(movement, "Credit", StringComparison.OrdinalIgnoreCase))
+                    credit += value;
+            }
+
+            return (lineCount, Math.Round(debit, 2, MidpointRounding.AwayFromZero), Math.Round(credit, 2, MidpointRounding.AwayFromZero));
+        }
+        catch (JsonException)
+        {
+            return (0, 0m, 0m);
+        }
+    }
+
+    private static decimal ReadDecimal(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value))
+            return 0m;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetDecimal(out var number) => number,
+            JsonValueKind.String when decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var number) => number,
+            _ => 0m
+        };
+    }
+
+    private static string ReadString(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value))
+            return "";
+
+        return value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? ""
+            : value.ToString();
+    }
+
+    private static SiigoDocumentTypeLookupDto ResolveIncomeJournalDocumentType(
+        IReadOnlyList<SiigoDocumentTypeLookupDto> documentTypes)
+    {
+        var activeDocuments = documentTypes
+            .Where(static documentType => documentType.Active)
+            .ToArray();
+
+        var byName = activeDocuments.FirstOrDefault(static documentType =>
+            NormalizeSiigoDocumentTypeText($"{documentType.Name} {documentType.Description}")
+                .Contains("COMPROBANTE DE INGRESO", StringComparison.OrdinalIgnoreCase));
+        if (byName is not null)
+            return byName;
+
+        var byCode = activeDocuments.FirstOrDefault(static documentType =>
+            string.Equals(documentType.Type, "CC", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(documentType.Code, "17", StringComparison.OrdinalIgnoreCase));
+        if (byCode is not null)
+            return byCode;
+
+        throw new InvalidOperationException("No encontre en Siigo un tipo CC activo llamado Comprobante de ingreso.");
+    }
+
+    private static string NormalizeSiigoDocumentTypeText(string value)
+    {
+        var text = (value ?? "").Trim().ToUpperInvariant();
+        return text
+            .Replace("Á", "A", StringComparison.Ordinal)
+            .Replace("É", "E", StringComparison.Ordinal)
+            .Replace("Í", "I", StringComparison.Ordinal)
+            .Replace("Ó", "O", StringComparison.Ordinal)
+            .Replace("Ú", "U", StringComparison.Ordinal)
+            .Replace("Ü", "U", StringComparison.Ordinal)
+            .Replace("Ñ", "N", StringComparison.Ordinal);
     }
 }

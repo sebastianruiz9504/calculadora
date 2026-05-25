@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Conciliacion;
+using CotizadorInterno.Web.Models.Dashboard;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -15,7 +16,8 @@ public sealed partial class DataverseService
     private const string ClientPaymentMatchPreflightValidatedOnField = "cr07a_preflightfecha";
     private const string ClientPaymentMatchPreflightDebitField = "cr07a_preflightdebito";
     private const string ClientPaymentMatchPreflightCreditField = "cr07a_preflightcredito";
-    private const int ConciliacionSiigoVoucherDocumentId = 7480;
+    private const int ConciliacionSiigoIncomeJournalDocumentFallbackId = 31321;
+    private const string ConciliacionSiigoIncomeJournalDocumentFallbackName = "Comprobante de ingreso";
     private static readonly CultureInfo ConciliacionCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly Regex ConciliacionInvoiceTokenRegex = new(
         @"\b(?:FV|FVE|FEV|FEM|FE|FEDT|FEKT)[-\s]*\d+(?:[-\s]*\d+)?\b",
@@ -94,7 +96,7 @@ public sealed partial class DataverseService
         }
 
         var message = isReadyForSiigo
-            ? "Prevalidacion correcta. El cruce queda listo para Siigo cuando activemos el envio."
+            ? "Prevalidacion correcta. El cruce queda listo para enviar el comprobante de ingreso a Siigo."
             : isTechnicallyReady
                 ? "Prevalidacion contable correcta. Falta aprobar el cruce antes de dejarlo listo para Siigo."
                 : "Prevalidacion bloqueada: corrige los puntos indicados antes de enviar a Siigo.";
@@ -178,7 +180,7 @@ public sealed partial class DataverseService
                 ? "Simulacion correcta. El payload esta completo y aun no se envio nada a Siigo."
                 : "Simulacion con pendientes. Corrige los puntos indicados antes del envio real.",
             IsReadyForSiigo = ready,
-            TargetEndpoint = "DRY-RUN /v1/vouchers",
+            TargetEndpoint = "DRY-RUN /v1/journals",
             PayloadJson = payloadJson,
             LineCount = lineCount,
             DebitTotal = preflight.DebitTotal,
@@ -342,7 +344,9 @@ public sealed partial class DataverseService
     public async Task<ConciliacionSiigoSendPreparedDto> PrepareConciliacionClientPaymentSiigoSendAsync(
         string recordId,
         CancellationToken ct = default,
-        IReadOnlyList<SiigoTaxLookupDto>? siigoTaxes = null)
+        IReadOnlyList<SiigoTaxLookupDto>? siigoTaxes = null,
+        SiigoDocumentTypeLookupDto? journalDocument = null,
+        IReadOnlyList<SiigoInvoiceRowDto>? siigoInvoices = null)
     {
         var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
         var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
@@ -359,8 +363,14 @@ public sealed partial class DataverseService
         var issues = new List<string>(preflight.Issues);
         if (!IsConciliacionReadyForRealSendStatus(row.Status))
             issues.Add("El cruce debe estar en estado Listo Siigo o Error Siigo antes de habilitar el envio real.");
+        if (journalDocument is null || journalDocument.Id <= 0)
+            issues.Add("No se encontro en Siigo el tipo de comprobante Comprobante de ingreso.");
+        else if (!journalDocument.Active)
+            issues.Add($"El tipo de comprobante Siigo {journalDocument.Name} ({journalDocument.Id}) no esta activo.");
 
         var payloadJson = "";
+        var customerIdentification = "";
+        var invoiceNumbers = Array.Empty<string>();
         object? payload = null;
         try
         {
@@ -382,27 +392,48 @@ public sealed partial class DataverseService
             if (invoiceRecordIds.Count > 0 && invoices.Count != invoiceRecordIds.Count)
                 issues.Add("Una o mas facturas asociadas ya no se encontraron en Dataverse.");
             if (invoices.Count == 0)
-                issues.Add("No hay facturas Dataverse disponibles para armar el recibo de caja.");
+                issues.Add("No hay facturas Dataverse disponibles para armar el comprobante de ingreso.");
 
             var customerIdentifications = invoices
                 .Select(static invoice => NormalizeConciliacionIdentificationDigits(invoice.CompanyTaxId))
                 .Where(static value => !string.IsNullOrWhiteSpace(value))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+            customerIdentification = customerIdentifications.Length == 1 ? customerIdentifications[0] : "";
+            invoiceNumbers = invoices
+                .Select(static invoice => FirstNonEmpty(invoice.SiigoInvoiceName, invoice.InvoiceNumber).Trim())
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             if (customerIdentifications.Length == 0)
                 issues.Add("La factura Dataverse no tiene NIT del cliente para buscarlo en Siigo.");
             else if (customerIdentifications.Length > 1)
-                issues.Add("Las facturas asociadas tienen NIT de cliente diferentes; envia un recibo por cliente.");
+                issues.Add("Las facturas asociadas tienen NIT de cliente diferentes; envia un comprobante por cliente.");
 
-            var invoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.TotalInvoice));
+            var siigoInvoiceLookup = BuildConciliacionSiigoInvoiceLookup(siigoInvoices ?? Array.Empty<SiigoInvoiceRowDto>());
+            var requireLiveSiigoInvoice = siigoInvoices is not null;
+            var invoiceValues = invoices
+                .Select(invoice => new
+                {
+                    Invoice = invoice,
+                    Value = ResolveConciliacionSiigoInvoiceAccountingValue(
+                        invoice,
+                        siigoInvoiceLookup,
+                        requireLiveSiigoInvoice,
+                        issues)
+                })
+                .ToArray();
+            var invoiceTotal = RoundCurrency(invoiceValues.Sum(static item => item.Value));
+            var dataverseInvoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.TotalInvoice));
             var actualRetentions = RoundCurrency(invoices.Sum(ResolveConciliacionInvoiceRetentionsTotal));
-            if (invoices.Count > 0 && Math.Abs(invoiceTotal - row.InvoiceTotal) > 1m)
-                issues.Add($"El total de facturas Dataverse ({invoiceTotal:N2}) no coincide con el total del cruce ({row.InvoiceTotal:N2}).");
+            if (invoices.Count > 0 && Math.Abs(dataverseInvoiceTotal - row.InvoiceTotal) > 1m)
+                issues.Add($"El total de facturas Dataverse ({dataverseInvoiceTotal:N2}) no coincide con el total del cruce ({row.InvoiceTotal:N2}).");
             if (invoices.Count > 0 && Math.Abs(actualRetentions - row.RetentionsTotal) > 1m)
                 issues.Add($"Las retenciones calculadas desde la factura ({actualRetentions:N2}) no coinciden con las del cruce ({row.RetentionsTotal:N2}).");
-            var accountingDifference = RoundCurrency(invoiceTotal - row.EntryValue - actualRetentions - row.DifferenceValue);
+            var siigoAdjustment = RoundCurrency(invoiceTotal - row.EntryValue - actualRetentions);
+            var accountingDifference = RoundCurrency(siigoAdjustment - row.DifferenceValue);
             if (invoices.Count > 0 && Math.Abs(accountingDifference) > 1m)
-                issues.Add($"El recibo no cuadra con banco + retenciones + ajuste: diferencia residual {accountingDifference:N2}.");
+                issues.Add($"El ajuste requerido contra Siigo ({siigoAdjustment:N2}) no coincide con el ajuste del cruce ({row.DifferenceValue:N2}). Diferencia residual {accountingDifference:N2}.");
 
             var movementDate = row.MovementDateValue.Trim();
             if (!DateOnly.TryParseExact(movementDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
@@ -418,7 +449,10 @@ public sealed partial class DataverseService
                 }
 
                 var retentionTaxes = ResolveConciliacionInvoiceRetentionTaxes(invoice, siigoTaxes ?? Array.Empty<SiigoTaxLookupDto>(), issues);
-                invoiceDues.Add(new ConciliacionSiigoInvoiceDueItem(invoice, due, retentionTaxes));
+                var invoiceValue = invoiceValues
+                    .FirstOrDefault(value => string.Equals(value.Invoice.RecordId, invoice.RecordId, StringComparison.OrdinalIgnoreCase))
+                    ?.Value ?? invoice.TotalInvoice;
+                invoiceDues.Add(new ConciliacionSiigoInvoiceDueItem(invoice, due, RoundCurrency(invoiceValue), retentionTaxes));
             }
 
             if (issues.Count == 0)
@@ -427,7 +461,9 @@ public sealed partial class DataverseService
                     row,
                     invoiceDues,
                     movementDate,
-                    customerIdentifications[0]);
+                    customerIdentifications[0],
+                    journalDocument!,
+                    siigoAdjustment);
                 payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonOptions) { WriteIndented = true });
             }
         }
@@ -443,7 +479,9 @@ public sealed partial class DataverseService
                 ? "Listo para envio real a Siigo."
                 : "Envio real bloqueado. Corrige los pendientes visibles antes de enviar.",
             CanSend = canSend,
-            TargetEndpoint = "/v1/vouchers",
+            TargetEndpoint = "/v1/journals",
+            CustomerIdentification = customerIdentification,
+            InvoiceNumbers = invoiceNumbers,
             Payload = payload,
             PayloadJson = payloadJson,
             Issues = issues,
@@ -1724,23 +1762,21 @@ public sealed partial class DataverseService
         if (lineCount == 0)
             throw new InvalidOperationException("El borrador no tiene lineas con debito o credito.");
 
-        var paymentType = ResolveConciliacionClientPaymentType(row.SourceFlow, row.BankAccountCode);
         var movementDate = FirstNonEmpty(row.MovementDateValue, ReadString(root, "movement.date")).Trim();
         var invoices = ReadConciliacionDraftInvoices(root);
 
         return new
         {
             dryRun = true,
-            targetEndpoint = "/v1/vouchers",
+            targetEndpoint = "/v1/journals",
             note = "Payload de prueba generado por Conciliacion. No fue enviado a Siigo.",
             document = new
             {
-                type = "RC",
-                id = 7480,
-                code = "1",
-                name = "Recibo de caja"
+                type = "CC",
+                id = ConciliacionSiigoIncomeJournalDocumentFallbackId,
+                code = "17",
+                name = ConciliacionSiigoIncomeJournalDocumentFallbackName
             },
-            paymentType,
             date = movementDate,
             customer = new
             {
@@ -1775,9 +1811,16 @@ public sealed partial class DataverseService
         ConciliacionClientPaymentRowDto row,
         IReadOnlyList<ConciliacionSiigoInvoiceDueItem> invoiceDues,
         string movementDate,
-        string customerIdentification)
+        string customerIdentification,
+        SiigoDocumentTypeLookupDto journalDocument,
+        decimal siigoAdjustment)
     {
         var items = new List<Dictionary<string, object?>>();
+        var customer = new
+        {
+            identification = customerIdentification,
+            branch_office = 0
+        };
         if (row.EntryValue > 0m)
         {
             items.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -1787,7 +1830,10 @@ public sealed partial class DataverseService
                     code = row.BankAccountCode,
                     movement = "Debit"
                 },
-                ["description"] = TruncateAccountCatalogText(FirstNonEmpty(row.BankAccountName, "Banco"), 200),
+                ["customer"] = customer,
+                ["description"] = TruncateAccountCatalogText(
+                    FirstNonEmpty($"Pago {row.InvoiceNumbers} {row.BankAccountName}", row.BankAccountName, "Banco"),
+                    200),
                 ["value"] = row.EntryValue
             });
         }
@@ -1801,7 +1847,8 @@ public sealed partial class DataverseService
                     code = "13050501",
                     movement = "Credit"
                 },
-                ["description"] = TruncateAccountCatalogText($"Pago factura {item.Invoice.InvoiceNumber}".Trim(), 200),
+                ["customer"] = customer,
+                ["description"] = TruncateAccountCatalogText($"Clientes nacionales {item.Invoice.InvoiceNumber}".Trim(), 200),
                 ["due"] = new
                 {
                     prefix = item.Due.Prefix,
@@ -1809,7 +1856,7 @@ public sealed partial class DataverseService
                     quote = 1,
                     date = movementDate
                 },
-                ["value"] = RoundCurrency(item.Invoice.TotalInvoice)
+                ["value"] = RoundCurrency(item.Value)
             });
 
             foreach (var retention in item.RetentionTaxes)
@@ -1821,6 +1868,7 @@ public sealed partial class DataverseService
                         code = retention.AccountCode,
                         movement = "Debit"
                     },
+                    ["customer"] = customer,
                     ["tax"] = new
                     {
                         id = retention.TaxId
@@ -1831,7 +1879,7 @@ public sealed partial class DataverseService
             }
         }
 
-        var adjustment = RoundCurrency(row.DifferenceValue);
+        var adjustment = RoundCurrency(siigoAdjustment);
         if (Math.Abs(adjustment) > 0.009m)
         {
             items.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -1841,7 +1889,8 @@ public sealed partial class DataverseService
                     code = "42958101",
                     movement = adjustment > 0m ? "Debit" : "Credit"
                 },
-                ["description"] = "Ajuste al peso",
+                ["customer"] = customer,
+                ["description"] = TruncateAccountCatalogText($"Ajuste al peso {row.InvoiceNumbers}".Trim(), 200),
                 ["value"] = Math.Abs(adjustment)
             });
         }
@@ -1850,20 +1899,87 @@ public sealed partial class DataverseService
         {
             document = new
             {
-                id = ConciliacionSiigoVoucherDocumentId
+                id = journalDocument.Id
             },
-            type = "Detailed",
             date = movementDate,
-            customer = new
-            {
-                identification = customerIdentification,
-                branch_office = 0
-            },
             items,
             observations = TruncateAccountCatalogText(
-                $"Conciliacion flujo caja {row.SourceFlow} {row.MovementExternalKey} {row.Description}".Trim(),
+                $"{journalDocument.Name} - Conciliacion flujo caja {row.SourceFlow} {row.MovementExternalKey} {row.Description}".Trim(),
                 500)
         };
+    }
+
+    private static IReadOnlyDictionary<string, SiigoInvoiceRowDto> BuildConciliacionSiigoInvoiceLookup(
+        IReadOnlyList<SiigoInvoiceRowDto> invoices)
+    {
+        var lookup = new Dictionary<string, SiigoInvoiceRowDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var invoice in invoices ?? Array.Empty<SiigoInvoiceRowDto>())
+        {
+            AddConciliacionSiigoInvoiceLookupKey(lookup, invoice.Id, invoice);
+            AddConciliacionSiigoInvoiceLookupKey(lookup, invoice.Name, invoice);
+            if (!string.IsNullOrWhiteSpace(invoice.Prefix) && invoice.Number is > 0)
+                AddConciliacionSiigoInvoiceLookupKey(lookup, $"{invoice.Prefix}-{invoice.Number}", invoice);
+        }
+
+        return lookup;
+    }
+
+    private static void AddConciliacionSiigoInvoiceLookupKey(
+        IDictionary<string, SiigoInvoiceRowDto> lookup,
+        string? key,
+        SiigoInvoiceRowDto invoice)
+    {
+        var normalized = NormalizeDocumentKey(key);
+        if (!string.IsNullOrWhiteSpace(normalized) && !lookup.ContainsKey(normalized))
+            lookup[normalized] = invoice;
+    }
+
+    private static decimal ResolveConciliacionSiigoInvoiceAccountingValue(
+        BillingRecordRow invoice,
+        IReadOnlyDictionary<string, SiigoInvoiceRowDto> siigoInvoiceLookup,
+        bool requireLiveSiigoInvoice,
+        ICollection<string> issues)
+    {
+        var siigoInvoice = FindConciliacionSiigoInvoice(invoice, siigoInvoiceLookup);
+        if (siigoInvoice is null)
+        {
+            if (requireLiveSiigoInvoice)
+            {
+                issues.Add($"No encontre en Siigo la factura {FirstNonEmpty(invoice.SiigoInvoiceName, invoice.InvoiceNumber)} para confirmar saldo actual.");
+            }
+
+            return RoundCurrency(invoice.TotalInvoice);
+        }
+
+        var balance = RoundCurrency(siigoInvoice.Balance);
+        if (balance <= 0m)
+        {
+            issues.Add($"La factura {siigoInvoice.Name} aparece sin saldo pendiente en Siigo.");
+            return 0m;
+        }
+
+        return balance;
+    }
+
+    private static SiigoInvoiceRowDto? FindConciliacionSiigoInvoice(
+        BillingRecordRow invoice,
+        IReadOnlyDictionary<string, SiigoInvoiceRowDto> siigoInvoiceLookup)
+    {
+        foreach (var key in new[]
+        {
+            invoice.SiigoInvoiceId,
+            invoice.SiigoInvoiceName,
+            invoice.InvoiceNumber,
+            !string.IsNullOrWhiteSpace(invoice.InvoicePrefix) && !string.IsNullOrWhiteSpace(invoice.InvoiceCode)
+                ? $"{invoice.InvoicePrefix}-{invoice.InvoiceCode}"
+                : ""
+        })
+        {
+            if (siigoInvoiceLookup.TryGetValue(NormalizeDocumentKey(key), out var siigoInvoice))
+                return siigoInvoice;
+        }
+
+        return null;
     }
 
     private static IReadOnlyList<string> ExtractConciliacionInvoiceRecordIds(ConciliacionClientPaymentRowDto row)
@@ -2044,7 +2160,7 @@ public sealed partial class DataverseService
         kind switch
         {
             "ReteIca" => "13551805",
-            "RteIva" => "",
+            "RteIva" => "13551701",
             _ => "13551513"
         };
 
@@ -2294,6 +2410,7 @@ public sealed partial class DataverseService
     private sealed record ConciliacionSiigoInvoiceDueItem(
         BillingRecordRow Invoice,
         ConciliacionSiigoDue Due,
+        decimal Value,
         IReadOnlyList<ConciliacionRetentionTax> RetentionTaxes);
 
     private sealed record ConciliacionRetentionTax(

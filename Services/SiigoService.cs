@@ -361,6 +361,35 @@ public sealed class SiigoService : ISiigoService
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<SiigoDocumentTypeLookupDto>> GetDocumentTypesAsync(
+        string type,
+        CancellationToken ct = default)
+    {
+        var normalizedType = (type ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedType))
+            throw new InvalidOperationException("Indica el tipo de documento Siigo a consultar.");
+
+        var documentTypes = await GetAuthorizedJsonAsync<List<SiigoDocumentTypeApiDto>>(
+            BuildRelativeUrl("v1/document-types", new[] { Pair("type", normalizedType) }),
+            ct);
+
+        return documentTypes
+            .Select(static documentType => new SiigoDocumentTypeLookupDto
+            {
+                Id = documentType.Id,
+                Code = documentType.Code?.Trim() ?? "",
+                Name = documentType.Name?.Trim() ?? "",
+                Description = documentType.Description?.Trim() ?? "",
+                Type = documentType.Type?.Trim() ?? "",
+                Active = documentType.Active,
+                AutomaticNumber = documentType.AutomaticNumber,
+                Consecutive = documentType.Consecutive
+            })
+            .Where(static documentType => documentType.Id > 0)
+            .OrderBy(static documentType => documentType.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public async Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,
         string? idempotencyKey = null,
@@ -370,6 +399,23 @@ public sealed class SiigoService : ISiigoService
             throw new ArgumentNullException(nameof(payload));
 
         var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/vouchers", payload, idempotencyKey, ct);
+        return ParseCreatedAccountingDocument(rawBody, "Siigo creo el recibo, pero no fue posible interpretar la respuesta.");
+    }
+
+    public async Task<SiigoVoucherCreateResultDto> CreateJournalAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default)
+    {
+        if (payload is null)
+            throw new ArgumentNullException(nameof(payload));
+
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/journals", payload, idempotencyKey, ct);
+        return ParseCreatedAccountingDocument(rawBody, "Siigo creo el comprobante de ingreso, pero no fue posible interpretar la respuesta.");
+    }
+
+    private static SiigoVoucherCreateResultDto ParseCreatedAccountingDocument(string rawBody, string parseErrorMessage)
+    {
         try
         {
             using var document = JsonDocument.Parse(rawBody);
@@ -385,7 +431,7 @@ public sealed class SiigoService : ISiigoService
         }
         catch (JsonException ex)
         {
-            throw new InvalidOperationException("Siigo creo el recibo, pero no fue posible interpretar la respuesta.", ex);
+            throw new InvalidOperationException(parseErrorMessage, ex);
         }
     }
 
@@ -1455,6 +1501,33 @@ public sealed class SiigoService : ISiigoService
 
         [JsonPropertyName("active")]
         public bool Active { get; set; }
+    }
+
+    private sealed class SiigoDocumentTypeApiDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("code")]
+        public string? Code { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("active")]
+        public bool Active { get; set; }
+
+        [JsonPropertyName("automatic_number")]
+        public bool AutomaticNumber { get; set; }
+
+        [JsonPropertyName("consecutive")]
+        public int Consecutive { get; set; }
     }
 
     private sealed class SiigoInvoiceCustomerApiDto
