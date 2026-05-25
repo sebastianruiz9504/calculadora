@@ -1,0 +1,128 @@
+@model CotizadorInterno.Web.Models.AguasSda.AguasSdaBitacoraBoardViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Bitacora diaria SDA";
+    var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    var allRows = Model.Pendientes.Concat(Model.Creadas).ToList();
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/aguas-sda.css" asp-append-version="true" />
+}
+
+<div class="ags-shell"
+     data-aguas-sda-mode="bitacoras"
+     data-save-url="@Url.Action("GuardarBitacora", "AguasSda")"
+     data-file-url="@Url.Action("Archivo", "AguasSda")">
+    <header class="ags-page-head">
+        <div>
+            <p class="ags-kicker">Aguas de Bogota SDA</p>
+            <h1>Bitacora diaria</h1>
+        </div>
+        <button type="button" class="btn btn-primary" id="agsNewBitacora" @(Model.PuedeCrear ? null : "disabled")>Nueva bitacora</button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.LoadWarning))
+    {
+        <div class="ags-status is-error">@Model.LoadWarning</div>
+    }
+
+    @if (Model.Profile is not null)
+    {
+        <section class="ags-profile-strip">
+            <div><span>Usuario</span><strong>@Model.Profile.SystemUserName</strong></div>
+            <div><span>Area</span><strong>@Model.Profile.AreaIntervencionName</strong></div>
+            <div><span>Rol</span><strong>@Model.Profile.RolesLabel</strong></div>
+        </section>
+    }
+
+    <section class="ags-panel">
+        <div class="ags-panel-head">
+            <div>
+                <h2>Pendientes de llenar</h2>
+                <p>@Model.Pendientes.Count registro(s)</p>
+            </div>
+            <input class="form-control ags-table-filter" type="search" placeholder="Filtrar" data-table-filter="#agsPendingTable" />
+        </div>
+        @await Html.PartialAsync("_BitacoraTable", Model.Pendientes, new ViewDataDictionary(ViewData) { ["TableId"] = "agsPendingTable" })
+    </section>
+
+    <section class="ags-panel">
+        <div class="ags-panel-head">
+            <div>
+                <h2>Bitacoras creadas</h2>
+                <p>@Model.Creadas.Count registro(s)</p>
+            </div>
+            <input class="form-control ags-table-filter" type="search" placeholder="Filtrar" data-table-filter="#agsCreatedTable" />
+        </div>
+        @await Html.PartialAsync("_BitacoraTable", Model.Creadas, new ViewDataDictionary(ViewData) { ["TableId"] = "agsCreatedTable" })
+    </section>
+</div>
+
+<div class="modal fade" id="agsBitacoraModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <form class="modal-content ags-form" id="agsBitacoraForm">
+            <div class="modal-header">
+                <h2 class="modal-title h5">Bitacora diaria</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" name="recordId" id="agsRecordId" />
+                <input type="hidden" name="enviar" id="agsEnviar" value="false" />
+
+                <section class="ags-form-section">
+                    <h3>Seccion 1</h3>
+                    <div class="ags-form-grid">
+                        <label>Fecha<input class="form-control" name="fecha" id="agsFecha" type="date" required /></label>
+                        <label>Periodo<input class="form-control" id="agsPeriodo" type="text" readonly /></label>
+                        <label>Usuario<input class="form-control" id="agsUsuario" type="text" readonly /></label>
+                        <label>Correo<input class="form-control" id="agsCorreo" type="text" readonly /></label>
+                        <label>Cargo<input class="form-control" id="agsCargo" type="text" readonly /></label>
+                        <label>Dependencia<input class="form-control" id="agsDependencia" type="text" readonly /></label>
+                        <label>Area de intervencion<input class="form-control" id="agsArea" type="text" readonly /></label>
+                        <label>Frente<input class="form-control" id="agsFrente" type="text" readonly /></label>
+                    </div>
+                </section>
+
+                <section class="ags-form-section">
+                    <h3>Registro diario</h3>
+                    <div class="ags-form-grid">
+                        <label>Ubicacion<input class="form-control" name="ubicacion" id="agsUbicacion" type="text" /></label>
+                        <label>Hora inicio<input class="form-control" name="horaInicio" id="agsHoraInicio" type="time" /></label>
+                        <label>Hora fin<input class="form-control" name="horaFin" id="agsHoraFin" type="time" /></label>
+                        <label class="ags-span-3">Actividad<input class="form-control" name="actividad" id="agsActividad" type="text" /></label>
+                        <label class="ags-span-3">Descripcion<textarea class="form-control" name="descripcion" id="agsDescripcion" rows="4"></textarea></label>
+                        <label class="ags-span-3">Recursos<textarea class="form-control" name="recursos" id="agsRecursos" rows="2"></textarea></label>
+                        <label class="ags-span-3">Novedades<textarea class="form-control" name="novedades" id="agsNovedades" rows="2"></textarea></label>
+                        <label class="ags-span-3">Riesgos / controles<textarea class="form-control" name="riesgos" id="agsRiesgos" rows="2"></textarea></label>
+                        <label class="ags-span-3">Observaciones<textarea class="form-control" name="observaciones" id="agsObservaciones" rows="2"></textarea></label>
+                    </div>
+                </section>
+
+                <section class="ags-form-section">
+                    <h3>Registro fotografico</h3>
+                    <div class="ags-photo-grid">
+                        <label>Antes<input class="form-control" name="fotoAntes" id="agsFotoAntes" type="file" accept="image/*" /><span data-photo-state="antes"></span></label>
+                        <label>Durante<input class="form-control" name="fotoDurante" id="agsFotoDurante" type="file" accept="image/*" /><span data-photo-state="durante"></span></label>
+                        <label>Despues<input class="form-control" name="fotoDespues" id="agsFotoDespues" type="file" accept="image/*" /><span data-photo-state="despues"></span></label>
+                    </div>
+                </section>
+
+                <div class="ags-status" id="agsFormStatus" role="status" aria-live="polite"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-outline-primary" id="agsSavePartial">Guardar parcialmente</button>
+                <button type="button" class="btn btn-primary" id="agsSubmitBitacora">Enviar bitacora</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        window.aguasSdaProfile = @Html.Raw(JsonSerializer.Serialize(Model.Profile, jsonOptions));
+        window.aguasSdaBitacoras = @Html.Raw(JsonSerializer.Serialize(allRows, jsonOptions));
+    </script>
+    <script src="~/js/aguas-sda.js" asp-append-version="true"></script>
+}

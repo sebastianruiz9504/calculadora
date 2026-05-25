@@ -1,0 +1,41 @@
+@model IReadOnlyList<CotizadorInterno.Web.Models.AguasSda.AguasSdaBitacoraRowDto>
+@{
+    var tableId = ViewData["TableId"]?.ToString() ?? "agsBitacoraTable";
+}
+
+<div class="ags-table-wrap">
+    <table class="ags-table" id="@tableId">
+        <thead>
+        <tr>
+            <th data-sort="text">Fecha</th>
+            <th data-sort="text">Periodo</th>
+            <th data-sort="text">Area</th>
+            <th data-sort="text">Usuario</th>
+            <th data-sort="text">Actividad</th>
+            <th data-sort="text">Estado</th>
+            <th data-sort="text">Fotos</th>
+        </tr>
+        </thead>
+        <tbody>
+        @if (Model.Count == 0)
+        {
+            <tr class="ags-empty-row"><td colspan="7">Sin registros.</td></tr>
+        }
+        else
+        {
+            foreach (var row in Model)
+            {
+                <tr>
+                    <td><button type="button" class="ags-row-button ags-open-bitacora" data-record-id="@row.RecordId">@row.FechaLabel</button></td>
+                    <td>@row.PeriodoLabel</td>
+                    <td>@row.AreaIntervencionName</td>
+                    <td>@row.NombreUsuario</td>
+                    <td>@row.Actividad</td>
+                    <td><span class="ags-badge">@row.EstadoLabel</span></td>
+                    <td>@((row.TieneFotoAntes ? "Antes " : "") + (row.TieneFotoDurante ? "Durante " : "") + (row.TieneFotoDespues ? "Despues" : ""))</td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

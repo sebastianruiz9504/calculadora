@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Conciliacion;
 using CotizadorInterno.Web.Models.Dashboard;
@@ -22,6 +23,7 @@ public sealed class SiigoService : ISiigoService
     };
 
     private static readonly CultureInfo ColombianCulture = CultureInfo.GetCultureInfo("es-CO");
+    private const int RateLimitMaxRetries = 3;
 
     private readonly HttpClient _httpClient;
     private readonly SiigoOptions _options;
@@ -577,15 +579,26 @@ public sealed class SiigoService : ISiigoService
 
     private async Task<T> GetAuthorizedJsonAsync<T>(string relativeUrl, CancellationToken ct)
     {
-        using var response = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        for (var attempt = 0; attempt <= RateLimitMaxRetries; attempt++)
         {
-            InvalidateToken();
-            using var retryResponse = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
-            return await ReadJsonResponseAsync<T>(retryResponse, ct);
+            using var response = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                InvalidateToken();
+                using var retryResponse = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
+                if (await DelayIfRateLimitedAsync(retryResponse, attempt, ct))
+                    continue;
+
+                return await ReadJsonResponseAsync<T>(retryResponse, ct);
+            }
+
+            if (await DelayIfRateLimitedAsync(response, attempt, ct))
+                continue;
+
+            return await ReadJsonResponseAsync<T>(response, ct);
         }
 
-        return await ReadJsonResponseAsync<T>(response, ct);
+        throw new InvalidOperationException("Siigo no permitio completar la consulta por limite de solicitudes.");
     }
 
     private async Task<string> SendAuthorizedJsonAsync(
@@ -739,6 +752,48 @@ public sealed class SiigoService : ISiigoService
             throw new InvalidOperationException("Siigo devolvio una respuesta vacia.");
 
         return rawBody;
+    }
+
+    private async Task<bool> DelayIfRateLimitedAsync(HttpResponseMessage response, int attempt, CancellationToken ct)
+    {
+        if (response.StatusCode != HttpStatusCode.TooManyRequests || attempt >= RateLimitMaxRetries)
+            return false;
+
+        var rawBody = await response.Content.ReadAsStringAsync(ct);
+        var delay = ResolveRateLimitDelay(response, rawBody, attempt);
+        _logger.LogWarning(
+            "Siigo API limitó la consulta ({StatusCode}). Esperando {DelaySeconds} segundos antes de reintentar. Intento {Attempt}/{MaxAttempts}.",
+            (int)response.StatusCode,
+            delay.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
+            attempt + 1,
+            RateLimitMaxRetries + 1);
+        await Task.Delay(delay, ct);
+        return true;
+    }
+
+    private static TimeSpan ResolveRateLimitDelay(HttpResponseMessage response, string rawBody, int attempt)
+    {
+        if (response.Headers.RetryAfter?.Delta is { } delta && delta > TimeSpan.Zero)
+            return ClampRateLimitDelay(delta);
+
+        if (response.Headers.RetryAfter?.Date is { } date)
+        {
+            var until = date - DateTimeOffset.UtcNow;
+            if (until > TimeSpan.Zero)
+                return ClampRateLimitDelay(until);
+        }
+
+        var match = Regex.Match(rawBody ?? "", @"try again in\s+(\d+)\s+seconds", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds))
+            return ClampRateLimitDelay(TimeSpan.FromSeconds(seconds + 2));
+
+        return ClampRateLimitDelay(TimeSpan.FromSeconds(8 * (attempt + 1)));
+    }
+
+    private static TimeSpan ClampRateLimitDelay(TimeSpan delay)
+    {
+        var seconds = Math.Clamp(delay.TotalSeconds, 2d, 90d);
+        return TimeSpan.FromSeconds(seconds);
     }
 
     private static string ResolveSiigoErrorMessage(string rawBody)

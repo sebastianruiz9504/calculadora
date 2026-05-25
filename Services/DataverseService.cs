@@ -28,6 +28,8 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DataverseService> _logger;
     private readonly IQuoteCalculator _calculator;
+    private readonly IConfiguration _configuration;
+    private readonly ITokenAcquisition _tokenAcquisition;
     private readonly string _dataverseBaseUrl;
     private readonly string _azureAuthorityInstance;
     private readonly string _dataverseAppTenantId;
@@ -330,6 +332,7 @@ public sealed partial class DataverseService : IDataverseService
         IHttpContextAccessor httpContextAccessor,
         IHttpClientFactory httpClientFactory,
         IQuoteCalculator calculator,
+        ITokenAcquisition tokenAcquisition,
         IConfiguration configuration,
         IOptions<RhOptions> rhOptions,
         ILogger<DataverseService> logger)
@@ -339,6 +342,8 @@ public sealed partial class DataverseService : IDataverseService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _calculator = calculator;
+        _configuration = configuration;
+        _tokenAcquisition = tokenAcquisition;
         var rh = rhOptions.Value;
         _dataverseBaseUrl = (configuration["Dataverse:BaseUrl"] ?? "").TrimEnd('/');
         _azureAuthorityInstance = configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/";
@@ -1548,6 +1553,18 @@ public sealed partial class DataverseService : IDataverseService
                 ReadString(employeeRecord.Value, EmployeeEmailField),
                 currentUser.Email);
             currentUser.ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord.Value, _nominaEmployeeModulesField);
+        }
+
+        try
+        {
+            await EnrichAguasSdaCurrentUserAsync(currentUser, httpContext.User, ct);
+        }
+        catch (Exception ex)
+        {
+            if (IsIncrementalConsentChallenge(ex))
+                throw;
+
+            _logger.LogWarning(ex, "No fue posible enriquecer los roles Aguas SDA del usuario actual.");
         }
 
         httpContext.Items[CurrentUserCacheKey] = currentUser;

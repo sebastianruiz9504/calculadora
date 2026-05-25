@@ -91,6 +91,17 @@ public sealed class DianSupplierDocumentImportResultDto
     public int Updated { get; set; }
     public int Unchanged { get; set; }
     public int DataverseRowsSkipped { get; set; }
+    public int SupplierLookupReviewed { get; set; }
+    public int SupplierLookupFound { get; set; }
+    public int SupplierLookupMissing { get; set; }
+    public int SupplierLookupFailed { get; set; }
+    public int SupplierLookupRowsUpdated { get; set; }
+    public int AutoClassificationReviewed { get; set; }
+    public int AutoClassificationUpdated { get; set; }
+    public int AutoClassificationAlreadyAssigned { get; set; }
+    public int AutoClassificationNoRule { get; set; }
+    public int AutoClassificationInvalidRule { get; set; }
+    public string AutoClassificationMessage { get; set; } = "";
     public decimal TotalValue { get; set; }
     public decimal VatValue { get; set; }
     public decimal ReteFuenteValue { get; set; }
@@ -149,4 +160,21 @@ public sealed class DianSupplierDocumentDataverseUpsertResultDto
     public int Updated { get; set; }
     public int Unchanged { get; set; }
     public int Skipped { get; set; }
+}
+
+public sealed class DianSupplierDocumentResolvedSupplierDto
+{
+    public string SupplierNit { get; set; } = "";
+    public string SiigoSupplierId { get; set; } = "";
+    public string SiigoSupplierName { get; set; } = "";
+}
+
+public sealed class DianSupplierDocumentSiigoSupplierResolutionResultDto
+{
+    public int Reviewed { get; set; }
+    public int Found { get; set; }
+    public int Missing { get; set; }
+    public int Failed { get; set; }
+    public int MatchedRows { get; set; }
+    public int Updated { get; set; }
 }

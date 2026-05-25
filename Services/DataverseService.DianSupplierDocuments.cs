@@ -84,6 +84,93 @@ public sealed partial class DataverseService
         return result;
     }
 
+    public async Task<DianSupplierDocumentSiigoSupplierResolutionResultDto> ResolveDianSupplierDocumentSiigoSuppliersAsync(
+        IReadOnlyList<DianSupplierDocumentImportRowDto> rows,
+        IReadOnlyList<DianSupplierDocumentResolvedSupplierDto> suppliers,
+        bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        rows ??= Array.Empty<DianSupplierDocumentImportRowDto>();
+        suppliers ??= Array.Empty<DianSupplierDocumentResolvedSupplierDto>();
+
+        var supplierIndex = suppliers
+            .Where(static supplier => !string.IsNullOrWhiteSpace(supplier.SiigoSupplierId))
+            .Select(static supplier => new
+            {
+                Key = ExtractDigits(supplier.SupplierNit),
+                Supplier = supplier
+            })
+            .Where(static item => item.Key.Length >= 5)
+            .GroupBy(static item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Supplier, StringComparer.OrdinalIgnoreCase);
+
+        var rowSupplierKeys = rows
+            .Select(static row => ExtractDigits(row.SupplierNit))
+            .Where(static key => key.Length >= 5)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var result = new DianSupplierDocumentSiigoSupplierResolutionResultDto
+        {
+            Reviewed = rowSupplierKeys.Length,
+            Found = rowSupplierKeys.Count(supplierIndex.ContainsKey)
+        };
+        result.Missing = Math.Max(0, result.Reviewed - result.Found);
+
+        if (dryRun || result.Found == 0)
+            return result;
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            _supplierExpensesTableName,
+            _supplierExpensesTableSetName,
+            _supplierExpensesIdField,
+            "",
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        var effectiveAttributes = BuildDianSupplierDocumentAttributeSet(metadata, attributes);
+        var existingIndex = await GetDianSupplierDocumentExistingIndexAsync(metadata, effectiveAttributes, ct);
+        var updatedRecordIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in rows)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var supplierKey = ExtractDigits(row.SupplierNit);
+            if (!supplierIndex.TryGetValue(supplierKey, out var supplier))
+                continue;
+
+            result.MatchedRows++;
+            var existing = FindDianSupplierDocumentExistingRecord(existingIndex, row);
+            if (existing is null || !updatedRecordIds.Add(existing.Id))
+                continue;
+
+            var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            SetAccountCatalogValue(payload, attributes, DianSupplierDocumentSiigoSupplierIdField, null, supplier.SiigoSupplierId, force: true);
+            SetAccountCatalogValue(payload, attributes, DianSupplierDocumentSiigoSupplierNameField, null, supplier.SiigoSupplierName, force: true);
+            SetAccountCatalogValue(
+                payload,
+                attributes,
+                ExpenseReviewReasonField,
+                null,
+                TruncateAccountCatalogText(
+                    $"Proveedor Siigo encontrado automaticamente por NIT {row.SupplierNit}: {supplier.SiigoSupplierName}.",
+                    1000),
+                force: true);
+
+            if (payload.Count == 0)
+                continue;
+
+            await CallDataverseAppSendAsync(
+                $"/api/data/v9.2/{metadata.EntitySetName}({existing.Id})",
+                "PATCH",
+                payload,
+                ct);
+            result.Updated++;
+        }
+
+        return result;
+    }
+
     private async Task<DianSupplierDocumentUpsertOutcome> UpsertDianSupplierDocumentRowAsync(
         RhEntityMetadata metadata,
         ISet<string> attributes,

@@ -1,0 +1,133 @@
+{
+  "optionSets": {
+    "bitacoraStatus": [
+      { "label": "Borrador", "value": 645250000 },
+      { "label": "Pendiente de aprobacion", "value": 645250001 },
+      { "label": "Aprobada", "value": 645250002 },
+      { "label": "Devuelta", "value": 645250003 }
+    ],
+    "appRoles": [
+      { "label": "Diligenciador", "value": 645250000 },
+      { "label": "Aprobador", "value": 645250001 },
+      { "label": "Profesional de apoyo", "value": 645250002 },
+      { "label": "Superadmin", "value": 645250003 }
+    ]
+  },
+  "tables": [
+    {
+      "displayName": "SDA Area de intervencion",
+      "displayCollectionName": "SDA Areas de intervencion",
+      "logicalName": "cr07a_aguassdaarea",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_codigo", "displayName": "Codigo", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_descripcion", "displayName": "Descripcion", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_activa", "displayName": "Activa", "type": "TwoOptions", "required": false, "defaultValue": true }
+      ],
+      "seed": [
+        { "cr07a_name": "General", "cr07a_codigo": "GENERAL", "cr07a_activa": true }
+      ]
+    },
+    {
+      "displayName": "SDA Usuario app",
+      "displayCollectionName": "SDA Usuarios app",
+      "logicalName": "cr07a_aguassdaappusuario",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_systemuseridaguas", "displayName": "SystemUserId AGUAS", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_systemusernombre", "displayName": "Usuario AGUAS", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_systemusercorreo", "displayName": "Correo usuario AGUAS", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_cargo", "displayName": "Cargo", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_dependencia", "displayName": "Dependencia", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_telefono", "displayName": "Telefono", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_contratoconvenio", "displayName": "Contrato / Convenio", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_frentetrabajo", "displayName": "Frente de trabajo", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_areaintervencion", "displayName": "Area de intervencion", "type": "Lookup", "targetTable": "cr07a_aguassdaarea", "required": true },
+        { "logicalName": "cr07a_roles", "displayName": "Roles", "type": "MultiSelectChoice", "optionsRef": "appRoles", "required": true },
+        { "logicalName": "cr07a_activo", "displayName": "Activo", "type": "TwoOptions", "required": false, "defaultValue": true }
+      ]
+    },
+    {
+      "displayName": "SDA Bitacora diaria",
+      "displayCollectionName": "SDA Bitacoras diarias",
+      "logicalName": "cr07a_aguassdabitacora",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 300, "required": true },
+        { "logicalName": "cr07a_fecha", "displayName": "Fecha", "type": "DateOnly", "required": true },
+        { "logicalName": "cr07a_periodonumero", "displayName": "Periodo numero", "type": "WholeNumber", "required": true },
+        { "logicalName": "cr07a_periodo", "displayName": "Periodo", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_mes", "displayName": "Mes carpeta", "type": "Text", "maxLength": 20, "required": true },
+        { "logicalName": "cr07a_dia", "displayName": "Dia carpeta", "type": "Text", "maxLength": 10, "required": true },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Choice", "optionsRef": "bitacoraStatus", "required": true },
+        { "logicalName": "cr07a_usuarioapp", "displayName": "Usuario app", "type": "Lookup", "targetTable": "cr07a_aguassdaappusuario", "required": true },
+        { "logicalName": "cr07a_areaintervencion", "displayName": "Area de intervencion", "type": "Lookup", "targetTable": "cr07a_aguassdaarea", "required": true },
+        { "logicalName": "cr07a_systemuseridaguas", "displayName": "SystemUserId AGUAS", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_nombreusuario", "displayName": "Nombre usuario", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_correousuario", "displayName": "Correo usuario", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_cargo", "displayName": "Cargo", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_dependencia", "displayName": "Dependencia", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_telefono", "displayName": "Telefono", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_contratoconvenio", "displayName": "Contrato / Convenio", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_frentetrabajo", "displayName": "Frente de trabajo", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_ubicacion", "displayName": "Ubicacion", "type": "Text", "maxLength": 300, "required": false },
+        { "logicalName": "cr07a_horainicio", "displayName": "Hora inicio", "type": "Text", "maxLength": 20, "required": false },
+        { "logicalName": "cr07a_horafin", "displayName": "Hora fin", "type": "Text", "maxLength": 20, "required": false },
+        { "logicalName": "cr07a_actividad", "displayName": "Actividad", "type": "Text", "maxLength": 300, "required": false },
+        { "logicalName": "cr07a_descripcion", "displayName": "Descripcion", "type": "MultilineText", "maxLength": 10000, "required": false },
+        { "logicalName": "cr07a_recursos", "displayName": "Recursos", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_novedades", "displayName": "Novedades", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_riesgos", "displayName": "Riesgos / controles", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_observaciones", "displayName": "Observaciones", "type": "MultilineText", "maxLength": 4000, "required": false },
+        { "logicalName": "cr07a_fotoantesblob", "displayName": "Foto antes blob", "type": "Text", "maxLength": 1000, "required": false },
+        { "logicalName": "cr07a_fotoduranteblob", "displayName": "Foto durante blob", "type": "Text", "maxLength": 1000, "required": false },
+        { "logicalName": "cr07a_fotodespuesblob", "displayName": "Foto despues blob", "type": "Text", "maxLength": 1000, "required": false },
+        { "logicalName": "cr07a_pdfblob", "displayName": "PDF blob", "type": "Text", "maxLength": 1000, "required": false },
+        { "logicalName": "cr07a_pdfurl", "displayName": "PDF url", "type": "Text", "maxLength": 1000, "required": false },
+        { "logicalName": "cr07a_enviadoen", "displayName": "Enviado en", "type": "DateTime", "required": false },
+        { "logicalName": "cr07a_aprobadoen", "displayName": "Aprobado en", "type": "DateTime", "required": false },
+        { "logicalName": "cr07a_aprobadopor", "displayName": "Aprobado por", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_comentarioaprobacion", "displayName": "Comentario aprobacion", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
+    },
+    {
+      "displayName": "SDA Tabla base",
+      "displayCollectionName": "SDA Tabla base",
+      "logicalName": "cr07a_aguassdatablabase",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_areaintervencion", "displayName": "Area de intervencion", "type": "Lookup", "targetTable": "cr07a_aguassdaarea", "required": false },
+        { "logicalName": "cr07a_periodo", "displayName": "Periodo", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_variable", "displayName": "Variable", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_unidad", "displayName": "Unidad", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_valor", "displayName": "Valor", "type": "Decimal", "required": false },
+        { "logicalName": "cr07a_observaciones", "displayName": "Observaciones", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
+    },
+    {
+      "displayName": "SDA Matriz interna",
+      "displayCollectionName": "SDA Matriz interna",
+      "logicalName": "cr07a_aguassdamatriz",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 200, "required": true },
+        { "logicalName": "cr07a_areaintervencion", "displayName": "Area de intervencion", "type": "Lookup", "targetTable": "cr07a_aguassdaarea", "required": false },
+        { "logicalName": "cr07a_periodo", "displayName": "Periodo", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_componente", "displayName": "Componente", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_indicador", "displayName": "Indicador", "type": "Text", "maxLength": 300, "required": false },
+        { "logicalName": "cr07a_meta", "displayName": "Meta", "type": "Decimal", "required": false },
+        { "logicalName": "cr07a_avance", "displayName": "Avance", "type": "Decimal", "required": false },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Text", "maxLength": 100, "required": false },
+        { "logicalName": "cr07a_observaciones", "displayName": "Observaciones", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
+    }
+  ]
+}

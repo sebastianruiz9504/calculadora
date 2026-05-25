@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.25.0" />
     <PackageReference Include="Microsoft.Identity.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Identity.Web" Version="4.2.0" />
     <PackageReference Include="Microsoft.Identity.Web.DownstreamApi" Version="4.2.0" />

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using CotizadorInterno.Web.Models.Automation;
+using CotizadorInterno.Web.Models.Dashboard;
 using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Services;
@@ -12,15 +13,18 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
 {
     private static readonly CultureInfo ColombianCulture = CultureInfo.GetCultureInfo("es-CO");
     private readonly IDataverseService _dataverse;
+    private readonly ISiigoService _siigo;
     private readonly DianSupplierDocumentImportOptions _options;
     private readonly ILogger<DianSupplierDocumentImportService> _logger;
 
     public DianSupplierDocumentImportService(
         IDataverseService dataverse,
+        ISiigoService siigo,
         IOptions<DianSupplierDocumentImportOptions> options,
         ILogger<DianSupplierDocumentImportService> logger)
     {
         _dataverse = dataverse;
+        _siigo = siigo;
         _options = options.Value;
         _logger = logger;
     }
@@ -48,7 +52,118 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
             resolvedDryRun);
 
         var upsert = await _dataverse.UpsertDianSupplierDocumentRowsAsync(read.Rows, resolvedDryRun, ct);
-        return BuildResult(read, upsert, resolvedDryRun, Path.GetFileName(path));
+        var supplierResolution = new DianSupplierDocumentSiigoSupplierResolutionResultDto();
+        ExpenseAccountingRuleApplyResultDto? autoClassification = null;
+        var autoClassificationMessage = "";
+
+        if (!resolvedDryRun && read.Rows.Count > 0)
+        {
+            supplierResolution = await ResolveSiigoSuppliersAsync(read.Rows, ct);
+            try
+            {
+                autoClassification = await ApplyAutoClassificationAsync(read.Rows, ct);
+            }
+            catch (Exception ex)
+            {
+                autoClassificationMessage = $"Importacion guardada, pero no se pudo aplicar la autoclasificacion: {ex.Message}";
+                _logger.LogWarning(ex, "No se pudo aplicar autoclasificacion DIAN despues de importar {Path}.", path);
+            }
+        }
+
+        return BuildResult(
+            read,
+            upsert,
+            supplierResolution,
+            autoClassification,
+            autoClassificationMessage,
+            resolvedDryRun,
+            Path.GetFileName(path));
+    }
+
+    private async Task<DianSupplierDocumentSiigoSupplierResolutionResultDto> ResolveSiigoSuppliersAsync(
+        IReadOnlyList<DianSupplierDocumentImportRowDto> rows,
+        CancellationToken ct)
+    {
+        var uniqueSupplierNits = rows
+            .Select(static row => row.SupplierNit)
+            .Where(static nit => ExtractDigits(nit).Length >= 5)
+            .GroupBy(static nit => ExtractDigits(nit), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .ToArray();
+        var result = new DianSupplierDocumentSiigoSupplierResolutionResultDto
+        {
+            Reviewed = uniqueSupplierNits.Length
+        };
+        var resolvedSuppliers = new List<DianSupplierDocumentResolvedSupplierDto>();
+
+        foreach (var supplierNit in uniqueSupplierNits)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var candidates = await _siigo.SearchCustomersAsync(supplierNit, top: 1, ct);
+                var match = FindExactActiveSupplier(supplierNit, candidates);
+                if (match is null)
+                {
+                    result.Missing++;
+                    continue;
+                }
+
+                result.Found++;
+                resolvedSuppliers.Add(new DianSupplierDocumentResolvedSupplierDto
+                {
+                    SupplierNit = supplierNit,
+                    SiigoSupplierId = match.Id,
+                    SiigoSupplierName = FirstNonEmpty(match.DisplayName, match.Name, match.CommercialName, match.Identification)
+                });
+            }
+            catch (Exception ex)
+            {
+                result.Failed++;
+                _logger.LogWarning(ex, "No se pudo validar el proveedor DIAN {SupplierNit} contra Siigo.", supplierNit);
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
+        }
+
+        if (resolvedSuppliers.Count == 0)
+            return result;
+
+        var dataverseResult = await _dataverse.ResolveDianSupplierDocumentSiigoSuppliersAsync(
+            rows,
+            resolvedSuppliers,
+            dryRun: false,
+            ct);
+        result.MatchedRows = dataverseResult.MatchedRows;
+        result.Updated = dataverseResult.Updated;
+        return result;
+    }
+
+    private async Task<ExpenseAccountingRuleApplyResultDto?> ApplyAutoClassificationAsync(
+        IReadOnlyList<DianSupplierDocumentImportRowDto> rows,
+        CancellationToken ct)
+    {
+        var dates = rows
+            .Select(static row => row.EmissionDate)
+            .Where(static date => date.HasValue)
+            .Select(static date => date!.Value)
+            .ToArray();
+        if (dates.Length == 0)
+            return null;
+
+        var externalKeys = rows
+            .Select(static row => row.ExternalKey)
+            .Where(static key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return await _dataverse.ApplyExpenseAccountingRulesAsync(
+            dates.Min(),
+            dates.Max(),
+            movementType: "Compra",
+            overwrite: false,
+            ct: ct,
+            externalKeys: externalKeys);
     }
 
     private static DianSupplierDocumentWorkbookReadResult ReadWorkbook(Stream stream, string sourceFileName)
@@ -262,6 +377,9 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
     private static DianSupplierDocumentImportResultDto BuildResult(
         DianSupplierDocumentWorkbookReadResult read,
         DianSupplierDocumentDataverseUpsertResultDto upsert,
+        DianSupplierDocumentSiigoSupplierResolutionResultDto supplierResolution,
+        ExpenseAccountingRuleApplyResultDto? autoClassification,
+        string autoClassificationMessage,
         bool dryRun,
         string sourceFileName)
     {
@@ -278,6 +396,17 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
             Updated = upsert.Updated,
             Unchanged = upsert.Unchanged,
             DataverseRowsSkipped = upsert.Skipped,
+            SupplierLookupReviewed = supplierResolution.Reviewed,
+            SupplierLookupFound = supplierResolution.Found,
+            SupplierLookupMissing = supplierResolution.Missing,
+            SupplierLookupFailed = supplierResolution.Failed,
+            SupplierLookupRowsUpdated = supplierResolution.Updated,
+            AutoClassificationReviewed = autoClassification?.Reviewed ?? 0,
+            AutoClassificationUpdated = autoClassification?.Updated ?? 0,
+            AutoClassificationAlreadyAssigned = autoClassification?.AlreadyAssigned ?? 0,
+            AutoClassificationNoRule = autoClassification?.NoRule ?? 0,
+            AutoClassificationInvalidRule = autoClassification?.InvalidRule ?? 0,
+            AutoClassificationMessage = autoClassificationMessage,
             TotalValue = RoundCurrency(read.Rows.Sum(static row => row.TotalValue)),
             VatValue = RoundCurrency(read.Rows.Sum(static row => row.VatValue)),
             ReteFuenteValue = RoundCurrency(read.Rows.Sum(static row => row.ReteFuenteValue)),
@@ -483,6 +612,34 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
 
     private static string NormalizeKey(string value) =>
         Regex.Replace((value ?? "").Trim().ToLowerInvariant(), @"\s+", "", RegexOptions.CultureInvariant);
+
+    private static SiigoCustomerLookupItemDto? FindExactActiveSupplier(
+        string supplierNit,
+        IReadOnlyList<SiigoCustomerLookupItemDto> candidates)
+    {
+        var supplierDigits = ExtractDigits(supplierNit);
+        if (supplierDigits.Length < 5)
+            return null;
+
+        return candidates
+            .Where(static candidate => candidate.Active)
+            .FirstOrDefault(candidate => IsSameTaxId(supplierDigits, ExtractDigits(candidate.Identification)));
+    }
+
+    private static bool IsSameTaxId(string leftDigits, string rightDigits)
+    {
+        if (string.IsNullOrWhiteSpace(leftDigits) || string.IsNullOrWhiteSpace(rightDigits))
+            return false;
+
+        if (string.Equals(leftDigits, rightDigits, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return (leftDigits.Length >= 9 && leftDigits.Length == rightDigits.Length + 1 && leftDigits.StartsWith(rightDigits, StringComparison.OrdinalIgnoreCase))
+            || (rightDigits.Length >= 9 && rightDigits.Length == leftDigits.Length + 1 && rightDigits.StartsWith(leftDigits, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ExtractDigits(string? value) =>
+        new((value ?? "").Where(char.IsDigit).ToArray());
 
     private static string BuildHashKey(string value)
     {

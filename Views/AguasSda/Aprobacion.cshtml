@@ -1,0 +1,105 @@
+@model CotizadorInterno.Web.Models.AguasSda.AguasSdaApprovalBoardViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Aprobacion bitacoras SDA";
+    var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/aguas-sda.css" asp-append-version="true" />
+}
+
+<div class="ags-shell"
+     data-aguas-sda-mode="aprobacion"
+     data-approve-url="@Url.Action("Aprobar", "AguasSda")"
+     data-reject-url="@Url.Action("Rechazar", "AguasSda")"
+     data-file-url="@Url.Action("Archivo", "AguasSda")">
+    <header class="ags-page-head">
+        <div>
+            <p class="ags-kicker">Aguas de Bogota SDA</p>
+            <h1>Aprobacion de bitacoras</h1>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.LoadWarning))
+    {
+        <div class="ags-status is-error">@Model.LoadWarning</div>
+    }
+
+    <section class="ags-panel">
+        <div class="ags-panel-head">
+            <div>
+                <h2>Pendientes de aprobacion</h2>
+                <p>@Model.Bitacoras.Count registro(s)</p>
+            </div>
+            <input class="form-control ags-table-filter" type="search" placeholder="Filtrar" data-table-filter="#agsApprovalTable" />
+        </div>
+        <div class="ags-table-wrap">
+            <table class="ags-table" id="agsApprovalTable">
+                <thead>
+                <tr>
+                    <th data-sort="text">Fecha</th>
+                    <th data-sort="text">Periodo</th>
+                    <th data-sort="text">Area</th>
+                    <th data-sort="text">Usuario</th>
+                    <th data-sort="text">Actividad</th>
+                    <th data-sort="text">Enviado</th>
+                </tr>
+                </thead>
+                <tbody>
+                @if (Model.Bitacoras.Count == 0)
+                {
+                    <tr class="ags-empty-row"><td colspan="6">Sin registros.</td></tr>
+                }
+                else
+                {
+                    foreach (var row in Model.Bitacoras)
+                    {
+                        <tr class="ags-click-row ags-approval-row" data-record-id="@row.RecordId">
+                            <td>@row.FechaLabel</td>
+                            <td>@row.PeriodoLabel</td>
+                            <td>@row.AreaIntervencionName</td>
+                            <td>@row.NombreUsuario</td>
+                            <td>@row.Actividad</td>
+                            <td>@row.EnviadoEnLabel</td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="agsApprovalModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="agsApprovalTitle">Registro fotografico</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="ags-detail-list" id="agsApprovalDetails"></dl>
+                <div class="ags-photo-preview-grid">
+                    <figure><figcaption>Antes</figcaption><img alt="Foto antes" data-approval-photo="antes" /></figure>
+                    <figure><figcaption>Durante</figcaption><img alt="Foto durante" data-approval-photo="durante" /></figure>
+                    <figure><figcaption>Despues</figcaption><img alt="Foto despues" data-approval-photo="despues" /></figure>
+                </div>
+                <label class="ags-comment-label">Comentario<textarea class="form-control" id="agsApprovalComment" rows="3"></textarea></label>
+                <div class="ags-status" id="agsApprovalStatus" role="status" aria-live="polite"></div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-outline-secondary" id="agsApprovalPdf" href="#" target="_blank" rel="noopener">Ver PDF</a>
+                <button type="button" class="btn btn-outline-danger" id="agsRejectBitacora">Devolver</button>
+                <button type="button" class="btn btn-primary" id="agsApproveBitacora">Aprobar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        window.aguasSdaApprovalRows = @Html.Raw(JsonSerializer.Serialize(Model.Bitacoras, jsonOptions));
+    </script>
+    <script src="~/js/aguas-sda.js" asp-append-version="true"></script>
+}

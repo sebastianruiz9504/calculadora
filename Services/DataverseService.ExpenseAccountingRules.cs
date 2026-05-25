@@ -45,7 +45,8 @@ public sealed partial class DataverseService
         DateOnly endDate,
         string movementType = "Compra",
         bool overwrite = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IReadOnlySet<string>? externalKeys = null)
     {
         if (startDate > endDate)
             throw new InvalidOperationException("El periodo para aplicar reglas contables no es valido.");
@@ -75,6 +76,7 @@ public sealed partial class DataverseService
             issuerNitField,
             startDate,
             endDate.AddDays(1),
+            externalKeys,
             ct);
         var rules = await GetExpenseAccountingRulesAsync(ct);
         if (rules.Count == 0)
@@ -166,6 +168,7 @@ public sealed partial class DataverseService
         string issuerNitField,
         DateOnly startInclusive,
         DateOnly endExclusive,
+        IReadOnlySet<string>? externalKeys,
         CancellationToken ct)
     {
         var textFields = ExpenseAccountingTextFieldCandidates
@@ -185,7 +188,8 @@ public sealed partial class DataverseService
             ExpenseAccountCodeField,
             ExpenseAccountNameField,
             ExpenseAutomationStateField,
-            ExpenseAccountingRuleIdField
+            ExpenseAccountingRuleIdField,
+            ConciliacionDianExcelKeyField
         }
         .Concat(textFields)
         .Where(field => !string.IsNullOrWhiteSpace(field)
@@ -206,6 +210,9 @@ public sealed partial class DataverseService
             .Select(row => ParseExpenseAccountingExpenseRow(row, metadata, fields, issuerNitField, textFields))
             .Where(static row => row is not null)
             .Cast<ExpenseAccountingExpenseRow>()
+            .Where(row => externalKeys is null
+                || externalKeys.Count == 0
+                || externalKeys.Contains(row.ExternalKey))
             .ToList();
     }
 
@@ -242,6 +249,7 @@ public sealed partial class DataverseService
         {
             RecordId = recordId,
             Name = FirstNonEmpty(ReadString(item, metadata.PrimaryNameField), ReadString(item, fields.InvoiceNumberField), recordId),
+            ExternalKey = ReadString(item, ConciliacionDianExcelKeyField).Trim(),
             InvoiceNumber = FirstNonEmpty(
                 ReadString(item, $"{fields.InvoiceNumberField}{FormattedValueAnnotationSuffix}"),
                 ReadString(item, fields.InvoiceNumberField)),
@@ -570,6 +578,7 @@ public sealed partial class DataverseService
     {
         public string RecordId { get; init; } = "";
         public string Name { get; init; } = "";
+        public string ExternalKey { get; init; } = "";
         public string InvoiceNumber { get; init; } = "";
         public string ProviderNit { get; init; } = "";
         public string ProviderName { get; init; } = "";

@@ -1,4 +1,5 @@
 using CotizadorInterno.Web.Models;
+using CotizadorInterno.Web.Models.AguasSda;
 using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Models.Conciliacion;
@@ -79,7 +80,8 @@ public interface IDataverseService
         DateOnly endDate,
         string movementType = "Compra",
         bool overwrite = false,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        IReadOnlySet<string>? externalKeys = null);
     Task<ExpenseAccountingTemplateApplyResultDto> ApplyExpenseAccountingTemplatesAsync(
         DateOnly startDate,
         DateOnly endDate,
@@ -94,6 +96,11 @@ public interface IDataverseService
         CancellationToken ct = default);
     Task<DianSupplierDocumentDataverseUpsertResultDto> UpsertDianSupplierDocumentRowsAsync(
         IReadOnlyList<DianSupplierDocumentImportRowDto> rows,
+        bool dryRun = false,
+        CancellationToken ct = default);
+    Task<DianSupplierDocumentSiigoSupplierResolutionResultDto> ResolveDianSupplierDocumentSiigoSuppliersAsync(
+        IReadOnlyList<DianSupplierDocumentImportRowDto> rows,
+        IReadOnlyList<DianSupplierDocumentResolvedSupplierDto> suppliers,
         bool dryRun = false,
         CancellationToken ct = default);
     Task<CashFlowClientPaymentMatchResultDto> MatchCashFlowClientPaymentsAsync(
@@ -173,6 +180,21 @@ public interface IDataverseService
     Task<CopiersEquipmentClientSaveResultDto> SaveCopiersEquipmentClientAsync(CopiersEquipmentClientSaveRequestDto request, CancellationToken ct = default);
     Task<PlanRioPageViewModel> GetPlanRioPageAsync(CancellationToken ct = default);
     Task<PlanRioWorkoutSaveResultDto> SavePlanRioWorkoutAsync(PlanRioWorkoutSaveRequestDto request, CancellationToken ct = default);
+    Task<AguasSdaBitacoraBoardViewModel> GetAguasSdaBitacoraBoardAsync(CancellationToken ct = default);
+    Task<AguasSdaApprovalBoardViewModel> GetAguasSdaApprovalBoardAsync(CancellationToken ct = default);
+    Task<AguasSdaBitacoraSaveResult> SaveAguasSdaBitacoraAsync(
+        AguasSdaBitacoraSaveRequest request,
+        IReadOnlyDictionary<string, (string FileName, string ContentType, byte[] Content)> photos,
+        CancellationToken ct = default);
+    Task<AguasSdaBitacoraSaveResult> ApproveAguasSdaBitacoraAsync(AguasSdaApprovalRequest request, CancellationToken ct = default);
+    Task<AguasSdaBitacoraSaveResult> RejectAguasSdaBitacoraAsync(AguasSdaApprovalRequest request, CancellationToken ct = default);
+    Task<RhFileDownloadResult?> DownloadAguasSdaBitacoraAssetAsync(string recordId, string kind, CancellationToken ct = default);
+    Task<AguasSdaPermissionPageViewModel> GetAguasSdaPermissionPageAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<SystemUserLookupItem>> SearchAguasSdaSystemUsersAsync(string query, int top = 12, CancellationToken ct = default);
+    Task<AguasSdaPermissionSaveResult> SaveAguasSdaAppUserAsync(AguasSdaAppUserSaveRequest request, CancellationToken ct = default);
+    Task<AguasSdaPermissionSaveResult> DeleteAguasSdaAppUserAsync(string recordId, CancellationToken ct = default);
+    Task<AguasSdaGenericTableViewModel> GetAguasSdaTablaBaseAsync(CancellationToken ct = default);
+    Task<AguasSdaGenericTableViewModel> GetAguasSdaMatrizInternaAsync(CancellationToken ct = default);
     Task<RhFileDownloadResult?> DownloadCopiersMaintenanceAttachmentAsync(string maintenanceId, CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceBoardDto> GetCopiersMaintenanceBoardAsync(CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveResultDto> SaveCopiersMaintenanceAsync(CotizadorInterno.Web.Models.Copiers.CopiersMaintenanceSaveRequestDto request, CancellationToken ct = default);

@@ -28,7 +28,12 @@ public enum AppModule
     RebatesInversiones = 20,
     CruceLicenciamiento = 21,
     RegistroPagosClientes = 22,
-    Conciliacion = 23
+    Conciliacion = 23,
+    AguasSdaBitacoras = 24,
+    AguasSdaAprobacion = 25,
+    AguasSdaTablaBase = 26,
+    AguasSdaMatrizInterna = 27,
+    AguasSdaPermisos = 28
 }
 
 public sealed class AppModuleDefinition
@@ -282,6 +287,61 @@ public static class AppModuleCatalog
         Controller = "Conciliacion"
     };
 
+    public static readonly AppModuleDefinition AguasSdaBitacoras = new()
+    {
+        Key = AppModule.AguasSdaBitacoras,
+        Label = "Bitacora diaria",
+        Category = "Aguas SDA",
+        Description = "Registra bitacoras diarias, fotos antes/durante/despues y envio a aprobacion.",
+        OptionValue = 645250023,
+        Controller = "AguasSda",
+        Action = "Bitacoras"
+    };
+
+    public static readonly AppModuleDefinition AguasSdaAprobacion = new()
+    {
+        Key = AppModule.AguasSdaAprobacion,
+        Label = "Aprobacion",
+        Category = "Aguas SDA",
+        Description = "Revisa bitacoras enviadas y consulta el registro fotografico asociado.",
+        OptionValue = 645250024,
+        Controller = "AguasSda",
+        Action = "Aprobacion"
+    };
+
+    public static readonly AppModuleDefinition AguasSdaTablaBase = new()
+    {
+        Key = AppModule.AguasSdaTablaBase,
+        Label = "Tabla base",
+        Category = "Aguas SDA",
+        Description = "Consulta y administra la tabla base del proyecto SDA.",
+        OptionValue = 645250025,
+        Controller = "AguasSda",
+        Action = "TablaBase"
+    };
+
+    public static readonly AppModuleDefinition AguasSdaMatrizInterna = new()
+    {
+        Key = AppModule.AguasSdaMatrizInterna,
+        Label = "Matriz interna",
+        Category = "Aguas SDA",
+        Description = "Consulta la matriz interna del proyecto por rol y area de intervencion.",
+        OptionValue = 645250026,
+        Controller = "AguasSda",
+        Action = "MatrizInterna"
+    };
+
+    public static readonly AppModuleDefinition AguasSdaPermisos = new()
+    {
+        Key = AppModule.AguasSdaPermisos,
+        Label = "Permisos SDA",
+        Category = "Aguas SDA",
+        Description = "Administra usuarios, roles y areas de intervencion para Aguas de Bogota SDA.",
+        OptionValue = 645250027,
+        Controller = "AguasSda",
+        Action = "Permisos"
+    };
+
     public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
     {
         Calculator,
@@ -307,6 +367,11 @@ public static class AppModuleCatalog
         RebatesInversiones,
         RegistroPagosClientes,
         Conciliacion,
+        AguasSdaBitacoras,
+        AguasSdaAprobacion,
+        AguasSdaTablaBase,
+        AguasSdaMatrizInterna,
+        AguasSdaPermisos,
     };
 
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
@@ -365,6 +430,12 @@ public static class AppModuleCatalog
         {
             Label = "Conciliacion",
             Modules = new[] { Conciliacion }
+        },
+        new AppModuleNavigationGroup
+        {
+            Label = "Aguas SDA",
+            Modules = new[] { AguasSdaBitacoras, AguasSdaAprobacion, AguasSdaTablaBase, AguasSdaMatrizInterna, AguasSdaPermisos },
+            IsDropdown = true
         }
     };
 
@@ -398,9 +469,35 @@ public static class AppModuleAccessPolicy
             AppModule.Hardware => HardwareAccessPolicy.IsSupplierPaymentUser(currentUser)
                 || HardwareAccessPolicy.IsBillingUser(currentUser)
                 || HardwareAccessPolicy.IsImpersonationUser(currentUser),
+            AppModule.AguasSdaBitacoras => currentUser?.HasAnyAguasSdaRole(
+                AguasSdaRoleValues.Diligenciador,
+                AguasSdaRoleValues.ProfesionalApoyo,
+                AguasSdaRoleValues.Superadmin) == true,
+            AppModule.AguasSdaAprobacion => currentUser?.HasAnyAguasSdaRole(
+                AguasSdaRoleValues.Aprobador,
+                AguasSdaRoleValues.Superadmin) == true,
+            AppModule.AguasSdaTablaBase => currentUser?.HasAnyAguasSdaRole(
+                AguasSdaRoleValues.Aprobador,
+                AguasSdaRoleValues.ProfesionalApoyo,
+                AguasSdaRoleValues.Superadmin) == true,
+            AppModule.AguasSdaMatrizInterna => currentUser?.HasAnyAguasSdaRole(
+                AguasSdaRoleValues.Diligenciador,
+                AguasSdaRoleValues.Aprobador,
+                AguasSdaRoleValues.ProfesionalApoyo,
+                AguasSdaRoleValues.Superadmin) == true,
+            AppModule.AguasSdaPermisos => currentUser?.HasAguasSdaRole(AguasSdaRoleValues.Superadmin) == true
+                || currentUser?.HasModule(AppModule.Permissions) == true,
             _ => false
         };
     }
+}
+
+public static class AguasSdaRoleValues
+{
+    public const int Diligenciador = 645250000;
+    public const int Aprobador = 645250001;
+    public const int ProfesionalApoyo = 645250002;
+    public const int Superadmin = 645250003;
 }
 
 public sealed class EmployeeModulePermissionRowDto

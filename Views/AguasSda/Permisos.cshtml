@@ -1,0 +1,133 @@
+@model CotizadorInterno.Web.Models.AguasSda.AguasSdaPermissionPageViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Permisos SDA";
+    var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/aguas-sda.css" asp-append-version="true" />
+}
+
+<div class="ags-shell"
+     data-aguas-sda-mode="permisos"
+     data-search-users-url="@Url.Action("BuscarUsuarios", "AguasSda")"
+     data-save-user-url="@Url.Action("GuardarUsuario", "AguasSda")"
+     data-delete-user-url="@Url.Action("EliminarUsuario", "AguasSda")">
+    <header class="ags-page-head">
+        <div>
+            <p class="ags-kicker">Aguas de Bogota SDA</p>
+            <h1>Permisos SDA</h1>
+        </div>
+        <button type="button" class="btn btn-primary" id="agsNewUser">Nuevo usuario</button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.LoadWarning))
+    {
+        <div class="ags-status is-error">@Model.LoadWarning</div>
+    }
+
+    <section class="ags-permissions-layout">
+        <div class="ags-panel">
+            <div class="ags-panel-head">
+                <div>
+                    <h2>Usuarios</h2>
+                    <p>@Model.Usuarios.Count registro(s)</p>
+                </div>
+                <input class="form-control ags-table-filter" type="search" placeholder="Filtrar" data-table-filter="#agsUsersTable" />
+            </div>
+            <div class="ags-table-wrap">
+                <table class="ags-table" id="agsUsersTable">
+                    <thead>
+                    <tr>
+                        <th data-sort="text">Usuario</th>
+                        <th data-sort="text">Correo</th>
+                        <th data-sort="text">Area</th>
+                        <th data-sort="text">Roles</th>
+                        <th data-sort="text">Activo</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @if (Model.Usuarios.Count == 0)
+                    {
+                        <tr class="ags-empty-row"><td colspan="5">Sin usuarios.</td></tr>
+                    }
+                    else
+                    {
+                        foreach (var user in Model.Usuarios)
+                        {
+                            <tr class="ags-click-row ags-user-row" data-record-id="@user.RecordId">
+                                <td>@user.SystemUserName</td>
+                                <td>@user.SystemUserEmail</td>
+                                <td>@user.AreaIntervencionName</td>
+                                <td>@user.RolesLabel</td>
+                                <td>@(user.Activo ? "Si" : "No")</td>
+                            </tr>
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <form class="ags-panel ags-user-form" id="agsUserForm">
+            <div class="ags-panel-head">
+                <div>
+                    <h2>Ficha de usuario</h2>
+                    <p id="agsUserFormMode">Nuevo registro</p>
+                </div>
+            </div>
+            <div class="ags-user-form-body">
+                <input type="hidden" id="agsUserRecordId" />
+                <input type="hidden" id="agsSystemUserId" />
+                <input type="hidden" id="agsSystemUserName" />
+                <input type="hidden" id="agsSystemUserEmail" />
+
+                <label class="ags-search-field">
+                    Usuario AGUAS
+                    <input class="form-control" id="agsSystemUserSearch" type="search" autocomplete="off" />
+                    <div class="ags-search-results" id="agsSystemUserResults" hidden></div>
+                </label>
+
+                <label>Area de intervencion
+                    <select class="form-select" id="agsUserArea">
+                        <option value="">Selecciona...</option>
+                        @foreach (var area in Model.Areas)
+                        {
+                            <option value="@area.Id">@area.Name</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="ags-role-box">
+                    @foreach (var role in Model.Roles)
+                    {
+                        <label>
+                            <input type="checkbox" value="@role.Value" data-ags-role />
+                            <span>@role.Label</span>
+                        </label>
+                    }
+                </div>
+
+                <label>Cargo<input class="form-control" id="agsUserCargo" type="text" /></label>
+                <label>Dependencia<input class="form-control" id="agsUserDependencia" type="text" /></label>
+                <label>Telefono<input class="form-control" id="agsUserTelefono" type="text" /></label>
+                <label>Contrato / Convenio<input class="form-control" id="agsUserContrato" type="text" /></label>
+                <label>Frente de trabajo<input class="form-control" id="agsUserFrente" type="text" /></label>
+                <label class="ags-checkline"><input type="checkbox" id="agsUserActivo" checked /> Activo</label>
+                <div class="ags-status" id="agsUserStatus" role="status" aria-live="polite"></div>
+                <div class="ags-user-actions">
+                    <button type="button" class="btn btn-outline-danger" id="agsDeleteUser">Eliminar</button>
+                    <button type="submit" class="btn btn-primary">Guardar usuario</button>
+                </div>
+            </div>
+        </form>
+    </section>
+</div>
+
+@section Scripts {
+    <script>
+        window.aguasSdaUsers = @Html.Raw(JsonSerializer.Serialize(Model.Usuarios, jsonOptions));
+    </script>
+    <script src="~/js/aguas-sda.js" asp-append-version="true"></script>
+}
