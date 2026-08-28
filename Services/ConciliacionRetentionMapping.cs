@@ -2,43 +2,94 @@ using CotizadorInterno.Web.Models.Conciliacion;
 
 namespace CotizadorInterno.Web.Services;
 
+internal sealed record ClientPaymentRetentionDefinition(
+    string Kind,
+    int TaxId,
+    decimal CatalogRate,
+    decimal EffectiveRate,
+    string AccountCode);
+
 internal static class ConciliacionRetentionMapping
 {
+    private const string ReteFuenteKind = "ReteFuente";
+    private const string ReteIcaKind = "ReteIca";
+    private const string RteIvaKind = "RteIva";
+
+    private static readonly IReadOnlyList<ClientPaymentRetentionDefinition> ClientPaymentDefinitions =
+    [
+        new(ReteFuenteKind, 4027, 2.5m, 2.5m, "13551501"),
+        new(ReteFuenteKind, 4038, 3.5m, 3.5m, "13551513"),
+        new(ReteFuenteKind, 4026, 4m, 4m, "13551503"),
+        new(ReteFuenteKind, 4024, 10m, 10m, "13551507"),
+        new(ReteFuenteKind, 4023, 11m, 11m, "13551509"),
+        new(ReteIcaKind, 4034, 4.14m, 4.14m, "13551813"),
+        new(ReteIcaKind, 4033, 6.9m, 6.9m, "13551811"),
+        // Siigo exposes tax 4031 as "ReteICA 8"/8.0, but the approved
+        // accounting configuration applies 8.66 per thousand.
+        new(ReteIcaKind, 4031, 8m, 8.66m, "13551807"),
+        new(ReteIcaKind, 4030, 9.66m, 9.66m, "13551805"),
+        new(ReteIcaKind, 4028, 11.04m, 11.04m, "13551801")
+    ];
+
     internal static string ResolveAccountCode(string kind, SiigoTaxLookupDto tax, decimal rate)
     {
-        if (string.Equals(kind, "RteIva", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(NormalizeClientPaymentKind(kind), RteIvaKind, StringComparison.Ordinal))
             return "13551701";
 
-        if (string.Equals(kind, "ReteIca", StringComparison.OrdinalIgnoreCase))
+        return FindClientPaymentDefinition(kind, tax.Id)?.AccountCode ?? "";
+    }
+
+    internal static ClientPaymentRetentionDefinition? ResolveClientPaymentDefinition(
+        string kind,
+        SiigoTaxLookupDto tax)
+    {
+        var definition = FindClientPaymentDefinition(kind, tax.Id);
+        if (definition is null
+            || !MatchesKind(tax, kind)
+            || !IsRate(tax.Percentage, definition.CatalogRate))
         {
-            return tax.Id switch
-            {
-                4028 => "13551801",
-                4030 => "13551805",
-                4033 => "13551811",
-                4034 => "13551813",
-                _ when IsRate(rate, 11.04m) => "13551801",
-                _ when IsRate(rate, 9.66m) => "13551805",
-                _ when IsRate(rate, 6.9m) => "13551811",
-                _ when IsRate(rate, 4.14m) => "13551813",
-                _ => ""
-            };
+            return null;
         }
 
-        return tax.Id switch
-        {
-            4027 => "13551501",
-            4038 => "13551513",
-            4026 => "13551503",
-            4024 => "13551507",
-            4023 => "13551509",
-            _ when IsRate(rate, 2.5m) => "13551501",
-            _ when IsRate(rate, 3.5m) => "13551513",
-            _ when IsRate(rate, 4m) => "13551503",
-            _ when IsRate(rate, 10m) => "13551507",
-            _ when IsRate(rate, 11m) => "13551509",
-            _ => ""
-        };
+        return definition;
+    }
+
+    internal static ClientPaymentRetentionDefinition? FindClientPaymentDefinition(
+        string kind,
+        int taxId)
+    {
+        var normalizedKind = NormalizeClientPaymentKind(kind);
+        return ClientPaymentDefinitions.FirstOrDefault(definition =>
+            definition.TaxId == taxId
+            && string.Equals(definition.Kind, normalizedKind, StringComparison.Ordinal));
+    }
+
+    internal static SiigoTaxLookupDto? FindClientPaymentTax(
+        IReadOnlyList<SiigoTaxLookupDto> taxes,
+        string kind,
+        decimal rate)
+    {
+        if (string.Equals(NormalizeClientPaymentKind(kind), RteIvaKind, StringComparison.Ordinal))
+            return FindTax(taxes, kind, rate);
+
+        return taxes
+            .Where(static tax => tax.Active && tax.Id > 0 && tax.Percentage > 0m)
+            .Select(tax => new
+            {
+                Tax = tax,
+                Definition = ResolveClientPaymentDefinition(kind, tax)
+            })
+            .Where(static item => item.Definition is not null)
+            .Select(item => new
+            {
+                item.Tax,
+                Difference = Math.Abs(item.Definition!.EffectiveRate - rate)
+            })
+            .Where(static item => item.Difference <= 0.1m)
+            .OrderBy(static item => item.Difference)
+            .ThenBy(static item => item.Tax.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(static item => item.Tax)
+            .FirstOrDefault();
     }
 
     internal static SiigoTaxLookupDto? FindTax(
@@ -85,6 +136,31 @@ internal static class ConciliacionRetentionMapping
 
     private static bool IsRate(decimal value, decimal expected) =>
         Math.Abs(value - expected) <= 0.01m;
+
+    private static string NormalizeClientPaymentKind(string kind)
+    {
+        if (string.Equals(kind, "ReteIca", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "ReteICA", StringComparison.OrdinalIgnoreCase))
+        {
+            return ReteIcaKind;
+        }
+
+        if (string.Equals(kind, "RteIva", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "ReteIva", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "ReteIVA", StringComparison.OrdinalIgnoreCase))
+        {
+            return RteIvaKind;
+        }
+
+        if (string.Equals(kind, "RteFte", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "ReteFte", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "ReteFuente", StringComparison.OrdinalIgnoreCase))
+        {
+            return ReteFuenteKind;
+        }
+
+        return (kind ?? "").Trim();
+    }
 
     private static string NormalizeTaxText(string value)
     {

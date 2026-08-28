@@ -3112,31 +3112,60 @@ public sealed class ConciliacionController : Controller
         return Math.Round(retentionValue / taxBase * multiplier, 4, MidpointRounding.AwayFromZero);
     }
 
-    private static IReadOnlyList<ConciliacionSiigoRetentionOptionDto> BuildClientPaymentRetentionOptions(
+    internal static IReadOnlyList<ConciliacionSiigoRetentionOptionDto> BuildClientPaymentRetentionOptions(
         IReadOnlyList<SiigoTaxLookupDto> taxes,
         string kind)
     {
+        if (string.Equals(kind, "RteIva", StringComparison.OrdinalIgnoreCase))
+        {
+            return taxes
+                .Where(tax => tax.Active
+                    && tax.Id > 0
+                    && tax.Percentage > 0m
+                    && ConciliacionRetentionMapping.MatchesKind(tax, kind)
+                    && !string.IsNullOrWhiteSpace(ConciliacionRetentionMapping.ResolveAccountCode(kind, tax, tax.Percentage)))
+                .GroupBy(tax => Math.Round(tax.Percentage, 4, MidpointRounding.AwayFromZero))
+                .Select(group => group
+                    .OrderBy(static tax => tax.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static tax => tax.Id)
+                    .First())
+                .OrderBy(static tax => tax.Percentage)
+                .Select(tax => new ConciliacionSiigoRetentionOptionDto
+                {
+                    TaxId = tax.Id,
+                    Kind = kind,
+                    Name = tax.Name,
+                    Rate = Math.Round(tax.Percentage, 4, MidpointRounding.AwayFromZero),
+                    RateLabel = $"{FormatClientPaymentRate(tax.Percentage)}%"
+                })
+                .ToArray();
+        }
+
         return taxes
-            .Where(tax => tax.Active
-                && tax.Id > 0
-                && tax.Percentage > 0m
-                && ConciliacionRetentionMapping.MatchesKind(tax, kind)
-                && !string.IsNullOrWhiteSpace(ConciliacionRetentionMapping.ResolveAccountCode(kind, tax, tax.Percentage)))
-            .GroupBy(tax => Math.Round(tax.Percentage, 4, MidpointRounding.AwayFromZero))
-            .Select(group => group
-                .OrderBy(static tax => tax.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(static tax => tax.Id)
-                .First())
-            .OrderBy(static tax => tax.Percentage)
-            .Select(tax => new ConciliacionSiigoRetentionOptionDto
+            .Where(static tax => tax.Active && tax.Id > 0 && tax.Percentage > 0m)
+            .Select(tax => new
             {
-                TaxId = tax.Id,
+                Tax = tax,
+                Definition = ConciliacionRetentionMapping.ResolveClientPaymentDefinition(kind, tax)
+            })
+            .Where(static item => item.Definition is not null)
+            .GroupBy(item => item.Definition!.EffectiveRate)
+            .Select(group => group
+                .OrderBy(static item => item.Tax.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static item => item.Tax.Id)
+                .First())
+            .OrderBy(static item => item.Definition!.EffectiveRate)
+            .Select(item => new ConciliacionSiigoRetentionOptionDto
+            {
+                TaxId = item.Tax.Id,
                 Kind = kind,
-                Name = tax.Name,
-                Rate = Math.Round(tax.Percentage, 4, MidpointRounding.AwayFromZero),
+                Name = item.Definition!.CatalogRate == item.Definition.EffectiveRate
+                    ? item.Tax.Name
+                    : $"ReteICA {FormatClientPaymentRate(item.Definition.EffectiveRate)} x mil",
+                Rate = item.Definition.EffectiveRate,
                 RateLabel = string.Equals(kind, "ReteIca", StringComparison.OrdinalIgnoreCase)
-                    ? $"{FormatClientPaymentRate(tax.Percentage)} x mil"
-                    : $"{FormatClientPaymentRate(tax.Percentage)}%"
+                    ? $"{FormatClientPaymentRate(item.Definition.EffectiveRate)} x mil"
+                    : $"{FormatClientPaymentRate(item.Definition.EffectiveRate)}%"
             })
             .ToArray();
     }

@@ -4984,7 +4984,7 @@ public sealed partial class DataverseService
         string kind,
         decimal siigoRate)
     {
-        return ConciliacionRetentionMapping.FindTax(siigoTaxes, kind, siigoRate);
+        return ConciliacionRetentionMapping.FindClientPaymentTax(siigoTaxes, kind, siigoRate);
     }
 
     private static bool MatchesConciliacionRetentionTaxKind(SiigoTaxLookupDto tax, string kind)
