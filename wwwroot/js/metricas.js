@@ -11,6 +11,7 @@
     const sellerFilterGroup = document.getElementById("metricsSellerFilterGroup");
     const viewButtons = Array.from(document.querySelectorAll(".metrics-view-tab"));
     const filterButtons = Array.from(document.querySelectorAll(".metrics-filter-btn"));
+    const periodButtons = Array.from(document.querySelectorAll(".metrics-period-btn"));
     const summaryRecords = document.getElementById("metricsSummaryRecords");
     const summarySellers = document.getElementById("metricsSummarySellers");
     const summaryVerticals = document.getElementById("metricsSummaryVerticals");
@@ -21,6 +22,14 @@
     const insightSeller = document.getElementById("metricsInsightSeller");
     const insightGranularity = document.getElementById("metricsInsightGranularity");
     const insightUpdatedAt = document.getElementById("metricsInsightUpdatedAt");
+    const detailModal = document.getElementById("metricsDetailModal");
+    const detailModalDialog = detailModal?.querySelector(".metrics-detail-modal__dialog");
+    const detailModalTitle = document.getElementById("metricsDetailModalTitle");
+    const detailModalSubtitle = document.getElementById("metricsDetailModalSubtitle");
+    const detailModalSummary = document.getElementById("metricsDetailModalSummary");
+    const detailModalBody = document.getElementById("metricsDetailModalBody");
+    const detailModalEmpty = document.getElementById("metricsDetailModalEmpty");
+    let detailModalTrigger = null;
 
     const numberFormatter = new Intl.NumberFormat("es-CO", {
         minimumFractionDigits: 0,
@@ -37,9 +46,16 @@
         timeStyle: "short"
     });
 
+    const growthFormatter = new Intl.NumberFormat("es-CO", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+        signDisplay: "always"
+    });
+
     const state = {
         filter: app.dataset.initialFilter || "this-year",
         view: app.dataset.initialView || "global",
+        period: app.dataset.initialPeriod || "month",
         seller: "",
         dashboard: null,
         isLoading: false,
@@ -65,6 +81,28 @@
 
     function formatDateTimeValue(value) {
         return value instanceof Date ? dateTimeFormatter.format(value) : "Pendiente";
+    }
+
+    function formatGrowthLabel(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            return "Sin base a\u00f1o anterior";
+        }
+
+        return `${growthFormatter.format(Number(value))}% vs. a\u00f1o anterior`;
+    }
+
+    function growthTone(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value)) || Number(value) === 0) {
+            return "neutral";
+        }
+
+        return Number(value) > 0 ? "positive" : "negative";
+    }
+
+    function formatStatusGrowthLabel(status) {
+        return status?.statusTone === "upcoming"
+            ? "Periodo pendiente"
+            : formatGrowthLabel(status?.growthPercent);
     }
 
     function setStatus(type, message) {
@@ -96,12 +134,19 @@
             button.disabled = loading;
             button.classList.toggle("active", button.dataset.view === state.view);
         });
+
+        periodButtons.forEach(button => {
+            const isUnavailable = state.filter === "this-month" && button.dataset.period !== "month";
+            button.disabled = loading || isUnavailable;
+            button.classList.toggle("active", button.dataset.period === state.period);
+        });
     }
 
     function buildDashboardUrl() {
         const query = new URLSearchParams({
             filter: state.filter,
-            view: state.view
+            view: state.view,
+            period: state.period
         });
 
         if (state.view === "individual" && state.seller) {
@@ -396,31 +441,45 @@
         `;
     }
 
-    function renderGoalStatus(chart) {
+    function renderGoalStatus(chart, chartIndex) {
         const goalStatuses = Array.isArray(chart.goalStatuses) ? chart.goalStatuses : [];
         if (!goalStatuses.length) {
             return "";
         }
 
-        const evaluatedStatuses = goalStatuses.filter(status => status.statusTone === "met" || status.statusTone === "missed");
+        const evaluatedStatuses = goalStatuses.filter(status => status.hasTarget && (status.statusTone === "met" || status.statusTone === "missed"));
         const metCount = evaluatedStatuses.filter(status => status.isMet).length;
         const summaryText = evaluatedStatuses.length
             ? `${formatNumber(metCount)} / ${formatNumber(evaluatedStatuses.length)} periodos cerrados en meta`
-            : "Sin periodos cerrados";
+            : `${formatNumber(goalStatuses.length)} ${goalStatuses.length === 1 ? "periodo disponible" : "periodos disponibles"}`;
 
         return `
             <div class="metrics-chart__goal-block">
                 <div class="metrics-chart__goal-head">
-                    <span class="metrics-chart__goal-label">${escapeHtml(chart.goalLabel || "Meta")}</span>
+                    <span class="metrics-chart__goal-label">${escapeHtml(chart.goalLabel || "Detalle por periodo")}</span>
                     <span class="metrics-chart__goal-summary">${escapeHtml(summaryText)}</span>
                 </div>
                 <div class="metrics-chart__goal-statuses">
-                    ${goalStatuses.map(status => `
-                        <div class="metrics-chart__goal-chip is-${escapeHtml(status.statusTone || "upcoming")}">
-                            <span class="metrics-chart__goal-chip-period">${escapeHtml(status.category)}</span>
+                    ${goalStatuses.map((status, periodIndex) => `
+                        <button type="button"
+                                class="metrics-chart__goal-chip is-${escapeHtml(status.statusTone || "neutral")}"
+                                data-metrics-detail
+                                data-chart-index="${chartIndex}"
+                                data-period-index="${periodIndex}"
+                                aria-haspopup="dialog"
+                                aria-label="Ver negocios de ${escapeHtml(status.category)} en ${escapeHtml(chart.title)}">
+                            <span class="metrics-chart__goal-chip-period-line">
+                                <span class="metrics-chart__goal-chip-period">${escapeHtml(status.category)}</span>
+                                <span class="metrics-chart__growth is-${status.statusTone === "upcoming" ? "neutral" : growthTone(status.growthPercent)}">${escapeHtml(formatStatusGrowthLabel(status))}</span>
+                            </span>
                             <span class="metrics-chart__goal-chip-state">${escapeHtml(status.statusLabel || "")}</span>
-                            <span class="metrics-chart__goal-chip-values">${escapeHtml(formatScoreValue(status.actualValue))} / ${escapeHtml(formatScoreValue(status.targetValue))}</span>
-                        </div>
+                            <span class="metrics-chart__goal-chip-values">
+                                ${status.hasTarget
+                                    ? `${escapeHtml(formatScoreValue(status.actualValue))} / ${escapeHtml(formatScoreValue(status.targetValue))}`
+                                    : `Puntaje ${escapeHtml(formatScoreValue(status.actualValue))}`}
+                            </span>
+                            <span class="metrics-chart__goal-chip-action">Ver detalle</span>
+                        </button>
                     `).join("")}
                 </div>
             </div>
@@ -455,7 +514,7 @@
             return;
         }
 
-        chartsContainer.innerHTML = charts.map(chart => `
+        chartsContainer.innerHTML = charts.map((chart, chartIndex) => `
             <article class="metrics-chart">
                 <div class="metrics-chart__head">
                     <div>
@@ -473,11 +532,77 @@
                 </div>
                 ${renderChartSvg(chart)}
                 ${renderLegend(chart)}
-                ${renderGoalStatus(chart)}
+                ${renderGoalStatus(chart, chartIndex)}
             </article>
         `).join("");
 
         bindChartInteractions();
+    }
+
+    function openDetailModal(chartIndex, periodIndex, trigger) {
+        const charts = Array.isArray(state.dashboard?.charts) ? state.dashboard.charts : [];
+        const chart = charts[chartIndex];
+        const statuses = Array.isArray(chart?.goalStatuses) ? chart.goalStatuses : [];
+        const status = statuses[periodIndex];
+        if (!detailModal || !detailModalDialog || !chart || !status) {
+            return;
+        }
+
+        const details = Array.isArray(status.details) ? status.details : [];
+        const contractTotal = details.reduce((sum, detail) => sum + Number(detail.contractValue || 0), 0);
+        detailModalTrigger = trigger || document.activeElement;
+
+        detailModalTitle && (detailModalTitle.textContent = `${chart.title} · ${status.category}`);
+        detailModalSubtitle && (detailModalSubtitle.textContent = `${formatStatusGrowthLabel(status)}. Comparativo anterior: ${formatScoreValue(status.previousYearValue)} puntos.`);
+
+        if (detailModalSummary) {
+            detailModalSummary.innerHTML = `
+                <div><span>Negocios</span><strong>${escapeHtml(formatNumber(details.length))}</strong></div>
+                <div><span>Puntaje</span><strong>${escapeHtml(formatScoreValue(status.actualValue))}</strong></div>
+                <div><span>Valor contratos</span><strong>${escapeHtml(formatNumber(contractTotal))}</strong></div>
+                ${status.hasTarget ? `<div><span>Meta</span><strong>${escapeHtml(formatScoreValue(status.targetValue))}</strong></div>` : ""}
+            `;
+        }
+
+        if (detailModalBody) {
+            detailModalBody.innerHTML = details.map(detail => `
+                <tr>
+                    <td data-label="Nombre de cliente">${escapeHtml(detail.clientName || "Cliente sin asignar")}</td>
+                    <td data-label="Puntaje" class="metrics-detail-table__number">${escapeHtml(formatScoreValue(detail.score))}</td>
+                    <td data-label="Valor de contrato" class="metrics-detail-table__number">${escapeHtml(formatNumber(detail.contractValue))}</td>
+                    <td data-label="Fecha de inicio">${escapeHtml(detail.contractStartDateDisplay || detail.contractStartDateValue || "")}</td>
+                    <td data-label="Detalle">${escapeHtml(detail.detail || "Sin detalle registrado")}</td>
+                </tr>
+            `).join("");
+
+            const table = detailModalBody.closest("table");
+            if (table) {
+                table.hidden = details.length === 0;
+            }
+        }
+
+        if (detailModalEmpty) {
+            detailModalEmpty.hidden = details.length > 0;
+        }
+
+        detailModal.hidden = false;
+        detailModal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("metrics-modal-open");
+        requestAnimationFrame(() => detailModalDialog.focus());
+    }
+
+    function closeDetailModal() {
+        if (!detailModal || detailModal.hidden) {
+            return;
+        }
+
+        detailModal.hidden = true;
+        detailModal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("metrics-modal-open");
+        if (detailModalTrigger instanceof HTMLElement) {
+            detailModalTrigger.focus();
+        }
+        detailModalTrigger = null;
     }
 
     function setActivePoint(plot, target) {
@@ -593,6 +718,15 @@
                 });
             });
         });
+
+        chartsContainer?.querySelectorAll("[data-metrics-detail]").forEach(button => {
+            button.addEventListener("click", () => {
+                openDetailModal(
+                    Number(button.dataset.chartIndex || 0),
+                    Number(button.dataset.periodIndex || 0),
+                    button);
+            });
+        });
     }
 
     async function loadDashboard() {
@@ -607,6 +741,7 @@
             state.dashboard = dashboard;
             state.filter = dashboard.filter || state.filter;
             state.view = dashboard.view || state.view;
+            state.period = dashboard.period || state.period;
             state.seller = dashboard.appliedSellerKey || "";
             state.updatedAt = new Date();
 
@@ -628,6 +763,7 @@
                 state.dashboard = previousDashboard;
                 state.filter = previousDashboard.filter || state.filter;
                 state.view = previousDashboard.view || state.view;
+                state.period = previousDashboard.period || state.period;
                 state.seller = previousDashboard.appliedSellerKey || "";
 
                 renderSellerOptions(previousDashboard);
@@ -659,6 +795,21 @@
             }
 
             state.filter = nextFilter;
+            if (state.filter === "this-month") {
+                state.period = "month";
+            }
+            await loadDashboard();
+        });
+    });
+
+    periodButtons.forEach(button => {
+        button.addEventListener("click", async () => {
+            const nextPeriod = button.dataset.period;
+            if (!nextPeriod || nextPeriod === state.period || state.isLoading || state.filter === "this-month") {
+                return;
+            }
+
+            state.period = nextPeriod;
             await loadDashboard();
         });
     });
@@ -682,6 +833,17 @@
 
         state.seller = sellerFilter.value || "";
         await loadDashboard();
+    });
+
+    detailModal?.querySelectorAll("[data-metrics-modal-close]").forEach(element => {
+        element.addEventListener("click", closeDetailModal);
+    });
+
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && detailModal && !detailModal.hidden) {
+            event.preventDefault();
+            closeDetailModal();
+        }
     });
 
     refreshButton?.addEventListener("click", loadDashboard);

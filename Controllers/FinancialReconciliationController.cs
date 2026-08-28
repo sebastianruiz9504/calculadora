@@ -34,6 +34,34 @@ public sealed class FinancialReconciliationController : Controller
     }
 
     [HttpPost]
+    public async Task<IActionResult> Repair([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
+    {
+        try
+        {
+            var period = ResolvePeriod(year, month);
+            var report = await _reconciliationService.RepairBillingAsync(period.Year, period.Month, ct);
+            return Json(new
+            {
+                message = $"Sincronizacion terminada para {report.PeriodLabel}.",
+                period = report.PeriodLabel,
+                applied = report.Corrections.Applied,
+                errors = report.Corrections.Errors,
+                createdInvoices = report.Corrections.CreatedInvoices,
+                updatedInvoices = report.Corrections.UpdatedInvoices,
+                createdCreditNotes = report.Corrections.CreatedCreditNotes,
+                updatedCreditNotes = report.Corrections.UpdatedCreditNotes,
+                billingDifferences = report.Summary.BillingDifferenceCount,
+                billingDifference = report.Summary.BillingDifference,
+                vatDifference = report.Summary.BillingVatDifference
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost]
     public async Task<IActionResult> Send([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
         try
@@ -44,6 +72,8 @@ public sealed class FinancialReconciliationController : Controller
             {
                 sent = result.EmailSent,
                 status = result.EmailStatus,
+                reteFuenteSent = result.ReteFuenteEmailSent,
+                reteFuenteStatus = result.ReteFuenteEmailStatus,
                 fileName = result.Report.FileName,
                 period = result.Report.PeriodLabel,
                 billingDifferences = result.Report.Summary.BillingDifferenceCount,

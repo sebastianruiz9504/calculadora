@@ -64,6 +64,10 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+!docs/copiers-mto-v2/artifacts/
+!docs/copiers-mto-v2/artifacts/*.json
+!docs/copiers-mto-v2/artifacts/
+!docs/copiers-mto-v2/artifacts/*.json
 
 # Tye
 .tye/

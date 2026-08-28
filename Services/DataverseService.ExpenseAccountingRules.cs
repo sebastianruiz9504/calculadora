@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Automation;
@@ -79,19 +80,18 @@ public sealed partial class DataverseService
             externalKeys,
             ct);
         var rules = await GetExpenseAccountingRulesAsync(ct);
-        if (rules.Count == 0)
-        {
-            return new ExpenseAccountingRuleApplyResultDto
-            {
-                StartDate = startDate,
-                EndDate = endDate,
-                MovementType = movementType,
-                Reviewed = expenses.Count,
-                NoRule = expenses.Count
-            };
-        }
-
         var catalog = await GetExpenseAccountingAccountCatalogAsync(ct);
+        var historicalAccounts = _dianHistoricalAccountFallbackEnabled
+            ? await BuildDianHistoricalSupplierAccountIndexAsync(
+                expenseMetadata,
+                expenseAttributes,
+                expenseFields,
+                issuerNitField,
+                expenses,
+                endDate,
+                catalog,
+                ct)
+            : new Dictionary<string, ExpenseAccountingFallbackMatch>(StringComparer.OrdinalIgnoreCase);
 
         var resultRows = new List<ExpenseAccountingRuleAppliedRowDto>();
         var updated = 0;
@@ -103,6 +103,19 @@ public sealed partial class DataverseService
         {
             ct.ThrowIfCancellationRequested();
 
+            if (IsExpenseAccountingSiigoWriteProtected(expense))
+            {
+                alreadyAssigned++;
+                resultRows.Add(BuildExpenseAccountingResultRow(
+                    expense,
+                    null,
+                    expense.AccountCode,
+                    expense.AccountName,
+                    "ProtegidaSiigo",
+                    "La cuenta no se modifico porque existe una creacion Siigo en curso o pendiente de confirmacion."));
+                continue;
+            }
+
             if (!overwrite && !string.IsNullOrWhiteSpace(expense.AccountCode))
             {
                 alreadyAssigned++;
@@ -112,9 +125,37 @@ public sealed partial class DataverseService
             var match = FindBestExpenseAccountingRule(expense, rules, movementType);
             if (match is null)
             {
+                var fallback = ResolveDianAccountingFallback(expense, historicalAccounts, catalog);
+                if (fallback is not null)
+                {
+                    var fallbackPayload = BuildExpenseAccountingFallbackAssignmentPayload(
+                        expenseAttributes,
+                        expense,
+                        fallback);
+                    if (fallbackPayload.Count > 0
+                        && await TryPatchExpenseAccountingRowAsync(
+                            expenseMetadata,
+                            expense.RecordId,
+                            expense.ConcurrencyToken,
+                            fallbackPayload,
+                            ct))
+                    {
+                        updated++;
+                    }
+
+                    resultRows.Add(BuildExpenseAccountingResultRow(
+                        expense,
+                        null,
+                        fallback.AccountCode,
+                        fallback.AccountName,
+                        fallback.Status,
+                        fallback.Reason));
+                    continue;
+                }
+
                 noRule++;
                 var notes = BuildNoAccountingRuleReason(expense, movementType);
-                if (await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, notes, ct))
+                if (await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, expense.ConcurrencyToken, notes, ct))
                     updated++;
 
                 resultRows.Add(BuildExpenseAccountingResultRow(expense, null, "", "", "SinRegla", notes));
@@ -125,7 +166,7 @@ public sealed partial class DataverseService
             {
                 invalidRule++;
                 var notes = $"La regla {match.Rule.Name} usa la cuenta {match.Rule.DebitAccountCode}, pero no esta activa en el catalogo contable.";
-                if (await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, notes, ct))
+                if (await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, expense.ConcurrencyToken, notes, ct))
                     updated++;
 
                 resultRows.Add(BuildExpenseAccountingResultRow(expense, match.Rule, match.Rule.DebitAccountCode, match.Rule.DebitAccountName, "ReglaInvalida", notes));
@@ -136,12 +177,15 @@ public sealed partial class DataverseService
             var payload = BuildExpenseAccountingAssignmentPayload(expenseAttributes, expense, match, accountName, overwrite);
             if (payload.Count > 0)
             {
-                await CallDataverseAppSendAsync(
-                    $"/api/data/v9.2/{expenseMetadata.EntitySetName}({expense.RecordId})",
-                    "PATCH",
-                    payload,
-                    ct);
-                updated++;
+                if (await TryPatchExpenseAccountingRowAsync(
+                        expenseMetadata,
+                        expense.RecordId,
+                        expense.ConcurrencyToken,
+                        payload,
+                        ct))
+                {
+                    updated++;
+                }
             }
 
             resultRows.Add(BuildExpenseAccountingResultRow(expense, match.Rule, match.Rule.DebitAccountCode, accountName, "Asignada", $"Confianza {match.Confidence.ToString("0", CultureInfo.InvariantCulture)}."));
@@ -188,6 +232,7 @@ public sealed partial class DataverseService
             ExpenseAccountCodeField,
             ExpenseAccountNameField,
             ExpenseAutomationStateField,
+            ExpenseReviewReasonField,
             ExpenseAccountingRuleIdField,
             ConciliacionDianExcelKeyField
         }
@@ -248,6 +293,7 @@ public sealed partial class DataverseService
         return new ExpenseAccountingExpenseRow
         {
             RecordId = recordId,
+            ConcurrencyToken = ReadString(item, "@odata.etag").Trim(),
             Name = FirstNonEmpty(ReadString(item, metadata.PrimaryNameField), ReadString(item, fields.InvoiceNumberField), recordId),
             ExternalKey = ReadString(item, ConciliacionDianExcelKeyField).Trim(),
             InvoiceNumber = FirstNonEmpty(
@@ -261,6 +307,8 @@ public sealed partial class DataverseService
             CategoryName = categoryLabel,
             AccountCode = ReadString(item, ExpenseAccountCodeField).Trim(),
             AccountName = ReadString(item, ExpenseAccountNameField).Trim(),
+            AutomationState = ReadString(item, ExpenseAutomationStateField).Trim(),
+            ReviewReason = ReadString(item, ExpenseReviewReasonField).Trim(),
             SearchText = NormalizeAccountingRuleText(string.Join(" ", textValues))
         };
     }
@@ -369,7 +417,7 @@ public sealed partial class DataverseService
             .Select(row => new ExpenseAccountingAccountRow
             {
                 Code = ReadString(row, AccountCatalogCodeField).Trim(),
-                Name = FirstNonEmpty(ReadString(row, AccountCatalogNameField), ReadString(row, metadata.PrimaryNameField)),
+                Name = ResolveAccountCatalogName(ReadString(row, AccountCatalogCodeField), FirstNonEmpty(ReadString(row, AccountCatalogNameField), ReadString(row, metadata.PrimaryNameField))),
                 Active = !attributes.Contains(AccountCatalogActiveField)
                     || !row.TryGetProperty(AccountCatalogActiveField, out _)
                     || ReadBool(row, AccountCatalogActiveField)
@@ -511,10 +559,142 @@ public sealed partial class DataverseService
         return payload;
     }
 
+    private async Task<IReadOnlyDictionary<string, ExpenseAccountingFallbackMatch>> BuildDianHistoricalSupplierAccountIndexAsync(
+        RhEntityMetadata metadata,
+        IReadOnlySet<string> attributes,
+        TaxExpenseFieldMap fields,
+        string issuerNitField,
+        IReadOnlyList<ExpenseAccountingExpenseRow> currentExpenses,
+        DateOnly endDate,
+        IReadOnlyDictionary<string, ExpenseAccountingAccountRow> catalog,
+        CancellationToken ct)
+    {
+        var dianExpenses = currentExpenses
+            .Where(IsDianExpenseAccountingRow)
+            .Where(static expense => string.IsNullOrWhiteSpace(expense.AccountCode))
+            .ToArray();
+        if (dianExpenses.Length == 0)
+            return new Dictionary<string, ExpenseAccountingFallbackMatch>(StringComparer.OrdinalIgnoreCase);
+
+        var supplierNits = dianExpenses
+            .Select(static expense => ExtractDigits(expense.ProviderNit))
+            .Where(static nit => nit.Length >= 5)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (supplierNits.Count == 0)
+            return new Dictionary<string, ExpenseAccountingFallbackMatch>(StringComparer.OrdinalIgnoreCase);
+
+        var currentRecordIds = dianExpenses
+            .Select(static expense => expense.RecordId)
+            .Where(static id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var history = await GetExpenseAccountingRowsAsync(
+            metadata,
+            attributes,
+            fields,
+            issuerNitField,
+            new DateOnly(2000, 1, 1),
+            endDate.AddDays(1),
+            externalKeys: null,
+            ct);
+
+        return history
+            .Where(expense => !currentRecordIds.Contains(expense.RecordId))
+            .Where(static expense => !expense.ReviewReason.Contains(
+                "Cuenta DIAN provisional",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(expense => new
+            {
+                Expense = expense,
+                SupplierNit = ExtractDigits(expense.ProviderNit),
+                AccountCode = expense.AccountCode.Trim()
+            })
+            .Where(item => supplierNits.Contains(item.SupplierNit)
+                && !string.IsNullOrWhiteSpace(item.AccountCode)
+                && catalog.TryGetValue(item.AccountCode, out var account)
+                && account.Active)
+            .GroupBy(static item => item.SupplierNit, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                static group => group.Key,
+                group =>
+                {
+                    var selected = group
+                        .GroupBy(static item => item.AccountCode, StringComparer.OrdinalIgnoreCase)
+                        .OrderByDescending(static accountGroup => accountGroup.Count())
+                        .ThenBy(static accountGroup => accountGroup.Key, StringComparer.OrdinalIgnoreCase)
+                        .First();
+                    var catalogAccount = catalog[selected.Key];
+                    return new ExpenseAccountingFallbackMatch
+                    {
+                        AccountCode = catalogAccount.Code,
+                        AccountName = FirstNonEmpty(catalogAccount.Name, selected.First().Expense.AccountName, catalogAccount.Code),
+                        Confidence = 85m,
+                        Status = "AsignadaHistorico",
+                        Reason = $"Cuenta contable asignada automaticamente por historial del proveedor ({selected.Count():N0} registro(s)): {catalogAccount.Code} {catalogAccount.Name}."
+                    };
+                },
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private ExpenseAccountingFallbackMatch? ResolveDianAccountingFallback(
+        ExpenseAccountingExpenseRow expense,
+        IReadOnlyDictionary<string, ExpenseAccountingFallbackMatch> historicalAccounts,
+        IReadOnlyDictionary<string, ExpenseAccountingAccountRow> catalog)
+    {
+        if (!IsDianExpenseAccountingRow(expense))
+            return null;
+
+        var supplierNit = ExtractDigits(expense.ProviderNit);
+        if (supplierNit.Length >= 5 && historicalAccounts.TryGetValue(supplierNit, out var historical))
+            return historical;
+
+        if (string.IsNullOrWhiteSpace(_dianDefaultAccountCode)
+            || !catalog.TryGetValue(_dianDefaultAccountCode, out var defaultAccount)
+            || !defaultAccount.Active)
+        {
+            return null;
+        }
+
+        var accountName = FirstNonEmpty(defaultAccount.Name, _dianDefaultAccountName, defaultAccount.Code);
+        return new ExpenseAccountingFallbackMatch
+        {
+            AccountCode = defaultAccount.Code,
+            AccountName = accountName,
+            Confidence = 50m,
+            Status = "AsignadaPorDefecto",
+            Reason = $"Cuenta DIAN provisional asignada automaticamente porque el proveedor no tiene historial ni regla: {defaultAccount.Code} {accountName}."
+        };
+    }
+
+    private static bool IsDianExpenseAccountingRow(ExpenseAccountingExpenseRow expense) =>
+        expense.ExternalKey.StartsWith("dian-cufe:", StringComparison.OrdinalIgnoreCase);
+
+    private static Dictionary<string, object?> BuildExpenseAccountingFallbackAssignmentPayload(
+        ISet<string> attributes,
+        ExpenseAccountingExpenseRow expense,
+        ExpenseAccountingFallbackMatch fallback)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, ExpenseAccountCodeField, expense.AccountCode, fallback.AccountCode, force: true);
+        SetAccountCatalogValue(payload, attributes, ExpenseAccountNameField, expense.AccountName, fallback.AccountName, force: true);
+        SetAccountCatalogValue(payload, attributes, ExpenseAutomationStateField, null, "Clasificado", force: true);
+        SetAccountCatalogValue(payload, attributes, ExpenseAutomationConfidenceField, (decimal?)null, fallback.Confidence, force: true);
+        SetAccountCatalogValue(payload, attributes, ExpenseReviewReasonField, null, fallback.Reason, force: true);
+        return payload;
+    }
+
+    private static bool IsExpenseAccountingSiigoWriteProtected(ExpenseAccountingExpenseRow expense) =>
+        expense.AutomationState.Equals("ProcesandoSiigo", StringComparison.OrdinalIgnoreCase)
+        || expense.AutomationState.Equals("VerificacionSiigoPendiente", StringComparison.OrdinalIgnoreCase)
+        || expense.AutomationState.Equals("ProcesandoProveedorSiigo", StringComparison.OrdinalIgnoreCase)
+        || expense.AutomationState.Equals("VerificacionProveedorSiigoPendiente", StringComparison.OrdinalIgnoreCase)
+        || expense.ReviewReason.Contains("[SIIGO_SUPPLIER_WRITE_AMBIGUOUS]", StringComparison.OrdinalIgnoreCase)
+        || expense.ReviewReason.Contains("[SIIGO_WRITE_AMBIGUOUS]", StringComparison.OrdinalIgnoreCase);
+
     private async Task<bool> UpdateExpenseAccountingReviewStateAsync(
         RhEntityMetadata metadata,
         ISet<string> attributes,
         string recordId,
+        string concurrencyToken,
         string reason,
         CancellationToken ct)
     {
@@ -525,11 +705,40 @@ public sealed partial class DataverseService
         if (payload.Count == 0)
             return false;
 
-        await CallDataverseAppSendAsync(
+        return await TryPatchExpenseAccountingRowAsync(metadata, recordId, concurrencyToken, payload, ct);
+    }
+
+    private async Task<bool> TryPatchExpenseAccountingRowAsync(
+        RhEntityMetadata metadata,
+        string recordId,
+        string concurrencyToken,
+        IReadOnlyDictionary<string, object?> payload,
+        CancellationToken ct)
+    {
+        var etag = (concurrencyToken ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(etag))
+            return false;
+
+        using var content = new StringContent(
+            JsonSerializer.Serialize(payload),
+            Encoding.UTF8,
+            "application/json");
+        using var response = await CallDataverseAppResponseAsync(
             $"/api/data/v9.2/{metadata.EntitySetName}({recordId})",
             "PATCH",
-            payload,
-            ct);
+            ct,
+            content,
+            request => request.Headers.TryAddWithoutValidation("If-Match", etag));
+        if (response.StatusCode == HttpStatusCode.PreconditionFailed)
+            return false;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(
+                $"Dataverse rechazo la actualizacion contable concurrente ({(int)response.StatusCode}): {body}");
+        }
+
         return true;
     }
 
@@ -577,6 +786,7 @@ public sealed partial class DataverseService
     private sealed class ExpenseAccountingExpenseRow
     {
         public string RecordId { get; init; } = "";
+        public string ConcurrencyToken { get; init; } = "";
         public string Name { get; init; } = "";
         public string ExternalKey { get; init; } = "";
         public string InvoiceNumber { get; init; } = "";
@@ -588,6 +798,8 @@ public sealed partial class DataverseService
         public string CategoryName { get; init; } = "";
         public string AccountCode { get; init; } = "";
         public string AccountName { get; init; } = "";
+        public string AutomationState { get; init; } = "";
+        public string ReviewReason { get; init; } = "";
         public string SearchText { get; init; } = "";
     }
 
@@ -620,5 +832,14 @@ public sealed partial class DataverseService
         public ExpenseAccountingRuleRow Rule { get; init; } = new();
         public int Score { get; init; }
         public decimal Confidence { get; init; }
+    }
+
+    private sealed class ExpenseAccountingFallbackMatch
+    {
+        public string AccountCode { get; init; } = "";
+        public string AccountName { get; init; } = "";
+        public decimal Confidence { get; init; }
+        public string Status { get; init; } = "";
+        public string Reason { get; init; } = "";
     }
 }

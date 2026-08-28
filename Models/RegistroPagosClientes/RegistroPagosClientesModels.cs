@@ -31,6 +31,11 @@ public sealed class RegistroPagosClientesInvoiceDto
     public string DueDateDisplay { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string CompanyTaxId { get; set; } = "";
+    public string SiigoInvoiceId { get; set; } = "";
+    public string SiigoInvoiceName { get; set; } = "";
+    public string InvoicePrefix { get; set; } = "";
+    public string InvoiceCode { get; set; } = "";
     public decimal TotalInvoice { get; set; }
     public string PaymentStatusKey { get; set; } = "";
     public string PaymentStatusLabel { get; set; } = "";
@@ -47,6 +52,10 @@ public sealed class RegistroPagosClientesInvoiceDto
     public decimal ReteIcaValue { get; set; }
     public decimal RteIvaValue { get; set; }
     public decimal DifferenceValue { get; set; }
+    public decimal CreditNoteTotal { get; set; }
+    public int CreditNoteCount { get; set; }
+    public bool IsFullyCredited { get; set; }
+    public bool IsPartiallyCredited { get; set; }
     public RegistroPagosClientesRetentionSuggestionDto Suggestion { get; set; } = new();
 }
 
@@ -81,10 +90,20 @@ public sealed class RegistroPagosClientesPaymentSaveRequest
     public decimal ReteFtePercent { get; set; }
     public decimal ReteIcaPercent { get; set; }
     public decimal RteIvaPercent { get; set; }
+    public decimal RteIvaBaseValue { get; set; }
+    public decimal? ReteFteValue { get; set; }
+    public decimal? ReteIcaValue { get; set; }
+    public decimal? RteIvaValue { get; set; }
+    public decimal? ExpectedInvoiceTotal { get; set; }
 }
 
 public sealed class RegistroPagosClientesPaymentSaveResult
 {
     public string Message { get; set; } = "";
     public RegistroPagosClientesInvoiceDto Invoice { get; set; } = new();
+    public decimal PersistedPaymentValue { get; set; }
+    public decimal PersistedReteFteValue { get; set; }
+    public decimal PersistedReteIcaValue { get; set; }
+    public decimal PersistedRteIvaValue { get; set; }
+    public decimal PersistedDifferenceValue { get; set; }
 }

@@ -29,6 +29,7 @@ public sealed class PuntajesController : Controller
         {
             CurrentUser = currentUser,
             InitialFilter = ScorePeriodFilter.ThisMonth,
+            InitialBusinessFilter = ScoreBusinessFilter.NewBusiness,
             DealTypeOptions = PuntajesOptionCatalog.DealTypeOptions,
             FirstContractOptions = PuntajesOptionCatalog.FirstContractOptions,
             LineOptions = PuntajesOptionCatalog.LineOptions,
@@ -45,10 +46,11 @@ public sealed class PuntajesController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Records([FromQuery] string? filter, CancellationToken ct)
+    public async Task<IActionResult> Records([FromQuery] string? filter, [FromQuery] string? businessFilter, CancellationToken ct)
     {
         var parsedFilter = ScorePeriodFilterExtensions.ParseOrDefault(filter);
-        var board = await _dataverse.GetScoreBoardAsync(parsedFilter, ct);
+        var parsedBusinessFilter = ScoreBusinessFilterExtensions.ParseOrDefault(businessFilter);
+        var board = await _dataverse.GetScoreBoardAsync(parsedFilter, ct, parsedBusinessFilter);
         return Json(board);
     }
 
@@ -100,8 +102,12 @@ public sealed class PuntajesController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> MoveToRenewal([FromBody] ScoreMoveToRenewalRequest? request, CancellationToken ct)
     {
-        if (request is null || request.RecordIds is null || request.RecordIds.Count == 0)
-            return BadRequest("Debes indicar los registros a mover.");
+        if (request is null
+            || (string.IsNullOrWhiteSpace(request.RecordId)
+                && (request.RecordIds is null || request.RecordIds.Count == 0)))
+        {
+            return BadRequest("Debes indicar la solicitud a mover.");
+        }
 
         try
         {
@@ -114,7 +120,7 @@ public sealed class PuntajesController : Controller
         }
         catch (Exception ex)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible mover el negocio a renovacion.", ex));
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible mover la solicitud a renovacion.", ex));
         }
     }
 

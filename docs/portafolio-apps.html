@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portafolio comercial de aplicaciones Digital Tech</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --copy: #364253;
+      --muted: #6a7686;
+      --line: #d9dee7;
+      --paper: #ffffff;
+      --soft: #f5f7fb;
+      --blue: #1f6feb;
+      --green: #168a5f;
+      --amber: #d88400;
+      --red: #c43d4a;
+      --teal: #0b7f88;
+      --violet: #5c58a6;
+      --coal: #1f2937;
+      --radius: 8px;
+      --shadow: 0 24px 70px rgba(22, 32, 49, .14);
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: #e7ebf1;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #e7ebf1;
+      line-height: 1.45;
+    }
+
+    button,
+    a {
+      font: inherit;
+    }
+
+    .deck-toolbar {
+      position: fixed;
+      right: 18px;
+      top: 16px;
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+      padding: 8px;
+      background: rgba(255, 255, 255, .92);
+      border: 1px solid rgba(217, 222, 231, .9);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 28px rgba(22, 32, 49, .12);
+      backdrop-filter: blur(10px);
+    }
+
+    .deck-toolbar button {
+      width: 38px;
+      height: 34px;
+      border: 1px solid #ccd5e3;
+      background: #fff;
+      border-radius: var(--radius);
+      color: #253246;
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .deck-toolbar button:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
+    .slide {
+      min-height: 100vh;
+      padding: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slide-inner {
+      width: min(1240px, 100%);
+      min-height: min(760px, calc(100vh - 112px));
+      background: var(--paper);
+      border: 1px solid #d2d9e5;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      position: relative;
+    }
+
+    .slide-label {
+      color: var(--accent, var(--blue));
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      font-size: clamp(42px, 5vw, 72px);
+      line-height: .98;
+      letter-spacing: 0;
+      margin-bottom: 22px;
+    }
+
+    h2 {
+      font-size: clamp(32px, 3.2vw, 48px);
+      line-height: 1.04;
+      letter-spacing: 0;
+      margin-bottom: 18px;
+    }
+
+    h3 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .lead {
+      color: #405066;
+      font-size: 20px;
+      line-height: 1.45;
+      max-width: 790px;
+      margin-bottom: 26px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .title-slide .slide-inner {
+      grid-template-columns: 1.02fr .98fr;
+    }
+
+    .title-copy {
+      padding: 70px 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .title-visual {
+      background: #f6f8fb;
+      border-left: 1px solid var(--line);
+      padding: 42px;
+      display: grid;
+      align-content: center;
+      gap: 14px;
+    }
+
+    .portfolio-tile {
+      background: #fff;
+      border: 1px solid #d8dfeb;
+      border-radius: var(--radius);
+      padding: 16px;
+      min-height: 90px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .portfolio-tile strong {
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .portfolio-tile span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid #d8dfeb;
+      background: #fff;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.blue { background: #e9f1ff; border-color: #cce0ff; color: #1f5fbf; }
+    .badge.green { background: #e6f6ef; border-color: #c9ebdd; color: #0b6d48; }
+    .badge.amber { background: #fff2db; border-color: #f6d395; color: #8a5600; }
+    .badge.red { background: #ffe8eb; border-color: #f4c5cb; color: #9b2732; }
+    .badge.teal { background: #e2f6f6; border-color: #bce4e6; color: #08656c; }
+    .badge.violet { background: #efeffb; border-color: #d7d5f3; color: #4d4992; }
+
+    .plain-slide .slide-inner {
+      padding: 64px;
+      align-content: center;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      background: #fff;
+      min-height: 140px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 34px;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+
+    .matrix th,
+    .matrix td {
+      text-align: left;
+      border-bottom: 1px solid #e4e8ef;
+      padding: 13px 10px;
+      vertical-align: top;
+    }
+
+    .matrix th {
+      color: #5e6877;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .product-slide .slide-inner {
+      grid-template-columns: 1.05fr .95fr;
+      min-height: min(780px, calc(100vh - 112px));
+    }
+
+    .product-copy {
+      padding: 48px 48px 42px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .product-copy h2 {
+      max-width: 580px;
+      margin-bottom: 12px;
+    }
+
+    .product-copy .lead {
+      font-size: 17px;
+      max-width: 560px;
+      margin-bottom: 22px;
+    }
+
+    .product-visual {
+      background: #f5f7fb;
+      border-left: 1px solid var(--line);
+      padding: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .screenshot {
+      width: 100%;
+      max-height: 560px;
+      object-fit: contain;
+      border: 1px solid #cbd4e2;
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 18px 45px rgba(28, 40, 62, .14);
+    }
+
+    .scope-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .scope-box {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      background: #fff;
+      min-height: 126px;
+    }
+
+    .scope-box h3 {
+      font-size: 14px;
+      margin-bottom: 9px;
+      color: var(--accent, var(--blue));
+    }
+
+    .scope-box ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--copy);
+      font-size: 13px;
+    }
+
+    .scope-box li + li {
+      margin-top: 5px;
+    }
+
+    .slide-footer {
+      position: absolute;
+      left: 48px;
+      bottom: 24px;
+      color: #7b8697;
+      font-size: 12px;
+    }
+
+    .package-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 26px;
+    }
+
+    .package {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 20px;
+      min-height: 310px;
+    }
+
+    .package .price {
+      color: var(--accent, var(--blue));
+      font-size: 15px;
+      font-weight: 900;
+      margin: 6px 0 14px;
+    }
+
+    .package ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--copy);
+      font-size: 14px;
+    }
+
+    .package li + li { margin-top: 7px; }
+
+    .cta-slide .slide-inner {
+      grid-template-columns: .9fr 1.1fr;
+    }
+
+    .cta-copy {
+      padding: 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: #f7f9fc;
+      border-right: 1px solid var(--line);
+    }
+
+    .cta-list {
+      padding: 64px;
+      display: grid;
+      align-content: center;
+      gap: 16px;
+    }
+
+    .next-step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 14px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      background: #fff;
+    }
+
+    .next-step span {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--accent, var(--blue));
+      font-weight: 900;
+    }
+
+    .next-step p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 920px) {
+      .slide {
+        padding: 18px;
+      }
+
+      .slide-inner,
+      .title-slide .slide-inner,
+      .product-slide .slide-inner,
+      .cta-slide .slide-inner {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .title-copy,
+      .plain-slide .slide-inner,
+      .product-copy,
+      .cta-copy,
+      .cta-list {
+        padding: 32px 24px;
+      }
+
+      .product-visual,
+      .title-visual {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+        padding: 24px;
+      }
+
+      .metric-row,
+      .package-grid,
+      .scope-grid,
+      .tile-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 40px;
+      }
+
+      h2 {
+        font-size: 32px;
+      }
+
+      .deck-toolbar {
+        display: none;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        background: #fff;
+      }
+
+      .deck-toolbar {
+        display: none;
+      }
+
+      .slide {
+        min-height: 100vh;
+        padding: 0;
+        page-break-after: always;
+      }
+
+      .slide-inner {
+        width: 100%;
+        min-height: 100vh;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck-toolbar" aria-label="Controles de presentacion">
+    <button type="button" id="prevSlide" aria-label="Anterior">‹</button>
+    <button type="button" id="nextSlide" aria-label="Siguiente">›</button>
+    <button type="button" id="printDeck" aria-label="Imprimir">⎙</button>
+  </div>
+
+  <main>
+    <section class="slide title-slide" style="--accent:#1f6feb;">
+      <div class="slide-inner">
+        <div class="title-copy">
+          <div class="slide-label">Portafolio comercial</div>
+          <h1>Aplicaciones listas para vender</h1>
+          <p class="lead">Resumen ejecutivo de productos desarrollados o suficientemente maduros para entregar en Azure App Service, Power Pages o como suite corporativa personalizada.</p>
+          <div class="badges">
+            <span class="badge blue">Azure App Service</span>
+            <span class="badge green">Dataverse</span>
+            <span class="badge teal">Power Automate</span>
+            <span class="badge amber">Microsoft Entra ID</span>
+            <span class="badge violet">Azure Blob</span>
+          </div>
+        </div>
+        <div class="title-visual">
+          <div class="tile-grid">
+            <div class="portfolio-tile"><strong>Polla Mundial AB</strong><span>Engagement corporativo</span></div>
+            <div class="portfolio-tile"><strong>SDA Aguas de Bogota</strong><span>Operacion de campo</span></div>
+            <div class="portfolio-tile"><strong>Cotizador Interno</strong><span>Suite comercial y financiera</span></div>
+            <div class="portfolio-tile"><strong>SALUS Talent Humano</strong><span>Gestion humana demo</span></div>
+            <div class="portfolio-tile"><strong>Evaluacion de Desempeno</strong><span>Competencias y planes</span></div>
+            <div class="portfolio-tile"><strong>Modulo de Induccion</strong><span>Power Pages de aprendizaje</span></div>
+            <div class="portfolio-tile"><strong>Mesa Ayuda SaaS</strong><span>Tickets multitenant</span></div>
+            <div class="portfolio-tile"><strong>Portal Cliente</strong><span>Autoservicio Digital Tech</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide plain-slide" style="--accent:#168a5f;">
+      <div class="slide-inner">
+        <div class="slide-label">Lectura de venta</div>
+        <h2>Tenemos una base reutilizable para vender soluciones de negocio, no solo desarrollos a la medida.</h2>
+        <p class="lead">El patron se repite: autenticacion corporativa, datos en Dataverse, automatizaciones con Power Automate, adjuntos en Blob, tableros operativos y despliegue en App Service. Eso permite empaquetar ofertas por vertical y acelerar demos.</p>
+        <div class="metric-row">
+          <div class="metric"><span>Productos fuertes</span><strong>8</strong><p class="small">Incluye apps productivas, demos comerciales y portales reutilizables.</p></div>
+          <div class="metric"><span>Con App Service confirmado</span><strong>3+</strong><p class="small">Polla Mundial, Evaluacion de Desempeno y Mesa Ayuda SaaS tienen evidencia directa.</p></div>
+          <div class="metric"><span>Suite interna</span><strong>20+</strong><p class="small">Cotizador agrupa modulos comerciales, financieros, RRHH, copiers y soporte cloud.</p></div>
+          <div class="metric"><span>Stack Microsoft</span><strong>100%</strong><p class="small">Alineado con cuentas Microsoft 365, Power Platform y Azure.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide plain-slide" style="--accent:#0b7f88;">
+      <div class="slide-inner">
+        <div class="slide-label">Mapa de portafolio</div>
+        <h2>Que podemos ofrecer por comprador</h2>
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Comprador</th>
+              <th>Apps recomendadas</th>
+              <th>Dolor que resuelven</th>
+              <th>Argumento comercial</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Gestion humana</td>
+              <td>SALUS, Evaluacion, Induccion</td>
+              <td>Procesos manuales, documentos dispersos, baja trazabilidad.</td>
+              <td>Digitaliza el ciclo del colaborador desde ingreso hasta desempeno.</td>
+            </tr>
+            <tr>
+              <td>Operaciones y campo</td>
+              <td>SDA Aguas, Mesa Ayuda, Portal Cliente</td>
+              <td>Reportes por correo, evidencias sin control, SLA poco visibles.</td>
+              <td>Convierte actividad diaria en datos auditables y acciones medibles.</td>
+            </tr>
+            <tr>
+              <td>Finanzas y comercial</td>
+              <td>Cotizador Interno, Portal Cliente</td>
+              <td>Cotizaciones lentas, conciliacion manual, renovaciones sin priorizar.</td>
+              <td>Centraliza margen, flujo, pagos, licencias y tableros ejecutivos.</td>
+            </tr>
+            <tr>
+              <td>Comunicaciones / cultura</td>
+              <td>Polla Mundial, TorneoPro corporativo</td>
+              <td>Baja participacion interna en campanas y eventos.</td>
+              <td>Producto rapido de engagement con ranking, reglas y marca del cliente.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#1f6feb;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 01</div>
+          <h2>Polla Mundial corporativa</h2>
+          <p class="lead">Aplicacion de participacion interna para pronosticos deportivos, rankings, podio final y administracion de resultados.</p>
+          <div class="badges">
+            <span class="badge blue">App Service confirmado</span>
+            <span class="badge green">Dataverse</span>
+            <span class="badge amber">Entra ID</span>
+            <span class="badge teal">Power Automate</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Pronosticos por partido con cierre automatico.</li>
+                <li>Podio final, ranking y reglas de puntuacion.</li>
+                <li>Panel admin para resultados y recalculo.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Campanas de cultura y bienestar.</li>
+                <li>Eventos deportivos corporativos.</li>
+                <li>Producto marca blanca para clientes Microsoft 365.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-polla.png" alt="Captura de Polla Mundial corporativa">
+        </div>
+        <div class="slide-footer">Referencia interna: PollaMundialAB, despliegue pollamundialab.azurewebsites.net.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#168a5f;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 02</div>
+          <h2>SDA Aguas de Bogota</h2>
+          <p class="lead">Aplicacion operacional para bitacoras diarias, evidencias de campo, administracion de tablas Dataverse y diagnostico de integraciones.</p>
+          <div class="badges">
+            <span class="badge green">Dataverse</span>
+            <span class="badge violet">Azure Blob</span>
+            <span class="badge blue">Razor Pages</span>
+            <span class="badge amber">Paquete App Service</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Bitacora con borrador, envio y trazabilidad.</li>
+                <li>Carga de fotos, KMZ/KML y archivos de reporte.</li>
+                <li>Administracion de catalogos y registros Dataverse.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Contratos de interventoria y operacion en campo.</li>
+                <li>Seguimiento ambiental, obra o servicios publicos.</li>
+                <li>Auditoria de evidencias con almacenamiento privado.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-sda.png" alt="Captura de SDA Aguas de Bogota">
+        </div>
+        <div class="slide-footer">Referencia interna: SDAAguasdebogota, artefactos App Service en carpeta artifacts.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#d88400;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 03</div>
+          <h2>Cotizador Interno y suite operativa</h2>
+          <p class="lead">Plataforma modular para cotizacion, rentabilidad, renovaciones, conciliacion, licenciamiento, copiers, pagos, RRHH, hardware y reportes financieros.</p>
+          <div class="badges">
+            <span class="badge amber">Calculadora</span>
+            <span class="badge green">Siigo + Dataverse</span>
+            <span class="badge teal">M365 Graph</span>
+            <span class="badge violet">Azure OpenAI</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Calculadora de escenarios, margen y precios.</li>
+                <li>Conciliacion Dataverse, Siigo y DIAN.</li>
+                <li>Dashboards de ventas, flujo, copiers y soporte cloud.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Ofertas comerciales con reglas de rentabilidad.</li>
+                <li>Operacion financiera y cierre mensual.</li>
+                <li>Gobierno de licencias, renovaciones y servicios recurrentes.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-cotizador.png" alt="Captura de Cotizador Interno">
+        </div>
+        <div class="slide-footer">Referencia interna: CotizadorInterno.Web, mas de 20 modulos activos en catalogo de permisos.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#c43d4a;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 04</div>
+          <h2>SALUS Talent Humano Demo</h2>
+          <p class="lead">Demo comercial funcional para recursos humanos: reclutamiento, seleccion, vinculacion, documentos, expediente, incapacidades, calendario y reportes.</p>
+          <div class="badges">
+            <span class="badge red">Demo funcional</span>
+            <span class="badge blue">ASP.NET Core MVC</span>
+            <span class="badge amber">Datos mock</span>
+            <span class="badge green">Listo para productizar</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Flujo de requisicion, candidatos, entrevistas y decision.</li>
+                <li>Checklist documental, firma simulada y aprobaciones.</li>
+                <li>Expediente, incapacidades, calendario y reportes CSV.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Preventa de solucion HR para medianas empresas.</li>
+                <li>Prototipo de portal de talento humano con marca cliente.</li>
+                <li>Base para version Dataverse, Blob y App Service.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/salus-dashboard-final.png" alt="Captura de SALUS Talent Humano Demo">
+        </div>
+        <div class="slide-footer">Referencia interna: SalusTalentHumanoDemo, captura real del artefacto local.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#5c58a6;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 05</div>
+          <h2>Evaluacion de Desempeno AB</h2>
+          <p class="lead">Aplicacion para evaluaciones por rol, competencias normales, cultura SST, plan de accion, firma validada y certificado final.</p>
+          <div class="badges">
+            <span class="badge violet">App Service confirmado</span>
+            <span class="badge green">Dataverse</span>
+            <span class="badge amber">Excel admin</span>
+            <span class="badge teal">Power Automate</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Evaluacion visible solo por correo asignado.</li>
+                <li>Rutas separadas para normal y SST.</li>
+                <li>Plan de accion bloqueado con firma valida.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Evaluacion anual de desempeno.</li>
+                <li>Cumplimiento SST y trazabilidad de planes.</li>
+                <li>Certificados internos para ciclos de talento.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-evaluacion.png" alt="Captura de Evaluacion de Desempeno">
+        </div>
+        <div class="slide-footer">Referencia interna: EvaluacionDesempenoAB, despliegue evdesempenoab.azurewebsites.net.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#0b7f88;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 06</div>
+          <h2>Modulo de Induccion</h2>
+          <p class="lead">Portal de aprendizaje en Power Pages para nuevos colaboradores, con modulos, evaluacion, resultados por usuario y administracion.</p>
+          <div class="badges">
+            <span class="badge teal">Power Pages</span>
+            <span class="badge green">Dataverse listo</span>
+            <span class="badge blue">Portal web</span>
+            <span class="badge amber">Admin panel</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Pagina principal, modulos 1, 2 y 3.</li>
+                <li>Resultados, perfil, busqueda y acceso denegado.</li>
+                <li>Admin login, usuarios y panel de seguimiento.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Induccion de colaboradores, contratistas o proveedores.</li>
+                <li>Capacitaciones obligatorias con evaluacion.</li>
+                <li>Portales rapidos usando Power Platform.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-induccion.png" alt="Captura del Modulo de Induccion">
+        </div>
+        <div class="slide-footer">Referencia interna: induccion, export Power Pages induccionab.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#0b7f88;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 07</div>
+          <h2>Mesa de Ayuda SaaS multitenant</h2>
+          <p class="lead">Helpdesk marca blanca para proveedores Microsoft: tickets, SLA, adjuntos privados, notificaciones, reportes y administracion por tenant.</p>
+          <div class="badges">
+            <span class="badge teal">App Service confirmado</span>
+            <span class="badge green">Dataverse</span>
+            <span class="badge violet">Azure Blob</span>
+            <span class="badge amber">Entra multitenant</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Onboarding, consentimiento admin y aislamiento TenantId.</li>
+                <li>Tickets con comentarios, notas internas, adjuntos e historial.</li>
+                <li>Roles, colas, equipos, SLA, branding y exportaciones.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Proveedores MSP que atienden multiples clientes.</li>
+                <li>Mesa de soporte interna con acuerdos de servicio.</li>
+                <li>Producto SaaS reusable para cuentas Microsoft 365.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-mesa.png" alt="Captura de Mesa de Ayuda SaaS">
+        </div>
+        <div class="slide-footer">Referencia interna: MesaAyudaSaaS, despliegue mesa-ayuda-saas-dtc.azurewebsites.net.</div>
+      </div>
+    </section>
+
+    <section class="slide product-slide" style="--accent:#1f2937;">
+      <div class="slide-inner">
+        <div class="product-copy">
+          <div class="slide-label">Producto 08</div>
+          <h2>Portal Cliente Digital Tech</h2>
+          <p class="lead">Portal ejecutivo de autoservicio para soporte, licenciamiento, seguridad, copiers, capacitaciones, automatizaciones y gobierno Microsoft 365.</p>
+          <div class="badges">
+            <span class="badge blue">MVC corporativo</span>
+            <span class="badge green">Dataverse</span>
+            <span class="badge teal">Graph + Power Automate</span>
+            <span class="badge violet">Azure OpenAI</span>
+          </div>
+          <div class="scope-grid">
+            <div class="scope-box">
+              <h3>Alcance entregable</h3>
+              <ul>
+                <li>Home ejecutivo con indicadores del contrato.</li>
+                <li>Soporte, licencias, seguridad, Academy y copiers.</li>
+                <li>Plan de optimizacion y recomendaciones con IA.</li>
+              </ul>
+            </div>
+            <div class="scope-box">
+              <h3>Casos de uso</h3>
+              <ul>
+                <li>Portal premium para clientes gestionados.</li>
+                <li>Diferenciacion comercial de servicios recurrentes.</li>
+                <li>Hub de gobierno M365 y relacion cliente-proveedor.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="product-visual">
+          <img class="screenshot" src="portafolio-apps-assets/screen-portal.png" alt="Captura de Portal Cliente Digital Tech">
+        </div>
+        <div class="slide-footer">Referencia interna: DigitalTechClientPortal, modulos de soporte, seguridad, licenciamiento, academy y automatizaciones.</div>
+      </div>
+    </section>
+
+    <section class="slide plain-slide" style="--accent:#c43d4a;">
+      <div class="slide-inner">
+        <div class="slide-label">Paquetes comerciales</div>
+        <h2>Como llevarlos al mercado</h2>
+        <p class="lead">La propuesta no tiene que vender codigo desde cero. Puede vender una base de producto con parametrizacion, marca, seguridad, conectores y acompanamiento.</p>
+        <div class="package-grid">
+          <div class="package">
+            <h3>Demo express</h3>
+            <div class="price">1 a 2 semanas</div>
+            <ul>
+              <li>Marca cliente y datos de ejemplo.</li>
+              <li>Demo navegable en App Service o entorno local controlado.</li>
+              <li>Guion comercial y casos de uso por area.</li>
+            </ul>
+          </div>
+          <div class="package">
+            <h3>Implementacion base</h3>
+            <div class="price">3 a 6 semanas</div>
+            <ul>
+              <li>Tenant, autenticacion y roles.</li>
+              <li>Modelo Dataverse o repositorio operativo.</li>
+              <li>Despliegue App Service, logs y documentacion de operacion.</li>
+            </ul>
+          </div>
+          <div class="package">
+            <h3>Version enterprise</h3>
+            <div class="price">6 a 10 semanas</div>
+            <ul>
+              <li>Integraciones Siigo, Graph, Blob o Power Automate.</li>
+              <li>Reportes ejecutivos, IA y automatizaciones.</li>
+              <li>Soporte post-salida, hardening y tablero de adopcion.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide plain-slide" style="--accent:#5c58a6;">
+      <div class="slide-inner">
+        <div class="slide-label">Backlog vendible</div>
+        <h2>Otros activos que pueden convertirse en oferta</h2>
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Activo</th>
+              <th>Estado</th>
+              <th>Posible producto</th>
+              <th>Nota comercial</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>TorneoPro / corporate-worldcup-pool</td>
+              <td>MVP avanzado</td>
+              <td>Polla multitenant marca blanca</td>
+              <td>Completa el salto de Polla Mundial AB a producto SaaS.</td>
+            </tr>
+            <tr>
+              <td>AutoFormatApp</td>
+              <td>App tecnica</td>
+              <td>Automatizacion documental con IA</td>
+              <td>Document Intelligence, Blob y autenticacion corporativa.</td>
+            </tr>
+            <tr>
+              <td>Triada demo gestion humana</td>
+              <td>Demo liviana</td>
+              <td>Portal de solicitudes RH</td>
+              <td>Util para preventa o como modulo pequeno dentro de SALUS.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="small" style="margin-top:20px;">Estos activos no se listan como productos principales porque la evidencia de App Service o madurez comercial es menor que en el portafolio central.</p>
+      </div>
+    </section>
+
+    <section class="slide cta-slide" style="--accent:#1f6feb;">
+      <div class="slide-inner">
+        <div class="cta-copy">
+          <div class="slide-label">Siguiente movimiento</div>
+          <h2>Convertir el inventario en pipeline comercial</h2>
+          <p class="lead">Con esta presentacion ya hay una historia de venta por producto. El siguiente paso es preparar demos por vertical, precios de implementacion y una ficha tecnica por app.</p>
+          <div class="badges">
+            <span class="badge blue">Demo</span>
+            <span class="badge green">Propuesta</span>
+            <span class="badge amber">Ficha tecnica</span>
+            <span class="badge teal">Guion comercial</span>
+          </div>
+        </div>
+        <div class="cta-list">
+          <div class="next-step">
+            <span>1</span>
+            <div><h3>Priorizar 3 ofertas ancla</h3><p>Mesa Ayuda SaaS, SALUS/HR y Cotizador/finanzas tienen mayor potencial de venta recurrente.</p></div>
+          </div>
+          <div class="next-step">
+            <span>2</span>
+            <div><h3>Crear demo con datos ficticios por industria</h3><p>Servicios, salud, utilities, educacion y sector publico pueden usar la misma base con lenguaje propio.</p></div>
+          </div>
+          <div class="next-step">
+            <span>3</span>
+            <div><h3>Definir paquetes y precio de salida</h3><p>Separar configuracion base, integraciones y soporte para vender sin prometer alcance ilimitado.</p></div>
+          </div>
+          <div class="next-step">
+            <span>4</span>
+            <div><h3>Actualizar capturas con tenant demo</h3><p>Las capturas comerciales usan datos ficticios para evitar exponer informacion real de clientes.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    let index = 0;
+
+    function nearestSlideIndex() {
+      const center = window.scrollY + window.innerHeight / 2;
+      let current = 0;
+      for (let i = 0; i < slides.length; i += 1) {
+        const rectTop = slides[i].offsetTop;
+        const rectBottom = rectTop + slides[i].offsetHeight;
+        if (center >= rectTop && center <= rectBottom) {
+          current = i;
+          break;
+        }
+      }
+      return current;
+    }
+
+    function goToSlide(nextIndex) {
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides[index].scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    document.getElementById("prevSlide").addEventListener("click", () => goToSlide(nearestSlideIndex() - 1));
+    document.getElementById("nextSlide").addEventListener("click", () => goToSlide(nearestSlideIndex() + 1));
+    document.getElementById("printDeck").addEventListener("click", () => window.print());
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "PageDown") {
+        event.preventDefault();
+        goToSlide(nearestSlideIndex() + 1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        goToSlide(nearestSlideIndex() - 1);
+      }
+    });
+  </script>
+</body>
+</html>

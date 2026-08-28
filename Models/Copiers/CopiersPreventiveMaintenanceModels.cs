@@ -4,7 +4,12 @@ public sealed class CopiersPreventiveMaintenanceBoardDto
 {
     public string AsOfDateLabel { get; set; } = "";
     public string CounterPeriodLabel { get; set; } = "";
+    public string PeriodFilter { get; set; } = "this-month";
+    public string PeriodLabel { get; set; } = "";
     public string PeriodValue { get; set; } = "";
+    public string PeriodStartValue { get; set; } = "";
+    public string PeriodEndValue { get; set; } = "";
+    public bool CanEditMaintenanceFrequency { get; set; }
     public int RecordsCount { get; set; }
     public IReadOnlyList<CopiersPreventiveMaintenanceClientDto> Clients { get; set; } = Array.Empty<CopiersPreventiveMaintenanceClientDto>();
 }
@@ -14,7 +19,11 @@ public sealed class CopiersPreventiveMaintenanceClientDto
     public string ClientKey { get; set; } = "";
     public string ClientId { get; set; } = "";
     public string ClientName { get; set; } = "";
+    public string ClientCity { get; set; } = "";
     public int EquipmentCount { get; set; }
+    public string MaintenanceFrequencyKey { get; set; } = "monthly";
+    public string MaintenanceFrequencyLabel { get; set; } = "Mensual";
+    public bool IsBimonthlyMaintenance { get; set; }
     public bool IsScheduledThisMonth { get; set; }
     public string ScheduledDateDisplay { get; set; } = "";
     public string MonthlyStatusLabel { get; set; } = "";
@@ -68,6 +77,23 @@ public sealed class CopiersPreventiveMaintenanceScheduleResultDto
     public string Message { get; set; } = "";
     public string EventId { get; set; } = "";
     public string WebLink { get; set; } = "";
+}
+
+public sealed class CopiersPreventiveMaintenanceFrequencyUpdateRequestDto
+{
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string FrequencyKey { get; set; } = "";
+}
+
+public sealed class CopiersPreventiveMaintenanceFrequencyUpdateResultDto
+{
+    public string Message { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string MaintenanceFrequencyKey { get; set; } = "monthly";
+    public string MaintenanceFrequencyLabel { get; set; } = "Mensual";
+    public bool IsBimonthlyMaintenance { get; set; }
 }
 
 public sealed class CopiersCounterSaveRequestDto

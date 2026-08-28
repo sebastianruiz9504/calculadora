@@ -5,9 +5,11 @@
       { "label": "Satisfaccion", "value": 645250001 }
     ],
     "answerTypeOptions": [
-      { "label": "Seleccion unica", "value": 645250000 },
+      { "label": "Respuesta de opcion multiple", "value": 645250000 },
       { "label": "Escala 1 a 5", "value": 645250001 },
-      { "label": "Texto abierto", "value": 645250002 }
+      { "label": "Texto abierto", "value": 645250002 },
+      { "label": "Varias respuestas de opcion multiple", "value": 645250003 },
+      { "label": "Arrastrar texto al campo asignado", "value": 645250004 }
     ],
     "sessionStateOptions": [
       { "label": "Borrador", "value": 645250000 },

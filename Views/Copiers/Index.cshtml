@@ -1,6 +1,7 @@
 @model CotizadorInterno.Web.Models.Copiers.CopiersPageViewModel
 @{
     ViewData["Title"] = "Copiers";
+    var canEditPreventiveMaintenanceFrequency = CotizadorInterno.Web.Models.Copiers.CopiersAccessPolicy.CanEditPreventiveMaintenanceFrequency(Model.CurrentUser);
 }
 
 @section Styles {
@@ -14,6 +15,7 @@
      data-upload-maintenance-url="@Url.Action("UploadMaintenanceAttachment", "Copiers")"
      data-download-maintenance-url="@Url.Action("DownloadMaintenanceAttachment", "Copiers")"
      data-preventive-maintenance-url="@Url.Action("PreventiveMaintenance", "Copiers")"
+     data-preventive-maintenance-frequency-url="@Url.Action("PreventiveMaintenanceFrequency", "Copiers")"
      data-schedule-preventive-maintenance-url="@Url.Action("SchedulePreventiveMaintenance", "Copiers")"
      data-calendar-consent-url="@Url.Action("CalendarConsent", "Copiers")"
      data-save-counter-url="@Url.Action("SaveCounter", "Copiers")"
@@ -25,6 +27,8 @@
      data-equipment-assignment-url="@Url.Action("EquipmentAssignment", "Copiers")"
      data-save-equipment-url="@Url.Action("SaveEquipment", "Copiers")"
      data-register-equipment-movement-url="@Url.Action("RegisterEquipmentMovement", "Copiers")"
+     data-upload-equipment-movement-url="@Url.Action("UploadEquipmentMovementAttachment", "Copiers")"
+     data-download-equipment-movement-url="@Url.Action("DownloadEquipmentMovementAttachment", "Copiers")"
      data-save-equipment-client-url="@Url.Action("SaveEquipmentClient", "Copiers")"
      data-supplies-url="@Url.Action("Supplies", "Copiers")"
      data-save-supply-quantity-url="@Url.Action("SaveSupplyQuantity", "Copiers")"
@@ -34,7 +38,12 @@
      data-save-delivery-url="@Url.Action("SaveDelivery", "Copiers")"
      data-upload-delivery-url="@Url.Action("UploadDeliveryAttachment", "Copiers")"
      data-download-delivery-url="@Url.Action("DownloadDeliveryAttachment", "Copiers")"
-     data-client-search-url="@Url.Action("ClientSearch", "Copiers")">
+     data-billing-days-url="@Url.Action("BillingDays", "Copiers")"
+     data-equipment-movements-url="@Url.Action("EquipmentMovements", "Copiers")"
+     data-line-equipment-assignment-url="@Url.Action("LineEquipmentAssignment", "Copiers")"
+     data-line-equipment-assignment-save-url="@Url.Action("LineEquipmentAssignment", "Copiers")"
+     data-client-search-url="@Url.Action("ClientSearch", "Copiers")"
+     data-can-edit-preventive-frequency="@canEditPreventiveMaintenanceFrequency.ToString().ToLowerInvariant()">
     <section class="copiers-hero">
         <div>
             <div class="copiers-kicker">Operacion</div>
@@ -52,6 +61,8 @@
     <nav class="copiers-tabs" aria-label="Submodulos Copiers">
         <button type="button" class="copiers-tab is-active" data-copiers-tab="maintenance">Mantenimientos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="preventiveMaintenance">Mantenimientos Preventivos</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="billingDays">D&iacute;as de facturaci&oacute;n</button>
+        <button type="button" class="copiers-tab" data-copiers-tab="movements">Movimientos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="equipment" hidden>Equipos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="equipmentInventory">Inventario equipos</button>
         <button type="button" class="copiers-tab" data-copiers-tab="supplies">Inventario suministros</button>
@@ -67,6 +78,7 @@
             <div class="copiers-panel__actions">
                 <span class="copiers-counter" id="copiersMaintenanceCount">0 registros</span>
                 <button type="button" class="btn btn-outline-secondary" id="copiersMaintenanceRefreshBtn">Actualizar</button>
+                <a class="btn btn-success" asp-controller="CopiersMtoV2" asp-action="Index">MTO firmado V2</a>
                 <button type="button" class="btn btn-primary" id="copiersNewMaintenanceBtn">Nuevo mantenimiento</button>
             </div>
         </div>
@@ -97,6 +109,10 @@
                 <h2 class="copiers-section-title">Mantenimientos Preventivos</h2>
             </div>
             <div class="copiers-panel__actions">
+                <div class="copiers-segmented" aria-label="Periodo de validacion">
+                    <button type="button" class="is-active" data-copiers-preventive-period="this-month">Mes vigente</button>
+                    <button type="button" data-copiers-preventive-period="previous-month">Mes pasado</button>
+                </div>
                 <span class="copiers-counter" id="copiersPreventiveCount">0 clientes</span>
                 <button type="button" class="btn btn-outline-secondary" id="copiersPreventiveRefreshBtn">Actualizar</button>
             </div>
@@ -113,6 +129,75 @@
             </table>
         </div>
         <div class="copiers-empty" id="copiersPreventiveEmpty" hidden>No hay clientes con productos copiers para mostrar.</div>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="billingDays" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Clientes</div>
+                <h2 class="copiers-section-title">D&iacute;as de facturaci&oacute;n</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersBillingDaysCount">0 registros</span>
+                <button type="button" class="btn btn-outline-secondary" id="copiersBillingDaysRefreshBtn">Actualizar</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table copiers-table--billing-days">
+                <thead>
+                    <tr>
+                        <th>D&iacute;a fact.</th>
+                        <th>Cliente</th>
+                        <th>L&iacute;neas</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Equipos</th>
+                        <th class="text-end">Detalle</th>
+                    </tr>
+                </thead>
+                <tbody id="copiersBillingDaysBody">
+                    <tr>
+                        <td colspan="6" class="text-center copiers-muted">Abre D&iacute;as de facturaci&oacute;n para cargar los clientes.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersBillingDaysEmpty" hidden>No hay registros de facturaci&oacute;n copiers disponibles.</div>
+    </section>
+
+    <section class="copiers-panel" data-copiers-panel="movements" hidden>
+        <div class="copiers-panel__header">
+            <div>
+                <div class="copiers-kicker">Movimientos</div>
+                <h2 class="copiers-section-title">Movimientos de equipos</h2>
+            </div>
+            <div class="copiers-panel__actions">
+                <span class="copiers-counter" id="copiersMovementsCount">0 registros</span>
+                <label class="copiers-search copiers-search--compact" for="copiersMovementsSearch">
+                    <span>Buscar</span>
+                    <input class="form-control" id="copiersMovementsSearch" type="search" placeholder="Filtrar movimientos..." autocomplete="off" />
+                </label>
+                <button type="button" class="btn btn-outline-secondary" id="copiersMovementsRefreshBtn">Actualizar</button>
+            </div>
+        </div>
+        <div class="copiers-table-wrap">
+            <table class="table align-middle copiers-table copiers-table--movements">
+                <thead>
+                    <tr>
+                        <th><button type="button" class="copiers-sort" data-copiers-movement-sort="dateValue">Fecha movimiento</button></th>
+                        <th><button type="button" class="copiers-sort" data-copiers-movement-sort="equipmentSerial">Equipo</button></th>
+                        <th><button type="button" class="copiers-sort" data-copiers-movement-sort="clientName">Cliente nuevo</button></th>
+                        <th><button type="button" class="copiers-sort" data-copiers-movement-sort="reason">Motivo movimiento</button></th>
+                        <th><button type="button" class="copiers-sort" data-copiers-movement-sort="attachment">Acta de entrega</button></th>
+                    </tr>
+                </thead>
+                <tbody id="copiersMovementsBody">
+                    <tr>
+                        <td colspan="5" class="text-center copiers-muted">Abre Movimientos para cargar el historial de reasignaciones.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="copiers-empty" id="copiersMovementsEmpty" hidden>No hay movimientos de equipos registrados.</div>
     </section>
 
     <section class="copiers-panel" data-copiers-panel="equipment" hidden>
@@ -298,6 +383,76 @@
     </section>
 </div>
 
+<div class="copiers-modal" id="copiersLineEquipmentModal" hidden>
+    <div class="copiers-modal__backdrop" data-copiers-close="lineEquipment"></div>
+    <div class="copiers-modal__dialog copiers-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersLineEquipmentTitle">
+        <div class="copiers-modal__header">
+            <div>
+                <div class="copiers-kicker">Asignaci&oacute;n de equipos</div>
+                <h2 class="copiers-modal__title" id="copiersLineEquipmentTitle">Equipos de la l&iacute;nea</h2>
+                <p class="copiers-modal__text" id="copiersLineEquipmentSubtitle">Asigna equipos del cliente a esta l&iacute;nea de producto Copiers.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="lineEquipment">Cerrar</button>
+        </div>
+
+        <div class="copiers-status" id="copiersLineEquipmentStatus" role="status" aria-live="polite"></div>
+        <div class="copiers-assignment-summary" id="copiersLineEquipmentSummary"></div>
+
+        <div class="copiers-assignment-grid">
+            <section class="copiers-subpanel">
+                <div class="copiers-subpanel__header">
+                    <h3>Asignados a esta l&iacute;nea</h3>
+                    <span class="copiers-counter" id="copiersLineEquipmentAssignedCount">0 equipos</span>
+                </div>
+                <div class="copiers-table-wrap copiers-table-wrap--compact">
+                    <table class="table align-middle copiers-table copiers-table--assignment">
+                        <thead>
+                            <tr>
+                                <th>Equipo</th>
+                                <th>Detalle</th>
+                                <th class="text-end">Acci&oacute;n</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersLineEquipmentAssignedBody">
+                            <tr>
+                                <td colspan="3" class="text-center copiers-muted">No hay equipos asignados a esta l&iacute;nea.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="copiers-subpanel">
+                <div class="copiers-subpanel__header">
+                    <h3>Disponibles del cliente</h3>
+                    <span class="copiers-counter" id="copiersLineEquipmentAvailableCount">0 equipos</span>
+                </div>
+                <div class="copiers-table-wrap copiers-table-wrap--compact">
+                    <table class="table align-middle copiers-table copiers-table--assignment">
+                        <thead>
+                            <tr>
+                                <th>Equipo</th>
+                                <th>Detalle</th>
+                                <th class="text-end">Acci&oacute;n</th>
+                            </tr>
+                        </thead>
+                        <tbody id="copiersLineEquipmentAvailableBody">
+                            <tr>
+                                <td colspan="3" class="text-center copiers-muted">No hay equipos disponibles para asignar.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="copiers-modal__footer">
+            <button type="button" class="btn btn-outline-secondary" data-copiers-close="lineEquipment">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="copiersLineEquipmentSaveBtn">Guardar asignaci&oacute;n</button>
+        </div>
+    </div>
+</div>
+
 <div class="copiers-modal" id="copiersEquipmentDetailModal" hidden>
     <div class="copiers-modal__backdrop" data-copiers-close="equipmentDetail"></div>
     <div class="copiers-modal__dialog copiers-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="copiersEquipmentDetailTitle">
@@ -407,6 +562,7 @@
                             <th>Fecha</th>
                             <th>Cliente nuevo</th>
                             <th>Motivo</th>
+                            <th>Acta</th>
                         </tr>
                     </thead>
                     <tbody id="copiersEquipmentMovementsBody"></tbody>
@@ -446,7 +602,11 @@
                     </label>
                     <label class="copiers-field copiers-field--span-2">
                         <span>Motivo de movimiento</span>
-                        <textarea class="form-control" id="copiersMovementReason" rows="3" required></textarea>
+                        <textarea class="form-control" id="copiersMovementReason" rows="3" maxlength="100" required></textarea>
+                    </label>
+                    <label class="copiers-field copiers-field--span-2">
+                        <span>Adjuntar acta de entrega</span>
+                        <input class="form-control" id="copiersMovementFile" type="file" accept="application/pdf,.pdf" />
                     </label>
                 </div>
                 <div class="copiers-modal__footer">

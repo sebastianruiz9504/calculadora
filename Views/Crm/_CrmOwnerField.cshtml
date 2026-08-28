@@ -1,0 +1,43 @@
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    var objectType = Convert.ToString(ViewData["CrmObjectType"]) ?? "";
+    var recordId = Convert.ToString(ViewData["CrmRecordId"]) ?? "";
+    var currentOwnerName = Convert.ToString(ViewData["CrmCurrentOwnerName"]);
+    var ownerOptions = ViewData["CrmOwnerOptions"] as IEnumerable<SelectListItem>
+        ?? Enumerable.Empty<SelectListItem>();
+    var hasOwners = ownerOptions.Any();
+}
+
+<details class="crm-owner-editor" data-owner-editor>
+    <summary aria-label="Cambiar propietario del registro">
+        <span data-owner-current-name>
+            @(string.IsNullOrWhiteSpace(currentOwnerName) ? "Sin propietario registrado" : currentOwnerName)
+        </span>
+        <small>Cambiar</small>
+    </summary>
+    <form data-owner-form
+          data-object-type="@objectType"
+          data-record-id="@recordId">
+        <label>
+            <span>Nuevo propietario</span>
+            <select name="NewOwnerSystemUserId" required disabled="@(!hasOwners)">
+                @foreach (var owner in ownerOptions)
+                {
+                    <option value="@owner.Value" selected="@owner.Selected">@owner.Text</option>
+                }
+            </select>
+        </label>
+        <div class="crm-owner-editor__actions">
+            <button class="crm-btn crm-btn--quiet" type="button" data-owner-cancel>Cancelar</button>
+            <button class="crm-btn crm-btn--primary"
+                    type="submit"
+                    data-owner-save
+                    disabled="@(!hasOwners)">Guardar</button>
+        </div>
+        <p class="crm-owner-editor__status"
+           data-owner-status
+           role="status"
+           aria-live="polite"
+           hidden></p>
+    </form>
+</details>

@@ -4,6 +4,7 @@ public sealed class ProvisioningRequestInput
 {
     public string? Source { get; set; }
     public string? BusinessId { get; set; }
+    public string? CrmDealId { get; set; }
     public ProvisioningRequester? Requester { get; set; }
     public ProvisioningClient? Cliente { get; set; }
     public ProvisioningAprovisionamiento? Aprovisionamiento { get; set; }
@@ -65,6 +66,8 @@ public sealed class ProvisioningLineItem
     public decimal VentaUnd { get; set; }
     public decimal MargenPorcentaje { get; set; }
     public int DuracionMeses { get; set; }
+    public decimal SuggestedRetailPrice { get; set; }
+    public decimal Acelerador { get; set; }
     public decimal VentaMensual { get; set; }
     public decimal VentaTotal { get; set; }
     public bool TieneIva { get; set; }

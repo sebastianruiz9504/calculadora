@@ -1,14 +1,18 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Automation;
 using CotizadorInterno.Web.Models.Conciliacion;
 using CotizadorInterno.Web.Models.Dashboard;
+using CotizadorInterno.Web.Models.Tasks;
 
 namespace CotizadorInterno.Web.Services;
 
 public sealed partial class DataverseService
 {
+    private const string ConciliacionCashFlowPendingReviewStatus = "PendienteRevision";
+    private const string ConciliacionCashFlowOmittedStatus = "Omitido";
     private const string ConciliacionCreatedOnField = "createdon";
     private const string ConciliacionModifiedOnField = "modifiedon";
     private const string ClientPaymentMatchPreflightStatusField = "cr07a_preflightestado";
@@ -41,16 +45,37 @@ public sealed partial class DataverseService
 
         var start = new DateOnly(year, month, 1);
         var endExclusive = start.AddMonths(1);
+        await RefreshConciliacionClientPaymentMatchesForBoardAsync(start, endExclusive, ct);
+
         var cashFlowRowsTask = GetConciliacionCashFlowRowsAsync(start, endExclusive, ct);
         var clientPaymentsTask = GetConciliacionClientPaymentsAsync(start, endExclusive, ct);
         var dianSupplierInvoicesTask = GetConciliacionDianSupplierInvoiceRowsAsync(start, endExclusive, ct);
         var dianExpenseAccountsTask = GetConciliacionDianExpenseAccountOptionsAsync(ct);
-        await Task.WhenAll(cashFlowRowsTask, clientPaymentsTask, dianSupplierInvoicesTask, dianExpenseAccountsTask);
+        var accountingAccountsTask = GetConciliacionAccountingAccountOptionsAsync(ct);
+        var bankOpeningBalancesTask = GetConciliacionBankOpeningBalanceIndexAsync(year, month, ct);
+        await Task.WhenAll(
+            cashFlowRowsTask,
+            clientPaymentsTask,
+            dianSupplierInvoicesTask,
+            dianExpenseAccountsTask,
+            accountingAccountsTask,
+            bankOpeningBalancesTask);
+
+        await CloseConciliacionTerminalClientPaymentMatchesAsync(
+            cashFlowRowsTask.Result,
+            clientPaymentsTask.Result,
+            ct);
 
         var clientPayments = BuildConciliacionClientPaymentSummary(clientPaymentsTask.Result);
         var dianSupplierInvoices = BuildConciliacionDianSupplierInvoiceSummary(dianSupplierInvoicesTask.Result);
         var cashFlow = BuildConciliacionCashFlowSummary(cashFlowRowsTask.Result, clientPayments.Rows);
-        var phases = BuildConciliacionPhases(cashFlow, clientPayments, dianSupplierInvoices);
+        cashFlow.BankBalances = BuildConciliacionCashFlowBankBalances(
+            cashFlow.Rows,
+            year,
+            month,
+            bankOpeningBalancesTask.Result);
+        var cuentasCobro = await GetConciliacionCuentaCobroSummaryAsync(start, endExclusive, cashFlow.Rows, ct);
+        var phases = BuildConciliacionPhases(cashFlow, clientPayments, dianSupplierInvoices, cuentasCobro);
         var pending = clientPayments.PendingReview
             + cashFlow.PendingValidationRows
             + dianSupplierInvoices.ProviderPending
@@ -73,11 +98,251 @@ public sealed partial class DataverseService
             CashFlow = cashFlow,
             ClientPayments = clientPayments,
             DianSupplierInvoices = dianSupplierInvoices,
+            CuentasCobro = cuentasCobro,
             DianCategoryOptions = BuildPnlCategoryOptions()
                 .Select(static option => new ConciliacionOptionDto { Value = option.Value?.ToString(CultureInfo.InvariantCulture) ?? option.Key, Label = option.Label })
                 .Where(static option => !string.IsNullOrWhiteSpace(option.Value) && !string.IsNullOrWhiteSpace(option.Label))
                 .ToArray(),
-            DianExpenseAccountOptions = dianExpenseAccountsTask.Result
+            DianExpenseAccountOptions = dianExpenseAccountsTask.Result,
+            AccountingAccountOptions = accountingAccountsTask.Result
+        };
+    }
+
+    private async Task RefreshConciliacionClientPaymentMatchesForBoardAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        CancellationToken ct)
+    {
+        try
+        {
+            await MatchCashFlowClientPaymentsAsync(
+                startInclusive,
+                endExclusive.AddDays(-1),
+                dryRun: false,
+                ct: ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible refrescar automaticamente los cruces de entradas FV para Conciliacion {StartDate} - {EndDate}.",
+                startInclusive,
+                endExclusive.AddDays(-1));
+        }
+    }
+
+    private async Task CloseConciliacionTerminalClientPaymentMatchesAsync(
+        IReadOnlyList<ConciliacionCashFlowRowDto> cashFlowRows,
+        IReadOnlyList<ConciliacionClientPaymentRowDto> clientPayments,
+        CancellationToken ct)
+    {
+        var terminalMovementsByExternalKey = cashFlowRows
+            .Where(IsConciliacionClientPaymentMovementCandidate)
+            .Where(IsConciliacionCashFlowTerminal)
+            .Where(static row => !string.IsNullOrWhiteSpace(row.ExternalKey))
+            .GroupBy(static row => row.ExternalKey.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+        if (terminalMovementsByExternalKey.Count == 0)
+            return;
+
+        var staleMatches = clientPayments
+            .Where(static match => !IsConciliacionClientPaymentTerminalStatus(match.Status))
+            .Where(static match => !string.IsNullOrWhiteSpace(match.RecordId))
+            .Where(static match => !string.IsNullOrWhiteSpace(match.MovementExternalKey))
+            .Select(match => new
+            {
+                Match = match,
+                Movement = terminalMovementsByExternalKey.GetValueOrDefault(match.MovementExternalKey.Trim())
+            })
+            .Where(static item => item.Movement is not null)
+            .ToArray();
+        if (staleMatches.Length == 0)
+            return;
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ClientPaymentMatchLogicalName,
+            ClientPaymentMatchSetName,
+            ClientPaymentMatchIdField,
+            ClientPaymentMatchPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+
+        using var throttler = new SemaphoreSlim(4);
+        var tasks = staleMatches.Select(async item =>
+        {
+            ct.ThrowIfCancellationRequested();
+            await throttler.WaitAsync(ct);
+            try
+            {
+                var movement = item.Movement!;
+                var match = item.Match;
+                var status = ResolveConciliacionTerminalClientPaymentStatus(movement);
+                var invoiceDetail = string.IsNullOrWhiteSpace(match.InvoiceNumbers)
+                    ? ""
+                    : $" Factura(s): {match.InvoiceNumbers}.";
+                var siigoReference = FirstNonEmpty(
+                    movement.SiigoDocumentName,
+                    movement.SiigoDocumentId,
+                    "checkpoint confirmado");
+                var detail = TruncateAccountCatalogText(
+                    $"Cruce cerrado desde el checkpoint terminal del movimiento.{invoiceDetail} Comprobante Siigo: {siigoReference}.",
+                    1000);
+                var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                SetAccountCatalogValue(payload, attributes, ClientPaymentMatchStatusField, null, status, force: true);
+                SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReasonField, null, detail, force: true);
+                SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightStatusField, null, status, force: true);
+                SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightMessageField, null, detail, force: true);
+                SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightValidatedOnField, (DateTimeOffset?)null, DateTimeOffset.UtcNow, force: true);
+                if (payload.Count == 0)
+                    return;
+
+                await CallDataverseAppSendAsync(
+                    $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(match.RecordId, nameof(match.RecordId))})",
+                    "PATCH",
+                    payload,
+                    ct);
+
+                match.Status = status;
+                match.StatusLabel = ResolveConciliacionStatusLabel(status);
+                match.StatusTone = ResolveConciliacionStatusTone(status);
+                match.Reason = detail;
+                match.PreflightStatus = status;
+                match.PreflightStatusLabel = ResolveConciliacionPreflightStatusLabel(status);
+                match.PreflightStatusTone = ResolveConciliacionPreflightStatusTone(status);
+                match.PreflightMessage = detail;
+                match.PreflightValidatedOnDisplay = FormatConciliacionDateTimeDisplay(DateTimeOffset.UtcNow);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible cerrar el cruce obsoleto {MatchId} del movimiento terminal {MovementId}.",
+                    item.Match.RecordId,
+                    item.Movement!.RecordId);
+            }
+            finally
+            {
+                throttler.Release();
+            }
+        }).ToArray();
+
+        await Task.WhenAll(tasks);
+    }
+
+    public async Task<ConciliacionMonthValidationStateDto> GetConciliacionCashFlowMonthValidationAsync(
+        int year,
+        int month,
+        CancellationToken ct = default)
+    {
+        ValidateConciliacionMonth(year, month);
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var task = await FindTaskByUniqueKeyAsync(BuildConciliacionMonthValidationKey(year, month), httpContext.User, ct);
+        return BuildConciliacionMonthValidationState(task);
+    }
+
+    public async Task<ConciliacionMonthValidationResultDto> MarkConciliacionCashFlowMonthValidatedAsync(
+        int year,
+        int month,
+        string periodLabel,
+        string comments,
+        CancellationToken ct = default)
+    {
+        ValidateConciliacionMonth(year, month);
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var currentUser = await GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
+        var user = httpContext.User;
+        var key = BuildConciliacionMonthValidationKey(year, month);
+        var periodKey = $"{year:D4}-{month:D2}";
+        var label = FirstNonEmpty(periodLabel, periodKey);
+        var dueDate = new DateOnly(year, month, 1).AddMonths(1).AddDays(-1);
+        var closedComments = FirstNonEmpty(
+            comments,
+            $"Mes validado manualmente desde Conciliacion para {label}.");
+
+        var existing = await FindTaskByUniqueKeyAsync(key, user, ct);
+        if (existing is null)
+        {
+            var rule = new TaskRuleDefinition
+            {
+                UniqueKey = key,
+                Title = $"Conciliacion flujo de caja {label}",
+                Module = "Conciliacion",
+                TaskType = "Cierre mensual flujo de caja",
+                SourceId = periodKey,
+                AssigneeId = currentUser.SystemUserId,
+                AssigneeEmail = currentUser.Email,
+                AssigneeName = ResolveUserDisplayName(currentUser),
+                DueDate = dueDate,
+                Description = $"Validacion manual del flujo de caja, Siigo y Dataverse para {label}.",
+                ActionUrl = $"/Conciliacion?year={year}&month={month}#tab=flujo-caja&vertical=Cloud",
+                PeriodKey = periodKey,
+                PendingCount = 0,
+                ShouldBeOpen = true,
+                IsManual = true
+            };
+            existing = await CreateTaskFromRuleAsync(rule, currentUser, user, ct);
+        }
+        else
+        {
+            var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                [TaskNameField] = TruncateTaskText($"Conciliacion flujo de caja {label}", 200),
+                [TaskUniqueKeyField] = TruncateTaskText(key, 300),
+                [TaskModuleField] = "Conciliacion",
+                [TaskTypeField] = "Cierre mensual flujo de caja",
+                [TaskSourceIdField] = periodKey,
+                [TaskAssigneeIdField] = TruncateTaskText(NormalizeOptionalGuid(currentUser.SystemUserId), 100),
+                [TaskAssigneeEmailField] = TruncateTaskText(currentUser.Email, 200),
+                [TaskAssigneeNameField] = TruncateTaskText(ResolveUserDisplayName(currentUser), 200),
+                [TaskDueDateField] = dueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                [TaskDescriptionField] = TruncateTaskText($"Validacion manual del flujo de caja, Siigo y Dataverse para {label}.", 4000),
+                [TaskActionUrlField] = TruncateTaskText(BuildTaskAbsoluteUrl($"/Conciliacion?year={year}&month={month}#tab=flujo-caja&vertical=Cloud"), 600),
+                [TaskPeriodKeyField] = periodKey,
+                [TaskPendingCountField] = 0,
+                [TaskIsManualField] = true
+            };
+
+            await CallDataverseSendAsync(
+                $"/api/data/v9.2/{_tasksTableSetName}({NormalizeGuid(existing.TaskId, nameof(existing.TaskId))})",
+                "PATCH",
+                payload,
+                user,
+                ct);
+        }
+
+        await CloseAutomaticTaskAsync(existing.TaskId, closedComments, currentUser, user, ct);
+        var refreshed = await GetTaskByIdAsync(existing.TaskId, user, ct) ?? existing;
+        return new ConciliacionMonthValidationResultDto
+        {
+            Message = $"Mes {label} marcado como validado.",
+            State = BuildConciliacionMonthValidationState(refreshed)
+        };
+    }
+
+    private static void ValidateConciliacionMonth(int year, int month)
+    {
+        if (year < 2020 || month is < 1 or > 12)
+            throw new InvalidOperationException("El periodo de conciliacion no es valido.");
+    }
+
+    private static string BuildConciliacionMonthValidationKey(int year, int month) =>
+        $"conciliacion:flujo-caja:cierre:{year:D4}-{month:D2}";
+
+    private static ConciliacionMonthValidationStateDto BuildConciliacionMonthValidationState(TaskBoardItemDto? task)
+    {
+        if (task is null || task.StatusValue != TaskStatusValues.Closed)
+            return new ConciliacionMonthValidationStateDto();
+
+        return new ConciliacionMonthValidationStateDto
+        {
+            IsValidated = true,
+            TaskId = task.TaskId,
+            ValidatedOnDisplay = task.ClosedOnDisplay,
+            ValidatedBy = FirstNonEmpty(task.AssigneeName, task.AssigneeEmail),
+            Comments = task.CloseComments
         };
     }
 
@@ -259,6 +524,742 @@ public sealed partial class DataverseService
         };
     }
 
+    public Task<ConciliacionActionResultDto> MarkConciliacionClientPaymentManualSiigoAsync(
+        string recordId,
+        string reason = "",
+        CancellationToken ct = default)
+    {
+        var message = string.IsNullOrWhiteSpace(reason)
+            ? "Registrada manualmente en Siigo desde Conciliacion. No se envio payload desde la app."
+            : reason.Trim();
+
+        return MarkConciliacionClientPaymentSiigoSendResultAsync(
+            recordId,
+            success: true,
+            message: message,
+            siigoName: "Subida manualmente en Siigo",
+            statusOverride: "Conciliado",
+            ct: ct);
+    }
+
+    public async Task<ConciliacionCashFlowActionResultDto> MarkConciliacionCashFlowManualSiigoAsync(
+        ConciliacionCashFlowManualRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(request.RecordId) && string.IsNullOrWhiteSpace(request.MovementExternalKey))
+            throw new InvalidOperationException("No encontramos la fila del flujo de caja para marcarla como manual.");
+
+        var detail = TruncateAccountCatalogText(
+            string.IsNullOrWhiteSpace(request.Reason)
+                ? "Movimiento marcado como subido manualmente en Siigo y conciliado desde Conciliacion."
+                : request.Reason.Trim(),
+            1000);
+
+        if (!string.IsNullOrWhiteSpace(request.ClientPaymentRecordId))
+        {
+            await MarkConciliacionClientPaymentManualSiigoAsync(
+                request.ClientPaymentRecordId,
+                detail,
+                ct);
+        }
+
+        return string.Equals(request.SourceKind, "Traslado", StringComparison.OrdinalIgnoreCase)
+            ? await MarkConciliacionCashFlowTransferManualSiigoAsync(request, detail, ct)
+            : await MarkConciliacionCashFlowMovementManualSiigoAsync(request, detail, ct);
+    }
+
+    private async Task<ConciliacionCashFlowActionResultDto> MarkConciliacionCashFlowMovementManualSiigoAsync(
+        ConciliacionCashFlowManualRequest request,
+        string detail,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+        var movementId = await ResolveConciliacionCashFlowMovementIdAsync(metadata, request.RecordId, request.MovementExternalKey, ct);
+        var siigoName = "Subida manualmente en Siigo";
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, "Conciliado", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoStatusField, null, "Conciliado", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentIdField, null, "", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentNameField, null, siigoName, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, detail, force: true);
+
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para marcar el flujo de caja como manual.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowMovementByIdAsync(metadata, attributes, movementId, ct);
+        return new ConciliacionCashFlowActionResultDto
+        {
+            Message = detail,
+            IsSuccess = true,
+            IsReadyForSiigo = false,
+            TargetEndpoint = "MANUAL Siigo",
+            SiigoName = siigoName,
+            Row = updated
+        };
+    }
+
+    private async Task<ConciliacionCashFlowActionResultDto> MarkConciliacionCashFlowTransferManualSiigoAsync(
+        ConciliacionCashFlowManualRequest request,
+        string detail,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowTransferLogicalName,
+            CashFlowTransferSetName,
+            CashFlowTransferIdField,
+            CashFlowTransferPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowTransferAttributeSet(metadata, attributes);
+        var transferId = await ResolveConciliacionCashFlowTransferIdAsync(metadata, request.RecordId, request.MovementExternalKey, ct);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferStatusField, null, "Conciliado", force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para marcar el traslado como manual.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({transferId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowTransferByIdAsync(metadata, attributes, transferId, ct);
+        return new ConciliacionCashFlowActionResultDto
+        {
+            Message = detail,
+            IsSuccess = true,
+            IsReadyForSiigo = false,
+            TargetEndpoint = "MANUAL Siigo",
+            SiigoName = "Subida manualmente en Siigo",
+            Row = updated
+        };
+    }
+
+    public async Task<ConciliacionCashFlowCategoryResultDto> UpdateConciliacionCashFlowCategoryAsync(
+        ConciliacionCashFlowCategoryRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var category = ResolveConciliacionManualCashFlowCategory(request.CategoryValue)
+            ?? throw new InvalidOperationException("La categoria solicitada no es valida.");
+        var sourceKind = FirstNonEmpty(request.SourceKind, "Movimiento");
+        if (sourceKind.Equals("Traslado", StringComparison.OrdinalIgnoreCase))
+            return await UpdateConciliacionCashFlowTransferCategoryAsync(request, category, ct);
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+
+        var movementId = Guid.TryParse(request.RecordId, out var parsedRecordId)
+            ? parsedRecordId.ToString("D")
+            : "";
+        if (string.IsNullOrWhiteSpace(movementId))
+            movementId = await FindConciliacionCashFlowMovementIdByExternalKeyAsync(metadata, request.MovementExternalKey, ct);
+        if (string.IsNullOrWhiteSpace(movementId))
+            throw new InvalidOperationException("No encontramos la fila del flujo de caja para guardar la categoria.");
+
+        var reason = string.IsNullOrWhiteSpace(request.Reason)
+            ? $"Categoria reasignada manualmente a {category.Label} desde Conciliacion."
+            : request.Reason.Trim();
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowMovementTypeField, null, category.Key, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, TruncateAccountCatalogText(reason, 1000), force: true);
+
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para guardar la categoria del flujo.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+
+        if (!string.IsNullOrWhiteSpace(request.ClientPaymentRecordId)
+            && !string.Equals(category.Key, "entrada-fe", StringComparison.OrdinalIgnoreCase))
+        {
+            await MarkConciliacionClientPaymentReassignedAsync(
+                request.ClientPaymentRecordId,
+                $"Cruce removido de Registro de Entradas FE porque el flujo se reasigno a {category.Label}. {reason}",
+                ct);
+        }
+
+        return new ConciliacionCashFlowCategoryResultDto
+        {
+            Message = $"Categoria guardada en Dataverse: {category.Label}.",
+            CategoryValue = category.Key,
+            CategoryLabel = category.Label,
+            CategoryTone = category.Tone
+        };
+    }
+
+    public async Task<ConciliacionCashFlowDescriptionResultDto> UpdateConciliacionCashFlowDescriptionAsync(
+        ConciliacionCashFlowDescriptionRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var description = TruncateAccountCatalogText((request.Description ?? "").Trim(), 4000);
+        var sourceKind = FirstNonEmpty(request.SourceKind, "Movimiento");
+        if (sourceKind.Equals("Traslado", StringComparison.OrdinalIgnoreCase))
+            return await UpdateConciliacionCashFlowTransferDescriptionAsync(request, description, ct);
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+        var movementId = await ResolveConciliacionCashFlowMovementIdAsync(
+            metadata,
+            request.RecordId,
+            request.MovementExternalKey,
+            ct);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowDescriptionField, null, description, force: true);
+        SetAccountCatalogValue(
+            payload,
+            attributes,
+            CashFlowReviewReasonField,
+            null,
+            TruncateAccountCatalogText("Descripcion registrada manualmente desde Conciliacion 2.", 1000),
+            force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para guardar la descripcion.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowMovementByIdAsync(metadata, attributes, movementId, ct);
+        return new ConciliacionCashFlowDescriptionResultDto
+        {
+            Message = "Descripcion guardada en Dataverse.",
+            Description = description,
+            Row = updated
+        };
+    }
+
+    public async Task<ConciliacionCashFlowDescriptionResultDto> MarkConciliacionCashFlowPendingAsync(
+        ConciliacionCashFlowPendingRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var reason = TruncateAccountCatalogText((request.Reason ?? "").Trim(), 1000);
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("Escribe el motivo por el cual la conciliacion queda pendiente.");
+
+        var sourceKind = FirstNonEmpty(request.SourceKind, "Movimiento");
+        if (sourceKind.Equals("Traslado", StringComparison.OrdinalIgnoreCase))
+            return await MarkConciliacionCashFlowTransferPendingAsync(request, reason, ct);
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+        var movementId = await ResolveConciliacionCashFlowMovementIdAsync(
+            metadata,
+            request.RecordId,
+            request.MovementExternalKey,
+            ct);
+        var current = await GetConciliacionCashFlowMovementByIdAsync(metadata, attributes, movementId, ct)
+            ?? throw new InvalidOperationException("No encontramos el movimiento en Dataverse.");
+        EnsureConciliacionCashFlowCanBeLeftPending(current);
+        var description = AppendConciliacionPendingReason(current.Description, reason);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowDescriptionField, null, description, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, ConciliacionCashFlowPendingReviewStatus, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, reason, force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para dejar pendiente el movimiento.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowMovementByIdAsync(metadata, attributes, movementId, ct);
+        if (updated is null
+            || !string.Equals(updated.DataverseStatus, ConciliacionCashFlowPendingReviewStatus, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(updated.Description, description, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Dataverse no confirmo correctamente el movimiento pendiente.");
+        }
+
+        return new ConciliacionCashFlowDescriptionResultDto
+        {
+            Message = "Movimiento dejado pendiente para verificacion posterior.",
+            Description = description,
+            Row = updated
+        };
+    }
+
+    public async Task<ConciliacionCashFlowDescriptionResultDto> MarkConciliacionCashFlowOmittedAsync(
+        ConciliacionCashFlowPendingRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var reason = TruncateAccountCatalogText((request.Reason ?? "").Trim(), 1000);
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("Escribe la observacion por la cual el movimiento se omite.");
+
+        var sourceKind = FirstNonEmpty(request.SourceKind, "Movimiento");
+        if (sourceKind.Equals("Traslado", StringComparison.OrdinalIgnoreCase))
+            return await MarkConciliacionCashFlowTransferOmittedAsync(request, reason, ct);
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+        var movementId = await ResolveConciliacionCashFlowMovementIdAsync(
+            metadata,
+            request.RecordId,
+            request.MovementExternalKey,
+            ct);
+        var current = await GetConciliacionCashFlowMovementByIdAsync(metadata, attributes, movementId, ct)
+            ?? throw new InvalidOperationException("No encontramos el movimiento en Dataverse.");
+        EnsureConciliacionCashFlowCanBeLeftPending(current);
+        var description = AppendConciliacionOmittedReason(current.Description, reason);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowDescriptionField, null, description, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, ConciliacionCashFlowOmittedStatus, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, reason, force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para omitir el movimiento.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowMovementByIdAsync(metadata, attributes, movementId, ct);
+        if (updated is null
+            || !string.Equals(updated.DataverseStatus, ConciliacionCashFlowOmittedStatus, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(updated.Description, description, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Dataverse no confirmo correctamente el movimiento omitido.");
+        }
+
+        await MarkConciliacionClientPaymentMatchesOmittedAsync(
+            FirstNonEmpty(updated.ExternalKey, request.MovementExternalKey),
+            reason,
+            ct);
+
+        return new ConciliacionCashFlowDescriptionResultDto
+        {
+            Message = "Movimiento omitido y observacion guardada en Dataverse.",
+            Description = description,
+            Row = updated
+        };
+    }
+
+    private async Task<ConciliacionCashFlowDescriptionResultDto> MarkConciliacionCashFlowTransferPendingAsync(
+        ConciliacionCashFlowPendingRequest request,
+        string reason,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowTransferLogicalName,
+            CashFlowTransferSetName,
+            CashFlowTransferIdField,
+            CashFlowTransferPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowTransferAttributeSet(metadata, attributes);
+        var transferId = await ResolveConciliacionCashFlowTransferIdAsync(
+            metadata,
+            request.RecordId,
+            request.MovementExternalKey,
+            ct);
+        var current = await GetConciliacionCashFlowTransferByIdAsync(metadata, attributes, transferId, ct)
+            ?? throw new InvalidOperationException("No encontramos el traslado en Dataverse.");
+        EnsureConciliacionCashFlowCanBeLeftPending(current);
+        var description = AppendConciliacionPendingReason(current.Description, reason);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferDescriptionField, null, description, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferStatusField, null, ConciliacionCashFlowPendingReviewStatus, force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para dejar pendiente el traslado.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({transferId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowTransferByIdAsync(metadata, attributes, transferId, ct);
+        if (updated is null
+            || !string.Equals(updated.DataverseStatus, ConciliacionCashFlowPendingReviewStatus, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(updated.Description, description, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Dataverse no confirmo correctamente el traslado pendiente.");
+        }
+
+        return new ConciliacionCashFlowDescriptionResultDto
+        {
+            Message = "Traslado dejado pendiente para verificacion posterior.",
+            Description = description,
+            Row = updated
+        };
+    }
+
+    private async Task<ConciliacionCashFlowDescriptionResultDto> MarkConciliacionCashFlowTransferOmittedAsync(
+        ConciliacionCashFlowPendingRequest request,
+        string reason,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowTransferLogicalName,
+            CashFlowTransferSetName,
+            CashFlowTransferIdField,
+            CashFlowTransferPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowTransferAttributeSet(metadata, attributes);
+        var transferId = await ResolveConciliacionCashFlowTransferIdAsync(
+            metadata,
+            request.RecordId,
+            request.MovementExternalKey,
+            ct);
+        var current = await GetConciliacionCashFlowTransferByIdAsync(metadata, attributes, transferId, ct)
+            ?? throw new InvalidOperationException("No encontramos el traslado en Dataverse.");
+        EnsureConciliacionCashFlowCanBeLeftPending(current);
+        var description = AppendConciliacionOmittedReason(current.Description, reason);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferDescriptionField, null, description, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferStatusField, null, ConciliacionCashFlowOmittedStatus, force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para omitir el traslado.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({transferId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowTransferByIdAsync(metadata, attributes, transferId, ct);
+        if (updated is null
+            || !string.Equals(updated.DataverseStatus, ConciliacionCashFlowOmittedStatus, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(updated.Description, description, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Dataverse no confirmo correctamente el traslado omitido.");
+        }
+
+        return new ConciliacionCashFlowDescriptionResultDto
+        {
+            Message = "Traslado omitido y observacion guardada en Dataverse.",
+            Description = description,
+            Row = updated
+        };
+    }
+
+    private async Task MarkConciliacionClientPaymentMatchesOmittedAsync(
+        string? movementExternalKey,
+        string reason,
+        CancellationToken ct)
+    {
+        var externalKey = (movementExternalKey ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(externalKey))
+            return;
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ClientPaymentMatchLogicalName,
+            ClientPaymentMatchSetName,
+            ClientPaymentMatchIdField,
+            ClientPaymentMatchPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildConciliacionClientPaymentAttributeSet(metadata, attributes);
+        if (!attributes.Contains(ClientPaymentMatchMovementExternalKeyField)
+            || !attributes.Contains(ClientPaymentMatchStatusField))
+        {
+            return;
+        }
+
+        var select = Uri.EscapeDataString(string.Join(",", new[]
+        {
+            metadata.PrimaryIdField,
+            ClientPaymentMatchStatusField
+        }));
+        var filter = $"{ClientPaymentMatchMovementExternalKeyField} eq '{EscapeOdataLiteral(externalKey)}'";
+        var rows = await GetDataverseAppEntitiesAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=10",
+            ct);
+        var detail = TruncateAccountCatalogText(
+            $"Movimiento omitido desde Conciliacion. Observacion: {reason}",
+            1000);
+
+        foreach (var item in rows)
+        {
+            var matchId = FirstNonEmpty(
+                ReadString(item, metadata.PrimaryIdField),
+                ReadString(item, ClientPaymentMatchIdField)).Trim();
+            var currentStatus = ReadString(item, ClientPaymentMatchStatusField).Trim();
+            if (!Guid.TryParse(matchId, out var parsedMatchId)
+                || IsConciliacionClientPaymentTerminalStatus(currentStatus))
+            {
+                continue;
+            }
+
+            var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            SetAccountCatalogValue(payload, attributes, ClientPaymentMatchStatusField, null, ConciliacionCashFlowOmittedStatus, force: true);
+            SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReasonField, null, detail, force: true);
+            SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightStatusField, null, ConciliacionCashFlowOmittedStatus, force: true);
+            SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightMessageField, null, detail, force: true);
+            SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightValidatedOnField, (DateTimeOffset?)null, DateTimeOffset.UtcNow, force: true);
+
+            await CallDataverseAppSendAsync(
+                $"/api/data/v9.2/{metadata.EntitySetName}({parsedMatchId:D})",
+                "PATCH",
+                payload,
+                ct);
+
+            var readBack = await GetConciliacionClientPaymentByIdAsync(metadata, parsedMatchId.ToString("D"), ct);
+            if (readBack is null
+                || !string.Equals(readBack.Status, ConciliacionCashFlowOmittedStatus, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(readBack.Reason, detail, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Dataverse no confirmo el cruce asociado al movimiento omitido.");
+            }
+        }
+    }
+
+    private static void EnsureConciliacionCashFlowCanBeLeftPending(ConciliacionCashFlowRowDto row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.SiigoDocumentId)
+            || string.Equals(row.DataverseStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.SiigoStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.SiigoStatus, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("El movimiento ya fue enviado o conciliado y no puede devolverse a pendiente.");
+        }
+    }
+
+    internal static string AppendConciliacionPendingReason(string? existingDescription, string? reason)
+    {
+        const int maxLength = 4000;
+        const string prefix = "[PENDIENTE] ";
+        var normalizedReason = (reason ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedReason))
+            throw new InvalidOperationException("Escribe el motivo por el cual la conciliacion queda pendiente.");
+
+        var marker = prefix + normalizedReason;
+        if (marker.Length > maxLength)
+            marker = marker[..maxLength];
+
+        var existing = (existingDescription ?? "").Trim();
+        if (existing
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(line => string.Equals(line, marker, StringComparison.OrdinalIgnoreCase)))
+        {
+            return existing.Length <= maxLength ? existing : existing[..maxLength];
+        }
+
+        if (string.IsNullOrWhiteSpace(existing))
+            return marker;
+
+        var availableExistingLength = Math.Max(0, maxLength - marker.Length - 1);
+        if (existing.Length > availableExistingLength)
+            existing = existing[..availableExistingLength].TrimEnd();
+
+        return string.IsNullOrWhiteSpace(existing)
+            ? marker
+            : $"{existing}\n{marker}";
+    }
+
+    internal static string AppendConciliacionOmittedReason(string? existingDescription, string? reason)
+    {
+        const int maxLength = 4000;
+        const string prefix = "[OMITIDO] ";
+        var normalizedReason = (reason ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedReason))
+            throw new InvalidOperationException("Escribe la observacion por la cual el movimiento se omite.");
+
+        var marker = prefix + normalizedReason;
+        if (marker.Length > maxLength)
+            marker = marker[..maxLength];
+
+        var existing = (existingDescription ?? "").Trim();
+        if (existing
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(line => string.Equals(line, marker, StringComparison.OrdinalIgnoreCase)))
+        {
+            return existing.Length <= maxLength ? existing : existing[..maxLength];
+        }
+
+        if (string.IsNullOrWhiteSpace(existing))
+            return marker;
+
+        var availableExistingLength = Math.Max(0, maxLength - marker.Length - 1);
+        if (existing.Length > availableExistingLength)
+            existing = existing[..availableExistingLength].TrimEnd();
+
+        return string.IsNullOrWhiteSpace(existing)
+            ? marker
+            : $"{existing}\n{marker}";
+    }
+
+    private async Task<ConciliacionCashFlowDescriptionResultDto> UpdateConciliacionCashFlowTransferDescriptionAsync(
+        ConciliacionCashFlowDescriptionRequest request,
+        string description,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowTransferLogicalName,
+            CashFlowTransferSetName,
+            CashFlowTransferIdField,
+            CashFlowTransferPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowTransferAttributeSet(metadata, attributes);
+        var transferId = await ResolveConciliacionCashFlowTransferIdAsync(
+            metadata,
+            request.RecordId,
+            request.MovementExternalKey,
+            ct);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferDescriptionField, null, description, force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para guardar la descripcion del traslado.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({transferId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionCashFlowTransferByIdAsync(metadata, attributes, transferId, ct);
+        return new ConciliacionCashFlowDescriptionResultDto
+        {
+            Message = "Descripcion guardada en Dataverse.",
+            Description = description,
+            Row = updated
+        };
+    }
+
+    private async Task<ConciliacionCashFlowCategoryResultDto> UpdateConciliacionCashFlowTransferCategoryAsync(
+        ConciliacionCashFlowCategoryRequest request,
+        (string Key, string Label, string Tone, string TargetKey) category,
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowTransferLogicalName,
+            CashFlowTransferSetName,
+            CashFlowTransferIdField,
+            CashFlowTransferPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowTransferAttributeSet(metadata, attributes);
+
+        var transferId = Guid.TryParse(request.RecordId, out var parsedRecordId)
+            ? parsedRecordId.ToString("D")
+            : "";
+        if (string.IsNullOrWhiteSpace(transferId))
+            transferId = await FindConciliacionCashFlowRecordIdByExternalKeyAsync(metadata, CashFlowTransferExternalKeyField, request.MovementExternalKey, ct);
+        if (string.IsNullOrWhiteSpace(transferId))
+            throw new InvalidOperationException("No encontramos el traslado del flujo de caja para guardar la categoria.");
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferStatusField, null, category.Key, force: true);
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos campos disponibles para guardar la categoria del traslado.");
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({transferId})",
+            "PATCH",
+            payload,
+            ct);
+
+        return new ConciliacionCashFlowCategoryResultDto
+        {
+            Message = $"Categoria guardada en Dataverse: {category.Label}.",
+            CategoryValue = category.Key,
+            CategoryLabel = category.Label,
+            CategoryTone = category.Tone
+        };
+    }
+
+    private async Task MarkConciliacionClientPaymentReassignedAsync(
+        string recordId,
+        string reason,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(recordId, out var parsedRecordId))
+            return;
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ClientPaymentMatchLogicalName,
+            ClientPaymentMatchSetName,
+            ClientPaymentMatchIdField,
+            ClientPaymentMatchPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildConciliacionClientPaymentAttributeSet(metadata, attributes);
+
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchStatusField, null, "ReasignadoCategoria", force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReasonField, null, TruncateAccountCatalogText(reason, 1000), force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightStatusField, null, "ReasignadoCategoria", force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightMessageField, null, TruncateAccountCatalogText(reason, 1000), force: true);
+
+        if (payload.Count == 0)
+            return;
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({parsedRecordId:D})",
+            "PATCH",
+            payload,
+            ct);
+    }
+
     public async Task<ConciliacionInvoiceSearchResultDto> SearchConciliacionDataverseInvoicesAsync(
         ConciliacionInvoiceSearchRequest request,
         CancellationToken ct = default)
@@ -314,7 +1315,14 @@ public sealed partial class DataverseService
             throw new ArgumentNullException(nameof(request));
 
         var recordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
-        var invoiceRecordId = NormalizeGuid(request.InvoiceRecordId, nameof(request.InvoiceRecordId));
+        var invoiceRecordIds = (request.InvoiceRecordIds ?? new List<string>())
+            .Concat(string.IsNullOrWhiteSpace(request.InvoiceRecordId) ? Array.Empty<string>() : new[] { request.InvoiceRecordId })
+            .Select((value, index) => NormalizeGuid(value, $"invoiceRecordIds[{index}]"))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (invoiceRecordIds.Length == 0)
+            throw new InvalidOperationException("Selecciona al menos una factura para asignar al pago.");
         var matchMetadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
             ClientPaymentMatchLogicalName,
             ClientPaymentMatchSetName,
@@ -333,10 +1341,21 @@ public sealed partial class DataverseService
             _dashboardBillingIdField,
             _dashboardBillingPrimaryNameField,
             ct);
-        var invoice = await GetConciliacionBillingRecordByIdAppAsync(billingMetadata, invoiceRecordId, ct)
-            ?? throw new InvalidOperationException("No encontramos la factura seleccionada en Dataverse.");
+        var invoices = await GetConciliacionBillingRecordsByIdsAppAsync(billingMetadata, invoiceRecordIds, ct);
+        if (invoices.Count != invoiceRecordIds.Length)
+            throw new InvalidOperationException("Una o mas facturas seleccionadas no se encontraron en Dataverse.");
+        if (invoices.Count == 0)
+            throw new InvalidOperationException("No encontramos las facturas seleccionadas en Dataverse.");
 
-        var matchRow = BuildConciliacionManualClientPaymentMatchRow(current, invoice);
+        var distinctCustomers = invoices
+            .Select(static invoice => NormalizeConciliacionIdentificationDigits(invoice.CompanyTaxId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (distinctCustomers.Length > 1)
+            throw new InvalidOperationException("Selecciona facturas de un solo cliente. Las facturas elegidas tienen NIT diferentes.");
+
+        var matchRow = BuildConciliacionManualClientPaymentMatchRow(current, invoices);
         var payload = BuildCashFlowClientPaymentMatchPayload(matchMetadata, matchAttributes, matchRow);
         SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightStatusField, null, "", force: true);
         SetAccountCatalogValue(payload, matchAttributes, ClientPaymentMatchPreflightMessageField, null, "Factura reasignada. Falta validar pre-Siigo.", force: true);
@@ -354,9 +1373,15 @@ public sealed partial class DataverseService
             ct);
 
         var updated = await GetConciliacionClientPaymentByIdAsync(matchMetadata, recordId, ct);
+        var invoiceLabel = string.Join(", ", invoices
+            .Select(static invoice => invoice.InvoiceNumber)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
         return new ConciliacionActionResultDto
         {
-            Message = $"Factura {invoice.InvoiceNumber} asignada al cruce. Revisa y aprueba la sugerencia para pasar a prevalidacion.",
+            Message = invoices.Count == 1
+                ? $"Factura {invoiceLabel} asignada al cruce. Revisa y aprueba la sugerencia para pasar a prevalidacion."
+                : $"Facturas {invoiceLabel} asignadas al cruce. La suma quedo en {matchRow.InvoiceTotal:N0}; revisa y aprueba para pasar a prevalidacion.",
             Row = updated
         };
     }
@@ -414,6 +1439,11 @@ public sealed partial class DataverseService
             if (invoices.Count == 0)
                 issues.Add("No hay facturas Dataverse disponibles para armar el comprobante de ingreso.");
 
+            var exactSnapshotInvoices = ReadConciliacionExactClientPaymentInvoices(row.DraftJson);
+            var useExactSnapshot = exactSnapshotInvoices.Count > 0;
+            if (useExactSnapshot && invoices.Any(invoice => !exactSnapshotInvoices.ContainsKey(invoice.RecordId)))
+                issues.Add("El detalle exacto guardado no contiene todas las facturas asociadas al cruce.");
+
             var customerIdentifications = invoices
                 .Select(static invoice => NormalizeConciliacionIdentificationDigits(invoice.CompanyTaxId))
                 .Where(static value => !string.IsNullOrWhiteSpace(value))
@@ -436,21 +1466,27 @@ public sealed partial class DataverseService
                 .Select(invoice => new
                 {
                     Invoice = invoice,
-                    Value = ResolveConciliacionSiigoInvoiceAccountingValue(
-                        invoice,
-                        siigoInvoiceLookup,
-                        requireLiveSiigoInvoice,
-                        issues)
+                    Value = useExactSnapshot && exactSnapshotInvoices.TryGetValue(invoice.RecordId, out var exactInvoice)
+                        ? exactInvoice.GrossValue
+                        : ResolveConciliacionSiigoInvoiceAccountingValue(
+                            invoice,
+                            siigoInvoiceLookup,
+                            requireLiveSiigoInvoice,
+                            issues)
                 })
                 .ToArray();
             var invoiceTotal = RoundCurrency(invoiceValues.Sum(static item => item.Value));
-            var dataverseInvoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.TotalInvoice));
-            var actualRetentions = RoundCurrency(invoices.Sum(ResolveConciliacionInvoiceRetentionsTotal));
-            if (invoices.Count > 0 && Math.Abs(dataverseInvoiceTotal - row.InvoiceTotal) > 1m)
+            var dataverseInvoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.NetTotalInvoice));
+            var actualRetentions = useExactSnapshot
+                ? RoundCurrency(exactSnapshotInvoices.Values.Sum(static invoice => invoice.RetentionTaxes.Sum(static retention => retention.Value)))
+                : RoundCurrency(invoices.Sum(ResolveConciliacionInvoiceRetentionsTotal));
+            if (!useExactSnapshot && invoices.Count > 0 && Math.Abs(dataverseInvoiceTotal - row.InvoiceTotal) > 1m)
                 issues.Add($"El total de facturas Dataverse ({dataverseInvoiceTotal:N2}) no coincide con el total del cruce ({row.InvoiceTotal:N2}).");
-            if (invoices.Count > 0 && Math.Abs(actualRetentions - row.RetentionsTotal) > 1m)
+            if (invoices.Count > 0 && Math.Abs(actualRetentions - row.RetentionsTotal) > (useExactSnapshot ? 0.02m : 1m))
                 issues.Add($"Las retenciones calculadas desde la factura ({actualRetentions:N2}) no coinciden con las del cruce ({row.RetentionsTotal:N2}).");
-            var siigoAdjustment = RoundCurrency(invoiceTotal - row.EntryValue - actualRetentions);
+            var siigoAdjustment = useExactSnapshot
+                ? RoundCurrency(exactSnapshotInvoices.Values.Sum(static invoice => invoice.AdjustmentValue))
+                : RoundCurrency(invoiceTotal - row.EntryValue - actualRetentions);
             var accountingDifference = RoundCurrency(siigoAdjustment - row.DifferenceValue);
             if (invoices.Count > 0 && Math.Abs(accountingDifference) > 1m)
                 issues.Add($"El ajuste requerido contra Siigo ({siigoAdjustment:N2}) no coincide con el ajuste del cruce ({row.DifferenceValue:N2}). Diferencia residual {accountingDifference:N2}.");
@@ -462,16 +1498,25 @@ public sealed partial class DataverseService
             var invoiceDues = new List<ConciliacionSiigoInvoiceDueItem>();
             foreach (var invoice in invoices)
             {
-                if (!TryBuildConciliacionSiigoDue(invoice, out var due, out var dueIssue))
+                var liveSiigoInvoice = FindConciliacionSiigoInvoice(invoice, siigoInvoiceLookup);
+                if (!TryBuildConciliacionSiigoDue(
+                    invoice,
+                    liveSiigoInvoice,
+                    requireLiveSiigoInvoice,
+                    out var due,
+                    out var dueIssue))
                 {
                     issues.Add(dueIssue);
                     continue;
                 }
 
-                var retentionTaxes = ResolveConciliacionInvoiceRetentionTaxes(invoice, siigoTaxes ?? Array.Empty<SiigoTaxLookupDto>(), issues);
+                var retentionTaxes = useExactSnapshot
+                    && exactSnapshotInvoices.TryGetValue(invoice.RecordId, out var exactInvoice)
+                        ? exactInvoice.RetentionTaxes
+                        : ResolveConciliacionInvoiceRetentionTaxes(invoice, siigoTaxes ?? Array.Empty<SiigoTaxLookupDto>(), issues);
                 var invoiceValue = invoiceValues
                     .FirstOrDefault(value => string.Equals(value.Invoice.RecordId, invoice.RecordId, StringComparison.OrdinalIgnoreCase))
-                    ?.Value ?? invoice.TotalInvoice;
+                    ?.Value ?? invoice.NetTotalInvoice;
                 invoiceDues.Add(new ConciliacionSiigoInvoiceDueItem(invoice, due, RoundCurrency(invoiceValue), retentionTaxes));
             }
 
@@ -490,6 +1535,10 @@ public sealed partial class DataverseService
         catch (JsonException)
         {
             issues.Add("El JSON de borrador Siigo no es valido y no se pudo preparar el envio real.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            issues.Add(ex.Message);
         }
 
         var canSend = issues.Count == 0 && payload is not null;
@@ -516,6 +1565,7 @@ public sealed partial class DataverseService
         string siigoId = "",
         string siigoName = "",
         string responseJson = "",
+        string statusOverride = "",
         CancellationToken ct = default)
     {
         var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
@@ -526,7 +1576,9 @@ public sealed partial class DataverseService
             ClientPaymentMatchPrimaryNameField,
             ct);
         var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
-        var status = success ? "EnviadoSiigo" : "ErrorSiigo";
+        var status = !string.IsNullOrWhiteSpace(statusOverride)
+            ? statusOverride.Trim()
+            : success ? "EnviadoSiigo" : "ErrorSiigo";
         var detailParts = new[]
             {
                 message,
@@ -555,7 +1607,7 @@ public sealed partial class DataverseService
 
         var row = await GetConciliacionClientPaymentByIdAsync(metadata, normalizedRecordId, ct);
         if (success && row is not null)
-            await MarkConciliacionCashFlowMovementSiigoResultAsync(row, siigoId, siigoName, detailMessage, ct);
+            await MarkConciliacionCashFlowMovementSiigoResultAsync(row, siigoId, siigoName, detailMessage, status, ct);
 
         return new ConciliacionActionResultDto
         {
@@ -564,11 +1616,281 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<ConciliacionClientPaymentRowDto> SaveConciliacionClientPaymentDataverseSnapshotAsync(
+        ConciliacionClientPaymentDataverseSnapshotRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+        if (request.PaymentValue <= 0m)
+            throw new InvalidOperationException("El valor pagado debe ser mayor a cero.");
+        if (string.IsNullOrWhiteSpace(request.InvoiceRecordIds)
+            || string.IsNullOrWhiteSpace(request.InvoiceNumbers))
+        {
+            throw new InvalidOperationException("No encontramos las facturas que deben quedar asociadas al pago.");
+        }
+        if (string.IsNullOrWhiteSpace(request.SnapshotJson))
+            throw new InvalidOperationException("No se genero el detalle exacto del pago para Dataverse.");
+        if (request.SnapshotJson.Length > 95000)
+            throw new InvalidOperationException("El detalle del pago supera el tamano permitido por Dataverse.");
+
+        try
+        {
+            using var snapshot = JsonDocument.Parse(request.SnapshotJson);
+            if (!string.Equals(
+                    ReadString(snapshot.RootElement, "type"),
+                    "ComprobanteIngresoSiigoBorrador",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("El detalle exacto del pago no tiene el formato esperado.");
+            }
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("El detalle exacto del pago no es un JSON valido.");
+        }
+
+        var invoiceTotal = RoundCurrency(request.InvoiceTotal);
+        var paymentValue = RoundCurrency(request.PaymentValue);
+        var reteFuenteValue = RoundCurrency(request.ReteFuenteValue);
+        var reteIcaValue = RoundCurrency(request.ReteIcaValue);
+        var rteIvaValue = RoundCurrency(request.RteIvaValue);
+        var differenceValue = RoundCurrency(request.DifferenceValue);
+        var retentionsTotal = RoundCurrency(reteFuenteValue + reteIcaValue + rteIvaValue);
+        if (Math.Abs(invoiceTotal - paymentValue - retentionsTotal - differenceValue) > 0.02m)
+        {
+            throw new InvalidOperationException("El detalle exacto del pago no cuadra con la cartera aplicada.");
+        }
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ClientPaymentMatchLogicalName,
+            ClientPaymentMatchSetName,
+            ClientPaymentMatchIdField,
+            ClientPaymentMatchPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildConciliacionClientPaymentAttributeSet(metadata, attributes);
+        var matchRecordId = await ResolveConciliacionClientPaymentMatchIdAsync(
+            metadata,
+            request.MatchRecordId,
+            request.MovementExternalKey,
+            ct);
+
+        var requiredFields = new[]
+        {
+            ClientPaymentMatchInvoiceIdsField,
+            ClientPaymentMatchInvoiceNumbersField,
+            ClientPaymentMatchClientField,
+            ClientPaymentMatchInvoiceTotalField,
+            ClientPaymentMatchPaymentValueField,
+            ClientPaymentMatchReteFteField,
+            ClientPaymentMatchReteIcaField,
+            ClientPaymentMatchRteIvaField,
+            ClientPaymentMatchDifferenceField,
+            ClientPaymentMatchDraftJsonField
+        };
+        var missingFields = requiredFields.Where(field => !attributes.Contains(field)).ToArray();
+        if (missingFields.Length > 0)
+        {
+            throw new InvalidOperationException(
+                $"Dataverse no tiene disponibles todos los campos del pago exacto: {string.Join(", ", missingFields)}.");
+        }
+
+        var debitTotal = RoundCurrency(paymentValue + retentionsTotal + Math.Max(differenceValue, 0m));
+        var creditTotal = RoundCurrency(invoiceTotal + Math.Max(-differenceValue, 0m));
+        var detail = TruncateAccountCatalogText(
+            $"Aplicacion exacta confirmada en Dataverse para {request.InvoiceNumbers}. Lista para enviar a Siigo.",
+            1000);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchStatusField, null, "ListoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReasonField, null, detail, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchMovementIdField, null, request.MovementRecordId, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchMovementExternalKeyField, null, request.MovementExternalKey, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchInvoiceIdsField, null, request.InvoiceRecordIds, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchInvoiceNumbersField, null, request.InvoiceNumbers, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchClientField, null, request.ClientNames, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchInvoiceTotalField, (decimal?)null, invoiceTotal, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPaymentValueField, (decimal?)null, paymentValue, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReteFteField, (decimal?)null, reteFuenteValue, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchReteIcaField, (decimal?)null, reteIcaValue, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchRteIvaField, (decimal?)null, rteIvaValue, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchDifferenceField, (decimal?)null, differenceValue, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchDraftJsonField, null, request.SnapshotJson, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightStatusField, null, "ListoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightMessageField, null, detail, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightValidatedOnField, (DateTimeOffset?)null, DateTimeOffset.UtcNow, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightDebitField, (decimal?)null, debitTotal, force: true);
+        SetAccountCatalogValue(payload, attributes, ClientPaymentMatchPreflightCreditField, (decimal?)null, creditTotal, force: true);
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({matchRecordId})",
+            "PATCH",
+            payload,
+            ct);
+
+        var updated = await GetConciliacionClientPaymentByIdAsync(metadata, matchRecordId, ct)
+            ?? throw new InvalidOperationException("Dataverse guardo el pago, pero no pudimos releer el cruce.");
+        var exactValuesPersisted = ConciliacionExactValueMatches(updated.PaymentValue, paymentValue)
+            && ConciliacionExactValueMatches(updated.ReteFuenteValue, reteFuenteValue)
+            && ConciliacionExactValueMatches(updated.ReteIcaValue, reteIcaValue)
+            && ConciliacionExactValueMatches(updated.RteIvaValue, rteIvaValue)
+            && ConciliacionExactValueMatches(updated.InvoiceTotal, invoiceTotal)
+            && ConciliacionExactValueMatches(updated.DifferenceValue, differenceValue)
+            && ConciliacionDelimitedValuesMatch(updated.InvoiceRecordIds, request.InvoiceRecordIds)
+            && ConciliacionDelimitedValuesMatch(updated.InvoiceNumbers, request.InvoiceNumbers)
+            && string.Equals(updated.DraftJson, request.SnapshotJson, StringComparison.Ordinal);
+        if (!exactValuesPersisted)
+            throw new InvalidOperationException("Dataverse no confirmo el detalle exacto del pago y sus retenciones.");
+
+        return updated;
+    }
+
+    private async Task<string> ResolveConciliacionClientPaymentMatchIdAsync(
+        RhEntityMetadata metadata,
+        string? matchRecordId,
+        string? movementExternalKey,
+        CancellationToken ct)
+    {
+        if (Guid.TryParse(matchRecordId, out var parsedMatchRecordId))
+            return parsedMatchRecordId.ToString("D");
+        if (string.IsNullOrWhiteSpace(movementExternalKey))
+            throw new InvalidOperationException("No encontramos el cruce de Dataverse asociado al movimiento.");
+
+        var filter = $"{ClientPaymentMatchMovementExternalKeyField} eq '{EscapeOdataLiteral(movementExternalKey.Trim())}'";
+        var select = Uri.EscapeDataString(metadata.PrimaryIdField);
+        var orderBy = Uri.EscapeDataString($"{ConciliacionModifiedOnField} desc");
+        var rows = await GetDataverseAppEntitiesAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderBy}&$top=1",
+            ct);
+        var resolved = rows
+            .Select(row => ReadString(row, metadata.PrimaryIdField).Trim())
+            .FirstOrDefault(static value => Guid.TryParse(value, out _));
+        return !string.IsNullOrWhiteSpace(resolved)
+            ? resolved
+            : throw new InvalidOperationException("No encontramos el cruce de Dataverse asociado al movimiento.");
+    }
+
+    private static bool ConciliacionExactValueMatches(decimal actual, decimal expected) =>
+        Math.Abs(RoundCurrency(actual) - RoundCurrency(expected)) <= 0.01m;
+
+    private static bool ConciliacionDelimitedValuesMatch(string? actual, string? expected)
+    {
+        static string[] Normalize(string? value) => (value ?? "")
+            .Split(new[] { ';', ',', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static item => item, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return Normalize(actual).SequenceEqual(Normalize(expected), StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<ConciliacionCashFlowRowDto> GetConciliacionCashFlowMovementAsync(
+        ConciliacionSupplierPaymentPurchaseSearchRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+        var select = BuildConciliacionCashFlowMovementSelect(metadata, attributes);
+
+        string filter;
+        if (Guid.TryParse(request.RecordId, out var parsedRecordId))
+        {
+            filter = $"{metadata.PrimaryIdField} eq {parsedRecordId:D}";
+        }
+        else if (!string.IsNullOrWhiteSpace(request.MovementExternalKey))
+        {
+            filter = $"{CashFlowExternalKeyField} eq '{EscapeOdataLiteral(request.MovementExternalKey.Trim())}'";
+        }
+        else
+        {
+            throw new InvalidOperationException("No encontramos el identificador de la salida del flujo de caja.");
+        }
+
+        var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var rows = await GetDataverseAppEntitiesAsync(url, ct);
+        var row = rows
+            .Select(item => ParseConciliacionCashFlowMovementRow(item, metadata))
+            .FirstOrDefault(static item => item is not null)
+            ?? throw new InvalidOperationException("No encontramos la salida del flujo de caja en Dataverse.");
+
+        if (!string.Equals(row.Direction, "Salida", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("La fila seleccionada no es una salida bancaria.");
+
+        return row;
+    }
+
+    public async Task<ConciliacionCashFlowActionResultDto> MarkConciliacionSupplierPaymentSiigoResultAsync(
+        ConciliacionSupplierPaymentSendRequest request,
+        bool success,
+        string message,
+        string siigoId = "",
+        string siigoName = "",
+        string responseJson = "",
+        string payloadJson = "",
+        string statusOverride = "",
+        string targetEndpoint = "/v1/journals",
+        string messagePrefix = "Comprobante de egreso de proveedor enviado a Siigo",
+        CancellationToken ct = default)
+    {
+        var lookup = new ConciliacionSupplierPaymentPurchaseSearchRequest
+        {
+            RecordId = request.RecordId,
+            MovementExternalKey = request.MovementExternalKey
+        };
+        var row = await GetConciliacionCashFlowMovementAsync(lookup, ct);
+        var status = string.IsNullOrWhiteSpace(statusOverride)
+            ? success ? "EnviadoSiigo" : "ErrorSiigo"
+            : statusOverride.Trim();
+        var detailParts = new[]
+            {
+                message,
+                string.IsNullOrWhiteSpace(request.PurchaseName) ? "" : $"Factura proveedor: {request.PurchaseName}.",
+                string.IsNullOrWhiteSpace(siigoName) ? "" : $"Pago Siigo: {siigoName}.",
+                string.IsNullOrWhiteSpace(siigoId) ? "" : $"Id Siigo: {siigoId}.",
+                success || string.IsNullOrWhiteSpace(responseJson) ? "" : $"Detalle: {responseJson}"
+            }
+            .Where(static value => !string.IsNullOrWhiteSpace(value));
+        var detailMessage = TruncateAccountCatalogText(string.Join(" ", detailParts), 1000);
+
+        await MarkConciliacionCashFlowMovementSiigoResultAsync(
+            row,
+            siigoId,
+            siigoName,
+            detailMessage,
+            status,
+            FirstNonEmpty(messagePrefix, "Pago proveedor enviado a Siigo"),
+            ct);
+
+        var updated = await GetConciliacionCashFlowMovementAsync(lookup, ct);
+        return new ConciliacionCashFlowActionResultDto
+        {
+            Message = detailMessage,
+            IsSuccess = success,
+            IsReadyForSiigo = false,
+            TargetEndpoint = targetEndpoint,
+            PayloadJson = payloadJson,
+            ResponseJson = responseJson,
+            SiigoId = siigoId,
+            SiigoName = siigoName,
+            Row = updated
+        };
+    }
+
     private async Task MarkConciliacionCashFlowMovementSiigoResultAsync(
         ConciliacionClientPaymentRowDto row,
         string siigoId,
         string siigoName,
         string detailMessage,
+        string status,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(row.MovementExternalKey)
@@ -597,9 +1919,61 @@ public sealed partial class DataverseService
             $"Pago cliente enviado a Siigo: {siigoReference}. {detailMessage}".Trim(),
             1000);
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, "EnviadoSiigo", force: true);
-        SetAccountCatalogValue(payload, attributes, CashFlowSiigoStatusField, null, "EnviadoSiigo", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, status, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoStatusField, null, status, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentIdField, null, siigoId, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentNameField, null, siigoName, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, message, force: true);
+
+        if (payload.Count == 0)
+            return;
+
+        await CallDataverseAppSendAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}({movementId})",
+            "PATCH",
+            payload,
+            ct);
+    }
+
+    private async Task MarkConciliacionCashFlowMovementSiigoResultAsync(
+        ConciliacionCashFlowRowDto row,
+        string siigoId,
+        string siigoName,
+        string detailMessage,
+        string status,
+        string messagePrefix,
+        CancellationToken ct)
+    {
+        if (!string.Equals(row.SourceKind, "Movimiento", StringComparison.OrdinalIgnoreCase)
+            || (string.IsNullOrWhiteSpace(row.RecordId) && string.IsNullOrWhiteSpace(row.ExternalKey)))
+        {
+            return;
+        }
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            CashFlowMovementLogicalName,
+            CashFlowMovementSetName,
+            CashFlowMovementIdField,
+            CashFlowMovementPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        attributes = BuildCashFlowMovementAttributeSet(metadata, attributes);
+
+        var movementId = Guid.TryParse(row.RecordId, out var parsedMovementId)
+            ? parsedMovementId.ToString("D")
+            : await FindConciliacionCashFlowMovementIdByExternalKeyAsync(metadata, row.ExternalKey, ct);
+        if (string.IsNullOrWhiteSpace(movementId))
+            return;
+
+        var siigoReference = FirstNonEmpty(siigoName, siigoId, "Comprobante enviado a Siigo");
+        var message = TruncateAccountCatalogText(
+            $"{messagePrefix}: {siigoReference}. {detailMessage}".Trim(),
+            1000);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, status, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoStatusField, null, status, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentIdField, null, siigoId, force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentNameField, null, siigoName, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, message, force: true);
 
         if (payload.Count == 0)
@@ -617,10 +1991,19 @@ public sealed partial class DataverseService
         string externalKey,
         CancellationToken ct)
     {
+        return await FindConciliacionCashFlowRecordIdByExternalKeyAsync(metadata, CashFlowExternalKeyField, externalKey, ct);
+    }
+
+    private async Task<string> FindConciliacionCashFlowRecordIdByExternalKeyAsync(
+        RhEntityMetadata metadata,
+        string externalKeyField,
+        string externalKey,
+        CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(externalKey))
             return "";
 
-        var filter = $"{CashFlowExternalKeyField} eq '{EscapeOdataLiteral(externalKey.Trim())}'";
+        var filter = $"{externalKeyField} eq '{EscapeOdataLiteral(externalKey.Trim())}'";
         var select = Uri.EscapeDataString(metadata.PrimaryIdField);
         var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
         var rows = await GetDataverseAppEntitiesAsync(url, ct);
@@ -824,17 +2207,28 @@ public sealed partial class DataverseService
 
     private CashFlowClientPaymentMatchRowDto BuildConciliacionManualClientPaymentMatchRow(
         ConciliacionClientPaymentRowDto current,
-        BillingRecordRow invoice)
+        IReadOnlyList<BillingRecordRow> invoices)
     {
-        var tokens = ExtractCashFlowClientPaymentInvoiceTokens(current.Description).ToList();
-        if (tokens.Count == 0 && !string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
-            tokens.Add(NormalizeDocumentToken(invoice.InvoiceNumber));
+        if (invoices is null || invoices.Count == 0)
+            throw new InvalidOperationException("Selecciona al menos una factura para asignar al pago.");
 
-        var reteFteValue = ResolveCashFlowClientPaymentReteFteValue(invoice);
-        var reteIcaValue = ResolveCashFlowClientPaymentReteIcaValue(invoice);
-        var rteIvaValue = ResolveCashFlowClientPaymentRteIvaValue(invoice);
+        var tokens = ExtractCashFlowClientPaymentInvoiceTokens(current.Description).ToList();
+        foreach (var invoice in invoices)
+        {
+            var token = NormalizeDocumentToken(invoice.InvoiceNumber);
+            if (!string.IsNullOrWhiteSpace(token)
+                && !tokens.Contains(token, StringComparer.OrdinalIgnoreCase))
+            {
+                tokens.Add(token);
+            }
+        }
+
+        var invoiceTotal = RoundCurrency(invoices.Sum(static invoice => invoice.NetTotalInvoice));
+        var reteFteValue = RoundCurrency(invoices.Sum(ResolveCashFlowClientPaymentReteFteValue));
+        var reteIcaValue = RoundCurrency(invoices.Sum(ResolveCashFlowClientPaymentReteIcaValue));
+        var rteIvaValue = RoundCurrency(invoices.Sum(ResolveCashFlowClientPaymentRteIvaValue));
         var retentions = RoundCurrency(reteFteValue + reteIcaValue + rteIvaValue);
-        var difference = RoundCurrency(invoice.TotalInvoice - current.EntryValue - retentions);
+        var difference = RoundCurrency(invoiceTotal - current.EntryValue - retentions);
         var inTolerance = Math.Abs(difference) <= RegistroPagosClientesBalancedTolerance;
         var movementDate = DateOnly.TryParseExact(
             current.MovementDateValue,
@@ -856,20 +2250,24 @@ public sealed partial class DataverseService
             Description = current.Description,
             EntryValue = current.EntryValue,
             InvoiceTokens = tokens,
-            InvoiceTotal = invoice.TotalInvoice,
+            InvoiceTotal = invoiceTotal,
             ReteFteValue = reteFteValue,
             ReteIcaValue = reteIcaValue,
             RteIvaValue = rteIvaValue,
             RetentionsTotal = retentions,
             DifferenceValue = difference,
-            Confidence = inTolerance ? 90 : 70,
+            Confidence = inTolerance ? (invoices.Count == 1 ? 90 : 88) : 70,
             Status = inTolerance ? "Sugerido" : "DiferenciaFueraRango",
             Reason = inTolerance
-                ? "Factura asignada manualmente y diferencia dentro del rango."
-                : $"Factura asignada manualmente, pero la diferencia supera {RegistroPagosClientesBalancedTolerance:N0}."
+                ? (invoices.Count == 1
+                    ? "Factura asignada manualmente y diferencia dentro del rango."
+                    : "Facturas asignadas manualmente y diferencia agregada dentro del rango.")
+                : (invoices.Count == 1
+                    ? $"Factura asignada manualmente, pero la diferencia supera {RegistroPagosClientesBalancedTolerance:N0}."
+                    : $"Facturas asignadas manualmente, pero la diferencia agregada supera {RegistroPagosClientesBalancedTolerance:N0}.")
         };
 
-        return FinalizeCashFlowClientPaymentMatchRow(row, new[] { invoice });
+        return FinalizeCashFlowClientPaymentMatchRow(row, invoices);
     }
 
     private static int ScoreConciliacionInvoiceLookup(
@@ -909,7 +2307,7 @@ public sealed partial class DataverseService
 
         if (value.HasValue)
         {
-            var difference = Math.Abs(row.TotalInvoice - value.Value);
+            var difference = Math.Abs(row.NetTotalInvoice - value.Value);
             if (difference <= 1m)
                 score += 80;
             else if (difference <= RegistroPagosClientesBalancedTolerance)
@@ -930,24 +2328,56 @@ public sealed partial class DataverseService
             InvoiceNumber = row.InvoiceNumber,
             ClientName = row.ClientName,
             EmissionDateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
-            TotalInvoice = row.TotalInvoice,
+            TotalInvoice = row.NetTotalInvoice,
             PaymentValue = row.PaymentValue,
             ReteFteValue = ResolveCashFlowClientPaymentReteFteValue(row),
             ReteIcaValue = ResolveCashFlowClientPaymentReteIcaValue(row),
             RteIvaValue = ResolveCashFlowClientPaymentRteIvaValue(row),
             DifferenceWithEntry = searchedValue.HasValue
-                ? RoundCurrency(row.TotalInvoice - searchedValue.Value)
+                ? RoundCurrency(row.NetTotalInvoice - searchedValue.Value)
                 : 0m
         };
 
-    private static string NormalizeConciliacionLookupText(string? value) =>
-        Regex.Replace((value ?? "").Trim().ToUpperInvariant(), @"\s+", " ", RegexOptions.CultureInvariant);
+    private static string NormalizeConciliacionLookupText(string? value)
+    {
+        var decomposed = (value ?? "").Normalize(System.Text.NormalizationForm.FormD);
+        var withoutDiacritics = new string(decomposed
+            .Where(static character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            .ToArray())
+            .Normalize(System.Text.NormalizationForm.FormC);
+
+        return Regex.Replace(
+            withoutDiacritics.Trim().ToUpperInvariant(),
+            @"\s+",
+            " ",
+            RegexOptions.CultureInvariant);
+    }
 
     private static string NormalizeConciliacionLookupKey(string? value) =>
         Regex.Replace((value ?? "").ToUpperInvariant(), @"[^A-Z0-9]", "", RegexOptions.CultureInvariant);
 
     private static string NormalizeConciliacionDigits(string? value) =>
         Regex.Replace(value ?? "", @"\D", "", RegexOptions.CultureInvariant);
+
+    private static int ParseConciliacionCashFlowSourceRowNumber(string? externalKey)
+    {
+        var match = Regex.Match(externalKey ?? "", @":(?<row>\d+)$", RegexOptions.CultureInvariant);
+        return match.Success && int.TryParse(match.Groups["row"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rowNumber)
+            ? rowNumber
+            : 0;
+    }
+
+    private static int ParseConciliacionDianSourceRowNumber(string? reviewReason, string? excelKey)
+    {
+        var reasonMatch = Regex.Match(reviewReason ?? "", @"\bfila\s+(?<row>\d+)\b", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        if (reasonMatch.Success && int.TryParse(reasonMatch.Groups["row"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rowNumber))
+            return rowNumber;
+
+        var keyMatch = Regex.Match(excelKey ?? "", @":(?<row>\d+)$", RegexOptions.CultureInvariant);
+        return keyMatch.Success && int.TryParse(keyMatch.Groups["row"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out rowNumber)
+            ? rowNumber
+            : 0;
+    }
 
     private async Task<IReadOnlyList<ConciliacionCashFlowRowDto>> GetConciliacionCashFlowRowsAsync(
         DateOnly startInclusive,
@@ -961,30 +2391,7 @@ public sealed partial class DataverseService
             CashFlowMovementPrimaryNameField,
             ct);
         var movementAttributes = await GetFinancialReconciliationAttributeNamesAppAsync(movementMetadata.LogicalName, ct);
-        var movementSelect = BuildConciliacionSelectClause(movementMetadata, movementAttributes, new[]
-        {
-            movementMetadata.PrimaryIdField,
-            movementMetadata.PrimaryNameField,
-            CashFlowDateField,
-            CashFlowBankField,
-            CashFlowDescriptionField,
-            CashFlowEntryField,
-            CashFlowExitField,
-            CashFlowSourceFlowField,
-            CashFlowBankAccountCodeField,
-            CashFlowBankAccountNameField,
-            CashFlowRecipientField,
-            CashFlowDestinationBankField,
-            CashFlowDocumentTypeField,
-            CashFlowObservationsField,
-            CashFlowMovementTypeField,
-            CashFlowStatusField,
-            CashFlowSiigoDocumentIdField,
-            CashFlowSiigoStatusField,
-            CashFlowExternalKeyField,
-            CashFlowReviewReasonField,
-            ConciliacionModifiedOnField
-        });
+        var movementSelect = BuildConciliacionCashFlowMovementSelect(movementMetadata, movementAttributes);
         var movementFilter = BuildBillingDateFilter(CashFlowDateField, "date-only", startInclusive, endExclusive);
         var movementUrl = $"/api/data/v9.2/{movementMetadata.EntitySetName}?$select={movementSelect}&$filter={Uri.EscapeDataString(movementFilter)}&$orderby={CashFlowDateField} desc";
         var movementRows = await GetDataverseAppEntitiesAsync(movementUrl, ct);
@@ -1014,6 +2421,7 @@ public sealed partial class DataverseService
             CashFlowTransferObservationsField,
             CashFlowTransferStatusField,
             CashFlowTransferExternalKeyField,
+            CashFlowTransferSourceRowField,
             ConciliacionModifiedOnField
         });
         var transferFilter = BuildBillingDateFilter(CashFlowTransferDateField, "date-only", startInclusive, endExclusive);
@@ -1023,7 +2431,7 @@ public sealed partial class DataverseService
         return movementRows
             .Select(item => ParseConciliacionCashFlowMovementRow(item, movementMetadata))
             .Concat(transferRows.Select(item => ParseConciliacionCashFlowTransferRow(item, transferMetadata)))
-            .Where(static row => row is not null && !IsConciliacionPocketTransfer(row))
+            .Where(static row => row is not null)
             .Cast<ConciliacionCashFlowRowDto>()
             .OrderByDescending(static row => row.MovementDateValue, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static row => row.SourceFlow, StringComparer.OrdinalIgnoreCase)
@@ -1043,6 +2451,7 @@ public sealed partial class DataverseService
         foreach (var row in rows)
         {
             if (!string.IsNullOrWhiteSpace(row.ExternalKey)
+                && ShouldApplyConciliacionClientPaymentMatch(row)
                 && matchByExternalKey.TryGetValue(row.ExternalKey.Trim(), out var match))
             {
                 ApplyConciliacionClientPaymentMatch(row, match);
@@ -1056,35 +2465,77 @@ public sealed partial class DataverseService
             .DefaultIfEmpty()
             .Max();
 
+        var conciliableRows = rows
+            .Where(static row => !IsConciliacionNoIncludedCashFlow(row) && !IsConciliacionCashFlowOmitted(row))
+            .ToArray();
+
         return new ConciliacionCashFlowSummaryDto
         {
             TotalRows = rows.Count,
             MovementRows = rows.Count(static row => string.Equals(row.SourceKind, "Movimiento", StringComparison.OrdinalIgnoreCase)),
             TransferRows = rows.Count(static row => string.Equals(row.SourceKind, "Traslado", StringComparison.OrdinalIgnoreCase)),
-            EntryRows = rows.Count(static row => string.Equals(row.Direction, "Entrada", StringComparison.OrdinalIgnoreCase)),
-            ExitRows = rows.Count(static row => string.Equals(row.Direction, "Salida", StringComparison.OrdinalIgnoreCase)),
+            EntryRows = conciliableRows.Count(static row => string.Equals(row.Direction, "Entrada", StringComparison.OrdinalIgnoreCase)),
+            ExitRows = conciliableRows.Count(static row => string.Equals(row.Direction, "Salida", StringComparison.OrdinalIgnoreCase)),
             OutgoingInvoiceRows = rows.Count(static row => string.Equals(row.DetectedTypeKey, "salida-fe", StringComparison.OrdinalIgnoreCase)),
             IncomingInvoiceRows = rows.Count(static row => string.Equals(row.DetectedTypeKey, "entrada-fe", StringComparison.OrdinalIgnoreCase)),
             CollectionAccountRows = rows.Count(static row => string.Equals(row.DetectedTypeKey, "cuenta-cobro", StringComparison.OrdinalIgnoreCase)),
             AccountingVoucherRows = rows.Count(static row =>
                 string.Equals(row.DetectedTypeKey, "comprobante-contable", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(row.DetectedTypeKey, "entrada-comprobante", StringComparison.OrdinalIgnoreCase)),
-            OrphanRows = rows.Count(static row => string.Equals(row.DetectedTypeKey, "huerfano", StringComparison.OrdinalIgnoreCase)),
-            PendingValidationRows = rows.Count(static row => string.Equals(row.ValidationStatus, "Pendiente validar", StringComparison.OrdinalIgnoreCase)
+            OrphanRows = rows.Count(static row => string.Equals(row.DetectedTypeKey, "no-incluida-conciliacion", StringComparison.OrdinalIgnoreCase)),
+            PendingValidationRows = conciliableRows.Count(static row => string.Equals(row.ValidationStatus, "Pendiente validar", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(row.ValidationStatus, "Revisar", StringComparison.OrdinalIgnoreCase)),
-            PendingSiigoRows = rows.Count(static row => row.RegistrationStatus.Contains("Siigo pendiente", StringComparison.OrdinalIgnoreCase)),
-            TotalEntries = RoundCurrency(rows.Sum(static row => row.EntryValue)),
-            TotalExits = RoundCurrency(rows.Sum(static row => row.ExitValue)),
-            TotalTransfers = RoundCurrency(rows.Where(static row => string.Equals(row.Direction, "Traslado", StringComparison.OrdinalIgnoreCase)).Sum(static row => row.Amount)),
+            PendingSiigoRows = conciliableRows.Count(static row => row.RegistrationStatus.Contains("Siigo pendiente", StringComparison.OrdinalIgnoreCase)),
+            TotalEntries = RoundCurrency(conciliableRows.Sum(static row => row.EntryValue)),
+            TotalExits = RoundCurrency(conciliableRows.Sum(static row => row.ExitValue)),
+            TotalTransfers = RoundCurrency(conciliableRows.Where(static row => string.Equals(row.SourceKind, "Traslado", StringComparison.OrdinalIgnoreCase)).Sum(static row => row.Amount)),
             LastRunLabel = FormatConciliacionDateTimeDisplay(lastRun),
+            BankSummaries = BuildConciliacionCashFlowBankSummaries(rows),
+            AccountingVoucherGroups = BuildConciliacionAccountingVoucherGroups(rows),
             Rows = rows
         };
     }
 
+    private static bool IsConciliacionClientPaymentMovementCandidate(ConciliacionCashFlowRowDto row) =>
+        !string.Equals(row.SourceKind, "Traslado", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(row.DetectedTypeKey, "traslado-interno", StringComparison.OrdinalIgnoreCase)
+        && !IsConciliacionCashFlowPendingReview(row)
+        && !IsConciliacionCashFlowOmitted(row);
+
+    internal static bool ShouldApplyConciliacionClientPaymentMatch(ConciliacionCashFlowRowDto row) =>
+        IsConciliacionClientPaymentMovementCandidate(row)
+        && !IsConciliacionCashFlowTerminal(row);
+
+    internal static bool IsConciliacionCashFlowPendingReview(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, ConciliacionCashFlowPendingReviewStatus, StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsConciliacionCashFlowOmitted(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, ConciliacionCashFlowOmittedStatus, StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsConciliacionCashFlowTerminal(ConciliacionCashFlowRowDto row) =>
+        !string.IsNullOrWhiteSpace(row.SiigoDocumentId)
+        || IsConciliacionClientPaymentTerminalStatus(row.DataverseStatus)
+        || IsConciliacionClientPaymentTerminalStatus(row.SiigoStatus);
+
+    internal static bool IsConciliacionCashFlowFinal(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.SiigoStatus, "Conciliado", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsConciliacionClientPaymentTerminalStatus(string? status) =>
+        string.Equals(status, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveConciliacionTerminalClientPaymentStatus(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.SiigoStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+            ? "Conciliado"
+            : "EnviadoSiigo";
+
     private async Task<IReadOnlyList<ConciliacionDianSupplierInvoiceRowDto>> GetConciliacionDianSupplierInvoiceRowsAsync(
         DateOnly startInclusive,
         DateOnly endExclusive,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includeDataverseOnlyDocuments = false)
     {
         var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
             _supplierExpensesTableName,
@@ -1093,6 +2544,25 @@ public sealed partial class DataverseService
             "",
             ct);
         var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        EnsureDianSupplierDocumentDurabilitySchema(attributes);
+        if (!await HasActiveDianSupplierDocumentExcelKeyAsync(metadata.LogicalName, ct))
+        {
+            throw new InvalidOperationException(
+                $"Dataverse no tiene activa la clave unica sobre {ConciliacionDianExcelKeyField}; "
+                + "la automatizacion DIAN/Siigo se detuvo para evitar duplicados.");
+        }
+        if (!await HasActiveDianSupplierDocumentSiigoDocumentIdKeyAsync(metadata.LogicalName, ct))
+        {
+            throw new InvalidOperationException(
+                $"Dataverse no tiene activa la clave unica sobre {ConciliacionDianSiigoDocumentIdField}; "
+                + "la automatizacion DIAN/Siigo se detuvo para impedir que dos CUFE se vinculen a la misma compra.");
+        }
+        if (!await HasActiveDianSupplierDocumentSiigoBusinessKeyAsync(metadata.LogicalName, ct))
+        {
+            throw new InvalidOperationException(
+                $"Dataverse no tiene activa la clave unica sobre {DianSupplierDocumentSiigoBusinessKeyField}; "
+                + "la automatizacion DIAN/Siigo se detuvo para impedir publicaciones concurrentes de la misma factura.");
+        }
         var fields = ResolveTaxExpenseFieldMap(metadata, attributes);
         if (string.IsNullOrWhiteSpace(fields.EmissionDateField.FieldName))
             return Array.Empty<ConciliacionDianSupplierInvoiceRowDto>();
@@ -1150,22 +2620,32 @@ public sealed partial class DataverseService
             ExpenseReviewReasonField,
             ConciliacionDianSourceField,
             ConciliacionDianExcelKeyField,
+            DianSupplierDocumentSiigoBusinessKeyField,
             ConciliacionDianSiigoDocumentIdField,
             ConciliacionDianSiigoDocumentNameField,
+            ConciliacionCreatedOnField,
             ConciliacionModifiedOnField
         });
 
-        var filter = BuildBillingDateFilter(
-            fields.EmissionDateField.FieldName,
-            fields.EmissionDateField.FieldKind,
-            startInclusive,
-            endExclusive);
-        var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={fields.EmissionDateField.FieldName} desc";
+        var periodField = DianSupplierDocumentReceptionDateField;
+        var filter = BuildConciliacionReceptionDateFilter(periodField, startInclusive, endExclusive);
+        if (includeDataverseOnlyDocuments)
+        {
+            var emissionFilter = BuildBillingDateFilter(
+                fields.EmissionDateField.FieldName,
+                "date-only",
+                startInclusive,
+                endExclusive);
+            filter = $"({filter}) or ({emissionFilter})";
+        }
+        var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={periodField} desc";
         var items = await GetDataverseAppEntitiesAsync(url, ct, AddFormattedValueHeaders);
 
-        return items
+        var rows = items
             .Select(item => ParseConciliacionDianSupplierInvoiceRow(item, metadata, fields, cufeField, baseAmountField))
-            .Where(static row => row is not null && IsConciliacionDianSupplierInvoice(row))
+            .Where(row => row is not null
+                && (IsConciliacionDianSupplierImportableDocument(row)
+                    || (includeDataverseOnlyDocuments && IsConciliacionDianPayroll(row))))
             .Cast<ConciliacionDianSupplierInvoiceRowDto>()
             .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
@@ -1173,6 +2653,37 @@ public sealed partial class DataverseService
             .ThenBy(static row => row.SupplierName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        var incomplete = rows
+            .Where(static row => string.IsNullOrWhiteSpace(row.Cufe)
+                || string.IsNullOrWhiteSpace(row.ExcelKey)
+                || (!IsConciliacionDianPayroll(row) && string.IsNullOrWhiteSpace(row.ReceptionDateValue))
+                || string.IsNullOrWhiteSpace(row.AutomationSource)
+                || string.IsNullOrWhiteSpace(row.ConcurrencyToken))
+            .Select(static row => FirstNonEmpty(row.RecordId, row.InvoiceNumber, "sin identificador"))
+            .Take(10)
+            .ToArray();
+        if (incomplete.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "Hay documentos DIAN sin CUFE/CUDE, ExcelKey, fecha de recepcion requerida, fuente DIAN o ETag durable. "
+                + $"Registros: {string.Join(", ", incomplete)}. No se publicara nada en Siigo.");
+        }
+
+        var duplicateCufes = rows
+            .GroupBy(static row => NormalizeConciliacionCufeCude(row.Cufe), StringComparer.OrdinalIgnoreCase)
+            .Where(static group => !string.IsNullOrWhiteSpace(group.Key) && group.Count() > 1)
+            .Select(static group => group.Key)
+            .Take(10)
+            .ToArray();
+        if (duplicateCufes.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "Dataverse contiene CUFE/CUDE duplicados en el periodo. La automatizacion se detuvo antes de Siigo. "
+                + $"CUFE/CUDE: {string.Join(", ", duplicateCufes)}.");
+        }
+
+        return rows;
     }
 
     private static ConciliacionDianSupplierInvoiceSummaryDto BuildConciliacionDianSupplierInvoiceSummary(
@@ -1215,6 +2726,7 @@ public sealed partial class DataverseService
         var invoiceNumber = BuildConciliacionDianInvoiceNumber(prefix, folio, taxRow.InvoiceNumber);
         var baseAmount = RoundCurrency(ReadDecimal(item, baseAmountField) ?? Math.Max(0m, taxRow.TotalValue - taxRow.VatValue));
         var modifiedOn = ParseConciliacionDateTimeOffset(ReadString(item, ConciliacionModifiedOnField));
+        var createdOn = ParseConciliacionDateTimeOffset(ReadString(item, ConciliacionCreatedOnField));
         var receptionDate = ParseConciliacionDateTimeOffset(ReadString(item, DianSupplierDocumentReceptionDateField));
         var documentType = FirstNonEmpty(
             ReadString(item, $"{ConciliacionDianDocumentTypeField}{FormattedValueAnnotationSuffix}"),
@@ -1230,6 +2742,10 @@ public sealed partial class DataverseService
             (supplierName, recipientName) = (recipientName, supplierName);
             (supplierNit, recipientNit) = (recipientNit, supplierNit);
         }
+        var reviewReason = RepairSpanishMojibakeText(ReadString(item, ExpenseReviewReasonField)).Trim();
+        var excelKey = ReadString(item, ConciliacionDianExcelKeyField).Trim();
+        var siigoBusinessKey = ReadString(item, DianSupplierDocumentSiigoBusinessKeyField).Trim();
+        var automationSource = ReadString(item, ConciliacionDianSourceField).Trim();
 
         var row = new ConciliacionDianSupplierInvoiceRowDto
         {
@@ -1241,6 +2757,7 @@ public sealed partial class DataverseService
             Cufe = ReadString(item, cufeField).Trim(),
             EmissionDateValue = taxRow.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             EmissionDateDisplay = taxRow.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+            ReceptionDateValue = receptionDate?.ToOffset(TimeSpan.FromHours(-5)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             ReceptionDateDisplay = FormatConciliacionDateTimeDisplay(receptionDate),
             DianStatus = ReadString(item, DianSupplierDocumentStatusField).Trim(),
             DianGroup = dianGroup,
@@ -1262,19 +2779,26 @@ public sealed partial class DataverseService
             CopiersValue = taxRow.CopiersValue,
             VerticalLabel = ResolveConciliacionDianVerticalLabel(taxRow.CloudValue, taxRow.CopiersValue),
             CategoryValue = ReadString(item, DashboardExpenseCategoryField).Trim(),
-            CategoryLabel = FirstNonEmpty(
+            CategoryLabel = RepairSpanishMojibakeText(FirstNonEmpty(
                 ReadString(item, $"{DashboardExpenseCategoryField}{FormattedValueAnnotationSuffix}"),
                 ReadString(item, DashboardExpenseCategoryField),
-                "Sin categoria").Trim(),
+                "Sin categoria")).Trim(),
             AccountCode = ReadString(item, ExpenseAccountCodeField).Trim(),
-            AccountName = ReadString(item, ExpenseAccountNameField).Trim(),
+            AccountName = ResolveAccountCatalogName(ReadString(item, ExpenseAccountCodeField), ReadString(item, ExpenseAccountNameField)),
             AutomationState = ReadString(item, ExpenseAutomationStateField).Trim(),
-            ReviewReason = ReadString(item, ExpenseReviewReasonField).Trim(),
+            ReviewReason = reviewReason,
             SiigoDocumentId = ReadString(item, ConciliacionDianSiigoDocumentIdField).Trim(),
             SiigoDocumentName = ReadString(item, ConciliacionDianSiigoDocumentNameField).Trim(),
             SiigoSupplierId = ReadString(item, DianSupplierDocumentSiigoSupplierIdField).Trim(),
             SiigoSupplierName = ReadString(item, DianSupplierDocumentSiigoSupplierNameField).Trim(),
-            SourceLabel = FirstNonEmpty(ReadString(item, ConciliacionDianSourceField), ReadString(item, ConciliacionDianExcelKeyField), "Dataverse").Trim(),
+            AutomationSource = automationSource,
+            ExcelKey = excelKey,
+            SiigoBusinessKey = siigoBusinessKey,
+            SourceLabel = FirstNonEmpty(automationSource, excelKey, "Dataverse").Trim(),
+            SourceRowNumber = ParseConciliacionDianSourceRowNumber(reviewReason, excelKey),
+            ConcurrencyToken = ReadString(item, "@odata.etag").Trim(),
+            CreatedAt = createdOn,
+            ModifiedAt = modifiedOn,
             ModifiedOnDisplay = FormatConciliacionDateTimeDisplay(modifiedOn)
         };
 
@@ -1282,20 +2806,58 @@ public sealed partial class DataverseService
         return row;
     }
 
+    private static string BuildConciliacionReceptionDateFilter(
+        string fieldName,
+        DateOnly startInclusive,
+        DateOnly endExclusive)
+    {
+        var colombiaOffset = TimeSpan.FromHours(-5);
+        var startUtc = new DateTimeOffset(startInclusive.ToDateTime(TimeOnly.MinValue), colombiaOffset).ToUniversalTime();
+        var endUtc = new DateTimeOffset(endExclusive.ToDateTime(TimeOnly.MinValue), colombiaOffset).ToUniversalTime();
+        return $"{fieldName} ge {startUtc:yyyy-MM-ddTHH:mm:ssZ} and {fieldName} lt {endUtc:yyyy-MM-ddTHH:mm:ssZ}";
+    }
+
+    private static bool IsConciliacionDianSupplierImportableDocument(ConciliacionDianSupplierInvoiceRowDto? row)
+    {
+        if (row is null)
+            return false;
+
+        var type = NormalizeConciliacionLookupText(row.DocumentType);
+        var group = NormalizeConciliacionLookupText(row.DianGroup);
+        var isInvoice = type.Contains("FACTURA ELECTRONICA", StringComparison.OrdinalIgnoreCase)
+            && !type.Contains("NOTA", StringComparison.OrdinalIgnoreCase);
+        var isSupplierCreditNote = type.Contains("NOTA DE CREDITO", StringComparison.OrdinalIgnoreCase)
+            || type.Contains("CREDIT NOTE", StringComparison.OrdinalIgnoreCase);
+        return (isInvoice || isSupplierCreditNote)
+            && !type.Contains("APPLICATION RESPONSE", StringComparison.OrdinalIgnoreCase)
+            && group.Contains("RECIBID", StringComparison.OrdinalIgnoreCase)
+            && !group.Contains("EMITID", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsConciliacionDianPayroll(ConciliacionDianSupplierInvoiceRowDto? row)
+    {
+        if (row is null)
+            return false;
+
+        var type = NormalizeConciliacionLookupText(row.DocumentType);
+        var group = NormalizeConciliacionLookupText(row.DianGroup);
+        return type.Contains("NOMINA INDIVIDUAL", StringComparison.OrdinalIgnoreCase)
+            && group.Contains("EMITID", StringComparison.OrdinalIgnoreCase)
+            && !group.Contains("RECIBID", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsConciliacionDianSupplierInvoice(ConciliacionDianSupplierInvoiceRowDto? row)
     {
         if (row is null)
             return false;
 
-        if (string.IsNullOrWhiteSpace(row.DocumentType))
-            return true;
-
         var type = NormalizeConciliacionLookupText(row.DocumentType);
-        return (type.Contains("FACTURA", StringComparison.OrdinalIgnoreCase)
-                || type.Contains("DOCUMENTO SOPORTE", StringComparison.OrdinalIgnoreCase)
-                || type.Contains("DOC SOPORTE", StringComparison.OrdinalIgnoreCase)
-                || type.Contains("SOPORTE", StringComparison.OrdinalIgnoreCase))
-            && !type.Contains("NOTA", StringComparison.OrdinalIgnoreCase);
+        var group = NormalizeConciliacionLookupText(row.DianGroup);
+        return type.Contains("FACTURA ELECTRONICA", StringComparison.OrdinalIgnoreCase)
+            && !type.Contains("NOTA", StringComparison.OrdinalIgnoreCase)
+            && !type.Contains("APPLICATION RESPONSE", StringComparison.OrdinalIgnoreCase)
+            && group.Contains("RECIBID", StringComparison.OrdinalIgnoreCase)
+            && !group.Contains("EMITID", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ShouldFlipConciliacionDianSupportSupplier(
@@ -1324,14 +2886,15 @@ public sealed partial class DataverseService
 
     private static void CompleteConciliacionDianSupplierInvoiceRow(ConciliacionDianSupplierInvoiceRowDto row)
     {
+        var documentType = NormalizeConciliacionLookupText(row.DocumentType);
+        var isSupplierCreditNote = documentType.Contains("NOTA DE CREDITO", StringComparison.OrdinalIgnoreCase)
+            || documentType.Contains("CREDIT NOTE", StringComparison.OrdinalIgnoreCase);
+        var ambiguousSiigoWrite = row.AutomationState.Equals("VerificacionSiigoPendiente", StringComparison.OrdinalIgnoreCase)
+            || row.ReviewReason.Contains("[SIIGO_WRITE_AMBIGUOUS]", StringComparison.OrdinalIgnoreCase);
         var hasSupplierData = !string.IsNullOrWhiteSpace(row.SupplierNit) && !string.IsNullOrWhiteSpace(row.SupplierName);
-        var hasSiigoSupplier = !string.IsNullOrWhiteSpace(row.SiigoSupplierId)
-            || !string.IsNullOrWhiteSpace(row.SiigoSupplierName);
-        var classified = !string.IsNullOrWhiteSpace(row.AccountCode)
-            && !string.Equals(row.CategoryLabel, "Sin categoria", StringComparison.OrdinalIgnoreCase)
-            && !IsConciliacionExpenseClassificationPending(row.AutomationState);
-        var sentToSiigo = !string.IsNullOrWhiteSpace(row.SiigoDocumentId)
-            || !string.IsNullOrWhiteSpace(row.SiigoDocumentName);
+        var hasSiigoSupplier = !string.IsNullOrWhiteSpace(row.SiigoSupplierId);
+        var classified = !string.IsNullOrWhiteSpace(row.AccountCode);
+        var sentToSiigo = !string.IsNullOrWhiteSpace(row.SiigoDocumentId);
 
         row.ProviderStatusLabel = !hasSupplierData
             ? "Proveedor incompleto"
@@ -1341,13 +2904,17 @@ public sealed partial class DataverseService
         row.ProviderStatusTone = hasSupplierData && hasSiigoSupplier ? "success" : "warning";
         row.ClassificationStatusLabel = classified ? "Clasificacion OK" : "Pendiente clasificacion";
         row.ClassificationStatusTone = classified ? "success" : "warning";
-        row.SiigoStatusLabel = sentToSiigo ? "Documento Siigo OK" : "Pendiente documento Siigo";
-        row.SiigoStatusTone = sentToSiigo ? "success" : "warning";
+        row.SiigoStatusLabel = ambiguousSiigoWrite
+            ? "Confirmacion Siigo pendiente"
+            : sentToSiigo
+                ? isSupplierCreditNote ? "Nota aplicada en Siigo" : "Documento Siigo OK"
+                : isSupplierCreditNote ? "Pendiente aplicar nota" : "Pendiente documento Siigo";
+        row.SiigoStatusTone = sentToSiigo && !ambiguousSiigoWrite ? "success" : "warning";
 
-        if (sentToSiigo)
+        if (sentToSiigo && !ambiguousSiigoWrite)
         {
             row.Stage = "enviadas";
-            row.StageLabel = "Subida a Siigo";
+            row.StageLabel = isSupplierCreditNote ? "Nota aplicada en Siigo" : "Subida a Siigo";
             row.StageTone = "success";
             return;
         }
@@ -1369,8 +2936,12 @@ public sealed partial class DataverseService
         }
 
         row.Stage = "prevalidacion";
-        row.StageLabel = "Lista para compra";
-        row.StageTone = "info";
+        row.StageLabel = ambiguousSiigoWrite
+            ? "Verificacion Siigo pendiente"
+            : isSupplierCreditNote
+                ? "Lista para aplicar"
+                : "Lista para compra";
+        row.StageTone = ambiguousSiigoWrite ? "warning" : "info";
     }
 
     private static bool IsConciliacionExpenseClassificationPending(string state)
@@ -1455,8 +3026,18 @@ public sealed partial class DataverseService
             DocumentType = ReadString(item, CashFlowDocumentTypeField).Trim(),
             Observations = ReadString(item, CashFlowObservationsField).Trim(),
             ExcelMovementType = ReadString(item, CashFlowMovementTypeField).Trim(),
+            SourceRowNumber = ReadInt(item, CashFlowSourceRowField),
             DataverseStatus = FirstNonEmpty(ReadString(item, CashFlowStatusField), "Importado").Trim(),
+            ReviewReason = ReadString(item, CashFlowReviewReasonField).Trim(),
             SiigoStatus = ReadString(item, CashFlowSiigoStatusField).Trim(),
+            SiigoDocumentId = ReadString(item, CashFlowSiigoDocumentIdField).Trim(),
+            SiigoDocumentName = ReadString(item, CashFlowSiigoDocumentNameField).Trim(),
+            AccountCode = ReadString(item, CashFlowAccountingAccountCodeField).Trim(),
+            AccountName = ResolveAccountCatalogName(ReadString(item, CashFlowAccountingAccountCodeField), ReadString(item, CashFlowAccountingAccountNameField)),
+            ThirdPartyId = ReadString(item, CashFlowThirdPartyKeyField).Trim(),
+            ThirdPartyIdentification = ReadString(item, CashFlowThirdPartyIdentificationField).Trim(),
+            ThirdPartyName = ReadString(item, CashFlowThirdPartyNameField).Trim(),
+            ThirdPartyBranchOffice = ReadInt(item, CashFlowThirdPartyBranchOfficeField),
             ExternalKey = ReadString(item, CashFlowExternalKeyField).Trim(),
             ModifiedOnValue = ReadString(item, ConciliacionModifiedOnField).Trim()
         };
@@ -1465,7 +3046,7 @@ public sealed partial class DataverseService
         row.DirectionTone = entry > 0m ? "success" : exit > 0m ? "danger" : "neutral";
         CompleteConciliacionCashFlowRow(
             row,
-            ReadString(item, CashFlowSiigoDocumentIdField).Trim(),
+            row.SiigoDocumentId,
             row.SiigoStatus);
         return row;
     }
@@ -1486,6 +3067,11 @@ public sealed partial class DataverseService
         var value = RoundCurrency(ReadDecimal(item, CashFlowTransferValueField) ?? Math.Max(entry, exit));
         var transferFrom = ReadString(item, CashFlowTransferFromField).Trim();
         var transferTo = ReadString(item, CashFlowTransferToField).Trim();
+        var sourceFlow = ReadString(item, CashFlowTransferSourceFlowField).Trim();
+        var currentBank = ResolveConciliacionCashFlowBankAccount(sourceFlow);
+        var counterpartFlow = ResolveConciliacionTransferCounterpartFlow(sourceFlow, transferFrom, transferTo, entry, exit);
+        var counterpartBank = ResolveConciliacionCashFlowBankAccount(counterpartFlow);
+        var direction = entry > 0m ? "Entrada" : exit > 0m ? "Salida" : "Sin valor";
         var row = new ConciliacionCashFlowRowDto
         {
             RecordId = recordId,
@@ -1493,29 +3079,36 @@ public sealed partial class DataverseService
             SourceKindLabel = "Traslado interno",
             MovementDateValue = date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             MovementDateDisplay = date?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
-            SourceFlow = ReadString(item, CashFlowTransferSourceFlowField).Trim(),
-            BankAccountName = string.Join(" => ", new[] { transferFrom, transferTo }.Where(static value => !string.IsNullOrWhiteSpace(value))),
-            Direction = "Traslado",
-            DirectionTone = "neutral",
+            SourceFlow = sourceFlow,
+            BankAccountCode = currentBank.Code,
+            BankAccountName = currentBank.Name,
+            Direction = direction,
+            DirectionTone = entry > 0m ? "success" : exit > 0m ? "danger" : "neutral",
             EntryValue = entry,
             ExitValue = exit,
             Amount = value,
-            Description = ReadString(item, CashFlowTransferDescriptionField).Trim(),
+            Description = FirstNonEmpty(
+                ReadString(item, CashFlowTransferDescriptionField),
+                $"Traslado interno {transferFrom} a {transferTo}").Trim(),
             Recipient = ReadString(item, CashFlowTransferRecipientField).Trim(),
             DestinationBank = ReadString(item, CashFlowTransferDestinationBankField).Trim(),
             DocumentType = ReadString(item, CashFlowTransferDocumentTypeField).Trim(),
             Observations = ReadString(item, CashFlowTransferObservationsField).Trim(),
-            ExcelMovementType = "TRASLADO",
+            ExcelMovementType = FirstNonEmpty(ReadString(item, CashFlowTransferStatusField), "TRASLADO").Trim(),
+            SourceRowNumber = ReadInt(item, CashFlowTransferSourceRowField),
             DataverseStatus = FirstNonEmpty(ReadString(item, CashFlowTransferStatusField), "InternoNoSiigo").Trim(),
+            SiigoStatus = FirstNonEmpty(ReadString(item, CashFlowTransferStatusField), "").Trim(),
+            AccountCode = counterpartBank.Code,
+            AccountName = counterpartBank.Name,
             ExternalKey = ReadString(item, CashFlowTransferExternalKeyField).Trim(),
             ModifiedOnValue = ReadString(item, ConciliacionModifiedOnField).Trim()
         };
 
-        CompleteConciliacionCashFlowRow(row, "", "");
+        CompleteConciliacionCashFlowRow(row, "", row.SiigoStatus);
         return row;
     }
 
-    private static void CompleteConciliacionCashFlowRow(
+    internal static void CompleteConciliacionCashFlowRow(
         ConciliacionCashFlowRowDto row,
         string siigoDocumentId,
         string siigoStatus)
@@ -1525,7 +3118,57 @@ public sealed partial class DataverseService
         row.DetectedTypeLabel = detection.Label;
         row.DetectedTypeTone = detection.Tone;
         row.ActionTargetKey = detection.TargetKey;
-        row.CanValidate = !string.Equals(detection.Key, "traslado-interno", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(detection.Key, "traslado-interno", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(row.AccountCode))
+        {
+            var counterpartFlow = ResolveConciliacionTransferCounterpartFlow(
+                row.SourceFlow,
+                FirstNonEmpty(row.Description, row.Observations),
+                row.DestinationBank,
+                row.EntryValue,
+                row.ExitValue);
+            var counterpartBank = ResolveConciliacionCashFlowBankAccount(counterpartFlow);
+            row.AccountCode = counterpartBank.Code;
+            row.AccountName = counterpartBank.Name;
+        }
+        row.CanValidate = !string.Equals(detection.Key, "no-incluida-conciliacion", StringComparison.OrdinalIgnoreCase);
+
+        if (IsConciliacionCashFlowOmitted(row))
+        {
+            row.CanValidate = false;
+            row.ValidationStatus = "Omitido";
+            row.ValidationTone = "neutral";
+            row.RegistrationStatus = "Dataverse OK / omitido";
+            row.RegistrationTone = "neutral";
+            row.InvoiceStatus = "No aplica";
+            row.InvoiceStatusTone = "neutral";
+            row.SiigoDocumentStatus = "No aplica";
+            row.SiigoDocumentTone = "neutral";
+            row.SiigoPaymentStatus = "No aplica";
+            row.SiigoPaymentTone = "neutral";
+            row.InvoiceBalanceStatus = "No aplica";
+            row.DataversePaymentStatus = "Observacion de omision guardada";
+            row.DataversePaymentTone = "neutral";
+            return;
+        }
+
+        if (IsConciliacionCashFlowPendingReview(row))
+        {
+            row.ValidationStatus = "Pendiente por verificar";
+            row.ValidationTone = "warning";
+            row.RegistrationStatus = "Dataverse OK / conciliacion pendiente";
+            row.RegistrationTone = "warning";
+            row.InvoiceStatus = "Por verificar";
+            row.InvoiceStatusTone = "warning";
+            row.SiigoDocumentStatus = "No enviado";
+            row.SiigoDocumentTone = "warning";
+            row.SiigoPaymentStatus = "No enviado";
+            row.SiigoPaymentTone = "warning";
+            row.InvoiceBalanceStatus = "Por verificar";
+            row.DataversePaymentStatus = "Motivo pendiente guardado";
+            row.DataversePaymentTone = "warning";
+            return;
+        }
 
         if (IsConciliacionCashFlowPostSendChange(row.DataverseStatus, siigoStatus))
         {
@@ -1535,7 +3178,63 @@ public sealed partial class DataverseService
 
         if (string.Equals(detection.Key, "traslado-interno", StringComparison.OrdinalIgnoreCase))
         {
-            row.ValidationStatus = "Interno";
+            var transferConciliated = IsConciliacionCashFlowFinal(row);
+            var transferRegistered = IsConciliacionSiigoRegistered(siigoDocumentId, siigoStatus);
+            if (transferConciliated)
+            {
+                row.ValidationStatus = "Validada";
+                row.ValidationTone = "success";
+                row.RegistrationStatus = "Dataverse OK / Siigo OK";
+                row.RegistrationTone = "success";
+                row.InvoiceStatus = "No aplica";
+                row.InvoiceStatusTone = "success";
+                row.SiigoDocumentStatus = "Siigo OK";
+                row.SiigoDocumentTone = "success";
+                row.SiigoPaymentStatus = "Comprobante de traslado enviado";
+                row.SiigoPaymentTone = "success";
+                row.InvoiceBalanceStatus = "No aplica";
+                row.DataversePaymentStatus = "Traslado conciliado";
+                row.DataversePaymentTone = "success";
+                return;
+            }
+
+            if (transferRegistered)
+            {
+                row.ValidationStatus = "Pendiente cierre Dataverse";
+                row.ValidationTone = "warning";
+                row.RegistrationStatus = "Dataverse pendiente de cierre / Siigo OK";
+                row.RegistrationTone = "warning";
+                row.InvoiceStatus = "No aplica";
+                row.InvoiceStatusTone = "warning";
+                row.SiigoDocumentStatus = "Siigo OK";
+                row.SiigoDocumentTone = "success";
+                row.SiigoPaymentStatus = "Comprobante de traslado enviado";
+                row.SiigoPaymentTone = "success";
+                row.InvoiceBalanceStatus = "No aplica";
+                row.DataversePaymentStatus = "Pendiente cierre Dataverse";
+                row.DataversePaymentTone = "warning";
+                return;
+            }
+
+            row.ValidationStatus = "Interno / fase Siigo pendiente";
+            row.ValidationTone = "info";
+            row.RegistrationStatus = "Dataverse OK / Siigo pendiente";
+            row.RegistrationTone = "info";
+            row.InvoiceStatus = "No aplica";
+            row.InvoiceStatusTone = "info";
+            row.SiigoDocumentStatus = "Pendiente siguiente fase";
+            row.SiigoDocumentTone = "info";
+            row.SiigoPaymentStatus = "No aplica";
+            row.SiigoPaymentTone = "info";
+            row.InvoiceBalanceStatus = "No aplica";
+            row.DataversePaymentStatus = "Traslado guardado";
+            row.DataversePaymentTone = "info";
+            return;
+        }
+
+        if (string.Equals(detection.Key, "no-incluida-conciliacion", StringComparison.OrdinalIgnoreCase))
+        {
+            row.ValidationStatus = "No incluida";
             row.ValidationTone = "neutral";
             row.RegistrationStatus = "Dataverse OK / no aplica Siigo";
             row.RegistrationTone = "neutral";
@@ -1546,18 +3245,21 @@ public sealed partial class DataverseService
             row.SiigoPaymentStatus = "No aplica";
             row.SiigoPaymentTone = "neutral";
             row.InvoiceBalanceStatus = "No aplica";
-            row.DataversePaymentStatus = "No aplica";
+            row.DataversePaymentStatus = "Excluida de conciliacion";
             row.DataversePaymentTone = "neutral";
             return;
         }
 
-        var siigoRegistered = IsConciliacionSiigoRegistered(siigoDocumentId, siigoStatus);
-        row.ValidationStatus = "Pendiente validar";
-        row.ValidationTone = "warning";
-        row.RegistrationStatus = siigoRegistered
+        var finalConciliated = IsConciliacionCashFlowFinal(row);
+        var siigoRegistered = finalConciliated || IsConciliacionSiigoRegistered(siigoDocumentId, siigoStatus);
+        row.ValidationStatus = finalConciliated ? "Validada" : "Pendiente validar";
+        row.ValidationTone = finalConciliated ? "success" : "warning";
+        row.RegistrationStatus = finalConciliated
             ? "Dataverse OK / Siigo OK"
-            : "Dataverse OK / Siigo pendiente";
-        row.RegistrationTone = siigoRegistered ? "success" : "warning";
+            : siigoRegistered
+                ? "Dataverse pendiente de cierre / Siigo OK"
+                : "Dataverse OK / Siigo pendiente";
+        row.RegistrationTone = finalConciliated ? "success" : "warning";
         row.InvoiceStatus = ResolveDefaultInvoiceStatus(row.DetectedTypeKey);
         row.InvoiceStatusTone = row.InvoiceStatus.Contains("OK", StringComparison.OrdinalIgnoreCase) ? "success" : "warning";
         row.SiigoDocumentStatus = siigoRegistered ? "Siigo OK" : "Pendiente Siigo";
@@ -1567,8 +3269,305 @@ public sealed partial class DataverseService
         row.InvoiceBalanceStatus = string.Equals(row.DetectedTypeKey, "salida-fe", StringComparison.OrdinalIgnoreCase)
             ? "Saldo sin calcular"
             : "No aplica";
-        row.DataversePaymentStatus = "Flujo Dataverse OK";
-        row.DataversePaymentTone = "success";
+        row.DataversePaymentStatus = finalConciliated ? "Conciliacion Dataverse OK" : "Pendiente cierre Dataverse";
+        row.DataversePaymentTone = finalConciliated ? "success" : "warning";
+    }
+
+    private static IReadOnlyList<ConciliacionCashFlowBankSummaryDto> BuildConciliacionCashFlowBankSummaries(
+        IReadOnlyList<ConciliacionCashFlowRowDto> rows)
+    {
+        return rows
+            .Where(static row => !string.Equals(row.Direction, "Traslado", StringComparison.OrdinalIgnoreCase))
+            .Where(static row => !IsConciliacionNoIncludedCashFlow(row))
+            .GroupBy(static row => BuildConciliacionCashFlowBankKey(row), StringComparer.OrdinalIgnoreCase)
+            .Select(static group =>
+            {
+                var first = group.First();
+                var reported = group.Count(IsConciliacionCashFlowReportedToSiigo);
+                return new ConciliacionCashFlowBankSummaryDto
+                {
+                    BankKey = group.Key,
+                    BankLabel = BuildConciliacionCashFlowBankLabel(first),
+                    RowsFound = group.Count(),
+                    ReportedToSiigo = reported,
+                    PendingConciliation = group.Count(row =>
+                        !IsConciliacionNoIncludedCashFlow(row)
+                        && !IsConciliacionCashFlowOmitted(row)
+                        && (!IsConciliacionCashFlowReportedToSiigo(row)
+                        || row.ValidationStatus.Contains("Pendiente", StringComparison.OrdinalIgnoreCase)
+                        || row.ValidationStatus.Contains("Revisar", StringComparison.OrdinalIgnoreCase))),
+                    TotalEntries = RoundCurrency(group.Sum(static row => row.EntryValue)),
+                    TotalExits = RoundCurrency(group.Sum(static row => row.ExitValue))
+                };
+            })
+            .OrderBy(static row => row.BankLabel, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsConciliacionCashFlowReportedToSiigo(ConciliacionCashFlowRowDto row)
+    {
+        return row.RegistrationStatus.Contains("Siigo OK", StringComparison.OrdinalIgnoreCase)
+            || row.SiigoDocumentStatus.Contains("Siigo OK", StringComparison.OrdinalIgnoreCase)
+            || row.SiigoPaymentStatus.Contains("Enviado", StringComparison.OrdinalIgnoreCase)
+            || row.SiigoPaymentStatus.Contains("detectado", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.SiigoStatus, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(row.SiigoStatus, "Conciliado", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsConciliacionNoIncludedCashFlow(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DetectedTypeKey, "no-incluida-conciliacion", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildConciliacionCashFlowBankKey(ConciliacionCashFlowRowDto row) =>
+        string.Join("|", new[]
+        {
+            FirstNonEmpty(row.SourceFlow, "Sin vertical"),
+            FirstNonEmpty(row.BankAccountCode, row.BankAccountName, "Sin banco")
+        });
+
+    private static string BuildConciliacionCashFlowBankLabel(ConciliacionCashFlowRowDto row)
+    {
+        var bank = FirstNonEmpty(row.BankAccountName, row.BankAccountCode, row.SourceFlow, "Sin banco");
+        var account = string.IsNullOrWhiteSpace(row.BankAccountCode)
+            ? ""
+            : $" ({row.BankAccountCode})";
+        return $"{FirstNonEmpty(row.SourceFlow, "Sin vertical")} - {bank}{account}";
+    }
+
+    private static IReadOnlyList<ConciliacionAccountingVoucherGroupDto> BuildConciliacionAccountingVoucherGroups(
+        IReadOnlyList<ConciliacionCashFlowRowDto> rows)
+    {
+        var voucherRows = rows
+            .Where(static row => !IsConciliacionCashFlowOmitted(row))
+            .Where(static row =>
+                string.Equals(row.DetectedTypeKey, "comprobante-contable", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(row.DetectedTypeKey, "entrada-comprobante", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (voucherRows.Length == 0)
+            return Array.Empty<ConciliacionAccountingVoucherGroupDto>();
+
+        return voucherRows
+            .GroupBy(static row => BuildConciliacionAccountingVoucherGroupKey(row), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => BuildConciliacionAccountingVoucherGroup(group.ToArray()))
+            .OrderByDescending(static group => ResolveConciliacionAccountingVoucherSortDate(group))
+            .ThenBy(static group => group.BankAccountName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static group => group.GroupLabel, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string BuildConciliacionAccountingVoucherGroupKey(ConciliacionCashFlowRowDto row)
+    {
+        var monthlyGroup = ResolveConciliacionMonthlyAccountingVoucherGroup(row);
+        if (monthlyGroup is null)
+            return $"fila|{FirstNonEmpty(row.RecordId, row.ExternalKey, Guid.NewGuid().ToString("N"))}";
+
+        return string.Join("|", new[]
+        {
+            "mensual",
+            monthlyGroup.Value.Kind,
+            ResolveConciliacionAccountingVoucherPeriodKey(row),
+            BuildConciliacionCashFlowBankKey(row)
+        });
+    }
+
+    private static ConciliacionAccountingVoucherGroupDto BuildConciliacionAccountingVoucherGroup(
+        IReadOnlyList<ConciliacionCashFlowRowDto> rows)
+    {
+        var orderedRows = rows
+            .OrderBy(static row => row.MovementDateValue, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static row => row.SourceRowNumber)
+            .ThenBy(static row => row.Description, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var first = orderedRows[0];
+        var monthlyGroup = ResolveConciliacionMonthlyAccountingVoucherGroup(first);
+        var isMonthlyCloseGroup = monthlyGroup is not null;
+        var groupKind = monthlyGroup?.Kind ?? "comprobante-individual";
+        var groupLabel = monthlyGroup?.Label ?? FirstNonEmpty(first.Description, first.Recipient, "Comprobante contable");
+        var groupDetail = monthlyGroup?.Detail ?? "Movimiento individual de comprobante contable.";
+        var dates = orderedRows
+            .Select(static row => ParseConciliacionDateOnlyValue(row.MovementDateValue))
+            .Where(static date => date.HasValue)
+            .Select(static date => date!.Value)
+            .ToArray();
+        var closeDate = dates.Length > 0
+            ? new DateOnly(dates.Max().Year, dates.Max().Month, DateTime.DaysInMonth(dates.Max().Year, dates.Max().Month))
+            : (DateOnly?)null;
+        var displayDate = isMonthlyCloseGroup && closeDate.HasValue
+            ? $"Cierre {closeDate.Value:dd/MM/yyyy}"
+            : first.MovementDateDisplay;
+        var amount = RoundCurrency(orderedRows.Sum(static row => row.Amount));
+        var accountLines = BuildConciliacionAccountingVoucherAccountLines(orderedRows);
+
+        return new ConciliacionAccountingVoucherGroupDto
+        {
+            GroupKey = BuildConciliacionAccountingVoucherGroupKey(first),
+            GroupKind = groupKind,
+            GroupLabel = groupLabel,
+            GroupDetail = groupDetail,
+            MovementDateDisplay = displayDate,
+            SourceFlow = first.SourceFlow,
+            BankAccountCode = first.BankAccountCode,
+            BankAccountName = first.BankAccountName,
+            Direction = first.Direction,
+            DirectionTone = first.DirectionTone,
+            EntryValue = RoundCurrency(orderedRows.Sum(static row => row.EntryValue)),
+            ExitValue = RoundCurrency(orderedRows.Sum(static row => row.ExitValue)),
+            Amount = amount,
+            IsMonthlyCloseGroup = isMonthlyCloseGroup,
+            IsGrouped = orderedRows.Length > 1 || isMonthlyCloseGroup,
+            RowCount = orderedRows.Length,
+            HasMissingAccounts = accountLines.Any(static line => !line.HasAccount),
+            RecordIds = orderedRows
+                .Select(static row => row.RecordId)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            MovementExternalKeys = orderedRows
+                .Select(static row => row.ExternalKey)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            AccountLines = accountLines,
+            Rows = orderedRows
+        };
+    }
+
+    private static IReadOnlyList<ConciliacionAccountingVoucherAccountLineDto> BuildConciliacionAccountingVoucherAccountLines(
+        IReadOnlyList<ConciliacionCashFlowRowDto> rows)
+    {
+        return rows
+            .GroupBy(static row =>
+            {
+                var concept = ResolveConciliacionAccountingVoucherConcept(row);
+                return string.Join("|", concept.Key, row.AccountCode, row.AccountName);
+            }, StringComparer.OrdinalIgnoreCase)
+            .Select(static group =>
+            {
+                var first = group.First();
+                var concept = ResolveConciliacionAccountingVoucherConcept(first);
+                return new ConciliacionAccountingVoucherAccountLineDto
+                {
+                    ConceptKey = concept.Key,
+                    ConceptLabel = concept.Label,
+                    AccountCode = first.AccountCode,
+                    AccountName = first.AccountName,
+                    Amount = RoundCurrency(group.Sum(static row => row.Amount)),
+                    RowCount = group.Count(),
+                    HasAccount = !string.IsNullOrWhiteSpace(first.AccountCode)
+                };
+            })
+            .OrderBy(static line => line.ConceptLabel, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static line => line.AccountCode, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static DateOnly ResolveConciliacionAccountingVoucherSortDate(ConciliacionAccountingVoucherGroupDto group)
+    {
+        return group.Rows
+            .Select(static row => ParseConciliacionDateOnlyValue(row.MovementDateValue))
+            .Where(static date => date.HasValue)
+            .Select(static date => date!.Value)
+            .DefaultIfEmpty(DateOnly.MinValue)
+            .Max();
+    }
+
+    private static string ResolveConciliacionAccountingVoucherPeriodKey(ConciliacionCashFlowRowDto row)
+    {
+        var date = ParseConciliacionDateOnlyValue(row.MovementDateValue);
+        return date.HasValue
+            ? date.Value.ToString("yyyyMM", CultureInfo.InvariantCulture)
+            : "sin-fecha";
+    }
+
+    private static DateOnly? ParseConciliacionDateOnlyValue(string? value)
+    {
+        return DateOnly.TryParseExact(value ?? "", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static (string Kind, string Label, string Detail)? ResolveConciliacionMonthlyAccountingVoucherGroup(
+        ConciliacionCashFlowRowDto row)
+    {
+        var concept = ResolveConciliacionAccountingVoucherConcept(row);
+        if (string.Equals(row.Direction, "Entrada", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(concept.Key, "abono-intereses-ahorros", StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                "abono-intereses-ahorros-ingreso",
+                "Abono intereses ahorros",
+                "Acumulado mensual de intereses de ahorros con valor positivo.");
+        }
+
+        if (string.Equals(row.Direction, "Salida", StringComparison.OrdinalIgnoreCase)
+            && IsConciliacionMonthlyBankExpenseConcept(concept.Key))
+        {
+            return (
+                "gastos-bancarios-cierre",
+                "Gastos bancarios de cierre",
+                "Acumulado mensual de intereses negativos, comisiones, GMF, IVA y cuota de manejo.");
+        }
+
+        return null;
+    }
+
+    private static bool IsConciliacionMonthlyBankExpenseConcept(string conceptKey)
+    {
+        return string.Equals(conceptKey, "abono-intereses-ahorros", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(conceptKey, "comision-traslado-otros-bancos", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(conceptKey, "ajuste-intereses-ahorros", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(conceptKey, "impuesto-4x1000", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(conceptKey, "iva-comision-traslado-otros-bancos", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(conceptKey, "cuota-manejo", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (string Key, string Label) ResolveConciliacionAccountingVoucherConcept(ConciliacionCashFlowRowDto row)
+    {
+        var text = NormalizeConciliacionAccountingVoucherText(BuildConciliacionCashFlowSearchText(row));
+
+        if (ContainsConciliacionAll(text, "IVA", "COMISION", "TRASLADO")
+            && ContainsConciliacionAny(text, "OTROS BANCOS", "OTRO BANCO"))
+            return ("iva-comision-traslado-otros-bancos", "IVA comision traslado otros bancos");
+
+        if (ContainsConciliacionAll(text, "COMISION", "TRASLADO")
+            && ContainsConciliacionAny(text, "OTROS BANCOS", "OTRO BANCO"))
+            return ("comision-traslado-otros-bancos", "Comision traslado otros bancos");
+
+        if (ContainsConciliacionAll(text, "AJUSTE", "INTERES")
+            && ContainsConciliacionAny(text, "AHORRO", "AHORROS"))
+            return ("ajuste-intereses-ahorros", "Ajuste intereses ahorros");
+
+        if (ContainsConciliacionAny(text, "4X1000", "4 X 1000", "GMF", "GRAVAMEN"))
+            return ("impuesto-4x1000", "Impuesto 4x1000");
+
+        if (ContainsConciliacionAll(text, "CUOTA", "MANEJO"))
+            return ("cuota-manejo", "Cuota manejo");
+
+        if (ContainsConciliacionAll(text, "ABONO", "INTERES")
+            && ContainsConciliacionAny(text, "AHORRO", "AHORROS"))
+            return ("abono-intereses-ahorros", "Abono intereses ahorros");
+
+        return ("comprobante-contable", FirstNonEmpty(row.Description, row.Recipient, "Comprobante contable"));
+    }
+
+    private static bool ContainsConciliacionAll(string text, params string[] tokens)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        return tokens.All(token => text.Contains(token, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeConciliacionAccountingVoucherText(string? value)
+    {
+        return (value ?? "")
+            .ToUpperInvariant()
+            .Replace('Á', 'A')
+            .Replace('É', 'E')
+            .Replace('Í', 'I')
+            .Replace('Ó', 'O')
+            .Replace('Ú', 'U')
+            .Replace('Ü', 'U')
+            .Replace('Ñ', 'N');
     }
 
     private static void ApplyConciliacionClientPaymentMatch(
@@ -1586,11 +3585,10 @@ public sealed partial class DataverseService
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(match.InvoiceNumbers)
-            || string.Equals(row.DetectedTypeKey, "huerfano", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(match.InvoiceNumbers))
         {
             row.DetectedTypeKey = "entrada-fe";
-            row.DetectedTypeLabel = "Entrada FE - pago cliente";
+            row.DetectedTypeLabel = "Factura cliente";
             row.DetectedTypeTone = "success";
         }
 
@@ -1659,28 +3657,38 @@ public sealed partial class DataverseService
     private static (string Key, string Label, string Tone, string TargetKey) ResolveConciliacionCashFlowDetectedType(
         ConciliacionCashFlowRowDto row)
     {
+        var manualCategory = ResolveConciliacionManualCashFlowCategory(row.ExcelMovementType);
+        if (manualCategory is not null)
+            return manualCategory.Value;
+
+        if (IsConciliacionPocketTransfer(row))
+            return ("no-incluida-conciliacion", "No incluida", "neutral", "huerfanos");
+
         if (string.Equals(row.SourceKind, "Traslado", StringComparison.OrdinalIgnoreCase))
-            return ("traslado-interno", "Traslado interno entre cuentas", "neutral", "flujo-caja");
+            return ("traslado-interno", "Traslado interno entre cuentas", "info", "flujo-caja");
+
+        if (IsConciliacionInternalBankTransfer(row))
+            return ("traslado-interno", "Traslado interno entre cuentas", "info", "flujo-caja");
 
         var text = BuildConciliacionCashFlowSearchText(row);
         if (string.Equals(row.Direction, "Entrada", StringComparison.OrdinalIgnoreCase))
         {
             if (ConciliacionInvoiceTokenRegex.IsMatch(text))
-                return ("entrada-fe", "Entrada FE - pago cliente", "success", "entradas-fe");
+                return ("entrada-fe", "Factura cliente", "success", "entradas-fe");
 
             if (ContainsConciliacionAny(text, "ABONO INTERES", "APERTURA INVERSION", "INTERES", "RENDIMIENTO", "CANCELACION INVERSION", "CANCELACION INVERCION"))
-                return ("entrada-comprobante", "Entrada - comprobante contable", "info", "comprobantes");
+                return ("entrada-comprobante", "Comprobante contable", "info", "comprobantes");
 
-            return ("huerfano", "Entrada sin clasificar", "warning", "huerfanos");
+            return ("entrada-comprobante", "Comprobante contable", "info", "comprobantes");
         }
 
         if (string.Equals(row.Direction, "Salida", StringComparison.OrdinalIgnoreCase))
         {
             if (ContainsConciliacionAny(text, "CUENTA DE COBRO", "CUENTAS DE COBRO", "DOCUMENTO SOPORTE", "DOC SOPORTE", "DS "))
-                return ("cuenta-cobro", "Documento soporte / cuenta de cobro", "info", "cuentas-cobro");
+                return ("cuenta-cobro", "Documento soporte", "info", "cuentas-cobro");
 
             if (ContainsConciliacionAny(text, "FACTURA ELECTRONICA", "FACTURA ELECTR", "FACTURA", "FEV", "FVE", "FE "))
-                return ("salida-fe", "Salida FE - factura electronica", "success", "salidas-fe");
+                return ("salida-fe", "Factura proveedor", "success", "salidas-fe");
 
             if (ContainsConciliacionAny(
                 text,
@@ -1701,13 +3709,29 @@ public sealed partial class DataverseService
                 "DIAN",
                 "IMPUESTO"))
             {
-                return ("comprobante-contable", "Salida - comprobante contable", "info", "comprobantes");
+                return ("comprobante-contable", "Comprobante contable", "info", "comprobantes");
             }
 
-            return ("huerfano", "Salida sin clasificar", "warning", "huerfanos");
+            return ("comprobante-contable", "Comprobante contable", "info", "comprobantes");
         }
 
-        return ("huerfano", "Sin clasificar", "warning", "huerfanos");
+        return ("comprobante-contable", "Comprobante contable sin clasificar", "info", "comprobantes");
+    }
+
+    private static (string Key, string Label, string Tone, string TargetKey)? ResolveConciliacionManualCashFlowCategory(string? value)
+    {
+        var key = (value ?? "").Trim().ToLowerInvariant();
+        return key switch
+        {
+            "entrada-fe" => ("entrada-fe", "Factura cliente", "success", "entradas-fe"),
+            "entrada-comprobante" => ("entrada-comprobante", "Comprobante contable", "info", "comprobantes"),
+            "traslado-interno" => ("traslado-interno", "Traslado interno entre cuentas", "info", "flujo-caja"),
+            "no-incluida-conciliacion" => ("no-incluida-conciliacion", "No incluida", "neutral", "huerfanos"),
+            "salida-fe" => ("salida-fe", "Factura proveedor", "success", "salidas-fe"),
+            "cuenta-cobro" => ("cuenta-cobro", "Documento soporte", "info", "cuentas-cobro"),
+            "comprobante-contable" => ("comprobante-contable", "Comprobante contable", "info", "comprobantes"),
+            _ => null
+        };
     }
 
     private static string ResolveDefaultInvoiceStatus(string detectedTypeKey)
@@ -1719,6 +3743,7 @@ public sealed partial class DataverseService
             "comprobante-contable" => "No requiere factura",
             "entrada-comprobante" => "No requiere factura",
             "entrada-fe" => "Pendiente cruce factura",
+            "no-incluida-conciliacion" => "No aplica",
             _ => "Pendiente clasificar"
         };
     }
@@ -1729,6 +3754,59 @@ public sealed partial class DataverseService
             return false;
 
         return ContainsConciliacionAny(BuildConciliacionCashFlowSearchText(row), "BOLSILLO");
+    }
+
+    private static bool IsConciliacionInternalBankTransfer(ConciliacionCashFlowRowDto row)
+    {
+        var text = BuildConciliacionCashFlowSearchText(row);
+        if (!ContainsConciliacionAny(text, "TRANSFERENCIA DE FONDOS", "TRASLADO"))
+            return false;
+
+        var sourceBank = ResolveConciliacionCashFlowBankAccount(row.SourceFlow);
+        return (string.Equals(sourceBank.Code, "11100504", StringComparison.OrdinalIgnoreCase)
+                && text.Contains("7316", StringComparison.OrdinalIgnoreCase))
+            || (string.Equals(sourceBank.Code, "11100505", StringComparison.OrdinalIgnoreCase)
+                && text.Contains("8100", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static (string Code, string Name) ResolveConciliacionCashFlowBankAccount(string? flow)
+    {
+        var normalized = NormalizeConciliacionAccountingVoucherText(flow ?? "");
+        if (normalized.Contains("COPIERS", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("7316", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("11100505", "Bancolombia Copiers 7316");
+        }
+
+        if (normalized.Contains("CLOUD", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("8100", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("11100504", "Bancolombia Cloud 8100");
+        }
+
+        return ("", FirstNonEmpty(flow, "Banco no identificado"));
+    }
+
+    private static string ResolveConciliacionTransferCounterpartFlow(
+        string sourceFlow,
+        string transferFrom,
+        string transferTo,
+        decimal entry,
+        decimal exit)
+    {
+        if (entry > 0m)
+            return FirstNonEmpty(transferFrom, transferTo);
+
+        if (exit > 0m)
+            return FirstNonEmpty(transferTo, transferFrom);
+
+        if (string.Equals(sourceFlow, transferFrom, StringComparison.OrdinalIgnoreCase))
+            return transferTo;
+
+        if (string.Equals(sourceFlow, transferTo, StringComparison.OrdinalIgnoreCase))
+            return transferFrom;
+
+        return FirstNonEmpty(transferTo, transferFrom);
     }
 
     private static bool IsConciliacionSiigoRegistered(string siigoDocumentId, string siigoStatus)
@@ -1748,7 +3826,8 @@ public sealed partial class DataverseService
         return normalized.Contains("REGISTR", StringComparison.Ordinal)
             || normalized.Contains("SUBID", StringComparison.Ordinal)
             || normalized.Contains("ENVIAD", StringComparison.Ordinal)
-            || normalized.Contains("CREAD", StringComparison.Ordinal);
+            || normalized.Contains("CREAD", StringComparison.Ordinal)
+            || normalized.Contains("CONCILIAD", StringComparison.Ordinal);
     }
 
     private static string BuildConciliacionCashFlowSearchText(ConciliacionCashFlowRowDto row) =>
@@ -1761,6 +3840,7 @@ public sealed partial class DataverseService
             row.Observations,
             row.ExcelMovementType,
             row.BankAccountName,
+            row.AccountName,
             row.SourceFlow
         }).ToUpperInvariant();
 
@@ -1813,7 +3893,8 @@ public sealed partial class DataverseService
     private static IReadOnlyList<ConciliacionPhaseDto> BuildConciliacionPhases(
         ConciliacionCashFlowSummaryDto cashFlow,
         ConciliacionClientPaymentSummaryDto clientPayments,
-        ConciliacionDianSupplierInvoiceSummaryDto dianSupplierInvoices)
+        ConciliacionDianSupplierInvoiceSummaryDto dianSupplierInvoices,
+        ConciliacionCuentaCobroSummaryDto cuentasCobro)
     {
         return new[]
         {
@@ -1822,7 +3903,7 @@ public sealed partial class DataverseService
                 "Flujo de caja por banco",
                 cashFlow.TotalRows > 0 ? "Activo" : "Sin datos",
                 cashFlow.TotalRows > 0 ? "success" : "neutral",
-                "Semanal y cierre mensual",
+                "Diario y cierre mensual",
                 cashFlow.LastRunLabel,
                 "Validar cada fila antes de enviarla a Siigo y cruzar el extracto bancario al cierre.",
                 new[]
@@ -1836,7 +3917,7 @@ public sealed partial class DataverseService
                 new[]
                 {
                     "Importacion de flujo de caja Cloud/Copiers a Dataverse.",
-                    "Separacion de traslados internos y omision de traslados de bolsillos.",
+                    "Traslados internos visibles como comprobantes contables y omision de traslados de bolsillos.",
                     "Columna visual de tipo de comprobante detectado."
                 },
                 new[]
@@ -1874,7 +3955,7 @@ public sealed partial class DataverseService
                 }),
             BuildStaticConciliacionPhase(
                 "salidas-fe",
-                "Registro de Salidas FE",
+                "Registro de salidas FC",
                 cashFlow.OutgoingInvoiceRows > 0 ? "Detectado" : "Sin filas",
                 cashFlow.OutgoingInvoiceRows > 0 ? "info" : "neutral",
                 "Por periodo",
@@ -1901,10 +3982,10 @@ public sealed partial class DataverseService
                 }),
             BuildStaticConciliacionPhase(
                 "entradas-fe",
-                "Registro de Entradas FE",
+                "Registro de entradas FV",
                 clientPayments.PendingReview > 0 ? "Con pendientes" : clientPayments.Suggested > 0 ? "Listo para aprobar" : "Sin pendientes",
                 clientPayments.PendingReview > 0 ? "warning" : clientPayments.Suggested > 0 ? "info" : "success",
-                "Semanal",
+                "Diario",
                 clientPayments.LastRunLabel,
                 "Validar pagos de clientes, retenciones y borrador contable antes del envio a Siigo.",
                 new[]
@@ -1930,82 +4011,80 @@ public sealed partial class DataverseService
             BuildStaticConciliacionPhase(
                 "cuentas-cobro",
                 "Registro de cuentas de cobro",
-                cashFlow.CollectionAccountRows > 0 ? "Detectado" : "Sin filas",
-                cashFlow.CollectionAccountRows > 0 ? "info" : "neutral",
+                cuentasCobro.WithErrors > 0 ? "Con errores" : cuentasCobro.ReadyForSiigo > 0 ? "Listo Siigo" : cashFlow.CollectionAccountRows > 0 ? "Detectado" : "Sin filas",
+                cuentasCobro.WithErrors > 0 ? "danger" : cuentasCobro.ReadyForSiigo > 0 ? "info" : cashFlow.CollectionAccountRows > 0 ? "info" : "neutral",
                 "Por actualizacion de flujo",
-                cashFlow.LastRunLabel,
-                "Crear automaticamente la cuenta de cobro en el modulo y completar retenciones alli.",
+                string.IsNullOrWhiteSpace(cuentasCobro.LastRunLabel) ? cashFlow.LastRunLabel : cuentasCobro.LastRunLabel,
+                "Cruzar salida bancaria contra cuenta de cobro de la app, validar retenciones/cuenta contable y crear documento soporte en Siigo.",
                 new[]
                 {
-                    Step("Filas candidatas", "Detectadas", "info", $"{cashFlow.CollectionAccountRows:N0} cuentas de cobro."),
-                    Step("Creacion app", "Falta", "warning", "Crear registro automaticamente desde flujo."),
-                    Step("Retenciones", "Actual", "info", "Formulario existente en modulo cuentas de cobro."),
-                    Step("Dataverse DIAN", "Falta", "warning", "Se confirma en importacion DIAN siguiente.")
+                    Step("Filas candidatas", "Detectadas", "info", $"{cuentasCobro.DetectedCashFlowRows:N0} salidas del flujo."),
+                    Step("Cruce app", cuentasCobro.MatchedRows > 0 ? "Activo" : "Pendiente", cuentasCobro.MatchedRows > 0 ? "info" : "warning", $"{cuentasCobro.MatchedRows:N0} cruzadas contra cuenta de cobro."),
+                    Step("Retenciones", cuentasCobro.PendingRows > 0 ? "Revisar" : "OK", cuentasCobro.PendingRows > 0 ? "warning" : "success", $"ReteFuente total {cuentasCobro.TotalReteFuenteValue:N0}."),
+                    Step("Documento soporte", cuentasCobro.SentToSiigo > 0 ? "Parcial" : "Pendiente", cuentasCobro.SentToSiigo > 0 ? "success" : "warning", $"{cuentasCobro.ReadyForSiigo:N0} listos; {cuentasCobro.SentToSiigo:N0} enviados.")
                 },
-                "",
+                $"Valor pago {cuentasCobro.TotalPaidValue:N0}; valor bruto {cuentasCobro.TotalGrossValue:N0}; retefuente {cuentasCobro.TotalReteFuenteValue:N0}.",
                 new[]
                 {
                     "Filtro y deteccion inicial desde flujo de caja.",
-                    "Modulo de cuentas de cobro ya permite capturar retenciones."
+                    "Modulo de cuentas de cobro ya permite capturar valor total, pago y retefuente.",
+                    "Cruce por valor, NIT/nombre y fecha contra la salida bancaria."
                 },
                 new[]
                 {
-                    "Crear registros automaticamente en el modulo al actualizar flujo.",
-                    "Subir a Siigo cuando retenciones esten completas y aprobadas.",
-                    "Marcar subida a Dataverse en la siguiente importacion DIAN."
+                    "Completar cuenta contable antes del envio.",
+                    "Crear proveedores faltantes en Siigo cuando aplique.",
+                    "Marcar documento soporte Siigo en cuenta de cobro y flujo de caja."
                 }),
             BuildStaticConciliacionPhase(
                 "comprobantes",
                 "Registro de comprobantes contables",
                 cashFlow.AccountingVoucherRows > 0 ? "Detectado" : "Sin filas",
                 cashFlow.AccountingVoucherRows > 0 ? "info" : "neutral",
-                "Semanal",
+                "Diario",
                 cashFlow.LastRunLabel,
-                "Validar comprobantes sin factura/documento soporte y preparar asiento completo.",
+                "Validar comprobantes sin factura/documento soporte, incluidos traslados internos entre bancos, y preparar asiento completo.",
                 new[]
                 {
                     Step("Filas candidatas", "Detectadas", "info", $"{cashFlow.AccountingVoucherRows:N0} comprobantes."),
-                    Step("Dataverse", "Flujo OK", "success", "Registro bancario ya existe."),
-                    Step("Plantillas", "Parcial", "info", "Hay plantillas piloto para algunos casos."),
-                    Step("Siigo", "Falta", "warning", "Crear journals/egresos automaticos.")
+                    Step("Cuenta contable", "Editable", "info", "Se selecciona desde el catalogo Siigo antes de enviar."),
+                    Step("Siigo", "Listo", "success", "Crea comprobante de ingreso o egreso segun entrada/salida.")
                 },
                 "",
                 new[]
                 {
-                    "Deteccion de MI PLANILLA, ENEL, ETB, intereses, inversiones, gravamen y gastos bancarios.",
-                    "Catalogo de cuentas Siigo y plantillas multi-linea ya existen como base."
+                    "Deteccion de traslados internos, MI PLANILLA, ENEL, ETB, intereses, inversiones, gravamen y gastos bancarios.",
+                    "Catalogo de cuentas Siigo disponible para seleccionar cuenta por fila.",
+                    "Envio masivo secuencial a Siigo con log de enviados y errores."
                 },
                 new[]
                 {
                     "Consolidar gravamen mensual por banco en un solo comprobante.",
                     "Partir MI PLANILLA por salud, pension, ARL y caja con cuentas contables separadas.",
-                    "Validar que cada asiento tenga todas sus lineas antes de crear Siigo/Dataverse."
+                    "Crear plantillas multi-linea para casos que no sean un debito/credito simple."
                 }),
             BuildStaticConciliacionPhase(
                 "huerfanos",
-                "Registros huerfanos",
-                cashFlow.OrphanRows > 0 ? "Con pendientes" : "Sin pendientes",
-                cashFlow.OrphanRows > 0 ? "warning" : "success",
+                "No incluidas conciliacion",
+                cashFlow.OrphanRows > 0 ? "Detectadas" : "Sin filas",
+                cashFlow.OrphanRows > 0 ? "neutral" : "success",
                 "Continuo",
                 cashFlow.LastRunLabel,
-                "Reasignar categoria con popup y convertir correcciones frecuentes en reglas.",
+                "Revisar movimientos que la autoclasificacion dejo por fuera y reasignarlos si realmente deben ir a Siigo o Dataverse.",
                 new[]
                 {
-                    Step("Filas sin tipo", "Pendiente", cashFlow.OrphanRows > 0 ? "warning" : "success", $"{cashFlow.OrphanRows:N0} registros."),
-                    Step("Popup categoria", "Visual", "info", "Opciones restringidas por entrada/salida."),
-                    Step("Guardado Dataverse", "Falta", "warning", "Campo/endpoint pendiente.")
+                    Step("No incluidas", cashFlow.OrphanRows > 0 ? "Detectado" : "Sin filas", cashFlow.OrphanRows > 0 ? "neutral" : "success", $"{cashFlow.OrphanRows:N0} registros."),
+                    Step("Reasignacion", "Editable", "info", "Puede enviarse a factura electronica, cuenta de cobro o comprobante contable.")
                 },
                 "",
                 new[]
                 {
-                    "Vista dedicada de huerfanos.",
-                    "Popup visual para reasignar categoria segun entrada o salida."
+                    "Traslados de bolsillos y exclusiones visibles para auditoria.",
+                    "Categoria corregible desde el popup de reasignacion."
                 },
                 new[]
                 {
-                    "Guardar reasignacion en Dataverse.",
-                    "Crear reglas desde correcciones repetidas.",
-                    "Reprocesar las filas despues de reasignarlas."
+                    "Agregar reglas nuevas cuando una autoclasificacion falle de forma repetida."
                 })
         };
     }
@@ -2061,6 +4140,7 @@ public sealed partial class DataverseService
         var modifiedOn = ParseConciliacionDateTimeOffset(ReadString(item, ConciliacionModifiedOnField));
         var preflightStatus = ReadString(item, ClientPaymentMatchPreflightStatusField).Trim();
         var preflightValidatedOn = ParseConciliacionDateTimeOffset(ReadString(item, ClientPaymentMatchPreflightValidatedOnField));
+        var movementExternalKey = ReadString(item, ClientPaymentMatchMovementExternalKeyField).Trim();
 
         return new ConciliacionClientPaymentRowDto
         {
@@ -2071,7 +4151,8 @@ public sealed partial class DataverseService
             Confidence = ReadInt(item, ClientPaymentMatchConfidenceField),
             Reason = ReadString(item, ClientPaymentMatchReasonField).Trim(),
             MovementId = ReadString(item, ClientPaymentMatchMovementIdField).Trim(),
-            MovementExternalKey = ReadString(item, ClientPaymentMatchMovementExternalKeyField).Trim(),
+            MovementExternalKey = movementExternalKey,
+            SourceRowNumber = ParseConciliacionCashFlowSourceRowNumber(movementExternalKey),
             MovementDateValue = movementDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             MovementDateDisplay = movementDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
             SourceFlow = ReadString(item, ClientPaymentMatchSourceFlowField).Trim(),
@@ -2083,6 +4164,10 @@ public sealed partial class DataverseService
             ClientNames = ReadString(item, ClientPaymentMatchClientField).Trim(),
             EntryValue = RoundCurrency(ReadDecimal(item, ClientPaymentMatchEntryField) ?? 0m),
             InvoiceTotal = RoundCurrency(ReadDecimal(item, ClientPaymentMatchInvoiceTotalField) ?? 0m),
+            PaymentValue = RoundCurrency(ReadDecimal(item, ClientPaymentMatchPaymentValueField) ?? 0m),
+            ReteFuenteValue = RoundCurrency(ReadDecimal(item, ClientPaymentMatchReteFteField) ?? 0m),
+            ReteIcaValue = RoundCurrency(ReadDecimal(item, ClientPaymentMatchReteIcaField) ?? 0m),
+            RteIvaValue = RoundCurrency(ReadDecimal(item, ClientPaymentMatchRteIvaField) ?? 0m),
             RetentionsTotal = RoundCurrency((ReadDecimal(item, ClientPaymentMatchReteFteField) ?? 0m)
                 + (ReadDecimal(item, ClientPaymentMatchReteIcaField) ?? 0m)
                 + (ReadDecimal(item, ClientPaymentMatchRteIvaField) ?? 0m)),
@@ -2127,6 +4212,7 @@ public sealed partial class DataverseService
             ClientPaymentMatchInvoiceNumbersField,
             ClientPaymentMatchClientField,
             ClientPaymentMatchInvoiceTotalField,
+            ClientPaymentMatchPaymentValueField,
             ClientPaymentMatchReteFteField,
             ClientPaymentMatchReteIcaField,
             ClientPaymentMatchRteIvaField,
@@ -2172,6 +4258,7 @@ public sealed partial class DataverseService
             ClientPaymentMatchInvoiceNumbersField,
             ClientPaymentMatchClientField,
             ClientPaymentMatchInvoiceTotalField,
+            ClientPaymentMatchPaymentValueField,
             ClientPaymentMatchReteFteField,
             ClientPaymentMatchReteIcaField,
             ClientPaymentMatchRteIvaField,
@@ -2202,7 +4289,7 @@ public sealed partial class DataverseService
         attributes = BuildAccountCatalogAttributeSet(metadata, attributes);
         var rows = await GetAccountCatalogRowsAsync(metadata, attributes, ct);
 
-        return rows
+        var accounts = rows
             .Where(static row => !string.IsNullOrWhiteSpace(row.Code))
             .GroupBy(static row => row.Code.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
@@ -2210,10 +4297,28 @@ public sealed partial class DataverseService
                 static group =>
                 {
                     var row = group.First();
-                    return new ConciliacionAccountCatalogItem(row.Code.Trim(), row.Name.Trim(), row.Active);
+                    return new ConciliacionAccountCatalogItem(row.Code.Trim(), ResolveAccountCatalogName(row.Code, row.Name), row.Active);
                 },
                 StringComparer.OrdinalIgnoreCase);
+        AddConciliacionRequiredExpenseAccounts(accounts);
+        return accounts;
     }
+
+    private static void AddConciliacionRequiredExpenseAccounts(
+        IDictionary<string, ConciliacionAccountCatalogItem> accounts)
+    {
+        foreach (var account in RequiredConciliacionExpenseAccounts)
+        {
+            if (!accounts.TryGetValue(account.Code, out var current) || !current.Active || string.IsNullOrWhiteSpace(current.Name))
+                accounts[account.Code] = account;
+        }
+    }
+
+    private static readonly IReadOnlyList<ConciliacionAccountCatalogItem> RequiredConciliacionExpenseAccounts = new[]
+    {
+        new ConciliacionAccountCatalogItem("511030", "Asesoria contable", true),
+        new ConciliacionAccountCatalogItem("511036", "Asesoria comercial", true)
+    };
 
     private static ConciliacionPreflightValidation ValidateConciliacionClientPaymentDraft(
         ConciliacionClientPaymentRowDto row,
@@ -2445,8 +4550,10 @@ public sealed partial class DataverseService
                 {
                     prefix = item.Due.Prefix,
                     consecutive = item.Due.Consecutive,
-                    quote = 1,
-                    date = movementDate
+                    quote = item.Due.Quote,
+                    date = string.IsNullOrWhiteSpace(item.Due.DateValue)
+                        ? movementDate
+                        : item.Due.DateValue
                 },
                 ["value"] = RoundCurrency(item.Value)
             });
@@ -2540,10 +4647,13 @@ public sealed partial class DataverseService
                 issues.Add($"No encontre en Siigo la factura {FirstNonEmpty(invoice.SiigoInvoiceName, invoice.InvoiceNumber)} para confirmar saldo actual.");
             }
 
-            return RoundCurrency(invoice.TotalInvoice);
+            return RoundCurrency(invoice.NetTotalInvoice);
         }
 
-        var balance = RoundCurrency(siigoInvoice.Balance);
+        var balance = RoundCurrency(
+            siigoInvoice.GrossBalance != 0m || siigoInvoice.Balance == 0m
+                ? siigoInvoice.GrossBalance
+                : siigoInvoice.Balance);
         if (balance <= 0m)
         {
             issues.Add($"La factura {siigoInvoice.Name} aparece sin saldo pendiente en Siigo.");
@@ -2617,20 +4727,56 @@ public sealed partial class DataverseService
 
     private static bool TryBuildConciliacionSiigoDue(
         BillingRecordRow invoice,
+        SiigoInvoiceRowDto? liveSiigoInvoice,
+        bool requireLiveSiigoInvoice,
         out ConciliacionSiigoDue due,
         out string issue)
     {
-        due = new ConciliacionSiigoDue("", 0);
+        due = new ConciliacionSiigoDue("", 0, 0, "");
         issue = "";
 
+        if (liveSiigoInvoice is not null)
+        {
+            if (liveSiigoInvoice.HasExactDueReference
+                && !string.IsNullOrWhiteSpace(liveSiigoInvoice.DuePrefix)
+                && liveSiigoInvoice.DueConsecutive > 0
+                && liveSiigoInvoice.DueQuote > 0
+                && DateOnly.TryParseExact(
+                    liveSiigoInvoice.DueDateValue,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var dueDate))
+            {
+                due = new ConciliacionSiigoDue(
+                    liveSiigoInvoice.DuePrefix.Trim(),
+                    liveSiigoInvoice.DueConsecutive,
+                    liveSiigoInvoice.DueQuote,
+                    dueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                return true;
+            }
+
+            issue = FirstNonEmpty(
+                liveSiigoInvoice.DueReferenceIssue,
+                $"No se pudo confirmar el vencimiento existente de {liveSiigoInvoice.Name} en Siigo.");
+            return false;
+        }
+
+        if (requireLiveSiigoInvoice)
+        {
+            issue = $"No se encontro en Siigo la factura {FirstNonEmpty(invoice.SiigoInvoiceName, invoice.InvoiceNumber)} para confirmar su vencimiento exacto.";
+            return false;
+        }
+
         var label = FirstNonEmpty(invoice.SiigoInvoiceName, invoice.InvoiceNumber);
-        if (!TryParseConciliacionDueLabel(label, out due)
+        if (!TryParseConciliacionDueLabel(label, out var parsedDue)
             && IsConciliacionInvoiceDuePrefix(invoice.InvoicePrefix)
             && int.TryParse(invoice.InvoiceCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out var siigoCode))
         {
-            due = new ConciliacionSiigoDue(invoice.InvoicePrefix.Trim(), siigoCode);
+            parsedDue = new ConciliacionSiigoDue(invoice.InvoicePrefix.Trim(), siigoCode, 1, "");
         }
 
+        due = parsedDue;
         if (!string.IsNullOrWhiteSpace(due.Prefix) && due.Consecutive > 0)
             return true;
 
@@ -2640,7 +4786,7 @@ public sealed partial class DataverseService
 
     private static bool TryParseConciliacionDueLabel(string label, out ConciliacionSiigoDue due)
     {
-        due = new ConciliacionSiigoDue("", 0);
+        due = new ConciliacionSiigoDue("", 0, 0, "");
         var normalized = Regex.Replace((label ?? "").Trim().ToUpperInvariant(), @"\s+", "-", RegexOptions.CultureInvariant);
         normalized = Regex.Replace(normalized, @"-+", "-", RegexOptions.CultureInvariant).Trim('-');
         if (string.IsNullOrWhiteSpace(normalized))
@@ -2654,7 +4800,7 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(prefix) || !IsConciliacionInvoiceDuePrefix(prefix))
             return false;
 
-        due = new ConciliacionSiigoDue(prefix, consecutive);
+        due = new ConciliacionSiigoDue(prefix, consecutive, 1, "");
         return true;
     }
 
@@ -2705,7 +4851,73 @@ public sealed partial class DataverseService
             kind: "RteIva",
             label: "RteIVA",
             value: ResolveCashFlowClientPaymentRteIvaValue(invoice),
-            baseValue: invoice.VatValue);
+            baseValue: invoice.NetVatValue);
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, ConciliacionExactClientPaymentInvoice> ReadConciliacionExactClientPaymentInvoices(
+        string? draftJson)
+    {
+        if (string.IsNullOrWhiteSpace(draftJson))
+            return new Dictionary<string, ConciliacionExactClientPaymentInvoice>(StringComparer.OrdinalIgnoreCase);
+
+        using var document = JsonDocument.Parse(draftJson);
+        var root = document.RootElement;
+        if (!string.Equals(ReadString(root, "type"), "ComprobanteIngresoSiigoBorrador", StringComparison.OrdinalIgnoreCase)
+            || !root.TryGetProperty("invoices", out var invoicesElement)
+            || invoicesElement.ValueKind != JsonValueKind.Array)
+        {
+            return new Dictionary<string, ConciliacionExactClientPaymentInvoice>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var hasExactValues = invoicesElement
+            .EnumerateArray()
+            .Any(static invoice => invoice.TryGetProperty("gross", out _)
+                || invoice.TryGetProperty("payment", out _)
+                || invoice.TryGetProperty("retentions", out _));
+        if (!hasExactValues)
+            return new Dictionary<string, ConciliacionExactClientPaymentInvoice>(StringComparer.OrdinalIgnoreCase);
+
+        var result = new Dictionary<string, ConciliacionExactClientPaymentInvoice>(StringComparer.OrdinalIgnoreCase);
+        foreach (var invoice in invoicesElement.EnumerateArray())
+        {
+            var recordId = ReadString(invoice, "recordId").Trim();
+            var invoiceNumber = FirstNonEmpty(ReadString(invoice, "number"), recordId).Trim();
+            var grossValue = RoundCurrency(ReadDecimal(invoice, "gross") ?? 0m);
+            var adjustmentValue = RoundCurrency(ReadDecimal(invoice, "adjustment") ?? 0m);
+            if (!Guid.TryParse(recordId, out _) || grossValue <= 0m)
+                throw new InvalidOperationException($"El detalle exacto de {invoiceNumber} esta incompleto.");
+            if (result.ContainsKey(recordId))
+                throw new InvalidOperationException($"El detalle exacto repite la factura {invoiceNumber}.");
+
+            var retentions = new List<ConciliacionRetentionTax>();
+            if (invoice.TryGetProperty("retentions", out var retentionsElement)
+                && retentionsElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var retention in retentionsElement.EnumerateArray())
+                {
+                    var value = RoundCurrency(ReadDecimal(retention, "value") ?? 0m);
+                    if (value <= 0m)
+                        continue;
+
+                    var kind = FirstNonEmpty(ReadString(retention, "kind"), ReadString(retention, "label")).Trim();
+                    var taxId = ReadInt(retention, "taxId");
+                    var accountCode = ReadString(retention, "accountCode").Trim();
+                    var rate = ReadDecimal(retention, "rate") ?? 0m;
+                    if (taxId <= 0 || string.IsNullOrWhiteSpace(accountCode) || string.IsNullOrWhiteSpace(kind))
+                        throw new InvalidOperationException($"El detalle exacto de {invoiceNumber} tiene una retencion incompleta.");
+
+                    retentions.Add(new ConciliacionRetentionTax(kind, taxId, accountCode, value, rate));
+                }
+            }
+
+            result[recordId] = new ConciliacionExactClientPaymentInvoice(
+                recordId,
+                grossValue,
+                adjustmentValue,
+                retentions);
+        }
 
         return result;
     }
@@ -2724,81 +4936,66 @@ public sealed partial class DataverseService
         if (value <= 0m)
             return;
 
-        var accountCode = ResolveConciliacionRetentionAccountCode(kind);
-        if (string.IsNullOrWhiteSpace(accountCode))
-        {
-            issues.Add($"La factura {invoiceNumber} tiene {label}, pero falta mapear la cuenta contable para enviarla a Siigo.");
-            return;
-        }
-
         if (baseValue <= 0m)
         {
             issues.Add($"La factura {invoiceNumber} tiene {label}, pero no hay base para calcular el porcentaje.");
             return;
         }
 
-        var percentage = Math.Round(value / baseValue * 100m, 4, MidpointRounding.AwayFromZero);
-        var tax = FindConciliacionRetentionTax(siigoTaxes, kind, percentage);
+        var siigoRate = CalculateConciliacionRetentionSiigoRate(kind, value, baseValue);
+        var tax = FindConciliacionRetentionTax(siigoTaxes, kind, siigoRate);
         if (tax is null)
         {
-            issues.Add($"No encontre impuesto Siigo activo para {label} {percentage:N4}% de la factura {invoiceNumber}.");
+            issues.Add($"No encontre impuesto Siigo activo para {label} {FormatConciliacionRetentionSiigoRate(kind, siigoRate)} de la factura {invoiceNumber}.");
             return;
         }
 
-        result.Add(new ConciliacionRetentionTax(kind, tax.Id, accountCode, value, percentage));
+        var accountCode = ResolveConciliacionRetentionAccountCode(kind, tax, siigoRate);
+        if (string.IsNullOrWhiteSpace(accountCode))
+        {
+            issues.Add($"La factura {invoiceNumber} tiene {label} {FormatConciliacionRetentionSiigoRate(kind, siigoRate)} con impuesto Siigo {tax.Name}, pero falta mapear la cuenta contable de esa tarifa para comprobante de ingreso.");
+            return;
+        }
+
+        result.Add(new ConciliacionRetentionTax(kind, tax.Id, accountCode, value, siigoRate));
     }
 
-    private static string ResolveConciliacionRetentionAccountCode(string kind) =>
-        kind switch
-        {
-            "ReteIca" => "13551805",
-            "RteIva" => "13551701",
-            _ => "13551513"
-        };
+    private static decimal CalculateConciliacionRetentionSiigoRate(string kind, decimal value, decimal baseValue)
+    {
+        var multiplier = string.Equals(kind, "ReteIca", StringComparison.OrdinalIgnoreCase)
+            ? 1000m
+            : 100m;
+        return Math.Round(value / baseValue * multiplier, 4, MidpointRounding.AwayFromZero);
+    }
+
+    private static string FormatConciliacionRetentionSiigoRate(string kind, decimal rate) =>
+        string.Equals(kind, "ReteIca", StringComparison.OrdinalIgnoreCase)
+            ? $"{rate:N4} por mil"
+            : $"{rate:N4}%";
+
+    private static string ResolveConciliacionRetentionAccountCode(
+        string kind,
+        SiigoTaxLookupDto tax,
+        decimal siigoRate) =>
+        ConciliacionRetentionMapping.ResolveAccountCode(kind, tax, siigoRate);
 
     private static SiigoTaxLookupDto? FindConciliacionRetentionTax(
         IReadOnlyList<SiigoTaxLookupDto> siigoTaxes,
         string kind,
-        decimal percentage)
+        decimal siigoRate)
     {
-        return siigoTaxes
-            .Where(tax => tax.Active
-                && tax.Id > 0
-                && MatchesConciliacionRetentionTaxKind(tax, kind))
-            .Select(tax => new
-            {
-                Tax = tax,
-                Difference = Math.Abs(tax.Percentage - percentage)
-            })
-            .Where(static item => item.Difference <= 0.1m)
-            .OrderBy(static item => item.Difference)
-            .ThenBy(static item => item.Tax.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(static item => item.Tax)
-            .FirstOrDefault();
+        return ConciliacionRetentionMapping.FindTax(siigoTaxes, kind, siigoRate);
     }
 
     private static bool MatchesConciliacionRetentionTaxKind(SiigoTaxLookupDto tax, string kind)
     {
-        var text = NormalizeConciliacionTaxText($"{tax.Type} {tax.Name}");
-        return kind switch
-        {
-            "ReteIca" => text.Contains("ICA", StringComparison.OrdinalIgnoreCase),
-            "RteIva" => text.Contains("IVA", StringComparison.OrdinalIgnoreCase)
-                && (text.Contains("RETE", StringComparison.OrdinalIgnoreCase)
-                    || text.Contains("RETENCION", StringComparison.OrdinalIgnoreCase)),
-            _ => text.Contains("FUENTE", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("RETEFTE", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("RETEFUENTE", StringComparison.OrdinalIgnoreCase)
-                || (text.Contains("RETENCION", StringComparison.OrdinalIgnoreCase)
-                    && !text.Contains("ICA", StringComparison.OrdinalIgnoreCase)
-                    && !text.Contains("IVA", StringComparison.OrdinalIgnoreCase))
-        };
+        return ConciliacionRetentionMapping.MatchesKind(tax, kind);
     }
 
     private static decimal ResolveConciliacionRetentionBase(BillingRecordRow invoice)
     {
-        var baseValue = RoundCurrency(invoice.TotalInvoice - invoice.VatValue);
-        return baseValue > 0m ? baseValue : invoice.TotalInvoice;
+        var baseValue = RoundCurrency(invoice.NetTotalInvoice - invoice.NetVatValue);
+        return baseValue > 0m ? baseValue : invoice.NetTotalInvoice;
     }
 
     private static string NormalizeConciliacionTaxText(string value)
@@ -2914,6 +5111,8 @@ public sealed partial class DataverseService
             "ErrorSiigo" => "Error Siigo",
             "Conciliado" => "Conciliado",
             "BloqueadoSiigo" => "Bloqueado pre-Siigo",
+            "ReasignadoCategoria" => "Reasignado a otra categoria",
+            "Omitido" => "Omitido",
             "DiferenciaFueraRango" => "Diferencia fuera de rango",
             "SinFacturaDescripcion" => "Sin factura en descripcion",
             "FacturaNoEncontrada" => "Factura no encontrada",
@@ -2935,6 +5134,8 @@ public sealed partial class DataverseService
             "ErrorSiigo" => "danger",
             "Conciliado" => "success",
             "BloqueadoSiigo" => "danger",
+            "ReasignadoCategoria" => "neutral",
+            "Omitido" => "neutral",
             "DiferenciaFueraRango" => "warning",
             "SinFacturaDescripcion" => "neutral",
             "FacturaNoEncontrada" => "danger",
@@ -2952,6 +5153,8 @@ public sealed partial class DataverseService
             "ErrorSiigo" => "Error Siigo",
             "ValidadoPendienteAprobacion" => "OK, falta aprobar",
             "BloqueadoSiigo" => "Bloqueado",
+            "ReasignadoCategoria" => "Reasignado",
+            "Omitido" => "Omitido",
             _ => string.IsNullOrWhiteSpace(status) ? "Sin validar" : status
         };
     }
@@ -2965,6 +5168,8 @@ public sealed partial class DataverseService
             "ErrorSiigo" => "danger",
             "ValidadoPendienteAprobacion" => "info",
             "BloqueadoSiigo" => "danger",
+            "ReasignadoCategoria" => "neutral",
+            "Omitido" => "neutral",
             _ => "neutral"
         };
     }
@@ -2997,7 +5202,11 @@ public sealed partial class DataverseService
         decimal CreditTotal,
         IReadOnlyList<string> Issues);
 
-    private sealed record ConciliacionSiigoDue(string Prefix, int Consecutive);
+    private sealed record ConciliacionSiigoDue(
+        string Prefix,
+        int Consecutive,
+        int Quote,
+        string DateValue);
 
     private sealed record ConciliacionSiigoInvoiceDueItem(
         BillingRecordRow Invoice,
@@ -3011,6 +5220,12 @@ public sealed partial class DataverseService
         string AccountCode,
         decimal Value,
         decimal Percentage);
+
+    private sealed record ConciliacionExactClientPaymentInvoice(
+        string RecordId,
+        decimal GrossValue,
+        decimal AdjustmentValue,
+        IReadOnlyList<ConciliacionRetentionTax> RetentionTaxes);
 
     private sealed record ConciliacionAccountCatalogItem(
         string Code,

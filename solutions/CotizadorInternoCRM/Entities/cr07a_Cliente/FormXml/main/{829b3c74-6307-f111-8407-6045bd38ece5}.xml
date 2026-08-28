@@ -1,0 +1,139 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{829b3c74-6307-f111-8407-6045bd38ece5}</formid>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <FormPresentation>1</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="{9ed001c5-19d9-4171-aeb3-a4f596b716d9}" IsUserDefined="1" labelid="{ec058835-b74c-4cb0-8061-5009e1976166}">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="{ba37fd5b-2f53-4013-b0cb-e4e63336b476}" labelid="{bab420a1-f18f-4270-9b29-21f93c755fd7}">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="{35bf3a75-1dbb-4504-99e9-8272c998652d}" labelid="{6286b9ae-848d-4054-9893-0a5e7b5483ab}">
+                        <labels>
+                          <label description="Nombre empresa" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nombre" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="cr07a_nombre" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{e09825d7-ed29-427f-b1e3-4ace5a49ba47}" locklevel="0" colspan="1" rowspan="1" labelid="{5d455d2e-33b3-4035-86f6-1e6df919cd1d}">
+                        <labels>
+                          <label description="Nombre persona a cargo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nombrepersonaacargo" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="cr07a_nombrepersonaacargo" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{bb5ee838-f132-4948-81f6-e8521c57a76c}" locklevel="0" colspan="1" rowspan="1" labelid="{978e0c88-962b-43fe-a53b-4d5a1f1dbe4c}">
+                        <labels>
+                          <label description="Correo electrónico" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_correoelectronico" classid="{ADA2203E-B4CD-49BE-9DDF-234642B43B52}" datafieldname="cr07a_correoelectronico" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{cf13d21b-85dd-4ed2-96eb-1936ad6fbd40}" locklevel="0" colspan="1" rowspan="1" labelid="{6a917322-efef-498b-bbb9-a0757509a3d9}" visible="false">
+                        <labels>
+                          <label description="NIT" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nit" classid="{C6D124CA-7EDA-4A60-AEA9-7FB8D318B68F}" datafieldname="cr07a_nit" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{118c0b3d-6148-4be1-b28f-b23e1ef3052d}" locklevel="0" colspan="1" rowspan="1" labelid="{5bd8d107-a444-498d-8a04-1de9436c7e0f}" visible="false">
+                        <labels>
+                          <label description="Teléfono" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_telefono" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="cr07a_telefono" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{ef451b4d-d1ef-4443-9ba1-0355fe279ed9}" colspan="1" rowspan="1" labelid="{20cdc770-3980-45b7-9c08-b5cbd771fc56}">
+                        <labels>
+                          <label description="Propietario" languagecode="3082" />
+                        </labels>
+                        <control id="ownerid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="ownerid" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="{0c7286e5-99fd-4871-adde-d1d39c0b8b26}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{c9b9801b-c620-449b-95af-99cb22d8bcba}" showlabel="false" labelid="{d6eb7428-5a5b-447f-83a3-9637b75e12cc}">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{b604575f-06d5-46dd-93b6-f5685819100e}" showlabel="false" labelid="{a6dd7131-632c-4a61-b68a-04a1021df09e}">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{c4f5fccc-3761-4b26-9855-b04fa937ad29}" showlabel="false" labelid="{0e175aa8-b26f-4d07-9c0f-85efae64d7dd}">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{e6158610-c30d-4d1e-96f1-39f0b78a6518}" locklevel="0" colspan="1" rowspan="1" labelid="{ca5bd30f-7b4e-4dcb-b8c1-d2e6440d6011}">
+              <labels>
+                <label description="Comercial Asignado" languagecode="3082" />
+              </labels>
+              <control id="header_cr07a_comercialasignado" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_comercialasignado" disabled="false" />
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="{95394bbd-bcd0-4aa6-b633-77df27f93bb3}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{051396eb-2a86-4c2e-b3a2-02687dc534f3}" showlabel="false" labelid="{5f4d16f2-c85d-4618-a633-92e0c5af6d69}">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{90dc7f05-ec87-4b3f-b82c-e683f36c1042}" showlabel="false" labelid="{dbdf842e-f756-487e-863e-8c0efa0c5322}">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{a2bd2da5-3891-4fab-9dac-a6f7571110bc}" showlabel="false" labelid="{4f1228c9-9956-40c7-aa53-e4d0db0208fe}">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="2" FallbackForm="true">
+        <Role Id="{627090ff-40a3-4053-8790-584edc5be201}" />
+        <Role Id="{119f245c-3cc8-4b62-b31c-d1a046ced15d}" />
+      </DisplayConditions>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="formulario equipo tec" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Formulario para esta entidad." languagecode="3082" />
+    </Descriptions>
+  </systemform>
+</forms>

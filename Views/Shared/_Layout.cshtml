@@ -111,6 +111,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Digital Tech</title>
+    <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
+    <link rel="icon" type="image/png" href="~/favicon.png" asp-append-version="true" />
     <script>
         (function () {
             try {
@@ -133,9 +135,12 @@
 <body class="app-shell">
 <header class="app-shell__header">
     <nav class="navbar navbar-expand-lg app-shell__navbar">
-        <div class="container-xl">
+        <div class="container-fluid app-shell__container">
             <div class="app-shell__nav-frame">
                 <a class="app-shell__brand" href="~/">
+                    <span class="app-shell__brand-mark" aria-hidden="true">
+                        <img src="~/favicon.png" alt="" asp-append-version="true" />
+                    </span>
                     <span class="app-shell__brand-title">Digital Tech</span>
                 </a>
 
@@ -202,7 +207,7 @@
     </nav>
 </header>
 
-<div class="container-xl app-shell__content pb-4">
+<div class="container-fluid app-shell__content pb-4">
     <main role="main">
         @RenderBody()
     </main>

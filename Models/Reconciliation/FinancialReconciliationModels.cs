@@ -12,6 +12,8 @@ public sealed class ReconciliationDataverseBillingRow
     public string ClientName { get; set; } = "";
     public string CompanyTaxId { get; set; } = "";
     public DateOnly? EmissionDate { get; set; }
+    public int? VerticalOptionValue { get; set; }
+    public int? ContractTypeOptionValue { get; set; }
     public decimal Total { get; set; }
     public decimal Vat { get; set; }
     public decimal? VatPercent { get; set; }
@@ -24,6 +26,7 @@ public sealed class ReconciliationDataverseCreditNoteRow
     public string CreditNoteName { get; set; } = "";
     public long? CreditNoteNumber { get; set; }
     public DateOnly? Date { get; set; }
+    public DateTimeOffset? CreatedAt { get; set; }
     public string InvoiceId { get; set; } = "";
     public string InvoiceName { get; set; } = "";
     public string InvoicePrefix { get; set; } = "";
@@ -68,8 +71,11 @@ public sealed class SiigoReconciliationInvoice
     public string CustomerId { get; set; } = "";
     public string CustomerIdentification { get; set; } = "";
     public decimal Total { get; set; }
+    public decimal SuggestedWithholdingTotal { get; set; }
+    public decimal GrossTotal { get; set; }
     public decimal Vat { get; set; }
     public bool Annulled { get; set; }
+    public string StampStatus { get; set; } = "";
     public string RawJson { get; set; } = "";
 }
 
@@ -89,6 +95,8 @@ public sealed class SiigoReconciliationCreditNote
     public string StampStatus { get; set; } = "";
     public string Cude { get; set; } = "";
     public decimal Total { get; set; }
+    public decimal SuggestedWithholdingTotal { get; set; }
+    public decimal GrossTotal { get; set; }
     public decimal Vat { get; set; }
     public string RawJson { get; set; } = "";
 }
@@ -102,6 +110,7 @@ public sealed class SiigoReconciliationPurchase
     public string ProviderInvoicePrefix { get; set; } = "";
     public string ProviderInvoiceNumber { get; set; } = "";
     public string ProviderInvoiceFullNumber { get; set; } = "";
+    public DateOnly? PaymentDueDate { get; set; }
     public decimal Total { get; set; }
     public decimal Vat { get; set; }
     public decimal Balance { get; set; }
@@ -124,6 +133,8 @@ public sealed class FinancialReconciliationRunResult
     public FinancialReconciliationReportResult Report { get; set; } = new();
     public bool EmailSent { get; set; }
     public string EmailStatus { get; set; } = "";
+    public bool ReteFuenteEmailSent { get; set; }
+    public string ReteFuenteEmailStatus { get; set; } = "";
 }
 
 public sealed class FinancialReconciliationSnapshotResult
@@ -180,8 +191,10 @@ public sealed class FinancialReconciliationCorrectionResult
         && string.Equals(action.Action, "Creada", StringComparison.OrdinalIgnoreCase));
     public int UpdatedCreditNotes => Actions.Count(static action => string.Equals(action.Entity, "NC", StringComparison.OrdinalIgnoreCase)
         && string.Equals(action.Action, "Actualizada", StringComparison.OrdinalIgnoreCase));
+    public int DeletedInvoices => Actions.Count(static action => string.Equals(action.Entity, "Factura", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(action.Action, "Eliminada", StringComparison.OrdinalIgnoreCase));
     public int Errors => Actions.Count(static action => string.Equals(action.Action, "Error", StringComparison.OrdinalIgnoreCase));
-    public int Applied => CreatedInvoices + UpdatedInvoices + CreatedCreditNotes + UpdatedCreditNotes;
+    public int Applied => CreatedInvoices + UpdatedInvoices + DeletedInvoices + CreatedCreditNotes + UpdatedCreditNotes;
 }
 
 public sealed class FinancialReconciliationCorrectionAction

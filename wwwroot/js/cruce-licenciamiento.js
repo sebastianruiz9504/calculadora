@@ -5,6 +5,7 @@
     }
 
     const loadUrl = app.dataset.loadUrl || "";
+    const exportUrl = app.dataset.exportUrl || "";
     const updateCostContractUrl = app.dataset.updateCostContractUrl || "";
     const updateBillingContractUrl = app.dataset.updateBillingContractUrl || "";
     const updateBillingVerticalUrl = app.dataset.updateBillingVerticalUrl || "";
@@ -17,6 +18,7 @@
     const monthSelect = document.getElementById("licCruceMonth");
     const periodModeSelect = document.getElementById("licCrucePeriodMode");
     const segmentSelect = document.getElementById("licCruceSegmentSelect");
+    const downloadButton = document.getElementById("licCruceDownload");
     const status = document.getElementById("licCruceStatus");
     const matrixWrap = document.getElementById("licCruceMatrix");
     const matrixTitle = document.getElementById("licCruceMatrixTitle");
@@ -28,6 +30,34 @@
     const totalMargin = document.getElementById("licCruceTotalMargin");
     const totalMarginPct = document.getElementById("licCruceTotalMarginPct");
     const marginBreakdown = document.getElementById("licCruceMarginBreakdown");
+    const totalTrendSummary = document.getElementById("licCruceTotalTrendSummary");
+    const totalTrendChart = document.getElementById("licCruceTotalTrendChart");
+    const clientTrendSearch = document.getElementById("licCruceClientTrendSearch");
+    const clientTrendSelect = document.getElementById("licCruceClientTrendSelect");
+    const clientTrendSummary = document.getElementById("licCruceClientTrendSummary");
+    const clientTrendChart = document.getElementById("licCruceClientTrendChart");
+    const clientMarginSearch = document.getElementById("licCruceClientMarginSearch");
+    const clientMarginSelect = document.getElementById("licCruceClientMarginSelect");
+    const clientMarginSummary = document.getElementById("licCruceClientMarginSummary");
+    const clientMarginChart = document.getElementById("licCruceClientMarginChart");
+
+    const chartColors = {
+        cost: "#dc2626",
+        billing: "#15803d",
+        utilityPct: "#2563eb"
+    };
+    const clientLinePalette = [
+        "#2563eb",
+        "#16a34a",
+        "#dc2626",
+        "#9333ea",
+        "#0891b2",
+        "#ca8a04",
+        "#be123c",
+        "#4f46e5",
+        "#0f766e",
+        "#ea580c"
+    ];
 
     const copFormatter = new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -50,6 +80,11 @@
     let detailDialog = null;
     let editDialog = null;
     let accountSearchTimer = null;
+    let sortState = { key: "", direction: "" };
+    let selectedClientTrendKeys = new Set();
+    let selectedClientMarginKeys = new Set();
+    let clientTrendSearchTerm = "";
+    let clientMarginSearchTerm = "";
 
     yearInput.value = Number(app.dataset.defaultYear || 0) > 0 ? app.dataset.defaultYear : "";
     monthSelect.value = Number(app.dataset.defaultMonth || 0) > 0 ? app.dataset.defaultMonth : "";
@@ -65,7 +100,39 @@
         renderSelectedSegment();
     });
 
+    downloadButton?.addEventListener("click", () => {
+        downloadCruce().catch((error) => {
+            showStatus("error", error instanceof Error ? error.message : "No fue posible descargar el listado.");
+        });
+    });
+
+    clientTrendSearch?.addEventListener("input", () => {
+        clientTrendSearchTerm = clientTrendSearch.value || "";
+        renderClientFilters();
+    });
+
+    clientTrendSelect?.addEventListener("change", () => {
+        selectedClientTrendKeys = readUpdatedSelectedKeys(clientTrendSelect, selectedClientTrendKeys);
+        renderSelectedCharts();
+    });
+
+    clientMarginSearch?.addEventListener("input", () => {
+        clientMarginSearchTerm = clientMarginSearch.value || "";
+        renderClientFilters();
+    });
+
+    clientMarginSelect?.addEventListener("change", () => {
+        selectedClientMarginKeys = readUpdatedSelectedKeys(clientMarginSelect, selectedClientMarginKeys);
+        renderSelectedCharts();
+    });
+
     matrixWrap?.addEventListener("click", (event) => {
+        const sortButton = event.target.closest("[data-sort-key]");
+        if (sortButton) {
+            handleSortClick(sortButton.dataset.sortKey || "");
+            return;
+        }
+
         const clientCell = event.target.closest("[data-map-client]");
         if (clientCell) {
             openClientEditDialog(clientCell.dataset.clientKey || "", clientCell.dataset.clientName || "");
@@ -141,6 +208,7 @@
             if (currentData) {
                 renderSegmentSelect();
             }
+            updateDownloadButton();
         }
     }
 
@@ -194,14 +262,12 @@
     }
 
     function renderSelectedSegment() {
-        const segment = currentSegments.find((item) => item.key === selectedSegmentKey)
-            || currentSegments.find((item) => Number(item.recordsCount || 0) > 0)
-            || currentSegments[0]
-            || null;
+        const segment = getSelectedSegment();
         const months = Array.isArray(currentData?.matrixMonths) ? currentData.matrixMonths : [];
 
         if (!segment || months.length === 0) {
             renderTotals({});
+            renderSelectedCharts();
             if (matrixTitle) {
                 matrixTitle.textContent = "Sin datos";
             }
@@ -211,6 +277,7 @@
             if (matrixWrap) {
                 matrixWrap.innerHTML = "<div class=\"licx-empty\">No hay registros para este periodo.</div>";
             }
+            updateDownloadButton();
             return;
         }
 
@@ -230,6 +297,15 @@
             negativeCount.classList.toggle("is-negative", Number(segment.negativeMarginCount || 0) > 0);
         }
         renderMatrix(segment, months);
+        renderSelectedCharts();
+        updateDownloadButton();
+    }
+
+    function getSelectedSegment() {
+        return currentSegments.find((item) => item.key === selectedSegmentKey)
+            || currentSegments.find((item) => Number(item.recordsCount || 0) > 0)
+            || currentSegments[0]
+            || null;
     }
 
     function renderTotals(totals) {
@@ -250,7 +326,7 @@
     }
 
     function renderMatrix(segment, months) {
-        const rows = Array.isArray(segment.rows) ? segment.rows : [];
+        const rows = getSortedRows(Array.isArray(segment.rows) ? segment.rows : []);
         if (!matrixWrap) {
             return;
         }
@@ -266,16 +342,16 @@
                 <table class="table align-middle licx-table licx-matrix-table">
                     <thead>
                         <tr>
-                            <th rowspan="2" class="licx-client-col">Cliente</th>
+                            ${buildSortableHeader("client", "Cliente", "licx-client-col", "rowspan=\"2\"")}
                             ${months.map((month) => `<th colspan="4" class="text-center licx-month-head">${escapeHtml(month.label || month.key || "")}</th>`).join("")}
-                            ${showAccumulated ? "<th rowspan=\"2\" class=\"text-end licx-accum-col\">Utilidad acumulada</th>" : ""}
+                            ${showAccumulated ? buildSortableHeader("totalUtility", "Utilidad acumulada", "text-end licx-accum-col", "rowspan=\"2\"") : ""}
                         </tr>
                         <tr>
-                            ${months.map(() => `
-                                <th class="text-end">Costo</th>
-                                <th class="text-end">Venta</th>
-                                <th class="text-end">% utilidad</th>
-                                <th class="text-end">Utilidad</th>
+                            ${months.map((month) => `
+                                ${buildSortableHeader(`cell:${month.key || ""}:cost`, "Costo", "text-end")}
+                                ${buildSortableHeader(`cell:${month.key || ""}:billing`, "Venta", "text-end")}
+                                ${buildSortableHeader(`cell:${month.key || ""}:pct`, "% utilidad", "text-end")}
+                                ${buildSortableHeader(`cell:${month.key || ""}:utility`, "Utilidad", "text-end")}
                             `).join("")}
                         </tr>
                     </thead>
@@ -285,6 +361,712 @@
                 </table>
             </div>
         `;
+    }
+
+    function renderSelectedCharts() {
+        const chartSegment = getSelectedChartSegment();
+        const months = getChartMonths();
+
+        if (!chartSegment || months.length === 0) {
+            renderClientFilters([]);
+            renderEmptyChart(totalTrendChart, "No hay datos desde enero 2026 para graficar.");
+            renderEmptyChart(clientTrendChart, "No hay datos desde enero 2026 para graficar.");
+            renderEmptyChart(clientMarginChart, "Selecciona uno o mas clientes para visualizar la evolucion de utilidad.");
+            setText(totalTrendSummary, "");
+            setText(clientTrendSummary, "");
+            setText(clientMarginSummary, "");
+            return;
+        }
+
+        const clientRows = getChartClientRows(chartSegment);
+        pruneSelectedKeys(selectedClientTrendKeys, clientRows);
+        pruneSelectedKeys(selectedClientMarginKeys, clientRows);
+        renderClientFilters(clientRows);
+
+        if (clientRows.length === 0) {
+            renderEmptyChart(totalTrendChart, "No hay clientes en este tipo para graficar.");
+            renderEmptyChart(clientTrendChart, "No hay clientes en este tipo para graficar.");
+            renderEmptyChart(clientMarginChart, "Selecciona uno o mas clientes para visualizar la evolucion de utilidad.");
+            setText(totalTrendSummary, "");
+            setText(clientTrendSummary, "");
+            setText(clientMarginSummary, "");
+            return;
+        }
+
+        const totalMonthlyData = buildMonthlyTotals(clientRows, months);
+        renderComboChart(totalTrendChart, totalMonthlyData, {
+            title: "Total",
+            selectedClientsLabel: "Todos los clientes",
+            emptyMessage: "No hay datos desde enero 2026 para graficar."
+        });
+        setText(totalTrendSummary, `${formatMonthRangeLabel(months)} | ${numberFormatter.format(clientRows.length)} cliente(s)`);
+
+        const trendRows = selectedClientTrendKeys.size > 0
+            ? clientRows.filter((row) => selectedClientTrendKeys.has(row.rowKey || ""))
+            : clientRows;
+        const trendLabel = selectedClientTrendKeys.size > 0
+            ? summarizeSelectedClients(trendRows)
+            : "Todos los clientes";
+        renderComboChart(clientTrendChart, buildMonthlyTotals(trendRows, months), {
+            title: "Cliente(s)",
+            selectedClientsLabel: trendLabel,
+            emptyMessage: "Selecciona uno o mas clientes para visualizar la evolucion mensual."
+        });
+        setText(clientTrendSummary, `${trendLabel} | ${numberFormatter.format(trendRows.length)} cliente(s)`);
+
+        const marginRows = selectedClientMarginKeys.size > 0
+            ? clientRows.filter((row) => selectedClientMarginKeys.has(row.rowKey || ""))
+            : getTopClientRowsByBilling(clientRows, 10);
+        const visibleMarginRows = marginRows.slice(0, 10);
+        const marginLabel = selectedClientMarginKeys.size > 0
+            ? summarizeSelectedClients(visibleMarginRows)
+            : "Top 10 por venta sin IVA";
+        const marginWarning = marginRows.length > 10
+            ? "Para mejor lectura, selecciona maximo 10 clientes."
+            : "";
+        renderClientMarginChart(clientMarginChart, visibleMarginRows, months, {
+            emptyMessage: "Selecciona uno o mas clientes para visualizar la evolucion de utilidad.",
+            warning: marginWarning
+        });
+        setText(clientMarginSummary, `${marginLabel} | ${numberFormatter.format(visibleMarginRows.length)} linea(s)`);
+    }
+
+    function renderClientFilters(clientRows) {
+        const rows = Array.isArray(clientRows)
+            ? clientRows
+            : getChartClientRows(getSelectedChartSegment());
+        renderClientSelectOptions(clientTrendSelect, rows, selectedClientTrendKeys, clientTrendSearchTerm);
+        renderClientSelectOptions(clientMarginSelect, rows, selectedClientMarginKeys, clientMarginSearchTerm);
+    }
+
+    function getSelectedChartSegment() {
+        const chartSegments = Array.isArray(currentData?.chartMatrixSegments)
+            ? currentData.chartMatrixSegments
+            : [];
+        return chartSegments.find((item) => item.key === selectedSegmentKey)
+            || chartSegments.find((item) => Number(item.recordsCount || 0) > 0)
+            || chartSegments[0]
+            || null;
+    }
+
+    function getChartMonths() {
+        const chartMonths = Array.isArray(currentData?.chartMatrixMonths)
+            ? currentData.chartMatrixMonths
+            : [];
+        return chartMonths.length > 0
+            ? chartMonths
+            : (Array.isArray(currentData?.matrixMonths) ? currentData.matrixMonths : []);
+    }
+
+    function getChartClientRows(segment) {
+        return (Array.isArray(segment?.rows) ? segment.rows : [])
+            .filter((row) => row && row.rowKey)
+            .slice()
+            .sort((left, right) => (left.cliente || "").localeCompare(right.cliente || "", "es", { sensitivity: "base" }));
+    }
+
+    function renderClientSelectOptions(select, rows, selectedKeys, searchTerm) {
+        if (!select) {
+            return;
+        }
+
+        const term = normalizeSearchText(searchTerm);
+        const filteredRows = rows.filter((row) =>
+            !term
+            || selectedKeys.has(row.rowKey || "")
+            || normalizeSearchText(buildClientSearchText(row)).includes(term));
+
+        select.innerHTML = filteredRows.map((row) => {
+            const key = row.rowKey || "";
+            const meta = row.nitCliente || row.clienteId || row.grupoEmpresarialId || "";
+            return `
+                <option value="${escapeHtml(key)}" ${selectedKeys.has(key) ? "selected" : ""}>
+                    ${escapeHtml(row.cliente || "Cliente sin nombre")}${meta ? ` - ${escapeHtml(meta)}` : ""}
+                </option>
+            `;
+        }).join("");
+        select.disabled = rows.length === 0;
+    }
+
+    function readUpdatedSelectedKeys(select, previousKeys) {
+        const visibleKeys = new Set([...select.options].map((option) => option.value));
+        const next = new Set([...previousKeys].filter((key) => !visibleKeys.has(key)));
+        [...select.selectedOptions].forEach((option) => {
+            if (option.value) {
+                next.add(option.value);
+            }
+        });
+        return next;
+    }
+
+    function pruneSelectedKeys(selectedKeys, rows) {
+        const availableKeys = new Set(rows.map((row) => row.rowKey || ""));
+        [...selectedKeys].forEach((key) => {
+            if (!availableKeys.has(key)) {
+                selectedKeys.delete(key);
+            }
+        });
+    }
+
+    function buildMonthlyTotals(rows, months) {
+        return months.map((month) => {
+            let cost = 0;
+            let billing = 0;
+            let negativeClients = 0;
+            for (const row of rows) {
+                const cell = getCellForMonth(row, month.key || "");
+                const cellCost = Number(cell?.costoLicenciamiento || 0);
+                const cellBilling = Number(cell?.facturacionSinIva || 0);
+                cost += Number.isFinite(cellCost) ? cellCost : 0;
+                billing += Number.isFinite(cellBilling) ? cellBilling : 0;
+                if ((Number(cell?.utilidadValor ?? (cellBilling - cellCost)) || 0) < 0) {
+                    negativeClients++;
+                }
+            }
+
+            const utility = billing - cost;
+            return {
+                key: month.key || "",
+                label: month.label || month.key || "",
+                cost,
+                billing,
+                utility,
+                utilityPct: calculateUtilityPct(cost, billing),
+                negativeClients,
+                totalClients: rows.length
+            };
+        });
+    }
+
+    function renderComboChart(container, data, options) {
+        if (!container) {
+            return;
+        }
+
+        const rows = Array.isArray(data) ? data : [];
+        const hasValues = rows.some((item) =>
+            Math.abs(Number(item.cost || 0)) >= 0.01
+            || Math.abs(Number(item.billing || 0)) >= 0.01);
+        if (!hasValues) {
+            renderEmptyChart(container, options?.emptyMessage || "No hay datos para graficar.");
+            return;
+        }
+
+        const margin = { top: 28, right: 78, bottom: 74, left: 86 };
+        const width = Math.max(820, rows.length * 78 + margin.left + margin.right);
+        const height = 360;
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+        const xStep = plotWidth / Math.max(rows.length, 1);
+        const moneyMax = niceMax(Math.max(...rows.flatMap((item) => [Number(item.cost || 0), Number(item.billing || 0)]), 1));
+        const pctValues = rows.map((item) => item.utilityPct).filter((value) => value !== null && Number.isFinite(Number(value))).map(Number);
+        const pctDomain = buildPercentDomain(pctValues);
+        const yMoney = (value) => margin.top + plotHeight - ((Number(value || 0) / moneyMax) * plotHeight);
+        const yPct = (value) => margin.top + plotHeight - (((Number(value) - pctDomain.min) / (pctDomain.max - pctDomain.min)) * plotHeight);
+        const yBottom = margin.top + plotHeight;
+        const barWidth = Math.max(8, Math.min(18, xStep / 4.2));
+        const linePoints = rows
+            .map((item, index) => ({
+                item,
+                x: margin.left + (index * xStep) + (xStep / 2),
+                y: item.utilityPct === null ? null : yPct(item.utilityPct)
+            }));
+        const linePaths = buildLinePaths(linePoints);
+
+        const gridLines = buildGridLines(5, margin, plotWidth, plotHeight, moneyMax, yMoney);
+        const pctLabels = buildRightAxisLabels(5, margin, plotWidth, plotHeight, pctDomain, yPct);
+        const bars = rows.map((item, index) => {
+            const centerX = margin.left + (index * xStep) + (xStep / 2);
+            const costY = yMoney(item.cost);
+            const billingY = yMoney(item.billing);
+            const title = buildComboTooltip(item, options?.selectedClientsLabel || "");
+            return `
+                <g>
+                    <rect x="${round(centerX - barWidth - 2)}" y="${round(costY)}" width="${round(barWidth)}" height="${round(Math.max(yBottom - costY, 1))}" fill="${chartColors.cost}">
+                        ${title}
+                    </rect>
+                    <rect x="${round(centerX + 2)}" y="${round(billingY)}" width="${round(barWidth)}" height="${round(Math.max(yBottom - billingY, 1))}" fill="${chartColors.billing}">
+                        ${title}
+                    </rect>
+                    <rect x="${round(centerX - (xStep / 2))}" y="${margin.top}" width="${round(xStep)}" height="${plotHeight}" fill="transparent">
+                        ${title}
+                    </rect>
+                    <text class="licx-chart-label" x="${round(centerX)}" y="${height - 42}" text-anchor="middle">${escapeHtml(item.label || item.key || "")}</text>
+                </g>
+            `;
+        }).join("");
+        const line = linePaths.map((path) => `<path d="${path}" fill="none" stroke="${chartColors.utilityPct}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>`).join("");
+        const points = linePoints
+            .filter((point) => point.y !== null)
+            .map((point) => `
+                <circle cx="${round(point.x)}" cy="${round(point.y)}" r="4" fill="#ffffff" stroke="${chartColors.utilityPct}" stroke-width="2">
+                    ${buildComboTooltip(point.item, options?.selectedClientsLabel || "")}
+                </circle>
+            `).join("");
+
+        container.innerHTML = `
+            ${buildComboLegend()}
+            <div class="licx-chart-scroll">
+                <svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-hidden="true">
+                    ${gridLines}
+                    <line class="licx-chart-axis" x1="${margin.left}" y1="${yBottom}" x2="${width - margin.right}" y2="${yBottom}"></line>
+                    <line class="licx-chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${yBottom}"></line>
+                    <line class="licx-chart-axis" x1="${width - margin.right}" y1="${margin.top}" x2="${width - margin.right}" y2="${yBottom}"></line>
+                    <text class="licx-chart-title" x="${margin.left}" y="16">${escapeHtml(options?.title || "")}</text>
+                    <text class="licx-chart-title" x="${margin.left}" y="${height - 8}">Mes consumo</text>
+                    <text class="licx-chart-title" x="${width - margin.right}" y="16" text-anchor="end">Utilidad %</text>
+                    ${pctLabels}
+                    ${bars}
+                    ${line}
+                    ${points}
+                </svg>
+            </div>
+        `;
+    }
+
+    function renderClientMarginChart(container, rows, months, options) {
+        if (!container) {
+            return;
+        }
+
+        const series = rows.map((row, index) => ({
+            key: row.rowKey || `client-${index}`,
+            label: row.cliente || "Cliente sin nombre",
+            color: clientLinePalette[index % clientLinePalette.length],
+            points: months.map((month) => {
+                const cell = getCellForMonth(row, month.key || "");
+                const cost = Number(cell?.costoLicenciamiento || 0);
+                const billing = Number(cell?.facturacionSinIva || 0);
+                const utility = billing - cost;
+                return {
+                    key: month.key || "",
+                    label: month.label || month.key || "",
+                    cost,
+                    billing,
+                    utility,
+                    utilityPct: calculateUtilityPct(cost, billing)
+                };
+            })
+        }));
+        const percentValues = series
+            .flatMap((item) => item.points.map((point) => point.utilityPct))
+            .filter((value) => value !== null && Number.isFinite(Number(value)))
+            .map(Number);
+
+        if (series.length === 0 || percentValues.length === 0) {
+            renderEmptyChart(container, options?.emptyMessage || "No hay datos para graficar.");
+            return;
+        }
+
+        const margin = { top: 28, right: 42, bottom: 74, left: 72 };
+        const width = Math.max(820, months.length * 78 + margin.left + margin.right);
+        const height = 360;
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+        const xStep = plotWidth / Math.max(months.length, 1);
+        const pctDomain = buildPercentDomain(percentValues);
+        const yPct = (value) => margin.top + plotHeight - (((Number(value) - pctDomain.min) / (pctDomain.max - pctDomain.min)) * plotHeight);
+        const xForIndex = (index) => margin.left + (index * xStep) + (xStep / 2);
+        const yBottom = margin.top + plotHeight;
+        const gridLines = buildPercentGridLines(5, margin, plotWidth, plotHeight, pctDomain, yPct);
+        const xLabels = months.map((month, index) => `
+            <text class="licx-chart-label" x="${round(xForIndex(index))}" y="${height - 42}" text-anchor="middle">${escapeHtml(month.label || month.key || "")}</text>
+        `).join("");
+        const lineSvg = series.map((item) => {
+            const points = item.points.map((point, index) => ({
+                item: point,
+                x: xForIndex(index),
+                y: point.utilityPct === null ? null : yPct(point.utilityPct)
+            }));
+            const paths = buildLinePaths(points)
+                .map((path) => `<path d="${path}" fill="none" stroke="${item.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>`)
+                .join("");
+            const circles = points
+                .filter((point) => point.y !== null)
+                .map((point) => `
+                    <circle cx="${round(point.x)}" cy="${round(point.y)}" r="3.8" fill="#ffffff" stroke="${item.color}" stroke-width="2">
+                        ${buildClientMarginTooltip(item.label, point.item)}
+                    </circle>
+                `).join("");
+            return `<g>${paths}${circles}</g>`;
+        }).join("");
+
+        container.innerHTML = `
+            ${options?.warning ? `<div class="licx-chart-warning">${escapeHtml(options.warning)}</div>` : ""}
+            ${buildLineLegend(series)}
+            <div class="licx-chart-scroll">
+                <svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-hidden="true">
+                    ${gridLines}
+                    <line class="licx-chart-axis" x1="${margin.left}" y1="${yBottom}" x2="${width - margin.right}" y2="${yBottom}"></line>
+                    <line class="licx-chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${yBottom}"></line>
+                    <text class="licx-chart-title" x="${margin.left}" y="16">Utilidad %</text>
+                    <text class="licx-chart-title" x="${margin.left}" y="${height - 8}">Mes consumo</text>
+                    ${xLabels}
+                    ${lineSvg}
+                </svg>
+            </div>
+        `;
+    }
+
+    function buildGridLines(count, margin, plotWidth, plotHeight, moneyMax, yMoney) {
+        const lines = [];
+        for (let index = 0; index <= count; index++) {
+            const value = (moneyMax / count) * index;
+            const y = yMoney(value);
+            lines.push(`
+                <line class="licx-chart-grid" x1="${margin.left}" y1="${round(y)}" x2="${margin.left + plotWidth}" y2="${round(y)}"></line>
+                <text class="licx-chart-label" x="${margin.left - 10}" y="${round(y + 4)}" text-anchor="end">${escapeHtml(formatCompactCurrency(value))}</text>
+            `);
+        }
+        return lines.join("");
+    }
+
+    function buildRightAxisLabels(count, margin, plotWidth, plotHeight, domain, yPct) {
+        const lines = [];
+        for (let index = 0; index <= count; index++) {
+            const value = domain.min + (((domain.max - domain.min) / count) * index);
+            const y = yPct(value);
+            lines.push(`<text class="licx-chart-label" x="${margin.left + plotWidth + 10}" y="${round(y + 4)}">${escapeHtml(formatPercent(value))}</text>`);
+        }
+        return lines.join("");
+    }
+
+    function buildPercentGridLines(count, margin, plotWidth, plotHeight, domain, yPct) {
+        const lines = [];
+        for (let index = 0; index <= count; index++) {
+            const value = domain.min + (((domain.max - domain.min) / count) * index);
+            const y = yPct(value);
+            lines.push(`
+                <line class="licx-chart-grid" x1="${margin.left}" y1="${round(y)}" x2="${margin.left + plotWidth}" y2="${round(y)}"></line>
+                <text class="licx-chart-label" x="${margin.left - 10}" y="${round(y + 4)}" text-anchor="end">${escapeHtml(formatPercent(value))}</text>
+            `);
+        }
+        return lines.join("");
+    }
+
+    function buildComboTooltip(item, selectedClientsLabel) {
+        return buildSvgTitle([
+            `Mes: ${item.label || item.key || "-"}`,
+            selectedClientsLabel ? `Clientes seleccionados: ${selectedClientsLabel}` : "",
+            `Costo total: ${formatCurrency(item.cost)}`,
+            `Venta sin IVA total: ${formatCurrency(item.billing)}`,
+            `Utilidad nominal: ${formatCurrency(item.utility)}`,
+            `Utilidad %: ${formatPercent(item.utilityPct)}`,
+            `Clientes con margen negativo: ${numberFormatter.format(Number(item.negativeClients || 0))}`,
+            `Total clientes: ${numberFormatter.format(Number(item.totalClients || 0))}`
+        ].filter(Boolean));
+    }
+
+    function buildClientMarginTooltip(clientName, point) {
+        const state = Math.abs(Number(point.billing || 0)) < 0.01
+            ? "sin venta"
+            : Number(point.utility || 0) < 0
+                ? "negativo"
+                : "positivo";
+        return buildSvgTitle([
+            `Cliente: ${clientName || "Cliente sin nombre"}`,
+            `Mes: ${point.label || point.key || "-"}`,
+            `Costo: ${formatCurrency(point.cost)}`,
+            `Venta sin IVA: ${formatCurrency(point.billing)}`,
+            `Utilidad nominal: ${formatCurrency(point.utility)}`,
+            `Utilidad %: ${formatPercent(point.utilityPct)}`,
+            `Estado margen: ${state}`
+        ]);
+    }
+
+    function buildComboLegend() {
+        return `
+            <div class="licx-chart-legend">
+                <span><i class="licx-chart-swatch" style="--licx-swatch:${chartColors.cost}"></i>Costo</span>
+                <span><i class="licx-chart-swatch" style="--licx-swatch:${chartColors.billing}"></i>Venta sin IVA</span>
+                <span><i class="licx-chart-swatch" style="--licx-swatch:${chartColors.utilityPct}"></i>Utilidad %</span>
+            </div>
+        `;
+    }
+
+    function buildLineLegend(series) {
+        return `
+            <div class="licx-chart-legend">
+                ${series.map((item) => `
+                    <span><i class="licx-chart-swatch" style="--licx-swatch:${item.color}"></i>${escapeHtml(item.label)}</span>
+                `).join("")}
+            </div>
+        `;
+    }
+
+    function buildLinePaths(points) {
+        const paths = [];
+        let current = [];
+        for (const point of points) {
+            if (point.y === null || point.y === undefined || !Number.isFinite(point.y)) {
+                if (current.length > 0) {
+                    paths.push(current);
+                    current = [];
+                }
+                continue;
+            }
+            current.push(point);
+        }
+        if (current.length > 0) {
+            paths.push(current);
+        }
+
+        return paths.map((segment) => segment
+            .map((point, index) => `${index === 0 ? "M" : "L"} ${round(point.x)} ${round(point.y)}`)
+            .join(" "));
+    }
+
+    function getCellForMonth(row, monthKey) {
+        return (Array.isArray(row?.cells) ? row.cells : [])
+            .find((cell) => (cell.mes || "") === monthKey) || null;
+    }
+
+    function getTopClientRowsByBilling(rows, limit) {
+        return rows
+            .slice()
+            .sort((left, right) => sumClientBilling(right) - sumClientBilling(left))
+            .slice(0, limit);
+    }
+
+    function sumClientBilling(row) {
+        return (Array.isArray(row?.cells) ? row.cells : [])
+            .reduce((total, cell) => total + Number(cell.facturacionSinIva || 0), 0);
+    }
+
+    function calculateUtilityPct(cost, billing) {
+        const billingNumber = Number(billing || 0);
+        if (Math.abs(billingNumber) < 0.01) {
+            return null;
+        }
+
+        return (1 - (Number(cost || 0) / billingNumber)) * 100;
+    }
+
+    function buildPercentDomain(values) {
+        const numericValues = values.filter((value) => Number.isFinite(Number(value))).map(Number);
+        if (numericValues.length === 0) {
+            return { min: 0, max: 100 };
+        }
+
+        const rawMin = Math.min(0, ...numericValues);
+        const rawMax = Math.max(100, ...numericValues);
+        const padding = Math.max((rawMax - rawMin) * 0.08, 5);
+        const min = Math.floor((rawMin - padding) / 10) * 10;
+        const max = Math.ceil((rawMax + padding) / 10) * 10;
+        return max === min ? { min: min - 10, max: max + 10 } : { min, max };
+    }
+
+    function niceMax(value) {
+        const safeValue = Math.max(Number(value || 0), 1);
+        const exponent = Math.floor(Math.log10(safeValue));
+        const base = Math.pow(10, exponent);
+        return Math.ceil(safeValue / base) * base;
+    }
+
+    function formatCompactCurrency(value) {
+        const numberValue = Number(value || 0);
+        if (Math.abs(numberValue) >= 1000000000) {
+            return `$ ${percentFormatter.format(numberValue / 1000000000)}B`;
+        }
+        if (Math.abs(numberValue) >= 1000000) {
+            return `$ ${percentFormatter.format(numberValue / 1000000)}M`;
+        }
+        if (Math.abs(numberValue) >= 1000) {
+            return `$ ${percentFormatter.format(numberValue / 1000)}K`;
+        }
+        return formatCurrency(numberValue);
+    }
+
+    function summarizeSelectedClients(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return "Sin clientes";
+        }
+        if (rows.length <= 3) {
+            return rows.map((row) => row.cliente || "Cliente sin nombre").join(", ");
+        }
+        return `${numberFormatter.format(rows.length)} clientes`;
+    }
+
+    function formatMonthRangeLabel(months) {
+        if (!Array.isArray(months) || months.length === 0) {
+            return "";
+        }
+        const first = months[0]?.label || months[0]?.key || "";
+        const last = months[months.length - 1]?.label || months[months.length - 1]?.key || "";
+        return first === last ? first : `${first} a ${last}`;
+    }
+
+    function buildClientSearchText(row) {
+        return [
+            row?.cliente,
+            row?.nitCliente,
+            row?.clienteId,
+            row?.grupoEmpresarial,
+            row?.grupoEmpresarialId
+        ].filter(Boolean).join(" ");
+    }
+
+    function normalizeSearchText(value) {
+        return (value || "")
+            .toString()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+    }
+
+    function renderEmptyChart(container, message) {
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = `<div class="licx-empty">${escapeHtml(message || "No hay datos para mostrar.")}</div>`;
+    }
+
+    function buildSvgTitle(lines) {
+        return `<title>${escapeHtml((lines || []).join("\n"))}</title>`;
+    }
+
+    function setText(element, value) {
+        if (element) {
+            element.textContent = value || "";
+        }
+    }
+
+    function round(value) {
+        return Math.round(Number(value || 0) * 100) / 100;
+    }
+
+    function buildSortableHeader(sortKey, label, classes = "", attrs = "") {
+        const isActive = sortState.key === sortKey && sortState.direction;
+        const indicator = isActive ? (sortState.direction === "asc" ? "↑" : "↓") : "";
+        const ariaSort = isActive
+            ? (sortState.direction === "asc" ? "ascending" : "descending")
+            : "none";
+
+        return `
+            <th ${attrs} class="${classes}" aria-sort="${ariaSort}">
+                <button type="button" class="licx-sort-button ${isActive ? "is-active" : ""}" data-sort-key="${escapeHtml(sortKey)}">
+                    <span>${escapeHtml(label)}</span>
+                    <span class="licx-sort-indicator" aria-hidden="true">${indicator}</span>
+                </button>
+            </th>
+        `;
+    }
+
+    function handleSortClick(sortKey) {
+        if (!sortKey) {
+            return;
+        }
+
+        if (sortState.key !== sortKey) {
+            sortState = { key: sortKey, direction: "asc" };
+        } else if (sortState.direction === "asc") {
+            sortState = { key: sortKey, direction: "desc" };
+        } else {
+            sortState = { key: "", direction: "" };
+        }
+
+        renderSelectedSegment();
+    }
+
+    function getSortedRows(rows) {
+        if (!sortState.key || !sortState.direction) {
+            return rows;
+        }
+
+        const descending = sortState.direction === "desc";
+        return rows
+            .map((row, index) => ({ row, index }))
+            .sort((left, right) => {
+                const result = compareRows(left.row, right.row, sortState.key, descending);
+                return result !== 0 ? result : left.index - right.index;
+            })
+            .map((item) => item.row);
+    }
+
+    function compareRows(left, right, sortKey, descending) {
+        if (sortKey === "client") {
+            const leftText = (left.cliente || "").toString();
+            const rightText = (right.cliente || "").toString();
+            const result = leftText.localeCompare(rightText, "es", { sensitivity: "base" });
+            return descending ? -result : result;
+        }
+
+        return compareNullableNumbers(
+            resolveSortValue(left, sortKey),
+            resolveSortValue(right, sortKey),
+            descending);
+    }
+
+    function resolveSortValue(row, sortKey) {
+        if (sortKey === "totalCost") {
+            return toNumberOrNull(row.totalCostoLicenciamiento);
+        }
+        if (sortKey === "totalBilling") {
+            return toNumberOrNull(row.totalFacturacionSinIva);
+        }
+        if (sortKey === "totalPct") {
+            return toNumberOrNull(row.totalUtilidadPct);
+        }
+        if (sortKey === "totalUtility") {
+            return toNumberOrNull(row.totalUtilidad);
+        }
+        if (!sortKey.startsWith("cell:")) {
+            return null;
+        }
+
+        const parts = sortKey.split(":");
+        if (parts.length !== 3) {
+            return null;
+        }
+
+        const cell = (Array.isArray(row.cells) ? row.cells : [])
+            .find((item) => (item.mes || "") === parts[1]);
+        if (!cell) {
+            return parts[2] === "pct" ? null : 0;
+        }
+
+        if (parts[2] === "cost") {
+            return toNumberOrNull(cell.costoLicenciamiento);
+        }
+        if (parts[2] === "billing") {
+            return toNumberOrNull(cell.facturacionSinIva);
+        }
+        if (parts[2] === "pct") {
+            return toNumberOrNull(cell.utilidadPct);
+        }
+        if (parts[2] === "utility") {
+            return toNumberOrNull(cell.utilidadValor);
+        }
+
+        return null;
+    }
+
+    function compareNullableNumbers(left, right, descending) {
+        const leftMissing = left === null || left === undefined || Number.isNaN(left);
+        const rightMissing = right === null || right === undefined || Number.isNaN(right);
+        if (leftMissing && rightMissing) {
+            return 0;
+        }
+        if (leftMissing) {
+            return 1;
+        }
+        if (rightMissing) {
+            return -1;
+        }
+
+        const result = left === right ? 0 : left < right ? -1 : 1;
+        return descending ? -result : result;
+    }
+
+    function toNumberOrNull(value) {
+        if (value === null || value === undefined || value === "") {
+            return null;
+        }
+
+        const numberValue = Number(value);
+        return Number.isFinite(numberValue) ? numberValue : null;
     }
 
     function buildMatrixRow(row, months, showAccumulated) {
@@ -401,14 +1183,14 @@
                         <tr>
                             <th>${isBilling ? "Fecha emision" : "Fecha factura costo"}</th>
                             <th>${isBilling ? "Factura" : "Referencia"}</th>
-                            <th>Producto / licencia</th>
-                            <th>Cliente</th>
+                            ${isBilling ? "" : "<th>Producto / licencia</th>"}
+                            <th>${isBilling ? "Cliente / razon social" : "Cliente"}</th>
                             ${isBilling ? "<th>Vertical</th>" : "<th>Account ID</th><th>Account</th>"}
                             <th>Tipo</th>
                             ${isBilling ? "<th class=\"text-end\">Total factura</th><th class=\"text-end\">IVA</th>" : ""}
                             <th class="text-end">${isBilling ? "Venta sin IVA" : "Costo"}</th>
                             ${canMoveCostMonth ? "<th>Mover mes</th>" : ""}
-                            <th>Record ID</th>
+                            ${isBilling ? "" : "<th>Record ID</th>"}
                         </tr>
                     </thead>
                     <tbody>
@@ -421,6 +1203,13 @@
 
     function buildDetailRow(item, isBilling, canMoveCostMonth) {
         const product = item.producto || (isBilling ? "No disponible en facturacion" : "Sin producto");
+        const productCell = isBilling
+            ? ""
+            : `<td>
+                    <strong>${escapeHtml(product)}</strong>
+                    <small>${escapeHtml(item.productoId || "")}</small>
+                </td>`;
+        const clientMeta = item.grupoEmpresarial || item.grupoEmpresarialId || item.clienteId || "";
         const sourceCells = isBilling
             ? `<td>${escapeHtml(item.vertical || "-")}</td>`
             : `<td>${escapeHtml(item.accountId || "-")}</td><td>${escapeHtml(item.account || "-")}</td>`;
@@ -440,20 +1229,17 @@
             <tr>
                 <td>${escapeHtml(item.fecha || item.mes || "-")}</td>
                 <td>${escapeHtml(item.referencia || "-")}</td>
-                <td>
-                    <strong>${escapeHtml(product)}</strong>
-                    <small>${escapeHtml(item.productoId || "")}</small>
-                </td>
+                ${productCell}
                 <td>
                     <strong>${escapeHtml(item.cliente || "-")}</strong>
-                    <small>${escapeHtml(item.clienteId || "")}</small>
+                    <small>${escapeHtml(clientMeta)}</small>
                 </td>
                 ${sourceCells}
                 <td>${escapeHtml(item.tipoContrato || "-")}</td>
                 ${billingTotals}
                 <td class="text-end">${formatCurrency(item.valor)}</td>
                 ${moveCostCell}
-                <td><code>${escapeHtml(item.recordId || "")}</code></td>
+                ${isBilling ? "" : `<td><code>${escapeHtml(item.recordId || "")}</code></td>`}
             </tr>
         `;
     }
@@ -725,6 +1511,7 @@
                         <tr>
                             <th>Fecha emision</th>
                             <th>Factura</th>
+                            <th>Cliente / razon social</th>
                             <th>Vertical</th>
                             <th>Tipo contrato</th>
                             <th class="text-end">Venta sin IVA</th>
@@ -744,6 +1531,10 @@
             <tr data-record-id="${escapeHtml(item.recordId || "")}">
                 <td>${escapeHtml(item.fecha || item.mes || "-")}</td>
                 <td>${escapeHtml(item.referencia || "-")}</td>
+                <td>
+                    <strong>${escapeHtml(item.cliente || "-")}</strong>
+                    <small>${escapeHtml(item.grupoEmpresarial || item.grupoEmpresarialId || item.clienteId || "")}</small>
+                </td>
                 <td>
                     <div class="licx-edit-group">
                         <select class="form-select form-select-sm" data-vertical-select>
@@ -879,6 +1670,83 @@
         return result;
     }
 
+    async function downloadCruce() {
+        if (!exportUrl) {
+            showStatus("error", "No se encontro la ruta de descarga.");
+            return;
+        }
+
+        const segment = getSelectedSegment();
+        if (!segment || !Array.isArray(segment.rows) || segment.rows.length === 0) {
+            showStatus("error", "No hay registros para descargar");
+            updateDownloadButton();
+            return;
+        }
+
+        const originalText = downloadButton?.textContent || "Descargar listado";
+        if (downloadButton) {
+            downloadButton.disabled = true;
+            downloadButton.textContent = "Descargando...";
+        }
+
+        try {
+            const url = new URL(exportUrl, window.location.origin);
+            url.searchParams.set("year", yearInput.value || "");
+            url.searchParams.set("month", monthSelect.value || "");
+            url.searchParams.set("periodMode", periodModeSelect.value || "month");
+            url.searchParams.set("segmentKey", selectedSegmentKey || segment.key || "");
+            url.searchParams.set("sortKey", sortState.key || "");
+            url.searchParams.set("sortDirection", sortState.direction || "");
+
+            const response = await fetch(url.toString(), {
+                headers: { Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json" }
+            });
+            if (!response.ok) {
+                await readJsonResponse(response);
+                return;
+            }
+
+            const blob = await response.blob();
+            const fileName = resolveDownloadFileName(response) || "cruce_licenciamiento.xlsx";
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = objectUrl;
+            anchor.download = fileName;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(objectUrl);
+            showStatus("success", "Listado descargado.");
+        } finally {
+            if (downloadButton) {
+                downloadButton.textContent = originalText;
+            }
+            updateDownloadButton();
+        }
+    }
+
+    function updateDownloadButton() {
+        if (!downloadButton) {
+            return;
+        }
+
+        const segment = getSelectedSegment();
+        const hasRows = !!currentData && !!segment && Array.isArray(segment.rows) && segment.rows.length > 0;
+        downloadButton.disabled = !hasRows;
+        downloadButton.title = hasRows ? "" : "No hay registros para descargar";
+    }
+
+    function resolveDownloadFileName(response) {
+        const disposition = response.headers.get("content-disposition") || "";
+        const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utfMatch?.[1]) {
+            return decodeURIComponent(utfMatch[1].replace(/["']/g, ""));
+        }
+
+        const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+        return plainMatch?.[1] || "";
+    }
+
     async function postJson(url, payload) {
         if (!url) {
             throw new Error("No se encontro la ruta de actualizacion.");
@@ -939,7 +1807,12 @@
             return "N/A";
         }
 
-        return `${percentFormatter.format(Number(value || 0))}%`;
+        const numberValue = Number(value);
+        if (!Number.isFinite(numberValue)) {
+            return "N/A";
+        }
+
+        return `${percentFormatter.format(numberValue)}%`;
     }
 
     function showStatus(tone, message) {

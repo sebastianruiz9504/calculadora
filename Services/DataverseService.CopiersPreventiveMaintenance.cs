@@ -26,16 +26,25 @@ public sealed partial class DataverseService
     private const string CopiersPreventiveScheduleDurationField = "cr07a_duracionminutos";
     private const string CopiersPreventiveScheduleEventIdField = "cr07a_eventographid";
     private const string CopiersPreventiveScheduleWebLinkField = "cr07a_eventoweblink";
+    private const string CopiersPreventivePeriodThisMonth = "this-month";
+    private const string CopiersPreventivePeriodPreviousMonth = "previous-month";
 
-    public async Task<CopiersPreventiveMaintenanceBoardDto> GetCopiersPreventiveMaintenanceBoardAsync(CancellationToken ct = default)
+    public async Task<CopiersPreventiveMaintenanceBoardDto> GetCopiersPreventiveMaintenanceBoardAsync(
+        string? period = null,
+        CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
-        var dashboard = await GetCopiersDashboardAsync(ct);
         var today = GetBogotaToday();
-        var periodStart = new DateOnly(today.Year, today.Month, 1);
-        var periodEnd = periodStart.AddMonths(1);
-        var periodKey = periodStart.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        var periodDefinition = ResolveCopiersPreventivePeriod(period, today);
+        var periodStart = periodDefinition.StartInclusive;
+        var periodEnd = periodDefinition.EndExclusive;
+        var periodKey = periodDefinition.Value;
+        var dashboard = await GetCopiersDashboardCoreAsync(
+            periodStart,
+            periodEnd,
+            periodDefinition.Label,
+            ct);
         var dashboardEquipment = dashboard.Groups
             .SelectMany(static group => group.Equipment)
             .Where(static item => !string.IsNullOrWhiteSpace(item.RecordId))
@@ -51,16 +60,22 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
         var schedulesByClientKey = await GetPreventiveSchedulesByClientKeyAsync(periodKey, httpContext.User, ct);
-        var latestEquipmentById = await BuildPreventiveLatestCounterEquipmentAsync(
-            dashboardEquipment,
+        var clientSettingsById = await GetPreventiveClientSettingsByIdAsync(
+            dashboard.Groups.Select(static group => group.ClientId),
             httpContext.User,
             ct);
+        var currentUser = await GetCurrentUserAsync(ct);
+        var canEditMaintenanceFrequency = CopiersAccessPolicy.CanEditPreventiveMaintenanceFrequency(currentUser);
         var clients = dashboard.Groups
             .GroupBy(group => BuildDashboardGroupKey(group.ClientId, group.ClientName), StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var groups = group.ToList();
                 var first = groups[0];
+                var clientId = NormalizeOptionalGuid(first.ClientId);
+                clientSettingsById.TryGetValue(clientId, out var clientSettings);
+                var maintenanceFrequency = ResolvePreventiveMaintenanceFrequencyValue(clientSettings?.MaintenanceFrequency)
+                    ?? ResolvePreventiveMaintenanceFrequency(groups);
                 var equipment = groups
                     .SelectMany(static item => item.Equipment)
                     .Where(static item => !string.IsNullOrWhiteSpace(item.RecordId))
@@ -68,9 +83,7 @@ public sealed partial class DataverseService
                     .Select(static equipmentGroup => equipmentGroup.First())
                     .Select(item =>
                     {
-                        var dto = latestEquipmentById.TryGetValue(item.RecordId, out var latest)
-                            ? latest
-                            : ToPreventiveMaintenanceEquipment(item);
+                        var dto = ToPreventiveMaintenanceEquipment(item);
                         var equipmentId = NormalizeOptionalGuid(dto.RecordId);
                         dto.HasMonthlyMaintenance = monthlyMaintenanceEquipmentIds.Contains(equipmentId);
                         dto.HasMonthlyCounter = monthlyCounterEquipmentIds.Contains(equipmentId);
@@ -99,9 +112,13 @@ public sealed partial class DataverseService
                 return new CopiersPreventiveMaintenanceClientDto
                 {
                     ClientKey = group.Key,
-                    ClientId = NormalizeOptionalGuid(first.ClientId),
+                    ClientId = clientId,
                     ClientName = FirstNonEmpty(first.ClientName, "Sin cliente"),
+                    ClientCity = clientSettings?.City ?? "",
                     EquipmentCount = equipment.Count,
+                    MaintenanceFrequencyKey = maintenanceFrequency.Key,
+                    MaintenanceFrequencyLabel = maintenanceFrequency.Label,
+                    IsBimonthlyMaintenance = maintenanceFrequency.IsBimonthly,
                     IsScheduledThisMonth = schedule is not null,
                     ScheduledDateDisplay = schedule?.ScheduledDateDisplay ?? "",
                     MonthlyStatusLabel = clientState.StatusLabel,
@@ -122,10 +139,65 @@ public sealed partial class DataverseService
         return new CopiersPreventiveMaintenanceBoardDto
         {
             AsOfDateLabel = dashboard.AsOfDateLabel,
-            CounterPeriodLabel = dashboard.CounterPeriodLabel,
+            CounterPeriodLabel = periodDefinition.Label,
+            PeriodFilter = periodDefinition.Filter,
+            PeriodLabel = periodDefinition.Label,
             PeriodValue = periodKey,
+            PeriodStartValue = periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            PeriodEndValue = periodEnd.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            CanEditMaintenanceFrequency = canEditMaintenanceFrequency,
             RecordsCount = clients.Count,
             Clients = clients
+        };
+    }
+
+    public async Task<CopiersPreventiveMaintenanceFrequencyUpdateResultDto> UpdateCopiersPreventiveMaintenanceFrequencyAsync(
+        CopiersPreventiveMaintenanceFrequencyUpdateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var currentUser = await GetCurrentUserAsync(ct);
+        if (!CopiersAccessPolicy.CanEditPreventiveMaintenanceFrequency(currentUser))
+        {
+            throw new UnauthorizedAccessException(
+                "Solo adaza@digitaltechcolombia.com o sruiz@digitaltechcolombia.com pueden cambiar esta periodicidad.");
+        }
+
+        var clientId = NormalizeGuid(request.ClientId, nameof(request.ClientId));
+        var frequency = ResolvePreventiveMaintenanceFrequencyValue(request.FrequencyKey)
+            ?? throw new InvalidOperationException("Selecciona una periodicidad valida: mensual o bimensual.");
+        var clientMetadata = await ResolveRhEntityMetadataAsync(
+            "cr07a_cliente",
+            ClientsEntitySetName,
+            CopiersClientIdField,
+            CopiersClientNameField,
+            httpContext.User,
+            ct);
+        var frequencyField = await EnsurePreventiveClientFrequencyFieldAsync(clientMetadata, httpContext.User, ct);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [frequencyField] = frequency.Key
+        };
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{clientMetadata.EntitySetName}({clientId})",
+            "PATCH",
+            payload,
+            httpContext.User,
+            ct);
+
+        return new CopiersPreventiveMaintenanceFrequencyUpdateResultDto
+        {
+            Message = $"Periodicidad actualizada a {frequency.Label}.",
+            ClientId = clientId,
+            ClientName = (request.ClientName ?? "").Trim(),
+            MaintenanceFrequencyKey = frequency.Key,
+            MaintenanceFrequencyLabel = frequency.Label,
+            IsBimonthlyMaintenance = frequency.IsBimonthly
         };
     }
 
@@ -358,6 +430,141 @@ public sealed partial class DataverseService
         }
     }
 
+    private async Task<IReadOnlyDictionary<string, CopiersPreventiveClientSettings>> GetPreventiveClientSettingsByIdAsync(
+        IEnumerable<string> clientIds,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var normalizedIds = clientIds
+            .Select(NormalizeOptionalGuid)
+            .Where(static id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedIds.Count == 0)
+            return new Dictionary<string, CopiersPreventiveClientSettings>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var clientMetadata = await ResolveRhEntityMetadataAsync(
+                "cr07a_cliente",
+                ClientsEntitySetName,
+                CopiersClientIdField,
+                CopiersClientNameField,
+                user,
+                ct);
+            var attributes = await GetDashboardEntityAttributeNamesAsync(clientMetadata.LogicalName, user, ct);
+            var cityField = ResolvePreventiveClientCityField(attributes);
+            var frequencyField = ResolvePreventiveClientFrequencyField(attributes);
+            if (string.IsNullOrWhiteSpace(cityField) && string.IsNullOrWhiteSpace(frequencyField))
+            {
+                _logger.LogWarning(
+                    "No se encontraron columnas de ciudad o frecuencia de mantenimiento preventivo en la tabla cliente ({ClientEntityLogicalName}).",
+                    clientMetadata.LogicalName);
+                return new Dictionary<string, CopiersPreventiveClientSettings>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var select = string.Join(",", new List<string?>
+            {
+                clientMetadata.PrimaryIdField,
+                CopiersClientIdField,
+                cityField,
+                frequencyField
+            }
+            .Where(static field => !string.IsNullOrWhiteSpace(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+            var result = new Dictionary<string, CopiersPreventiveClientSettings>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var chunk in normalizedIds.Chunk(20))
+            {
+                var filter = string.Join(
+                    " or ",
+                    chunk.Select(id => $"{clientMetadata.PrimaryIdField} eq {id}"));
+                var relativeUrl =
+                    $"/api/data/v9.2/{clientMetadata.EntitySetName}?$select={select}" +
+                    $"&$filter={Uri.EscapeDataString(filter)}";
+                var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+
+                foreach (var item in items)
+                {
+                    var clientId = NormalizeOptionalGuid(FirstNonEmpty(
+                        ReadString(item, clientMetadata.PrimaryIdField),
+                        ReadString(item, CopiersClientIdField)));
+                    if (string.IsNullOrWhiteSpace(clientId))
+                        continue;
+
+                    result[clientId] = new CopiersPreventiveClientSettings(
+                        clientId,
+                        ReadPreventiveClientCity(item, cityField),
+                        ReadPreventiveClientFrequency(item, frequencyField));
+                }
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible consultar ciudad/frecuencia de los clientes para mantenimientos preventivos.");
+            return new Dictionary<string, CopiersPreventiveClientSettings>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private async Task<string> EnsurePreventiveClientFrequencyFieldAsync(
+        RhEntityMetadata clientMetadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var attributes = await GetDashboardEntityAttributeNamesAsync(clientMetadata.LogicalName, user, ct);
+        var existingField = ResolvePreventiveClientFrequencyField(attributes);
+        if (!string.IsNullOrWhiteSpace(existingField))
+            return existingField;
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(clientMetadata.LogicalName)}')/Attributes",
+            "POST",
+            BuildPreventiveClientFrequencyAttributePayload(),
+            user,
+            ct);
+        await PublishPreventiveClientEntityAsync(clientMetadata.LogicalName, user, ct);
+        await WaitForPreventiveClientFrequencyFieldAsync(clientMetadata.LogicalName, user, ct);
+        return CopiersClientPreventiveFrequencyField;
+    }
+
+    private async Task WaitForPreventiveClientFrequencyFieldAsync(
+        string clientLogicalName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            _dashboardEntityAttributeNamesCache.TryRemove(clientLogicalName, out _);
+            var attributes = await GetDashboardEntityAttributeNamesAsync(clientLogicalName, user, ct);
+            if (attributes.Contains(CopiersClientPreventiveFrequencyField))
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        }
+
+        throw new InvalidOperationException("Dataverse creo la columna de periodicidad, pero aun no la expone. Intenta nuevamente en unos segundos.");
+    }
+
+    private async Task PublishPreventiveClientEntityAsync(
+        string clientLogicalName,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var publishXml =
+            $"<importexportxml><entities><entity>{clientLogicalName}</entity></entities></importexportxml>";
+        await CallDataverseSendAsync(
+            "/api/data/v9.2/PublishXml",
+            "POST",
+            new Dictionary<string, object?> { ["ParameterXml"] = publishXml },
+            user,
+            ct);
+    }
+
     private async Task<CopiersPreventiveScheduleRow?> FindPreventiveScheduleAsync(
         RhEntityMetadata metadata,
         string periodKey,
@@ -527,6 +734,170 @@ public sealed partial class DataverseService
         };
     }
 
+    private static CopiersPreventivePeriodDefinition ResolveCopiersPreventivePeriod(string? rawPeriod, DateOnly today)
+    {
+        var currentMonthStart = new DateOnly(today.Year, today.Month, 1);
+        var normalized = NormalizeCopiersComparableValue(rawPeriod)
+            .Replace("_", "-", StringComparison.Ordinal)
+            .Replace(" ", "-", StringComparison.Ordinal);
+        var start = normalized is "previous-month" or "previousmonth" or "mes-pasado" or "mes-anterior"
+            ? currentMonthStart.AddMonths(-1)
+            : currentMonthStart;
+        var filter = start == currentMonthStart
+            ? CopiersPreventivePeriodThisMonth
+            : CopiersPreventivePeriodPreviousMonth;
+        var label = ToTitleCase(start.ToString("MMMM yyyy", DashboardCulture));
+
+        return new CopiersPreventivePeriodDefinition(
+            filter,
+            start.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            label,
+            start,
+            start.AddMonths(1));
+    }
+
+    private static CopiersPreventiveFrequency ResolvePreventiveMaintenanceFrequency(
+        IReadOnlyList<CopiersBillingGroupDto> groups)
+    {
+        var text = string.Join(
+            " ",
+            groups
+                .SelectMany(static group => group.Lines)
+                .Select(static line => line.ProductName)
+                .Concat(groups.Select(static group => group.ClientName)));
+        var normalized = NormalizeCopiersComparableValue(text);
+        var isBimonthly = normalized.Contains("bimensual", StringComparison.Ordinal)
+            || normalized.Contains("bi mensual", StringComparison.Ordinal)
+            || normalized.Contains("bimestral", StringComparison.Ordinal)
+            || normalized.Contains("cada 2", StringComparison.Ordinal)
+            || normalized.Contains("cada dos", StringComparison.Ordinal);
+
+        return isBimonthly
+            ? new CopiersPreventiveFrequency("bimonthly", "Bimensual", true)
+            : new CopiersPreventiveFrequency("monthly", "Mensual", false);
+    }
+
+    private static CopiersPreventiveFrequency? ResolvePreventiveMaintenanceFrequencyValue(string? value)
+    {
+        var normalized = NormalizeCopiersComparableValue(value)
+            .Replace("_", "-", StringComparison.Ordinal)
+            .Replace(" ", "-", StringComparison.Ordinal);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        if (normalized is "bimonthly" or "bi-monthly" or "bimensual" or "bi-mensual" or "bimestral"
+            || normalized.Contains("bimensual", StringComparison.Ordinal)
+            || normalized.Contains("bimestral", StringComparison.Ordinal)
+            || normalized.Contains("cada-2", StringComparison.Ordinal)
+            || normalized.Contains("cada-dos", StringComparison.Ordinal))
+        {
+            return new CopiersPreventiveFrequency("bimonthly", "Bimensual", true);
+        }
+
+        if (normalized is "monthly" or "mensual"
+            || normalized.Contains("mensual", StringComparison.Ordinal))
+        {
+            return new CopiersPreventiveFrequency("monthly", "Mensual", false);
+        }
+
+        return null;
+    }
+
+    private static string ResolvePreventiveClientCityField(IReadOnlySet<string> attributes)
+    {
+        if (attributes.Count == 0)
+            return CopiersClientCityField;
+
+        if (attributes.Contains(CopiersClientCityField))
+            return CopiersClientCityField;
+
+        return attributes.FirstOrDefault(static field =>
+            string.Equals(field, "ciudad", StringComparison.OrdinalIgnoreCase)
+            || field.EndsWith("_ciudad", StringComparison.OrdinalIgnoreCase)
+            || field.EndsWith("ciudad", StringComparison.OrdinalIgnoreCase)) ?? "";
+    }
+
+    private static string ReadPreventiveClientCity(JsonElement item, string cityField)
+    {
+        if (string.IsNullOrWhiteSpace(cityField))
+            return "";
+
+        return FirstNonEmpty(
+            ReadString(item, $"{cityField}{FormattedValueAnnotationSuffix}").Trim(),
+            ReadString(item, cityField).Trim());
+    }
+
+    private static string ResolvePreventiveClientFrequencyField(IReadOnlySet<string> attributes)
+    {
+        if (attributes.Count == 0)
+            return "";
+
+        var candidates = new[]
+        {
+            CopiersClientPreventiveFrequencyField,
+            "cr07a_periodicidadmantenimientopreventivo",
+            "cr07a_periodicidadmantenimientocopiers",
+            "cr07a_frecuenciamantenimientocopiers",
+            "cr07a_periodicidadcopiers"
+        };
+        var candidate = candidates.FirstOrDefault(attributes.Contains);
+        if (!string.IsNullOrWhiteSpace(candidate))
+            return candidate;
+
+        return attributes.FirstOrDefault(static field =>
+        {
+            var normalized = NormalizeCopiersComparableValue(field);
+            return (normalized.Contains("frecuencia", StringComparison.Ordinal)
+                    || normalized.Contains("periodicidad", StringComparison.Ordinal))
+                && (normalized.Contains("mantenimiento", StringComparison.Ordinal)
+                    || normalized.Contains("preventivo", StringComparison.Ordinal)
+                    || normalized.Contains("copiers", StringComparison.Ordinal));
+        }) ?? "";
+    }
+
+    private static string ReadPreventiveClientFrequency(JsonElement item, string frequencyField)
+    {
+        if (string.IsNullOrWhiteSpace(frequencyField))
+            return "";
+
+        return FirstNonEmpty(
+            ReadString(item, $"{frequencyField}{FormattedValueAnnotationSuffix}").Trim(),
+            ReadString(item, frequencyField).Trim());
+    }
+
+    private static object BuildPreventiveClientFrequencyAttributePayload()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["@odata.type"] = "Microsoft.Dynamics.CRM.StringAttributeMetadata",
+            ["AttributeType"] = "String",
+            ["AttributeTypeName"] = CreateHardwareValuePayload("StringType"),
+            ["Description"] = CreateHardwareLabelPayload("Periodicidad del mantenimiento preventivo Copiers del cliente."),
+            ["DisplayName"] = CreateHardwareLabelPayload("Frecuencia mantenimiento preventivo"),
+            ["RequiredLevel"] = CreateRequiredLevelNonePayload(),
+            ["SchemaName"] = CopiersClientPreventiveFrequencySchemaName,
+            ["FormatName"] = CreateHardwareValuePayload("Text"),
+            ["MaxLength"] = 40
+        };
+    }
+
+    private sealed record CopiersPreventivePeriodDefinition(
+        string Filter,
+        string Value,
+        string Label,
+        DateOnly StartInclusive,
+        DateOnly EndExclusive);
+
+    private sealed record CopiersPreventiveFrequency(
+        string Key,
+        string Label,
+        bool IsBimonthly);
+
+    private sealed record CopiersPreventiveClientSettings(
+        string ClientId,
+        string City,
+        string MaintenanceFrequency);
+
     private sealed record CopiersPreventiveClientState(
         string StatusLabel,
         string StatusTone,
@@ -547,55 +918,4 @@ public sealed partial class DataverseService
         public string WebLink { get; init; } = "";
     }
 
-    private async Task<IReadOnlyDictionary<string, CopiersPreventiveMaintenanceEquipmentDto>> BuildPreventiveLatestCounterEquipmentAsync(
-        IEnumerable<CopiersBillingEquipmentDto> equipmentRows,
-        ClaimsPrincipal user,
-        CancellationToken ct)
-    {
-        var rows = equipmentRows
-            .Where(static item => !string.IsNullOrWhiteSpace(item.RecordId))
-            .GroupBy(static item => item.RecordId, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => group.First())
-            .ToList();
-        if (rows.Count == 0)
-            return new Dictionary<string, CopiersPreventiveMaintenanceEquipmentDto>(StringComparer.OrdinalIgnoreCase);
-
-        var start = new DateOnly(2000, 1, 1);
-        var end = GetBogotaToday().AddDays(1);
-        var semaphore = new SemaphoreSlim(8);
-        var tasks = rows.Select(async row =>
-        {
-            await semaphore.WaitAsync(ct);
-            try
-            {
-                var latest = await GetCopiersLastCounterReadingAsync(
-                    row.RecordId,
-                    row.Serial,
-                    start,
-                    end,
-                    user,
-                    ct);
-                var dto = ToPreventiveMaintenanceEquipment(row);
-                var hasCounter = latest.Date.HasValue;
-                var counterDateDisplay = FormatCopiersCounterDateDisplay(latest.Date);
-                dto.HasCurrentCounter = hasCounter;
-                dto.CounterDateValue = FormatCopiersCounterDateValue(latest.Date);
-                dto.CounterDateDisplay = counterDateDisplay;
-                dto.CounterCopies = latest.Copies;
-                dto.CounterScans = latest.Scans;
-                dto.CounterStatusLabel = hasCounter
-                    ? $"Ultimo contador {counterDateDisplay}"
-                    : "Sin contador registrado";
-                dto.CounterStatusTone = hasCounter ? "ok" : "pending";
-                return dto;
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-
-        return (await Task.WhenAll(tasks))
-            .ToDictionary(static item => item.RecordId, static item => item, StringComparer.OrdinalIgnoreCase);
-    }
 }

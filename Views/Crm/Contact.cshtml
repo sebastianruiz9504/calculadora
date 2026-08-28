@@ -1,0 +1,353 @@
+@model CotizadorInterno.Web.Models.Crm.CrmContactDetailViewModel
+@using System.Globalization
+@using CotizadorInterno.Web.Models.Crm
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    ViewData["Title"] = Model.Contact.FullName;
+    var culture = CultureInfo.GetCultureInfo("es-CO");
+    string Money(decimal value) => value.ToString("C0", culture);
+    TimeZoneInfo BogotaTimeZone()
+    {
+        foreach (var id in new[] { "SA Pacific Standard Time", "America/Bogota" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(id);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+    var bogotaTimeZone = BogotaTimeZone();
+    DateTimeOffset InBogota(DateTimeOffset value) =>
+        TimeZoneInfo.ConvertTime(value, bogotaTimeZone);
+    string DateTimeLabel(DateTimeOffset? value) =>
+        value.HasValue
+            ? InBogota(value.Value).ToString("dd MMM yyyy · HH:mm", culture)
+            : "Sin registro";
+    string CrmDetailUrlTemplate(string action)
+    {
+        var sentinel = Guid.Empty.ToString("D");
+        return (Url.Action(
+                action,
+                "Crm",
+                new
+                {
+                    id = Guid.Empty,
+                    ViewAsOwnerId = Model.Access.ViewAsOwnerId
+                }) ?? "")
+            .Replace(sentinel, "__id__", StringComparison.Ordinal);
+    }
+    var companyId = Model.Company?.Id ?? Model.Contact.CompanyId;
+    var companyName = Model.Company?.Name ?? Model.Contact.CompanyName;
+    ViewData["CrmAllowContact"] = false;
+    ViewData["CrmCompanyId"] = companyId;
+    ViewData["CrmCompanyName"] = companyName;
+    ViewData["CrmContactId"] = Model.Contact.Id;
+    ViewData["CrmContactName"] = Model.Contact.FullName;
+    ViewData["CrmIsAdministrator"] = Model.Access.IsAdministrator;
+    ViewData["CrmViewAsOwnerId"] = Model.Access.ViewAsOwnerId;
+    ViewData["CrmScopeOptions"] = Model.Access.Owners
+        .Select(owner => new SelectListItem
+        {
+            Value = owner.Id,
+            Text = string.IsNullOrWhiteSpace(owner.Email)
+                ? owner.Name
+                : $"{owner.Name} · {owner.Email}",
+            Selected = string.Equals(owner.Id, Model.Access.ViewAsOwnerId, StringComparison.OrdinalIgnoreCase)
+        })
+        .ToList();
+    ViewData["CrmObjectType"] = "Contact";
+    ViewData["CrmRecordId"] = Model.Contact.Id;
+    ViewData["CrmCurrentOwnerName"] = Model.Contact.Audit.OwnerName;
+    ViewData["CrmOwnerOptions"] = Model.Access.Owners
+        .Select(owner => new SelectListItem
+        {
+            Value = owner.Id,
+            Text = string.IsNullOrWhiteSpace(owner.Email)
+                ? owner.Name
+                : $"{owner.Name} · {owner.Email}",
+            Selected = string.Equals(owner.Id, Model.Contact.Audit.OwnerId, StringComparison.OrdinalIgnoreCase)
+        })
+        .ToList();
+    ViewData["CrmDealCompanyId"] = companyId;
+    ViewData["CrmDealCompanyName"] = companyName;
+    ViewData["CrmDealContactId"] = Model.Contact.Id;
+    ViewData["CrmDealContactName"] = Model.Contact.FullName;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/crm.css" asp-append-version="true" />
+}
+
+<div class="crm-app crm-detail-app"
+     id="crmDetailApp"
+     data-record-type="contact"
+     data-create-contact-url="@Url.Action("CreateContact", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-create-activity-url="@Url.Action("CreateActivity", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-create-deal-url="@Url.Action("CreateDeal", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-update-owner-url="@Url.Action("UpdateOwner", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-search-companies-url="@Url.Action("SearchCompanies", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-calculator-url="@Url.Action("Index", "Calculator")"
+     data-crm-index-url="@Url.Action("Index", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-contact-detail-url-template="@CrmDetailUrlTemplate("Contact")"
+     data-deal-detail-url-template="@CrmDetailUrlTemplate("Deal")"
+     data-activity-detail-url-template="@CrmDetailUrlTemplate("Activity")"
+     data-view-as-owner-id="@Model.Access.ViewAsOwnerId"
+     data-planned-activity-status="@((int)CrmActivityStatus.Planned)"
+     data-completed-activity-status="@((int)CrmActivityStatus.Completed)"
+     data-meeting-activity-type="@((int)CrmActivityType.Meeting)">
+    @Html.AntiForgeryToken()
+
+    <div class="crm-workspace">
+        <partial name="_CrmSidebar" model="@("contactos")" />
+
+        <main class="crm-workspace__main">
+            <nav class="crm-breadcrumb" aria-label="Ruta de navegación">
+                <a asp-action="Index"
+                   asp-controller="Crm"
+                   asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                   asp-fragment="crm-contactos">Contactos</a>
+                <span aria-hidden="true">/</span>
+                <span aria-current="page">@Model.Contact.FullName</span>
+            </nav>
+
+            <partial name="_CrmScopeSelector" />
+
+            <header class="crm-record-header">
+                <div class="crm-record-header__identity">
+                    <span class="crm-record-header__mark" aria-hidden="true">
+                        @((Model.Contact.FirstName.FirstOrDefault().ToString() + Model.Contact.LastName.FirstOrDefault()).ToUpperInvariant())
+                    </span>
+                    <div>
+                        <span class="crm-eyebrow">Contacto</span>
+                        <div class="crm-record-header__title">
+                            <h1>@Model.Contact.FullName</h1>
+                            <span class="crm-record-status">@Model.Contact.LifecycleLabel</span>
+                        </div>
+                        <p>
+                            @(string.IsNullOrWhiteSpace(Model.Contact.JobTitle) ? "Sin cargo registrado" : Model.Contact.JobTitle)
+                            @if (!string.IsNullOrWhiteSpace(companyName))
+                            {
+                                <text> · @companyName</text>
+                            }
+                        </p>
+                    </div>
+                </div>
+                <div class="crm-record-header__actions">
+                    <button class="crm-btn crm-btn--soft" type="button" data-detail-open-deal>Nuevo negocio</button>
+                    <button class="crm-btn crm-btn--primary" type="button" data-detail-open-activity>Registrar actividad</button>
+                </div>
+            </header>
+
+            <div class="crm-status" data-detail-global-status role="status" aria-live="polite" hidden></div>
+
+            <section class="crm-record-metrics" aria-label="Resumen del contacto">
+                <article><span>Negocios</span><strong>@Model.Deals.TotalCount</strong><small>Registros asociados</small></article>
+                <article><span>Actividades</span><strong>@Model.Activities.TotalCount</strong><small>Seguimientos comerciales</small></article>
+                <article><span>Contacto principal</span><strong>@(Model.Contact.IsPrimary ? "Sí" : "No")</strong><small>En la empresa asociada</small></article>
+            </section>
+
+            <div class="crm-record-layout">
+                <div class="crm-record-layout__main">
+                    <section class="crm-record-card" aria-labelledby="contactGeneralTitle">
+                        <header class="crm-record-card__head">
+                            <div>
+                                <span class="crm-eyebrow">Hoja de vida</span>
+                                <h2 id="contactGeneralTitle">Información general</h2>
+                            </div>
+                        </header>
+                        <dl class="crm-fact-grid">
+                            <div><dt>Correo</dt><dd>@(string.IsNullOrWhiteSpace(Model.Contact.Email) ? "Sin correo registrado" : Model.Contact.Email)</dd></div>
+                            <div><dt>Teléfono</dt><dd>@(string.IsNullOrWhiteSpace(Model.Contact.Phone) ? "Sin teléfono registrado" : Model.Contact.Phone)</dd></div>
+                            <div><dt>Cargo</dt><dd>@(string.IsNullOrWhiteSpace(Model.Contact.JobTitle) ? "Sin cargo registrado" : Model.Contact.JobTitle)</dd></div>
+                            <div><dt>Empresa</dt><dd>@(string.IsNullOrWhiteSpace(companyName) ? "Sin empresa asociada" : companyName)</dd></div>
+                            <div><dt>Comunicaciones</dt><dd>@(Model.Contact.DoNotEmail ? "No enviar correo" : "Correo permitido") · @(Model.Contact.DoNotCall ? "No llamar" : "Llamadas permitidas")</dd></div>
+                            <div><dt>Última actualización</dt><dd>@DateTimeLabel(Model.Contact.Audit.ModifiedAtUtc ?? Model.Contact.ModifiedAtUtc)</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="crm-association-card" aria-labelledby="contactCompanyTitle">
+                        <header class="crm-association-card__head">
+                            <div><h2 id="contactCompanyTitle">Empresa</h2><span>Organización asociada</span></div>
+                        </header>
+                        @if (Model.Company is null)
+                        {
+                            <div class="crm-association-empty"><strong>Empresa no disponible</strong><span>La asociación no está accesible actualmente.</span></div>
+                        }
+                        else
+                        {
+                            <article class="crm-associated-row crm-associated-row--single">
+                                <div class="crm-associated-row__main">
+                                    <a asp-action="Company"
+                                       asp-controller="Crm"
+                                       asp-route-id="@Model.Company.Id"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@Model.Company.Name</a>
+                                    <span>@(string.IsNullOrWhiteSpace(Model.Company.TaxId) ? "Sin NIT registrado" : $"NIT {Model.Company.TaxId}")</span>
+                                </div>
+                                <div class="crm-associated-row__meta">
+                                    <strong>@Model.Company.LifecycleLabel</strong>
+                                    <span>@(string.IsNullOrWhiteSpace(Model.Company.City) ? "Sin ciudad registrada" : Model.Company.City)</span>
+                                </div>
+                            </article>
+                        }
+                    </section>
+
+                    <section class="crm-association-card" aria-labelledby="contactDealsTitle">
+                        <header class="crm-association-card__head">
+                            <div><h2 id="contactDealsTitle">Negocios</h2><span>@Model.Deals.TotalCount asociados</span></div>
+                            <button class="crm-association-card__action" type="button" data-detail-open-deal>Nuevo negocio</button>
+                        </header>
+                        @if (Model.Deals.Items.Count == 0)
+                        {
+                            <div class="crm-association-empty"><strong>Sin negocios asociados</strong><span>Crea un estimado o continúa desde la calculadora.</span></div>
+                        }
+                        else
+                        {
+                            <div class="crm-associated-list">
+                                @foreach (var deal in Model.Deals.Items)
+                                {
+                                    <article class="crm-associated-row">
+                                        <div class="crm-associated-row__main">
+                                            <a asp-action="Deal"
+                                               asp-controller="Crm"
+                                               asp-route-id="@deal.Id"
+                                               asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@deal.Name</a>
+                                            <span>@deal.KindLabel · @deal.StageLabel</span>
+                                        </div>
+                                        <div class="crm-associated-row__meta">
+                                            <strong>@Money(deal.PipelineValue)</strong>
+                                            <span>@deal.Probability.ToString("0", culture)% probabilidad</span>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        }
+                        @if (Model.Deals.HasPrevious || Model.Deals.HasNext)
+                        {
+                            <nav class="crm-detail-pagination" aria-label="Paginación de negocios asociados">
+                                @if (Model.Deals.HasPrevious)
+                                {
+                                    <a asp-action="Contact" asp-route-id="@Model.Contact.Id"
+                                       asp-route-dealPage="@(Model.Deals.Page - 1)"
+                                       asp-route-activityPage="@Model.Query.ActivityPage"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Anterior</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Anterior</span>
+                                }
+                                <span>Página @Model.Deals.Page</span>
+                                @if (Model.Deals.HasNext)
+                                {
+                                    <a asp-action="Contact" asp-route-id="@Model.Contact.Id"
+                                       asp-route-dealPage="@(Model.Deals.Page + 1)"
+                                       asp-route-activityPage="@Model.Query.ActivityPage"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Siguiente</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Siguiente</span>
+                                }
+                            </nav>
+                        }
+                    </section>
+
+                    <section class="crm-association-card" aria-labelledby="contactActivitiesTitle">
+                        <header class="crm-association-card__head">
+                            <div><h2 id="contactActivitiesTitle">Actividad registrada</h2><span>@Model.Activities.TotalCount registros</span></div>
+                            <button class="crm-association-card__action" type="button" data-detail-open-activity>Registrar actividad</button>
+                        </header>
+                        @if (Model.Activities.Items.Count == 0)
+                        {
+                            <div class="crm-association-empty"><strong>Sin actividad registrada</strong><span>Agrega el primer seguimiento de este contacto.</span></div>
+                        }
+                        else
+                        {
+                            <div class="crm-timeline">
+                                @foreach (var activity in Model.Activities.Items)
+                                {
+                                    <article class="crm-timeline__item">
+                                        <span class="crm-timeline__marker" aria-hidden="true"></span>
+                                        <div>
+                                            <a asp-action="Activity"
+                                               asp-controller="Crm"
+                                               asp-route-id="@activity.Id"
+                                               asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@activity.Subject</a>
+                                            <p>@activity.TypeDisplayLabel · @activity.StatusLabel</p>
+                                        </div>
+                                        <time datetime="@((activity.CompletedAtUtc ?? activity.PlannedAtUtc)?.ToString("O"))">
+                                            @DateTimeLabel(activity.CompletedAtUtc ?? activity.PlannedAtUtc)
+                                        </time>
+                                    </article>
+                                }
+                            </div>
+                        }
+                        @if (Model.Activities.HasPrevious || Model.Activities.HasNext)
+                        {
+                            <nav class="crm-detail-pagination" aria-label="Paginación de actividad asociada">
+                                @if (Model.Activities.HasPrevious)
+                                {
+                                    <a asp-action="Contact" asp-route-id="@Model.Contact.Id"
+                                       asp-route-dealPage="@Model.Query.DealPage"
+                                       asp-route-activityPage="@(Model.Activities.Page - 1)"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Anterior</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Anterior</span>
+                                }
+                                <span>Página @Model.Activities.Page</span>
+                                @if (Model.Activities.HasNext)
+                                {
+                                    <a asp-action="Contact" asp-route-id="@Model.Contact.Id"
+                                       asp-route-dealPage="@Model.Query.DealPage"
+                                       asp-route-activityPage="@(Model.Activities.Page + 1)"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Siguiente</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Siguiente</span>
+                                }
+                            </nav>
+                        }
+                    </section>
+                </div>
+
+                <aside class="crm-record-layout__rail" aria-label="Auditoría del registro">
+                    <section class="crm-record-card crm-audit-card">
+                        <span class="crm-eyebrow">Auditoría</span>
+                        <h2>Historial del registro</h2>
+                        <dl>
+                            <div>
+                                <dt>Propietario</dt>
+                                <dd><partial name="_CrmOwnerField" /></dd>
+                            </div>
+                            <div><dt>Creado por</dt><dd>@(string.IsNullOrWhiteSpace(Model.Contact.Audit.CreatedByName) ? "Sin registro" : Model.Contact.Audit.CreatedByName)</dd></div>
+                            <div><dt>Creación</dt><dd>@DateTimeLabel(Model.Contact.Audit.CreatedAtUtc)</dd></div>
+                            <div><dt>Modificado por</dt><dd>@(string.IsNullOrWhiteSpace(Model.Contact.Audit.ModifiedByName) ? "Sin registro" : Model.Contact.Audit.ModifiedByName)</dd></div>
+                            <div><dt>Última modificación</dt><dd>@DateTimeLabel(Model.Contact.Audit.ModifiedAtUtc)</dd></div>
+                        </dl>
+                    </section>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <partial name="_CrmDetailDrawers" />
+    <partial name="_CrmDealDrawer" />
+</div>
+
+@section Scripts {
+    <script src="~/js/crm-detail.js" asp-append-version="true"></script>
+}

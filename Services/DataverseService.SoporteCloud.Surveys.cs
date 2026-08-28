@@ -84,8 +84,12 @@ public sealed partial class DataverseService
     private const int SurveyInputSingleChoice = 645250000;
     private const int SurveyInputRating = 645250001;
     private const int SurveyInputText = 645250002;
+    private const int SurveyInputMultipleChoice = 645250003;
+    private const int SurveyInputMatching = 645250004;
     private const int SurveySessionStateOpen = 645250001;
     private const int SurveySessionStateClosed = 645250002;
+    private const decimal SurveyKnowledgeQuestionScoreMax = 10m;
+    private const string SurveyMatchingSeparator = "|||";
     private const string SurveySatisfactionTopicName = "Satisfaccion";
     private const string SurveySatisfactionTopicDescription = "Tema fijo para todas las sesiones de capacitacion.";
 
@@ -97,9 +101,11 @@ public sealed partial class DataverseService
 
     private static readonly IReadOnlyDictionary<int, string> SurveyInputTypeLabels = new Dictionary<int, string>
     {
-        [SurveyInputSingleChoice] = "Seleccion unica",
+        [SurveyInputSingleChoice] = "Respuesta de opcion multiple",
         [SurveyInputRating] = "Escala 1 a 5",
-        [SurveyInputText] = "Texto abierto"
+        [SurveyInputText] = "Texto abierto",
+        [SurveyInputMultipleChoice] = "Varias respuestas de opcion multiple",
+        [SurveyInputMatching] = "Arrastrar texto al campo asignado"
     };
 
     private static readonly IReadOnlyDictionary<int, string> SurveySessionStateLabels = new Dictionary<int, string>
@@ -202,17 +208,34 @@ public sealed partial class DataverseService
         if (request.ComponentValue == SurveyComponentKnowledge && string.IsNullOrWhiteSpace(NormalizeOptionalGuid(request.TopicId)))
             throw new InvalidOperationException("Las preguntas de conocimiento deben estar asociadas a un tema.");
 
-        if (request.InputTypeValue == SurveyInputSingleChoice
-            && request.Options.Count(item => item.IsActive && !string.IsNullOrWhiteSpace(item.Text)) < 2)
+        var requestedInputType = NormalizeSurveyInputType(request.InputTypeValue);
+        var submittedOptions = request.Options ?? Array.Empty<SoporteCloudSurveyOptionDto>();
+        var activeSubmittedOptions = submittedOptions
+            .Where(item => item.IsActive)
+            .ToList();
+        if ((requestedInputType == SurveyInputSingleChoice || requestedInputType == SurveyInputMultipleChoice)
+            && activeSubmittedOptions.Count(item => !string.IsNullOrWhiteSpace(item.Text)) < 2)
         {
-            throw new InvalidOperationException("Las preguntas de seleccion unica deben tener al menos dos opciones activas.");
+            throw new InvalidOperationException("Las preguntas de opcion multiple deben tener al menos dos opciones activas.");
         }
 
         if (request.ComponentValue == SurveyComponentKnowledge
-            && request.InputTypeValue == SurveyInputSingleChoice
-            && !request.Options.Any(item => item.IsActive && item.IsCorrect && !string.IsNullOrWhiteSpace(item.Text)))
+            && (requestedInputType == SurveyInputSingleChoice || requestedInputType == SurveyInputMultipleChoice)
+            && !activeSubmittedOptions.Any(item => item.IsCorrect && !string.IsNullOrWhiteSpace(item.Text)))
         {
             throw new InvalidOperationException("Las preguntas de conocimiento deben tener al menos una opcion correcta.");
+        }
+
+        if (requestedInputType == SurveyInputMatching)
+        {
+            var activePairs = activeSubmittedOptions
+                .Select(item => ParseSurveyMatchingOptionText(item.Text))
+                .ToList();
+            if (activePairs.Count == 0
+                || activePairs.Any(item => string.IsNullOrWhiteSpace(item.Text) || string.IsNullOrWhiteSpace(item.Target)))
+            {
+                throw new InvalidOperationException("Las preguntas de arrastrar texto deben tener pares completos de texto y campo asignado.");
+            }
         }
 
         var httpContext = _httpContextAccessor.HttpContext
@@ -240,7 +263,7 @@ public sealed partial class DataverseService
 
         var isCreate = string.IsNullOrWhiteSpace(questionId);
         var component = NormalizeSurveyComponent(request.ComponentValue);
-        var inputType = NormalizeSurveyInputType(request.InputTypeValue);
+        var inputType = requestedInputType;
         var maxPoints = component == SurveyComponentKnowledge
             ? Math.Max(RoundCurrency(request.MaxPoints), 0m)
             : 0m;
@@ -294,12 +317,57 @@ public sealed partial class DataverseService
                 ct);
         }
 
-        if (inputType == SurveyInputSingleChoice)
-            await SaveSurveyOptionsAsync(metadata, questionId, request.Options, httpContext.User, ct);
+        if (IsSurveyOptionInput(inputType))
+            await SaveSurveyOptionsAsync(metadata, questionId, submittedOptions, httpContext.User, ct);
 
         return new SoporteCloudSurveySaveResultDto
         {
             Message = isCreate ? "Pregunta creada correctamente." : "Pregunta actualizada correctamente.",
+            Board = await GetSoporteCloudSurveyBoardAsync(ct)
+        };
+    }
+
+    public async Task<SoporteCloudSurveySaveResultDto> DeleteSoporteCloudSurveyQuestionAsync(
+        string questionId,
+        CancellationToken ct = default)
+    {
+        var normalizedQuestionId = NormalizeGuid(questionId, nameof(questionId));
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var metadata = await ResolveSoporteCloudSurveyMetadataAsync(httpContext.User, ct);
+        var questions = await LoadSurveyQuestionsAsync(metadata, httpContext.User, ct);
+        var question = questions.FirstOrDefault(item => string.Equals(item.QuestionId, normalizedQuestionId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("No encontramos la pregunta a eliminar.");
+        if (question.ComponentValue == SurveyComponentSatisfaction)
+            throw new InvalidOperationException("Las preguntas de Satisfaccion son fijas y no se pueden eliminar.");
+
+        await CallDataverseSendAsync(
+            $"/api/data/v9.2/{metadata.Question.EntitySetName}({normalizedQuestionId})",
+            "PATCH",
+            new Dictionary<string, object?>
+            {
+                [SurveyQuestionActiveField] = false
+            },
+            httpContext.User,
+            ct);
+
+        var options = await LoadSurveyOptionsAsync(metadata, httpContext.User, ct);
+        foreach (var option in options.Where(item => string.Equals(item.QuestionId, normalizedQuestionId, StringComparison.OrdinalIgnoreCase)))
+        {
+            await CallDataverseSendAsync(
+                $"/api/data/v9.2/{metadata.Option.EntitySetName}({option.OptionId})",
+                "PATCH",
+                new Dictionary<string, object?>
+                {
+                    [SurveyOptionActiveField] = false
+                },
+                httpContext.User,
+                ct);
+        }
+
+        return new SoporteCloudSurveySaveResultDto
+        {
+            Message = "Pregunta eliminada correctamente.",
             Board = await GetSoporteCloudSurveyBoardAsync(ct)
         };
     }
@@ -386,7 +454,7 @@ public sealed partial class DataverseService
         };
     }
 
-    public async Task<SoporteCloudSurveySaveResultDto> CloseSoporteCloudSurveySessionAsync(string sessionId, CancellationToken ct = default)
+    public async Task<SoporteCloudSurveySaveResultDto> CloseSoporteCloudSurveySessionAsync(string sessionId, decimal? durationMinutes = null, CancellationToken ct = default)
     {
         var normalizedSessionId = NormalizeGuid(sessionId, nameof(sessionId));
         var httpContext = _httpContextAccessor.HttpContext
@@ -405,21 +473,27 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
+        var context = await LoadSurveyContextAsync(metadata, httpContext.User, ct);
+        var closedSession = context.Sessions.FirstOrDefault(item => string.Equals(item.SessionId, normalizedSessionId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("No encontramos la sesion cerrada para registrar la capacitacion.");
+        var detail = BuildSessionDetail(closedSession, context, BuildSurveyPublicUrl);
+        await EnsureSoporteCloudTrainingFromSurveySessionAsync(detail.Session, detail, durationMinutes, httpContext.User, ct);
+
         return new SoporteCloudSurveySaveResultDto
         {
-            Message = "Sesion cerrada. Los resultados publicos ya pueden verse desde el QR.",
-            Board = await GetSoporteCloudSurveyBoardAsync(ct)
+            Message = "Sesion cerrada y capacitacion registrada automaticamente.",
+            Board = BuildSurveyBoard(context, BuildSurveyPublicUrl)
         };
     }
 
-    public async Task<SoporteCloudPublicSurveyViewModel> GetSoporteCloudPublicSurveyAsync(string code, CancellationToken ct = default)
+    public async Task<SoporteCloudPublicSurveyViewModel> GetSoporteCloudPublicSurveyAsync(string code, CancellationToken ct = default, bool trackScan = true)
     {
         var metadata = await ResolveSoporteCloudSurveyAppMetadataAsync(ct);
         var context = await LoadPublicSurveyContextAsync(metadata, code, ct);
         var session = context.Sessions.FirstOrDefault()
             ?? throw new InvalidOperationException("No encontramos una encuesta activa para el codigo indicado.");
         var isClosed = session.StateValue == SurveySessionStateClosed;
-        if (!isClosed)
+        if (!isClosed && trackScan)
             await TrackSurveyScanAsync(metadata, session, ct);
 
         var detail = BuildSessionDetail(session, context, codeValue => BuildSurveyPublicUrl(codeValue));
@@ -483,7 +557,15 @@ public sealed partial class DataverseService
         foreach (var question in questions)
         {
             if (!answersByQuestion.TryGetValue(question.QuestionId, out var answer))
+            {
+                if (question.ComponentValue == SurveyComponentKnowledge)
+                {
+                    computedAnswers.Add(BuildMissingKnowledgeAnswer(question));
+                    continue;
+                }
+
                 throw new InvalidOperationException($"Falta responder: {question.Text}");
+            }
 
             computedAnswers.Add(ComputeSurveyAnswer(question, answer));
         }
@@ -492,9 +574,7 @@ public sealed partial class DataverseService
             .Where(answer => answer.Question.ComponentValue == SurveyComponentKnowledge)
             .ToList();
         var score = RoundCurrency(knowledgeAnswers.Sum(answer => answer.Points));
-        var maxScore = RoundCurrency(questions
-            .Where(question => question.ComponentValue == SurveyComponentKnowledge)
-            .Sum(question => question.MaxPoints));
+        var maxScore = RoundCurrency(knowledgeAnswers.Sum(answer => answer.MaxPoints));
         var percent = maxScore <= 0m
             ? 0m
             : Math.Round((score * 100m) / maxScore, 2, MidpointRounding.AwayFromZero);
@@ -513,6 +593,110 @@ public sealed partial class DataverseService
             MaxScore = maxScore,
             ScorePercent = percent
         };
+    }
+
+    public async Task<int> SaveSoporteCloudLiveKnowledgeResultsAsync(
+        string code,
+        IReadOnlyList<SoporteCloudSurveySubmitRequest> submissions,
+        CancellationToken ct = default)
+    {
+        if (submissions.Count == 0)
+            return 0;
+
+        var metadata = await ResolveSoporteCloudSurveyAppMetadataAsync(ct);
+        var context = await LoadPublicSurveyContextAsync(metadata, code, ct);
+        var session = context.Sessions.FirstOrDefault()
+            ?? throw new InvalidOperationException("No encontramos una encuesta para el codigo indicado.");
+        var questions = context.Questions
+            .Where(question => question.IsActive
+                && question.ComponentValue == SurveyComponentKnowledge
+                && string.Equals(question.TopicId, session.TopicId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(question => question.SortOrder)
+            .ThenBy(question => question.Text, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (questions.Count == 0)
+            return 0;
+
+        var existingParticipants = context.Participants
+            .Select(BuildSurveyParticipantDedupKey)
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingParticipantsLock = new object();
+        using var persistenceThrottle = new SemaphoreSlim(10);
+
+        var saveTasks = submissions.Select(async submission =>
+        {
+            await persistenceThrottle.WaitAsync(ct);
+            try
+            {
+                return await SaveSingleLiveKnowledgeResultAsync(
+                    metadata,
+                    session,
+                    questions,
+                    submission,
+                    existingParticipants,
+                    existingParticipantsLock,
+                    ct);
+            }
+            finally
+            {
+                persistenceThrottle.Release();
+            }
+        });
+
+        var savedCounts = await Task.WhenAll(saveTasks);
+        return savedCounts.Sum();
+    }
+
+    private async Task<int> SaveSingleLiveKnowledgeResultAsync(
+        SoporteCloudSurveyMetadata metadata,
+        SoporteCloudSurveySessionDto session,
+        IReadOnlyList<SoporteCloudSurveyQuestionDto> questions,
+        SoporteCloudSurveySubmitRequest submission,
+        HashSet<string> existingParticipants,
+        object existingParticipantsLock,
+        CancellationToken ct)
+    {
+        var fullName = (submission.FullName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+            return 0;
+
+        var participantKey = BuildSurveyParticipantDedupKey(submission);
+        if (!string.IsNullOrWhiteSpace(participantKey))
+        {
+            lock (existingParticipantsLock)
+            {
+                if (existingParticipants.Contains(participantKey))
+                    return 0;
+
+                existingParticipants.Add(participantKey);
+            }
+        }
+
+        var answersByQuestion = submission.Answers
+            .Where(answer => !string.IsNullOrWhiteSpace(answer.QuestionId))
+            .GroupBy(answer => NormalizeOptionalGuid(answer.QuestionId), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        var computedAnswers = new List<SurveyComputedAnswer>();
+        foreach (var question in questions)
+        {
+            computedAnswers.Add(answersByQuestion.TryGetValue(question.QuestionId, out var answer)
+                ? ComputeSurveyAnswer(question, answer)
+                : BuildMissingKnowledgeAnswer(question));
+        }
+
+        var score = RoundCurrency(computedAnswers.Sum(answer => answer.Points));
+        var maxScore = RoundCurrency(computedAnswers.Sum(answer => answer.MaxPoints));
+        var percent = maxScore <= 0m
+            ? 0m
+            : Math.Round((score * 100m) / maxScore, 2, MidpointRounding.AwayFromZero);
+        var participantId = await CreateSurveyParticipantAsync(metadata, session, submission, fullName, score, maxScore, percent, ct);
+        foreach (var answer in computedAnswers)
+        {
+            await CreateSurveyAnswerAsync(metadata, session, participantId, answer, ct);
+        }
+
+        return 1;
     }
 
     public async Task<SoporteCloudSurveySessionDetailDto> GetSoporteCloudPublicSurveyResultsAsync(string code, CancellationToken ct = default)
@@ -558,7 +742,7 @@ public sealed partial class DataverseService
             var points = option.IsCorrect && option.Points <= 0m ? 1m : Math.Max(RoundCurrency(option.Points), 0m);
             var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
-                [metadata.Option.PrimaryNameField] = TruncateSurveyName(option.Text),
+                [metadata.Option.PrimaryNameField] = TruncateSurveyName(BuildSurveyOptionDisplayText(option.Text)),
                 [SurveyOptionTextField] = option.Text.Trim(),
                 [SurveyOptionCorrectField] = option.IsCorrect,
                 [SurveyOptionPointsField] = points,
@@ -677,19 +861,100 @@ public sealed partial class DataverseService
             var optionId = NormalizeOptionalGuid(answer.OptionId);
             var option = question.Options.FirstOrDefault(item => string.Equals(item.OptionId, optionId, StringComparison.OrdinalIgnoreCase) && item.IsActive)
                 ?? throw new InvalidOperationException($"Selecciona una opcion valida para: {question.Text}");
-            var points = question.ComponentValue == SurveyComponentKnowledge
-                ? Math.Min(question.MaxPoints, Math.Max(option.Points, option.IsCorrect ? question.MaxPoints : 0m))
-                : 0m;
+            var maxPoints = ResolveKnowledgeMaxPoints(question);
+            var points = option.IsCorrect ? maxPoints : 0m;
 
-            return new SurveyComputedAnswer
+            return ApplySurveyAnswerOverrides(question, answer, new SurveyComputedAnswer
             {
                 Question = question,
                 OptionId = option.OptionId,
                 Points = RoundCurrency(points),
-                MaxPoints = question.ComponentValue == SurveyComponentKnowledge ? question.MaxPoints : 0m,
+                MaxPoints = maxPoints,
                 IsCorrect = option.IsCorrect,
                 TextValue = option.Text
-            };
+            });
+        }
+
+        if (question.InputTypeValue == SurveyInputMultipleChoice)
+        {
+            var selectedIds = ParseSurveyAnswerIds(answer.TextValue);
+            if (selectedIds.Count == 0)
+                throw new InvalidOperationException($"Selecciona al menos una opcion para: {question.Text}");
+
+            var activeOptions = question.Options
+                .Where(item => item.IsActive)
+                .ToDictionary(item => item.OptionId, StringComparer.OrdinalIgnoreCase);
+            var selectedOptions = new List<SoporteCloudSurveyOptionDto>();
+            foreach (var selectedId in selectedIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!activeOptions.TryGetValue(selectedId, out var option))
+                    throw new InvalidOperationException($"Selecciona opciones validas para: {question.Text}");
+
+                selectedOptions.Add(option);
+            }
+
+            var selectedSet = selectedOptions
+                .Select(item => item.OptionId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var correctSet = activeOptions.Values
+                .Where(item => item.IsCorrect)
+                .Select(item => item.OptionId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var maxPoints = ResolveKnowledgeMaxPoints(question);
+            var isCorrect = correctSet.Count > 0 && selectedSet.SetEquals(correctSet);
+
+            return ApplySurveyAnswerOverrides(question, answer, new SurveyComputedAnswer
+            {
+                Question = question,
+                OptionId = selectedOptions.Count == 1 ? selectedOptions[0].OptionId : "",
+                Points = isCorrect ? RoundCurrency(maxPoints) : 0m,
+                MaxPoints = maxPoints,
+                IsCorrect = isCorrect,
+                TextValue = string.Join(" | ", selectedOptions.Select(item => item.Text))
+            });
+        }
+
+        if (question.InputTypeValue == SurveyInputMatching)
+        {
+            var submittedPairs = ParseSurveyMatchingAnswer(answer.TextValue);
+            var activeOptions = question.Options
+                .Where(item => item.IsActive)
+                .ToList();
+            if (activeOptions.Count == 0)
+                throw new InvalidOperationException($"No encontramos pares configurados para: {question.Text}");
+
+            var displayAnswers = new List<string>();
+            var isCorrect = true;
+            foreach (var option in activeOptions)
+            {
+                var expected = ParseSurveyMatchingOptionText(option.Text);
+                if (string.IsNullOrWhiteSpace(option.OptionId)
+                    || string.IsNullOrWhiteSpace(expected.Text)
+                    || string.IsNullOrWhiteSpace(expected.Target)
+                    || !submittedPairs.TryGetValue(option.OptionId, out var submittedTarget)
+                    || !string.Equals(
+                        NormalizeSurveyTextKey(submittedTarget),
+                        NormalizeSurveyTextKey(expected.Target),
+                        StringComparison.Ordinal))
+                {
+                    isCorrect = false;
+                }
+
+                var shownTarget = submittedPairs.TryGetValue(option.OptionId, out var answerTarget)
+                    ? answerTarget
+                    : "sin asignar";
+                displayAnswers.Add($"{expected.Text} -> {shownTarget}");
+            }
+
+            var maxPoints = ResolveKnowledgeMaxPoints(question);
+            return ApplySurveyAnswerOverrides(question, answer, new SurveyComputedAnswer
+            {
+                Question = question,
+                Points = isCorrect ? RoundCurrency(maxPoints) : 0m,
+                MaxPoints = maxPoints,
+                IsCorrect = isCorrect,
+                TextValue = string.Join(" | ", displayAnswers)
+            });
         }
 
         if (question.InputTypeValue == SurveyInputRating)
@@ -712,15 +977,50 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(text))
             throw new InvalidOperationException($"Debes responder: {question.Text}");
 
-        return new SurveyComputedAnswer
+        return ApplySurveyAnswerOverrides(question, answer, new SurveyComputedAnswer
         {
             Question = question,
             TextValue = text,
             Points = 0m,
-            MaxPoints = question.ComponentValue == SurveyComponentKnowledge ? question.MaxPoints : 0m,
+            MaxPoints = ResolveKnowledgeMaxPoints(question),
             IsCorrect = false
+        });
+    }
+
+    private static decimal ResolveKnowledgeMaxPoints(SoporteCloudSurveyQuestionDto question) =>
+        question.ComponentValue == SurveyComponentKnowledge ? SurveyKnowledgeQuestionScoreMax : 0m;
+
+    private static SurveyComputedAnswer ApplySurveyAnswerOverrides(
+        SoporteCloudSurveyQuestionDto question,
+        SoporteCloudSurveyAnswerSubmitDto answer,
+        SurveyComputedAnswer computed)
+    {
+        if (question.ComponentValue != SurveyComponentKnowledge)
+            return computed;
+
+        var maxPoints = answer.MaxPointsOverride ?? computed.MaxPoints;
+        var points = answer.PointsOverride ?? computed.Points;
+        return new SurveyComputedAnswer
+        {
+            Question = computed.Question,
+            OptionId = computed.OptionId,
+            NumericValue = computed.NumericValue,
+            TextValue = computed.TextValue,
+            Points = RoundCurrency(Math.Max(points, 0m)),
+            MaxPoints = RoundCurrency(Math.Max(maxPoints, 0m)),
+            IsCorrect = answer.IsCorrectOverride ?? computed.IsCorrect
         };
     }
+
+    private static SurveyComputedAnswer BuildMissingKnowledgeAnswer(SoporteCloudSurveyQuestionDto question) =>
+        new()
+        {
+            Question = question,
+            Points = 0m,
+            MaxPoints = ResolveKnowledgeMaxPoints(question),
+            IsCorrect = false,
+            TextValue = "Sin respuesta"
+        };
 
     private async Task EnsureSurveySatisfactionDefaultsAsync(
         SoporteCloudSurveyMetadata metadata,
@@ -1724,6 +2024,25 @@ public sealed partial class DataverseService
     private static string NormalizeSurveyCode(string? code) =>
         (code ?? "").Trim().ToUpperInvariant();
 
+    private static string BuildSurveyParticipantDedupKey(SoporteCloudSurveySubmitRequest request) =>
+        BuildSurveyParticipantDedupKey(request.Email, request.FullName, request.Company);
+
+    private static string BuildSurveyParticipantDedupKey(SoporteCloudSurveyParticipantDto participant) =>
+        BuildSurveyParticipantDedupKey(participant.Email, participant.FullName, participant.Company);
+
+    private static string BuildSurveyParticipantDedupKey(string? email, string? fullName, string? company)
+    {
+        var normalizedEmail = (email ?? "").Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+            return $"email:{normalizedEmail}";
+
+        var normalizedName = NormalizeSurveyTextKey(fullName);
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            return "";
+
+        return $"name:{normalizedName}|company:{NormalizeSurveyTextKey(company)}";
+    }
+
     private static bool IsSatisfactionTopic(SurveyTopicRaw topic) =>
         IsSatisfactionTopicName(topic.Name);
 
@@ -1750,7 +2069,144 @@ public sealed partial class DataverseService
         value == SurveyComponentSatisfaction ? SurveyComponentSatisfaction : SurveyComponentKnowledge;
 
     private static int NormalizeSurveyInputType(int value) =>
-        value is SurveyInputRating or SurveyInputText ? value : SurveyInputSingleChoice;
+        value is SurveyInputRating or SurveyInputText or SurveyInputMultipleChoice or SurveyInputMatching
+            ? value
+            : SurveyInputSingleChoice;
+
+    private static bool IsSurveyOptionInput(int value) =>
+        value is SurveyInputSingleChoice or SurveyInputMultipleChoice or SurveyInputMatching;
+
+    private static IReadOnlyList<string> ParseSurveyAnswerIds(string? raw)
+    {
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return Array.Empty<string>();
+
+        if (value.StartsWith("[", StringComparison.Ordinal))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(value);
+                if (document.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    return document.RootElement
+                        .EnumerateArray()
+                        .Select(item =>
+                        {
+                            if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("optionId", out var optionId))
+                                return optionId.GetString();
+
+                            return item.ValueKind == JsonValueKind.String ? item.GetString() : item.ToString();
+                        })
+                        .Select(NormalizeOptionalGuid)
+                        .Where(item => !string.IsNullOrWhiteSpace(item))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return value
+            .Split(new[] { ",", ";", "|", "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeOptionalGuid)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseSurveyMatchingAnswer(string? raw)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var value = (raw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return result;
+
+        if (value.StartsWith("[", StringComparison.Ordinal) || value.StartsWith("{", StringComparison.Ordinal))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(value);
+                if (document.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in document.RootElement.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.Object)
+                            continue;
+
+                        var optionId = item.TryGetProperty("optionId", out var optionIdElement)
+                            ? NormalizeOptionalGuid(optionIdElement.GetString())
+                            : "";
+                        var target = item.TryGetProperty("target", out var targetElement)
+                            ? (targetElement.GetString() ?? "").Trim()
+                            : "";
+                        if (!string.IsNullOrWhiteSpace(optionId))
+                            result[optionId] = target;
+                    }
+
+                    return result;
+                }
+
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in document.RootElement.EnumerateObject())
+                    {
+                        var optionId = NormalizeOptionalGuid(property.Name);
+                        if (string.IsNullOrWhiteSpace(optionId))
+                            continue;
+
+                        result[optionId] = property.Value.ValueKind == JsonValueKind.String
+                            ? (property.Value.GetString() ?? "").Trim()
+                            : property.Value.ToString().Trim();
+                    }
+
+                    return result;
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        foreach (var segment in value.Split(new[] { "\r\n", "\n", ";" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = segment.Split(new[] { "=>", "->", "=" }, 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+                result[NormalizeOptionalGuid(parts[0])] = parts[1].Trim();
+        }
+
+        return result;
+    }
+
+    private static SurveyMatchingPair ParseSurveyMatchingOptionText(string? value)
+    {
+        var text = (value ?? "").Trim();
+        var separatorIndex = text.IndexOf(SurveyMatchingSeparator, StringComparison.Ordinal);
+        if (separatorIndex < 0)
+        {
+            return new SurveyMatchingPair
+            {
+                Text = text,
+                Target = ""
+            };
+        }
+
+        return new SurveyMatchingPair
+        {
+            Text = text[..separatorIndex].Trim(),
+            Target = text[(separatorIndex + SurveyMatchingSeparator.Length)..].Trim()
+        };
+    }
+
+    private static string BuildSurveyOptionDisplayText(string? value)
+    {
+        var parsed = ParseSurveyMatchingOptionText(value);
+        return string.IsNullOrWhiteSpace(parsed.Target)
+            ? parsed.Text
+            : $"{parsed.Text} -> {parsed.Target}";
+    }
 
     private static string TruncateSurveyName(string value)
     {
@@ -1890,6 +2346,12 @@ public sealed partial class DataverseService
         public decimal Points { get; init; }
         public decimal MaxPoints { get; init; }
         public bool IsCorrect { get; init; }
+    }
+
+    private sealed class SurveyMatchingPair
+    {
+        public string Text { get; init; } = "";
+        public string Target { get; init; } = "";
     }
 
     private sealed class SurveySatisfactionQuestionSeed

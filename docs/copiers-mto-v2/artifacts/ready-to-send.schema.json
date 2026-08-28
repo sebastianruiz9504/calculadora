@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:digital-tech:copiers:mto-v2:ready-to-send:4.0",
+  "title": "Copiers MTO V2 ReadyToSend principal-row projection",
+  "description": "Allowlisted projection read by Power Automate. Artifact resolution uses only reportEvidenceKey and attachmentManifestJson; manifest entries are customer-safe and ScanPassed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "recordKey",
+    "operationKey",
+    "workflowState",
+    "emailState",
+    "readyAtUtc",
+    "rowVersion",
+    "reportEvidenceKey",
+    "attachmentManifestJson",
+    "emailOutboxKey",
+    "emailToSnapshot",
+    "emailSubjectSnapshot",
+    "emailHtmlBodySnapshot",
+    "providerDraftId",
+    "internetMessageId"
+  ],
+  "properties": {
+    "contractVersion": { "const": "4.0" },
+    "recordKey": {
+      "type": "string",
+      "format": "uuid",
+      "description": "GUID of the principal signedMtoV2 row."
+    },
+    "operationKey": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "workflowState": { "const": "ReadyToSend" },
+    "emailState": { "const": "Pending" },
+    "readyAtUtc": { "type": "string", "format": "date-time" },
+    "rowVersion": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "reportEvidenceKey": { "$ref": "#/$defs/sha256" },
+    "attachmentManifestJson": {
+      "type": "string",
+      "contentMediaType": "application/json",
+      "contentSchema": { "$ref": "#/$defs/attachmentManifest" }
+    },
+    "emailOutboxKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "emailToSnapshot": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 1000
+    },
+    "emailSubjectSnapshot": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "emailHtmlBodySnapshot": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "providerDraftId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "internetMessageId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 998
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "attachmentManifest": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/customerAttachment" }
+    },
+    "customerAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sequence",
+        "evidenceKey",
+        "fileName",
+        "contentType",
+        "size",
+        "sha256",
+        "purpose",
+        "securityState"
+      ],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "evidenceKey": { "$ref": "#/$defs/sha256" },
+        "fileName": {
+          "type": "string",
+          "pattern": "^adjunto-[0-9]{3}\\.(jpg|png)$",
+          "maxLength": 260
+        },
+        "contentType": {
+          "enum": ["image/jpeg", "image/png"]
+        },
+        "size": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "purpose": { "const": "CustomerAttachment" },
+        "securityState": { "const": "ScanPassed" }
+      }
+    }
+  }
+}
+

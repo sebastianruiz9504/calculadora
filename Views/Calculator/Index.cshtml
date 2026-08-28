@@ -1,8 +1,17 @@
 @using CotizadorInterno.Web.Models
+@using CotizadorInterno.Web.Models.Crm
+@using CotizadorInterno.Web.Models.Permissions
 @using System.Text.Json
 @{
     ViewData["Title"] = "Cotizador Interno";
+    var embeddedCalculator = ViewData["EmbeddedCalculator"] is true;
+    if (embeddedCalculator)
+    {
+        Layout = "_CalculatorEmbeddedLayout";
+    }
     var currentUser = (CurrentUserInfo?)(ViewData["CurrentUser"]) ?? new CurrentUserInfo();
+    var canUseCrm = AppModuleAccessPolicy.CanAccess(AppModule.Crm, currentUser);
+    var crmCalculatorSyncEnabled = ViewData["CrmCalculatorSyncEnabled"] is true;
     var currentUserClient = new
     {
         currentUser.SystemUserId,
@@ -14,6 +23,10 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/calculator.css" asp-append-version="true" />
+    @if (embeddedCalculator)
+    {
+        <link rel="stylesheet" href="~/css/calculator-workspace.css" asp-append-version="true" />
+    }
 }
 
 <style>
@@ -229,9 +242,48 @@
         font-size: 12px;
         color: #6b7280;
     }
+    .crm-modal-card {
+        max-width: 680px;
+        border-radius: 18px;
+        padding: 24px;
+    }
+    .crm-modal-eyebrow {
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .crm-quoted-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+    }
+    .crm-quoted-summary strong {
+        display: block;
+        margin-top: 2px;
+        color: #0f172a;
+        font-size: 18px;
+    }
+    .requested-scenario-warning {
+        border: 1px solid #fed7aa;
+        border-radius: 12px;
+        background: #fff7ed;
+        color: #9a3412;
+        padding: 12px 14px;
+    }
 </style>
 
-<div class="calc-shell">
+<div class="calc-shell @(embeddedCalculator ? "calc-shell--embedded" : "")"
+     data-calculator-instance
+     data-embedded="@(embeddedCalculator ? "true" : "false")">
+@Html.AntiForgeryToken()
+@if (!embeddedCalculator)
+{
 <div class="calc-hero">
     <div>
         <div class="calc-kicker">Modulo comercial</div>
@@ -246,29 +298,41 @@
     </div>
 
     <div class="d-flex gap-2 flex-wrap calc-hero__actions">
-        <button id="btnNewScenario" class="btn btn-primary" type="button">Nuevo escenario</button>
+        <button id="btnNewScenario" class="btn btn-primary" type="button">Nuevo negocio</button>
         <button id="btnDuplicateScenario" class="btn btn-outline-secondary" type="button">Duplicar</button>
         <button id="btnDeleteScenario" class="btn btn-outline-danger" type="button">Eliminar</button>
     </div>
 </div>
 
-<!-- Escenarios -->
+<!-- Negocios -->
 <div class="calc-card calc-card--tabs">
     <div class="calc-section-header">
         <div>
-            <div class="calc-kicker">Escenarios</div>
+            <div class="calc-kicker">Negocios</div>
             <h2 class="calc-section-title">Tabs de trabajo</h2>
-            <p class="calc-section-subtitle mb-0">Usa un escenario por propuesta y cambia entre ellos sin perder el contexto.</p>
+            <p class="calc-section-subtitle mb-0">Usa un negocio por propuesta y cambia entre ellos sin perder el contexto.</p>
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap calc-scenario-bar" id="scenarioBar"></div>
+    <div id="requestedScenarioWarning" class="requested-scenario-warning mt-3" role="status" style="display:none;"></div>
 </div>
+}
+@if (embeddedCalculator)
+{
+    <div hidden aria-hidden="true">
+        <button id="btnNewScenario" type="button"></button>
+        <button id="btnDuplicateScenario" type="button"></button>
+        <button id="btnDeleteScenario" type="button"></button>
+        <div id="scenarioBar"></div>
+        <div id="requestedScenarioWarning"></div>
+    </div>
+}
 
 <!-- Panel principal -->
 <div class="soft-card calc-card calc-card--composer">
     <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-2">
         <div class="calc-composer-field calc-composer-field--name">
-            <label class="form-label fw-bold mb-1">Nombre del escenario</label>
+            <label class="form-label fw-bold mb-1">@(embeddedCalculator ? "Nombre del escenario" : "Nombre del negocio")</label>
             <input id="scenarioName" class="form-control" />
         </div>
 
@@ -391,16 +455,122 @@
 
            <div class="calc-result-actions">
                 <button id="btnExport" class="btn btn-outline-secondary" type="button">Exportar Excel</button>
-                <button id="btnGenerateProposal" class="btn btn-outline-primary" type="button">Generar propuesta</button>
+                @if (!embeddedCalculator)
+                {
+                    <button id="btnGenerateProposal" class="btn btn-outline-primary" type="button">Generar propuesta</button>
+                }
+                @if (canUseCrm)
+                {
+                    <button id="btnSendToCrm"
+                            class="btn btn-outline-primary"
+                            type="button"
+                            disabled
+                            aria-disabled="true"
+                            title="Disponible cuando el CRM se publique para todos">
+                        Enviar al CRM
+                    </button>
+                }
                 <button id="btnProvisioning" class="btn btn-primary" type="button">Solicitar Aprovisionamiento</button>
             </div>
+            @if (canUseCrm)
+            {
+                <div id="crmAvailabilityMessage" class="small mt-2 text-muted">
+                    Disponible cuando el CRM se publique para todos.
+                </div>
+            }
             <div id="actionValidationMessage" class="small calc-action-warning mt-2" style="display:none;"></div>
+            @if (canUseCrm)
+            {
+                <div id="crmSyncLog" class="small mt-2 text-muted"></div>
+            }
             <div id="provisioningLog" class="small mt-2 text-muted"></div>
         </div>
     </div>
 </div>
 
 </div>
+
+@if (canUseCrm)
+{
+<!-- Modal CRM -->
+<div id="crmDealModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card crm-modal-card"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="crmDealModalTitle"
+         aria-describedby="crmDealModalDescription"
+         tabindex="-1"
+         data-crm-deal-dialog>
+        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <div class="crm-modal-eyebrow">Calculadora + CRM</div>
+                <h5 class="mb-1" id="crmDealModalTitle">Enviar registro comercial</h5>
+                <div class="small text-muted" id="crmDealModalDescription">El escenario se guarda antes de sincronizarlo.</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCloseCrmDeal" aria-label="Cerrar">×</button>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-5">
+                <label class="form-label fw-bold" for="crmDealKind">Tipo</label>
+                <select id="crmDealKind" class="form-select">
+                    <option value="@((int)CrmDealKind.EstimatedOpportunity)">Oportunidad estimada</option>
+                    <option value="@((int)CrmDealKind.QuotedBusiness)">Negocio cotizado</option>
+                </select>
+            </div>
+            <div class="col-md-7">
+                <label class="form-label fw-bold" for="crmDealName">Nombre</label>
+                <input id="crmDealName" class="form-control" maxlength="200" />
+            </div>
+            <div class="col-md-12">
+                <label class="form-label fw-bold" for="crmCompanyInput">Empresa</label>
+                <div style="position:relative;">
+                    <input id="crmCompanyInput" class="form-control" placeholder="Buscar empresa..." autocomplete="off" />
+                    <div id="crmCompanySuggestions" class="suggestions"></div>
+                </div>
+            </div>
+            <div class="col-md-12" id="crmPrimaryContactField" style="display:none;">
+                <label class="form-label fw-bold" for="crmPrimaryContactInput">Contacto principal</label>
+                <input id="crmPrimaryContactInput" class="form-control" readonly />
+                <div class="small text-muted mt-1">Preseleccionado desde la hoja de vida del contacto.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold" for="crmProbability">Probabilidad</label>
+                <div class="input-group">
+                    <input id="crmProbability" type="number" class="form-control" min="0" max="100" step="1" value="25" />
+                    <span class="input-group-text">%</span>
+                </div>
+            </div>
+            <div class="col-md-8" id="crmEstimatedValueField">
+                <label class="form-label fw-bold" for="crmEstimatedValue">Valor estimado</label>
+                <input id="crmEstimatedValue" type="number" class="form-control" min="0" step="1000" value="0" />
+            </div>
+        </div>
+
+        <div id="crmQuotedSummary" class="crm-quoted-summary mt-3" style="display:none;">
+            <div>
+                <span class="small text-muted">Puntaje</span>
+                <strong id="crmQuotedScore">—</strong>
+            </div>
+            <div>
+                <span class="small text-muted">Valor del contrato</span>
+                <strong id="crmQuotedContractValue">—</strong>
+            </div>
+        </div>
+
+        <div id="crmDealStatus"
+             class="status-msg mt-3"
+             role="status"
+             aria-live="polite"
+             style="display:none;"></div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline-secondary" id="btnCancelCrmDeal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnConfirmCrmDeal">Enviar al CRM</button>
+        </div>
+    </div>
+</div>
+}
 
 <!-- Modal adjunto -->
 <div id="attachmentModal" class="modal-overlay" aria-hidden="true">
@@ -420,15 +590,6 @@
         <div id="attachmentStatus" class="status-msg mt-2" style="display:none;"></div>
         <div class="d-flex justify-content-end gap-2 mt-3">
             <button type="button" class="btn btn-outline-secondary" id="btnCancelAttachment">Cerrar</button>
-        </div>
-    </div>
-</div>
-<div id="proposalLoadingModal" class="modal-overlay calc-loading-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="proposalLoadingTitle">
-    <div class="modal-card calc-loading-modal__card">
-        <div class="calc-loading-modal__spinner" aria-hidden="true"></div>
-        <div>
-            <h6 class="mb-1" id="proposalLoadingTitle">Generando propuesta</h6>
-            <p class="mb-0 text-muted">Estamos preparando la propuesta comercial. Este proceso puede tardar unos minutos.</p>
         </div>
     </div>
 </div>
@@ -495,10 +656,30 @@
 
 <script>
 (function () {
+    const calculatorInstance = document.querySelector("[data-calculator-instance]");
+    const embeddedCalculator = calculatorInstance?.dataset.embedded === "true";
     const currentUser = @Html.Raw(JsonSerializer.Serialize(currentUserClient, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     const storedScenarios = @Html.Raw(JsonSerializer.Serialize(storedScenarios, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const crmCalculatorSyncEnabled = @Html.Raw(JsonSerializer.Serialize(crmCalculatorSyncEnabled));
     const PROVISIONING_SUBMIT_URL = "/Calculator/SubmitProvisioning";
-    const requestedScenarioId = new URLSearchParams(window.location.search).get("scenarioId") || "";
+    const CRM_SEND_URL = "/Calculator/SendToCrm";
+    const PROPOSAL_URL = @Html.Raw(JsonSerializer.Serialize(Url.Action("Proposal", "Calculator")));
+    const CRM_COMPANY_SEARCH_URL = @Html.Raw(JsonSerializer.Serialize(Url.Action("SearchCompanies", "Crm")));
+    const queryParameters = new URLSearchParams(window.location.search);
+    const requestedScenarioId = queryParameters.get("scenarioId") || "";
+    const requestedCrmDealId = queryParameters.get("crmDealId") || "";
+    const requestedNewCrmOpportunity = queryParameters.get("newCrmOpportunity") === "1";
+    const requestedCrmCompanyId = queryParameters.get("crmCompanyId") || "";
+    const requestedCrmCompanyName = queryParameters.get("crmCompanyName") || "";
+    const requestedCrmContactId = queryParameters.get("crmContactId") || "";
+    const requestedCrmContactName = queryParameters.get("crmContactName") || "";
+    const requestedCrmDealKind = queryParameters.get("crmDealKind") || "";
+    const requestedCrmDealName = queryParameters.get("crmDealName") || "";
+    const requestedCrmProbability = queryParameters.get("crmProbability") || "";
+    const requestedCrmEstimatedValue = queryParameters.get("crmEstimatedValue") || "";
+    const antiforgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+    const estimatedOpportunityKind = @((int)CrmDealKind.EstimatedOpportunity);
+    const quotedBusinessKind = @((int)CrmDealKind.QuotedBusiness);
 
     const contractTypeLabels = {
         "645250000": "Negocio nuevo",
@@ -521,13 +702,20 @@
 
     let scenarios = [];
     let activeScenarioId = null;
+    const scenarioSaveRuntime = new Map();
+    let lineEventsAbortController = null;
+    const AUTOSAVE_DELAY_MS = 750;
     const provisioningState = { date: "", contractType: "", client: null, loading: false };
     let prorationSearchTimer = null;
     let prorationClientResults = [];
     let provisioningSearchTimer = null;
     let provisioningClientResults = [];
+    let crmCompanySearchTimer = null;
+    let crmCompanyResults = [];
+    const crmState = { company: null, primaryContact: null, loading: false };
 
     const scenarioBar = document.getElementById("scenarioBar");
+    const requestedScenarioWarning = document.getElementById("requestedScenarioWarning");
     const scenarioName = document.getElementById("scenarioName");
     const typeChips = document.getElementById("typeChips");
     const linesBody = document.getElementById("linesBody");
@@ -548,6 +736,7 @@
     const btnCalculate = document.getElementById("btnCalculate");
     const btnExport = document.getElementById("btnExport");
     const btnGenerateProposal = document.getElementById("btnGenerateProposal");
+    const btnSendToCrm = document.getElementById("btnSendToCrm");
     const btnProvisioning = document.getElementById("btnProvisioning");
     const btnCloseProvisioning = document.getElementById("btnCloseProvisioning");
     const btnCancelProvisioning = document.getElementById("btnCancelProvisioning");
@@ -564,6 +753,7 @@
     const clientSuggestions = document.getElementById("clientSuggestions");
     const provisioningStatus = document.getElementById("provisioningStatus");
     const provisioningLog = document.getElementById("provisioningLog");
+    const crmSyncLog = document.getElementById("crmSyncLog");
     const actionValidationMessage = document.getElementById("actionValidationMessage");
     const attachmentInput = document.getElementById("attachmentInput");
     const attachmentStatus = document.getElementById("attachmentStatus");
@@ -571,7 +761,27 @@
     const attachmentFileName = document.getElementById("attachmentFileName");
     const btnCloseAttachment = document.getElementById("btnCloseAttachment");
     const btnCancelAttachment = document.getElementById("btnCancelAttachment");
-    const proposalLoadingModal = document.getElementById("proposalLoadingModal");
+    const crmDealModal = document.getElementById("crmDealModal");
+    const crmDealModalDialog = crmDealModal?.querySelector("[data-crm-deal-dialog]");
+    const crmDealKind = document.getElementById("crmDealKind");
+    const crmDealName = document.getElementById("crmDealName");
+    const crmCompanyInput = document.getElementById("crmCompanyInput");
+    const crmCompanySuggestions = document.getElementById("crmCompanySuggestions");
+    const crmPrimaryContactField = document.getElementById("crmPrimaryContactField");
+    const crmPrimaryContactInput = document.getElementById("crmPrimaryContactInput");
+    const crmProbability = document.getElementById("crmProbability");
+    const crmEstimatedValueField = document.getElementById("crmEstimatedValueField");
+    const crmEstimatedValue = document.getElementById("crmEstimatedValue");
+    const crmQuotedSummary = document.getElementById("crmQuotedSummary");
+    const crmQuotedScore = document.getElementById("crmQuotedScore");
+    const crmQuotedContractValue = document.getElementById("crmQuotedContractValue");
+    const crmDealStatus = document.getElementById("crmDealStatus");
+    const btnCloseCrmDeal = document.getElementById("btnCloseCrmDeal");
+    const btnCancelCrmDeal = document.getElementById("btnCancelCrmDeal");
+    const btnConfirmCrmDeal = document.getElementById("btnConfirmCrmDeal");
+    let crmDealModalReturnFocus = null;
+    let crmDealModalInertTargets = [];
+    let crmDealModalPreviousBodyOverflow = "";
 
     const resultPoints = document.getElementById("resultPoints");
     const resultCommission = document.getElementById("resultCommission");
@@ -600,8 +810,27 @@
     }
 
     function clampDec(v, fallback) {
-        const n = parseFloat(String(v).replace(",", "."));
-        if (isNaN(n)) return fallback;
+        let raw = String(v ?? "").trim().replace(/\s+/g, "");
+        if (!raw) return fallback;
+        const comma = raw.lastIndexOf(",");
+        const dot = raw.lastIndexOf(".");
+        if (comma >= 0 && dot >= 0) {
+            const decimalSeparator = comma > dot ? "," : ".";
+            const thousandsSeparator = decimalSeparator === "," ? "." : ",";
+            raw = raw.split(thousandsSeparator).join("");
+            const decimalIndex = raw.lastIndexOf(decimalSeparator);
+            raw = raw.slice(0, decimalIndex).split(decimalSeparator).join("")
+                + "."
+                + raw.slice(decimalIndex + 1);
+        } else if (comma >= 0) {
+            raw = /^-?\d{1,3}(,\d{3})+$/.test(raw)
+                ? raw.replace(/,/g, "")
+                : raw.replace(/,/g, ".");
+        } else if (dot >= 0 && /^-?\d{1,3}(\.\d{3})+$/.test(raw)) {
+            raw = raw.replace(/\./g, "");
+        }
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return fallback;
         return n;
     }
 
@@ -646,16 +875,10 @@ const showDebugCalcModal = false;
         debugCalcModal.setAttribute("aria-hidden", "true");
     }
 
-    function showProposalLoadingModal() {
-        if (!proposalLoadingModal) return;
-        proposalLoadingModal.style.display = "flex";
-        proposalLoadingModal.setAttribute("aria-hidden", "false");
-    }
-
-    function hideProposalLoadingModal() {
-        if (!proposalLoadingModal) return;
-        proposalLoadingModal.style.display = "none";
-        proposalLoadingModal.setAttribute("aria-hidden", "true");
+    function normalizeAcceleratorFactor(value) {
+        const accelerator = Number(value || 0);
+        if (!Number.isFinite(accelerator) || accelerator <= 0) return 0;
+        return accelerator >= 1 ? accelerator / 100 : accelerator;
     }
 
     function buildDebugCalcHtml(payload, data) {
@@ -673,17 +896,18 @@ const showDebugCalcModal = false;
             const qty = Number(line.quantity || 0);
             const months = Number(line.contractMonths || 0);
             const acelerador = Number(line.acelerador || 0);
+            const acceleratorFactor = normalizeAcceleratorFactor(acelerador);
             const saleUnit = cost * (1 + (margin / 100));
             const monthly = saleUnit * qty;
             const total = monthly * months;
-            const utilidadLinea = ((saleUnit - cost) + (cost * acelerador)) * qty * months;
+            const utilidadLinea = ((saleUnit - cost) + (cost * acceleratorFactor)) * qty * months;
 
             totalCost += cost * qty;
             totalSaleUnit += saleUnit * qty;
             totalMonthly += monthly;
             totalSale += total;
             totalUtility += utilidadLinea;
-            totalAcelerador += (cost * acelerador) * qty * months;
+            totalAcelerador += (cost * acceleratorFactor) * qty * months;
 
             return `
                 <tr>
@@ -708,7 +932,7 @@ const showDebugCalcModal = false;
         const utilidadProrrateada = utilidadNegocio * prorationFactor;
 
         const puntosCalculados = (utilidadProrrateada / 3000) * 100;
-        const comisionUsd = puntosCalculados * 7.5;
+        const comisionUsd = puntosCalculados * 9;
         const comisionCop = comisionUsd * 4000;
 
         return `
@@ -795,7 +1019,7 @@ const showDebugCalcModal = false;
                 ? `la linea ${lineNumbers[0]}`
                 : `las lineas ${lineNumbers.join(", ")}`;
 
-            return `Completa el nombre del producto en ${lineLabel} antes de exportar, generar propuesta o solicitar aprovisionamiento.`;
+            return `Completa el nombre del producto en ${lineLabel} antes de exportar, generar la propuesta o solicitar aprovisionamiento.`;
         }
 
         const lineNumbers = issues.map(issue => issue.lineNumber);
@@ -803,7 +1027,7 @@ const showDebugCalcModal = false;
             ? `la linea ${lineNumbers[0]}`
             : `las lineas ${lineNumbers.join(", ")}`;
 
-        return `Debes seleccionar un producto valido de la lista en ${lineLabel} antes de exportar, generar propuesta o solicitar aprovisionamiento.`;
+        return `Debes seleccionar un producto valido de la lista en ${lineLabel} antes de exportar, generar la propuesta o solicitar aprovisionamiento.`;
     }
 
     function syncScenarioActionButtons() {
@@ -812,15 +1036,34 @@ const showDebugCalcModal = false;
         const issues = hasLines ? getScenarioProductSelectionIssues(s) : [];
         const blockingMessage = buildScenarioProductSelectionMessage(issues);
         const disableActions = !hasLines || issues.length > 0;
+        const proposalDisabled = disableActions || !s?.lastResult;
+        const provisioningAlreadyRequested = Boolean(s?.provisioningRequestId);
 
         btnExport.disabled = disableActions;
-        btnGenerateProposal.disabled = disableActions;
-        btnProvisioning.disabled = disableActions;
+        if (btnGenerateProposal) btnGenerateProposal.disabled = proposalDisabled;
+        btnProvisioning.disabled = disableActions || provisioningAlreadyRequested;
 
         const actionTitle = issues.length > 0 ? blockingMessage : "";
         btnExport.title = actionTitle;
-        btnGenerateProposal.title = actionTitle;
-        btnProvisioning.title = actionTitle;
+        if (btnGenerateProposal) {
+            btnGenerateProposal.title = !hasLines
+                ? "Agrega productos al escenario."
+                : issues.length > 0
+                    ? blockingMessage
+                    : !s?.lastResult
+                        ? "Calcula y guarda el escenario antes de generar la propuesta."
+                        : "";
+        }
+        btnProvisioning.title = provisioningAlreadyRequested
+            ? `Aprovisionamiento ya solicitado. RequestId: ${s.provisioningRequestId}`
+            : actionTitle;
+
+        if (btnSendToCrm) {
+            btnSendToCrm.disabled = true;
+            btnSendToCrm.setAttribute("aria-disabled", "true");
+            btnSendToCrm.innerText = "Enviar al CRM";
+            btnSendToCrm.title = "Disponible cuando el CRM se publique para todos";
+        }
 
         if (!actionValidationMessage) {
             return;
@@ -869,6 +1112,196 @@ const showDebugCalcModal = false;
         resultTotal.innerText = "—";
     }
 
+    function getScenarioSaveRuntime(scenarioId) {
+        const key = String(scenarioId || "");
+        if (!scenarioSaveRuntime.has(key)) {
+            scenarioSaveRuntime.set(key, {
+                revision: 0,
+                savedRevision: 0,
+                timer: null,
+                inFlight: null,
+                queued: false,
+                lastError: ""
+            });
+        }
+        return scenarioSaveRuntime.get(key);
+    }
+
+    function notifyParentState(scenario, type = "calculator:state", overrides = {}) {
+        if (!embeddedCalculator || window.parent === window || !scenario) return;
+        const runtime = getScenarioSaveRuntime(scenario.id);
+        const valid = Boolean(scenario.lastResult?.inputHash);
+        window.parent.postMessage({
+            source: "digitaltech-calculator",
+            type,
+            groupId: scenario.groupId || scenario.id || "",
+            scenarioId: scenario.id || "",
+            possibilityName: scenario.possibilityName || scenario.name || "Escenario",
+            possibilityOrder: Number(scenario.possibilityOrder || 1),
+            rowVersion: scenario.rowVersion || "",
+            valid,
+            saved: runtime.savedRevision >= runtime.revision && !runtime.inFlight && !runtime.timer,
+            points: valid ? Number(scenario.lastResult.points || 0) : null,
+            totalMonthlySale: valid ? Number(scenario.lastResult.totalMonthlySale || 0) : null,
+            totalSale: valid ? Number(scenario.lastResult.totalSale || 0) : null,
+            error: runtime.lastError || "",
+            ...overrides
+        }, window.location.origin);
+    }
+
+    function postEmbeddedHeight() {
+        if (!embeddedCalculator || window.parent === window) return;
+        const calculatorBounds = calculatorInstance?.getBoundingClientRect();
+        const height = Math.ceil(Math.max(
+            calculatorInstance?.scrollHeight || 0,
+            calculatorBounds ? calculatorBounds.bottom + window.scrollY : 0));
+        window.parent.postMessage({
+            source: "digitaltech-calculator",
+            type: "calculator:resize",
+            groupId: getActiveScenario()?.groupId || "",
+            scenarioId: getActiveScenario()?.id || "",
+            height
+        }, window.location.origin);
+    }
+
+    let embeddedResizeFrame = 0;
+    function scheduleEmbeddedResize() {
+        if (!embeddedCalculator) return;
+        cancelAnimationFrame(embeddedResizeFrame);
+        embeddedResizeFrame = requestAnimationFrame(postEmbeddedHeight);
+    }
+
+    if (embeddedCalculator) {
+        window.addEventListener("message", event => {
+            if (event.origin !== window.location.origin
+                || event.source !== window.parent
+                || event.data?.source !== "digitaltech-calculator-workspace") {
+                return;
+            }
+
+            if (event.data?.type === "calculator:request-resize") {
+                scheduleEmbeddedResize();
+                return;
+            }
+
+            if (event.data?.type !== "calculator:set-group-name") return;
+            const scenario = getActiveScenario();
+            const groupId = String(event.data.groupId || "").trim();
+            const groupName = String(event.data.groupName || "").trim();
+            const scenarioGroupId = scenario?.groupId || scenario?.id || "";
+            if (!scenario || !groupName || (groupId && scenarioGroupId !== groupId)) return;
+            scenario.groupName = groupName;
+        });
+    }
+
+    function normalizeScenarioLinesForSave(scenario) {
+        const lines = Array.isArray(scenario?.lines) ? scenario.lines : [];
+        return lines.map((line, index) => {
+            if (!line.lineId) {
+                line.lineId = globalThis.crypto?.randomUUID?.() || uid();
+            }
+            line.lineOrder = index + 1;
+            return line;
+        });
+    }
+
+    function scheduleScenarioAutosave(scenario, delay = AUTOSAVE_DELAY_MS) {
+        if (!scenario?.id) return;
+        const runtime = getScenarioSaveRuntime(scenario.id);
+        clearTimeout(runtime.timer);
+        runtime.timer = setTimeout(() => {
+            runtime.timer = null;
+            void flushScenarioAutosave(scenario.id);
+        }, Math.max(0, delay));
+        notifyParentState(scenario, "calculator:state", { saved: false });
+    }
+
+    async function flushScenarioAutosave(scenarioId, throwOnError = false, keepalive = false) {
+        const runtime = getScenarioSaveRuntime(scenarioId);
+        clearTimeout(runtime.timer);
+        runtime.timer = null;
+
+        if (runtime.inFlight) {
+            runtime.queued = true;
+            try {
+                await runtime.inFlight;
+            } catch (error) {
+                if (throwOnError) throw error;
+            }
+            if (runtime.savedRevision < runtime.revision) {
+                return await flushScenarioAutosave(scenarioId, throwOnError, keepalive);
+            }
+            return;
+        }
+
+        const scenario = scenarios.find(item => item.id === scenarioId);
+        if (!scenario || runtime.savedRevision >= runtime.revision) {
+            if (scenario) notifyParentState(scenario);
+            return;
+        }
+
+        const savingRevision = runtime.revision;
+        runtime.queued = false;
+        runtime.lastError = "";
+        notifyParentState(scenario, "calculator:state", { saved: false });
+        runtime.inFlight = saveScenarioToDataverse(
+            scenario,
+            normalizeScenarioLinesForSave(scenario),
+            { keepalive });
+        let saveSucceeded = false;
+
+        try {
+            await runtime.inFlight;
+            saveSucceeded = true;
+            runtime.savedRevision = Math.max(runtime.savedRevision, savingRevision);
+            runtime.lastError = "";
+            notifyParentState(scenario, "calculator:saved", {
+                saved: runtime.savedRevision >= runtime.revision
+            });
+        } catch (error) {
+            runtime.lastError = error?.message || "No se pudieron guardar los cambios.";
+            notifyParentState(scenario, "calculator:state", { saved: false, error: runtime.lastError });
+            if (throwOnError) throw error;
+        } finally {
+            runtime.inFlight = null;
+            scheduleEmbeddedResize();
+        }
+
+        if (saveSucceeded && (runtime.queued || runtime.savedRevision < runtime.revision)) {
+            runtime.queued = false;
+            if (throwOnError) return await flushScenarioAutosave(scenarioId, true, keepalive);
+            scheduleScenarioAutosave(scenario, 0);
+        }
+    }
+
+    function hasPendingScenarioAutosave() {
+        return Array.from(scenarioSaveRuntime.values()).some(runtime =>
+            runtime.savedRevision < runtime.revision || Boolean(runtime.inFlight) || Boolean(runtime.timer));
+    }
+
+    function flushPendingScenarioAutosavesForNavigation() {
+        scenarios.forEach(scenario => {
+            const runtime = getScenarioSaveRuntime(scenario.id);
+            if (runtime.savedRevision < runtime.revision || runtime.timer) {
+                void flushScenarioAutosave(scenario.id, false, true);
+            }
+        });
+    }
+
+    function markScenarioChanged(scenario = getActiveScenario(), invalidateResult = true) {
+        if (!scenario) return;
+        if (invalidateResult) {
+            scenario.lastResult = null;
+            if (scenario.id === activeScenarioId) resetResults(false);
+        }
+        const runtime = getScenarioSaveRuntime(scenario.id);
+        runtime.revision += 1;
+        runtime.lastError = "";
+        scheduleScenarioAutosave(scenario);
+        syncScenarioActionButtons();
+        scheduleEmbeddedResize();
+    }
+
     function renderResultsFromScenario() {
         const s = getActiveScenario();
         if (s?.lastResult) {
@@ -882,9 +1315,8 @@ const showDebugCalcModal = false;
         resetResults(false);
     }
 
-    function markScenarioDirty() {
-        resetResults(true);
-        syncScenarioActionButtons();
+    function markScenarioDirty(scenario = getActiveScenario()) {
+        markScenarioChanged(scenario, true);
     }
 
     function roundMoneyValue(value) {
@@ -949,31 +1381,41 @@ const showDebugCalcModal = false;
     }
 
     function renderScenarioBar() {
-        scenarioBar.innerHTML = scenarios.map(s => {
-            const active = s.id === activeScenarioId ? "active" : "";
-            const lineCount = s.lines.length;
-            return `
-                <div class="scenario-tab ${active}" data-sid="${s.id}">
-                    <div>
-                        <p class="scenario-name">${escapeHtml(s.name)}</p>
-                        <p class="scenario-sub">${lineCount} líneas</p>
-                    </div>
-                    <div class="pill">Abrir</div>
-                </div>
-            `;
-        }).join("");
+        scenarioBar.replaceChildren();
+        scenarios.forEach(s => {
+            const tab = document.createElement("div");
+            tab.className = `scenario-tab${s.id === activeScenarioId ? " active" : ""}`;
+            tab.dataset.sid = String(s.id || "");
 
-        scenarioBar.querySelectorAll(".scenario-tab").forEach(tab => {
+            const detail = document.createElement("div");
+            const name = document.createElement("p");
+            name.className = "scenario-name";
+            name.textContent = s.name || "Escenario";
+            const summary = document.createElement("p");
+            summary.className = "scenario-sub";
+            const lineCount = s.lines.length;
+            summary.textContent = `${lineCount} líneas`;
+            detail.append(name, summary);
+
+            const pill = document.createElement("div");
+            pill.className = "pill";
+            pill.textContent = "Abrir";
+            tab.append(detail, pill);
             tab.addEventListener("click", () => {
-                activeScenarioId = tab.getAttribute("data-sid");
+                activeScenarioId = tab.dataset.sid || "";
+                updateCalculatorCrmLink(getActiveScenario());
                 syncScenarioPanel();
             });
+            scenarioBar.appendChild(tab);
         });
     }
 
     function renderLines() {
         const s = getActiveScenario();
         if (!s) return;
+
+        lineEventsAbortController?.abort();
+        lineEventsAbortController = null;
 
         if (!s.lines.length) {
             linesBody.innerHTML = `
@@ -1071,8 +1513,37 @@ const showDebugCalcModal = false;
     }
 
     function createScenario(name) {
-        const id = uid();
- return { id, name: name || "Escenario", dealType: 0, requiresProration: false, startDate: "", endDate: "", prorationClient: null, prorationRenewalOptions: [], prorationRenewalError: "", lines: [], lastResult: null };    }
+        const id = globalThis.crypto?.randomUUID?.() || uid();
+        return {
+            id,
+            groupId: id,
+            groupName: name || "Negocio",
+            possibilityName: name || "Escenario 1",
+            possibilityOrder: 1,
+            includeInProposal: true,
+            isRecommended: true,
+            rowVersion: "",
+            name: name || "Escenario",
+            dealType: 0,
+            requiresProration: false,
+            startDate: "",
+            endDate: "",
+            prorationClient: null,
+            prorationRenewalOptions: [],
+            prorationRenewalError: "",
+            lines: [],
+            lastResult: null,
+            crmDealId: "",
+            isCrmSharedAccess: false,
+            crmDealName: "",
+            crmDealKind: null,
+            crmProbability: null,
+            crmEstimatedValue: null,
+            crmCompany: null,
+            crmPrimaryContact: null,
+            provisioningRequestId: ""
+        };
+    }
 function toDateInputValue(value) {
         if (!value) return "";
         const str = String(value);
@@ -1220,6 +1691,8 @@ function toDateInputValue(value) {
                 : [],
             prorationRenewalError: "",
             lines: Array.isArray(stored.lines) ? stored.lines.map(line => ({
+                lineId: line.lineId || globalThis.crypto?.randomUUID?.() || uid(),
+                lineOrder: Number(line.lineOrder || 0),
                 businessType: Number(line.businessType || 0),
                 productId: (line.productId || "").trim(),
                 productDescription: line.productDescription || "",
@@ -1231,7 +1704,23 @@ function toDateInputValue(value) {
                 acelerador: Number(line.acelerador || 0),
                 hasVat: Boolean(line.hasVat)
             })) : [],
-            lastResult: stored.lastResult || null
+            groupId: stored.groupId || stored.scenarioId || "",
+            groupName: stored.groupName || stored.scenarioName || "Negocio",
+            possibilityName: stored.possibilityName || stored.scenarioName || "Escenario",
+            possibilityOrder: Number(stored.possibilityOrder || 1),
+            includeInProposal: stored.includeInProposal !== false,
+            isRecommended: Boolean(stored.isRecommended),
+            rowVersion: stored.rowVersion || "",
+            lastResult: stored.lastResult || null,
+            crmDealId: stored.crmDealId || "",
+            isCrmSharedAccess: Boolean(stored.isCrmSharedAccess),
+            crmDealName: "",
+            crmDealKind: null,
+            crmProbability: null,
+            crmEstimatedValue: null,
+            crmCompany: null,
+            crmPrimaryContact: null,
+            provisioningRequestId: ""
         };
     }
 
@@ -1239,6 +1728,19 @@ function toDateInputValue(value) {
         const s = getActiveScenario();
         if (!s) return;
 
+        requestedScenarioWarning.style.display = "none";
+        requestedScenarioWarning.innerText = "";
+        scenarioName.disabled = false;
+        requiresProration.disabled = false;
+        prorationClientInput.disabled = false;
+        btnCalculate.disabled = false;
+        btnDuplicateScenario.disabled = false;
+        btnDeleteScenario.disabled =
+            scenarios.length <= 1
+            || Boolean(s.isCrmSharedAccess)
+            || (crmCalculatorSyncEnabled && Boolean(s.crmDealId));
+        typeChips.style.pointerEvents = "";
+        typeChips.style.opacity = "";
         scenarioName.value = s.name;
         normalizeScenarioDealType(s);
         syncDealTypeInput();
@@ -1252,13 +1754,44 @@ function toDateInputValue(value) {
         renderScenarioBar();
         renderLines();
         renderResultsFromScenario();
-                updateProrationHint();
+        updateProrationHint();
+        syncScenarioActionButtons();
+        notifyParentState(s, "calculator:state");
+        scheduleEmbeddedResize();
+    }
+
+    function renderUnavailableRequestedScenario() {
+        activeScenarioId = null;
+        renderScenarioBar();
+        requestedScenarioWarning.innerText =
+            "El escenario solicitado no existe o no está disponible para tu usuario. Selecciona otro escenario o crea uno nuevo.";
+        requestedScenarioWarning.style.display = "block";
+        scenarioName.value = "";
+        scenarioName.disabled = true;
+        dealType.disabled = true;
+        requiresProration.disabled = true;
+        startDate.disabled = true;
+        endDate.disabled = true;
+        prorationClientInput.disabled = true;
+        btnCalculate.disabled = true;
+        btnDuplicateScenario.disabled = true;
+        btnDeleteScenario.disabled = true;
+        typeChips.style.pointerEvents = "none";
+        typeChips.style.opacity = ".45";
+        linesBody.innerHTML = `
+            <tr>
+                <td colspan="12" class="muted">Abre un escenario disponible para continuar.</td>
+            </tr>
+        `;
+        resetResults(false);
+        syncScenarioActionButtons();
     }
 
     function addScenario() {
         const s = createScenario(`Escenario ${scenarios.length + 1}`);
         scenarios.push(s);
         activeScenarioId = s.id;
+        updateCalculatorCrmLink(s);
         syncScenarioPanel();
     }
 
@@ -1269,13 +1802,33 @@ function toDateInputValue(value) {
         const copy = JSON.parse(JSON.stringify(current));
         copy.id = uid();
         copy.name = `${current.name} (copia)`;
+        copy.crmDealId = "";
+        copy.isCrmSharedAccess = false;
+        copy.crmDealName = "";
+        copy.crmDealKind = null;
+        copy.crmProbability = null;
+        copy.crmEstimatedValue = null;
+        copy.crmCompany = null;
+        copy.crmPrimaryContact = null;
+        copy.provisioningRequestId = "";
         scenarios.push(copy);
         activeScenarioId = copy.id;
+        updateCalculatorCrmLink(copy);
         syncScenarioPanel();
     }
 
      async function deleteScenario() {
         if (scenarios.length <= 1) { alert("Debes mantener al menos 1 escenario."); return; }
+
+        const activeScenario = getActiveScenario();
+        if (activeScenario?.isCrmSharedAccess) {
+            alert("No puedes eliminar un escenario que pertenece a otro usuario.");
+            return;
+        }
+        if (crmCalculatorSyncEnabled && activeScenario?.crmDealId) {
+            alert("Un escenario vinculado a un negocio CRM no se puede eliminar.");
+            return;
+        }
 
         const scenarioIdToDelete = activeScenarioId;
         if (!scenarioIdToDelete) return;
@@ -1289,6 +1842,7 @@ function toDateInputValue(value) {
 
         scenarios = scenarios.filter(s => s.id !== scenarioIdToDelete);
         activeScenarioId = scenarios[0].id;
+        updateCalculatorCrmLink(getActiveScenario());
         syncScenarioPanel();
     }
 
@@ -1297,6 +1851,8 @@ function toDateInputValue(value) {
         if (!s) return;
 
         s.lines.push({
+            lineId: globalThis.crypto?.randomUUID?.() || uid(),
+            lineOrder: s.lines.length + 1,
             businessType: businessTypeKey,
             productId: "",
             productDescription: "",
@@ -1333,6 +1889,14 @@ function toDateInputValue(value) {
 
      async function clientSearch(q) {
         const res = await fetch(`/Calculator/ClientSearch?q=${encodeURIComponent(q)}`, { headers: { "Accept": "application/json" } });
+        if (!res.ok) return [];
+        return await res.json();
+    }
+
+    async function crmCompanySearch(q) {
+        const res = await fetch(
+            `${CRM_COMPANY_SEARCH_URL}?q=${encodeURIComponent(q)}&top=12`,
+            { headers: { "Accept": "application/json" } });
         if (!res.ok) return [];
         return await res.json();
     }
@@ -1385,6 +1949,8 @@ function toDateInputValue(value) {
     function wireLineEvents() {
         const s = getActiveScenario();
         if (!s) return;
+        lineEventsAbortController = new AbortController();
+        const lineEventSignal = lineEventsAbortController.signal;
 
         linesBody.querySelectorAll("tr[data-idx]").forEach(row => {
             const idx = Number(row.getAttribute("data-idx"));
@@ -1400,27 +1966,42 @@ function toDateInputValue(value) {
             const vatInput = row.querySelector(".vat-input");
 
             const btnDel = row.querySelector(".btn-del-line");
-            btnDel.addEventListener("click", () => removeLine(idx));
+            btnDel.addEventListener("click", () => removeLine(idx), { signal: lineEventSignal });
 
-            function refreshLineFromInputs() {
-                line.costUnit = clampDec(costInput.value, 0);
-                line.marginPercent = clampDec(marginInput.value, 0);
-                line.contractMonths = clampInt(monthsInput.value, 1, 120, 12);
-                line.quantity = clampInt(qtyInput.value, 1, 999999, 1);
-                line.hasVat = Boolean(vatInput?.checked);
+            function syncLineInputs(renderAfterSync) {
+                const nextCost = clampDec(costInput.value, 0);
+                const nextMargin = clampDec(marginInput.value, 0);
+                const nextMonths = containsPrepaidOrYear(line.productDescription)
+                    ? 12
+                    : clampInt(monthsInput.value, 1, 120, 12);
+                const nextQuantity = clampInt(qtyInput.value, 1, 999999, 1);
+                const nextHasVat = Boolean(vatInput?.checked);
+                const changed = line.costUnit !== nextCost
+                    || line.marginPercent !== nextMargin
+                    || line.contractMonths !== nextMonths
+                    || line.quantity !== nextQuantity
+                    || line.hasVat !== nextHasVat;
 
-                if (containsPrepaidOrYear(line.productDescription)) {
-                    line.contractMonths = 12;
-                }
-                                markScenarioDirty();
-                renderLines();
+                line.costUnit = nextCost;
+                line.marginPercent = nextMargin;
+                line.contractMonths = nextMonths;
+                line.quantity = nextQuantity;
+                line.hasVat = nextHasVat;
+                if (changed) markScenarioDirty();
+                if (renderAfterSync) renderLines();
             }
 
-            costInput.addEventListener("change", refreshLineFromInputs);
-            marginInput.addEventListener("change", refreshLineFromInputs);
-            monthsInput.addEventListener("change", refreshLineFromInputs);
-            qtyInput.addEventListener("change", refreshLineFromInputs);
-            vatInput?.addEventListener("change", refreshLineFromInputs);
+            const captureFocusedNumericInput = () => syncLineInputs(false);
+            const normalizeChangedLine = () => syncLineInputs(true);
+            costInput.addEventListener("input", captureFocusedNumericInput, { signal: lineEventSignal });
+            marginInput.addEventListener("input", captureFocusedNumericInput, { signal: lineEventSignal });
+            monthsInput.addEventListener("input", captureFocusedNumericInput, { signal: lineEventSignal });
+            qtyInput.addEventListener("input", captureFocusedNumericInput, { signal: lineEventSignal });
+            costInput.addEventListener("change", normalizeChangedLine, { signal: lineEventSignal });
+            marginInput.addEventListener("change", normalizeChangedLine, { signal: lineEventSignal });
+            monthsInput.addEventListener("change", normalizeChangedLine, { signal: lineEventSignal });
+            qtyInput.addEventListener("change", normalizeChangedLine, { signal: lineEventSignal });
+            vatInput?.addEventListener("change", normalizeChangedLine, { signal: lineEventSignal });
 
             let timer = null;
             let lastItems = [];
@@ -1434,7 +2015,7 @@ function toDateInputValue(value) {
                 if (suggBox.style.display === "block") {
                     positionFullWidthSuggestions(suggBox, productInput);
                 }
-            });
+            }, { signal: lineEventSignal });
 
             productInput.addEventListener("input", () => {
                 const q = productInput.value.trim();
@@ -1471,15 +2052,15 @@ function toDateInputValue(value) {
 
                     suggBox.style.display = "block";
                 }, 220);
-            });
+            }, { signal: lineEventSignal });
 
             const onScrollResize = () => {
                 if (suggBox.style.display === "block") {
                     positionFullWidthSuggestions(suggBox, productInput);
                 }
             };
-            window.addEventListener("scroll", onScrollResize, true);
-            window.addEventListener("resize", onScrollResize);
+            window.addEventListener("scroll", onScrollResize, { capture: true, signal: lineEventSignal });
+            window.addEventListener("resize", onScrollResize, { signal: lineEventSignal });
 
             suggBox.addEventListener("click", (e) => {
                 const itemDiv = e.target.closest(".suggestion-item");
@@ -1507,12 +2088,12 @@ function toDateInputValue(value) {
                 hideSuggestions();
             
                 renderLines();
-            });
+            }, { signal: lineEventSignal });
 
             document.addEventListener("click", (e) => {
                 if (e.target === productInput || suggBox.contains(e.target)) return;
                 hideSuggestions();
-            });
+            }, { signal: lineEventSignal });
         });
     }
 
@@ -1574,7 +2155,7 @@ function toDateInputValue(value) {
     }
 
     function validateScenarioLines(options = {}) {
-        const s = getActiveScenario();
+        const s = options.scenario || getActiveScenario();
         if (!s) {
             alert("Selecciona un escenario activo.");
             return null;
@@ -1646,30 +2227,73 @@ function toDateInputValue(value) {
             lines
         };
     }
-async function saveScenarioToDataverse(scenario, lines) {
+async function saveScenarioToDataverse(scenario, lines, options = {}) {
         if (!scenario) return;
-        if (!Array.isArray(lines) || lines.length === 0) return;
+
+        const normalizedLines = (Array.isArray(lines) ? lines : []).map((line, index) => ({
+            lineId: line.lineId || globalThis.crypto?.randomUUID?.() || uid(),
+            lineOrder: Number(line.lineOrder || index + 1),
+            businessType: Number(line.businessType || 0),
+            productId: (line.productId || "").trim(),
+            productDescription: line.productDescription || "",
+            costUnit: Number(line.costUnit || 0),
+            marginPercent: Number(line.marginPercent || 0),
+            contractMonths: Number(line.contractMonths || 12),
+            quantity: Number(line.quantity || 1),
+            suggestedRetailPrice: Number(line.suggestedRetailPrice || 0),
+            acelerador: Number(line.acelerador || 0),
+            hasVat: Boolean(line.hasVat)
+        }));
+        normalizedLines.forEach((normalizedLine, index) => {
+            const currentLine = scenario.lines[index];
+            if (currentLine) Object.assign(currentLine, normalizedLine);
+        });
 
         const payload = {
             scenarioId: scenario.id,
+            groupId: scenario.groupId || scenario.id,
+            groupName: scenario.groupName || scenario.name || "Negocio",
+            possibilityName: scenario.possibilityName || scenario.name || "Escenario",
+            possibilityOrder: Number(scenario.possibilityOrder || 1),
+            includeInProposal: scenario.includeInProposal !== false,
+            isRecommended: Boolean(scenario.isRecommended),
+            expectedRowVersion: scenario.rowVersion || "",
+            crmDealId: scenario.crmDealId || "",
             scenarioName: scenario.name,
             dealType: Number(scenario.dealType || 0),
             requiresProration: Boolean(scenario.requiresProration),
             startDate: scenario.startDate ? new Date(scenario.startDate).toISOString() : null,
             endDate: scenario.endDate ? new Date(scenario.endDate).toISOString() : null,
-            lines,
+            lines: normalizedLines,
             lastResult: scenario.lastResult || null
         };
 
         const res = await fetch("/Calculator/SaveScenario", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Accept": "application/json" },
-            body: JSON.stringify(payload)
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "RequestVerificationToken": antiforgeryToken
+            },
+            body: JSON.stringify(payload),
+            keepalive: Boolean(options.keepalive)
         });
 
         if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(txt || "Error guardando escenario.");
+            throw new Error(await readErrorResponseMessage(
+                res,
+                res.status === 409 || res.status === 412
+                    ? "El escenario cambió en otra pestaña. Recarga para conservar la versión más reciente."
+                    : "Error guardando escenario."));
+        }
+
+        const saved = await res.json().catch(() => null);
+        const savedScenario = saved?.scenario || saved;
+        if (savedScenario?.rowVersion) {
+            scenario.rowVersion = savedScenario.rowVersion;
+        }
+        if (savedScenario?.groupId) {
+            scenario.groupId = savedScenario.groupId;
         }
     }
 
@@ -1678,18 +2302,54 @@ async function saveScenarioToDataverse(scenario, lines) {
 
         const res = await fetch(`/Calculator/DeleteScenario?scenarioId=${encodeURIComponent(scenarioId)}`, {
             method: "DELETE",
-            headers: { "Accept": "application/json" }
+            headers: {
+                "Accept": "application/json",
+                "RequestVerificationToken": antiforgeryToken
+            }
         });
 
         if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(txt || "Error eliminando escenario.");
+            const rawBody = await res.text();
+            let result = null;
+            if (rawBody.trim()) {
+                try {
+                    result = JSON.parse(rawBody);
+                } catch {
+                    result = null;
+                }
+            }
+            throw new Error(
+                result?.message
+                || normalizeInlineMessage(rawBody)
+                || "Error eliminando escenario.");
         }
     }
 
     async function calculate() {
-        const payload = buildPayload();
+        const targetScenario = getActiveScenario();
+        if (!targetScenario) return;
+
+        const payload = buildPayload({ scenario: targetScenario });
         if (!payload) return;
+        const targetScenarioId = targetScenario.id;
+        const calculationRevision = getScenarioSaveRuntime(targetScenarioId).revision;
+
+        try {
+            await flushScenarioAutosave(targetScenarioId, true);
+        } catch (error) {
+            alert("No se pudo guardar antes de calcular: " + (error?.message || error));
+            return;
+        }
+
+        if (getScenarioSaveRuntime(targetScenarioId).revision !== calculationRevision) {
+            notifyParentState(targetScenario, "calculator:state", {
+                valid: false,
+                saved: false,
+                error: "Los datos cambiaron antes de calcular. Calcula nuevamente."
+            });
+            alert("Los datos cambiaron mientras se guardaba. Calcula nuevamente para usar la versión actual.");
+            return;
+        }
 
         btnCalculate.disabled = true;
         btnCalculate.innerText = "Calculando...";
@@ -1708,9 +2368,23 @@ async function saveScenarioToDataverse(scenario, lines) {
 
             const data = await res.json();
 
-            const s = getActiveScenario();
+            const s = scenarios.find(item => item.id === targetScenarioId);
+            const runtime = getScenarioSaveRuntime(targetScenarioId);
+            if (!s || runtime.revision !== calculationRevision) {
+                if (s) {
+                    notifyParentState(s, "calculator:state", {
+                        valid: false,
+                        saved: false,
+                        error: "Los datos cambiaron durante el cálculo. Calcula nuevamente."
+                    });
+                }
+                alert("Los datos cambiaron durante el cálculo. Se descartó el resultado para proteger el puntaje.");
+                return;
+            }
+
             if (s) {
                 s.lastResult = {
+                    inputHash: data.inputHash || "",
                     points: Number(data.points || 0),
                     commission: Number(data.commission || 0),
                     prorationDays: Number(data.prorationDays || 0),
@@ -1722,8 +2396,11 @@ async function saveScenarioToDataverse(scenario, lines) {
             }
 
             renderResultsFromScenario();
-             if (s) {
-                await saveScenarioToDataverse(s, payload.lines);
+            if (s) {
+                markScenarioChanged(s, false);
+                await flushScenarioAutosave(s.id, true);
+                syncScenarioActionButtons();
+                notifyParentState(s, "calculator:calculated", { valid: true, saved: true });
             }
             const debugHtml = buildDebugCalcHtml(payload, data);
             openDebugCalcModal(debugHtml);
@@ -1775,44 +2452,456 @@ async function saveScenarioToDataverse(scenario, lines) {
         }
     }
 
-    async function generateProposal() {
-        const payload = buildPayload({
+    async function openProposalConfigurator() {
+        const validated = validateScenarioLines({
             requireSelectedProducts: true,
             actionLabel: "generar la propuesta"
         });
-        if (!payload) return;
+        if (!validated) return;
+
+        const { scenario: s, lines } = validated;
+        if (!s.lastResult) {
+            alert("Calcula y guarda el escenario antes de generar la propuesta.");
+            return;
+        }
 
         btnGenerateProposal.disabled = true;
-        btnGenerateProposal.innerText = "Generando...";
-        showProposalLoadingModal();
+        btnGenerateProposal.innerText = "Abriendo...";
 
         try {
-            const res = await fetch("/Calculator/GenerateProposal", {
+            await saveScenarioToDataverse(s, lines);
+            const query = new URLSearchParams({ scenarioId: s.id });
+            if (s.crmDealId) query.set("crmDealId", s.crmDealId);
+            window.location.assign(`${PROPOSAL_URL}?${query.toString()}`);
+        } catch (err) {
+            alert("Error: " + (err?.message || err));
+            btnGenerateProposal.innerText = "Generar propuesta";
+            syncScenarioActionButtons();
+        }
+    }
+
+    function setCrmDealStatus(message, type = "error") {
+        if (!crmDealStatus) return;
+        crmDealStatus.classList.remove("status-success", "status-error");
+        if (!message) {
+            crmDealStatus.style.display = "none";
+            crmDealStatus.innerText = "";
+            return;
+        }
+        crmDealStatus.classList.add(type === "success" ? "status-success" : "status-error");
+        crmDealStatus.innerText = message;
+        crmDealStatus.style.display = "block";
+    }
+
+    function appendCrmLog(message, isError = false) {
+        if (!crmSyncLog || !message) return;
+        const timestamp = new Date().toLocaleString();
+        crmSyncLog.innerHTML =
+            `<div class="${isError ? "text-danger" : "text-success"}">${escapeHtml(timestamp)} - ${escapeHtml(message)}</div>`;
+    }
+
+    function hideCrmCompanySuggestions() {
+        if (!crmCompanySuggestions) return;
+        crmCompanySuggestions.style.display = "none";
+        crmCompanySuggestions.innerHTML = "";
+    }
+
+    function updateCalculatorCrmLink(scenario) {
+        if (!scenario) return;
+        const url = new URL(window.location.href);
+        url.searchParams.set("scenarioId", scenario.id);
+        url.searchParams.delete("newCrmOpportunity");
+
+        if (isGuid(scenario.crmCompany?.id)) {
+            url.searchParams.set("crmCompanyId", scenario.crmCompany.id);
+            url.searchParams.set("crmCompanyName", scenario.crmCompany.name || "");
+        } else {
+            url.searchParams.delete("crmCompanyId");
+            url.searchParams.delete("crmCompanyName");
+        }
+
+        if (isGuid(scenario.crmPrimaryContact?.id)) {
+            url.searchParams.set("crmContactId", scenario.crmPrimaryContact.id);
+            url.searchParams.set("crmContactName", scenario.crmPrimaryContact.name || "");
+        } else {
+            url.searchParams.delete("crmContactId");
+            url.searchParams.delete("crmContactName");
+        }
+
+        if (scenario.crmDealId) {
+            url.searchParams.set("crmDealId", scenario.crmDealId);
+            url.searchParams.set("crmDealName", scenario.crmDealName || scenario.name || "");
+            url.searchParams.set(
+                "crmDealKind",
+                String(scenario.crmDealKind ??
+                    (scenario.lastResult ? quotedBusinessKind : estimatedOpportunityKind)));
+            url.searchParams.set("crmProbability", String(scenario.crmProbability ?? 25));
+            url.searchParams.set("crmEstimatedValue", String(scenario.crmEstimatedValue ?? 0));
+        } else {
+            url.searchParams.delete("crmDealId");
+            url.searchParams.delete("crmDealName");
+            url.searchParams.delete("crmDealKind");
+            url.searchParams.delete("crmProbability");
+            url.searchParams.delete("crmEstimatedValue");
+        }
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    function clearNewCrmOpportunityRequest() {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("newCrmOpportunity");
+        url.searchParams.delete("crmCompanyId");
+        url.searchParams.delete("crmCompanyName");
+        url.searchParams.delete("crmContactId");
+        url.searchParams.delete("crmContactName");
+        url.searchParams.delete("crmDealId");
+        url.searchParams.delete("crmDealName");
+        url.searchParams.delete("crmDealKind");
+        url.searchParams.delete("crmProbability");
+        url.searchParams.delete("crmEstimatedValue");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    function isGuid(value) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            .test(String(value || "").trim());
+    }
+
+    function applyRequestedCrmContext(scenario) {
+        if (!scenario) return false;
+
+        let applied = false;
+        if (isGuid(requestedCrmCompanyId)) {
+            scenario.crmCompany = {
+                id: requestedCrmCompanyId,
+                name: requestedCrmCompanyName.trim().slice(0, 200) || "Empresa seleccionada",
+                operationalClientId: "",
+                lifecycleValue: null,
+                lifecycleLabel: ""
+            };
+            scenario.crmPrimaryContact = isGuid(requestedCrmContactId)
+                ? {
+                    id: requestedCrmContactId,
+                    name: requestedCrmContactName.trim().slice(0, 200) || "Contacto seleccionado"
+                }
+                : null;
+            applied = true;
+        }
+
+        const requestedKind = Number(requestedCrmDealKind);
+        if (requestedKind === estimatedOpportunityKind || requestedKind === quotedBusinessKind) {
+            scenario.crmDealKind = requestedKind;
+            applied = true;
+        }
+
+        const requestedName = requestedCrmDealName.trim().slice(0, 200);
+        if (requestedName.length >= 3) {
+            scenario.crmDealName = requestedName;
+            applied = true;
+        }
+
+        const requestedProbability = Number(requestedCrmProbability);
+        if (requestedCrmProbability !== ""
+            && Number.isFinite(requestedProbability)
+            && requestedProbability >= 0
+            && requestedProbability <= 100) {
+            scenario.crmProbability = requestedProbability;
+            applied = true;
+        }
+
+        const requestedEstimatedValue = Number(requestedCrmEstimatedValue);
+        if (requestedCrmEstimatedValue !== ""
+            && Number.isFinite(requestedEstimatedValue)
+            && requestedEstimatedValue >= 0) {
+            scenario.crmEstimatedValue = requestedEstimatedValue;
+            applied = true;
+        }
+
+        return applied;
+    }
+
+    function syncCrmPrimaryContactUi() {
+        if (!crmPrimaryContactField || !crmPrimaryContactInput) return;
+        const contact = crmState.primaryContact;
+        crmPrimaryContactField.style.display = contact?.id ? "" : "none";
+        crmPrimaryContactInput.value = contact?.name || "";
+    }
+
+    function syncCrmDealKindUi() {
+        if (!crmDealKind) return;
+        const s = getActiveScenario();
+        const isQuoted = Number(crmDealKind.value) === quotedBusinessKind;
+        crmEstimatedValueField.style.display = isQuoted ? "none" : "";
+        crmQuotedSummary.style.display = isQuoted ? "grid" : "none";
+        crmQuotedScore.innerText = s?.lastResult ? num(s.lastResult.points, 2) : "Sin cálculo";
+        crmQuotedContractValue.innerText = s?.lastResult ? money(s.lastResult.totalSale) : "Sin cálculo";
+
+        if (btnConfirmCrmDeal) {
+            btnConfirmCrmDeal.disabled = crmState.loading || (isQuoted && !s?.lastResult);
+        }
+        if (isQuoted && !s?.lastResult) {
+            setCrmDealStatus("Calcula y guarda el escenario antes de enviarlo como negocio cotizado.");
+        } else {
+            setCrmDealStatus("");
+        }
+    }
+
+    function resetCrmDealForm() {
+        if (!crmDealModal) return;
+        const s = getActiveScenario();
+        if (!s) return;
+
+        crmState.company = s.crmCompany || null;
+        crmState.primaryContact = s.crmPrimaryContact || null;
+        crmState.loading = false;
+        crmDealKind.value = String(s.crmDealKind ??
+            (s.lastResult ? quotedBusinessKind : estimatedOpportunityKind));
+        crmDealName.value = s.crmDealName || s.name || "Registro comercial";
+        crmCompanyInput.value = crmState.company?.name || "";
+        crmProbability.value = String(s.crmProbability ?? 25);
+        crmEstimatedValue.value = String(s.crmEstimatedValue ?? 0);
+        btnConfirmCrmDeal.innerText = s.crmDealId ? "Actualizar en CRM" : "Enviar al CRM";
+        hideCrmCompanySuggestions();
+        syncCrmPrimaryContactUi();
+        syncCrmDealKindUi();
+    }
+
+    function crmDealModalFocusableElements() {
+        if (!crmDealModalDialog) return [];
+        return Array.from(crmDealModalDialog.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), '
+            + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+            .filter(element =>
+                !element.hidden
+                && element.getAttribute("aria-hidden") !== "true"
+                && element.getClientRects().length > 0);
+    }
+
+    function lockCrmDealModalBackground() {
+        if (!crmDealModal) return;
+        crmDealModalInertTargets = [];
+        let branch = crmDealModal;
+        while (branch?.parentElement) {
+            const parent = branch.parentElement;
+            Array.from(parent.children).forEach(sibling => {
+                if (sibling === branch
+                    || !(sibling instanceof HTMLElement)
+                    || sibling.inert) {
+                    return;
+                }
+                sibling.inert = true;
+                crmDealModalInertTargets.push(sibling);
+            });
+            if (parent === document.body) break;
+            branch = parent;
+        }
+        crmDealModalPreviousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+    }
+
+    function unlockCrmDealModalBackground() {
+        crmDealModalInertTargets.forEach(element => {
+            element.inert = false;
+        });
+        crmDealModalInertTargets = [];
+        document.body.style.overflow = crmDealModalPreviousBodyOverflow;
+    }
+
+    function trapCrmDealModalFocus(event) {
+        if (!crmDealModal || crmDealModal.getAttribute("aria-hidden") === "true") return;
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeCrmDealModal();
+            return;
+        }
+        if (event.key !== "Tab") return;
+
+        const focusable = crmDealModalFocusableElements();
+        if (!focusable.length) {
+            event.preventDefault();
+            crmDealModalDialog?.focus();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
+    function openCrmDealModal(trigger) {
+        return;
+        /*
+         * La publicación desde la calculadora está temporalmente pausada.
+         * El formulario se conserva para reactivarlo en una publicación posterior.
+         */
+        if (!crmDealModal || !getActiveScenario()) return;
+        if (crmDealModal.getAttribute("aria-hidden") === "false") return;
+        const requestedTrigger = trigger instanceof HTMLElement
+            ? trigger
+            : trigger?.currentTarget instanceof HTMLElement
+                ? trigger.currentTarget
+                : document.activeElement;
+        crmDealModalReturnFocus = requestedTrigger instanceof HTMLElement
+            && requestedTrigger !== document.body
+            && !crmDealModal.contains(requestedTrigger)
+                ? requestedTrigger
+                : btnSendToCrm;
+        resetCrmDealForm();
+        crmDealModal.style.display = "flex";
+        crmDealModal.setAttribute("aria-hidden", "false");
+        lockCrmDealModalBackground();
+        window.requestAnimationFrame(() => {
+            (crmDealName || crmDealModalDialog)?.focus();
+        });
+    }
+
+    function closeCrmDealModal() {
+        if (!crmDealModal) return;
+        const wasOpen = crmDealModal.getAttribute("aria-hidden") === "false";
+        crmDealModal.style.display = "none";
+        crmDealModal.setAttribute("aria-hidden", "true");
+        if (wasOpen) unlockCrmDealModalBackground();
+        crmState.loading = false;
+        hideCrmCompanySuggestions();
+        syncScenarioActionButtons();
+        const returnFocus = crmDealModalReturnFocus;
+        crmDealModalReturnFocus = null;
+        if (wasOpen && returnFocus instanceof HTMLElement) {
+            window.requestAnimationFrame(() => returnFocus.focus());
+        }
+    }
+
+    function buildScenarioForCrm(kind) {
+        const s = getActiveScenario();
+        if (!s) {
+            setCrmDealStatus("Selecciona un escenario.");
+            return null;
+        }
+
+        if (kind === quotedBusinessKind && !s.lastResult) {
+            setCrmDealStatus("Calcula y guarda el escenario antes de crear un negocio cotizado.");
+            return null;
+        }
+
+        if (!s.lines.length && kind === estimatedOpportunityKind) {
+            return { scenario: s, lines: [] };
+        }
+
+        return validateScenarioLines({ actionLabel: "enviar al CRM" });
+    }
+
+    async function submitScenarioToCrm() {
+        if (!btnConfirmCrmDeal || crmState.loading) return;
+        setCrmDealStatus("");
+
+        const kind = Number(crmDealKind.value);
+        const prepared = buildScenarioForCrm(kind);
+        if (!prepared) return;
+
+        const name = crmDealName.value.trim();
+        const probability = Number(crmProbability.value);
+        const estimatedValue = Number(crmEstimatedValue.value);
+        if (name.length < 3) {
+            setCrmDealStatus("Escribe un nombre de al menos 3 caracteres.");
+            return;
+        }
+        if (!crmState.company?.id) {
+            setCrmDealStatus("Selecciona una empresa de la lista.");
+            return;
+        }
+        if (!Number.isFinite(probability) || probability < 0 || probability > 100) {
+            setCrmDealStatus("La probabilidad debe estar entre 0 y 100.");
+            return;
+        }
+        if (kind === estimatedOpportunityKind &&
+            (!Number.isFinite(estimatedValue) || estimatedValue < 0)) {
+            setCrmDealStatus("El valor estimado debe ser válido.");
+            return;
+        }
+        if (!antiforgeryToken) {
+            setCrmDealStatus("No fue posible validar la sesión. Recarga la página e inténtalo nuevamente.");
+            return;
+        }
+
+        const s = prepared.scenario;
+        crmState.loading = true;
+        btnConfirmCrmDeal.disabled = true;
+        btnConfirmCrmDeal.innerText = "Guardando...";
+        syncScenarioActionButtons();
+
+        try {
+            await saveScenarioToDataverse(s, prepared.lines);
+
+            btnConfirmCrmDeal.innerText = "Sincronizando...";
+            const request = {
+                dealId: s.crmDealId || "",
+                scenarioId: s.id,
+                companyId: crmState.company.id,
+                primaryContactId: crmState.primaryContact?.id || "",
+                name,
+                kind,
+                estimatedValue: kind === estimatedOpportunityKind ? estimatedValue : 0,
+                probability,
+                expectedCloseDate: null,
+                nextAction: "",
+                nextActionAtUtc: null,
+                businessLine: ""
+            };
+            const res = await fetch(CRM_SEND_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Accept": "text/html" },
-                body: JSON.stringify(payload)
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "RequestVerificationToken": antiforgeryToken
+                },
+                body: JSON.stringify(request)
             });
 
             if (!res.ok) {
-                const message = await readErrorResponseMessage(res, "Error generando la propuesta.");
-                throw new Error(message);
+                throw new Error(await readErrorResponseMessage(
+                    res,
+                    `No fue posible sincronizar con el CRM (HTTP ${res.status}).`));
             }
 
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            const safeName = (payload.scenarioName || "propuesta").trim().replace(/[^a-zA-Z0-9-_ ]/g, "") || "propuesta";
-            a.href = url;
-            a.download = `${safeName.replace(/\s+/g, "_")}_propuesta.html`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+            const result = await res.json();
+            const dealId = result?.deal?.id || result?.deal?.Id || "";
+            if (dealId) s.crmDealId = dealId;
+            s.crmCompany = {
+                id: crmState.company.id,
+                name: crmState.company.name,
+                operationalClientId: crmState.company.operationalClientId || "",
+                lifecycleValue: crmState.company.lifecycleValue,
+                lifecycleLabel: crmState.company.lifecycleLabel || ""
+            };
+            s.crmPrimaryContact = crmState.primaryContact?.id
+                ? {
+                    id: crmState.primaryContact.id,
+                    name: crmState.primaryContact.name || ""
+                }
+                : null;
+            s.crmDealName = name;
+            s.crmDealKind = kind;
+            s.crmProbability = probability;
+            s.crmEstimatedValue = kind === estimatedOpportunityKind ? estimatedValue : 0;
+            updateCalculatorCrmLink(s);
+            const successMessage = result?.message || "Registro comercial sincronizado con el CRM.";
+            setCrmDealStatus(successMessage, "success");
+            appendCrmLog(successMessage);
+            btnConfirmCrmDeal.innerText = "Actualizar en CRM";
+            setTimeout(closeCrmDealModal, 800);
         } catch (err) {
-            alert("Error: " + (err?.message || err));
+            const message = err?.message || "No fue posible sincronizar con el CRM.";
+            setCrmDealStatus(message);
+            appendCrmLog(message, true);
         } finally {
-            hideProposalLoadingModal();
-            btnGenerateProposal.innerText = "Generar propuesta";
+            crmState.loading = false;
+            btnConfirmCrmDeal.disabled = false;
+            btnConfirmCrmDeal.innerText = s.crmDealId ? "Actualizar en CRM" : "Enviar al CRM";
             syncScenarioActionButtons();
         }
     }
@@ -2015,6 +3104,8 @@ async function saveScenarioToDataverse(scenario, lines) {
                 ventaUnd: roundMoneyValue(computed.saleUnit),
                 margenPorcentaje: roundMoneyValue(line.marginPercent || 0),
                 duracionMeses: Number(line.contractMonths || 0),
+                suggestedRetailPrice: roundMoneyValue(line.suggestedRetailPrice || 0),
+                acelerador: roundMoneyValue(line.acelerador || 0),
                 ventaMensual: roundMoneyValue(computed.monthly),
                 ventaTotal: roundMoneyValue(computed.total),
                 tieneIva: Boolean(line.hasVat),
@@ -2027,7 +3118,7 @@ async function saveScenarioToDataverse(scenario, lines) {
             return null;
         }
 
-        return {
+        const payload = {
             source: sourceSystem,
             businessId: s.id || s.name || uid(),
             requester: {
@@ -2068,6 +3159,10 @@ async function saveScenarioToDataverse(scenario, lines) {
                 base64: attachmentState.base64
             }
         };
+        if (s.crmDealId) {
+            payload.crmDealId = s.crmDealId;
+        }
+        return payload;
     }
 
     async function submitProvisioningRequest() {
@@ -2099,13 +3194,41 @@ async function saveScenarioToDataverse(scenario, lines) {
                 body: JSON.stringify(payload)
             });
 
-            if (!res.ok) {
-                const txt = await res.text();
-                throw new Error(txt || `Error HTTP ${res.status}`);
+            const rawBody = await res.text();
+            let result = null;
+            if (rawBody.trim()) {
+                try {
+                    result = JSON.parse(rawBody);
+                } catch {
+                    result = null;
+                }
             }
 
-            const result = await res.json().catch(() => null);
+            if (!res.ok) {
+                const message = result
+                    ? buildApiErrorMessage(result, `Error HTTP ${res.status}`)
+                    : (normalizeInlineMessage(rawBody) || `Error HTTP ${res.status}`);
+                if (result?.flowAccepted) {
+                    const s = getActiveScenario();
+                    if (s) {
+                        s.provisioningRequestId = result.requestId || "pendiente-reconciliacion";
+                    }
+                    const requestSuffix = result?.requestId ? ` RequestId: ${result.requestId}.` : "";
+                    setProvisioningStatus(`${message}${requestSuffix}`);
+                    appendProvisioningLog(`${message}${requestSuffix}`, true);
+                    syncScenarioActionButtons();
+                    return;
+                }
+                throw new Error(message);
+            }
+
             const requestId = result?.requestId || "";
+            const s = getActiveScenario();
+            if (s) {
+                s.provisioningRequestId = requestId || "solicitud-enviada";
+                s.crmDealId = result?.crmDealId || result?.deal?.id || s.crmDealId || "";
+                updateCalculatorCrmLink(s);
+            }
             const successMessage = result?.message || "Solicitud enviada a aprobación.";
             const requestSuffix = requestId ? ` RequestId: ${requestId}.` : "";
             appendProvisioningLog(`Solicitud enviada (${payload.lineItems.length} líneas). Cliente: ${payload.cliente.nombre}.${requestSuffix}`);
@@ -2117,16 +3240,22 @@ async function saveScenarioToDataverse(scenario, lines) {
             appendProvisioningLog(message, true);
         } finally {
             provisioningState.loading = false;
-            btnConfirmProvisioning.disabled = false;
-            btnConfirmProvisioning.innerText = "Confirmar solicitud";
+            const provisioningLocked = Boolean(getActiveScenario()?.provisioningRequestId);
+            btnConfirmProvisioning.disabled = provisioningLocked;
+            btnConfirmProvisioning.innerText = provisioningLocked
+                ? "Solicitud registrada"
+                : "Confirmar solicitud";
+            syncScenarioActionButtons();
         }
     }
 
-    scenarioName.addEventListener("change", () => {
+    scenarioName.addEventListener("input", () => {
         const s = getActiveScenario();
         if (!s) return;
         s.name = scenarioName.value.trim() || s.name;
+        s.possibilityName = s.name;
         renderScenarioBar();
+        markScenarioChanged(s, false);
     });
 
     btnNewScenario.addEventListener("click", addScenario);
@@ -2291,6 +3420,84 @@ async function saveScenarioToDataverse(scenario, lines) {
         hideProrationClientSuggestions();
     });
 
+    if (crmDealKind) {
+        crmDealKind.addEventListener("change", syncCrmDealKindUi);
+    }
+
+    if (crmCompanyInput && crmCompanySuggestions) {
+        crmCompanyInput.addEventListener("focus", () => {
+            if (crmCompanySuggestions.style.display === "block") {
+                positionFullWidthSuggestions(crmCompanySuggestions, crmCompanyInput);
+            }
+        });
+
+        crmCompanyInput.addEventListener("input", () => {
+            crmState.company = null;
+            crmState.primaryContact = null;
+            syncCrmPrimaryContactUi();
+            const q = crmCompanyInput.value.trim();
+            clearTimeout(crmCompanySearchTimer);
+            if (q.length < 2) {
+                hideCrmCompanySuggestions();
+                return;
+            }
+
+            crmCompanySearchTimer = setTimeout(async () => {
+                crmCompanyResults = await crmCompanySearch(q);
+                if (!crmCompanyResults.length) {
+                    hideCrmCompanySuggestions();
+                    return;
+                }
+
+                positionFullWidthSuggestions(crmCompanySuggestions, crmCompanyInput);
+                crmCompanySuggestions.innerHTML = crmCompanyResults.map((company, idx) => `
+                    <div class="suggestion-item" data-crm-company-idx="${idx}">
+                        <div style="font-weight:800;">${escapeHtml(company.name)}</div>
+                        <div class="small muted">${escapeHtml(company.lifecycleLabel || "Lead")}${company.city ? ` · ${escapeHtml(company.city)}` : ""}</div>
+                    </div>
+                `).join("");
+                crmCompanySuggestions.style.display = "block";
+            }, 220);
+        });
+
+        crmCompanySuggestions.addEventListener("click", (e) => {
+            const itemDiv = e.target.closest(".suggestion-item");
+            if (!itemDiv) return;
+            const idx = Number(itemDiv.getAttribute("data-crm-company-idx"));
+            const company = crmCompanyResults[idx];
+            if (!company) return;
+
+            if (crmState.primaryContact
+                && crmState.company?.id
+                && crmState.company.id !== company.id) {
+                crmState.primaryContact = null;
+            }
+            crmState.company = {
+                id: company.id,
+                name: company.name,
+                operationalClientId: company.operationalClientId || "",
+                lifecycleValue: company.lifecycleValue,
+                lifecycleLabel: company.lifecycleLabel || ""
+            };
+            crmCompanyInput.value = company.name;
+            syncCrmPrimaryContactUi();
+            hideCrmCompanySuggestions();
+            setCrmDealStatus("");
+        });
+
+        const onCrmCompanyScrollResize = () => {
+            if (crmCompanySuggestions.style.display === "block") {
+                positionFullWidthSuggestions(crmCompanySuggestions, crmCompanyInput);
+            }
+        };
+        window.addEventListener("scroll", onCrmCompanyScrollResize, true);
+        window.addEventListener("resize", onCrmCompanyScrollResize);
+        document.addEventListener("click", (e) => {
+            if (e.target === crmCompanyInput || crmCompanySuggestions.contains(e.target)) return;
+            hideCrmCompanySuggestions();
+        });
+    }
+
     provisioningDate.addEventListener("change", () => {
         provisioningState.date = provisioningDate.value;
     });
@@ -2417,6 +3624,23 @@ if (attachmentInput) {
             }
         });
     }
+    if (btnCloseCrmDeal) {
+        btnCloseCrmDeal.addEventListener("click", closeCrmDealModal);
+    }
+    if (btnCancelCrmDeal) {
+        btnCancelCrmDeal.addEventListener("click", closeCrmDealModal);
+    }
+    if (btnConfirmCrmDeal) {
+        btnConfirmCrmDeal.addEventListener("click", submitScenarioToCrm);
+    }
+    if (crmDealModal) {
+        crmDealModal.addEventListener("keydown", trapCrmDealModalFocus);
+        crmDealModal.addEventListener("click", (e) => {
+            if (e.target === crmDealModal) {
+                closeCrmDealModal();
+            }
+        });
+    }
     btnProvisioning.addEventListener("click", openProvisioningModal);
     btnCloseProvisioning.addEventListener("click", closeProvisioningModal);
     btnCancelProvisioning.addEventListener("click", closeProvisioningModal);
@@ -2424,19 +3648,76 @@ if (attachmentInput) {
 
     btnCalculate.addEventListener("click", calculate);
     btnExport.addEventListener("click", exportExcel);
-    btnGenerateProposal.addEventListener("click", generateProposal);
+    btnGenerateProposal?.addEventListener("click", openProposalConfigurator);
     // Init
     renderTypeChips();
-    if (Array.isArray(storedScenarios) && storedScenarios.length > 0) {
+    let requestedScenarioMissing = false;
+    if (requestedNewCrmOpportunity) {
+        scenarios = Array.isArray(storedScenarios)
+            ? storedScenarios.map(mapStoredScenario)
+            : [];
+        const contextualScenario = createScenario(
+            requestedCrmCompanyName.trim()
+                ? `Oportunidad - ${requestedCrmCompanyName.trim().slice(0, 150)}`
+                : `Oportunidad ${scenarios.length + 1}`);
+        applyRequestedCrmContext(contextualScenario);
+        scenarios.push(contextualScenario);
+        activeScenarioId = contextualScenario.id;
+        clearNewCrmOpportunityRequest();
+    } else if (Array.isArray(storedScenarios) && storedScenarios.length > 0) {
         scenarios = storedScenarios.map(mapStoredScenario);
-        activeScenarioId = (requestedScenarioId
-            ? scenarios.find(s => s.id === requestedScenarioId)?.id
-            : null) || scenarios[0]?.id || null;
+        if (requestedScenarioId) {
+            const matchedScenario = scenarios.find(s =>
+                String(s.id).toLowerCase() === requestedScenarioId.toLowerCase());
+            if (matchedScenario) {
+                activeScenarioId = matchedScenario.id;
+                matchedScenario.crmDealId = isGuid(requestedCrmDealId) ? requestedCrmDealId : "";
+                applyRequestedCrmContext(matchedScenario);
+            } else {
+                activeScenarioId = null;
+                requestedScenarioMissing = true;
+            }
+        } else {
+            activeScenarioId = scenarios[0]?.id || null;
+        }
+    } else if (requestedScenarioId) {
+        scenarios = [];
+        activeScenarioId = null;
+        requestedScenarioMissing = true;
     } else {
         scenarios = [createScenario("Escenario 1")];
         activeScenarioId = scenarios[0].id;
     }
-    syncScenarioPanel();
+    if (requestedScenarioMissing) {
+        renderUnavailableRequestedScenario();
+    } else {
+        syncScenarioPanel();
+    }
+
+    if (embeddedCalculator) {
+        const embeddedScenario = getActiveScenario();
+        if (embeddedScenario) {
+            notifyParentState(embeddedScenario, "calculator:ready");
+        }
+        if (typeof ResizeObserver !== "undefined") {
+            const resizeObserver = new ResizeObserver(scheduleEmbeddedResize);
+            resizeObserver.observe(calculatorInstance || document.body);
+        }
+        window.addEventListener("load", scheduleEmbeddedResize, { once: true });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            flushPendingScenarioAutosavesForNavigation();
+        }
+    });
+    window.addEventListener("pagehide", flushPendingScenarioAutosavesForNavigation);
+    window.addEventListener("beforeunload", event => {
+        if (!hasPendingScenarioAutosave()) return;
+        flushPendingScenarioAutosavesForNavigation();
+        event.preventDefault();
+        event.returnValue = "";
+    });
 })();
 </script>
 }

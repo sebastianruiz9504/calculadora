@@ -114,6 +114,26 @@
       "label": "Conciliacion",
       "value": 645250022,
       "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Prima legal",
+      "value": 645250023,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "Contratos",
+      "value": 645250024,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "CRM Usuario",
+      "value": 645250025,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
+    },
+    {
+      "label": "CRM Administrador",
+      "value": 645250026,
+      "targetColumn": "cr07a_empleado.cr07a_modulos"
     }
   ]
 }

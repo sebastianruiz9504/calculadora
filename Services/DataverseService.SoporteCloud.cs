@@ -50,9 +50,14 @@ public sealed partial class DataverseService
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
 
-        var metadata = await ResolveSoporteCloudMetadataAsync(httpContext.User, ct);
-        var allRows = await LoadSoporteCloudRowsAsync(metadata, httpContext.User, ct);
         var (resolvedStartDate, resolvedEndDate) = ResolveSoporteCloudDateRange(startDate, endDate);
+        var metadata = await ResolveSoporteCloudMetadataAsync(httpContext.User, ct);
+        var allRows = await LoadSoporteCloudRowsAsync(
+            metadata,
+            httpContext.User,
+            resolvedStartDate,
+            resolvedEndDate,
+            ct);
         var filteredRows = allRows
             .Where(row => IsSoporteCloudRowInRange(row, resolvedStartDate, resolvedEndDate))
             .ToList();
@@ -230,6 +235,28 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<SoporteCloudDeleteResultDto> DeleteSoporteCloudTicketAsync(
+        string recordId,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveSoporteCloudMetadataAsync(httpContext.User, ct);
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+
+        await CallDataverseDeleteAsync(
+            $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}({normalizedRecordId})",
+            httpContext.User,
+            ct);
+
+        return new SoporteCloudDeleteResultDto
+        {
+            Message = "Ticket de soporte cloud eliminado correctamente.",
+            RecordId = normalizedRecordId
+        };
+    }
+
     public async Task<SoporteCloudFileDownloadResult?> DownloadSoporteCloudAttachmentAsync(
         string recordId,
         CancellationToken ct = default)
@@ -318,10 +345,18 @@ public sealed partial class DataverseService
     private async Task<IReadOnlyList<SoporteCloudTicketRowDto>> LoadSoporteCloudRowsAsync(
         SoporteCloudMetadata metadata,
         ClaimsPrincipal user,
+        DateOnly startDate,
+        DateOnly endDate,
         CancellationToken ct)
     {
+        var dateFilter = BuildBillingDateFilter(
+            SoporteCloudCreationDateField,
+            "date-only",
+            startDate,
+            endDate.AddDays(1));
         var relativeUrl =
             $"/api/data/v9.2/{metadata.BaseMetadata.EntitySetName}?$select={BuildSoporteCloudSelectClause(metadata)}" +
+            $"&$filter={Uri.EscapeDataString(dateFilter)}" +
             $"&$orderby={SoporteCloudCreationDateField} desc,{SoporteCloudModifiedOnField} desc";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 

@@ -1,0 +1,209 @@
+@model ContractsPageViewModel
+@using System.Globalization
+@using CotizadorInterno.Web.Models.Contracts
+@{
+    ViewData["Title"] = "Contratos";
+    var culture = CultureInfo.GetCultureInfo("es-CO");
+    var currentUser = string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.EmployeeName : Model.CurrentUser.DisplayName;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/contracts.css" asp-append-version="true" />
+}
+
+<div class="contracts-app" id="contractsApp"
+     data-client-search-url="@Url.Action("ClientSearch", "Contracts")"
+     data-analyze-rut-url="@Url.Action("AnalyzeRut", "Contracts")"
+     data-analyze-offer-url="@Url.Action("AnalyzeOffer", "Contracts")"
+     data-create-url="@Url.Action("Create", "Contracts")"
+     data-create-order-url="@Url.Action("CreateServiceOrder", "Contracts")"
+     data-upload-signed-url="@Url.Action("UploadSignedContract", "Contracts")"
+     data-upload-order-signed-url="@Url.Action("UploadSignedOrder", "Contracts")"
+     data-generate-act-url="@Url.Action("GenerateAct", "Contracts")">
+    @Html.AntiForgeryToken()
+
+    <section class="contracts-hero">
+        <div class="contracts-hero__content">
+            <span class="contracts-eyebrow">Gerencia · Gestión contractual</span>
+            <h1>Contratos</h1>
+            <p>Convierte RUT y ofertas aprobadas en contratos Copiers, órdenes de servicio y actas de entrega vinculadas al cliente.</p>
+            <div class="contracts-hero__actions">
+                <button type="button" class="contracts-btn contracts-btn--primary" data-open-contract><span>＋</span> Nuevo contrato</button>
+                <span class="contracts-user">Sesión de <strong>@currentUser</strong></span>
+            </div>
+        </div>
+        <div class="contracts-next">
+            <span>Siguiente consecutivo</span>
+            <strong>@(string.IsNullOrWhiteSpace(Model.NextConsecutive) ? "Sin disponibilidad" : Model.NextConsecutive)</strong>
+            <small>@Model.AvailableConsecutives consecutivos disponibles</small>
+        </div>
+    </section>
+
+    <div class="contracts-alert" data-global-status role="status" aria-live="polite" hidden></div>
+
+    <section class="contracts-metrics" aria-label="Resumen contractual">
+        <article><span>Total contratos</span><strong>@Model.TotalContracts</strong><small>Registrados en Dataverse</small></article>
+        <article><span>Pendientes de firma</span><strong>@Model.PendingSignatureContracts</strong><small>Documento generado</small></article>
+        <article><span>Firmados o activos</span><strong>@Model.SignedContracts</strong><small>Listos para operación</small></article>
+        <article class="contracts-metric--accent"><span>Banco disponible</span><strong>@Model.AvailableConsecutives</strong><small>Asignación automática</small></article>
+    </section>
+
+    <section class="contracts-workspace">
+        <div class="contracts-section-head">
+            <div><span class="contracts-eyebrow">Portafolio</span><h2>Contratos registrados</h2></div>
+            <label class="contracts-search"><span class="visually-hidden">Buscar contratos</span><input type="search" placeholder="Buscar por consecutivo, cliente o NIT" data-contract-search /></label>
+        </div>
+
+        @if (Model.Contracts.Count == 0)
+        {
+            <div class="contracts-empty">
+                <div class="contracts-empty__icon">C</div><h3>Aún no hay contratos</h3>
+                <p>El primer contrato tomará automáticamente el consecutivo @Model.NextConsecutive.</p>
+                <button type="button" class="contracts-btn contracts-btn--primary" data-open-contract>Crear primer contrato</button>
+            </div>
+        }
+        else
+        {
+            <div class="contracts-list" data-contract-list>
+                @foreach (var contract in Model.Contracts)
+                {
+                    var statusClass = contract.StatusValue switch
+                    {
+                        ContractOptionValues.Active => "is-active",
+                        ContractOptionValues.Signed => "is-signed",
+                        ContractOptionValues.Generated => "is-generated",
+                        _ => "is-draft"
+                    };
+                    <article class="contract-card" data-contract-card data-search-text="@($"{contract.Consecutive} {contract.ClientName} {contract.ClientNit}".ToLowerInvariant())">
+                        <div class="contract-card__main">
+                            <div class="contract-card__identity"><span class="contract-card__type">@contract.ContractType</span><h3>@contract.Consecutive</h3><p>@contract.ClientName <span>· NIT @contract.ClientNit</span></p></div>
+                            <div class="contract-card__meta"><span class="contract-status @statusClass"><i></i>@contract.Status</span><span>@contract.DurationMonths meses</span><span>@(contract.ContractDate?.ToString("dd MMM yyyy", culture) ?? "Sin fecha")</span></div>
+                            <div class="contract-card__actions">
+                                @if (contract.HasGeneratedContract) { <a class="contracts-btn contracts-btn--ghost" href="@Url.Action("Download", "Contracts", new { kind = "contract", recordId = contract.Id, fileKey = "generated" })">Contrato</a> }
+                                @if (contract.HasSignedContract) { <a class="contracts-btn contracts-btn--ghost" href="@Url.Action("Download", "Contracts", new { kind = "contract", recordId = contract.Id, fileKey = "signed" })">Firmado</a> }
+                                else { <button type="button" class="contracts-btn contracts-btn--ghost" data-upload-signed data-id="@contract.Id">Subir firmado</button> }
+                                <button type="button" class="contracts-btn contracts-btn--soft" data-open-order data-id="@contract.Id" data-code="@contract.Consecutive" data-address="@contract.ExecutionAddress">Nueva orden</button>
+                                <button type="button" class="contract-expand" data-expand-contract aria-expanded="false" aria-label="Ver detalle">⌄</button>
+                            </div>
+                        </div>
+                        <div class="contract-card__detail" data-contract-detail hidden>
+                            <div class="contract-facts">
+                                <div><span>Representante</span><strong>@contract.LegalRepresentative</strong></div><div><span>Lugar de ejecución</span><strong>@contract.ExecutionAddress</strong></div>
+                                <div><span>Acta inicial</span><strong>@contract.InitialActNumber</strong></div><div><span>Órdenes asociadas</span><strong>@contract.ServiceOrders.Count</strong></div>
+                            </div>
+                            <div class="order-list"><div class="order-list__head"><h4>Órdenes de servicio</h4><span>Documentos derivados</span></div>
+                                @foreach (var order in contract.ServiceOrders)
+                                {
+                                    <div class="order-row">
+                                        <div class="order-row__number"><strong>@order.OrderNumber</strong><span>@order.OrderType · Acta @order.ActNumber</span></div>
+                                        <div class="order-row__object">@order.Object</div>
+                                        <div class="order-row__actions">
+                                            @if (!string.IsNullOrWhiteSpace(order.GeneratedOrderFileName)) { <a href="@Url.Action("Download", "Contracts", new { kind = "order", recordId = order.Id, fileKey = "generated" })">Orden</a> }
+                                            @if (!string.IsNullOrWhiteSpace(order.SignedOrderFileName)) { <a href="@Url.Action("Download", "Contracts", new { kind = "order", recordId = order.Id, fileKey = "signed" })">Firmada</a> }
+                                            else { <button type="button" data-upload-order-signed data-id="@order.Id">Subir firma</button> }
+                                            @if (!string.IsNullOrWhiteSpace(order.DeliveryActFileName)) { <a href="@Url.Action("Download", "Contracts", new { kind = "order", recordId = order.Id, fileKey = "act" })">Acta</a> }
+                                            else if (contract.HasSignedContract) { <button type="button" data-generate-act data-contract-id="@contract.Id" data-order-id="@order.Id">Generar acta</button> }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(contract.AiWarnings)) { <div class="contract-warning"><strong>Revisiones sugeridas por IA</strong><span>@contract.AiWarnings</span></div> }
+                        </div>
+                    </article>
+                }
+            </div>
+            <div class="contracts-empty contracts-empty--search" data-search-empty hidden><h3>No encontramos coincidencias</h3><p>Prueba con otro consecutivo, cliente o NIT.</p></div>
+        }
+    </section>
+
+    <input type="file" accept=".pdf,.doc,.docx" data-signed-file hidden />
+    <input type="file" accept=".pdf,.doc,.docx" data-order-signed-file hidden />
+
+    <div class="contracts-modal" data-contract-modal hidden>
+        <div class="contracts-modal__backdrop" data-close-modal></div>
+        <div class="contracts-modal__dialog contracts-modal__dialog--large" role="dialog" aria-modal="true" aria-labelledby="contractModalTitle">
+            <header class="contracts-modal__header"><div><span class="contracts-eyebrow">Asistente contractual</span><h2 id="contractModalTitle">Nuevo contrato</h2></div><button type="button" class="contracts-modal__close" data-close-modal>×</button></header>
+            <div class="contracts-stepper"><button type="button" class="is-current" data-step-tab="1"><span>1</span>Tipo y cliente</button><button type="button" data-step-tab="2"><span>2</span>Documentos</button><button type="button" data-step-tab="3"><span>3</span>Información</button><button type="button" data-step-tab="4"><span>4</span>Revisión</button></div>
+            <div class="contracts-alert" data-modal-status role="status" aria-live="polite" hidden></div>
+            <form data-contract-form>
+                <section class="contracts-step" data-step="1">
+                    <div class="contracts-step__intro"><h3>Selecciona la plantilla</h3><p>Los campos y anexos se adaptan al tipo de contrato.</p></div>
+                    <div class="contract-type-grid">
+                        <label class="contract-type-card is-selected"><input type="radio" name="contractType" value="645260000" checked /><span class="contract-type-card__mark">CP</span><strong>Copiers</strong><small>Arrendamiento de equipos, impresión, soporte y valor agregado.</small><em>Disponible</em></label>
+                        <div class="contract-type-card is-disabled"><span class="contract-type-card__mark">＋</span><strong>Próximas plantillas</strong><small>La arquitectura ya admite nuevos tipos.</small><em>Próximamente</em></div>
+                    </div>
+                    <div class="contracts-form-grid contracts-form-grid--2">
+                        <label class="contracts-field contracts-field--wide"><span>Cliente en Dataverse *</span><input type="search" autocomplete="off" list="contractClientOptions" placeholder="Escribe al menos dos caracteres" data-client-name /><input type="hidden" data-client-id /><datalist id="contractClientOptions" data-client-options></datalist><small>El contrato quedará vinculado a este cliente mediante lookup.</small></label>
+                        <label class="contracts-field"><span>Fecha del contrato *</span><input type="date" data-field="contractDate" /></label>
+                        <label class="contracts-field"><span>Ciudad de firma *</span><input type="text" value="Bogotá D.C." data-field="signatureCity" /></label>
+                    </div>
+                </section>
+
+                <section class="contracts-step" data-step="2" hidden>
+                    <div class="contracts-step__intro"><h3>Sube los documentos fuente</h3><p>Azure OpenAI extrae la información; siempre podrás corregirla antes de generar el contrato.</p></div>
+                    <div class="document-upload-grid">
+                        <article class="document-upload" data-upload-card="rut"><div class="document-upload__icon">RUT</div><h4>RUT del cliente</h4><p>Razón social, NIT, representante, direcciones y contacto.</p><input type="file" accept=".pdf,.png,.jpg,.jpeg" data-rut-file /><button type="button" class="contracts-btn contracts-btn--soft" data-analyze-rut>Analizar RUT</button><div class="document-upload__state" data-rut-state>Sin analizar</div></article>
+                        <article class="document-upload" data-upload-card="offer"><div class="document-upload__icon">OF</div><h4>Oferta aprobada</h4><p>Equipos, cantidades, precios, volúmenes y valor agregado.</p><input type="file" accept=".pdf,.docx,.xlsx,.csv,.txt,.json,.png,.jpg,.jpeg" data-offer-file /><button type="button" class="contracts-btn contracts-btn--soft" data-analyze-offer>Analizar oferta</button><div class="document-upload__state" data-offer-state>Sin analizar</div></article>
+                    </div>
+                    <div class="ai-note"><span>AI</span><p><strong>Procesamiento privado en Azure.</strong> La IA estructura la información variable; el consecutivo y los vínculos se controlan en Dataverse.</p></div>
+                </section>
+
+                <section class="contracts-step" data-step="3" hidden>
+                    <div class="contracts-step__intro"><h3>Valida la información detectada</h3><p>Los campos marcados son indispensables para el documento legal.</p></div>
+                    <div class="form-section"><div class="form-section__title"><span>01</span><h4>Información jurídica</h4></div>
+                        <div class="contracts-form-grid contracts-form-grid--3">
+                            <label class="contracts-field contracts-field--span-2"><span>Razón social *</span><input data-rut="legalName" /></label><label class="contracts-field"><span>NIT *</span><div class="contracts-inline"><input data-rut="nit" /><input class="contracts-dv" placeholder="DV" data-rut="verificationDigit" /></div></label>
+                            <label class="contracts-field contracts-field--span-2"><span>Representante legal *</span><input data-rut="legalRepresentativeName" /></label><label class="contracts-field"><span>Identificación *</span><input data-rut="legalRepresentativeId" /></label>
+                            <label class="contracts-field contracts-field--span-2"><span>Dirección principal *</span><input data-rut="mainAddress" /></label><label class="contracts-field"><span>Ciudad *</span><input data-rut="city" /></label>
+                            <label class="contracts-field contracts-field--span-2"><span>Dirección de notificación</span><input data-rut="notificationAddress" /></label><label class="contracts-field"><span>Departamento</span><input data-rut="department" /></label>
+                            <label class="contracts-field"><span>Correo</span><input type="email" data-rut="email" /></label><label class="contracts-field"><span>Teléfono</span><input data-rut="phone" /></label>
+                        </div>
+                    </div>
+                    <div class="form-section"><div class="form-section__title"><span>02</span><h4>Condiciones comerciales</h4></div>
+                        <div class="contracts-form-grid contracts-form-grid--3">
+                            <label class="contracts-field"><span>Duración (meses) *</span><input type="number" min="1" max="120" value="12" data-offer="durationMonths" /></label><label class="contracts-field"><span>Pago (días)</span><input type="number" min="0" max="365" value="30" data-offer="paymentDays" /></label><label class="contracts-field"><span>Aviso no renovación</span><input type="number" min="0" max="365" value="30" data-offer="nonRenewalNoticeDays" /></label>
+                            <label class="contracts-field contracts-field--span-2"><span>Lugar de ejecución *</span><input data-offer="executionAddress" /></label><label class="contracts-field"><span>Entrega (días hábiles)</span><input type="number" min="0" value="2" data-offer="deliveryBusinessDays" /></label>
+                            <label class="contracts-field"><span>Correo de facturación</span><input type="email" data-offer="billingEmail" /></label><label class="contracts-field"><span>Contacto del cliente</span><input data-offer="clientContact" /></label><label class="contracts-field contracts-field--wide"><span>Resumen / objeto</span><textarea rows="2" data-offer="summary"></textarea></label>
+                        </div>
+                    </div>
+                    <div class="form-section"><div class="form-section__title"><span>03</span><h4>Equipos y precios</h4><button type="button" data-add-equipment>＋ Agregar línea</button></div><div class="dynamic-table-wrap"><table class="dynamic-table"><thead><tr><th>Equipo / servicio</th><th>Cant.</th><th>Marca</th><th>Modelo</th><th>Impresiones</th><th>Canon mensual</th><th>Clic adicional</th><th></th></tr></thead><tbody data-equipment-rows></tbody></table></div></div>
+                    <div class="form-section"><div class="form-section__title"><span>04</span><h4>Valor agregado</h4><button type="button" data-add-value>＋ Agregar servicio</button></div><div class="dynamic-table-wrap"><table class="dynamic-table"><thead><tr><th>Descripción</th><th>Alcance</th><th>Frecuencia</th><th>Modalidad</th><th></th></tr></thead><tbody data-value-rows></tbody></table></div></div>
+                    <label class="contracts-field contracts-field--block"><span>Condiciones particulares (una por línea)</span><textarea rows="3" data-special-conditions></textarea></label>
+                </section>
+
+                <section class="contracts-step" data-step="4" hidden>
+                    <div class="contracts-step__intro"><h3>Revisa y genera</h3><p>Al confirmar se reserva el siguiente consecutivo y se crean el contrato y la orden inicial.</p></div>
+                    <div class="contract-review" data-contract-review></div>
+                    <div class="contract-generation-flow"><div><span>1</span><strong>Reserva</strong><small>@Model.NextConsecutive</small></div><i>→</i><div><span>2</span><strong>Contrato</strong><small>Plantilla Copiers</small></div><i>→</i><div><span>3</span><strong>Orden inicial</strong><small>OS-001-@DateTime.Today.Year</small></div><i>→</i><div><span>4</span><strong>Dataverse</strong><small>Cliente + archivos</small></div></div>
+                </section>
+
+                <footer class="contracts-modal__footer"><button type="button" class="contracts-btn contracts-btn--ghost" data-prev-step hidden>Anterior</button><span class="contracts-modal__spacer"></span><button type="button" class="contracts-btn contracts-btn--ghost" data-close-modal>Cancelar</button><button type="button" class="contracts-btn contracts-btn--primary" data-next-step>Siguiente</button><button type="submit" class="contracts-btn contracts-btn--primary" data-create-contract hidden>Generar contrato</button></footer>
+            </form>
+        </div>
+    </div>
+
+    <div class="contracts-modal" data-order-modal hidden>
+        <div class="contracts-modal__backdrop" data-close-order></div>
+        <div class="contracts-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
+            <header class="contracts-modal__header"><div><span class="contracts-eyebrow">Documento derivado</span><h2 id="orderModalTitle">Nueva orden de servicio</h2><p data-order-contract-label></p></div><button type="button" class="contracts-modal__close" data-close-order>×</button></header>
+            <div class="contracts-alert" data-order-status hidden></div>
+            <form class="order-form" data-order-form><input type="hidden" data-order-contract-id />
+                <div class="contracts-form-grid contracts-form-grid--2">
+                    <label class="contracts-field"><span>Tipo de orden *</span><select data-order="orderTypeValue"><option value="645260001">Adición</option><option value="645260002">Retiro</option><option value="645260003">Traslado</option><option value="645260004">Reemplazo</option></select></label><label class="contracts-field"><span>Fecha *</span><input type="date" data-order="creationDate" /></label>
+                    <label class="contracts-field"><span>Duración (meses) *</span><input type="number" min="1" max="120" value="12" data-order="durationMonths" /></label><label class="contracts-field"><span>Lugar de ejecución *</span><input data-order="executionAddress" /></label><label class="contracts-field contracts-field--wide"><span>Objeto de la orden *</span><textarea rows="3" data-order="object"></textarea></label>
+                </div>
+                <div class="form-section"><div class="form-section__title"><span>01</span><h4>Líneas de la orden</h4><button type="button" data-order-add-equipment>＋ Agregar</button></div><div class="dynamic-table-wrap"><table class="dynamic-table"><thead><tr><th>Equipo / servicio</th><th>Cant.</th><th>Marca</th><th>Modelo</th><th>Canon</th><th></th></tr></thead><tbody data-order-equipment-rows></tbody></table></div></div>
+                <label class="contracts-field contracts-field--block"><span>Condiciones particulares (una por línea)</span><textarea rows="3" data-order-conditions></textarea></label>
+                <footer class="contracts-modal__footer"><span class="contracts-modal__spacer"></span><button type="button" class="contracts-btn contracts-btn--ghost" data-close-order>Cancelar</button><button type="submit" class="contracts-btn contracts-btn--primary">Generar orden</button></footer>
+            </form>
+        </div>
+    </div>
+
+    <template id="equipmentRowTemplate"><tr><td><input data-col="equipmentOrService" placeholder="Multifuncional B/N" /></td><td><input type="number" min="1" value="1" data-col="quantity" /></td><td><input data-col="brand" /></td><td><input data-col="model" /></td><td><input type="number" min="0" data-col="includedPrints" /></td><td><input type="number" min="0" step="0.01" data-col="monthlyFee" /></td><td><input type="number" min="0" step="0.01" data-col="additionalClickPrice" /></td><td><button type="button" data-remove-row>×</button></td></tr></template>
+    <template id="valueRowTemplate"><tr><td><input data-col="description" /></td><td><input data-col="scope" /></td><td><input data-col="frequency" /></td><td><input data-col="deliveryMethod" /></td><td><button type="button" data-remove-row>×</button></td></tr></template>
+    <template id="orderEquipmentRowTemplate"><tr><td><input data-col="equipmentOrService" /></td><td><input type="number" min="1" value="1" data-col="quantity" /></td><td><input data-col="brand" /></td><td><input data-col="model" /></td><td><input type="number" min="0" step="0.01" data-col="monthlyFee" /></td><td><button type="button" data-remove-row>×</button></td></tr></template>
+</div>
+
+@section Scripts {
+    <script src="~/js/contracts.js" asp-append-version="true"></script>
+}

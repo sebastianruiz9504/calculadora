@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capturas comerciales - Portafolio Apps</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #687385;
+      --line: #d9dee7;
+      --paper: #ffffff;
+      --soft: #f5f7fb;
+      --blue: #1f6feb;
+      --green: #168a5f;
+      --amber: #d88400;
+      --red: #c43d4a;
+      --teal: #0b7f88;
+      --violet: #5c58a6;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #e8edf4;
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    .shot {
+      width: 1280px;
+      height: 760px;
+      margin: 0 0 36px;
+      background: var(--paper);
+      border: 1px solid #cfd6e2;
+      box-shadow: 0 20px 55px rgba(28, 40, 62, .16);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .topbar {
+      height: 68px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      background: #fbfcfe;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: .02em;
+      background: var(--blue);
+    }
+
+    .brand img {
+      width: auto;
+      max-width: 128px;
+      max-height: 38px;
+      object-fit: contain;
+    }
+
+    .brand strong { display: block; font-size: 18px; line-height: 1.1; }
+    .brand span { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #526071;
+    }
+
+    .nav span {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+    }
+
+    .nav .active {
+      background: #edf4ff;
+      border-color: #cce0ff;
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .content { padding: 24px 28px 28px; }
+    .split {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 22px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .panel {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .panel.soft { background: var(--soft); }
+    .panel h2,
+    .panel h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    .kpi {
+      min-height: 94px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .kpi span { color: var(--muted); font-size: 12px; }
+    .kpi strong { font-size: 28px; letter-spacing: 0; }
+    .kpi small { color: #536170; font-size: 12px; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: #eef3f8;
+      color: #415062;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pill.green { background: #e5f6ef; color: #0b6d48; }
+    .pill.amber { background: #fff3dd; color: #8a5600; }
+    .pill.red { background: #ffe8eb; color: #9b2732; }
+    .pill.blue { background: #e9f1ff; color: #1f5fbf; }
+    .pill.teal { background: #e4f7f7; color: #08656c; }
+    .pill.violet { background: #efeffb; color: #4d4992; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      color: #5d6877;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      white-space: nowrap;
+    }
+
+    td {
+      border-bottom: 1px solid #edf0f5;
+      padding: 10px 8px;
+      vertical-align: middle;
+    }
+
+    .chart {
+      height: 128px;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      align-items: end;
+      gap: 10px;
+      padding: 8px 4px 0;
+    }
+
+    .bar {
+      border-radius: 5px 5px 0 0;
+      background: var(--blue);
+      min-height: 28px;
+    }
+
+    .sidebar-layout {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      height: calc(100% - 68px);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: #f7f9fc;
+      padding: 20px 16px;
+    }
+
+    .sidebar h3 {
+      margin: 0 0 14px;
+      font-size: 13px;
+      text-transform: uppercase;
+      color: #687385;
+      letter-spacing: .05em;
+    }
+
+    .side-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: #344154;
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+
+    .side-item.active {
+      background: #e9f1ff;
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .side-item small {
+      color: #8490a2;
+      font-size: 11px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 30px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid #e3e8f0;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .dot {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 12px;
+      background: var(--green);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .field {
+      border: 1px solid #d7dde7;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+
+    .field span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .field strong {
+      display: block;
+      font-size: 14px;
+      min-height: 18px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .module-card {
+      min-height: 110px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .module-card strong { display: block; font-size: 15px; margin-bottom: 8px; }
+    .module-card span { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+
+    .ticket-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .lane {
+      background: #f5f7fb;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 464px;
+    }
+
+    .lane h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .ticket {
+      background: #fff;
+      border: 1px solid #e0e5ee;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      min-height: 104px;
+    }
+
+    .ticket strong { display: block; font-size: 13px; margin: 8px 0; }
+    .ticket small { color: var(--muted); font-size: 11px; }
+
+    .hero-band {
+      display: grid;
+      grid-template-columns: .95fr 1.05fr;
+      gap: 24px;
+      align-items: stretch;
+      padding: 24px 28px;
+      height: calc(100% - 68px);
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.96), rgba(255,255,255,.78)),
+        url("induccion-cat-pc.png") right bottom / 260px auto no-repeat;
+    }
+
+    .hero-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .hero-copy h1 {
+      font-size: 42px;
+      line-height: 1.04;
+      margin: 10px 0 14px;
+      letter-spacing: 0;
+    }
+
+    .hero-copy p {
+      color: #4c596b;
+      font-size: 17px;
+      line-height: 1.45;
+      margin: 0 0 18px;
+    }
+
+    .quiz {
+      display: grid;
+      gap: 10px;
+    }
+
+    .choice {
+      border: 1px solid #d7dde7;
+      border-radius: 8px;
+      padding: 11px 12px;
+      background: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 16px;
+    }
+
+    .progress-line {
+      height: 8px;
+      background: #e7ecf3;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-line span {
+      display: block;
+      height: 100%;
+      background: var(--green);
+      border-radius: inherit;
+    }
+  </style>
+</head>
+<body>
+  <section class="shot" data-shot="polla">
+    <div class="topbar">
+      <div class="brand">
+        <img src="logo-ab.png" alt="Aguas de Bogota">
+        <div>
+          <strong>Polla Mundial AB</strong>
+          <span>Pronosticos, podio y ranking corporativo</span>
+        </div>
+      </div>
+      <div class="nav">
+        <span class="active">Pronosticos</span>
+        <span>Podio final</span>
+        <span>Participantes</span>
+        <span>Admin</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="grid-3">
+        <div class="panel kpi">
+          <span>Partidos abiertos</span>
+          <strong>24</strong>
+          <small>Con cierre automatico 30 minutos antes</small>
+        </div>
+        <div class="panel kpi">
+          <span>Participantes</span>
+          <strong>318</strong>
+          <small>Tenant Aguas de Bogota</small>
+        </div>
+        <div class="panel kpi">
+          <span>Ranking actualizado</span>
+          <strong>12:45</strong>
+          <small>Calculo de puntos por flujo</small>
+        </div>
+      </div>
+      <div class="split" style="margin-top:16px;">
+        <div class="panel">
+          <h2>Fase de grupos</h2>
+          <table>
+            <thead><tr><th>Partido</th><th>Cierre</th><th>Pronostico</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>COL vs JPN</td><td>15/06 12:30</td><td>2 - 1</td><td><span class="pill green">Abierto</span></td></tr>
+              <tr><td>USA vs MEX</td><td>16/06 18:30</td><td>1 - 1</td><td><span class="pill green">Abierto</span></td></tr>
+              <tr><td>BRA vs GER</td><td>17/06 14:30</td><td>3 - 2</td><td><span class="pill amber">Pendiente</span></td></tr>
+              <tr><td>ARG vs ESP</td><td>18/06 10:30</td><td>0 - 0</td><td><span class="pill red">Cerrado</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel soft">
+          <h2>Top ranking</h2>
+          <table>
+            <tbody>
+              <tr><td><strong>1</strong></td><td>Maria Gomez</td><td>128 pts</td></tr>
+              <tr><td><strong>2</strong></td><td>Carlos Ruiz</td><td>121 pts</td></tr>
+              <tr><td><strong>3</strong></td><td>Laura Pena</td><td>119 pts</td></tr>
+              <tr><td><strong>18</strong></td><td>Mi posicion</td><td>94 pts</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="pill blue">Podio final registrado</span>
+            <span class="pill teal">Power Automate</span>
+            <span class="pill">Dataverse</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="sda">
+    <div class="topbar">
+      <div class="brand">
+        <img src="logo-ab.png" alt="Aguas de Bogota">
+        <div>
+          <strong>SDA Aguas de Bogota</strong>
+          <span>Bitacora diaria de campo, evidencias y administracion Dataverse</span>
+        </div>
+      </div>
+      <div class="nav">
+        <span>Inicio</span>
+        <span class="active">Bitacora diaria</span>
+        <span>Tablas Dataverse</span>
+        <span>Diagnostico</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="split">
+        <div class="panel">
+          <h2>Registro de actividad</h2>
+          <div class="form-grid">
+            <div class="field"><span>Periodo</span><strong>Mayo 2026</strong></div>
+            <div class="field"><span>Sector</span><strong>Localidad Kennedy</strong></div>
+            <div class="field"><span>Componente</span><strong>Intervencion ambiental</strong></div>
+            <div class="field"><span>Indicador</span><strong>Arbolado / recuperacion</strong></div>
+            <div class="field"><span>Cuadrilla</span><strong>Equipo operativo 04</strong></div>
+            <div class="field"><span>Estado</span><strong>Borrador validado</strong></div>
+          </div>
+          <div style="margin-top:14px;" class="field">
+            <span>Descripcion</span>
+            <strong>Seguimiento tecnico con evidencia fotografica y archivo KMZ.</strong>
+          </div>
+          <div style="margin-top:16px; display:flex; gap:10px;">
+            <span class="pill green">Guardar borrador</span>
+            <span class="pill blue">Enviar reporte</span>
+            <span class="pill">Validar conexion</span>
+          </div>
+        </div>
+        <div class="panel soft">
+          <h2>Evidencias y sincronizacion</h2>
+          <table>
+            <thead><tr><th>Archivo</th><th>Destino</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>foto_antes.jpg</td><td>Azure Blob</td><td><span class="pill green">Cargado</span></td></tr>
+              <tr><td>foto_despues.jpg</td><td>Azure Blob</td><td><span class="pill green">Cargado</span></td></tr>
+              <tr><td>area_intervenida.kmz</td><td>Azure Blob</td><td><span class="pill amber">Validando</span></td></tr>
+              <tr><td>dtc_reportecampo</td><td>Dataverse</td><td><span class="pill blue">Listo</span></td></tr>
+            </tbody>
+          </table>
+          <div class="grid-3" style="margin-top:14px;">
+            <div class="panel kpi"><span>Tablas admin</span><strong>11</strong><small>Catalogos y reportes</small></div>
+            <div class="panel kpi"><span>Adjuntos</span><strong>3</strong><small>Privados en Blob</small></div>
+            <div class="panel kpi"><span>Diagnostico</span><strong>OK</strong><small>WhoAmI + Blob test</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="cotizador">
+    <div class="sidebar-layout">
+      <aside class="sidebar">
+        <div class="brand" style="margin-bottom:22px;">
+          <div class="brand-mark" style="background:#17202a;">DT</div>
+          <div>
+            <strong>Cotizador Interno</strong>
+            <span>Suite operativa Digital Tech</span>
+          </div>
+        </div>
+        <h3>Modulos</h3>
+        <div class="side-item active">Calculadora <small>core</small></div>
+        <div class="side-item">Renovaciones <small>CRM</small></div>
+        <div class="side-item">Conciliacion <small>Siigo</small></div>
+        <div class="side-item">Licenciamiento <small>M365</small></div>
+        <div class="side-item">Copiers <small>servicio</small></div>
+        <div class="side-item">Gestion humana <small>RRHH</small></div>
+        <div class="side-item">Pagos clientes <small>finanzas</small></div>
+        <div class="side-item">Dashboard <small>BI</small></div>
+      </aside>
+      <main class="content">
+        <div class="grid-4">
+          <div class="panel kpi"><span>Margen cotizado</span><strong>27.4%</strong><small>Escenario recomendado</small></div>
+          <div class="panel kpi"><span>Renovaciones</span><strong>46</strong><small>Proximos 60 dias</small></div>
+          <div class="panel kpi"><span>Conciliacion</span><strong>98%</strong><small>Dataverse vs Siigo</small></div>
+          <div class="panel kpi"><span>Pagos</span><strong>$418M</strong><small>Flujo proyectado</small></div>
+        </div>
+        <div class="split" style="margin-top:16px;">
+          <div class="panel">
+            <h2>Escenario de venta</h2>
+            <table>
+              <thead><tr><th>Linea</th><th>Costo</th><th>Precio</th><th>Margen</th></tr></thead>
+              <tbody>
+                <tr><td>Microsoft 365 E3</td><td>$72.4M</td><td>$94.8M</td><td><span class="pill green">31%</span></td></tr>
+                <tr><td>Soporte Cloud</td><td>$18.0M</td><td>$27.6M</td><td><span class="pill blue">53%</span></td></tr>
+                <tr><td>Hardware</td><td>$55.1M</td><td>$63.9M</td><td><span class="pill amber">16%</span></td></tr>
+                <tr><td>Copiers</td><td>$13.5M</td><td>$18.2M</td><td><span class="pill green">35%</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel soft">
+            <h2>Flujo y automatizacion</h2>
+            <div class="chart">
+              <div class="bar" style="height:62%; background:#1f6feb;"></div>
+              <div class="bar" style="height:78%; background:#168a5f;"></div>
+              <div class="bar" style="height:45%; background:#d88400;"></div>
+              <div class="bar" style="height:86%; background:#1f6feb;"></div>
+              <div class="bar" style="height:56%; background:#c43d4a;"></div>
+              <div class="bar" style="height:93%; background:#168a5f;"></div>
+              <div class="bar" style="height:68%; background:#0b7f88;"></div>
+              <div class="bar" style="height:81%; background:#5c58a6;"></div>
+            </div>
+            <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+              <span class="pill">DIAN</span>
+              <span class="pill">Siigo</span>
+              <span class="pill">Dataverse</span>
+              <span class="pill">Azure OpenAI</span>
+              <span class="pill">M365</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="evaluacion">
+    <div class="topbar">
+      <div class="brand">
+        <img src="logo-ab.png" alt="Aguas de Bogota">
+        <div>
+          <strong>Evaluacion de Desempeno AB</strong>
+          <span>Competencias, SST, plan de accion y certificado</span>
+        </div>
+      </div>
+      <div class="nav">
+        <span class="active">Evaluaciones</span>
+        <span>Plan de accion</span>
+        <span>Certificados</span>
+        <span>Admin</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="grid-4">
+        <div class="panel kpi"><span>Evaluaciones activas</span><strong>842</strong><small>Por correo asignado</small></div>
+        <div class="panel kpi"><span>Normal</span><strong>71%</strong><small>Competencias completadas</small></div>
+        <div class="panel kpi"><span>SST</span><strong>64%</strong><small>Cultura de seguridad</small></div>
+        <div class="panel kpi"><span>Firmas validas</span><strong>589</strong><small>PNG/JPG verificado</small></div>
+      </div>
+      <div class="split" style="margin-top:16px;">
+        <div class="panel">
+          <h2>Flujo controlado</h2>
+          <div class="timeline">
+            <div class="step"><span class="dot">1</span><strong>Seleccion de evaluado</strong><span class="pill blue">Asignado</span></div>
+            <div class="step"><span class="dot">2</span><strong>Competencias normales y SST</strong><span class="pill amber">En curso</span></div>
+            <div class="step"><span class="dot">3</span><strong>Plan de accion obligatorio</strong><span class="pill">Pendiente</span></div>
+            <div class="step"><span class="dot">4</span><strong>Firma digital de conformidad</strong><span class="pill red">Requerida</span></div>
+            <div class="step"><span class="dot">5</span><strong>Certificado final</strong><span class="pill green">Disponible al cierre</span></div>
+          </div>
+        </div>
+        <div class="panel soft">
+          <h2>Panel administrador</h2>
+          <table>
+            <thead><tr><th>Rol</th><th>Permiso</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>Evaluador</td><td>Responder asignados</td><td><span class="pill green">Activo</span></td></tr>
+              <tr><td>SST</td><td>Solo cultura SST</td><td><span class="pill blue">Activo</span></td></tr>
+              <tr><td>Superadmin</td><td>Importar usuarios Excel</td><td><span class="pill amber">Auditado</span></td></tr>
+              <tr><td>Power Automate</td><td>Aprobacion de habilitacion</td><td><span class="pill">Conectado</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="induccion">
+    <div class="topbar">
+      <div class="brand">
+        <img src="logo-ab.png" alt="Aguas de Bogota">
+        <div>
+          <strong>Modulo de Induccion</strong>
+          <span>Portal Power Pages con aprendizaje, evaluacion y resultados</span>
+        </div>
+      </div>
+      <div class="nav">
+        <span class="active">Inicio</span>
+        <span>Modulo 1</span>
+        <span>Modulo 2</span>
+        <span>Modulo 3</span>
+        <span>Resultados</span>
+        <span>Admin</span>
+      </div>
+    </div>
+    <div class="hero-band">
+      <div class="hero-copy">
+        <span class="pill green">Induccion corporativa</span>
+        <h1>Ruta guiada para nuevos colaboradores</h1>
+        <p>Contenido por modulos, preguntas de control, resultados por usuario y panel administrativo para seguimiento.</p>
+        <div class="grid-3">
+          <div class="panel kpi"><span>Modulos</span><strong>3</strong><small>Con avance guiado</small></div>
+          <div class="panel kpi"><span>Evaluacion</span><strong>Quiz</strong><small>Resultado por usuario</small></div>
+          <div class="panel kpi"><span>Admin</span><strong>Panel</strong><small>Gestion de usuarios</small></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Evaluacion de aprendizaje</h2>
+        <div class="quiz">
+          <div class="choice"><strong>Politicas corporativas</strong><span class="pill green">Completado</span></div>
+          <div class="choice"><strong>Seguridad y ambiente</strong><span class="pill amber">En curso</span></div>
+          <div class="choice"><strong>Cultura y servicio</strong><span class="pill">Pendiente</span></div>
+          <div class="choice"><strong>Resultado general</strong><span class="pill blue">82%</span></div>
+        </div>
+        <div style="margin-top:18px;">
+          <span style="display:block; font-size:12px; color:#687385; margin-bottom:6px;">Avance de induccion</span>
+          <div class="progress-line"><span style="width:72%;"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="mesa">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark" style="background:#0b7f88;">MS</div>
+        <div>
+          <strong>Mesa de Ayuda SaaS</strong>
+          <span>Helpdesk multitenant para proveedores Microsoft</span>
+        </div>
+      </div>
+      <div class="nav">
+        <span class="active">Dashboard</span>
+        <span>Tickets</span>
+        <span>SLA</span>
+        <span>Clientes</span>
+        <span>Admin proveedor</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="grid-4">
+        <div class="panel kpi"><span>Tickets abiertos</span><strong>128</strong><small>11 tenants activos</small></div>
+        <div class="panel kpi"><span>SLA en riesgo</span><strong>9</strong><small>Priorizacion automatica</small></div>
+        <div class="panel kpi"><span>Adjuntos</span><strong>Blob</strong><small>Rutas privadas</small></div>
+        <div class="panel kpi"><span>Notificaciones</span><strong>Flow</strong><small>Cola por evento</small></div>
+      </div>
+      <div class="ticket-board" style="margin-top:16px;">
+        <div class="lane">
+          <h3>Nuevo <span>32</span></h3>
+          <div class="ticket"><span class="pill red">P1</span><strong>Correo detenido para Finanzas</strong><small>Cliente: Contoso Colombia</small></div>
+          <div class="ticket"><span class="pill amber">P2</span><strong>Usuario sin MFA</strong><small>Equipo: Seguridad M365</small></div>
+          <div class="ticket"><span class="pill">P3</span><strong>Solicitud nueva licencia</strong><small>Categoria: Licenciamiento</small></div>
+        </div>
+        <div class="lane">
+          <h3>En progreso <span>61</span></h3>
+          <div class="ticket"><span class="pill blue">SLA 2h</span><strong>Restaurar OneDrive</strong><small>Agente: Mesa Cloud</small></div>
+          <div class="ticket"><span class="pill teal">Interno</span><strong>Revision de logs Exchange</strong><small>Nota privada activa</small></div>
+          <div class="ticket"><span class="pill amber">Escalado</span><strong>Incidente Teams</strong><small>Cola: Comunicaciones</small></div>
+        </div>
+        <div class="lane">
+          <h3>Resuelto <span>35</span></h3>
+          <div class="ticket"><span class="pill green">Cerrado</span><strong>Alta usuario comercial</strong><small>Encuesta enviada</small></div>
+          <div class="ticket"><span class="pill green">Cerrado</span><strong>Dominio verificado</strong><small>Historial completo</small></div>
+          <div class="ticket"><span class="pill violet">Reporte</span><strong>Export XLSX mensual</strong><small>Tenant admin</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="portal">
+    <div class="topbar">
+      <div class="brand">
+        <img src="digitaltech-logo.png" alt="Digital Tech">
+        <div>
+          <strong>Portal Cliente Digital Tech</strong>
+          <span>Autoservicio, gobierno M365 y portafolio de servicios</span>
+        </div>
+      </div>
+      <div class="nav">
+        <span class="active">Inicio</span>
+        <span>Soporte</span>
+        <span>Licenciamiento</span>
+        <span>Seguridad</span>
+        <span>Academy</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="profile-grid">
+        <div class="panel">
+          <h2>Vista ejecutiva del cliente</h2>
+          <div class="cards">
+            <div class="module-card"><strong>Soporte</strong><span>Casos, calendario de disponibilidad y seguimiento de atencion.</span></div>
+            <div class="module-card"><strong>Licenciamiento</strong><span>Proformas, renovaciones y cruce contra Microsoft 365.</span></div>
+            <div class="module-card"><strong>Seguridad</strong><span>Assessment, plan de trabajo, alertas y recomendaciones IA.</span></div>
+            <div class="module-card"><strong>Copiers</strong><span>Contadores, inventario, mantenimientos y portafolio.</span></div>
+            <div class="module-card"><strong>Capacitaciones</strong><span>Calendario, Academy y contenido de YouTube integrado.</span></div>
+            <div class="module-card"><strong>Automatizaciones</strong><span>Inventario de flows, gobierno y oportunidades de mejora.</span></div>
+          </div>
+        </div>
+        <div class="panel soft">
+          <h2>Indicadores del contrato</h2>
+          <table>
+            <thead><tr><th>Area</th><th>Estado</th><th>Accion</th></tr></thead>
+            <tbody>
+              <tr><td>Secure Score</td><td><span class="pill amber">68%</span></td><td>Plan IA</td></tr>
+              <tr><td>Licencias sin uso</td><td><span class="pill red">23</span></td><td>Optimizar</td></tr>
+              <tr><td>Tickets mes</td><td><span class="pill blue">42</span></td><td>Revisar SLA</td></tr>
+              <tr><td>Capacitaciones</td><td><span class="pill green">7</span></td><td>Agendar</td></tr>
+              <tr><td>Automatizaciones</td><td><span class="pill teal">18</span></td><td>Gobernar</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="pill">Graph</span>
+            <span class="pill">Dataverse</span>
+            <span class="pill">Azure OpenAI</span>
+            <span class="pill">Power Automate</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

@@ -8,6 +8,7 @@
     const saveUrl = app.dataset.saveUrl || "";
     const uploadUrl = app.dataset.uploadUrl || "";
     const downloadUrl = app.dataset.downloadUrl || "";
+    const downloadReportUrl = app.dataset.downloadReportUrl || "";
     const markPrintedUrl = app.dataset.markPrintedUrl || "";
     const printUrl = app.dataset.printUrl || "";
 
@@ -15,6 +16,7 @@
     const monthSelect = document.getElementById("ccbMonthSelect");
     const refreshBtn = document.getElementById("ccbRefreshBtn");
     const addRowBtn = document.getElementById("ccbAddRowBtn");
+    const downloadReportBtn = document.getElementById("ccbDownloadReportBtn");
     const statusBanner = document.getElementById("ccbStatusBanner");
     const rowsBody = document.getElementById("ccbRowsBody");
     const emptyState = document.getElementById("ccbEmptyState");
@@ -46,10 +48,13 @@
     const nitInput = document.getElementById("ccbNitInput");
     const fechaEmisionInput = document.getElementById("ccbFechaEmisionInput");
     const fechaPagoInput = document.getElementById("ccbFechaPagoInput");
-    const retePorcentajeInput = document.getElementById("ccbRetePorcentajeInput");
     const valorTotalInput = document.getElementById("ccbValorTotalInput");
     const valorPagoInput = document.getElementById("ccbValorPagoInput");
-    const reteValorInput = document.getElementById("ccbReteValorInput");
+    const totalRetentionsInput = document.getElementById("ccbTotalRetentionsInput");
+    const addRetentionBtn = document.getElementById("ccbAddRetentionBtn");
+    const retentionsList = document.getElementById("ccbRetentionsList");
+    const retentionsEmpty = document.getElementById("ccbRetentionsEmpty");
+    const retentionsStorageWarning = document.getElementById("ccbRetentionsStorageWarning");
     const observacionesInput = document.getElementById("ccbObservacionesInput");
     const validationCard = document.getElementById("ccbValidationCard");
     const validationText = document.getElementById("ccbValidationText");
@@ -93,6 +98,14 @@
         }
 
         openEditor("");
+    });
+
+    downloadReportBtn?.addEventListener("click", async () => {
+        if (state.busy) {
+            return;
+        }
+
+        await downloadReport();
     });
 
     yearSelect?.addEventListener("change", async () => {
@@ -198,8 +211,44 @@
         }
     });
 
-    [receptorInput, nitInput, fechaEmisionInput, fechaPagoInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput].forEach((element) => {
+    [receptorInput, nitInput, fechaEmisionInput, fechaPagoInput, valorTotalInput, valorPagoInput, observacionesInput].forEach((element) => {
         element?.addEventListener("input", syncEditorFromInputs);
+    });
+
+    addRetentionBtn?.addEventListener("click", () => {
+        const record = state.editor.record;
+        if (!record || state.busy) {
+            return;
+        }
+
+        record.retentions.push(createEmptyRetention("ReteFuente", record.valorTotal));
+        recomputeRow(record);
+        renderRetentionsEditor();
+        renderValidationState(record);
+    });
+
+    retentionsList?.addEventListener("input", handleRetentionEditorInput);
+    retentionsList?.addEventListener("change", handleRetentionEditorInput);
+    retentionsList?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || state.busy) {
+            return;
+        }
+
+        const removeButton = target.closest("[data-retention-remove]");
+        if (!(removeButton instanceof HTMLElement) || !state.editor.record) {
+            return;
+        }
+
+        const index = parseInteger(removeButton.dataset.retentionRemove, -1);
+        if (index < 0 || index >= state.editor.record.retentions.length) {
+            return;
+        }
+
+        state.editor.record.retentions.splice(index, 1);
+        recomputeRow(state.editor.record);
+        renderRetentionsEditor();
+        renderValidationState(state.editor.record);
     });
 
     attachmentInput?.addEventListener("change", () => {
@@ -300,6 +349,10 @@
         periodSource.textContent = state.board?.periodSourceLabel
             ? `El filtro usa: ${state.board.periodSourceLabel}.`
             : "El filtro usa la fecha de emision.";
+
+        if (retentionsStorageWarning) {
+            retentionsStorageWarning.hidden = Boolean(state.board?.retentionJsonAvailable);
+        }
     }
 
     function renderRows() {
@@ -345,7 +398,7 @@
         const rows = Array.isArray(state.rows) ? state.rows : [];
         const totalValorTotal = rows.reduce((total, row) => total + (row.valorTotal || 0), 0);
         const totalValorPago = rows.reduce((total, row) => total + (row.valorPago || 0), 0);
-        const totalReteValor = rows.reduce((total, row) => total + (row.reteFuenteValor || 0), 0);
+        const totalReteValor = rows.reduce((total, row) => total + (row.totalRetentionsValue || 0), 0);
 
         summaryCount.textContent = String(rows.length);
         summaryValorTotal.textContent = moneyFormatter.format(totalValorTotal);
@@ -421,15 +474,13 @@
         nitInput.value = record.nitOCedula || "";
         fechaEmisionInput.value = record.fechaEmisionValue || "";
         fechaPagoInput.value = record.fechaPagoValue || "";
-        retePorcentajeInput.value = formatInputNumber(record.reteFuentePorcentaje);
         valorTotalInput.value = formatInputNumber(record.valorTotal);
         valorPagoInput.value = formatInputNumber(record.valorPago);
-        reteValorInput.value = formatInputNumber(record.reteFuenteValor);
+        totalRetentionsInput.value = formatInputNumber(record.totalRetentionsValue);
         observacionesInput.value = record.observaciones || "";
 
-        validationCard.classList.toggle("is-danger", !record.totalesCuadran);
-        validationCard.classList.toggle("is-success", record.totalesCuadran);
-        validationText.textContent = record.totalesCuadran ? "La cuenta cuadra correctamente" : "La cuenta no cuadra";
+        renderRetentionsEditor();
+        renderValidationState(record);
 
         modalPrintBtn.disabled = !record.recordId || state.busy;
         renderEditorFileState();
@@ -438,6 +489,131 @@
         window.setTimeout(() => {
             receptorInput?.focus();
         }, 0);
+    }
+
+    function renderRetentionsEditor() {
+        const record = state.editor.record;
+        if (!record || !retentionsList) {
+            return;
+        }
+
+        const hasJsonStorage = Boolean(state.board?.retentionJsonAvailable);
+        const retentions = Array.isArray(record.retentions) ? record.retentions : [];
+        retentionsList.innerHTML = retentions.map((retention, index) => {
+            const kind = normalizeRetentionKind(retention.kind);
+            const rateUnit = kind === "ReteICA" ? "‰" : "%";
+            const legacyOnly = !hasJsonStorage;
+            return `
+                <article class="ccb-retention-row" data-retention-index="${index}">
+                    <div class="ccb-retention-row__heading">
+                        <strong>${escapeHtml(retention.label || resolveRetentionLabel(kind))}</strong>
+                        <button type="button" class="btn btn-outline-danger btn-sm" data-retention-remove="${index}" ${state.busy ? "disabled" : ""}>Eliminar</button>
+                    </div>
+                    <div class="ccb-retention-row__grid">
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">Tipo</span>
+                            <select class="form-select" data-retention-field="kind" data-retention-index="${index}" ${state.busy || legacyOnly ? "disabled" : ""}>
+                                ${buildRetentionKindOptions(kind)}
+                            </select>
+                        </label>
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">Etiqueta</span>
+                            <input class="form-control" type="text" maxlength="120" value="${escapeHtml(retention.label || "")}" data-retention-field="label" data-retention-index="${index}" ${state.busy || legacyOnly ? "disabled" : ""} />
+                        </label>
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">ID impuesto Siigo</span>
+                            <input class="form-control" type="text" maxlength="100" value="${escapeHtml(retention.taxId || "")}" data-retention-field="taxId" data-retention-index="${index}" ${state.busy || legacyOnly ? "disabled" : ""} />
+                        </label>
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">Cuenta contable</span>
+                            <input class="form-control" type="text" maxlength="50" value="${escapeHtml(retention.accountCode || "")}" data-retention-field="accountCode" data-retention-index="${index}" ${state.busy || legacyOnly ? "disabled" : ""} />
+                        </label>
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">Base</span>
+                            <input class="form-control" type="number" min="0" step="0.01" value="${escapeHtml(formatInputNumber(retention.baseValue))}" data-retention-field="baseValue" data-retention-index="${index}" ${state.busy || legacyOnly ? "disabled" : ""} />
+                        </label>
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">Tasa (${rateUnit})</span>
+                            <input class="form-control" type="number" min="0" step="0.0001" value="${escapeHtml(formatRateNumber(retention.rate))}" data-retention-field="rate" data-retention-index="${index}" ${state.busy ? "disabled" : ""} />
+                        </label>
+                        <label class="ccb-form__field">
+                            <span class="ccb-form__label">Valor retenido</span>
+                            <input class="form-control" type="number" min="0" step="0.01" value="${escapeHtml(formatInputNumber(retention.value))}" data-retention-field="value" data-retention-index="${index}" ${state.busy ? "disabled" : ""} />
+                        </label>
+                    </div>
+                </article>
+            `;
+        }).join("");
+
+        if (retentionsEmpty) {
+            retentionsEmpty.hidden = retentions.length > 0;
+        }
+
+        if (retentionsStorageWarning) {
+            retentionsStorageWarning.hidden = hasJsonStorage;
+        }
+
+        if (addRetentionBtn) {
+            addRetentionBtn.disabled = state.busy || (!hasJsonStorage && retentions.length >= 1);
+        }
+
+        if (totalRetentionsInput) {
+            totalRetentionsInput.value = formatInputNumber(record.totalRetentionsValue);
+        }
+    }
+
+    function handleRetentionEditorInput(event) {
+        const target = event.target;
+        const record = state.editor.record;
+        if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) || !record) {
+            return;
+        }
+
+        const index = parseInteger(target.dataset.retentionIndex, -1);
+        const field = target.dataset.retentionField || "";
+        const retention = record.retentions[index];
+        if (!retention || !field) {
+            return;
+        }
+
+        if (field === "kind") {
+            const oldLabel = retention.label || "";
+            retention.kind = normalizeRetentionKind(target.value);
+            if (!oldLabel || isDefaultRetentionLabel(oldLabel)) {
+                retention.label = resolveRetentionLabel(retention.kind);
+            }
+            retention.value = calculateRetentionValue(retention);
+        } else if (field === "label" || field === "taxId" || field === "accountCode") {
+            retention[field] = target.value || "";
+        } else if (field === "baseValue" || field === "rate") {
+            retention[field] = parseDecimal(target.value);
+            retention.value = calculateRetentionValue(retention);
+        } else if (field === "value") {
+            retention.value = parseDecimal(target.value);
+        }
+
+        recomputeRow(record);
+        if (field === "kind") {
+            renderRetentionsEditor();
+        } else if (field === "baseValue" || field === "rate") {
+            const valueInput = retentionsList.querySelector(`[data-retention-index="${index}"][data-retention-field="value"]`);
+            if (valueInput instanceof HTMLInputElement) {
+                valueInput.value = formatInputNumber(retention.value);
+            }
+        }
+
+        if (totalRetentionsInput) {
+            totalRetentionsInput.value = formatInputNumber(record.totalRetentionsValue);
+        }
+        renderValidationState(record);
+    }
+
+    function renderValidationState(record) {
+        validationCard.classList.toggle("is-danger", !record.totalesCuadran);
+        validationCard.classList.toggle("is-success", record.totalesCuadran);
+        validationText.textContent = record.totalesCuadran
+            ? "La cuenta cuadra correctamente"
+            : "La cuenta no cuadra";
     }
 
     function renderEditorFileState() {
@@ -472,23 +648,29 @@
             return;
         }
 
+        const previousValorTotal = record.valorTotal;
         record.receptor = receptorInput.value || "";
         record.nitOCedula = nitInput.value || "";
         record.fechaEmisionValue = fechaEmisionInput.value || "";
         record.fechaEmisionDisplay = formatDateDisplay(record.fechaEmisionValue);
         record.fechaPagoValue = fechaPagoInput.value || "";
         record.fechaPagoDisplay = formatDateDisplay(record.fechaPagoValue);
-        record.reteFuentePorcentaje = parseDecimal(retePorcentajeInput.value);
         record.valorTotal = parseDecimal(valorTotalInput.value);
         record.valorPago = parseDecimal(valorPagoInput.value);
         record.observaciones = observacionesInput.value || "";
 
+        if (!state.board?.retentionJsonAvailable
+            && Math.abs(previousValorTotal - record.valorTotal) > 0.001
+            && record.retentions.length === 1
+            && record.retentions[0].kind === "ReteFuente") {
+            record.retentions[0].baseValue = record.valorTotal;
+            record.retentions[0].value = calculateRetentionValue(record.retentions[0]);
+        }
+
         recomputeRow(record);
 
-        reteValorInput.value = formatInputNumber(record.reteFuenteValor);
-        validationCard.classList.toggle("is-danger", !record.totalesCuadran);
-        validationCard.classList.toggle("is-success", record.totalesCuadran);
-        validationText.textContent = record.totalesCuadran ? "La cuenta cuadra correctamente" : "La cuenta no cuadra";
+        totalRetentionsInput.value = formatInputNumber(record.totalRetentionsValue);
+        renderValidationState(record);
     }
 
     async function saveEditor() {
@@ -527,7 +709,9 @@
                     fechaPagoValue: record.fechaPagoValue,
                     valorTotal: record.valorTotal,
                     reteFuentePorcentaje: record.reteFuentePorcentaje,
-                    valorPago: record.valorPago
+                    reteFuenteValor: record.reteFuenteValor,
+                    valorPago: record.valorPago,
+                    retentions: record.retentions.map(toRetentionPayload)
                 })
             });
 
@@ -613,6 +797,55 @@
         }
 
         return hydrateRow(payload.record);
+    }
+
+    async function downloadReport() {
+        if (!downloadReportUrl) {
+            return;
+        }
+
+        if (!state.rows.length) {
+            renderStatus("warning", "No hay filas en pantalla para exportar.");
+            return;
+        }
+
+        try {
+            setBusy(true);
+            renderStatus("info", "Preparando reporte de cuentas de cobro...");
+
+            const response = await fetch(downloadReportUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                },
+                body: JSON.stringify({
+                    year: state.year,
+                    month: state.month,
+                    periodLabel: state.board?.selectedPeriodLabel || buildFallbackPeriodLabel(),
+                    rows: state.rows.map(toReportRow)
+                })
+            });
+
+            if (!response.ok) {
+                throw createResponseError(await readPayload(response));
+            }
+
+            const blob = await response.blob();
+            const href = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = href;
+            link.download = resolveDownloadFileName(response, "cuentas-cobro.xlsx");
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(href);
+            renderStatus("success", "Reporte descargado correctamente.");
+        } catch (error) {
+            renderStatus("error", buildErrorBannerMessage(error));
+        } finally {
+            setBusy(false);
+        }
     }
 
     async function printRecord(recordId, fromModal) {
@@ -758,6 +991,8 @@
             reteFuentePorcentaje: 0,
             valorPago: 0,
             reteFuenteValor: 0,
+            retentions: [],
+            totalRetentionsValue: 0,
             totalesCuadran: true,
             impresa: false,
             hasAdjunto: false,
@@ -783,6 +1018,8 @@
             reteFuentePorcentaje: Number(record.reteFuentePorcentaje || 0),
             valorPago: Number(record.valorPago || 0),
             reteFuenteValor: Number(record.reteFuenteValor || 0),
+            retentions: hydrateRetentions(record),
+            totalRetentionsValue: Number(record.totalRetentionsValue || 0),
             totalesCuadran: Boolean(record.totalesCuadran),
             impresa: Boolean(record.impresa),
             hasAdjunto: Boolean(record.hasAdjunto),
@@ -795,18 +1032,166 @@
         });
     }
 
+    function hydrateRetentions(record) {
+        const source = Array.isArray(record?.retentions) ? record.retentions : [];
+        if (source.length > 0) {
+            return source.map(normalizeRetention);
+        }
+
+        const legacyRate = Number(record?.reteFuentePorcentaje || 0);
+        let legacyValue = Number(record?.reteFuenteValor || 0);
+        if (legacyValue === 0 && legacyRate > 0) {
+            legacyValue = roundCurrency(Number(record?.valorTotal || 0) * legacyRate / 100);
+        }
+
+        if (legacyRate <= 0 && legacyValue <= 0) {
+            return [];
+        }
+
+        return [normalizeRetention({
+            kind: "ReteFuente",
+            label: resolveRetentionLabel("ReteFuente"),
+            taxId: "",
+            accountCode: "",
+            baseValue: Number(record?.valorTotal || 0),
+            rate: legacyRate,
+            value: legacyValue
+        })];
+    }
+
+    function createEmptyRetention(kind, baseValue) {
+        const normalizedKind = normalizeRetentionKind(kind);
+        return normalizeRetention({
+            kind: normalizedKind,
+            label: resolveRetentionLabel(normalizedKind),
+            taxId: "",
+            accountCode: "",
+            baseValue: Number(baseValue || 0),
+            rate: 0,
+            value: 0
+        });
+    }
+
+    function normalizeRetention(retention) {
+        const kind = normalizeRetentionKind(retention?.kind);
+        const normalized = {
+            kind,
+            label: String(retention?.label || resolveRetentionLabel(kind)).trim(),
+            taxId: String(retention?.taxId || "").trim(),
+            accountCode: String(retention?.accountCode || "").trim(),
+            baseValue: roundCurrency(retention?.baseValue || 0),
+            rate: roundRate(retention?.rate || 0),
+            value: roundCurrency(retention?.value || 0)
+        };
+
+        if (normalized.value === 0 && normalized.baseValue > 0 && normalized.rate > 0) {
+            normalized.value = calculateRetentionValue(normalized);
+        }
+
+        return normalized;
+    }
+
+    function normalizeRetentionKind(value) {
+        const normalized = String(value || "")
+            .trim()
+            .replaceAll("-", "")
+            .replaceAll("_", "")
+            .replaceAll(" ", "")
+            .toLowerCase();
+
+        if (["retefuente", "retefte", "retencionfuente"].includes(normalized)) {
+            return "ReteFuente";
+        }
+        if (["reteica", "retencionica"].includes(normalized)) {
+            return "ReteICA";
+        }
+        if (["reteiva", "rteiva", "ivaretenido"].includes(normalized)) {
+            return "RteIVA";
+        }
+        return "Otra";
+    }
+
+    function resolveRetentionLabel(kind) {
+        if (kind === "ReteFuente") {
+            return "Retencion en la fuente";
+        }
+        if (kind === "ReteICA") {
+            return "Retencion ICA";
+        }
+        if (kind === "RteIVA") {
+            return "IVA retenido";
+        }
+        return "Otra retencion";
+    }
+
+    function isDefaultRetentionLabel(value) {
+        const normalized = String(value || "").trim().toLowerCase();
+        return [
+            "retencion en la fuente",
+            "retencion ica",
+            "iva retenido",
+            "otra retencion"
+        ].includes(normalized);
+    }
+
+    function calculateRetentionValue(retention) {
+        const divisor = normalizeRetentionKind(retention?.kind) === "ReteICA" ? 1000 : 100;
+        return roundCurrency(Number(retention?.baseValue || 0) * Number(retention?.rate || 0) / divisor);
+    }
+
+    function buildRetentionKindOptions(selectedKind) {
+        return [
+            ["ReteFuente", "ReteFuente"],
+            ["ReteICA", "ReteICA"],
+            ["RteIVA", "RteIVA"],
+            ["Otra", "Otra"]
+        ].map(([value, label]) => `
+            <option value="${value}" ${value === selectedKind ? "selected" : ""}>${label}</option>
+        `).join("");
+    }
+
+    function toRetentionPayload(retention) {
+        const normalized = normalizeRetention(retention);
+        return {
+            kind: normalized.kind,
+            label: normalized.label,
+            taxId: normalized.taxId,
+            accountCode: normalized.accountCode,
+            baseValue: normalized.baseValue,
+            rate: normalized.rate,
+            value: normalized.value
+        };
+    }
+
     function cloneRow(row) {
         return {
-            ...row
+            ...row,
+            retentions: Array.isArray(row.retentions)
+                ? row.retentions.map((retention) => ({ ...retention }))
+                : []
         };
     }
 
     function recomputeRow(row) {
         row.valorTotal = roundCurrency(row.valorTotal || 0);
-        row.reteFuentePorcentaje = roundCurrency(row.reteFuentePorcentaje || 0);
         row.valorPago = roundCurrency(row.valorPago || 0);
-        row.reteFuenteValor = roundCurrency(row.valorTotal * (row.reteFuentePorcentaje / 100));
-        row.totalesCuadran = Math.abs(row.valorTotal - (row.valorPago + row.reteFuenteValor)) <= 0.01;
+        row.retentions = Array.isArray(row.retentions)
+            ? row.retentions.map(normalizeRetention)
+            : [];
+
+        if (!state.board?.retentionJsonAvailable
+            && row.retentions.length === 1
+            && row.retentions[0].kind === "ReteFuente") {
+            row.retentions[0].baseValue = row.valorTotal;
+        }
+
+        row.totalRetentionsValue = roundCurrency(row.retentions.reduce(
+            (total, retention) => total + retention.value,
+            0));
+        const reteFuente = row.retentions.find((retention) => retention.kind === "ReteFuente");
+        row.reteFuentePorcentaje = reteFuente ? reteFuente.rate : 0;
+        row.reteFuenteValor = reteFuente ? reteFuente.value : 0;
+        row.totalesCuadran = Math.abs(row.valorTotal - (row.valorPago + row.totalRetentionsValue)) <= 0.01;
         return row;
     }
 
@@ -831,12 +1216,43 @@
             return "El valor total debe ser mayor a cero.";
         }
 
-        if (row.reteFuentePorcentaje < 0 || row.reteFuentePorcentaje > 100) {
-            return "La rete fuente % debe estar entre 0 y 100.";
+        for (let index = 0; index < row.retentions.length; index += 1) {
+            const retention = row.retentions[index];
+            const displayIndex = index + 1;
+            if (!["ReteFuente", "ReteICA", "RteIVA", "Otra"].includes(retention.kind)) {
+                return `El tipo de la retencion ${displayIndex} no es valido.`;
+            }
+
+            if (retention.baseValue <= 0) {
+                return `La base de la retencion ${displayIndex} debe ser mayor a cero.`;
+            }
+
+            const maximumRate = retention.kind === "ReteICA" ? 1000 : 100;
+            if (retention.rate < 0 || retention.rate > maximumRate) {
+                return `La tasa de la retencion ${displayIndex} no es valida.`;
+            }
+
+            if (retention.value <= 0) {
+                return `El valor de la retencion ${displayIndex} debe ser mayor a cero.`;
+            }
+        }
+
+        if (!state.board?.retentionJsonAvailable && row.retentions.length > 0) {
+            const legacyRetention = row.retentions.length === 1 ? row.retentions[0] : null;
+            const canUseLegacyFields = legacyRetention
+                && legacyRetention.kind === "ReteFuente"
+                && isDefaultRetentionLabel(legacyRetention.label)
+                && !legacyRetention.taxId
+                && !legacyRetention.accountCode
+                && Math.abs(legacyRetention.baseValue - row.valorTotal) <= 0.01;
+
+            if (!canUseLegacyFields) {
+                return "Dataverse requiere el campo cr07a_retencionesjson para guardar retenciones multiples o detalladas.";
+            }
         }
 
         if (!row.totalesCuadran) {
-            return "El valor total debe ser igual a valor pago + rete fuente valor.";
+            return "El valor total debe ser igual a valor pago + suma de retenciones.";
         }
 
         return "";
@@ -883,6 +1299,10 @@
             addRowBtn.disabled = isBusy;
         }
 
+        if (downloadReportBtn) {
+            downloadReportBtn.disabled = isBusy || state.rows.length === 0;
+        }
+
         if (modalCloseBtn) {
             modalCloseBtn.disabled = isBusy;
         }
@@ -899,11 +1319,28 @@
             modalPrintBtn.disabled = isBusy || !state.editor.record?.recordId;
         }
 
-        [receptorInput, nitInput, fechaEmisionInput, fechaPagoInput, retePorcentajeInput, valorTotalInput, valorPagoInput, observacionesInput, attachmentInput].forEach((element) => {
+        if (addRetentionBtn) {
+            addRetentionBtn.disabled = isBusy
+                || (!state.board?.retentionJsonAvailable && (state.editor.record?.retentions?.length || 0) >= 1);
+        }
+
+        [receptorInput, nitInput, fechaEmisionInput, fechaPagoInput, valorTotalInput, valorPagoInput, observacionesInput, attachmentInput].forEach((element) => {
             if (element) {
                 element.disabled = isBusy;
             }
         });
+
+        if (isBusy) {
+            retentionsList?.querySelectorAll("input, select, button").forEach((element) => {
+                if (element instanceof HTMLInputElement
+                    || element instanceof HTMLSelectElement
+                    || element instanceof HTMLButtonElement) {
+                    element.disabled = true;
+                }
+            });
+        } else if (state.editor.isOpen) {
+            renderRetentionsEditor();
+        }
 
         rowsBody?.querySelectorAll("button, tr").forEach((element) => {
             if (element instanceof HTMLButtonElement) {
@@ -923,6 +1360,10 @@
 
     function roundCurrency(value) {
         return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+    }
+
+    function roundRate(value) {
+        return Math.round((Number(value || 0) + Number.EPSILON) * 10000) / 10000;
     }
 
     function parseDecimal(value) {
@@ -948,8 +1389,41 @@
         return `${match[3]}/${match[2]}/${match[1]}`;
     }
 
+    function toReportRow(row) {
+        return {
+            recordId: row.recordId || "",
+            receptor: row.receptor || "",
+            nitOCedula: row.nitOCedula || "",
+            observaciones: row.observaciones || "",
+            valorTotal: row.valorTotal || 0,
+            reteFuentePorcentaje: row.reteFuentePorcentaje || 0,
+            valorPago: row.valorPago || 0,
+            reteFuenteValor: row.reteFuenteValor || 0,
+            retentions: Array.isArray(row.retentions) ? row.retentions.map(toRetentionPayload) : [],
+            totalRetentionsValue: row.totalRetentionsValue || 0,
+            totalesCuadran: Boolean(row.totalesCuadran),
+            impresa: Boolean(row.impresa),
+            hasAdjunto: Boolean(row.hasAdjunto),
+            adjuntoFileName: row.adjuntoFileName || "",
+            periodYear: row.periodYear || state.year,
+            periodMonth: row.periodMonth || state.month,
+            periodLabel: row.periodLabel || "",
+            fechaEmisionValue: row.fechaEmisionValue || "",
+            fechaEmisionDisplay: row.fechaEmisionDisplay || "",
+            fechaPagoValue: row.fechaPagoValue || "",
+            fechaPagoDisplay: row.fechaPagoDisplay || "",
+            createdOnValue: row.createdOnValue || "",
+            createdOnDisplay: row.createdOnDisplay || "",
+            modifiedOnDisplay: row.modifiedOnDisplay || ""
+        };
+    }
+
     function formatInputNumber(value) {
         return roundCurrency(value).toFixed(2);
+    }
+
+    function formatRateNumber(value) {
+        return roundRate(value).toFixed(4);
     }
 
     function capitalize(value) {
@@ -1000,6 +1474,17 @@
         return {
             message: await response.text()
         };
+    }
+
+    function resolveDownloadFileName(response, fallback) {
+        const disposition = response.headers.get("content-disposition") || "";
+        const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match) {
+            return decodeURIComponent(utf8Match[1].trim().replaceAll("\"", ""));
+        }
+
+        const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+        return plainMatch ? plainMatch[1].trim() : fallback;
     }
 
     function escapeHtml(value) {

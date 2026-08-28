@@ -313,4 +313,4 @@ if (-not $targetFound) {
     throw "No se encontro empleado con correo $TargetEmail. La opcion fue verificada, pero no se asigno acceso."
 }
 
-Write-Host "Acceso Conciliacion listo. Asignados: $assigned. Removidos: $removed. Sin cambios: $unchanged." -ForegroundColor Green
+Write-Host "Acceso $ModuleLabel listo. Asignados: $assigned. Removidos: $removed. Sin cambios: $unchanged." -ForegroundColor Green

@@ -14,6 +14,7 @@ namespace CotizadorInterno.Web.Services;
 public sealed class ReportesDataverseRepository : IReportesDataverseRepository
 {
     private const string FormattedValueAnnotationSuffix = "@OData.Community.Display.V1.FormattedValue";
+    private const string ReportAttachmentSubject = "Anexo informe Microsoft 365";
     private readonly ReportesOptions _options;
     private readonly M365Options _m365Options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -25,6 +26,7 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
     private readonly string _dataverseClientSecret;
     private readonly string _dataverseCredentialSource;
     private readonly ConcurrentDictionary<string, bool> _attributeExistsCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _navigationPropertyCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly CultureInfo ReportCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -175,12 +177,69 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
         }
     }
 
+    public async Task<ReporteClienteData?> GetClientAsync(
+        string clienteId,
+        CancellationToken ct = default)
+    {
+        var normalizedClienteId = NormalizeGuid(clienteId, nameof(clienteId));
+        try
+        {
+            return await LoadClientAsync(normalizedClienteId, ct);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+    }
+
+    public async Task ReplaceGeneratedReportAttachmentsAsync(
+        string reportId,
+        IReadOnlyList<ReporteEmailAttachment> attachments,
+        CancellationToken ct = default)
+    {
+        var normalizedReportId = NormalizeGuid(reportId, nameof(reportId));
+        var existing = await ListAttachmentRecordsAsync(normalizedReportId, includeContent: false, ct);
+        foreach (var attachment in existing.Where(item => !string.IsNullOrWhiteSpace(item.Id)))
+        {
+            await DeleteAttachmentRecordAsync(attachment.Id, ct);
+        }
+
+        if (attachments.Count == 0)
+            return;
+
+        var table = _options.Attachment;
+        var reportNavigationProperty = await ResolveLookupNavigationPropertyAsync(
+            table.TableLogicalName,
+            table.ReportLookupField,
+            table.ReportNavigationProperty,
+            ct);
+        foreach (var attachment in attachments)
+        {
+            if (attachment.Content.Length == 0)
+                continue;
+
+            var saved = await CreateAttachmentRecordAsync(normalizedReportId, attachment, reportNavigationProperty, ct);
+            await CreateAttachmentNoteAsync(saved.Id, attachment, ct);
+        }
+    }
+
+    public async Task<IReadOnlyList<ReporteEmailAttachment>> ListGeneratedReportAttachmentsAsync(
+        string reportId,
+        bool includeContent,
+        CancellationToken ct = default)
+    {
+        var normalizedReportId = NormalizeGuid(reportId, nameof(reportId));
+        return await ListAttachmentRecordsAsync(normalizedReportId, includeContent, ct);
+    }
+
     private async Task<ReporteClienteData> LoadClientAsync(string clienteId, CancellationToken ct)
     {
         var table = _options.Client;
         var selectFields = new List<string> { table.IdField, table.NameField };
         selectFields.AddRange(await ResolveExistingAttributesAsync(table.TableLogicalName, table.LogoFieldCandidates, ct));
         selectFields.AddRange(await ResolveExistingAttributesAsync(table.TableLogicalName, table.ColorFieldCandidates, ct));
+        selectFields.AddRange(await ResolveExistingAttributesAsync(table.TableLogicalName, table.ContactNameFieldCandidates, ct));
+        selectFields.AddRange(await ResolveExistingAttributesAsync(table.TableLogicalName, table.ContactEmailFieldCandidates, ct));
 
         var relativeUrl =
             $"/api/data/v9.2/{table.TableSetName}({clienteId})" +
@@ -195,9 +254,179 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
         {
             ClienteId = FirstNonEmpty(ReadString(root, table.IdField), clienteId),
             Nombre = FirstNonEmpty(ReadString(root, table.NameField), "Cliente"),
+            PersonaACargo = ReadFirstString(root, table.ContactNameFieldCandidates),
+            Correo = ReadFirstString(root, table.ContactEmailFieldCandidates),
             Logo = logo,
             ColorCorporativo = color
         };
+    }
+
+    private async Task<ReporteEmailAttachment> CreateAttachmentRecordAsync(
+        string reportId,
+        ReporteEmailAttachment attachment,
+        string reportNavigationProperty,
+        CancellationToken ct)
+    {
+        var table = _options.Attachment;
+        var fileName = NormalizeFileName(attachment.FileName);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [table.PrimaryNameField] = fileName,
+            [table.InternalReportIdField] = reportId,
+            [table.FileNameField] = fileName,
+            [table.ContentTypeField] = FirstNonEmpty(attachment.ContentType, "application/octet-stream"),
+            [table.SizeField] = Math.Min(attachment.Content.Length, int.MaxValue),
+            [table.UploadDateField] = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+        };
+
+        if (!string.IsNullOrWhiteSpace(reportNavigationProperty))
+            payload[$"{reportNavigationProperty}@odata.bind"] = $"/{_options.GeneratedReport.TableSetName}({reportId})";
+
+        try
+        {
+            var body = await CallDataverseAppSendAsync(
+                $"/api/data/v9.2/{table.TableSetName}",
+                "POST",
+                payload,
+                ct,
+                AddReturnRepresentationHeaders);
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                using var doc = JsonDocument.Parse(body);
+                return BuildAttachmentRecordData(doc.RootElement, includeContent: false);
+            }
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains(table.TableLogicalName, StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains(table.TableSetName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ReportesConfigurationException(
+                "No existe la tabla de anexos de reportes. Ejecuta scripts/Provision-M365ReportesDataverse.ps1 y vuelve a intentar.",
+                ex);
+        }
+
+        throw new InvalidOperationException("Dataverse no devolvio el id del anexo creado.");
+    }
+
+    private async Task CreateAttachmentNoteAsync(
+        string attachmentRecordId,
+        ReporteEmailAttachment attachment,
+        CancellationToken ct)
+    {
+        var normalizedAttachmentId = NormalizeGuid(attachmentRecordId, nameof(attachmentRecordId));
+        var navigationProperty = await ResolveAnnotationObjectNavigationPropertyAsync(_options.Attachment.TableLogicalName, ct);
+        var fileName = NormalizeFileName(attachment.FileName);
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["subject"] = ReportAttachmentSubject,
+            ["filename"] = fileName,
+            ["mimetype"] = FirstNonEmpty(attachment.ContentType, "application/octet-stream"),
+            ["documentbody"] = Convert.ToBase64String(attachment.Content),
+            ["isdocument"] = true,
+            ["notetext"] = $"Anexo cargado desde reportes automatizados. Tamano: {attachment.Content.Length} bytes."
+        };
+        payload[$"{navigationProperty}@odata.bind"] = $"/{_options.Attachment.TableSetName}({normalizedAttachmentId})";
+
+        try
+        {
+            await CallDataverseAppSendAsync("/api/data/v9.2/annotations", "POST", payload, ct);
+        }
+        catch (InvalidOperationException ex) when (IsAnnotationRelationshipError(ex))
+        {
+            throw new ReportesConfigurationException(
+                "La tabla de anexos de reportes no tiene notas habilitadas. Ejecuta scripts/Provision-M365ReportesDataverse.ps1 y vuelve a intentar.",
+                ex);
+        }
+    }
+
+    private async Task<IReadOnlyList<ReporteEmailAttachment>> ListAttachmentRecordsAsync(
+        string reportId,
+        bool includeContent,
+        CancellationToken ct)
+    {
+        var table = _options.Attachment;
+        var filter = $"{table.InternalReportIdField} eq '{EscapeOdataLiteral(reportId)}'";
+        var relativeUrl =
+            $"/api/data/v9.2/{table.TableSetName}" +
+            $"?$select={BuildAttachmentRecordSelectClause()}" +
+            $"&$filter={Uri.EscapeDataString(filter)}" +
+            $"&$orderby={table.UploadDateField} asc,createdon asc&$top=5000";
+
+        try
+        {
+            var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct);
+            var records = new List<ReporteEmailAttachment>();
+            foreach (var item in items)
+            {
+                var record = BuildAttachmentRecordData(item, includeContent: false);
+                if (string.IsNullOrWhiteSpace(record.Id) || string.IsNullOrWhiteSpace(record.FileName))
+                    continue;
+
+                if (includeContent)
+                    record.Content = await ReadAttachmentNoteContentAsync(record.Id, ct);
+
+                records.Add(record);
+            }
+
+            return records;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains(table.TableLogicalName, StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains(table.TableSetName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ReportesConfigurationException(
+                "No existe la tabla de anexos de reportes. Ejecuta scripts/Provision-M365ReportesDataverse.ps1 y vuelve a intentar.",
+                ex);
+        }
+    }
+
+    private async Task DeleteAttachmentRecordAsync(string attachmentRecordId, CancellationToken ct)
+    {
+        var normalizedAttachmentId = NormalizeGuid(attachmentRecordId, nameof(attachmentRecordId));
+        var annotationIds = await ListAnnotationIdsForObjectAsync(normalizedAttachmentId, ct);
+        foreach (var annotationId in annotationIds)
+        {
+            await CallDataverseAppNoBodyAsync($"/api/data/v9.2/annotations({annotationId})", "DELETE", ct);
+        }
+
+        await CallDataverseAppNoBodyAsync(
+            $"/api/data/v9.2/{_options.Attachment.TableSetName}({normalizedAttachmentId})",
+            "DELETE",
+            ct);
+    }
+
+    private async Task<byte[]> ReadAttachmentNoteContentAsync(string attachmentRecordId, CancellationToken ct)
+    {
+        var normalizedAttachmentId = NormalizeGuid(attachmentRecordId, nameof(attachmentRecordId));
+        var filter =
+            $"_objectid_value eq {normalizedAttachmentId} and " +
+            "isdocument eq true and " +
+            $"subject eq '{EscapeOdataLiteral(ReportAttachmentSubject)}'";
+        var relativeUrl =
+            "/api/data/v9.2/annotations" +
+            "?$select=annotationid,documentbody,subject" +
+            $"&$filter={Uri.EscapeDataString(filter)}" +
+            "&$orderby=createdon asc&$top=1";
+        var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct);
+        var raw = items.Select(item => ReadString(item, "documentbody")).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return DecodeBase64(raw);
+    }
+
+    private async Task<IReadOnlyList<string>> ListAnnotationIdsForObjectAsync(string recordId, CancellationToken ct)
+    {
+        var normalizedRecordId = NormalizeGuid(recordId, nameof(recordId));
+        var filter =
+            $"_objectid_value eq {normalizedRecordId} and " +
+            "isdocument eq true and " +
+            $"subject eq '{EscapeOdataLiteral(ReportAttachmentSubject)}'";
+        var relativeUrl =
+            "/api/data/v9.2/annotations" +
+            "?$select=annotationid,subject" +
+            $"&$filter={Uri.EscapeDataString(filter)}" +
+            "&$top=5000";
+        var items = await GetDataverseAppEntitiesAsync(relativeUrl, ct);
+        return items
+            .Select(item => ReadString(item, "annotationid").Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
     }
 
     private async Task<IReadOnlyList<ReporteTicketData>> LoadTicketsAsync(
@@ -419,6 +648,22 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
         };
     }
 
+    private ReporteEmailAttachment BuildAttachmentRecordData(JsonElement item, bool includeContent)
+    {
+        var table = _options.Attachment;
+        var content = includeContent ? DecodeBase64(ReadString(item, "documentbody")) : Array.Empty<byte>();
+        var size = ReadLong(item, table.SizeField) ?? content.LongLength;
+
+        return new ReporteEmailAttachment
+        {
+            Id = ReadString(item, table.IdField).Trim(),
+            FileName = NormalizeFileName(ReadString(item, table.FileNameField)),
+            ContentType = FirstNonEmpty(ReadString(item, table.ContentTypeField), "application/octet-stream"),
+            Size = size,
+            Content = content
+        };
+    }
+
     private string BuildTicketSelectClause()
     {
         var table = _options.Ticket;
@@ -516,6 +761,25 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
             .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
+    private string BuildAttachmentRecordSelectClause()
+    {
+        var table = _options.Attachment;
+        return string.Join(",",
+            new[]
+            {
+                table.IdField,
+                table.PrimaryNameField,
+                table.InternalReportIdField,
+                BuildLookupValuePropertyName(table.ReportLookupField),
+                table.FileNameField,
+                table.ContentTypeField,
+                table.SizeField,
+                table.UploadDateField
+            }
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
     private async Task<IReadOnlyList<string>> ResolveExistingAttributesAsync(
         string entityLogicalName,
         IEnumerable<string> candidateFields,
@@ -601,6 +865,55 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
         return lookupField;
     }
 
+    private async Task<string> ResolveAnnotationObjectNavigationPropertyAsync(string referencedEntityLogicalName, CancellationToken ct)
+    {
+        var normalizedReferencedEntity = NormalizeRequiredText(referencedEntityLogicalName, nameof(referencedEntityLogicalName));
+        var cacheKey = $"annotation|{normalizedReferencedEntity}";
+        if (_navigationPropertyCache.TryGetValue(cacheKey, out var cached)
+            && !string.IsNullOrWhiteSpace(cached))
+        {
+            return cached;
+        }
+
+        try
+        {
+            var relativeUrl =
+                "/api/data/v9.2/EntityDefinitions(LogicalName='annotation')" +
+                "?$select=LogicalName" +
+                "&$expand=ManyToOneRelationships($select=ReferencedEntity,ReferencingAttribute,ReferencingEntityNavigationPropertyName)";
+            var json = await CallDataverseAppGetJsonAsync(relativeUrl, ct);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("ManyToOneRelationships", out var relationships)
+                && relationships.ValueKind == JsonValueKind.Array)
+            {
+                var navigationProperty = relationships
+                    .EnumerateArray()
+                    .Where(relationship =>
+                        string.Equals(ReadString(relationship, "ReferencedEntity"), normalizedReferencedEntity, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(ReadString(relationship, "ReferencingAttribute"), "objectid", StringComparison.OrdinalIgnoreCase))
+                    .Select(relationship => ReadString(relationship, "ReferencingEntityNavigationPropertyName"))
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+                if (!string.IsNullOrWhiteSpace(navigationProperty))
+                {
+                    _navigationPropertyCache[cacheKey] = navigationProperty.Trim();
+                    return navigationProperty.Trim();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible resolver la propiedad objectid de annotation para {GeneratedReportTable}. Se usara fallback.",
+                normalizedReferencedEntity);
+        }
+
+        var fallback = $"objectid_{normalizedReferencedEntity}";
+        _navigationPropertyCache[cacheKey] = fallback;
+        return fallback;
+    }
+
     private async Task<string> GetDataverseAppAccessTokenAsync(CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_dataverseBaseUrl)
@@ -672,6 +985,18 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
             throw BuildDataverseAppException(response, body);
 
         return body;
+    }
+
+    private async Task CallDataverseAppNoBodyAsync(
+        string relativeUrl,
+        string method,
+        CancellationToken ct,
+        Action<HttpRequestMessage>? customizeRequest = null)
+    {
+        using var response = await CallDataverseAppResponseAsync(relativeUrl, method, ct, customizeRequest: customizeRequest);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+            throw BuildDataverseAppException(response, body);
     }
 
     private InvalidOperationException BuildDataverseAppException(HttpResponseMessage response, string body)
@@ -826,6 +1151,46 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
         return fallback;
     }
 
+    private static string NormalizeFileName(string? raw)
+    {
+        var value = Path.GetFileName((raw ?? "").Trim());
+        if (string.IsNullOrWhiteSpace(value))
+            return "anexo";
+
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+        {
+            value = value.Replace(invalid, '_');
+        }
+
+        return value.Length <= 180 ? value : value[..180];
+    }
+
+    private static byte[] DecodeBase64(string? value)
+    {
+        var raw = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return Array.Empty<byte>();
+
+        try
+        {
+            return Convert.FromBase64String(raw);
+        }
+        catch (FormatException)
+        {
+            return Array.Empty<byte>();
+        }
+    }
+
+    private static bool IsAnnotationRelationshipError(Exception ex)
+    {
+        var message = ex.Message;
+        return message.Contains("annotation", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("objectid", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("undeclared property", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("navigation", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("notes", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string EscapeOdataLiteral(string value) =>
         (value ?? string.Empty).Replace("'", "''");
 
@@ -945,6 +1310,23 @@ public sealed class ReportesDataverseRepository : IReportesDataverseRepository
 
         if (property.ValueKind == JsonValueKind.String
             && int.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    private static long? ReadLong(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var property))
+            return null;
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var number))
+            return number;
+
+        if (property.ValueKind == JsonValueKind.String
+            && long.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
         {
             return parsed;
         }

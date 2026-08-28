@@ -1,0 +1,261 @@
+@using CotizadorInterno.Web.Models.Crm
+@{
+    var allowContact = ViewData["CrmAllowContact"] is bool allowContactValue && allowContactValue;
+    var companyId = ViewData["CrmCompanyId"] as string ?? "";
+    var companyName = ViewData["CrmCompanyName"] as string ?? "";
+    var contactId = ViewData["CrmContactId"] as string ?? "";
+    var contactName = ViewData["CrmContactName"] as string ?? "";
+    var dealId = ViewData["CrmDealId"] as string ?? "";
+    var dealName = ViewData["CrmDealName"] as string ?? "";
+    var lifecycleValue = ViewData["CrmContactLifecycle"] is int configuredLifecycle
+        ? configuredLifecycle
+        : (int)CrmContactLifecycle.Lead;
+    var lifecycleLabel = CrmCatalog.ContactLifecycles
+        .FirstOrDefault(item => item.Value == lifecycleValue)?.Label ?? "Lead";
+}
+
+@if (allowContact)
+{
+    <div class="crm-drawer" data-detail-contact-drawer hidden>
+        <button class="crm-drawer__backdrop"
+                type="button"
+                aria-label="Cerrar panel de nuevo contacto"
+                data-detail-close-contact></button>
+        <aside class="crm-drawer__panel"
+               role="dialog"
+               aria-modal="true"
+               aria-labelledby="crmDetailContactTitle">
+            <header class="crm-drawer__head">
+                <div>
+                    <span class="crm-eyebrow">Contacto asociado</span>
+                    <h2 id="crmDetailContactTitle">Nuevo contacto</h2>
+                    <p>El contacto quedará vinculado a @companyName.</p>
+                </div>
+                <button class="crm-drawer__close"
+                        type="button"
+                        aria-label="Cerrar"
+                        data-detail-close-contact>×</button>
+            </header>
+
+            <div class="crm-status"
+                 data-detail-contact-status
+                 role="status"
+                 aria-live="polite"
+                 hidden></div>
+
+            <form class="crm-form" data-detail-contact-form>
+                <input type="hidden" name="CompanyId" value="@companyId" />
+                <input type="hidden" name="Lifecycle" value="@lifecycleValue" />
+                <div class="crm-form__grid">
+                    <label class="crm-field crm-field--wide">
+                        <span>Empresa</span>
+                        <input type="text" value="@companyName" readonly />
+                    </label>
+                    <label class="crm-field">
+                        <span>Nombre *</span>
+                        <input type="text"
+                               name="FirstName"
+                               maxlength="150"
+                               minlength="2"
+                               autocomplete="given-name"
+                               required
+                               data-detail-contact-first-focus />
+                    </label>
+                    <label class="crm-field">
+                        <span>Apellidos</span>
+                        <input type="text" name="LastName" maxlength="150" autocomplete="family-name" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Correo</span>
+                        <input type="email" name="Email" maxlength="254" autocomplete="email" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Teléfono</span>
+                        <input type="tel" name="Phone" maxlength="50" autocomplete="tel" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Cargo</span>
+                        <input type="text" name="JobTitle" maxlength="150" autocomplete="organization-title" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Ciclo de vida</span>
+                        <input type="text" value="@lifecycleLabel" readonly />
+                    </label>
+                    <div class="crm-field crm-field--wide">
+                        <span>Preferencias</span>
+                        <div class="crm-check-grid">
+                            <label class="crm-check">
+                                <input type="checkbox" name="IsPrimary" value="true" />
+                                <span>Contacto principal</span>
+                            </label>
+                            <label class="crm-check">
+                                <input type="checkbox" name="DoNotEmail" value="true" />
+                                <span>No enviar correos</span>
+                            </label>
+                            <label class="crm-check">
+                                <input type="checkbox" name="DoNotCall" value="true" />
+                                <span>No llamar</span>
+                            </label>
+                        </div>
+                        <small class="crm-field__help">Registra al menos un correo o un teléfono.</small>
+                    </div>
+                </div>
+                <footer class="crm-drawer__footer">
+                    <button class="crm-btn crm-btn--quiet"
+                            type="button"
+                            data-detail-close-contact>Cancelar</button>
+                    <button class="crm-btn crm-btn--primary"
+                            type="submit"
+                            data-detail-save-contact>Crear contacto</button>
+                </footer>
+            </form>
+        </aside>
+    </div>
+}
+
+<div class="crm-drawer" data-detail-activity-drawer hidden>
+    <button class="crm-drawer__backdrop"
+            type="button"
+            aria-label="Cerrar panel de nueva actividad"
+            data-detail-close-activity></button>
+    <aside class="crm-drawer__panel"
+           role="dialog"
+           aria-modal="true"
+           aria-labelledby="crmDetailActivityTitle">
+        <header class="crm-drawer__head">
+            <div>
+                <span class="crm-eyebrow">Seguimiento comercial</span>
+                <h2 id="crmDetailActivityTitle">Nueva actividad</h2>
+                <p>Las asociaciones de esta ficha se conservarán automáticamente.</p>
+            </div>
+            <button class="crm-drawer__close"
+                    type="button"
+                    aria-label="Cerrar"
+                    data-detail-close-activity>×</button>
+        </header>
+
+        <div class="crm-status"
+             data-detail-activity-status
+             role="status"
+             aria-live="polite"
+             hidden></div>
+
+        <form class="crm-form" data-detail-activity-form>
+            <input type="hidden" name="CompanyId" value="@companyId" />
+            <input type="hidden" name="ContactId" value="@contactId" />
+            <input type="hidden" name="DealId" value="@dealId" />
+            <div class="crm-form__grid">
+                <div class="crm-field crm-field--wide">
+                    <span>Asociado a</span>
+                    <div class="crm-context-summary">
+                        @if (!string.IsNullOrWhiteSpace(companyName))
+                        {
+                            <span><small>Empresa</small><strong>@companyName</strong></span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(contactName))
+                        {
+                            <span><small>Contacto</small><strong>@contactName</strong></span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(dealName))
+                        {
+                            <span><small>Negocio</small><strong>@dealName</strong></span>
+                        }
+                    </div>
+                </div>
+                <label class="crm-field">
+                    <span>Tipo *</span>
+                    <select name="Type"
+                            required
+                            data-detail-activity-first-focus
+                            data-detail-activity-type-select>
+                        @foreach (var type in CrmCatalog.ActivityTypes)
+                        {
+                            <option value="@type.Value">@type.Label</option>
+                        }
+                    </select>
+                </label>
+                <label class="crm-field" data-detail-activity-meeting-type-field hidden>
+                    <span>Tipo de reunión *</span>
+                    <select name="MeetingType"
+                            data-detail-activity-meeting-type-select
+                            disabled>
+                        <option value="">Selecciona una opción</option>
+                        @foreach (var meetingType in CrmCatalog.MeetingTypes)
+                        {
+                            <option value="@meetingType.Value">@meetingType.Label</option>
+                        }
+                    </select>
+                </label>
+                <label class="crm-field">
+                    <span>Estado *</span>
+                    <select name="Status" required data-detail-activity-status-select>
+                        @foreach (var status in CrmCatalog.ActivityStatuses)
+                        {
+                            if (status.Value == (int)CrmActivityStatus.Planned)
+                            {
+                                <option value="@status.Value" selected>@status.Label</option>
+                            }
+                            else
+                            {
+                                <option value="@status.Value">@status.Label</option>
+                            }
+                        }
+                    </select>
+                </label>
+                <label class="crm-field crm-field--wide">
+                    <span>Asunto *</span>
+                    <input type="text"
+                           name="Subject"
+                           maxlength="200"
+                           minlength="3"
+                           required
+                           placeholder="Ej. Revisar propuesta comercial" />
+                </label>
+                <label class="crm-field">
+                    <span>Fecha planeada</span>
+                    <input type="datetime-local"
+                           name="PlannedAtUtc"
+                           required
+                           data-detail-activity-planned />
+                </label>
+                <label class="crm-field" data-detail-activity-completed-field hidden>
+                    <span>Fecha completada *</span>
+                    <input type="datetime-local"
+                           name="CompletedAtUtc"
+                           data-detail-activity-completed />
+                </label>
+                <label class="crm-field">
+                    <span>Duración estimada</span>
+                    <select name="DurationMinutes">
+                        <option value="15">15 minutos</option>
+                        <option value="30" selected>30 minutos</option>
+                        <option value="45">45 minutos</option>
+                        <option value="60">1 hora</option>
+                    </select>
+                </label>
+                <label class="crm-field crm-field--wide" data-detail-activity-result-field hidden>
+                    <span>Resultado *</span>
+                    <input type="text"
+                           name="Result"
+                           maxlength="500"
+                           data-detail-activity-result />
+                </label>
+                <label class="crm-field crm-field--wide">
+                    <span>Notas</span>
+                    <textarea name="Notes"
+                              rows="5"
+                              maxlength="4000"
+                              placeholder="Contexto, acuerdos o información para preparar el seguimiento"></textarea>
+                </label>
+            </div>
+            <footer class="crm-drawer__footer">
+                <button class="crm-btn crm-btn--quiet"
+                        type="button"
+                        data-detail-close-activity>Cancelar</button>
+                <button class="crm-btn crm-btn--primary"
+                        type="submit"
+                        data-detail-save-activity>Guardar actividad</button>
+            </footer>
+        </form>
+    </aside>
+</div>

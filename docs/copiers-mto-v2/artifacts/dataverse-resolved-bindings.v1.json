@@ -1,0 +1,129 @@
+{
+  "artifactType": "digital-tech/dataverse-resolved-bindings",
+  "artifactVersion": "1.0.0",
+  "capturedAtUtc": "2026-08-27",
+  "environment": {
+    "displayName": "Digital Tech Copiers (default)",
+    "url": "https://orgc79ca19c.crm2.dynamics.com/"
+  },
+  "solution": {
+    "uniqueName": "CopiersMtoFirmadoV2",
+    "solutionId": "71b7fcd0-77a2-f111-aaad-70a8a5a95cf5",
+    "version": "1.0.0.0",
+    "publisherUniqueName": "DigitalTechCopiers",
+    "publisherId": "2d2cb8bc-77a2-f111-aaad-70a8a5a95cf5",
+    "publisherPrefix": "dtc",
+    "publisherOptionValuePrefix": 82727
+  },
+  "tables": {
+    "main": {
+      "logicalName": "dtc_copiersmtov2",
+      "schemaName": "dtc_CopiersMtoV2",
+      "entitySetName": "dtc_copiersmtov2s",
+      "metadataId": "e31671ae-78a2-f111-aaad-70a8a5a95cf5",
+      "primaryIdAttribute": "dtc_copiersmtov2id",
+      "primaryNameAttribute": "dtc_name",
+      "isAuditEnabled": true,
+      "isOptimisticConcurrencyEnabled": true,
+      "alternateKeys": [
+        {
+          "schemaName": "dtc_CopiersMtoV2OperationKey",
+          "attributes": ["dtc_operationkey"],
+          "status": "Active"
+        }
+      ]
+    },
+    "evidence": {
+      "logicalName": "dtc_copiersmtoevidenciav2",
+      "schemaName": "dtc_CopiersMtoEvidenciaV2",
+      "entitySetName": "dtc_copiersmtoevidenciav2s",
+      "metadataId": "11b871e0-78a2-f111-aaad-70a8a5a95cf5",
+      "primaryIdAttribute": "dtc_copiersmtoevidenciav2id",
+      "primaryNameAttribute": "dtc_name",
+      "isAuditEnabled": true,
+      "isOptimisticConcurrencyEnabled": true,
+      "fileAttribute": "dtc_filecontent",
+      "fileMaxSizeInKB": 12288,
+      "alternateKeys": [
+        {
+          "schemaName": "dtc_CopiersMtoEvidenciaV2EvidenceKey",
+          "attributes": ["dtc_evidencekey"],
+          "status": "Active"
+        }
+      ]
+    }
+  },
+  "relationships": [
+    {
+      "schemaName": "dtc_Cliente_CopiersMtoV2",
+      "lookupLogicalName": "dtc_client",
+      "navigationPropertyName": "dtc_Client",
+      "lookupAuditEnabled": true,
+      "deleteBehavior": "Restrict"
+    },
+    {
+      "schemaName": "dtc_Equipo_CopiersMtoV2",
+      "lookupLogicalName": "dtc_equipment",
+      "navigationPropertyName": "dtc_Equipment",
+      "lookupAuditEnabled": true,
+      "deleteBehavior": "Restrict"
+    },
+    {
+      "schemaName": "dtc_CopiersMtoV2_Evidencia",
+      "lookupLogicalName": "dtc_signedmto",
+      "navigationPropertyName": "dtc_SignedMto",
+      "lookupAuditEnabled": true,
+      "deleteBehavior": "Restrict"
+    }
+  ],
+  "choices": {
+    "workflowState": {
+      "Draft": 827270000,
+      "Finalizing": 827270001,
+      "ReadyToSend": 827270002,
+      "Failed": 827270003
+    },
+    "emailState": {
+      "NotReady": 827270000,
+      "Pending": 827270001,
+      "Processing": 827270002,
+      "Sent": 827270003,
+      "Failed": 827270004
+    },
+    "maintenanceType": {
+      "Correctivo": 827270000,
+      "Preventivo": 827270001
+    },
+    "evidencePurpose": {
+      "Signature": 827270000,
+      "SignedReport": 827270001,
+      "OriginalAttachment": 827270002,
+      "CustomerAttachment": 827270003
+    },
+    "evidenceSecurity": {
+      "NotApplicable": 827270000,
+      "Pending": 827270001,
+      "ScanPassed": 827270002,
+      "Rejected": 827270003
+    }
+  },
+  "applicationIdentity": {
+    "managedIdentityName": "copiers-mto-v2-worker",
+    "managedIdentityClientId": "ebe37e5d-c246-4310-a7aa-a6e6686bc90e",
+    "managedIdentityObjectId": "7fad5476-7051-43a8-802d-d935717ba2f2",
+    "dataverseSystemUserId": "6b07e603-7ca2-f111-aaad-70a8a5a95cf5",
+    "assignedRoleCount": 0
+  },
+  "gates": {
+    "schemaProvisioned": true,
+    "alternateKeysActiveVerified": true,
+    "optimisticConcurrencyRowTestVerified": false,
+    "applicationUserWriteIsolationVerified": false,
+    "powerAutomateDraftReconciliationVerified": false,
+    "customerAttachmentSecurityVerified": false,
+    "pilotEnabled": false,
+    "flowCreated": false,
+    "emailSent": false
+  },
+  "legacyIntegrationAllowed": false
+}

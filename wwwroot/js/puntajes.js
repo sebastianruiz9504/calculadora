@@ -10,6 +10,7 @@
     const statusBanner = document.getElementById("scoresStatusBanner");
     const refreshButton = document.getElementById("refreshScoresBtn");
     const filterButtons = Array.from(document.querySelectorAll(".scores-filter-btn"));
+    const businessFilterButtons = Array.from(document.querySelectorAll(".scores-business-filter-btn"));
     const summaryClients = document.getElementById("summaryClients");
     const summaryRecords = document.getElementById("summaryRecords");
     const summaryProducts = document.getElementById("summaryProducts");
@@ -98,9 +99,12 @@
     const CONTRACT_KIND_RENEWAL_VALUE = 645250001;
     const AUTO_BILL_YES_VALUE = 1;
     const MODERN_WORK_LINE_OPTION_VALUE = 645250000;
+    const BUSINESS_FILTER_NEW = "new-business";
+    const BUSINESS_FILTER_RENEWALS = "renewals";
 
     const state = {
         filter: app.dataset.initialFilter || "this-month",
+        businessFilter: app.dataset.initialBusinessFilter || BUSINESS_FILTER_NEW,
         board: null,
         recordMap: new Map(),
         expandedGroups: new Set(),
@@ -742,6 +746,9 @@
         filterButtons.forEach(button => {
             button.disabled = loading || state.isSaving || state.isClosingMonth;
         });
+        businessFilterButtons.forEach(button => {
+            button.disabled = loading || state.isSaving || state.isClosingMonth;
+        });
         renderCloseMonthPanel();
     }
 
@@ -750,6 +757,9 @@
         submitVerifyScoreBtn && (submitVerifyScoreBtn.disabled = saving);
         refreshButton && (refreshButton.disabled = saving || state.isLoading || state.isClosingMonth);
         filterButtons.forEach(button => {
+            button.disabled = saving || state.isLoading || state.isClosingMonth;
+        });
+        businessFilterButtons.forEach(button => {
             button.disabled = saving || state.isLoading || state.isClosingMonth;
         });
         groupsContainer?.querySelectorAll(".verify-record-btn, .delete-record-btn, .move-to-renewal-btn, .toggle-group-btn").forEach(button => {
@@ -768,6 +778,12 @@
         state.isClosingMonth = closing;
         closeMonthButton && (closeMonthButton.disabled = closing);
         refreshButton && (refreshButton.disabled = closing || state.isLoading || state.isSaving);
+        filterButtons.forEach(button => {
+            button.disabled = closing || state.isLoading || state.isSaving;
+        });
+        businessFilterButtons.forEach(button => {
+            button.disabled = closing || state.isLoading || state.isSaving;
+        });
         updateCloseMonthReviewSubmitState();
         renderCloseMonthPanel();
     }
@@ -810,6 +826,12 @@
     function setFilterButtonState() {
         filterButtons.forEach(button => {
             button.classList.toggle("active", button.dataset.filter === state.filter);
+        });
+    }
+
+    function setBusinessFilterButtonState() {
+        businessFilterButtons.forEach(button => {
+            button.classList.toggle("active", button.dataset.businessFilter === state.businessFilter);
         });
     }
 
@@ -901,9 +923,8 @@
     }
 
     function summarizeSection(section) {
-        const groups = (section.ownerGroups || []).flatMap(owner => owner.groups || []);
+        const groups = section.groups || [];
         return {
-            ownersCount: section.ownerGroups?.length || 0,
             clientsCount: groups.length,
             recordsCount: sumRecords(groups, group => group.recordCount),
             productLinesCount: sumRecords(groups, group => group.productLinesCount),
@@ -914,70 +935,25 @@
     }
 
     function buildScoreSections(board) {
-        const baseSections = [
-            {
-                key: "new-business",
-                title: "Negocios nuevos",
-                description: "ClienteNuevo y CrossSale."
-            },
-            {
-                key: "renewals",
-                title: "Renovaciones",
-                description: "Renovacion 1 vez, 2 veces y 3 veces o mas."
-            }
-        ];
-
-        const sections = baseSections.map(section => ({ ...section, groups: [] }));
-        const newBusinessSection = sections[0];
-        const renewalsSection = sections[1];
-
-        function addRecordsToSection(section, group, records) {
-            splitRecordsByOwner(records, group).forEach(owner => {
-                if (!owner.records.length) {
-                    return;
-                }
-
-                let ownerGroup = section.groups.find(item => item.key === owner.key);
-                if (!ownerGroup) {
-                    ownerGroup = {
-                        key: owner.key,
-                        ownerId: owner.ownerId,
-                        ownerName: owner.ownerName,
-                        groups: []
-                    };
-                    section.groups.push(ownerGroup);
-                }
-
-                ownerGroup.groups.push(cloneGroupForSection(group, owner.records, section.key, owner));
-            });
-        }
-
-        (Array.isArray(board?.groups) ? board.groups : []).forEach(group => {
-            const records = Array.isArray(group.records) ? group.records : [];
-            const newBusinessRecords = records.filter(record => !isRenewalRecord(record));
-            const renewalRecords = records.filter(isRenewalRecord);
-
-            if (newBusinessRecords.length) {
-                addRecordsToSection(newBusinessSection, group, newBusinessRecords);
-            }
-
-            if (renewalRecords.length) {
-                addRecordsToSection(renewalsSection, group, renewalRecords);
-            }
-        });
-
-        sections.forEach(section => {
-            section.ownerGroups = section.groups
-                .map(owner => ({
-                    ...owner,
-                    groups: (owner.groups || []).sort((a, b) =>
-                        (a.clientName || "").localeCompare(b.clientName || "", "es", { sensitivity: "base" }))
+        const isRenewalsView = state.businessFilter === BUSINESS_FILTER_RENEWALS;
+        const section = {
+            key: isRenewalsView ? "renewals" : "new-business",
+            title: board?.businessFilterLabel || (isRenewalsView ? "Renovaciones" : "Negocios nuevos"),
+            description: isRenewalsView
+                ? "Registros marcados como renovacion para consulta separada."
+                : "Registros que entran al calculo de puntajes.",
+            groups: (Array.isArray(board?.groups) ? board.groups : [])
+                .map(group => cloneGroupForSection(group, group.records || [], isRenewalsView ? "renewals" : "new-business", {
+                    ownerId: group.ownerId || "",
+                    ownerName: group.ownerName || "Sin propietario"
                 }))
-                .sort((a, b) => (a.ownerName || "").localeCompare(b.ownerName || "", "es", { sensitivity: "base" }));
-            section.summary = summarizeSection(section);
-        });
+                .filter(group => group.recordCount > 0)
+                .sort((a, b) =>
+                    (a.clientName || "").localeCompare(b.clientName || "", "es", { sensitivity: "base" }))
+        };
 
-        return sections;
+        section.summary = summarizeSection(section);
+        return [section];
     }
 
     function renderMetaChip(label, value) {
@@ -1056,10 +1032,21 @@
         `;
     }
 
-    function renderRecordRows(record) {
+    function canMoveRecordToRenewal(record, group) {
+        return group?._sectionKey === "new-business"
+            && record
+            && record.recordId
+            && !record.isClosedForActivePeriod
+            && !isRenewalRecord(record);
+    }
+
+    function renderRecordRows(record, group) {
         const canDelete = !record.isVerified && !record.isClosedForActivePeriod;
         const deleteButton = canDelete
             ? `<button type="button" class="btn btn-sm btn-outline-danger delete-record-btn" data-record-id="${escapeHtml(record.recordId)}" title="Eliminar registro pendiente">Eliminar</button>`
+            : "";
+        const moveToRenewalButton = canMoveRecordToRenewal(record, group)
+            ? `<button type="button" class="btn btn-sm btn-outline-primary move-to-renewal-btn" data-record-id="${escapeHtml(record.recordId)}" title="Mover esta solicitud a renovacion">Mover a renovacion</button>`
             : "";
 
         return `
@@ -1085,6 +1072,7 @@
                         <button type="button" class="btn btn-sm ${record.isVerified ? "btn-outline-primary" : "btn-primary"} verify-record-btn" data-record-id="${escapeHtml(record.recordId)}">
                             ${record.isVerified ? "Editar" : "Verificar"}
                         </button>
+                        ${moveToRenewalButton}
                         ${deleteButton}
                     </div>
                 </td>
@@ -1141,29 +1129,16 @@
                                 <th class="text-center">Verificado</th>
                             </tr>
                         </thead>
-                        <tbody>${(group.records || []).map(renderRecordRows).join("")}</tbody>
+                        <tbody>${(group.records || []).map(record => renderRecordRows(record, group)).join("")}</tbody>
                     </table>
                 </div>
             </div>
         `;
     }
 
-    function canMoveGroupToRenewal(group) {
-        const records = Array.isArray(group.records) ? group.records : [];
-        return group._sectionKey === "new-business"
-            && records.length > 0
-            && records.every(record => !record.isClosedForActivePeriod);
-    }
-
     function renderGroupArticle(group) {
         const groupKey = getGroupKey(group);
         const isExpanded = state.expandedGroups.has(groupKey);
-        const recordIds = (Array.isArray(group.records) ? group.records : [])
-            .map(record => record.recordId)
-            .filter(Boolean);
-        const moveButton = canMoveGroupToRenewal(group)
-            ? `<button type="button" class="btn btn-sm btn-outline-primary move-to-renewal-btn" data-record-ids="${escapeHtml(recordIds.join(","))}" data-client-name="${escapeHtml(group.clientName || "este cliente")}">Mover a renovacion</button>`
-            : "";
         return `
             <article class="scores-group ${isExpanded ? "scores-group--expanded" : "scores-group--collapsed"}" data-group-key="${escapeHtml(groupKey)}">
                 <div class="scores-group__header">
@@ -1177,7 +1152,6 @@
                         ${isExpanded ? `<p class="scores-group__subtitle">${formatNumber(group.recordCount)} aprovisionamientos y ${formatNumber(group.productLinesCount)} productos.</p>` : ""}
                     </div>
                     <div class="scores-group__actions">
-                        ${moveButton}
                         <button type="button" class="btn btn-sm btn-outline-secondary toggle-group-btn" data-group-key="${escapeHtml(groupKey)}">
                             ${isExpanded ? "Resumir" : "Desplegar"}
                         </button>
@@ -1209,7 +1183,7 @@
 
     function renderScoreSection(section) {
         const summary = section.summary || {};
-        const ownerGroups = Array.isArray(section.ownerGroups) ? section.ownerGroups : [];
+        const groups = Array.isArray(section.groups) ? section.groups : [];
         return `
             <section class="scores-section" data-section-key="${escapeHtml(section.key)}">
                 <div class="scores-section__header">
@@ -1218,7 +1192,7 @@
                         <p class="scores-section__subtitle">${escapeHtml(section.description)}</p>
                     </div>
                     <div class="scores-section__meta">
-                        <span>${formatNumber(summary.ownersCount)} propietarios</span>
+                        <span>${formatNumber(summary.clientsCount)} clientes</span>
                         <span>${formatNumber(summary.recordsCount)} aprovisionamientos</span>
                         <span>${formatNumber(summary.productLinesCount)} productos</span>
                         <span>Puntaje ${formatScoreValue(summary.totalScore)}</span>
@@ -1226,8 +1200,8 @@
                     </div>
                 </div>
                 <div class="scores-section__groups">
-                    ${ownerGroups.length
-                        ? ownerGroups.map(renderOwnerSection).join("")
+                    ${groups.length
+                        ? groups.map(renderGroupArticle).join("")
                         : '<div class="scores-section__empty">No hay registros en esta seccion.</div>'}
                 </div>
             </section>
@@ -1268,6 +1242,14 @@
             closeMonthButton.disabled = true;
             undoCloseMonthButton && (undoCloseMonthButton.disabled = true);
             closeMonthSummaryText.textContent = "Carga un periodo para revisar si el cierre mensual ya puede ejecutarse.";
+            renderCloseMonthLogs();
+            return;
+        }
+
+        if (state.businessFilter !== BUSINESS_FILTER_NEW) {
+            closeMonthButton.disabled = true;
+            undoCloseMonthButton && (undoCloseMonthButton.disabled = true);
+            closeMonthSummaryText.textContent = "El cierre mensual solo aplica para negocios nuevos. Cambia el filtro a Negocios nuevos para consolidar puntajes.";
             renderCloseMonthLogs();
             return;
         }
@@ -1497,21 +1479,25 @@
 
         groupsContainer.querySelectorAll(".move-to-renewal-btn").forEach(button => {
             button.addEventListener("click", async event => {
-                const rawRecordIds = event.currentTarget.dataset.recordIds || "";
-                const recordIds = rawRecordIds.split(",").map(value => value.trim()).filter(Boolean);
-                if (!recordIds.length || state.isLoading || state.isSaving || state.isClosingMonth) {
+                const recordId = event.currentTarget.dataset.recordId || "";
+                if (!recordId || state.isLoading || state.isSaving || state.isClosingMonth) {
                     return;
                 }
 
-                const clientName = event.currentTarget.dataset.clientName || "este cliente";
-                if (!window.confirm(`Mover ${recordIds.length} registro(s) de ${clientName} a renovacion? No se enviaran en el cierre como negocio nuevo.`)) {
+                const record = state.recordMap.get(recordId);
+                const clientName = record?.clientName || "este cliente";
+                const lineCount = Number(record?.productLinesCount || 0);
+                const lineText = lineCount > 0
+                    ? ` con ${formatNumber(lineCount)} linea(s)`
+                    : "";
+                if (!window.confirm(`Mover esta solicitud de ${clientName}${lineText} a renovacion? No se enviara en el cierre como negocio nuevo.`)) {
                     return;
                 }
 
                 const button = event.currentTarget;
                 button.disabled = true;
                 try {
-                    await moveBusinessToRenewal(recordIds);
+                    await moveBusinessToRenewal(recordId);
                 } finally {
                     button.disabled = false;
                 }
@@ -1571,27 +1557,27 @@
         }
     }
 
-    async function moveBusinessToRenewal(recordIds) {
+    async function moveBusinessToRenewal(recordId) {
         if (!app.dataset.moveToRenewalUrl) {
-            setStatus("error", "No se encontro la ruta para mover negocios a renovacion.");
+            setStatus("error", "No se encontro la ruta para mover solicitudes a renovacion.");
             return;
         }
 
         setSaving(true);
-        setStatus("info", "Moviendo negocio a renovacion...");
+        setStatus("info", "Moviendo solicitud a renovacion...");
 
         try {
             const result = await fetchJson(app.dataset.moveToRenewalUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ recordIds })
+                body: JSON.stringify({ recordId })
             });
 
             await loadBoard();
-            setStatus("success", result?.message || "El negocio se movio a renovacion.");
+            setStatus("success", result?.message || "La solicitud se movio a renovacion.");
         } catch (error) {
             console.error(error);
-            setStatus("error", formatErrorMessage(error, "No fue posible mover el negocio a renovacion."));
+            setStatus("error", formatErrorMessage(error, "No fue posible mover la solicitud a renovacion."));
         } finally {
             setSaving(false);
         }
@@ -1627,10 +1613,11 @@
     async function loadBoard() {
         setLoading(true);
         setFilterButtonState();
+        setBusinessFilterButtonState();
         setStatus("info", "Consultando puntajes en Dataverse...");
 
         try {
-            const recordsUrl = `${app.dataset.recordsUrl}?filter=${encodeURIComponent(state.filter)}`;
+            const recordsUrl = `${app.dataset.recordsUrl}?filter=${encodeURIComponent(state.filter)}&businessFilter=${encodeURIComponent(state.businessFilter)}`;
             const board = await fetchJson(recordsUrl);
             state.board = board;
             rebuildIndexes(board);
@@ -1647,6 +1634,7 @@
         } finally {
             setLoading(false);
             setFilterButtonState();
+            setBusinessFilterButtonState();
         }
     }
 
@@ -2198,7 +2186,7 @@
     }
 
     async function closeMonth() {
-        if (!state.board) {
+        if (!state.board || state.businessFilter !== BUSINESS_FILTER_NEW) {
             return;
         }
 
@@ -2227,7 +2215,7 @@
     }
 
     async function submitCloseMonthReview() {
-        if (!state.closeMonthPreview) {
+        if (!state.closeMonthPreview || state.businessFilter !== BUSINESS_FILTER_NEW) {
             return;
         }
 
@@ -2264,7 +2252,7 @@
     }
 
     async function undoCloseMonth() {
-        if (!state.board) {
+        if (!state.board || state.businessFilter !== BUSINESS_FILTER_NEW) {
             return;
         }
 
@@ -2305,6 +2293,22 @@
             }
 
             state.filter = nextFilter;
+            state.expandedGroups.clear();
+            state.expandedRecords.clear();
+            await loadBoard();
+        });
+    });
+
+    businessFilterButtons.forEach(button => {
+        button.addEventListener("click", async () => {
+            const nextBusinessFilter = button.dataset.businessFilter;
+            if (!nextBusinessFilter || nextBusinessFilter === state.businessFilter || state.isLoading || state.isSaving || state.isClosingMonth) {
+                return;
+            }
+
+            state.businessFilter = nextBusinessFilter;
+            state.expandedGroups.clear();
+            state.expandedRecords.clear();
             await loadBoard();
         });
     });
@@ -2397,6 +2401,7 @@
     populateSelect(autoBillSelect, options.autoBillOptions, "Selecciona una opcion");
     populateSelect(contractTypeSelect, options.contractTypeOptions, "Selecciona un contrato");
     setFilterButtonState();
+    setBusinessFilterButtonState();
     updateSummary(null);
     renderCloseMonthPanel();
     renderCloseMonthReview();

@@ -41,7 +41,18 @@ public sealed class SiigoInvoiceRowDto
     public string CustomerIdentification { get; set; } = "";
     public int CustomerBranchOffice { get; set; }
     public decimal Total { get; set; }
+    public decimal GrossTotal { get; set; }
+    public decimal SuggestedWithholdingTotal { get; set; }
+    public decimal Vat { get; set; }
     public decimal Balance { get; set; }
+    public decimal GrossBalance { get; set; }
+    public string DuePrefix { get; set; } = "";
+    public int DueConsecutive { get; set; }
+    public int DueQuote { get; set; }
+    public string DueDateValue { get; set; } = "";
+    public string DueDateDisplay { get; set; } = "";
+    public bool HasExactDueReference { get; set; }
+    public string DueReferenceIssue { get; set; } = "";
     public string StampStatus { get; set; } = "";
     public string StampObservations { get; set; } = "";
     public string StampErrors { get; set; } = "";

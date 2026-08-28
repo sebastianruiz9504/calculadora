@@ -26,7 +26,15 @@
         snapshot: root.dataset.snapshotUrl || "",
         generate: root.dataset.generateUrl || "",
         generatedReports: root.dataset.generatedReportsUrl || "",
-        reportDetail: root.dataset.reportDetailUrl || ""
+        reportDetail: root.dataset.reportDetailUrl || "",
+        sendReport: root.dataset.sendReportUrl || root.dataset.generatedReportsUrl || "",
+        testReport: root.dataset.testReportUrl || root.dataset.generatedReportsUrl || ""
+    };
+
+    const emailTemplateStorageKey = "supportCloud.reportEmailTemplate.v1";
+    const defaultEmailTemplate = {
+        subject: "Informe mensual Microsoft 365 - {ClienteNombre} - {Periodo}",
+        body: "Hola {ContactoNombre},\n\nAdjunto encontrara el informe mensual de Microsoft 365 de {ClienteNombre} correspondiente al periodo {Periodo}, junto con los anexos cargados para el reporte.\n\nQuedamos atentos a cualquier comentario.\n\nSaludos,\nDigital Tech"
     };
 
     const els = {
@@ -70,7 +78,30 @@
         historyRows: root.querySelector("[data-scr-history-rows]"),
         historyEmpty: root.querySelector("[data-scr-history-empty]"),
         loadingModal: root.querySelector("[data-scr-loading-modal]"),
-        loadingMessage: root.querySelector("[data-scr-loading-message]")
+        loadingMessage: root.querySelector("[data-scr-loading-message]"),
+        recommendationModal: root.querySelector("[data-scr-recommendation-modal]"),
+        recommendationForm: root.querySelector("[data-scr-recommendation-form]"),
+        closeRecommendation: root.querySelectorAll("[data-scr-close-recommendation]"),
+        recommendation: root.querySelector("[data-scr-recommendation]"),
+        recommendationStatus: root.querySelector("[data-scr-recommendation-status]"),
+        recommendationContext: root.querySelector("[data-scr-recommendation-context]"),
+        recommendationCounter: root.querySelector("[data-scr-recommendation-counter]"),
+        saveRecommendation: root.querySelector("[data-scr-save-recommendation]"),
+        attachments: root.querySelector("[data-scr-attachments]"),
+        attachmentList: root.querySelector("[data-scr-attachment-list]"),
+        editEmailTemplate: root.querySelector("[data-scr-edit-email-template]"),
+        emailTemplateModal: root.querySelector("[data-scr-email-template-modal]"),
+        emailTemplateForm: root.querySelector("[data-scr-email-template-form]"),
+        closeEmailTemplate: root.querySelectorAll("[data-scr-close-email-template]"),
+        emailStatus: root.querySelector("[data-scr-email-status]"),
+        emailSubject: root.querySelector("[data-scr-email-subject]"),
+        emailBody: root.querySelector("[data-scr-email-body]"),
+        emailRecipient: root.querySelector("[data-scr-email-recipient]"),
+        emailContext: root.querySelector("[data-scr-email-template-context]"),
+        testEmail: root.querySelector("[data-scr-test-email]"),
+        saveEmailTemplate: root.querySelector("[data-scr-save-email-template]"),
+        sendTestEmail: root.querySelector("[data-scr-send-test-email]"),
+        sendEmail: root.querySelector("[data-scr-send-email]")
     };
 
     const state = {
@@ -79,6 +110,7 @@
         clientsLoaded: false,
         connectedLoaded: false,
         selectedConnectionId: "",
+        selectedEmailReport: null,
         reportHtml: "",
         reportBlobUrl: "",
         busy: false
@@ -145,17 +177,41 @@
         }
     });
 
-    els.generate?.addEventListener("click", generateSelectedReport);
+    els.generate?.addEventListener("click", openRecommendationModal);
     els.openReport?.addEventListener("click", openCurrentReport);
     els.loadHistory?.addEventListener("click", () => loadGeneratedReports());
+    els.closeRecommendation?.forEach(element => element.addEventListener("click", closeRecommendationModal));
+    els.recommendationForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        submitRecommendationAndGenerate();
+    });
+    els.recommendation?.addEventListener("input", updateRecommendationCounter);
+    els.attachments?.addEventListener("change", updateAttachmentList);
+    els.editEmailTemplate?.addEventListener("click", () => openEmailTemplateModal(null));
+    els.closeEmailTemplate?.forEach(element => element.addEventListener("click", closeEmailTemplateModal));
+    els.emailTemplateForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        saveEmailTemplateFromForm();
+    });
+    els.sendTestEmail?.addEventListener("click", sendTestEmail);
+    els.sendEmail?.addEventListener("click", sendReportEmail);
 
     els.historyRows?.addEventListener("click", async event => {
-        const button = event.target.closest("[data-scr-open-generated]");
-        if (!button) {
+        const sendButton = event.target.closest("[data-scr-send-generated]");
+        if (sendButton) {
+            await openEmailTemplateModal({
+                idReporte: sendButton.dataset.scrSendGenerated || "",
+                clienteNombre: sendButton.dataset.scrClientName || "",
+                periodo: sendButton.dataset.scrPeriod || "",
+                estado: sendButton.dataset.scrState || ""
+            });
             return;
         }
 
-        await openGeneratedReport(button.dataset.scrOpenGenerated || "");
+        const button = event.target.closest("[data-scr-open-generated]");
+        if (button) {
+            await openGeneratedReport(button.dataset.scrOpenGenerated || "");
+        }
     });
 
     async function loadInitialData() {
@@ -285,11 +341,16 @@
         updateSelectionMeta();
     }
 
-    async function generateSelectedReport() {
+    async function generateSelectedReport(recomendacionMensual, attachments = []) {
         const connection = getSelectedConnection();
         const periodo = els.month?.value || "";
         if (!connection) {
             setStatus("error", "Selecciona un cliente conectado para generar el informe.");
+            return;
+        }
+        const recommendation = String(recomendacionMensual || "").trim();
+        if (!recommendation) {
+            setStatus("error", "Escribe la recomendacion mensual antes de generar el informe.");
             return;
         }
 
@@ -319,12 +380,17 @@
                 : "Snapshot guardado con advertencias. Preparando informe con la evidencia disponible...");
             setReportState("Generando");
 
+            const formData = new FormData();
+            formData.append("clienteId", connection.clienteId);
+            formData.append("periodo", periodo);
+            formData.append("recomendacionMensual", recommendation);
+            attachments.forEach(file => {
+                formData.append("anexos", file, file.name);
+            });
+
             const result = await fetchJson(urls.generate, {
                 method: "POST",
-                body: JSON.stringify({
-                    clienteId: connection.clienteId,
-                    periodo
-                })
+                body: formData
             });
 
             const finalResult = isReportGenerating(result)
@@ -462,9 +528,19 @@
                 <td data-label="Estado"><span class="support-cloud-pill">${escapeHtml(item.estado || "-")}</span></td>
                 <td data-label="Generado">${escapeHtml(formatDateTime(item.fechaGeneracion))}</td>
                 <td data-label="Accion" class="text-end">
-                    <button type="button" class="btn btn-sm btn-outline-primary" data-scr-open-generated="${escapeHtml(item.idReporte || "")}">
-                        Consultar
-                    </button>
+                    <div class="support-cloud-history-actions">
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-scr-open-generated="${escapeHtml(item.idReporte || "")}">
+                            Consultar
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-primary"
+                                data-scr-send-generated="${escapeHtml(item.idReporte || "")}"
+                                data-scr-client-name="${escapeHtml(item.clienteNombre || item.clienteId || "Cliente")}"
+                                data-scr-period="${escapeHtml(item.periodo || "")}"
+                                data-scr-state="${escapeHtml(item.estado || "")}">
+                            Enviar
+                        </button>
+                    </div>
                 </td>
             </tr>
         `).join("");
@@ -654,6 +730,267 @@
         const blob = new Blob([state.reportHtml], { type: "text/html;charset=utf-8" });
         state.reportBlobUrl = URL.createObjectURL(blob);
         window.open(state.reportBlobUrl, "_blank", "noopener");
+    }
+
+    function openRecommendationModal() {
+        const connection = getSelectedConnection();
+        if (!connection) {
+            setStatus("error", "Selecciona un cliente conectado para generar el informe.");
+            return;
+        }
+
+        if (els.recommendationContext) {
+            const selectedMonthLabel = els.month?.selectedOptions?.[0]?.textContent || "periodo seleccionado";
+            els.recommendationContext.textContent = `${getClientLabel(connection)} · ${selectedMonthLabel}`;
+        }
+        setStatusElement(els.recommendationStatus, "", "");
+        updateRecommendationCounter();
+        if (els.attachments) {
+            els.attachments.value = "";
+        }
+        updateAttachmentList();
+
+        if (els.recommendationModal) {
+            els.recommendationModal.hidden = false;
+            document.body.classList.add("support-cloud-modal-open");
+        }
+        els.recommendation?.focus();
+    }
+
+    function closeRecommendationModal() {
+        if (els.recommendationModal) {
+            els.recommendationModal.hidden = true;
+            document.body.classList.remove("support-cloud-modal-open");
+        }
+        setStatusElement(els.recommendationStatus, "", "");
+    }
+
+    function submitRecommendationAndGenerate() {
+        const recommendation = String(els.recommendation?.value || "").trim();
+        if (!recommendation) {
+            setStatusElement(els.recommendationStatus, "error", "Escribe la recomendacion mensual para continuar.");
+            els.recommendation?.focus();
+            return;
+        }
+
+        const attachments = Array.from(els.attachments?.files || []);
+        closeRecommendationModal();
+        generateSelectedReport(recommendation, attachments);
+    }
+
+    function updateRecommendationCounter() {
+        if (!els.recommendationCounter || !els.recommendation) {
+            return;
+        }
+
+        const maxLength = Number(els.recommendation.getAttribute("maxlength") || 2000);
+        els.recommendationCounter.textContent = `${els.recommendation.value.length}/${maxLength}`;
+    }
+
+    function updateAttachmentList() {
+        if (!els.attachmentList) {
+            return;
+        }
+
+        const files = Array.from(els.attachments?.files || []);
+        if (files.length === 0) {
+            els.attachmentList.textContent = "Sin documentos adjuntos";
+            return;
+        }
+
+        const totalSize = files.reduce((sum, file) => sum + Number(file.size || 0), 0);
+        const names = files
+            .slice(0, 3)
+            .map(file => file.name)
+            .join(", ");
+        const suffix = files.length > 3 ? ` y ${files.length - 3} mas` : "";
+        els.attachmentList.textContent = `${files.length} documento(s): ${names}${suffix} · ${formatBytes(totalSize)}`;
+    }
+
+    async function openEmailTemplateModal(report) {
+        state.selectedEmailReport = report?.idReporte ? report : null;
+        const template = loadEmailTemplate();
+        if (els.emailSubject) {
+            els.emailSubject.value = template.subject;
+        }
+        if (els.emailBody) {
+            els.emailBody.value = template.body;
+        }
+        if (els.testEmail) {
+            els.testEmail.value = "";
+        }
+
+        const hasReport = Boolean(state.selectedEmailReport?.idReporte);
+        if (els.emailRecipient) {
+            els.emailRecipient.textContent = hasReport
+                ? `${state.selectedEmailReport.clienteNombre || "Cliente"} · ${state.selectedEmailReport.periodo || "Periodo"}`
+                : "Selecciona Enviar en un reporte para usar esta plantilla.";
+        }
+        if (els.emailContext) {
+            els.emailContext.textContent = hasReport
+                ? "Revisa la plantilla, prueba el envio o envia al cliente."
+                : "Edita y guarda la plantilla que se usara en el historial.";
+        }
+        if (els.sendEmail) {
+            els.sendEmail.disabled = state.busy || !hasReport;
+        }
+        if (els.sendTestEmail) {
+            els.sendTestEmail.disabled = state.busy || !hasReport;
+        }
+        setStatusElement(els.emailStatus, "", "");
+
+        if (els.emailTemplateModal) {
+            els.emailTemplateModal.hidden = false;
+            document.body.classList.add("support-cloud-modal-open");
+        }
+        els.emailSubject?.focus();
+    }
+
+    function closeEmailTemplateModal() {
+        if (els.emailTemplateModal) {
+            els.emailTemplateModal.hidden = true;
+            document.body.classList.remove("support-cloud-modal-open");
+        }
+        setStatusElement(els.emailStatus, "", "");
+    }
+
+    function saveEmailTemplateFromForm() {
+        const template = readEmailTemplateFromForm();
+        if (!template.subject || !template.body) {
+            setStatusElement(els.emailStatus, "error", "Completa asunto y cuerpo de la plantilla.");
+            return null;
+        }
+
+        saveEmailTemplate(template);
+        setStatusElement(els.emailStatus, "success", "Plantilla guardada en este navegador.");
+        return template;
+    }
+
+    async function sendReportEmail() {
+        const report = state.selectedEmailReport;
+        if (!report?.idReporte) {
+            setStatusElement(els.emailStatus, "error", "Selecciona un reporte para enviar.");
+            return;
+        }
+
+        const template = saveEmailTemplateFromForm();
+        if (!template) {
+            return;
+        }
+
+        setBusy(true);
+        setStatusElement(els.emailStatus, "info", "Enviando informe al cliente...");
+        try {
+            const result = await fetchJson(`${urls.sendReport}/${encodeURIComponent(report.idReporte)}/enviar`, {
+                method: "POST",
+                body: JSON.stringify({
+                    subjectTemplate: template.subject,
+                    bodyTemplate: template.body
+                })
+            });
+            setStatusElement(els.emailStatus, "success", buildEmailSendMessage(result));
+            setStatus("success", buildEmailSendMessage(result));
+        } catch (error) {
+            showEmailSendError(error);
+            setStatus("error", buildErrorMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function sendTestEmail() {
+        const report = state.selectedEmailReport;
+        if (!report?.idReporte) {
+            setStatusElement(els.emailStatus, "error", "Selecciona un reporte para probar.");
+            return;
+        }
+
+        const testEmail = String(els.testEmail?.value || "").trim();
+        if (!testEmail) {
+            setStatusElement(els.emailStatus, "error", "Escribe el correo de prueba.");
+            els.testEmail?.focus();
+            return;
+        }
+
+        const template = saveEmailTemplateFromForm();
+        if (!template) {
+            return;
+        }
+
+        setBusy(true);
+        setStatusElement(els.emailStatus, "info", "Enviando prueba...");
+        try {
+            const result = await fetchJson(`${urls.testReport}/${encodeURIComponent(report.idReporte)}/enviar-prueba`, {
+                method: "POST",
+                body: JSON.stringify({
+                    testEmail,
+                    subjectTemplate: template.subject,
+                    bodyTemplate: template.body
+                })
+            });
+            setStatusElement(els.emailStatus, "success", buildEmailSendMessage(result));
+        } catch (error) {
+            showEmailSendError(error);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function readEmailTemplateFromForm() {
+        return {
+            subject: String(els.emailSubject?.value || "").trim(),
+            body: String(els.emailBody?.value || "").trim()
+        };
+    }
+
+    function loadEmailTemplate() {
+        try {
+            const raw = window.localStorage?.getItem(emailTemplateStorageKey) || "";
+            const parsed = raw ? JSON.parse(raw) : null;
+            return {
+                subject: String(parsed?.subject || defaultEmailTemplate.subject),
+                body: String(parsed?.body || defaultEmailTemplate.body)
+            };
+        } catch {
+            return { ...defaultEmailTemplate };
+        }
+    }
+
+    function saveEmailTemplate(template) {
+        try {
+            window.localStorage?.setItem(emailTemplateStorageKey, JSON.stringify(template));
+        } catch {
+            // La plantilla igual se usa para el envio actual si el navegador bloquea localStorage.
+        }
+    }
+
+    function buildEmailSendMessage(result) {
+        const recipients = Array.isArray(result?.destinatarios)
+            ? result.destinatarios.join(", ")
+            : "";
+        const copiedRecipients = Array.isArray(result?.copiados)
+            ? result.copiados.join(", ")
+            : "";
+        const attachments = Array.isArray(result?.adjuntos)
+            ? result.adjuntos.length
+            : 0;
+        const sender = String(result?.remitente || "").trim();
+        return `${result?.message || "Correo enviado."}${recipients ? ` Destino: ${recipients}.` : ""}${copiedRecipients ? ` CC: ${copiedRecipients}.` : ""}${sender ? ` Remitente: ${sender}.` : ""} Adjuntos: ${attachments}.`;
+    }
+
+    function showEmailSendError(error) {
+        const payload = error?.payload || {};
+        setStatusElement(els.emailStatus, "error", buildErrorMessage(error));
+        if (payload.action !== "mailConsentRequired" || !payload.consentUrl || !els.emailStatus) {
+            return;
+        }
+
+        const link = document.createElement("a");
+        link.href = payload.consentUrl;
+        link.textContent = "Autorizar correo";
+        link.className = "support-cloud-table__link";
+        els.emailStatus.appendChild(document.createTextNode(" "));
+        els.emailStatus.appendChild(link);
     }
 
     function openConsentModal() {
@@ -850,14 +1187,28 @@
             els.openReport,
             els.historyMonth,
             els.historyYear,
-            els.loadHistory
+            els.loadHistory,
+            els.recommendation,
+            els.saveRecommendation,
+            els.attachments,
+            els.editEmailTemplate,
+            els.emailSubject,
+            els.emailBody,
+            els.testEmail,
+            els.saveEmailTemplate,
+            els.sendTestEmail,
+            els.sendEmail
         ].forEach(element => {
             if (element) {
-                element.disabled = isBusy || (element === els.openReport && !state.reportHtml) || (element === els.generate && !getSelectedConnection());
+                const needsSelectedReport = element === els.sendTestEmail || element === els.sendEmail;
+                element.disabled = isBusy
+                    || (element === els.openReport && !state.reportHtml)
+                    || (element === els.generate && !getSelectedConnection())
+                    || (needsSelectedReport && !state.selectedEmailReport?.idReporte);
             }
         });
 
-        root.querySelectorAll("[data-scr-select-connection], [data-scr-open-generated]").forEach(button => {
+        root.querySelectorAll("[data-scr-select-connection], [data-scr-open-generated], [data-scr-send-generated]").forEach(button => {
             button.disabled = isBusy;
         });
     }
@@ -897,7 +1248,8 @@
             ...(options.headers || {})
         };
 
-        if (options.body && !headers["Content-Type"]) {
+        const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+        if (options.body && !headers["Content-Type"] && !isFormData) {
             headers["Content-Type"] = "application/json";
         }
 
@@ -911,9 +1263,10 @@
         const rawBody = await response.text();
         if (!response.ok) {
             let message = rawBody;
+            let payload = null;
             if (contentType.includes("application/json")) {
                 try {
-                    const payload = rawBody ? JSON.parse(rawBody) : null;
+                    payload = rawBody ? JSON.parse(rawBody) : null;
                     const baseMessage = typeof payload === "string"
                         ? payload
                         : payload?.message || payload?.title || rawBody;
@@ -930,7 +1283,9 @@
                 message = stripHtml(rawBody) || `El servidor devolvio un error HTTP ${response.status}.`;
             }
 
-            throw new Error(message || "No fue posible completar la solicitud.");
+            const error = new Error(message || "No fue posible completar la solicitud.");
+            error.payload = payload;
+            throw error;
         }
 
         if (!contentType.includes("application/json")) {
@@ -974,6 +1329,19 @@
             hour: "2-digit",
             minute: "2-digit"
         }).format(date);
+    }
+
+    function formatBytes(value) {
+        const bytes = Number(value || 0);
+        if (!Number.isFinite(bytes) || bytes <= 0) {
+            return "0 KB";
+        }
+
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        }
+
+        return `${Math.max(1, Math.round(bytes / 1024))} KB`;
     }
 
     function isHtmlGatewayError(status, body) {

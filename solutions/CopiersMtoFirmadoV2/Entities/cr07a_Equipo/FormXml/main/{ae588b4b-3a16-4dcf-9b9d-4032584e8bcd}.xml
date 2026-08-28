@@ -1,0 +1,107 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{ae588b4b-3a16-4dcf-9b9d-4032584e8bcd}</formid>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <FormPresentation>0</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="ae588b4b-3a16-4dcf-9b9d-4032584e8bcd" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="bb31210d-bc0a-4138-b452-011416a5504a" labelid="0661311c-c1ff-40e6-83ed-f7ed2698484e">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="381985a8-d8e9-49b4-beb3-db9e91c76636" labelid="d823c291-3861-46a8-9974-b31de02e5d95">
+                        <labels>
+                          <label description="Estado del equipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_estadodelequipo" classid="a84400f7-b02b-4050-8322-b35891180c31" datafieldname="cr07a_estadodelequipo" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="84909566-ee15-4886-9be6-76b83a8bccb2" labelid="649a5e16-a468-4315-a3ed-892e455a86e1">
+                        <labels>
+                          <label description="cr07a_estadodelequiponame" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_estadodelequiponame" classid="e85927cb-b55c-4ed7-b7f0-ef0b3e7d788b" datafieldname="cr07a_estadodelequiponame" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="3ec6ce8e-18f8-4059-8164-f49399c6d896" labelid="9aa11e69-635a-49c1-9d54-e6d9063db336">
+                        <labels>
+                          <label description="Fecha de compra" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_fechadecompra" classid="68428fae-8678-4682-b6d6-d9f31647c8a6" datafieldname="cr07a_fechadecompra" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="d3824717-b615-4a10-ba7e-971ee3864782" labelid="a1e1dc64-869e-443e-a785-dbcd1c43e954">
+                        <labels>
+                          <label description="Nombre del equipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nombredelequipo" classid="de8f4ad8-a7eb-4036-a678-b2e6ff22c2dd" datafieldname="cr07a_nombredelequipo" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="8245f664-c3b2-4377-ae43-57e733de99db" labelid="0309e878-7dea-4090-84dd-c762bb8441aa">
+                        <labels>
+                          <label description="Número de serie" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_numerodeserie" classid="b15c50f4-df1c-4839-99a6-748c524c642b" datafieldname="cr07a_numerodeserie" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="1518e25e-ebd6-4e1a-b183-b2cb032b59e8" labelid="2aba0201-4fff-4314-b6a6-22e525bbf3ab">
+                        <labels>
+                          <label description="Tipo de equipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_tipodeequipo" classid="c421d9fc-7092-4d61-a1cb-8d2d888885f7" datafieldname="cr07a_tipodeequipo" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="b4c00276-228e-4594-a406-06780e860383" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="e3e06f7e-a9b6-418e-a0f7-cf50e8fbae2d" showlabel="false" labelid="311b80e2-ead1-419e-9626-f1ad66b459f3">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="66351c03-9ad4-4c05-82a1-f2e962c239fe" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="0afc77fe-05eb-4a8e-833e-9813ec1abdad" showlabel="false" labelid="60684790-5ac3-45f8-8b09-14d6d3c3e11b">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="1" FallbackForm="true"></DisplayConditions>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Equipo" languagecode="3082" />
+    </LocalizedNames>
+  </systemform>
+</forms>

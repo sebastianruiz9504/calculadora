@@ -31,20 +31,16 @@ public sealed class WeeklyCashFlowImportHostedService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var nextRunUtc = WeeklyExpenseAccountingRulesHostedService.CalculateNextRunUtc(
+            var nextRunUtc = CashFlowSchedule.CalculateNextDailyRunUtc(
                 DateTimeOffset.UtcNow,
-                new ExpenseAccountingRulesOptions
-                {
-                    RunDayOfWeek = _options.RunDayOfWeek,
-                    RunTime = _options.RunTime,
-                    TimeZoneId = _options.TimeZoneId
-                });
+                _options.RunTime,
+                _options.TimeZoneId);
             var delay = nextRunUtc - DateTimeOffset.UtcNow;
             if (delay < TimeSpan.Zero)
                 delay = TimeSpan.Zero;
 
             _logger.LogInformation(
-                "Proxima importacion semanal de flujo de caja programada para {NextRunUtc:u}.",
+                "Proxima importacion diaria de flujo de caja programada para {NextRunUtc:u}.",
                 nextRunUtc);
 
             try
@@ -73,7 +69,7 @@ public sealed class WeeklyCashFlowImportHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fallo la importacion semanal de flujo de caja.");
+            _logger.LogError(ex, "Fallo la importacion diaria de flujo de caja.");
         }
     }
 }

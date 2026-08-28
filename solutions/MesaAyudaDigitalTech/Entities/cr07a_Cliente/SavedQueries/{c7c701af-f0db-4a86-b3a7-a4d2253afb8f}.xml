@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{c7c701af-f0db-4a86-b3a7-a4d2253afb8f}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_nombre" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_clienteid">
+          <cell name="cr07a_nombre" width="179" />
+          <cell name="cr07a_nombrepersonaacargo" width="177" />
+          <cell name="cr07a_correoelectronico" width="150" />
+          <cell name="ownerid" width="103" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_cliente">
+          <attribute name="cr07a_clienteid" />
+          <attribute name="cr07a_nombre" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_nombre" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_correoelectronico" />
+          <attribute name="cr07a_nombrepersonaacargo" />
+          <attribute name="ownerid" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Cliente activo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

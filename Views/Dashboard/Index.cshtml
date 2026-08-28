@@ -11,8 +11,16 @@
 
 <div class="dashboard-shell"
      id="billingDashboardApp"
+     data-agent-url="@Url.Action("Agent", "Dashboard")"
+     data-agent-export-url="@Url.Action("AgentExport", "Dashboard")"
+     data-agent-feedback-url="@Url.Action("AgentFeedback", "Dashboard")"
+     data-agent-learning-url="@Url.Action("AgentLearning", "Dashboard")"
+     data-agent-learning-status-url="@Url.Action("AgentLearningStatus", "Dashboard")"
+     data-today-url="@Url.Action("Today", "Dashboard")"
      data-billing-url="@Url.Action("Billing", "Dashboard")"
      data-billing-invoices-url="@Url.Action("BillingInvoices", "Dashboard")"
+     data-billing-credit-notes-url="@Url.Action("BillingCreditNotes", "Dashboard")"
+     data-billing-current-month-url="@Url.Action("BillingCurrentMonth", "Dashboard")"
      data-billing-invoice-save-url="@Url.Action("BillingInvoice", "Dashboard")"
      data-billing-invoices-delete-url="@Url.Action("BillingInvoicesDelete", "Dashboard")"
      data-billing-invoices-contract-url="@Url.Action("BillingInvoicesContractType", "Dashboard")"
@@ -29,6 +37,7 @@
      data-copiers-equipment-url="@Url.Action("CopiersEquipment", "Dashboard")"
      data-copiers-inventory-url="@Url.Action("CopiersInventory", "Dashboard")"
      data-copiers-inventory-export-url="@Url.Action("CopiersInventoryExport", "Dashboard")"
+     data-copiers-equipment-movements-url="@Url.Action("CopiersEquipmentMovements", "Dashboard")"
      data-copiers-counters-url="@Url.Action("CopiersCounters", "Dashboard")"
       data-copiers-counters-pdf-url="@Url.Action("CopiersCountersPdf", "Dashboard")"
      data-copiers-equipment-detail-url="@Url.Action("CopiersEquipmentDetail", "Dashboard")"
@@ -36,6 +45,7 @@
      data-copiers-line-equipment-assignment-url="@Url.Action("CopiersLineEquipmentAssignment", "Dashboard")"
      data-copiers-line-equipment-assignment-save-url="@Url.Action("CopiersLineEquipmentAssignment", "Dashboard")"
      data-copiers-maintenance-file-url="@Url.Action("CopiersMaintenanceAttachment", "Dashboard")"
+     data-copiers-equipment-movement-file-url="@Url.Action("CopiersEquipmentMovementAttachment", "Dashboard")"
      data-copiers-client-search-url="@Url.Action("CopiersClientSearch", "Dashboard")"
      data-copiers-product-search-url="@Url.Action("CopiersProductSearch", "Dashboard")"
       data-taxes-url="@Url.Action("Taxes", "Dashboard")"
@@ -43,12 +53,20 @@
       data-taxes-reteica-export-url="@Url.Action("TaxesReteIcaExport", "Dashboard")"
       data-taxes-vat-export-url="@Url.Action("TaxesVatExport", "Dashboard")"
       data-portfolio-url="@Url.Action("Portfolio", "Dashboard")"
+      data-account-statement-client-search-url="@Url.Action("AccountStatementClientSearch", "Dashboard")"
+      data-account-statement-url="@Url.Action("AccountStatement", "Dashboard")"
+      data-account-statement-pdf-url="@Url.Action("AccountStatementPdf", "Dashboard")"
      data-licenciamiento-url="@Url.Action("Licenciamiento", "Dashboard")"
      data-utility-url="@Url.Action("Utility", "Dashboard")"
      data-utility-assignment-url="@Url.Action("UtilityAssignment", "Dashboard")"
      data-pnl-url="@Url.Action("Pnl", "Dashboard")"
      data-pnl-detail-url="@Url.Action("PnlDetail", "Dashboard")"
      data-pnl-detail-update-url="@Url.Action("PnlDetailRecord", "Dashboard")"
+     data-ytd-url="@Url.Action("Ytd", "Dashboard")"
+     data-ytd-billing-update-url="@Url.Action("YtdBillingRecord", "Dashboard")"
+     data-ytd-records-update-url="@Url.Action("YtdRecords", "Dashboard")"
+     data-ytd-cost-contract-update-url="@Url.Action("UpdateCostContractType", "CruceLicenciamiento")"
+     data-business-billing-url="@Url.Action("BusinessBilling", "Dashboard")"
      data-initial-year="@Model.InitialYear"
      data-initial-period="@Model.InitialPeriodKind.ToKey()"
      data-initial-value="@Model.InitialPeriodValue">
@@ -59,19 +77,35 @@
     </section>
 
     <section class="dashboard-tabs" aria-label="Secciones del dashboard">
-        <button type="button" class="dashboard-tab is-active" data-dashboard-tab="billing">Facturaci&oacute;n</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="business">Negocios</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="copiers">Copiers</button>
+        <button type="button" class="dashboard-tab is-active dashboard-tab--today" data-dashboard-tab="today">. HOY</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="agent">Agente</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="billing">Facturaci&oacute;n</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="business" data-dashboard-group-tabs="business business-billing licenciamiento utility">Negocio</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="copiers" data-dashboard-group-tabs="copiers support-cloud">Soporte</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="hardware">Hardware</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="support-cloud">Soporte cloud</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="taxes">Impuestos</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="taxes" data-dashboard-group-tabs="taxes pnl">Contabilidad</button>
         <button type="button" class="dashboard-tab" data-dashboard-tab="portfolio">Cartera</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="licenciamiento">Licenciamiento</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="utility">Utilidad</button>
-        <button type="button" class="dashboard-tab" data-dashboard-tab="pnl">P&amp;L</button>
+        <button type="button" class="dashboard-tab" data-dashboard-tab="ytd">YTD</button>
     </section>
 
-    <section class="dashboard-toolbar" id="dashboardPeriodScope">
+    <section class="dashboard-group-tabs" data-dashboard-group-panel="support" data-dashboard-group-tabs="copiers support-cloud" aria-label="Subsecciones de soporte" hidden>
+        <button type="button" class="dashboard-subtab is-active" data-dashboard-group-target="copiers">Copiers</button>
+        <button type="button" class="dashboard-subtab" data-dashboard-group-target="support-cloud">Soporte cloud</button>
+    </section>
+
+    <section class="dashboard-group-tabs" data-dashboard-group-panel="business" data-dashboard-group-tabs="business business-billing licenciamiento utility" aria-label="Subsecciones de negocio" hidden>
+        <button type="button" class="dashboard-subtab is-active" data-dashboard-group-target="business">Negocios</button>
+        <button type="button" class="dashboard-subtab" data-dashboard-group-target="business-billing">Facturaci&oacute;n</button>
+        <button type="button" class="dashboard-subtab" data-dashboard-group-target="licenciamiento">Licenciamiento</button>
+        <button type="button" class="dashboard-subtab" data-dashboard-group-target="utility">Utilidad</button>
+    </section>
+
+    <section class="dashboard-group-tabs" data-dashboard-group-panel="accounting" data-dashboard-group-tabs="taxes pnl" aria-label="Subsecciones de contabilidad" hidden>
+        <button type="button" class="dashboard-subtab is-active" data-dashboard-group-target="taxes">Impuestos</button>
+        <button type="button" class="dashboard-subtab" data-dashboard-group-target="pnl">P&amp;L</button>
+    </section>
+
+    <section class="dashboard-toolbar" id="dashboardPeriodScope" hidden>
         <div class="dashboard-filters">
             <div class="dashboard-filter">
                 <label class="dashboard-filter__label" for="dashboardYearFilter">A&ntilde;o</label>
@@ -102,7 +136,132 @@
         </div>
     </section>
 
-    <div class="dashboard-tab-panel is-active" data-dashboard-panel="billing">
+    <div class="dashboard-tab-panel is-active" data-dashboard-panel="today">
+        <section class="dashboard-today" aria-labelledby="dashboardTodayTitle">
+            <header class="dashboard-today__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Resumen ejecutivo</div>
+                    <h2 class="dashboard-today__title" id="dashboardTodayTitle">Lo esencial de hoy</h2>
+                    <p class="dashboard-today__subtitle">
+                        Corte <strong id="dashboardTodayAsOf">de hoy</strong>. Las variaciones comparan
+                        <span id="dashboardTodayCurrentPeriod">el mes a la fecha</span> contra
+                        <span id="dashboardTodayComparisonPeriod">los mismos d&iacute;as del mes anterior</span>.
+                    </p>
+                </div>
+                <button type="button" class="btn btn-outline-primary dashboard-today__refresh" id="dashboardTodayRefreshBtn">Actualizar</button>
+            </header>
+
+            <div class="dashboard-status" id="dashboardTodayStatus" role="status" aria-live="polite"></div>
+            <div class="dashboard-today-grid" id="dashboardTodayCards" aria-live="polite" aria-busy="true">
+                @for (var index = 0; index < 7; index++)
+                {
+                    <article class="dashboard-today-card dashboard-today-card--skeleton" aria-hidden="true">
+                        <span></span><strong></strong><small></small>
+                    </article>
+                }
+            </div>
+        </section>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="agent" hidden>
+        <section class="dashboard-agent" aria-labelledby="dashboardAgentTitle">
+            <div class="dashboard-agent__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Agente</div>
+                    <h2 class="dashboard-agent__title" id="dashboardAgentTitle">Chat financiero</h2>
+                </div>
+                <div class="dashboard-agent__status" id="dashboardAgentStatus" role="status" aria-live="polite"></div>
+            </div>
+
+            <div class="dashboard-agent__messages" id="dashboardAgentMessages" aria-live="polite">
+                <div class="dashboard-agent-message dashboard-agent-message--assistant">
+                    <div class="dashboard-agent-message__bubble">Listo. Preguntame por facturas, nomina, utilidad, P&amp;L o contratos.</div>
+                </div>
+            </div>
+
+            <div class="dashboard-agent__sources" id="dashboardAgentSources" hidden></div>
+
+            <form class="dashboard-agent__composer" id="dashboardAgentForm">
+                <label class="visually-hidden" for="dashboardAgentInput">Pregunta para el agente financiero</label>
+                <textarea id="dashboardAgentInput"
+                          class="form-control dashboard-agent__input"
+                          rows="2"
+                          maxlength="1800"
+                          autocomplete="off"
+                          placeholder="Ej. que facturas tiene este cliente pendientes por pagar"></textarea>
+                <button type="submit" class="btn btn-primary dashboard-agent__send" id="dashboardAgentSendBtn">Enviar</button>
+            </form>
+
+            <div class="dashboard-agent__prompts" aria-label="Preguntas rapidas">
+                <button type="button" class="dashboard-agent__prompt" data-agent-prompt="Que facturas tiene un cliente pendientes por pagar?">Facturas pendientes</button>
+                <button type="button" class="dashboard-agent__prompt" data-agent-prompt="Cuanto se le pago a un empleado en total en 2025?">Pagos 2025</button>
+                <button type="button" class="dashboard-agent__prompt" data-agent-prompt="Cual es la utilidad para contratos Monthly y vertical Cloud en junio 2026?">Utilidad Monthly</button>
+            </div>
+
+            <details class="dashboard-agent-learning" id="dashboardAgentLearningPanel">
+                <summary>
+                    <span>Aprendizaje del agente</span>
+                    <small id="dashboardAgentLearningSummary">Solicitudes enviadas para revisar</small>
+                </summary>
+                <div class="dashboard-agent-learning__body">
+                    <div class="dashboard-agent-learning__toolbar">
+                        <div class="dashboard-agent-learning__status" id="dashboardAgentLearningStatus" role="status" aria-live="polite"></div>
+                        <button type="button" class="btn btn-outline-secondary dashboard-agent-learning__refresh" id="dashboardAgentLearningRefreshBtn">Actualizar</button>
+                    </div>
+                    <div class="dashboard-agent-learning__list" id="dashboardAgentLearningList">
+                        <div class="dashboard-agent-learning__empty">Abre la bandeja para cargar solicitudes.</div>
+                    </div>
+                </div>
+            </details>
+        </section>
+    </div>
+
+    <div class="dashboard-modal dashboard-agent-feedback-modal" id="dashboardAgentFeedbackModal" hidden>
+        <div class="dashboard-modal__backdrop" data-agent-feedback-close></div>
+        <div class="dashboard-modal__dialog dashboard-modal__dialog--medium" role="dialog" aria-modal="true" aria-labelledby="dashboardAgentFeedbackTitle">
+            <div class="dashboard-modal__header">
+                <div>
+                    <h2 class="dashboard-modal__title" id="dashboardAgentFeedbackTitle">Enviar a aprendizaje</h2>
+                    <p class="dashboard-modal__subtitle">Guarda la pregunta, respuesta y contexto usado para mejorar reglas del agente.</p>
+                </div>
+                <button type="button" class="btn-close" aria-label="Cerrar" data-agent-feedback-close></button>
+            </div>
+            <form class="dashboard-agent-feedback-form" id="dashboardAgentFeedbackForm">
+                <input type="hidden" id="dashboardAgentFeedbackMessageId" />
+                <label class="dashboard-agent-feedback-form__field">
+                    <span>Motivo</span>
+                    <select class="form-select" id="dashboardAgentFeedbackCategory">
+                        <option value="incorrect">Respuesta incorrecta</option>
+                        <option value="missing-data">Faltan datos</option>
+                        <option value="learning">Debe aprender esta consulta</option>
+                        <option value="other">Otro</option>
+                    </select>
+                </label>
+                <label class="dashboard-agent-feedback-form__field">
+                    <span>Respuesta esperada</span>
+                    <textarea class="form-control" id="dashboardAgentFeedbackExpected" rows="4" maxlength="3900" placeholder="Escribe como deberia responder o que tablas deberia usar."></textarea>
+                </label>
+                <label class="dashboard-agent-feedback-form__field">
+                    <span>Notas</span>
+                    <textarea class="form-control" id="dashboardAgentFeedbackNotes" rows="3" maxlength="3900" placeholder="Detalle adicional para revisar despues."></textarea>
+                </label>
+                <div class="dashboard-agent-feedback-form__status" id="dashboardAgentFeedbackStatus" role="status" aria-live="polite"></div>
+                <div class="dashboard-agent-feedback-form__actions">
+                    <button type="button" class="btn btn-outline-secondary" data-agent-feedback-close>Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="dashboardAgentFeedbackSubmitBtn">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="billing" hidden>
+        <section class="dashboard-subtabs" aria-label="Vistas de facturaci&oacute;n">
+            <button type="button" class="dashboard-subtab is-active" data-billing-subtab="overview">Resumen</button>
+            <button type="button" class="dashboard-subtab" data-billing-subtab="current-month">MES ACTUAL</button>
+            <button type="button" class="dashboard-subtab" data-billing-subtab="credit-notes">Notas Cr&eacute;dito</button>
+        </section>
+
+        <div class="dashboard-subpanel is-active" data-billing-subpanel="overview">
         <div id="dashboardStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
 
         <section class="dashboard-kpis dashboard-kpis--billing" id="billingKpisContainer"></section>
@@ -110,6 +269,10 @@
         <section class="dashboard-billing-actions" aria-label="Acciones de facturaci&oacute;n">
             <button type="button" class="btn btn-outline-secondary" id="billingReportToggleBtn" aria-expanded="false" aria-controls="billingReportSection">Mostrar reportes</button>
             <button type="button" class="btn btn-outline-secondary" id="siigoToggleBtn" aria-expanded="false" aria-controls="siigoApiSection">Mostrar Siigo API</button>
+            <button type="button"
+                    class="btn btn-outline-primary"
+                    id="billingDataverseRepairBtn"
+                    data-repair-url="@Url.Action("Repair", "FinancialReconciliation")">Sincronizar Siigo &rarr; Dataverse</button>
         </section>
 
         <section class="dashboard-grid">
@@ -117,7 +280,7 @@
                 <div class="dashboard-panel__header">
                     <div>
                         <div class="dashboard-panel__kicker">Tendencias</div>
-                        <h2 class="dashboard-panel__title">Facturacion y recaudo YTD</h2>
+                        <h2 class="dashboard-panel__title">Facturacion neta y recaudo YTD</h2>
                     </div>
                 </div>
                 <div class="dashboard-trends" id="billingTrendsContainer"></div>
@@ -130,6 +293,21 @@
                         <h2 class="dashboard-panel__title">Tabla de facturaci&oacute;n</h2>
                     </div>
                     <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <label class="dashboard-filter dashboard-filter--compact" for="billingInvoicesMonth">
+                            <span class="dashboard-filter__label">Mes</span>
+                            <input type="month"
+                                   id="billingInvoicesMonth"
+                                   class="form-control dashboard-select dashboard-select--compact"
+                                   value="@($"{Model.InitialYear:D4}-{Model.InitialPeriodValue:D2}")" />
+                        </label>
+                        <label class="dashboard-filter dashboard-filter--compact" for="billingInvoicesPageSize">
+                            <span class="dashboard-filter__label">Filas</span>
+                            <select id="billingInvoicesPageSize" class="form-select dashboard-select dashboard-select--compact">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
                         <label class="dashboard-search dashboard-search--customer" for="billingInvoicesSearch">
                             <span class="dashboard-search__label">Buscar</span>
                             <input type="search"
@@ -151,6 +329,11 @@
                 <div class="dashboard-table-toolbar">
                     <div class="dashboard-table-meta" id="billingInvoicesResultsCount">Mostrando 0 facturas</div>
                     <div class="dashboard-table-meta">Seleccionadas: <strong id="billingInvoicesSelectedCount">0</strong></div>
+                    <div class="dashboard-table-meta d-flex align-items-center gap-2" aria-label="Paginación de facturas">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="billingInvoicesPreviousPageBtn" disabled>Anterior</button>
+                        <span id="billingInvoicesPageLabel">Página 1 de 1</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="billingInvoicesNextPageBtn" disabled>Siguiente</button>
+                    </div>
                 </div>
 
                 <div class="dashboard-table-wrap dashboard-table-wrap--billing-fit">
@@ -164,13 +347,15 @@
                                 <th>Contrato</th>
                                 <th>Emisi&oacute;n</th>
                                 <th class="text-end">Total factura</th>
+                                <th class="text-end">Notas cr&eacute;dito</th>
+                                <th class="text-end">Total neto</th>
                                 <th>Estado</th>
                                 <th>Link</th>
                             </tr>
                         </thead>
                         <tbody id="billingInvoicesBody">
                             <tr>
-                                <td colspan="9" class="dashboard-table__empty">Cargando facturas...</td>
+                                <td colspan="11" class="dashboard-table__empty">Cargando facturas...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -220,7 +405,7 @@
                         <strong id="billingReportSelectedCount">0</strong>
                     </div>
                     <div class="dashboard-report-summary__item">
-                        <span>Total reporte</span>
+                        <span>Total neto reporte</span>
                         <strong id="billingReportSelectedTotal">$0</strong>
                     </div>
                 </div>
@@ -233,8 +418,8 @@
                                 <th>Factura</th>
                                 <th>Fecha</th>
                                 <th class="text-end">% IVA</th>
-                                <th class="text-end">IVA valor</th>
-                                <th class="text-end">Total factura</th>
+                                <th class="text-end">IVA neto</th>
+                                <th class="text-end">Total neto</th>
                                 <th class="text-end">Valor reporte</th>
                                 <th>URL</th>
                             </tr>
@@ -353,6 +538,286 @@
                 </div>
             </article>
         </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-billing-subpanel="current-month" hidden>
+            <section class="dashboard-toolbar dashboard-toolbar--static cloud-billing-toolbar">
+                <div class="dashboard-toolbar__summary">
+                    <span class="dashboard-toolbar__summary-label">Mes actual</span>
+                    <strong id="cloudBillingPeriodLabel">Cargando...</strong>
+                    <span id="cloudBillingDateRangeLabel">-</span>
+                </div>
+                <div class="dashboard-toolbar__actions">
+                    <button type="button" class="btn btn-primary dashboard-refresh-btn" id="cloudBillingRefreshBtn">Actualizar</button>
+                </div>
+            </section>
+
+            <div id="cloudBillingStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+            <article class="dashboard-panel dashboard-panel--full">
+                <div class="dashboard-panel__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Productos Cloud</div>
+                        <h2 class="dashboard-panel__title">Auditor&iacute;a de facturaci&oacute;n del mes</h2>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <label class="dashboard-search dashboard-search--customer" for="cloudBillingSearch">
+                            <span class="dashboard-search__label">Buscar</span>
+                            <input type="search"
+                                   id="cloudBillingSearch"
+                                   class="form-control dashboard-search__input"
+                                   autocomplete="off"
+                                   placeholder="Cliente, producto, factura o error..." />
+                        </label>
+                        <label class="dashboard-filter dashboard-filter--compact" for="cloudBillingStatusFilter">
+                            <span class="dashboard-filter__label">Estado</span>
+                            <select id="cloudBillingStatusFilter" class="form-select dashboard-select dashboard-select--compact">
+                                <option value="all">Todos</option>
+                                <option value="overdue">Vencidos</option>
+                                <option value="today">Para hoy</option>
+                                <option value="pending">Por llegar</option>
+                                <option value="billed">Facturados</option>
+                                <option value="dian-pending">DIAN pendiente</option>
+                                <option value="mail-pending">Correo pendiente</option>
+                                <option value="siigo-missing">Sin validar Siigo</option>
+                                <option value="error">Errores</option>
+                                <option value="manual">No autom&aacute;ticos / sin d&iacute;a</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="dashboard-table-toolbar">
+                    <div class="dashboard-table-meta" id="cloudBillingResultsCount">Mostrando 0 grupos</div>
+                    <div class="dashboard-table-meta" id="cloudBillingSummaryText">-</div>
+                </div>
+
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table dashboard-cloud-billing-table">
+                        <thead>
+                            <tr>
+                                <th>Estado</th>
+                                <th>D&iacute;a</th>
+                                <th>Cliente</th>
+                                <th>Siigo ID</th>
+                                <th>D&iacute;a de facturaci&oacute;n</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cloudBillingBody">
+                            <tr>
+                                <td colspan="5" class="dashboard-table__empty">Abre MES ACTUAL para revisar Productos Cloud.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </div>
+
+        <div class="dashboard-subpanel" data-billing-subpanel="credit-notes" hidden>
+            <article class="dashboard-panel dashboard-panel--full dashboard-credit-notes-panel">
+                <div class="dashboard-panel__header dashboard-panel__header--wrap">
+                    <div>
+                        <div class="dashboard-panel__kicker">Facturaci&oacute;n neta</div>
+                        <h2 class="dashboard-panel__title">Notas cr&eacute;dito</h2>
+                        <p class="dashboard-panel__description">
+                            Consulta de solo lectura con las mismas reglas de cruce seguro usadas para restar notas cr&eacute;dito en los gr&aacute;ficos.
+                        </p>
+                    </div>
+                    <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                        <label class="dashboard-search dashboard-search--customer" for="billingCreditNotesSearch">
+                            <span class="dashboard-search__label">Buscar</span>
+                            <input type="search"
+                                   id="billingCreditNotesSearch"
+                                   class="form-control dashboard-search__input"
+                                   autocomplete="off"
+                                   placeholder="Nota, factura, cliente o NIT..." />
+                        </label>
+                        <label class="dashboard-filter dashboard-filter--compact" for="billingCreditNotesStatusFilter">
+                            <span class="dashboard-filter__label">Estado del cruce</span>
+                            <select id="billingCreditNotesStatusFilter" class="form-select dashboard-select dashboard-select--compact">
+                                <option value="all">Todos</option>
+                                <option value="matched">Restadas en facturaci&oacute;n</option>
+                                <option value="unmatched">Sin cruce seguro</option>
+                            </select>
+                        </label>
+                        <button type="button" class="btn btn-primary" id="billingCreditNotesRefreshBtn">Actualizar</button>
+                    </div>
+                </div>
+
+                <div id="billingCreditNotesStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+                <div class="dashboard-report-summary dashboard-credit-notes-summary" aria-label="Resumen de notas cr&eacute;dito">
+                    <div class="dashboard-report-summary__item">
+                        <span>Total notas</span>
+                        <strong id="billingCreditNotesTotalCount">0</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item dashboard-credit-notes-summary__item--total">
+                        <span>Valor total NC</span>
+                        <strong id="billingCreditNotesTotalAmount">$0</strong>
+                    </div>
+                    <div class="dashboard-report-summary__item dashboard-credit-notes-summary__item--matched">
+                        <span>Restadas en facturaci&oacute;n</span>
+                        <strong id="billingCreditNotesMatchedAmount">$0</strong>
+                        <small id="billingCreditNotesMatchedCount">0 notas</small>
+                    </div>
+                    <div class="dashboard-report-summary__item dashboard-credit-notes-summary__item--unmatched">
+                        <span>Sin cruce seguro</span>
+                        <strong id="billingCreditNotesUnmatchedAmount">$0</strong>
+                        <small id="billingCreditNotesUnmatchedCount">0 notas</small>
+                    </div>
+                </div>
+
+                <div class="dashboard-table-toolbar">
+                    <div class="dashboard-table-meta" id="billingCreditNotesResultsCount">Mostrando 0 notas cr&eacute;dito</div>
+                    <div class="dashboard-table-meta">Los registros son informativos y no editan las facturas.</div>
+                </div>
+
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall dashboard-credit-notes-table-wrap">
+                    <table class="table dashboard-table dashboard-credit-notes-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Nota cr&eacute;dito</th>
+                                <th>Factura relacionada</th>
+                                <th>Cliente / NIT</th>
+                                <th>Estado</th>
+                                <th>M&eacute;todo de cruce</th>
+                                <th class="text-end">Base</th>
+                                <th class="text-end">IVA</th>
+                                <th class="text-end">Total NC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="billingCreditNotesBody">
+                            <tr>
+                                <td colspan="9" class="dashboard-table__empty">Abre Notas Cr&eacute;dito para consultar los registros.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </div>
+    </div>
+
+    <div class="dashboard-tab-panel" data-dashboard-panel="ytd" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static ytd-dashboard-toolbar">
+            <div class="dashboard-toolbar__summary">
+                <span class="dashboard-toolbar__summary-label">Periodo activo</span>
+                <strong id="ytdPeriodLabel">Cargando...</strong>
+                <span id="ytdDateRangeLabel">-</span>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="ytdRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="ytdStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="ytd-dashboard" aria-label="Grafico YTD">
+            <article class="ytd-filter-panel" aria-label="Filtros YTD">
+                <div class="ytd-filter-panel__group">
+                    <div class="ytd-filter-panel__header">
+                        <span>Ingresos</span>
+                    </div>
+                    <div id="ytdRevenueBreakdown" class="ytd-breakdown-checks" role="radiogroup" aria-label="Desglose de ingresos">
+                        <label><input type="radio" name="ytdRevenueBreakdown" value="global" checked> Global</label>
+                        <label><input type="radio" name="ytdRevenueBreakdown" value="category"> Categoria</label>
+                        <label><input type="radio" name="ytdRevenueBreakdown" value="vertical"> Vertical</label>
+                        <label><input type="radio" name="ytdRevenueBreakdown" value="client"> Cliente</label>
+                        <label><input type="radio" name="ytdRevenueBreakdown" value="contractType"> Tipo contrato</label>
+                    </div>
+                    <div class="ytd-filter-panel__dropdowns">
+                        <div id="ytdRevenueCategoryFilters"></div>
+                        <div id="ytdRevenueClientFilters"></div>
+                        <div id="ytdRevenueVerticalFilters"></div>
+                        <div id="ytdRevenueContractTypeFilters"></div>
+                    </div>
+                </div>
+                <div class="ytd-filter-panel__group">
+                    <div class="ytd-filter-panel__header">
+                        <span>Gastos</span>
+                    </div>
+                    <div id="ytdExpenseBreakdown" class="ytd-breakdown-checks" role="radiogroup" aria-label="Desglose de gastos">
+                        <label><input type="radio" name="ytdExpenseBreakdown" value="global" checked> Global</label>
+                        <label><input type="radio" name="ytdExpenseBreakdown" value="category"> Categoria</label>
+                        <label><input type="radio" name="ytdExpenseBreakdown" value="vertical"> Vertical</label>
+                        <label><input type="radio" name="ytdExpenseBreakdown" value="client"> Cliente</label>
+                        <label><input type="radio" name="ytdExpenseBreakdown" value="contractType"> Tipo contrato</label>
+                    </div>
+                    <div class="ytd-filter-panel__dropdowns">
+                        <div id="ytdExpenseCategoryFilters"></div>
+                        <div id="ytdExpenseClientFilters"></div>
+                        <div id="ytdExpenseVerticalFilters"></div>
+                        <div id="ytdExpenseContractTypeFilters"></div>
+                    </div>
+                </div>
+            </article>
+            <article class="ytd-chart-card" id="ytdTotalChart"></article>
+            <div id="ytdReconciliationDisclaimer" class="ytd-disclaimer"></div>
+        </section>
+    </div>
+
+    <div class="dashboard-modal" id="ytdDetailModal" hidden>
+        <div class="dashboard-modal__backdrop" data-ytd-detail-close></div>
+        <div class="dashboard-modal__dialog dashboard-modal__dialog--wide dashboard-modal__dialog--ytd-detail" role="dialog" aria-modal="true" aria-labelledby="ytdDetailTitle">
+            <div class="dashboard-modal__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Detalle YTD</div>
+                    <h2 class="dashboard-modal__title" id="ytdDetailTitle">Detalle del segmento</h2>
+                    <p class="dashboard-modal__subtitle" id="ytdDetailSubtitle">Registros que componen la secci&oacute;n seleccionada.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" id="ytdDetailCloseBtn">Cerrar</button>
+            </div>
+            <div id="ytdDetailSummary" class="ytd-detail-summary"></div>
+            <div id="ytdDetailStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+            <div class="ytd-detail-toolbar" id="ytdDetailToolbar">
+                <div class="ytd-detail-toolbar__summary">
+                    <strong id="ytdDetailSelectedCount">0 seleccionados</strong>
+                    <span id="ytdDetailDirtyCount">0 cambios pendientes</span>
+                </div>
+                <div class="ytd-detail-toolbar__controls">
+                    <select id="ytdBulkCategorySelect" class="form-select form-select-sm dashboard-select"></select>
+                    <select id="ytdBulkBillingVerticalSelect" class="form-select form-select-sm dashboard-select"></select>
+                    <select id="ytdBulkBillingContractSelect" class="form-select form-select-sm dashboard-select"></select>
+                    <select id="ytdBulkExpenseContractSelect" class="form-select form-select-sm dashboard-select"></select>
+                    <input type="number" step="0.01" min="0" id="ytdBulkCloudInput" class="form-control form-control-sm dashboard-detail-number-input" placeholder="Cloud" />
+                    <input type="number" step="0.01" min="0" id="ytdBulkCopiersInput" class="form-control form-control-sm dashboard-detail-number-input" placeholder="Copiers" />
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="ytdBulkApplyBtn">Aplicar a seleccionados</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="ytdBulkSaveBtn">Guardar cambios</button>
+                </div>
+            </div>
+            <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                <table class="table dashboard-table ytd-detail-table">
+                    <thead>
+                        <tr>
+                            <th>
+                                <input type="checkbox" class="form-check-input" id="ytdDetailSelectAll" aria-label="Seleccionar todos los registros YTD" />
+                            </th>
+                            <th>Fuente</th>
+                            <th>Documento</th>
+                            <th>Fecha</th>
+                            <th>Tercero</th>
+                            <th>Receptor</th>
+                            <th>Cliente</th>
+                            <th>Categoria</th>
+                            <th>Vertical</th>
+                            <th>Tipo contrato</th>
+                            <th class="text-end">Cloud</th>
+                            <th class="text-end">Copiers</th>
+                            <th>Descripcion</th>
+                            <th class="text-end">Valor</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ytdDetailBody">
+                        <tr>
+                            <td colspan="15" class="dashboard-table__empty">Haz click sobre una secci&oacute;n de una barra YTD para ver sus registros.</td>
+                        </tr>
+                    </tbody>
+                    <tfoot id="ytdDetailFoot"></tfoot>
+                </table>
+            </div>
+            <div id="ytdDetailTotals" class="ytd-detail-totals"></div>
+        </div>
     </div>
 
     <div class="dashboard-tab-panel" data-dashboard-panel="business" hidden>
@@ -369,53 +834,206 @@
 
         <div id="businessStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
 
-        <section class="business-dashboard">
-            <section class="business-dashboard__summary" id="businessKpisContainer"></section>
+        <section class="dashboard-subtabs business-dashboard-subtabs" aria-label="Vistas de negocios">
+            <button type="button" class="dashboard-subtab is-active" data-business-subtab="all">Todos los negocios</button>
+            <button type="button" class="dashboard-subtab" data-business-subtab="projection">Proyeccion</button>
+        </section>
 
-            <section class="business-dashboard__grid">
-                <article class="business-card business-card--wide">
+        <div class="dashboard-subpanel is-active" data-business-subpanel="all">
+            <section class="business-dashboard">
+                <section class="business-dashboard__summary" id="businessKpisContainer"></section>
+
+                <section class="business-dashboard__grid">
+                    <article class="business-card business-card--wide">
+                        <div class="business-card__header">
+                            <div>
+                                <div class="dashboard-panel__kicker">Linea</div>
+                                <h2 class="business-card__title">Total de negocios por linea</h2>
+                            </div>
+                            <span class="business-card__meta" id="businessLineMeta">0 lineas</span>
+                        </div>
+                        <div class="business-line-chart" id="businessLinesChart"></div>
+                    </article>
+
+                    <article class="business-card">
+                        <div class="business-card__header">
+                            <div>
+                                <div class="dashboard-panel__kicker">Contrato</div>
+                                <h2 class="business-card__title">Mix de facturacion</h2>
+                            </div>
+                        </div>
+                        <div class="business-contract-mix" id="businessContractTypesChart"></div>
+                    </article>
+                </section>
+
+                <section class="business-dashboard__grid business-dashboard__grid--balanced">
+                    <article class="business-card">
+                        <div class="business-card__header">
+                            <div>
+                                <div class="dashboard-panel__kicker">Ranking</div>
+                                <h2 class="business-card__title">Top 10 contratos mas grandes</h2>
+                            </div>
+                            <span class="business-card__meta" id="businessContractsCount">0 contratos</span>
+                        </div>
+                        <div class="business-contract-list" id="businessContractsList"></div>
+                    </article>
+
+                    <article class="business-card">
+                        <div class="business-card__header">
+                            <div>
+                                <div class="dashboard-panel__kicker">Productos</div>
+                                <h2 class="business-card__title">Top productos mas vendidos</h2>
+                            </div>
+                        </div>
+                        <div class="business-products-chart" id="businessProductsChart"></div>
+                    </article>
+                </section>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-business-subpanel="projection" hidden>
+            <section class="business-dashboard">
+                <section class="business-dashboard__summary business-dashboard__summary--projection" id="businessProjectionKpisContainer"></section>
+                <article class="business-card business-projection-history-card">
                     <div class="business-card__header">
                         <div>
-                            <div class="dashboard-panel__kicker">Linea</div>
-                            <h2 class="business-card__title">Total de negocios por linea</h2>
+                            <div class="dashboard-panel__kicker">Historico</div>
+                            <h2 class="business-card__title">Proyeccion mensual</h2>
                         </div>
-                        <span class="business-card__meta" id="businessLineMeta">0 lineas</span>
+                        <span class="business-card__meta" id="businessProjectionHistoryMeta">Desde 2026</span>
                     </div>
-                    <div class="business-line-chart" id="businessLinesChart"></div>
+                    <div class="dashboard-table-wrap business-projection-history-wrap">
+                        <table class="table dashboard-table business-projection-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Mes - año</th>
+                                    <th class="text-end">Facturacion real mensual</th>
+                                    <th class="text-end">Costos actuales</th>
+                                    <th class="text-end">Utilidad mensual proyectada</th>
+                                    <th class="text-end">Ultima nomina</th>
+                                    <th class="text-end">Utilidad mensual neta proyectada</th>
+                                </tr>
+                            </thead>
+                            <tbody id="businessProjectionHistoryBody">
+                                <tr>
+                                    <td colspan="6" class="dashboard-table__empty">Cargando proyeccion mensual...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </article>
+            </section>
+        </div>
+    </div>
 
-                <article class="business-card">
-                    <div class="business-card__header">
-                        <div>
-                            <div class="dashboard-panel__kicker">Contrato</div>
-                            <h2 class="business-card__title">Mix de facturacion</h2>
-                        </div>
-                    </div>
-                    <div class="business-contract-mix" id="businessContractTypesChart"></div>
+    <div class="dashboard-tab-panel" data-dashboard-panel="business-billing" hidden>
+        <section class="dashboard-toolbar dashboard-toolbar--static business-billing-toolbar">
+            <div class="dashboard-filters">
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="businessBillingStartFilter">Desde</label>
+                    <input type="month" id="businessBillingStartFilter" class="form-control dashboard-select" />
+                </div>
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="businessBillingEndFilter">Hasta</label>
+                    <input type="month" id="businessBillingEndFilter" class="form-control dashboard-select" />
+                </div>
+                <div class="dashboard-filter">
+                    <label class="dashboard-filter__label" for="businessBillingGranularityFilter">Barras</label>
+                    <select id="businessBillingGranularityFilter" class="form-select dashboard-select">
+                        <option value="month">Mes</option>
+                        <option value="quarter">Trimestre</option>
+                        <option value="semester">Semestre</option>
+                        <option value="year">Anual</option>
+                        <option value="all">Todo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="dashboard-toolbar__actions">
+                <div class="dashboard-toolbar__summary">
+                    <span class="dashboard-toolbar__summary-label">Periodo activo</span>
+                    <strong id="businessBillingPeriodLabel">Cargando...</strong>
+                    <span id="businessBillingDateRangeLabel">-</span>
+                </div>
+                <button type="button" class="btn btn-primary dashboard-refresh-btn" id="businessBillingRefreshBtn">Actualizar</button>
+            </div>
+        </section>
+
+        <div id="businessBillingStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
+
+        <section class="business-billing-dashboard">
+            <section class="business-billing-summary" aria-label="Resumen facturacion negocio">
+                <article class="business-billing-summary-card">
+                    <span>Ventas</span>
+                    <strong id="businessBillingTotalSales">$0</strong>
+                </article>
+                <article class="business-billing-summary-card">
+                    <span>Facturas</span>
+                    <strong id="businessBillingRecordCount">0</strong>
+                </article>
+                <article class="business-billing-summary-card">
+                    <span>Granularidad</span>
+                    <strong id="businessBillingGranularityLabel">Mes</strong>
                 </article>
             </section>
 
-            <section class="business-dashboard__grid business-dashboard__grid--balanced">
-                <article class="business-card">
-                    <div class="business-card__header">
-                        <div>
-                            <div class="dashboard-panel__kicker">Ranking</div>
-                            <h2 class="business-card__title">Top 10 contratos mas grandes</h2>
-                        </div>
-                        <span class="business-card__meta" id="businessContractsCount">0 contratos</span>
+            <section class="business-billing-section" aria-labelledby="businessBillingCloudTitle">
+                <div class="business-billing-section__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Cloud</div>
+                        <h2 id="businessBillingCloudTitle">Ventas Cloud</h2>
                     </div>
-                    <div class="business-contract-list" id="businessContractsList"></div>
-                </article>
+                    <strong id="businessBillingCloudTotal">$0</strong>
+                </div>
+                <div class="business-billing-chart-grid">
+                    <article class="business-billing-chart-card">
+                        <div class="business-billing-chart-card__header">
+                            <div>
+                                <span>Monthly</span>
+                                <h3>Ventas cloud mes a mes</h3>
+                            </div>
+                        </div>
+                        <div class="business-billing-chart" id="businessBillingCloudMonthlyChart"></div>
+                    </article>
+                    <article class="business-billing-chart-card">
+                        <div class="business-billing-chart-card__header">
+                            <div>
+                                <span>OneTime / Prepaid</span>
+                                <h3>Ventas cloud mes a mes</h3>
+                            </div>
+                        </div>
+                        <div class="business-billing-chart" id="businessBillingCloudPrepaidChart"></div>
+                    </article>
+                </div>
+            </section>
 
-                <article class="business-card">
-                    <div class="business-card__header">
-                        <div>
-                            <div class="dashboard-panel__kicker">Productos</div>
-                            <h2 class="business-card__title">Top productos mas vendidos</h2>
-                        </div>
+            <section class="business-billing-section" aria-labelledby="businessBillingCopiersTitle">
+                <div class="business-billing-section__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Copiers</div>
+                        <h2 id="businessBillingCopiersTitle">Ventas Copiers</h2>
                     </div>
-                    <div class="business-products-chart" id="businessProductsChart"></div>
-                </article>
+                    <strong id="businessBillingCopiersTotal">$0</strong>
+                </div>
+                <div class="business-billing-chart-grid">
+                    <article class="business-billing-chart-card">
+                        <div class="business-billing-chart-card__header">
+                            <div>
+                                <span>Monthly</span>
+                                <h3>Ventas copiers mes a mes</h3>
+                            </div>
+                        </div>
+                        <div class="business-billing-chart" id="businessBillingCopiersMonthlyChart"></div>
+                    </article>
+                    <article class="business-billing-chart-card">
+                        <div class="business-billing-chart-card__header">
+                            <div>
+                                <span>OneTime / Prepaid</span>
+                                <h3>Ventas copiers mes a mes</h3>
+                            </div>
+                        </div>
+                        <div class="business-billing-chart" id="businessBillingCopiersPrepaidChart"></div>
+                    </article>
+                </div>
             </section>
         </section>
     </div>
@@ -428,6 +1046,10 @@
                 RootId = "dashboardHardwareApp",
                 Mode = "dashboard",
                 CurrentUserLabel = !string.IsNullOrWhiteSpace(Model.CurrentUser.DisplayName) ? Model.CurrentUser.DisplayName : Model.CurrentUser.Email,
+                CurrentUserId = Model.CurrentUser.SystemUserId,
+                CurrentUserEmail = !string.IsNullOrWhiteSpace(Model.CurrentUser.Email) ? Model.CurrentUser.Email : Model.CurrentUser.EmployeeUserEmail,
+                CurrentUserIsSupplierPayment = CotizadorInterno.Web.Models.Hardware.HardwareAccessPolicy.IsSupplierPaymentUser(Model.CurrentUser),
+                CurrentUserIsBilling = CotizadorInterno.Web.Models.Hardware.HardwareAccessPolicy.IsBillingUser(Model.CurrentUser),
                 BoardUrl = Url.Action("Board", "Hardware") ?? "",
                 SaveUrl = Url.Action("SaveStage", "Hardware") ?? "",
                 EditUrl = Url.Action("EditRecords", "Hardware") ?? "",
@@ -448,6 +1070,7 @@
              data-load-url="@Url.Action("SupportCloud", "Dashboard")"
              data-client-search-url="@Url.Action("SupportCloudClientSearch", "Dashboard")"
              data-save-url="@Url.Action("SupportCloudTicket", "Dashboard")"
+             data-delete-url="@Url.Action("SupportCloudTicketDelete", "Dashboard")"
              data-upload-url="@Url.Action("SupportCloudUploadFile", "Dashboard")"
              data-download-url="@Url.Action("SupportCloudDownloadFile", "Dashboard")"
              data-trainings-url="@Url.Action("SupportCloudTrainings", "Dashboard")"
@@ -561,11 +1184,16 @@
                             Vista resumida para seguimiento gerencial. Abre un ticket para consultar todos los campos y su adjunto.
                         </p>
                     </div>
-                    <div class="support-cloud-counter" data-sc-records-count>0 tickets</div>
+                    <div class="support-cloud-table-tools">
+                        <div class="support-cloud-counter" data-sc-records-count>0 tickets</div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-sc-clear-filters disabled>
+                            Limpiar filtros
+                        </button>
+                    </div>
                 </div>
 
                 <div class="support-cloud-table-wrap">
-                    <table class="table align-middle support-cloud-table">
+                    <table class="table align-middle support-cloud-table support-cloud-ticket-table">
                         <thead>
                             <tr>
                                 <th>Fecha</th>
@@ -576,6 +1204,24 @@
                                 <th>Creador</th>
                                 <th class="text-end">Horas</th>
                                 <th>Adjunto</th>
+                                <th class="text-end">Acciones</th>
+                            </tr>
+                            <tr class="support-cloud-table__filter-row">
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="creationDate" placeholder="Fecha" aria-label="Filtrar columna Fecha" /></th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="ticket" placeholder="Ticket" aria-label="Filtrar columna Ticket" /></th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="client" placeholder="Cliente" aria-label="Filtrar columna Cliente" /></th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="state" placeholder="Estado" aria-label="Filtrar columna Estado" /></th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="type" placeholder="Tipo" aria-label="Filtrar columna Tipo" /></th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="creator" placeholder="Creador" aria-label="Filtrar columna Creador" /></th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="hours" placeholder="&gt;, &lt; o 1-4" aria-label="Filtrar columna Horas" inputmode="decimal" /></th>
+                                <th>
+                                    <select class="form-select support-cloud-table__filter" data-sc-filter="attachment" aria-label="Filtrar columna Adjunto">
+                                        <option value="">Todos</option>
+                                        <option value="with">Con adjunto</option>
+                                        <option value="without">Sin adjunto</option>
+                                    </select>
+                                </th>
+                                <th><input type="search" class="form-control support-cloud-table__filter" data-sc-filter="actions" placeholder="Acción" aria-label="Filtrar columna Acciones" /></th>
                             </tr>
                         </thead>
                         <tbody data-sc-rows></tbody>
@@ -704,7 +1350,7 @@
                         <div class="support-cloud-training-owner-bars" data-sct-owners></div>
                     </article>
                     <article class="support-cloud-summary__card">
-                        <span class="support-cloud-summary__label">Total horas entregadas</span>
+                        <span class="support-cloud-summary__label">Total minutos entregados</span>
                         <strong class="support-cloud-summary__value" data-sct-total-hours>0</strong>
                     </article>
                     <article class="support-cloud-summary__card">
@@ -816,6 +1462,7 @@
             <button type="button" class="dashboard-subtab is-active" data-copiers-subtab="billing">Facturaci&oacute;n copiers</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="equipment">Equipos</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="inventory">Inventario</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="movements">Movimientos</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="counters">Contadores</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance">Mantenimientos</button>
         </section>
@@ -993,7 +1640,7 @@
                     </div>
                     <div class="dashboard-table-wrap dashboard-table-wrap--paged">
                         <table class="table dashboard-table dashboard-copiers-maintenance-table">
-                            <thead>
+                            <thead id="copiersMaintenanceHead">
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Equipo</th>
@@ -1011,6 +1658,42 @@
                         <button type="button" class="btn btn-outline-secondary dashboard-pagination__btn" id="copiersMaintenancePrevBtn">Anterior</button>
                         <span id="copiersMaintenancePageSummary" class="dashboard-table-meta">P&aacute;gina 1 de 1</span>
                         <button type="button" class="btn btn-outline-secondary dashboard-pagination__btn" id="copiersMaintenanceNextBtn">Siguiente</button>
+                    </div>
+                </article>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-copiers-subpanel="movements" hidden>
+            <section class="dashboard-grid">
+                <article class="dashboard-panel dashboard-panel--full">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Movimientos</div>
+                            <h2 class="dashboard-panel__title">Movimientos de equipos</h2>
+                            <p class="dashboard-panel__description">Consulta los cambios de cliente registrados para cada equipo, incluyendo fecha, motivo y acta de entrega.</p>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table">
+                            <span id="copiersMovementsResultsCount" class="dashboard-table-meta">Mostrando 0 registros</span>
+                            <button type="button" class="btn btn-outline-secondary dashboard-refresh-btn" id="copiersMovementsRefreshBtn">Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                        <table class="table dashboard-table dashboard-copiers-movements-table">
+                            <thead id="copiersMovementsHead">
+                                <tr>
+                                    <th>Fecha movimiento</th>
+                                    <th>Equipo</th>
+                                    <th>Cliente nuevo</th>
+                                    <th>Motivo movimiento</th>
+                                    <th>Acta de entrega</th>
+                                </tr>
+                            </thead>
+                            <tbody id="copiersMovementsBody">
+                                <tr>
+                                    <td colspan="5" class="dashboard-table__empty">Abre Movimientos para cargar el historial de reasignaciones.</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </article>
             </section>
@@ -1155,9 +1838,86 @@
 
         <div id="portfolioStatusBanner" class="dashboard-status" role="status" aria-live="polite"></div>
 
+        <section class="dashboard-subtabs" aria-label="Vistas de cartera">
+            <button type="button" class="dashboard-subtab is-active" data-portfolio-subtab="monthly">Cartera por mes</button>
+            <button type="button" class="dashboard-subtab" data-portfolio-subtab="detail">Detalle de facturas</button>
+            <button type="button" class="dashboard-subtab" data-portfolio-subtab="statement">Generar estado de cuenta</button>
+        </section>
+
         <section class="dashboard-kpis dashboard-kpis--portfolio" id="portfolioKpisContainer"></section>
 
-        <section class="dashboard-grid">
+        <div class="dashboard-subpanel is-active" data-portfolio-subpanel="monthly">
+            <section class="dashboard-grid">
+                <article class="dashboard-panel dashboard-panel--full dashboard-portfolio-monthly-panel">
+                    <div class="dashboard-panel__header dashboard-panel__header--wrap">
+                        <div>
+                            <div class="dashboard-panel__kicker">Pendiente por ingresar</div>
+                            <h2 class="dashboard-panel__title">Cartera por mes</h2>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-portfolio-monthly-filters">
+                            <label class="dashboard-filter" for="portfolioMonthlyRangeFilter">
+                                <span class="dashboard-filter__label">Rango</span>
+                                <select id="portfolioMonthlyRangeFilter" class="form-select dashboard-select">
+                                    <option value="year">A&ntilde;o completo</option>
+                                    <option value="all">Toda la data</option>
+                                    <option value="month">Mes espec&iacute;fico</option>
+                                    <option value="custom">Personalizado</option>
+                                </select>
+                            </label>
+                            <label class="dashboard-filter" for="portfolioMonthlyYearFilter" data-portfolio-monthly-filter-field="year">
+                                <span class="dashboard-filter__label">A&ntilde;o</span>
+                                <select id="portfolioMonthlyYearFilter" class="form-select dashboard-select"></select>
+                            </label>
+                            <label class="dashboard-filter" for="portfolioMonthlyMonthFilter" data-portfolio-monthly-filter-field="month" hidden>
+                                <span class="dashboard-filter__label">Mes</span>
+                                <input type="month" id="portfolioMonthlyMonthFilter" class="form-control dashboard-select" />
+                            </label>
+                            <label class="dashboard-filter" for="portfolioMonthlyStartFilter" data-portfolio-monthly-filter-field="custom" hidden>
+                                <span class="dashboard-filter__label">Desde</span>
+                                <input type="month" id="portfolioMonthlyStartFilter" class="form-control dashboard-select" />
+                            </label>
+                            <label class="dashboard-filter" for="portfolioMonthlyEndFilter" data-portfolio-monthly-filter-field="custom" hidden>
+                                <span class="dashboard-filter__label">Hasta</span>
+                                <input type="month" id="portfolioMonthlyEndFilter" class="form-control dashboard-select" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <section class="dashboard-portfolio-monthly-charts" aria-label="Cartera por mes separada por vertical">
+                        <article class="dashboard-portfolio-monthly-card">
+                            <div class="dashboard-portfolio-monthly-card__header">
+                                <div>
+                                    <span>Cloud</span>
+                                    <strong>Facturas Cloud sin pago</strong>
+                                </div>
+                            </div>
+                            <div class="dashboard-portfolio-monthly-summary" id="portfolioMonthlyCloudSummary">
+                                <span>Cargando cartera Cloud...</span>
+                            </div>
+                            <div class="dashboard-portfolio-monthly-legend" id="portfolioMonthlyCloudLegend" aria-label="Leyenda cartera Cloud por mes"></div>
+                            <div class="dashboard-portfolio-monthly-chart" id="portfolioMonthlyCloudChart" role="img" aria-label="Cartera Cloud pendiente por mes"></div>
+                        </article>
+
+                        <article class="dashboard-portfolio-monthly-card">
+                            <div class="dashboard-portfolio-monthly-card__header">
+                                <div>
+                                    <span>Copiers</span>
+                                    <strong>Facturas Copiers sin pago</strong>
+                                </div>
+                            </div>
+                            <div class="dashboard-portfolio-monthly-summary" id="portfolioMonthlyCopiersSummary">
+                                <span>Cargando cartera Copiers...</span>
+                            </div>
+                            <div class="dashboard-portfolio-monthly-legend" id="portfolioMonthlyCopiersLegend" aria-label="Leyenda cartera Copiers por mes"></div>
+                            <div class="dashboard-portfolio-monthly-chart" id="portfolioMonthlyCopiersChart" role="img" aria-label="Cartera Copiers pendiente por mes"></div>
+                        </article>
+                    </section>
+                </article>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-portfolio-subpanel="detail" hidden>
+            <section class="dashboard-grid">
             <article class="dashboard-panel dashboard-panel--full">
                 <div class="dashboard-panel__header">
                     <div>
@@ -1217,7 +1977,118 @@
                     </table>
                 </div>
             </article>
-        </section>
+            </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-portfolio-subpanel="statement" hidden>
+            <section class="dashboard-grid">
+                <article class="dashboard-panel dashboard-panel--full dashboard-account-statement-panel">
+                    <div class="dashboard-panel__header">
+                        <div>
+                            <div class="dashboard-panel__kicker">Estado de cuenta</div>
+                            <h2 class="dashboard-panel__title">Generar estado de cuenta</h2>
+                        </div>
+                        <div class="dashboard-panel__actions dashboard-panel__actions--table dashboard-account-statement-actions">
+                            <input type="hidden" id="accountStatementClientIdInput" />
+                            <label class="dashboard-search dashboard-search--customer" for="accountStatementClientSearch">
+                                <span class="dashboard-search__label">Cliente</span>
+                                <input type="search"
+                                       id="accountStatementClientSearch"
+                                       class="form-control dashboard-search__input"
+                                       list="accountStatementClientOptions"
+                                       autocomplete="off"
+                                       placeholder="Buscar cliente..." />
+                                <datalist id="accountStatementClientOptions"></datalist>
+                            </label>
+                            <button type="button" class="btn btn-outline-secondary" id="accountStatementGenerateBtn">Generar</button>
+                            <button type="button" class="btn btn-primary" id="accountStatementPdfBtn" disabled>Generar PDF</button>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-account-statement-matches" id="accountStatementMatches" aria-live="polite"></div>
+                    <div id="accountStatementStatus" class="dashboard-status" role="status" aria-live="polite"></div>
+
+                    <div class="dashboard-report-summary dashboard-account-statement-summary">
+                        <div class="dashboard-report-summary__item">
+                            <span>Cliente</span>
+                            <strong id="accountStatementClientReference">-</strong>
+                        </div>
+                        <div class="dashboard-report-summary__item">
+                            <span>Facturas pendientes</span>
+                            <strong id="accountStatementCount">0</strong>
+                        </div>
+                        <div class="dashboard-report-summary__item">
+                            <span>Total neto estado de cuenta</span>
+                            <strong id="accountStatementTotal">$0</strong>
+                        </div>
+                        <div class="dashboard-report-summary__item">
+                            <span>Corte</span>
+                            <strong id="accountStatementAsOf">-</strong>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                        <table class="table dashboard-table dashboard-account-statement-table">
+                            <thead>
+                                <tr>
+                                    <th>Numero de factura</th>
+                                    <th class="text-end">Valor neto</th>
+                                    <th>Fecha de emision</th>
+                                    <th>Fecha de vencimiento</th>
+                                    <th>Estado</th>
+                                    <th>Dias de vencida o dias para el vencimiento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="accountStatementBody">
+                                <tr>
+                                    <td colspan="6" class="dashboard-table__empty">Busca un cliente para generar el estado de cuenta.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+        </div>
+    </div>
+
+    <div class="dashboard-modal" id="portfolioMonthlyDetailModal" hidden>
+        <div class="dashboard-modal__backdrop" data-portfolio-monthly-detail-close></div>
+        <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="portfolioMonthlyDetailTitle">
+            <div class="dashboard-modal__header">
+                <div>
+                    <div class="dashboard-panel__kicker">Cartera por mes</div>
+                    <h2 class="dashboard-modal__title" id="portfolioMonthlyDetailTitle">Facturas del mes</h2>
+                    <p class="dashboard-modal__subtitle" id="portfolioMonthlyDetailSubtitle">Detalle de facturas emitidas sin pago.</p>
+                </div>
+                <button type="button" class="btn-close" id="portfolioMonthlyDetailCloseBtn" aria-label="Cerrar"></button>
+            </div>
+
+            <div class="dashboard-portfolio-monthly-detail-summary" id="portfolioMonthlyDetailSummary"></div>
+
+            <section class="dashboard-portfolio-monthly-detail-section">
+                <div class="dashboard-portfolio-monthly-detail-section__header">
+                    <span>Facturas pendientes</span>
+                    <strong id="portfolioMonthlyDetailTotal">$0</strong>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+                    <table class="table dashboard-table dashboard-portfolio-monthly-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Factura</th>
+                                <th>Cliente</th>
+                                <th>Emisi&oacute;n</th>
+                                <th>Vencimiento</th>
+                                <th>Estado</th>
+                                <th class="text-end">D&iacute;as</th>
+                                <th class="text-end">Total</th>
+                                <th>Link</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portfolioMonthlyDetailBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </div>
 
     <div class="dashboard-tab-panel" data-dashboard-panel="licenciamiento" hidden>
@@ -1246,11 +2117,6 @@
 
         <section class="lic-dashboard">
             <div class="lic-dashboard__summary" id="licenciamientoSummaryCards"></div>
-
-            <section class="lic-dashboard__charts" aria-label="Utilidad mensual de licenciamiento">
-                <article class="lic-chart-card" id="licenciamientoMonthlyChart"></article>
-                <article class="lic-chart-card" id="licenciamientoPrepaidChart"></article>
-            </section>
 
             <section class="lic-cost-section">
                 <div class="lic-section-heading">
@@ -1308,7 +2174,7 @@
                                 <th>Fecha</th>
                                 <th>Clasificacion actual</th>
                                 <th>Motivo</th>
-                                <th class="text-end">Valor</th>
+                                <th class="text-end">Valor neto</th>
                                 <th>Asignar</th>
                             </tr>
                         </thead>
@@ -1395,9 +2261,13 @@
                 <h2 class="dashboard-modal__title" id="utilityBreakdownTitle">Detalle de utilidad teorica</h2>
                 <p class="dashboard-modal__subtitle" id="utilityBreakdownSubtitle">Filas incluidas en el calculo seleccionado.</p>
             </div>
-            <button type="button" class="btn btn-outline-secondary" id="utilityBreakdownCloseBtn">Cerrar</button>
+            <div class="dashboard-modal__actions">
+                <button type="button" class="btn btn-primary" id="utilityBreakdownSaveBtn">Guardar desglose</button>
+                <button type="button" class="btn btn-outline-secondary" id="utilityBreakdownCloseBtn">Cerrar</button>
+            </div>
         </div>
 
+        <div id="utilityBreakdownStatus" class="dashboard-status" role="status" aria-live="polite"></div>
         <div class="utility-breakdown-summary" id="utilityBreakdownSummary"></div>
 
         <div class="dashboard-table-wrap dashboard-table-wrap--tall">
@@ -1424,6 +2294,74 @@
                 <tfoot id="utilityBreakdownFooter"></tfoot>
             </table>
         </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="utilityRealDetailModal" hidden>
+    <div class="dashboard-modal__backdrop" data-utility-real-detail-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="utilityRealDetailTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Utilidad real</div>
+                <h2 class="dashboard-modal__title" id="utilityRealDetailTitle">Detalle mensual</h2>
+                <p class="dashboard-modal__subtitle" id="utilityRealDetailSubtitle">Ventas y costos del mes seleccionado.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="utilityRealDetailCloseBtn">Cerrar</button>
+        </div>
+
+        <div class="utility-breakdown-summary" id="utilityRealDetailSummary"></div>
+
+        <section class="utility-real-detail-grid">
+            <article class="utility-real-detail-section">
+                <div class="utility-real-detail-section__header">
+                    <h3>Ventas</h3>
+                    <strong id="utilityRealSalesTotal">$0</strong>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table utility-real-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Factura</th>
+                                <th>Cliente</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th class="text-end">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody id="utilityRealSalesBody">
+                            <tr>
+                                <td colspan="5" class="dashboard-table__empty">Haz click en una barra para ver sus facturas.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="utility-real-detail-section">
+                <div class="utility-real-detail-section__header">
+                    <h3>Costos</h3>
+                    <strong id="utilityRealCostsTotal">$0</strong>
+                </div>
+                <div class="dashboard-table-wrap dashboard-table-wrap--tall">
+                    <table class="table dashboard-table utility-real-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Referencia</th>
+                                <th>Cliente / producto</th>
+                                <th>Fecha</th>
+                                <th class="text-end">USD</th>
+                                <th class="text-end">Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="utilityRealCostsBody">
+                            <tr>
+                                <td colspan="5" class="dashboard-table__empty">Haz click en una barra para ver sus costos.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
     </div>
 </div>
 
@@ -1503,6 +2441,51 @@
                 <tbody id="pnlDetailBody">
                     <tr>
                         <td colspan="15" class="dashboard-table__empty">Selecciona una celda del P&amp;L para ver el detalle.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-modal" id="cloudBillingDetailModal" hidden>
+    <div class="dashboard-modal__backdrop" data-cloud-billing-detail-close></div>
+    <div class="dashboard-modal__dialog dashboard-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="cloudBillingDetailTitle">
+        <div class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Mes actual</div>
+                <h2 class="dashboard-modal__title" id="cloudBillingDetailTitle">Detalle de facturaci&oacute;n</h2>
+                <p class="dashboard-modal__subtitle" id="cloudBillingDetailSubtitle">Productos y validaci&oacute;n de la fila seleccionada.</p>
+            </div>
+            <button type="button" class="btn btn-outline-secondary" id="cloudBillingDetailCloseBtn">Cerrar</button>
+        </div>
+
+        <div class="cloud-billing-detail-summary" id="cloudBillingDetailSummary"></div>
+
+        <section class="cloud-billing-detail-errors" aria-labelledby="cloudBillingDetailErrorsTitle">
+            <h3 id="cloudBillingDetailErrorsTitle">Detalle del error</h3>
+            <div id="cloudBillingDetailErrors" class="cloud-billing-detail-errors__body">Sin errores registrados.</div>
+        </section>
+
+        <div class="dashboard-table-wrap dashboard-table-wrap--compact">
+            <table class="table dashboard-table dashboard-cloud-billing-detail-table">
+                <thead>
+                    <tr>
+                        <th>Estado</th>
+                        <th>Producto</th>
+                        <th>Contrato</th>
+                        <th class="text-end">Cantidad</th>
+                        <th class="text-end">Valor mensual USD</th>
+                        <th>&Uacute;ltima factura</th>
+                        <th>Factura mes</th>
+                        <th>DIAN</th>
+                        <th>Correo</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody id="cloudBillingDetailBody">
+                    <tr>
+                        <td colspan="10" class="dashboard-table__empty">Selecciona una fila para ver el detalle.</td>
                     </tr>
                 </tbody>
             </table>
@@ -1752,7 +2735,7 @@
                 <thead>
                     <tr>
                         <th>Factura</th>
-                        <th class="text-end">Valor total</th>
+                        <th class="text-end">Valor neto</th>
                         <th>Fecha emisi&oacute;n</th>
                         <th>Fecha pago</th>
                         <th class="text-end">Valor pago</th>

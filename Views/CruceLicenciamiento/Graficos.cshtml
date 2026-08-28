@@ -1,0 +1,172 @@
+@model CotizadorInterno.Web.Models.Licenciamiento.LicenciamientoCrucePageViewModel
+@{
+    ViewData["Title"] = "Graficos Cruce Licenciamiento";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/cruce-licenciamiento.css" asp-append-version="true" />
+}
+
+<div class="licx-shell"
+     id="licCruceApp"
+     data-load-url="@Url.Action("Data", "CruceLicenciamiento")"
+     data-export-url="@Url.Action("Export", "CruceLicenciamiento")"
+     data-update-cost-contract-url="@Url.Action("UpdateCostContractType", "CruceLicenciamiento")"
+     data-update-billing-contract-url="@Url.Action("UpdateBillingContractType", "CruceLicenciamiento")"
+     data-update-billing-vertical-url="@Url.Action("UpdateBillingVertical", "CruceLicenciamiento")"
+     data-update-cost-account-url="@Url.Action("UpdateCostAccount", "CruceLicenciamiento")"
+     data-save-account-mapping-url="@Url.Action("SaveAccountMapping", "CruceLicenciamiento")"
+     data-search-accounts-url="@Url.Action("SearchAccounts", "CruceLicenciamiento")"
+     data-update-cost-invoice-date-url="@Url.Action("UpdateCostInvoiceDate", "CruceLicenciamiento")"
+     data-default-year="@Model.DefaultYear"
+     data-default-month="@Model.DefaultMonth"
+     data-default-period-mode="@Model.DefaultPeriodMode">
+    <section class="licx-header">
+        <div>
+            <div class="licx-kicker">Gerencia</div>
+            <h1 class="licx-title">Graficos Cruce Licenciamiento</h1>
+        </div>
+        <div class="licx-user">
+            <span>Usuario</span>
+            <strong>@Model.CurrentUser.Email</strong>
+        </div>
+    </section>
+
+    <nav class="licx-view-tabs" aria-label="Secciones de cruce licenciamiento">
+        <a class="licx-view-tab" asp-action="Index">Listado</a>
+        <a class="licx-view-tab is-active" asp-action="Graficos">Graficos</a>
+    </nav>
+
+    <form class="licx-toolbar" id="licCruceFilters">
+        <label class="licx-field">
+            <span>Periodo</span>
+            <select class="form-select" id="licCrucePeriodMode">
+                <option value="month">Mes</option>
+                <option value="quarter">Trimestre</option>
+                <option value="ytd">Ano acumulado</option>
+            </select>
+        </label>
+        <label class="licx-field">
+            <span>Ano</span>
+            <input class="form-control" id="licCruceYear" type="number" min="2000" max="2100" step="1" placeholder="Ultimo" />
+        </label>
+        <label class="licx-field">
+            <span>Mes base</span>
+            <select class="form-select" id="licCruceMonth">
+                <option value="">Ultimo mes con data</option>
+                <option value="1">Enero (Factura Febrero - Consumo Enero)</option>
+                <option value="2">Febrero (Factura Marzo - Consumo Febrero)</option>
+                <option value="3">Marzo (Factura Abril - Consumo Marzo)</option>
+                <option value="4">Abril (Factura Mayo - Consumo Abril)</option>
+                <option value="5">Mayo (Factura Junio - Consumo Mayo)</option>
+                <option value="6">Junio (Factura Julio - Consumo Junio)</option>
+                <option value="7">Julio (Factura Agosto - Consumo Julio)</option>
+                <option value="8">Agosto (Factura Septiembre - Consumo Agosto)</option>
+                <option value="9">Septiembre (Factura Octubre - Consumo Septiembre)</option>
+                <option value="10">Octubre (Factura Noviembre - Consumo Octubre)</option>
+                <option value="11">Noviembre (Factura Diciembre - Consumo Noviembre)</option>
+                <option value="12">Diciembre (Factura Enero siguiente ano - Consumo Diciembre)</option>
+            </select>
+        </label>
+        <label class="licx-field">
+            <span>Tipo</span>
+            <select class="form-select" id="licCruceSegmentSelect"></select>
+        </label>
+        <div class="licx-toolbar-actions">
+            <button type="submit" class="btn btn-primary">Actualizar</button>
+        </div>
+    </form>
+
+    <div id="licCruceStatus" class="licx-status" role="status" aria-live="polite"></div>
+
+    <section class="licx-kpis" aria-label="Resumen consolidado">
+        <article class="licx-kpi">
+            <span>Total costos</span>
+            <strong id="licCruceTotalCost">$0</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Venta sin IVA</span>
+            <strong id="licCruceTotalBilling">$0</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Utilidad</span>
+            <strong id="licCruceTotalMargin">$0</strong>
+            <small id="licCruceMarginBreakdown"></small>
+        </article>
+        <article class="licx-kpi">
+            <span>Utilidad %</span>
+            <strong id="licCruceTotalMarginPct">N/A</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Periodo cargado</span>
+            <strong id="licCrucePeriodLabel">-</strong>
+        </article>
+        <article class="licx-kpi">
+            <span>Margen negativo</span>
+            <strong id="licCruceNegativeCount">0</strong>
+        </article>
+    </section>
+
+    <section class="licx-panel licx-chart-panel">
+        <div class="licx-panel__header">
+            <div>
+                <div class="licx-kicker">Evolucion mensual</div>
+                <h2>Costos, ventas y utilidad total</h2>
+            </div>
+            <div class="licx-panel-actions">
+                <span id="licCruceTotalTrendSummary"></span>
+            </div>
+        </div>
+        <div id="licCruceTotalTrendChart" class="licx-chart" role="img" aria-label="Evolucion mensual de costos, ventas y utilidad total"></div>
+    </section>
+
+    <section class="licx-panel licx-chart-panel">
+        <div class="licx-panel__header licx-panel__header--stack">
+            <div>
+                <div class="licx-kicker">Clientes</div>
+                <h2>Evolucion mensual por cliente(s)</h2>
+            </div>
+            <div class="licx-chart-filters">
+                <label class="licx-field licx-field--search">
+                    <span>Buscar cliente</span>
+                    <input class="form-control" id="licCruceClientTrendSearch" type="search" autocomplete="off" placeholder="Nombre, NIT o ID" />
+                </label>
+                <label class="licx-field licx-field--multi">
+                    <span>Cliente(s)</span>
+                    <select class="form-select" id="licCruceClientTrendSelect" multiple size="6"></select>
+                </label>
+            </div>
+            <div class="licx-panel-actions">
+                <span id="licCruceClientTrendSummary"></span>
+            </div>
+        </div>
+        <div id="licCruceClientTrendChart" class="licx-chart" role="img" aria-label="Evolucion mensual filtrable por clientes"></div>
+    </section>
+
+    <section class="licx-panel licx-chart-panel">
+        <div class="licx-panel__header licx-panel__header--stack">
+            <div>
+                <div class="licx-kicker">Margen por cliente</div>
+                <h2>Utilidad % mensual por cliente</h2>
+            </div>
+            <div class="licx-chart-filters">
+                <label class="licx-field licx-field--search">
+                    <span>Buscar cliente</span>
+                    <input class="form-control" id="licCruceClientMarginSearch" type="search" autocomplete="off" placeholder="Nombre, NIT o ID" />
+                </label>
+                <label class="licx-field licx-field--multi">
+                    <span>Cliente(s)</span>
+                    <select class="form-select" id="licCruceClientMarginSelect" multiple size="6"></select>
+                </label>
+            </div>
+            <div class="licx-panel-actions">
+                <span id="licCruceClientMarginSummary"></span>
+            </div>
+        </div>
+        <div id="licCruceClientMarginChart" class="licx-chart" role="img" aria-label="Utilidad porcentual mensual por cliente"></div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="~/js/cruce-licenciamiento.js" asp-append-version="true"></script>
+}

@@ -10,6 +10,7 @@
 <div class="licx-shell"
      id="licCruceApp"
      data-load-url="@Url.Action("Data", "CruceLicenciamiento")"
+     data-export-url="@Url.Action("Export", "CruceLicenciamiento")"
      data-update-cost-contract-url="@Url.Action("UpdateCostContractType", "CruceLicenciamiento")"
      data-update-billing-contract-url="@Url.Action("UpdateBillingContractType", "CruceLicenciamiento")"
      data-update-billing-vertical-url="@Url.Action("UpdateBillingVertical", "CruceLicenciamiento")"
@@ -31,6 +32,11 @@
         </div>
     </section>
 
+    <nav class="licx-view-tabs" aria-label="Secciones de cruce licenciamiento">
+        <a class="licx-view-tab is-active" asp-action="Index">Listado</a>
+        <a class="licx-view-tab" asp-action="Graficos">Graficos</a>
+    </nav>
+
     <form class="licx-toolbar" id="licCruceFilters">
         <label class="licx-field">
             <span>Periodo</span>
@@ -48,25 +54,28 @@
             <span>Mes base</span>
             <select class="form-select" id="licCruceMonth">
                 <option value="">Ultimo mes con data</option>
-                <option value="1">Enero</option>
-                <option value="2">Febrero</option>
-                <option value="3">Marzo</option>
-                <option value="4">Abril</option>
-                <option value="5">Mayo</option>
-                <option value="6">Junio</option>
-                <option value="7">Julio</option>
-                <option value="8">Agosto</option>
-                <option value="9">Septiembre</option>
-                <option value="10">Octubre</option>
-                <option value="11">Noviembre</option>
-                <option value="12">Diciembre</option>
+                <option value="1">Enero (Factura Febrero - Consumo Enero)</option>
+                <option value="2">Febrero (Factura Marzo - Consumo Febrero)</option>
+                <option value="3">Marzo (Factura Abril - Consumo Marzo)</option>
+                <option value="4">Abril (Factura Mayo - Consumo Abril)</option>
+                <option value="5">Mayo (Factura Junio - Consumo Mayo)</option>
+                <option value="6">Junio (Factura Julio - Consumo Junio)</option>
+                <option value="7">Julio (Factura Agosto - Consumo Julio)</option>
+                <option value="8">Agosto (Factura Septiembre - Consumo Agosto)</option>
+                <option value="9">Septiembre (Factura Octubre - Consumo Septiembre)</option>
+                <option value="10">Octubre (Factura Noviembre - Consumo Octubre)</option>
+                <option value="11">Noviembre (Factura Diciembre - Consumo Noviembre)</option>
+                <option value="12">Diciembre (Factura Enero siguiente ano - Consumo Diciembre)</option>
             </select>
         </label>
         <label class="licx-field">
             <span>Tipo</span>
             <select class="form-select" id="licCruceSegmentSelect"></select>
         </label>
-        <button type="submit" class="btn btn-primary">Actualizar</button>
+        <div class="licx-toolbar-actions">
+            <button type="submit" class="btn btn-primary">Actualizar</button>
+            <button type="button" class="btn btn-outline-success" id="licCruceDownload" disabled>Descargar listado</button>
+        </div>
     </form>
 
     <div id="licCruceStatus" class="licx-status" role="status" aria-live="polite"></div>

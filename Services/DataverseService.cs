@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Abstractions;
 using Microsoft.Identity.Client;
@@ -28,8 +29,9 @@ public sealed partial class DataverseService : IDataverseService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DataverseService> _logger;
     private readonly IQuoteCalculator _calculator;
-    private readonly IConfiguration _configuration;
-    private readonly ITokenAcquisition _tokenAcquisition;
+    private readonly ISiigoService _siigoService;
+    private readonly IMemoryCache _memoryCache;
+    private readonly ISharePointRebatesProvider _sharePointRebatesProvider;
     private readonly string _dataverseBaseUrl;
     private readonly string _azureAuthorityInstance;
     private readonly string _dataverseAppTenantId;
@@ -68,6 +70,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresIdField = "cr07a_contractrecord1id";
     private const string DefaultScoresContractStartDateField = "cr07a_contractstartdate";
     private const string DefaultScoresScoreField = "cr07a_score";
+    private const string DefaultScoresContractValueField = "cr07a_contractvalue";
     private const string DefaultScoresDescriptionField = "cr07a_aprovisionamientodetallelargo";
     private const string DefaultScoresLegacyDescriptionField = "cr07a_description";
     private const string DefaultScoresCommissionField = "cr07a_commission";
@@ -76,6 +79,7 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultScoresOfferField = "cr07a_oferta";
     private const string DefaultScoresVerifiedField = "cr07a_verificado";
     private const string DefaultScoresFirstContractField = "cr07a_esprimercontratoconelcliente";
+    private const string DefaultScoresContractField = "cr07a_contrato";
     private const string DefaultScoresContractKindField = "cr07a_tipodecontrato";
     private const string DefaultScoresLineField = "cr07a_linea";
     private const string DefaultScoresVerticalField = "cr07a_vertical";
@@ -107,6 +111,10 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaPayrollAbsenceReasonField = "cr07a_motivodiasnotrabajados";
     private const string DefaultNominaPayrollAbsencePaymentField = "cr07a_valordiasnotrabajados";
     private const string DefaultNominaPayrollBonusComplianceField = "cr07a_bonocumplimiento";
+    private const string DefaultNominaPayrollNonCommissionBonusField = "cr07a_bonosnocomisionales";
+    private const string DefaultNominaPayrollApplyNonCommissionBonusWithholdingField = "cr07a_aplicarretencionbononocomisional";
+    private const string DefaultNominaPayrollNonCommissionBonusWithholdingRateField = "cr07a_porcentajeretencionbononocomisional";
+    private const string DefaultNominaPayrollNonCommissionBonusWithholdingField = "cr07a_retencionbononocomisional";
     private const string DefaultNominaPayrollCommissionsCopiersField = "cr07a_comisionescopiers";
     private const string DefaultNominaPayrollCommissionsCloudField = "cr07a_comisionescloud";
     private const string DefaultNominaPayrollCommissionsField = "cr07a_comisiones";
@@ -117,9 +125,15 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultNominaPayrollLoanField = "cr07a_prestamo";
     private const string DefaultNominaPayrollCuentaDeCobroField = "cr07a_cuentadecobro";
     private const string DefaultNominaPayrollWithholdingField = "cr07a_retencionenlafuentenomina";
+    private const string DefaultNominaPayrollApplyExternalWithholdingField = "cr07a_aplicarretencioncxc";
+    private const string DefaultNominaPayrollExternalWithholdingRateField = "cr07a_porcentajeretencioncxc";
     private const string DefaultNominaPayrollExternalWithholdingField = "cr07a_retencionenlafuenteexterno";
     private const string DefaultNominaPayrollNetAmountField = "cr07a_montopagado";
     private const string DefaultNominaPayrollNetCuentaDeCobroField = "cr07a_montopagadocuentadecobro";
+    private const string DefaultNominaPayrollPaymentProofField = "cr07a_comprobantepago";
+    private const string DefaultNominaPayrollPaymentProofFileNameField = "cr07a_comprobantepago_name";
+    private const string DefaultNominaPayrollCuentaDeCobroPaymentProofField = "cr07a_comprobantepagocxc";
+    private const string DefaultNominaPayrollCuentaDeCobroPaymentProofFileNameField = "cr07a_comprobantepagocxc_name";
     private const string DefaultNominaScoresEmployeeLookupField = "cr07a_comercial";
     private const string DefaultSalesPerformancePrimaryNameField = "cr07a_icpname";
     private const string DefaultSalesPerformanceBillingDayField = "cr07a_billingday";
@@ -150,6 +164,9 @@ public sealed partial class DataverseService : IDataverseService
     private const string DefaultDashboardBillingReteIcaField = "cr07a_reteicavalor";
     private const string DefaultDashboardBillingRteIvaField = "cr07a_rteivavalor";
     private const string DefaultDashboardBillingRteFteField = "cr07a_rteftevalor";
+    private const string DefaultDashboardBillingReteIcaRateField = "cr07a_reteica";
+    private const string DefaultDashboardBillingRteIvaRateField = "cr07a_reteivavalor";
+    private const string DefaultDashboardBillingRteFteRateField = "cr07a_retefuentevalor";
     private const string DefaultDashboardBillingDifferenceField = "cr07a_diferencia";
     private const string DefaultDashboardCopiersTableLogicalName = "cr07a_productoscopiers";
     private const string DefaultDashboardCopiersTableSetName = "cr07a_productoscopiers";
@@ -211,11 +228,15 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _supplierExpensesDateField;
     private readonly string _supplierExpensesDateFieldKind;
     private readonly string _supplierExpensesInvoiceNumberField;
+    private readonly bool _dianHistoricalAccountFallbackEnabled;
+    private readonly string _dianDefaultAccountCode;
+    private readonly string _dianDefaultAccountName;
     private readonly string _scoresTableSetName;
     private readonly string _scoresTableName;
     private readonly string _scoresIdField;
     private readonly string _scoresContractStartDateField;
     private readonly string _scoresScoreField;
+    private readonly string _scoresContractValueField;
     private readonly string _scoresDescriptionField;
     private readonly string _scoresLegacyDescriptionField;
     private readonly string _scoresCommissionField;
@@ -224,6 +245,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _scoresOfferField;
     private readonly string _scoresVerifiedField;
     private readonly string _scoresFirstContractField;
+    private readonly string _scoresContractField;
     private readonly string _scoresContractKindField;
     private readonly string _scoresLineField;
     private readonly string _scoresVerticalField;
@@ -257,6 +279,10 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaPayrollAbsenceReasonField;
     private readonly string _nominaPayrollAbsencePaymentField;
     private readonly string _nominaPayrollBonusComplianceField;
+    private readonly string _nominaPayrollNonCommissionBonusField;
+    private readonly string _nominaPayrollApplyNonCommissionBonusWithholdingField;
+    private readonly string _nominaPayrollNonCommissionBonusWithholdingRateField;
+    private readonly string _nominaPayrollNonCommissionBonusWithholdingField;
     private readonly string _nominaPayrollCommissionsCopiersField;
     private readonly string _nominaPayrollCommissionsCloudField;
     private readonly string _nominaPayrollCommissionsField;
@@ -267,9 +293,15 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _nominaPayrollLoanField;
     private readonly string _nominaPayrollCuentaDeCobroField;
     private readonly string _nominaPayrollWithholdingField;
+    private readonly string _nominaPayrollApplyExternalWithholdingField;
+    private readonly string _nominaPayrollExternalWithholdingRateField;
     private readonly string _nominaPayrollExternalWithholdingField;
     private readonly string _nominaPayrollNetAmountField;
     private readonly string _nominaPayrollNetCuentaDeCobroField;
+    private readonly string _nominaPayrollPaymentProofField;
+    private readonly string _nominaPayrollPaymentProofFileNameField;
+    private readonly string _nominaPayrollCuentaDeCobroPaymentProofField;
+    private readonly string _nominaPayrollCuentaDeCobroPaymentProofFileNameField;
     private readonly string _nominaScoresEmployeeLookupField;
     private readonly decimal _nominaHealthRate;
     private readonly decimal _nominaPensionRate;
@@ -305,6 +337,9 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardBillingReteIcaField;
     private readonly string _dashboardBillingRteIvaField;
     private readonly string _dashboardBillingRteFteField;
+    private readonly string _dashboardBillingReteIcaRateField;
+    private readonly string _dashboardBillingRteIvaRateField;
+    private readonly string _dashboardBillingRteFteRateField;
     private readonly string _dashboardBillingDifferenceField;
     private readonly string _dashboardCopiersTableLogicalName;
     private readonly string _dashboardCopiersTableSetName;
@@ -332,7 +367,9 @@ public sealed partial class DataverseService : IDataverseService
         IHttpContextAccessor httpContextAccessor,
         IHttpClientFactory httpClientFactory,
         IQuoteCalculator calculator,
-        ITokenAcquisition tokenAcquisition,
+        ISiigoService siigoService,
+        IMemoryCache memoryCache,
+        ISharePointRebatesProvider sharePointRebatesProvider,
         IConfiguration configuration,
         IOptions<RhOptions> rhOptions,
         ILogger<DataverseService> logger)
@@ -342,8 +379,9 @@ public sealed partial class DataverseService : IDataverseService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _calculator = calculator;
-        _configuration = configuration;
-        _tokenAcquisition = tokenAcquisition;
+        _siigoService = siigoService;
+        _memoryCache = memoryCache;
+        _sharePointRebatesProvider = sharePointRebatesProvider;
         var rh = rhOptions.Value;
         _dataverseBaseUrl = (configuration["Dataverse:BaseUrl"] ?? "").TrimEnd('/');
         _azureAuthorityInstance = configuration["AzureAd:Instance"] ?? "https://login.microsoftonline.com/";
@@ -392,6 +430,12 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultSupplierExpensesDateFieldKind;
         _supplierExpensesInvoiceNumberField = (configuration["SupplierPortal:ExpensesInvoiceNumberField"]
             ?? DefaultSupplierExpensesInvoiceNumberField).Trim();
+        _dianHistoricalAccountFallbackEnabled = configuration.GetValue(
+            "DeduccionesIvaImport:HistoricalSupplierAccountFallbackEnabled",
+            true);
+        _dianDefaultAccountCode = (configuration["DeduccionesIvaImport:DefaultAccountCode"] ?? "613510").Trim();
+        _dianDefaultAccountName = (configuration["DeduccionesIvaImport:DefaultAccountName"]
+            ?? "Mercancias no fabricadas por la empresa").Trim();
         _scoresTableSetName = configuration["Scores:TableSetName"]
             ?? DefaultScoresTableSetName;
         _scoresTableName = configuration["Scores:TableName"]
@@ -402,6 +446,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresContractStartDateField;
         _scoresScoreField = configuration["Scores:ScoreField"]
             ?? DefaultScoresScoreField;
+        _scoresContractValueField = configuration["Scores:ContractValueField"]
+            ?? DefaultScoresContractValueField;
         _scoresDescriptionField = configuration["Scores:DescriptionField"]
             ?? DefaultScoresDescriptionField;
         _scoresLegacyDescriptionField = configuration["Scores:LegacyDescriptionField"]
@@ -418,6 +464,8 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultScoresVerifiedField;
         _scoresFirstContractField = configuration["Scores:FirstContractField"]
             ?? DefaultScoresFirstContractField;
+        _scoresContractField = configuration["Scores:ContractField"]
+            ?? DefaultScoresContractField;
         _scoresContractKindField = configuration["Scores:ContractKindField"]
             ?? DefaultScoresContractKindField;
         _scoresLineField = configuration["Scores:LineField"]
@@ -482,6 +530,14 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaPayrollAbsencePaymentField;
         _nominaPayrollBonusComplianceField = configuration["Nomina:PayrollBonusComplianceField"]
             ?? DefaultNominaPayrollBonusComplianceField;
+        _nominaPayrollNonCommissionBonusField = configuration["Nomina:PayrollNonCommissionBonusField"]
+            ?? DefaultNominaPayrollNonCommissionBonusField;
+        _nominaPayrollApplyNonCommissionBonusWithholdingField = configuration["Nomina:PayrollApplyNonCommissionBonusWithholdingField"]
+            ?? DefaultNominaPayrollApplyNonCommissionBonusWithholdingField;
+        _nominaPayrollNonCommissionBonusWithholdingRateField = configuration["Nomina:PayrollNonCommissionBonusWithholdingRateField"]
+            ?? DefaultNominaPayrollNonCommissionBonusWithholdingRateField;
+        _nominaPayrollNonCommissionBonusWithholdingField = configuration["Nomina:PayrollNonCommissionBonusWithholdingField"]
+            ?? DefaultNominaPayrollNonCommissionBonusWithholdingField;
         _nominaPayrollCommissionsCopiersField = configuration["Nomina:PayrollCommissionsCopiersField"]
             ?? DefaultNominaPayrollCommissionsCopiersField;
         _nominaPayrollCommissionsCloudField = configuration["Nomina:PayrollCommissionsCloudField"]
@@ -502,12 +558,24 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultNominaPayrollCuentaDeCobroField;
         _nominaPayrollWithholdingField = configuration["Nomina:PayrollWithholdingField"]
             ?? DefaultNominaPayrollWithholdingField;
+        _nominaPayrollApplyExternalWithholdingField = configuration["Nomina:PayrollApplyExternalWithholdingField"]
+            ?? DefaultNominaPayrollApplyExternalWithholdingField;
+        _nominaPayrollExternalWithholdingRateField = configuration["Nomina:PayrollExternalWithholdingRateField"]
+            ?? DefaultNominaPayrollExternalWithholdingRateField;
         _nominaPayrollExternalWithholdingField = configuration["Nomina:PayrollExternalWithholdingField"]
             ?? DefaultNominaPayrollExternalWithholdingField;
         _nominaPayrollNetAmountField = configuration["Nomina:PayrollNetAmountField"]
             ?? DefaultNominaPayrollNetAmountField;
         _nominaPayrollNetCuentaDeCobroField = configuration["Nomina:PayrollNetCuentaDeCobroField"]
             ?? DefaultNominaPayrollNetCuentaDeCobroField;
+        _nominaPayrollPaymentProofField = configuration["Nomina:PayrollPaymentProofField"]
+            ?? DefaultNominaPayrollPaymentProofField;
+        _nominaPayrollPaymentProofFileNameField = configuration["Nomina:PayrollPaymentProofFileNameField"]
+            ?? DefaultNominaPayrollPaymentProofFileNameField;
+        _nominaPayrollCuentaDeCobroPaymentProofField = configuration["Nomina:PayrollCuentaDeCobroPaymentProofField"]
+            ?? DefaultNominaPayrollCuentaDeCobroPaymentProofField;
+        _nominaPayrollCuentaDeCobroPaymentProofFileNameField = configuration["Nomina:PayrollCuentaDeCobroPaymentProofFileNameField"]
+            ?? DefaultNominaPayrollCuentaDeCobroPaymentProofFileNameField;
         _nominaScoresEmployeeLookupField = configuration["Nomina:ScoresEmployeeLookupField"]
             ?? DefaultNominaScoresEmployeeLookupField;
         _nominaHealthRate = NormalizeNominaRate(configuration["Nomina:HealthRate"], 0.04m);
@@ -567,6 +635,12 @@ public sealed partial class DataverseService : IDataverseService
             ?? DefaultDashboardBillingRteIvaField;
         _dashboardBillingRteFteField = configuration["Dashboard:BillingRteFteField"]
             ?? DefaultDashboardBillingRteFteField;
+        _dashboardBillingReteIcaRateField = configuration["Dashboard:BillingReteIcaRateField"]
+            ?? DefaultDashboardBillingReteIcaRateField;
+        _dashboardBillingRteIvaRateField = configuration["Dashboard:BillingRteIvaRateField"]
+            ?? DefaultDashboardBillingRteIvaRateField;
+        _dashboardBillingRteFteRateField = configuration["Dashboard:BillingRteFteRateField"]
+            ?? DefaultDashboardBillingRteFteRateField;
         _dashboardBillingDifferenceField = configuration["Dashboard:BillingDifferenceField"]
             ?? DefaultDashboardBillingDifferenceField;
         _dashboardCopiersTableLogicalName = configuration["Dashboard:CopiersTableLogicalName"]
@@ -628,118 +702,76 @@ public sealed partial class DataverseService : IDataverseService
 
     public async Task<IReadOnlyList<ScenarioStoredDto>> GetScenariosForUserAsync(CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
+        return await GetCalculatorPossibilitiesForCurrentUserAsync(ct);
+    }
 
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
-            return Array.Empty<ScenarioStoredDto>();
+    public async Task<ScenarioStoredDto?> GetScenarioByIdAsync(
+        string scenarioId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            throw new ArgumentException("ScenarioId requerido.", nameof(scenarioId));
 
-        var select = string.Join(",", new[]
-        {
-            "cr07a_scenarioid",
-            "cr07a_scenarioname",
-            "cr07a_dealtype",
-            "cr07a_requiresproration",
-            "cr07a_startdate",
-            "cr07a_enddate",
-            "cr07a_linesjson",
-            "cr07a_lastresultjson"
-        });
-
-        var filter = $"cr07a_systemuserid eq '{EscapeOdataLiteral(currentUser.SystemUserId)}'";
-        var relativeUrl = $"/api/data/v9.2/{_scenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}";
-
-        var json = await CallDataverseGetJsonAsync(relativeUrl, httpContext.User, ct);
-
-        using var doc = JsonDocument.Parse(json);
-        var arr = doc.RootElement.GetProperty("value");
-
-        var list = new List<ScenarioStoredDto>(arr.GetArrayLength());
-        foreach (var item in arr.EnumerateArray())
-        {
-            var linesJson = item.TryGetProperty("cr07a_linesjson", out var linesProp)
-                ? linesProp.GetString()
-                : null;
-            var resultJson = item.TryGetProperty("cr07a_lastresultjson", out var resultProp)
-                ? resultProp.GetString()
-                : null;
-
-            list.Add(new ScenarioStoredDto
-            {
-                ScenarioId = item.TryGetProperty("cr07a_scenarioid", out var idProp) ? (idProp.GetString() ?? "") : "",
-                ScenarioName = item.TryGetProperty("cr07a_scenarioname", out var nameProp) ? (nameProp.GetString() ?? "") : "",
-                DealType = ReadInt(item, "cr07a_dealtype"),
-                RequiresProration = ReadBool(item, "cr07a_requiresproration"),
-                StartDate = item.TryGetProperty("cr07a_startdate", out var startProp) ? startProp.GetString() : null,
-                EndDate = item.TryGetProperty("cr07a_enddate", out var endProp) ? endProp.GetString() : null,
-                Lines = DeserializeJsonOrDefault<List<ScenarioLineInput>>(linesJson) ?? new List<ScenarioLineInput>(),
-                LastResult = DeserializeJsonOrDefault<ScenarioResultSnapshot>(resultJson)
-            });
-        }
-
-        return list;
+        return await GetCalculatorPossibilityByIdAsync(scenarioId, ct);
     }
 
     public async Task UpsertScenarioAsync(ScenarioSaveRequest request, CancellationToken ct = default)
     {
         if (request is null)
             throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(request.ScenarioId))
+            throw new ArgumentException("ScenarioId requerido.", nameof(request));
 
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
-            throw new InvalidOperationException("Usuario actual no disponible.");
-
-        var recordId = await FindScenarioRecordIdAsync(request.ScenarioId, currentUser.SystemUserId, httpContext.User, ct);
-
-        var payload = new Dictionary<string, object?>
-        {
-            ["cr07a_name"] = string.IsNullOrWhiteSpace(request.ScenarioName) ? "Escenario" : request.ScenarioName,
-            ["cr07a_scenarioid"] = request.ScenarioId,
-            ["cr07a_scenarioname"] = request.ScenarioName,
-            ["cr07a_dealtype"] = request.DealType,
-            ["cr07a_requiresproration"] = request.RequiresProration,
-            ["cr07a_startdate"] = request.StartDate?.ToString("yyyy-MM-dd"),
-            ["cr07a_enddate"] = request.EndDate?.ToString("yyyy-MM-dd"),
-            ["cr07a_linesjson"] = JsonSerializer.Serialize(request.Lines ?? new List<ScenarioLineInput>()),
-            ["cr07a_lastresultjson"] = request.LastResult is null ? null : JsonSerializer.Serialize(request.LastResult),
-            ["cr07a_systemuserid"] = currentUser.SystemUserId,
-            ["cr07a_displayname"] = currentUser.DisplayName,
-            ["cr07a_email"] = currentUser.Email
-        };
-
-        if (string.IsNullOrWhiteSpace(recordId))
-        {
-            var relativeUrl = $"/api/data/v9.2/{_scenariosTableSetName}";
-            await CallDataverseSendAsync(relativeUrl, "POST", payload, httpContext.User, ct);
-            return;
-        }
-
-        var updateUrl = $"/api/data/v9.2/{_scenariosTableSetName}({recordId})";
-        await CallDataverseSendAsync(updateUrl, "PATCH", payload, httpContext.User, ct);
+        _ = await SaveCalculatorPossibilityAsync(request, updateOnly: false, ct);
     }
- public async Task DeleteScenarioAsync(string scenarioId, CancellationToken ct = default)
+
+    public async Task UpdateScenarioByIdAsync(
+        ScenarioSaveRequest request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(request.ScenarioId))
+            throw new ArgumentException("ScenarioId requerido.", nameof(request));
+
+        _ = await SaveCalculatorPossibilityAsync(request, updateOnly: true, ct);
+    }
+
+    public Task<ScenarioStoredDto?> UpdateScenarioByIdAuthorizedAsync(
+        ScenarioSaveRequest request,
+        string expectedOwnerSystemUserId,
+        CancellationToken ct = default) =>
+        SaveCalculatorPossibilityAsync(
+            request,
+            updateOnly: true,
+            ct: ct,
+            authorizedOwnerSystemUserId: expectedOwnerSystemUserId);
+
+    public async Task<bool> DeleteScenarioAsync(string scenarioId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(scenarioId))
             throw new ArgumentException("ScenarioId requerido.", nameof(scenarioId));
 
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
-
-        var currentUser = await GetCurrentUserAsync(ct);
-        if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
-            throw new InvalidOperationException("Usuario actual no disponible.");
-
-        var recordId = await FindScenarioRecordIdAsync(scenarioId, currentUser.SystemUserId, httpContext.User, ct);
-        if (string.IsNullOrWhiteSpace(recordId))
-            return;
-
-        var deleteUrl = $"/api/data/v9.2/{_scenariosTableSetName}({recordId})";
-        await CallDataverseDeleteAsync(deleteUrl, httpContext.User, ct);
+        return await DeleteCalculatorPossibilityAsync(scenarioId, ct);
     }
+
+    public Task<bool> RenameScenarioGroupAsync(
+        string groupId,
+        string groupName,
+        CancellationToken ct = default) =>
+        RenameCalculatorScenarioGroupAsync(groupId, groupName, ct);
+
+    public Task<bool> RecommendScenarioPossibilityAsync(
+        string groupId,
+        string scenarioId,
+        CancellationToken ct = default) =>
+        RecommendCalculatorPossibilityAsync(groupId, scenarioId, ct);
+
+    public Task<ScenarioStoredDto?> SaveScenarioV2Async(
+        ScenarioSaveRequest request,
+        bool updateOnly = false,
+        CancellationToken ct = default) =>
+        SaveCalculatorPossibilityAsync(request, updateOnly, ct);
 
     public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string query, int top = 12, CancellationToken ct = default)
     {
@@ -1555,18 +1587,6 @@ public sealed partial class DataverseService : IDataverseService
             currentUser.ModuleOptionValues = ReadMultiSelectOptionValues(employeeRecord.Value, _nominaEmployeeModulesField);
         }
 
-        try
-        {
-            await EnrichAguasSdaCurrentUserAsync(currentUser, httpContext.User, ct);
-        }
-        catch (Exception ex)
-        {
-            if (IsIncrementalConsentChallenge(ex))
-                throw;
-
-            _logger.LogWarning(ex, "No fue posible enriquecer los roles Aguas SDA del usuario actual.");
-        }
-
         httpContext.Items[CurrentUserCacheKey] = currentUser;
         return currentUser;
     }
@@ -1579,6 +1599,12 @@ public sealed partial class DataverseService : IDataverseService
 
         return new CurrentUserInfo
         {
+            DirectoryObjectId = FirstNonEmpty(
+                user.FindFirstValue("oid"),
+                user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier")),
+            TenantId = FirstNonEmpty(
+                user.FindFirstValue("tid"),
+                user.FindFirstValue("http://schemas.microsoft.com/identity/claims/tenantid")),
             DisplayName = FirstNonEmpty(
                 user.FindFirstValue("name"),
                 user.FindFirstValue(ClaimTypes.Name),
@@ -2586,25 +2612,112 @@ public sealed partial class DataverseService : IDataverseService
         throw new InvalidOperationException($"Dataverse error {(int)resp.StatusCode} {resp.ReasonPhrase}. Body: {body}");
     }
 
-    private async Task<string?> FindScenarioRecordIdAsync(string scenarioId, string systemUserId, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct)
+    private async Task<ScenarioRecord?> FindUniqueScenarioRecordAsync(
+        string scenarioId,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(scenarioId) || string.IsNullOrWhiteSpace(systemUserId))
+        var normalizedScenarioId = scenarioId?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalizedScenarioId))
             return null;
 
-        var select = $"{_scenariosTableName}id";
-        var filter = $"cr07a_scenarioid eq '{EscapeOdataLiteral(scenarioId)}' and cr07a_systemuserid eq '{EscapeOdataLiteral(systemUserId)}'";
-        var relativeUrl = $"/api/data/v9.2/{_scenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=1";
+        var select = string.Join(",", new[]
+        {
+            $"{_scenariosTableName}id",
+            "cr07a_scenarioid",
+            "cr07a_systemuserid",
+            "cr07a_scenarioname",
+            "cr07a_dealtype",
+            "cr07a_requiresproration",
+            "cr07a_startdate",
+            "cr07a_enddate",
+            "cr07a_linesjson",
+            "cr07a_lastresultjson"
+        });
+        var filter = $"cr07a_scenarioid eq '{EscapeOdataLiteral(normalizedScenarioId)}'";
+        var relativeUrl =
+            $"/api/data/v9.2/{_scenariosTableSetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$top=2";
 
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
         using var doc = JsonDocument.Parse(json);
         var value = doc.RootElement.GetProperty("value");
         if (value.GetArrayLength() == 0)
             return null;
+        if (value.GetArrayLength() > 1)
+        {
+            throw new ScenarioPersistenceConflictException(
+                $"Existen varios escenarios con el identificador '{normalizedScenarioId}'. Corrige el duplicado antes de continuar.");
+        }
 
-        var record = value[0];
+        var item = value[0];
         var idPropName = $"{_scenariosTableName}id";
-        return record.TryGetProperty(idPropName, out var idProp) ? idProp.GetString() : null;
+        var recordId = item.TryGetProperty(idPropName, out var idProp)
+            ? idProp.GetString() ?? ""
+            : "";
+        if (string.IsNullOrWhiteSpace(recordId))
+        {
+            throw new InvalidOperationException(
+                $"Dataverse no devolvió el identificador interno del escenario '{normalizedScenarioId}'.");
+        }
+
+        var scenario = ParseScenarioStoredDto(item);
+        return new ScenarioRecord(recordId, scenario.OwnerSystemUserId, scenario);
     }
+
+    private static Dictionary<string, object?> BuildScenarioPayload(ScenarioSaveRequest request) =>
+        new()
+        {
+            ["cr07a_name"] = string.IsNullOrWhiteSpace(request.ScenarioName) ? "Escenario" : request.ScenarioName,
+            ["cr07a_scenarioid"] = request.ScenarioId.Trim(),
+            ["cr07a_scenarioname"] = request.ScenarioName,
+            ["cr07a_dealtype"] = request.DealType,
+            ["cr07a_requiresproration"] = request.RequiresProration,
+            ["cr07a_startdate"] = request.StartDate?.ToString("yyyy-MM-dd"),
+            ["cr07a_enddate"] = request.EndDate?.ToString("yyyy-MM-dd"),
+            ["cr07a_linesjson"] = JsonSerializer.Serialize(request.Lines ?? new List<ScenarioLineInput>()),
+            ["cr07a_lastresultjson"] = request.LastResult is null
+                ? null
+                : JsonSerializer.Serialize(request.LastResult)
+        };
+
+    private static ScenarioStoredDto ParseScenarioStoredDto(JsonElement item)
+    {
+        var linesJson = item.TryGetProperty("cr07a_linesjson", out var linesProp)
+            ? linesProp.GetString()
+            : null;
+        var resultJson = item.TryGetProperty("cr07a_lastresultjson", out var resultProp)
+            ? resultProp.GetString()
+            : null;
+
+        return new ScenarioStoredDto
+        {
+            ScenarioId = item.TryGetProperty("cr07a_scenarioid", out var idProp)
+                ? idProp.GetString() ?? ""
+                : "",
+            OwnerSystemUserId = item.TryGetProperty("cr07a_systemuserid", out var ownerProp)
+                ? ownerProp.GetString() ?? ""
+                : "",
+            ScenarioName = item.TryGetProperty("cr07a_scenarioname", out var nameProp)
+                ? nameProp.GetString() ?? ""
+                : "",
+            DealType = ReadInt(item, "cr07a_dealtype"),
+            RequiresProration = ReadBool(item, "cr07a_requiresproration"),
+            StartDate = item.TryGetProperty("cr07a_startdate", out var startProp)
+                ? startProp.GetString()
+                : null,
+            EndDate = item.TryGetProperty("cr07a_enddate", out var endProp)
+                ? endProp.GetString()
+                : null,
+            Lines = DeserializeJsonOrDefault<List<ScenarioLineInput>>(linesJson)
+                ?? new List<ScenarioLineInput>(),
+            LastResult = DeserializeJsonOrDefault<ScenarioResultSnapshot>(resultJson)
+        };
+    }
+
+    private sealed record ScenarioRecord(
+        string RecordId,
+        string OwnerSystemUserId,
+        ScenarioStoredDto Scenario);
 
     private static decimal? ReadDecimal(JsonElement el, string name)
     {

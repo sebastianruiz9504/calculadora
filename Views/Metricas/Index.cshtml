@@ -11,7 +11,8 @@
      id="metricasApp"
      data-charts-url="@Url.Action("Charts", "Metricas")"
      data-initial-filter="@Model.InitialFilter.ToKey()"
-     data-initial-view="@Model.InitialView.ToKey()">
+     data-initial-view="@Model.InitialView.ToKey()"
+     data-initial-period="@Model.InitialPeriod.ToKey()">
     <section class="metrics-hero">
         <div class="metrics-hero__content">
             <div>
@@ -42,6 +43,16 @@
                         <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-month">Este mes</button>
                         <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="this-year">Este a&ntilde;o</button>
                         <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="previous-year">A&ntilde;o pasado</button>
+                        <button type="button" class="btn btn-outline-secondary metrics-filter-btn" data-filter="all">Todo</button>
+                    </div>
+                </div>
+                <div class="metrics-toolbar__group">
+                    <label class="metrics-toolbar__label" for="metricsPeriodGroup">Agrupaci&oacute;n</label>
+                    <div class="metrics-filter-list" id="metricsPeriodGroup">
+                        <button type="button" class="btn btn-outline-secondary metrics-period-btn" data-period="month">Mes</button>
+                        <button type="button" class="btn btn-outline-secondary metrics-period-btn" data-period="quarter">Trimestre</button>
+                        <button type="button" class="btn btn-outline-secondary metrics-period-btn" data-period="semester">Semestre</button>
+                        <button type="button" class="btn btn-outline-secondary metrics-period-btn" data-period="year">A&ntilde;o</button>
                     </div>
                 </div>
                 <div class="metrics-toolbar__group metrics-toolbar__group--seller" id="metricsSellerFilterGroup">
@@ -53,7 +64,7 @@
             </div>
             <div class="metrics-toolbar__actions">
                 <div class="metrics-toolbar__caption">
-                    Pasa el cursor sobre un punto para ver puntaje y valor de contratos por periodo.
+                    Haz clic en un cuadro de periodo para ver los negocios que componen el puntaje.
                 </div>
                 <button type="button" class="btn btn-primary" id="refreshMetricsBtn">Actualizar</button>
             </div>
@@ -108,6 +119,54 @@
     </section>
 
     <section class="metrics-grid" id="metricsChartsContainer"></section>
+
+    <div class="metrics-detail-modal" id="metricsDetailModal" hidden aria-hidden="true">
+        <div class="metrics-detail-modal__backdrop" data-metrics-modal-close></div>
+        <section class="metrics-detail-modal__dialog"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="metricsDetailModalTitle"
+                 aria-describedby="metricsDetailModalSubtitle"
+                 tabindex="-1">
+            <header class="metrics-detail-modal__header">
+                <div>
+                    <div class="metrics-chart__eyebrow">Detalle del periodo</div>
+                    <h2 class="metrics-detail-modal__title" id="metricsDetailModalTitle">Negocios</h2>
+                    <p class="metrics-detail-modal__subtitle" id="metricsDetailModalSubtitle"></p>
+                </div>
+                <button type="button"
+                        class="metrics-detail-modal__close"
+                        id="metricsDetailModalClose"
+                        aria-label="Cerrar detalle"
+                        data-metrics-modal-close>&times;</button>
+            </header>
+            <div class="metrics-detail-modal__summary" id="metricsDetailModalSummary"></div>
+            <div class="metrics-detail-modal__table-wrap">
+                <table class="metrics-detail-table">
+                    <colgroup>
+                        <col class="metrics-detail-table__client" />
+                        <col class="metrics-detail-table__score" />
+                        <col class="metrics-detail-table__value" />
+                        <col class="metrics-detail-table__date" />
+                        <col class="metrics-detail-table__detail" />
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th scope="col">Nombre de cliente</th>
+                            <th scope="col">Puntaje</th>
+                            <th scope="col">Valor de contrato</th>
+                            <th scope="col">Fecha de inicio</th>
+                            <th scope="col">Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsDetailModalBody"></tbody>
+                </table>
+                <div class="metrics-detail-modal__empty" id="metricsDetailModalEmpty" hidden>
+                    No hay negocios para este periodo.
+                </div>
+            </div>
+        </section>
+    </div>
 </div>
 
 @section Scripts {

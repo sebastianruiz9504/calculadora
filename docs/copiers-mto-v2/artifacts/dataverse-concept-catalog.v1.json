@@ -1,0 +1,284 @@
+{
+  "catalogFormat": "digital-tech/dataverse-concept-catalog/v1",
+  "artifactType": "dataverse-concept-catalog",
+  "artifactVersion": "3.0.0",
+  "status": "proposed-not-provisioned",
+  "cloudProvisioned": false,
+  "flowCreatedOrConfigured": false,
+  "physicalBindingsConfirmed": false,
+  "legacyIntegrationAllowed": false,
+  "guard": "All logical, schema, entity-set, navigation-property, Graph identifier and numeric Choice bindings remain null until resolved from confirmed environment, solution and provider metadata/configuration.",
+  "solution": {
+    "environmentUrl": null,
+    "solutionUniqueName": null,
+    "publisherUniqueName": null,
+    "publisherPrefix": null
+  },
+  "externalTableBindings": {
+    "client": {
+      "logicalName": null,
+      "entitySetName": null,
+      "primaryKeyLogicalName": null,
+      "required": true
+    },
+    "equipment": {
+      "logicalName": null,
+      "entitySetName": null,
+      "primaryKeyLogicalName": null,
+      "required": false
+    }
+  },
+  "runtimePolicy": {
+    "pilotFeatureFlagConceptName": "PilotEnabled",
+    "pilotEnabledDefault": false,
+    "technicianAllowlistRequired": true,
+    "emptyTechnicianAllowlistDeniesAll": true,
+    "clientAllowlistOptional": true,
+    "emptyClientAllowlistAddsNoClientRestriction": true,
+    "maxEmailBytes": null,
+    "emailSizeFormulaVersion": "graph-json-base64-v1",
+    "attachmentSecurityGateStatus": "pending-until-av-cdr-and-scanpassed-are-operational"
+  },
+  "lifecycle": {
+    "initialWorkflowState": "Draft",
+    "initialEmailState": "NotReady",
+    "stagingWorkflowState": "Finalizing",
+    "stagingEmailState": "NotReady",
+    "publishedWorkflowState": "ReadyToSend",
+    "publishedEmailState": "Pending",
+    "publicationPatchConceptIds": [
+      "readyAtUtc",
+      "emailState",
+      "workflowState"
+    ],
+    "publicationRequiresETag": true,
+    "publicationRequiresIntegralReadBack": true,
+    "postPublicationAcceptedEmailStates": [
+      "Pending",
+      "Processing",
+      "Sent",
+      "Failed"
+    ]
+  },
+  "tables": [
+    {
+      "conceptId": "signedMtoV2",
+      "displayName": "MTO Firmado V2",
+      "displayCollectionName": "MTO Firmados V2",
+      "businessRole": "TicketAndMtoV2",
+      "ownership": "UserOrTeamOwned",
+      "auditRequired": true,
+      "metadataRequirements": {
+        "isOptimisticConcurrencyEnabled": true
+      },
+      "logicalName": null,
+      "schemaName": null,
+      "entitySetName": null,
+      "primaryKeyLogicalName": null,
+      "primaryNameLogicalName": null,
+      "columns": [
+        { "conceptId": "name", "type": "Text", "maxLength": 160, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "operationKey", "type": "Text", "maxLength": 128, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "workflowState", "contractName": "WorkflowState", "type": "LocalChoice", "choiceSet": "workflowState", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "emailState", "contractName": "EmailState", "type": "LocalChoice", "choiceSet": "emailState", "required": true, "defaultConceptValue": "NotReady", "logicalName": null, "schemaName": null },
+        { "conceptId": "client", "type": "Lookup", "targetConceptId": "client", "required": true, "logicalName": null, "schemaName": null, "navigationPropertyName": null },
+        { "conceptId": "equipment", "type": "Lookup", "targetConceptId": "equipment", "required": false, "logicalName": null, "schemaName": null, "navigationPropertyName": null },
+        { "conceptId": "technicianUserKey", "type": "Text", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "technicianNameSnapshot", "type": "Text", "maxLength": 200, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "technicianEmailSnapshot", "type": "Text", "maxLength": 320, "required": true, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "clientNameSnapshot", "type": "Text", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "clientContactNameSnapshot", "type": "Text", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "clientEmailSnapshot", "type": "Text", "maxLength": 320, "required": true, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "equipmentSerialSnapshot", "type": "Text", "maxLength": 200, "required": true, "requiredWhenEquipmentLookupIsNull": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "title", "type": "Text", "maxLength": 250, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "serviceDate", "type": "DateOnly", "behavior": "TimeZoneIndependent", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "maintenanceType", "type": "LocalChoice", "choiceSet": "maintenanceType", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "formVersion", "type": "Text", "maxLength": 80, "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "answersJson", "type": "MultilineText", "required": false, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "workPerformed", "type": "MultilineText", "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "customerObservations", "type": "MultilineText", "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "serviceAddressInternal", "contractName": "ServiceAddress", "type": "Text", "maxLength": 300, "required": false, "secured": true, "flowAccess": "Never", "customerArtifactPolicy": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "internalNotes", "type": "MultilineText", "required": false, "secured": true, "flowAccess": "Never", "customerArtifactPolicy": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "signerName", "type": "Text", "maxLength": 200, "required": false, "secured": true, "flowAccess": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "signerRole", "type": "Text", "maxLength": 150, "required": false, "requiredBeforePublish": true, "secured": true, "flowAccess": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "customerAccepted", "contractName": "CustomerAccepted", "type": "Boolean", "required": false, "requiredValueBeforePublish": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "signaturePointCount", "contractName": "SignaturePointCount", "type": "WholeNumber", "minimumBeforePublish": 5, "required": false, "flowAccess": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "deviceSignedAtUtc", "type": "DateTime", "behavior": "UserLocalUtcInstant", "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "serverFinalizedAtUtc", "type": "DateTime", "behavior": "UserLocalUtcInstant", "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "latitude", "type": "Decimal", "precision": 7, "min": -90, "max": 90, "required": false, "secured": true, "flowAccess": "Never", "customerArtifactPolicy": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "longitude", "type": "Decimal", "precision": 7, "min": -180, "max": 180, "required": false, "secured": true, "flowAccess": "Never", "customerArtifactPolicy": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "accuracyMeters", "type": "Decimal", "precision": 7, "min": 0, "required": false, "secured": true, "flowAccess": "Never", "customerArtifactPolicy": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "locationCapturedAtUtc", "type": "DateTime", "behavior": "UserLocalUtcInstant", "required": false, "secured": true, "flowAccess": "Never", "customerArtifactPolicy": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "locationSource", "type": "Text", "required": false, "secured": true, "flowAccess": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "signatureSha256", "type": "Text", "maxLength": 64, "required": false, "secured": true, "flowAccess": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "signatureEvidenceKey", "type": "Text", "maxLength": 64, "required": false, "secured": true, "flowAccess": "Never", "logicalName": null, "schemaName": null },
+        { "conceptId": "reportEvidenceKey", "contractName": "ReportEvidenceKey", "type": "Text", "maxLength": 64, "required": false, "flowAccess": "Read", "logicalName": null, "schemaName": null },
+        { "conceptId": "reportFileName", "type": "Text", "maxLength": 260, "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "reportSha256", "type": "Text", "maxLength": 64, "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "attachmentCount", "type": "WholeNumber", "min": 0, "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "attachmentManifestJson", "contractName": "AttachmentManifestJson", "type": "MultilineText", "required": false, "flowAccess": "Read", "manifestEvidencePurpose": "CustomerAttachment", "manifestSecurityState": "ScanPassed", "logicalName": null, "schemaName": null },
+        { "conceptId": "finalizationFingerprint", "type": "Text", "maxLength": 64, "required": false, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "finalizationLeaseKey", "type": "Text", "maxLength": 64, "required": false, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "readyAtUtc", "type": "DateTime", "behavior": "UserLocalUtcInstant", "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "emailOutboxKey", "type": "Text", "maxLength": 200, "required": false, "secured": true, "notATable": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "emailToSnapshot", "type": "MultilineText", "required": false, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "emailSubjectSnapshot", "type": "Text", "maxLength": 500, "required": false, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "emailHtmlBodySnapshot", "type": "MultilineText", "required": false, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "providerDraftId", "type": "Text", "maxLength": 512, "required": false, "flowWrites": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "internetMessageId", "type": "Text", "maxLength": 998, "required": false, "flowWrites": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "lastErrorCode", "type": "Text", "maxLength": 80, "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "lastErrorSafeMessage", "type": "MultilineText", "maxLength": 1500, "required": false, "secured": true, "logicalName": null, "schemaName": null }
+      ],
+      "alternateKeys": [
+        { "conceptId": "signedMtoByOperationKey", "columns": ["operationKey"], "requiredMetadataStatus": "Active", "metadataStatus": null, "logicalName": null, "schemaName": null }
+      ]
+    },
+    {
+      "conceptId": "evidenceV2",
+      "displayName": "Evidencia MTO V2",
+      "displayCollectionName": "Evidencias MTO V2",
+      "ownership": "UserOrTeamOwned",
+      "auditRequired": true,
+      "logicalName": null,
+      "schemaName": null,
+      "entitySetName": null,
+      "primaryKeyLogicalName": null,
+      "primaryNameLogicalName": null,
+      "contentAddressFormula": "sha256(operationKey|slot|sequence|contentSha256Lower)",
+      "contentAddressSlots": [
+        "signature",
+        "signed-report",
+        "attachment-original",
+        "attachment-customer"
+      ],
+      "columns": [
+        { "conceptId": "name", "type": "Text", "maxLength": 160, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "evidenceKey", "type": "Text", "maxLength": 64, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "signedMto", "type": "Lookup", "targetConceptId": "signedMtoV2", "required": true, "logicalName": null, "schemaName": null, "navigationPropertyName": null },
+        { "conceptId": "purpose", "type": "LocalChoice", "choiceSet": "evidencePurpose", "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "sequence", "type": "WholeNumber", "min": 0, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "fileContent", "type": "File", "required": false, "requiredAfterUpload": true, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "originalFileName", "type": "Text", "maxLength": 260, "required": true, "secured": true, "flowAccess": "NeverForOriginalAttachment", "logicalName": null, "schemaName": null },
+        { "conceptId": "contentType", "type": "Text", "maxLength": 160, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "byteLength", "type": "BigInteger", "min": 0, "required": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "sha256", "type": "Text", "maxLength": 64, "required": true, "secured": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "derivedFromEvidenceKey", "type": "Text", "maxLength": 64, "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "securityState", "type": "LocalChoice", "choiceSet": "evidenceSecurityState", "required": false, "requiredForAttachmentPurposes": true, "logicalName": null, "schemaName": null },
+        { "conceptId": "securityCheckedAtUtc", "type": "DateTime", "behavior": "UserLocalUtcInstant", "required": false, "logicalName": null, "schemaName": null },
+        { "conceptId": "securityProvider", "type": "Text", "maxLength": 200, "required": false, "secured": true, "logicalName": null, "schemaName": null }
+      ],
+      "alternateKeys": [
+        { "conceptId": "evidenceByContentKey", "columns": ["evidenceKey"], "requiredMetadataStatus": "Active", "metadataStatus": null, "logicalName": null, "schemaName": null }
+      ]
+    }
+  ],
+  "choiceSets": {
+    "workflowState": [
+      { "conceptId": "Draft", "optionValue": null },
+      { "conceptId": "Finalizing", "optionValue": null },
+      { "conceptId": "ReadyToSend", "optionValue": null },
+      { "conceptId": "Failed", "optionValue": null }
+    ],
+    "emailState": [
+      { "conceptId": "NotReady", "optionValue": null },
+      { "conceptId": "Pending", "optionValue": null },
+      { "conceptId": "Processing", "optionValue": null },
+      { "conceptId": "Sent", "optionValue": null },
+      { "conceptId": "Failed", "optionValue": null }
+    ],
+    "evidencePurpose": [
+      { "conceptId": "Signature", "optionValue": null },
+      { "conceptId": "SignedReport", "optionValue": null },
+      { "conceptId": "OriginalAttachment", "optionValue": null },
+      { "conceptId": "CustomerAttachment", "optionValue": null }
+    ],
+    "evidenceSecurityState": [
+      { "conceptId": "NotApplicable", "optionValue": null },
+      { "conceptId": "Pending", "optionValue": null },
+      { "conceptId": "ScanPassed", "optionValue": null },
+      { "conceptId": "Rejected", "optionValue": null }
+    ],
+    "maintenanceType": [
+      { "conceptId": "Correctivo", "optionValue": null },
+      { "conceptId": "Preventivo", "optionValue": null }
+    ]
+  },
+  "choiceBindingGate": {
+    "allExpectedMembersRequired": true,
+    "allOptionValuesResolvedFromMetadata": true,
+    "distinctWithinEachChoiceSet": true,
+    "legacyNumericValuesMayNotBeCopied": true
+  },
+  "relationships": [
+    { "conceptId": "clientToSignedMto", "from": "client", "to": "signedMtoV2", "cardinality": "1:N", "lookupRequired": true, "deleteBehavior": "Restrict", "schemaName": null },
+    { "conceptId": "equipmentToSignedMto", "from": "equipment", "to": "signedMtoV2", "cardinality": "1:N", "lookupRequired": false, "deleteBehavior": "Restrict", "schemaName": null },
+    { "conceptId": "signedMtoToEvidence", "from": "signedMtoV2", "to": "evidenceV2", "cardinality": "1:N", "lookupRequired": true, "deleteBehavior": "Restrict", "schemaName": null }
+  ],
+  "attachmentPolicy": {
+    "pilotAcceptedExtensions": [".jpg", ".jpeg", ".png"],
+    "pilotAcceptedContentTypes": ["image/jpeg", "image/png"],
+    "originalPurpose": "OriginalAttachment",
+    "customerPurpose": "CustomerAttachment",
+    "customerFileNamePattern": "^adjunto-[0-9]{3}\\.(jpg|png)$",
+    "customerMetadataPolicy": "strip-all-metadata-by-decode-and-reencode",
+    "requiredSecurityStateBeforePublish": "ScanPassed",
+    "blockPilotIfAvCdrUnavailable": true
+  },
+  "pdfPolicy": {
+    "requiredVisibleText": "REPORTE CERRADO Y FIRMADO",
+    "forbiddenConceptIds": [
+      "serviceAddressInternal",
+      "internalNotes",
+      "latitude",
+      "longitude",
+      "accuracyMeters",
+      "locationCapturedAtUtc",
+      "locationSource"
+    ]
+  },
+  "securityModel": {
+    "appWritesThroughApplicationUser": true,
+    "applicationUserId": null,
+    "applicationUserPrivilegeProfile": "proposed-minimum-v2-only",
+    "techniciansHaveDirectCreateUpdateOnV2": false,
+    "legacyPrivilegesAllowed": false
+  },
+  "graphDeliveryPolicy": {
+    "provider": "MicrosoftGraph",
+    "useSendAnEmailAction": false,
+    "correlationMainConceptId": "emailOutboxKey",
+    "graphCorrelationExtendedPropertyId": null,
+    "preferHeader": "Prefer: IdType=\"ImmutableId\"",
+    "persistProviderDraftId": true,
+    "persistInternetMessageId": true,
+    "sendAutomaticRetry": false,
+    "reconcileFoldersBeforeAnyRetry": ["Drafts", "SentItems"],
+    "ambiguousEmailState": "Processing",
+    "ambiguousRequiresAlert": true,
+    "blindResendAllowed": false
+  },
+  "flowReadContract": {
+    "triggerWorkflowState": "ReadyToSend",
+    "triggerEmailState": "Pending",
+    "artifactSelectors": ["reportEvidenceKey", "attachmentManifestJson"],
+    "requiredAttachmentPurpose": "CustomerAttachment",
+    "requiredAttachmentSecurityState": "ScanPassed",
+    "forbiddenMainConceptIds": [
+      "serviceAddressInternal",
+      "internalNotes",
+      "answersJson",
+      "signerName",
+      "signerRole",
+      "signaturePointCount",
+      "signatureSha256",
+      "signatureEvidenceKey",
+      "latitude",
+      "longitude",
+      "accuracyMeters",
+      "locationCapturedAtUtc",
+      "locationSource"
+    ],
+    "forbiddenEvidencePurposes": ["Signature", "OriginalAttachment"]
+  }
+}
+

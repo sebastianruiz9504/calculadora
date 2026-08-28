@@ -32,7 +32,8 @@ public sealed class ReportesGenerationQueue : BackgroundService, IReportesGenera
         var queuedRequest = new ReporteGenerarRequest
         {
             ClienteId = request.ClienteId,
-            Periodo = request.Periodo
+            Periodo = request.Periodo,
+            RecomendacionMensual = request.RecomendacionMensual
         };
 
         return _queue.Writer.WriteAsync(queuedRequest, ct);

@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text;
+using System.Text.Json;
 using CotizadorInterno.Web.Models.Automation;
 
 namespace CotizadorInterno.Web.Services;
@@ -18,6 +20,13 @@ public sealed partial class DataverseService
     private const string CashFlowMovementTypeField = "cr07a_tipomovimiento";
     private const string CashFlowStatusField = "cr07a_estado";
     private const string CashFlowSiigoDocumentIdField = "cr07a_siigodocumentid";
+    private const string CashFlowSiigoDocumentNameField = "cr07a_siigodocumentname";
+    private const string CashFlowAccountingAccountCodeField = "cr07a_cuentacontablecodigo";
+    private const string CashFlowAccountingAccountNameField = "cr07a_cuentacontablenombre";
+    private const string CashFlowThirdPartyKeyField = "cr07a_siigoterceroclave";
+    private const string CashFlowThirdPartyIdentificationField = "cr07a_siigoterceroidentificacion";
+    private const string CashFlowThirdPartyNameField = "cr07a_siigoterceronombre";
+    private const string CashFlowThirdPartyBranchOfficeField = "cr07a_siigotercerosucursal";
     private const string CashFlowReviewReasonField = "cr07a_motivorevision";
     private const string CashFlowSourceFlowField = "cr07a_origenflujo";
     private const string CashFlowBankAccountCodeField = "cr07a_bancocuentacodigo";
@@ -87,11 +96,13 @@ public sealed partial class DataverseService
             movementAttributes,
             CashFlowExternalKeyField,
             ct);
+        var movementIdentityIndex = BuildCashFlowExistingIdentityIndex(movementIndex.Values);
         var transferIndex = await GetCashFlowExistingIndexAsync(
             transferMetadata,
             transferAttributes,
             CashFlowTransferExternalKeyField,
             ct);
+        var transferIdentityIndex = BuildCashFlowExistingIdentityIndex(transferIndex.Values);
         var lockedClientPaymentMovementKeys = await GetCashFlowLockedClientPaymentMovementKeysAsync(ct);
 
         using var throttler = new SemaphoreSlim(CashFlowUpsertMaxConcurrency);
@@ -105,12 +116,13 @@ public sealed partial class DataverseService
                     return CashFlowUpsertOutcome.Skipped;
 
                 if (row.IsTransfer)
-                    return await UpsertCashFlowTransferRowAsync(transferMetadata, transferAttributes, transferIndex, row, dryRun, ct);
+                    return await UpsertCashFlowTransferRowAsync(transferMetadata, transferAttributes, transferIndex, transferIdentityIndex, row, dryRun, ct);
 
                 return await UpsertCashFlowMovementRowAsync(
                     movementMetadata,
                     movementAttributes,
                     movementIndex,
+                    movementIdentityIndex,
                     lockedClientPaymentMovementKeys,
                     row,
                     dryRun,
@@ -150,6 +162,7 @@ public sealed partial class DataverseService
         RhEntityMetadata metadata,
         ISet<string> attributes,
         IReadOnlyDictionary<string, CashFlowExistingRecord> existingIndex,
+        IReadOnlyDictionary<string, CashFlowExistingRecord> existingIdentityIndex,
         IReadOnlySet<string> lockedClientPaymentMovementKeys,
         CashFlowImportRowDto row,
         bool dryRun,
@@ -161,6 +174,9 @@ public sealed partial class DataverseService
 
         if (existingIndex.TryGetValue(row.ExternalKey, out var existing))
         {
+            if (IsBancolombiaStatementRow(row))
+                return CashFlowUpsertOutcome.Unchanged;
+
             if (attributes.Contains(CashFlowSourceHashField)
                 && !string.IsNullOrWhiteSpace(existing.SourceHash)
                 && string.Equals(existing.SourceHash, row.SourceHash, StringComparison.OrdinalIgnoreCase))
@@ -198,13 +214,12 @@ public sealed partial class DataverseService
             return CashFlowUpsertOutcome.Updated;
         }
 
+        if (existingIdentityIndex.TryGetValue(BuildCashFlowImportIdentityKey(row), out var existingByIdentity))
+            return await UpdateCashFlowExistingByIdentityAsync(metadata, attributes, row, existingByIdentity, dryRun, ct);
+
         if (!dryRun)
         {
-            await CallDataverseAppSendAsync(
-                $"/api/data/v9.2/{metadata.EntitySetName}",
-                "POST",
-                payload,
-                ct);
+            return await CreateCashFlowRecordAsync(metadata, payload, row, ct);
         }
 
         return CashFlowUpsertOutcome.Created;
@@ -214,6 +229,7 @@ public sealed partial class DataverseService
         RhEntityMetadata metadata,
         ISet<string> attributes,
         IReadOnlyDictionary<string, CashFlowExistingRecord> existingIndex,
+        IReadOnlyDictionary<string, CashFlowExistingRecord> existingIdentityIndex,
         CashFlowImportRowDto row,
         bool dryRun,
         CancellationToken ct)
@@ -224,11 +240,32 @@ public sealed partial class DataverseService
 
         if (existingIndex.TryGetValue(row.ExternalKey, out var existing))
         {
+            if (IsBancolombiaStatementRow(row))
+                return CashFlowUpsertOutcome.Unchanged;
+
             if (attributes.Contains(CashFlowTransferSourceHashField)
                 && !string.IsNullOrWhiteSpace(existing.SourceHash)
                 && string.Equals(existing.SourceHash, row.SourceHash, StringComparison.OrdinalIgnoreCase))
             {
                 return CashFlowUpsertOutcome.Unchanged;
+            }
+
+            if (IsCashFlowExistingPostSiigoLocked(existing))
+            {
+                var lockedPayload = BuildCashFlowTransferPostSiigoChangePayload(attributes);
+                if (lockedPayload.Count == 0)
+                    return CashFlowUpsertOutcome.Unchanged;
+
+                if (!dryRun)
+                {
+                    await CallDataverseAppSendAsync(
+                        $"/api/data/v9.2/{metadata.EntitySetName}({existing.Id})",
+                        "PATCH",
+                        lockedPayload,
+                        ct);
+                }
+
+                return CashFlowUpsertOutcome.Updated;
             }
 
             if (!dryRun)
@@ -243,16 +280,123 @@ public sealed partial class DataverseService
             return CashFlowUpsertOutcome.Updated;
         }
 
+        if (existingIdentityIndex.TryGetValue(BuildCashFlowImportIdentityKey(row), out var existingByIdentity))
+            return await UpdateCashFlowExistingByIdentityAsync(metadata, attributes, row, existingByIdentity, dryRun, ct);
+
+        if (!dryRun)
+        {
+            return await CreateCashFlowRecordAsync(metadata, payload, row, ct);
+        }
+
+        return CashFlowUpsertOutcome.Created;
+    }
+
+    private async Task<CashFlowUpsertOutcome> CreateCashFlowRecordAsync(
+        RhEntityMetadata metadata,
+        IReadOnlyDictionary<string, object?> payload,
+        CashFlowImportRowDto row,
+        CancellationToken ct)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        using var response = await CallDataverseAppResponseAsync(
+            $"/api/data/v9.2/{metadata.EntitySetName}",
+            "POST",
+            ct,
+            content);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (response.IsSuccessStatusCode)
+            return CashFlowUpsertOutcome.Created;
+
+        if (IsCashFlowDuplicateCreate(response.StatusCode, body))
+        {
+            _logger.LogInformation(
+                "Dataverse omitio un movimiento ya existente durante una importacion concurrente. ExternalKey={ExternalKey}.",
+                row.ExternalKey);
+            return CashFlowUpsertOutcome.Unchanged;
+        }
+
+        _logger.LogWarning(
+            "Dataverse app error {StatusCode} {ReasonPhrase} creando flujo de caja. Body: {Body}",
+            (int)response.StatusCode,
+            response.ReasonPhrase,
+            body);
+        throw new InvalidOperationException(BuildDataverseAppFailureMessage(response.StatusCode));
+    }
+
+    private static bool IsCashFlowDuplicateCreate(System.Net.HttpStatusCode statusCode, string responseBody)
+    {
+        if (statusCode is System.Net.HttpStatusCode.Conflict or System.Net.HttpStatusCode.PreconditionFailed)
+            return true;
+
+        return responseBody.Contains("0x80040237", StringComparison.OrdinalIgnoreCase)
+            || responseBody.Contains("matching key values already exists", StringComparison.OrdinalIgnoreCase)
+            || responseBody.Contains("duplicate key", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBancolombiaStatementRow(CashFlowImportRowDto row)
+    {
+        return row.SourceSystem.Equals("Bancolombia", StringComparison.OrdinalIgnoreCase)
+            && row.ExternalKey.StartsWith("bancolombia:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<CashFlowUpsertOutcome> UpdateCashFlowExistingByIdentityAsync(
+        RhEntityMetadata metadata,
+        ISet<string> attributes,
+        CashFlowImportRowDto row,
+        CashFlowExistingRecord existing,
+        bool dryRun,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(existing.SourceHash)
+            && string.Equals(existing.SourceHash, row.SourceHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return CashFlowUpsertOutcome.Unchanged;
+        }
+
+        if (IsCashFlowExistingPostSiigoLocked(existing))
+        {
+            var lockedPayload = row.IsTransfer
+                ? BuildCashFlowTransferPostSiigoChangePayload(attributes)
+                : BuildCashFlowPostSiigoChangePayload(attributes, row, existing);
+            if (lockedPayload.Count == 0)
+                return CashFlowUpsertOutcome.Unchanged;
+
+            if (!dryRun)
+            {
+                await CallDataverseAppSendAsync(
+                    $"/api/data/v9.2/{metadata.EntitySetName}({existing.Id})",
+                    "PATCH",
+                    lockedPayload,
+                    ct);
+            }
+
+            return CashFlowUpsertOutcome.Updated;
+        }
+
+        var payload = row.IsTransfer
+            ? BuildCashFlowTransferPayload(metadata, attributes, row)
+            : BuildCashFlowMovementPayload(metadata, attributes, row);
+        RemoveCashFlowExternalKeyPayloadValues(payload);
+        if (payload.Count == 0)
+            return CashFlowUpsertOutcome.Unchanged;
+
         if (!dryRun)
         {
             await CallDataverseAppSendAsync(
-                $"/api/data/v9.2/{metadata.EntitySetName}",
-                "POST",
+                $"/api/data/v9.2/{metadata.EntitySetName}({existing.Id})",
+                "PATCH",
                 payload,
                 ct);
         }
 
-        return CashFlowUpsertOutcome.Created;
+        return CashFlowUpsertOutcome.Updated;
+    }
+
+    private static void RemoveCashFlowExternalKeyPayloadValues(IDictionary<string, object?> payload)
+    {
+        payload.Remove(CashFlowReferenceField);
+        payload.Remove(CashFlowExternalKeyField);
+        payload.Remove(CashFlowTransferExternalKeyField);
     }
 
     private async Task<IReadOnlyDictionary<string, CashFlowExistingRecord>> GetCashFlowExistingIndexAsync(
@@ -280,7 +424,37 @@ public sealed partial class DataverseService
         var siigoStatusField = attributes.Contains(CashFlowSiigoStatusField)
             ? CashFlowSiigoStatusField
             : "";
-        var select = string.Join(",", new[] { metadata.PrimaryIdField, externalKeyField, hashField, statusField, siigoDocumentIdField, siigoStatusField }
+        var select = string.Join(",", new[]
+            {
+                metadata.PrimaryIdField,
+                externalKeyField,
+                hashField,
+                statusField,
+                siigoDocumentIdField,
+                siigoStatusField,
+                CashFlowSourceFlowField,
+                CashFlowSourceTableField,
+                CashFlowDateField,
+                CashFlowEntryField,
+                CashFlowExitField,
+                CashFlowDescriptionField,
+                CashFlowRecipientField,
+                CashFlowDestinationBankField,
+                CashFlowDocumentTypeField,
+                CashFlowObservationsField,
+                CashFlowTransferSourceFlowField,
+                CashFlowTransferSourceTableField,
+                CashFlowTransferDateField,
+                CashFlowTransferEntryField,
+                CashFlowTransferExitField,
+                CashFlowTransferDescriptionField,
+                CashFlowTransferRecipientField,
+                CashFlowTransferDestinationBankField,
+                CashFlowTransferDocumentTypeField,
+                CashFlowTransferObservationsField
+            }
+            .Where(field => !string.IsNullOrWhiteSpace(field)
+                && (attributes.Contains(field) || string.Equals(field, metadata.PrimaryIdField, StringComparison.OrdinalIgnoreCase)))
             .Where(static field => !string.IsNullOrWhiteSpace(field))
             .Distinct(StringComparer.OrdinalIgnoreCase));
         var url = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$top=5000";
@@ -294,7 +468,8 @@ public sealed partial class DataverseService
                 Hash = string.IsNullOrWhiteSpace(hashField) ? "" : ReadString(row, hashField).Trim(),
                 Status = string.IsNullOrWhiteSpace(statusField) ? "" : ReadString(row, statusField).Trim(),
                 SiigoDocumentId = string.IsNullOrWhiteSpace(siigoDocumentIdField) ? "" : ReadString(row, siigoDocumentIdField).Trim(),
-                SiigoStatus = string.IsNullOrWhiteSpace(siigoStatusField) ? "" : ReadString(row, siigoStatusField).Trim()
+                SiigoStatus = string.IsNullOrWhiteSpace(siigoStatusField) ? "" : ReadString(row, siigoStatusField).Trim(),
+                IdentityKey = BuildCashFlowExistingIdentityKey(row)
             })
             .Where(static row => !string.IsNullOrWhiteSpace(row.Id) && !string.IsNullOrWhiteSpace(row.Key))
             .GroupBy(static row => row.Key, StringComparer.OrdinalIgnoreCase)
@@ -305,12 +480,24 @@ public sealed partial class DataverseService
                     var first = group.First();
                     return new CashFlowExistingRecord(
                         first.Id,
+                        first.Key,
                         first.Hash,
                         first.Status,
                         first.SiigoDocumentId,
-                        first.SiigoStatus);
+                        first.SiigoStatus,
+                        first.IdentityKey);
                 },
                 StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyDictionary<string, CashFlowExistingRecord> BuildCashFlowExistingIdentityIndex(
+        IEnumerable<CashFlowExistingRecord> records)
+    {
+        return records
+            .Where(static record => !string.IsNullOrWhiteSpace(record.IdentityKey))
+            .GroupBy(static record => record.IdentityKey, StringComparer.OrdinalIgnoreCase)
+            .Where(static group => group.Count() == 1)
+            .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<IReadOnlySet<string>> GetCashFlowLockedClientPaymentMovementKeysAsync(CancellationToken ct)
@@ -349,14 +536,15 @@ public sealed partial class DataverseService
         SetAccountCatalogValue(payload, attributes, metadata.PrimaryNameField, null, name, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowDateField, null, row.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowBankField, null, row.BankAccountName, force: true);
-        SetAccountCatalogValue(payload, attributes, CashFlowDescriptionField, null, row.Description, force: true);
+        if (!row.PreserveExistingDescription || !string.IsNullOrWhiteSpace(row.Description))
+            SetAccountCatalogValue(payload, attributes, CashFlowDescriptionField, null, row.Description, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowEntryField, (decimal?)null, row.Entry, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowExitField, (decimal?)null, row.Exit, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowReferenceField, null, row.ExternalKey, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowMovementTypeField, null, row.MovementType, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowStatusField, null, "Importado", force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowSiigoDocumentIdField, null, "", force: false);
-        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, "Importado desde flujo de caja SharePoint. Descripcion usada para cruce con factura/documento.", force: true);
+        SetAccountCatalogValue(payload, attributes, CashFlowReviewReasonField, null, BuildCashFlowImportReviewReason(row), force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowSourceFlowField, null, row.SourceFlow, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowBankAccountCodeField, null, row.BankAccountCode, force: true);
         SetAccountCatalogValue(payload, attributes, CashFlowBankAccountNameField, null, row.BankAccountName, force: true);
@@ -416,6 +604,13 @@ public sealed partial class DataverseService
         return payload;
     }
 
+    private static Dictionary<string, object?> BuildCashFlowTransferPostSiigoChangePayload(ISet<string> attributes)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        SetAccountCatalogValue(payload, attributes, CashFlowTransferStatusField, null, "CambioPostEnvio", force: true);
+        return payload;
+    }
+
     private static string BuildCashFlowPostSiigoChangeMessage(CashFlowImportRowDto row, CashFlowExistingRecord existing)
     {
         var oldHash = string.IsNullOrWhiteSpace(existing.SourceHash) ? "sin hash anterior" : existing.SourceHash;
@@ -454,6 +649,15 @@ public sealed partial class DataverseService
             || status.Contains("CONCILI", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsCashFlowExistingPostSiigoLocked(CashFlowExistingRecord existing)
+    {
+        if (!string.IsNullOrWhiteSpace(existing.SiigoDocumentId))
+            return true;
+
+        return IsCashFlowPostSiigoStatus(existing.Status)
+            || IsCashFlowPostSiigoStatus(existing.SiigoStatus);
+    }
+
     private static HashSet<string> BuildCashFlowMovementAttributeSet(RhEntityMetadata metadata, ISet<string> attributes)
     {
         if (attributes.Count > 0)
@@ -472,6 +676,13 @@ public sealed partial class DataverseService
             CashFlowMovementTypeField,
             CashFlowStatusField,
             CashFlowSiigoDocumentIdField,
+            CashFlowSiigoDocumentNameField,
+            CashFlowAccountingAccountCodeField,
+            CashFlowAccountingAccountNameField,
+            CashFlowThirdPartyKeyField,
+            CashFlowThirdPartyIdentificationField,
+            CashFlowThirdPartyNameField,
+            CashFlowThirdPartyBranchOfficeField,
             CashFlowReviewReasonField,
             CashFlowSourceFlowField,
             CashFlowBankAccountCodeField,
@@ -523,7 +734,103 @@ public sealed partial class DataverseService
     {
         var date = row.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "Sin fecha";
         var amount = Math.Max(row.Entry, row.Exit).ToString("0.##", CultureInfo.InvariantCulture);
-        return TruncateAccountCatalogText($"{row.SourceFlow} {date} {row.MovementType} {amount} {row.Description}".Trim(), 100);
+        var detail = FirstNonEmpty(row.Description, row.Observations, row.Recipient, row.DocumentType);
+        return TruncateAccountCatalogText($"{row.SourceFlow} {date} {row.MovementType} {amount} {detail}".Trim(), 100);
+    }
+
+    private static string BuildCashFlowImportReviewReason(CashFlowImportRowDto row)
+    {
+        if (row.SourceSystem.Equals("Bancolombia", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Importado desde extracto Bancolombia. La descripcion queda como nota interna para digitacion manual; el detalle bancario queda en observaciones.";
+        }
+
+        return "Importado desde flujo de caja SharePoint. Descripcion usada para cruce con factura/documento.";
+    }
+
+    private static string BuildCashFlowImportIdentityKey(CashFlowImportRowDto row)
+    {
+        return BuildCashFlowIdentityKey(
+            row.SourceFlow,
+            row.TableName,
+            row.Date,
+            row.Entry,
+            row.Exit,
+            row.Description,
+            row.Recipient,
+            row.DestinationBank,
+            row.DocumentType,
+            row.Observations);
+    }
+
+    private static string BuildCashFlowExistingIdentityKey(JsonElement item)
+    {
+        var date = ReadDateOnly(item, CashFlowDateField)
+            ?? ReadDateOnly(item, CashFlowTransferDateField);
+        var entry = ReadDecimal(item, CashFlowEntryField)
+            ?? ReadDecimal(item, CashFlowTransferEntryField)
+            ?? 0m;
+        var exit = ReadDecimal(item, CashFlowExitField)
+            ?? ReadDecimal(item, CashFlowTransferExitField)
+            ?? 0m;
+
+        return BuildCashFlowIdentityKey(
+            FirstNonEmpty(ReadString(item, CashFlowSourceFlowField), ReadString(item, CashFlowTransferSourceFlowField)),
+            FirstNonEmpty(ReadString(item, CashFlowSourceTableField), ReadString(item, CashFlowTransferSourceTableField)),
+            date,
+            entry,
+            exit,
+            FirstNonEmpty(ReadString(item, CashFlowDescriptionField), ReadString(item, CashFlowTransferDescriptionField)),
+            FirstNonEmpty(ReadString(item, CashFlowRecipientField), ReadString(item, CashFlowTransferRecipientField)),
+            FirstNonEmpty(ReadString(item, CashFlowDestinationBankField), ReadString(item, CashFlowTransferDestinationBankField)),
+            FirstNonEmpty(ReadString(item, CashFlowDocumentTypeField), ReadString(item, CashFlowTransferDocumentTypeField)),
+            FirstNonEmpty(ReadString(item, CashFlowObservationsField), ReadString(item, CashFlowTransferObservationsField)));
+    }
+
+    private static string BuildCashFlowIdentityKey(
+        string sourceFlow,
+        string tableName,
+        DateOnly? date,
+        decimal entry,
+        decimal exit,
+        string description,
+        string recipient,
+        string destinationBank,
+        string documentType,
+        string observations)
+    {
+        if (date is null || (entry == 0m && exit == 0m))
+            return "";
+
+        return string.Join("|", new[]
+        {
+            NormalizeCashFlowIdentityText(sourceFlow),
+            NormalizeCashFlowIdentityText(tableName),
+            date.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            entry.ToString("0.##", CultureInfo.InvariantCulture),
+            exit.ToString("0.##", CultureInfo.InvariantCulture),
+            NormalizeCashFlowIdentityText(description),
+            NormalizeCashFlowIdentityText(recipient),
+            NormalizeCashFlowIdentityText(destinationBank),
+            NormalizeCashFlowIdentityText(documentType),
+            NormalizeCashFlowIdentityText(observations)
+        });
+    }
+
+    private static string NormalizeCashFlowIdentityText(string? value)
+    {
+        var normalized = (value ?? "").Trim().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var ch in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (char.IsLetterOrDigit(ch))
+                builder.Append(char.ToUpperInvariant(ch));
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
     private enum CashFlowUpsertOutcome
@@ -536,8 +843,10 @@ public sealed partial class DataverseService
 
     private sealed record CashFlowExistingRecord(
         string Id,
+        string ExternalKey,
         string SourceHash,
         string Status,
         string SiigoDocumentId,
-        string SiigoStatus);
+        string SiigoStatus,
+        string IdentityKey);
 }

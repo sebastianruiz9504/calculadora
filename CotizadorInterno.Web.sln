@@ -4,6 +4,8 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CotizadorInterno.Web", "CotizadorInterno.Web.csproj", "{1026DC7E-771B-F97B-224E-C62BD0A6ADBE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CotizadorInterno.Web.Tests", "tests\CotizadorInterno.Web.Tests\CotizadorInterno.Web.Tests.csproj", "{4A61BFE4-81F2-4D04-829E-B67B29DD5FB0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,6 +16,10 @@ Global
 		{1026DC7E-771B-F97B-224E-C62BD0A6ADBE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1026DC7E-771B-F97B-224E-C62BD0A6ADBE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1026DC7E-771B-F97B-224E-C62BD0A6ADBE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A61BFE4-81F2-4D04-829E-B67B29DD5FB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A61BFE4-81F2-4D04-829E-B67B29DD5FB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A61BFE4-81F2-4D04-829E-B67B29DD5FB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A61BFE4-81F2-4D04-829E-B67B29DD5FB0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

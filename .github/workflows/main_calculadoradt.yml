@@ -1,13 +1,12 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy ASP.Net Core app to Azure Web App - calculadoradt
+name: Deploy CotizadorInterno.Web to Azure App Service
 
 env:
   AZURE_WEBAPP_NAME: calculadoradt
+  AZURE_RESOURCE_GROUP: DigitalTechAppAI
   AZURE_CLIENT_ID: 774a5f8a-8b6c-4e43-83a1-3efd8a90cea0
   AZURE_TENANT_ID: cab7ea42-4a21-4548-952f-fcde81f2bdd6
   AZURE_SUBSCRIPTION_ID: 7018b9b6-5dfc-4d91-bc4d-5f29f27553bd
+  DOTNET_VERSION: 10.x
 
 on:
   push:
@@ -15,11 +14,16 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: calculadoradt-production
+  cancel-in-progress: true
+
 jobs:
-  build:
+  deploy:
     runs-on: windows-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -27,33 +31,8 @@ jobs:
       - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Build with dotnet
-        run: dotnet build CotizadorInterno.Web.csproj --configuration Release
-
-      - name: dotnet publish
-        run: dotnet publish CotizadorInterno.Web.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
-
-  deploy:
-    runs-on: windows-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: .net-app
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -61,10 +40,11 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          slot-name: 'Production'
-          package: .
+      - name: Build, package and deploy
+        shell: pwsh
+        run: >
+          ./scripts/Deploy-AppService.ps1
+          -SubscriptionId "${{ env.AZURE_SUBSCRIPTION_ID }}"
+          -ResourceGroupName "${{ env.AZURE_RESOURCE_GROUP }}"
+          -WebAppName "${{ env.AZURE_WEBAPP_NAME }}"
+          -Configuration Release

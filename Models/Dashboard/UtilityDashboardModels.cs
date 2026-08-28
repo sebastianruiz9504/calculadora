@@ -81,6 +81,40 @@ public sealed class UtilityMonthlyPointDto
     public decimal? UtilityPercent { get; set; }
     public int BillingRecordsCount { get; set; }
     public int CostRecordsCount { get; set; }
+    public IReadOnlyList<UtilityRealBillingRowDto> BillingRows { get; set; } = Array.Empty<UtilityRealBillingRowDto>();
+    public IReadOnlyList<UtilityRealCostRowDto> CostRows { get; set; } = Array.Empty<UtilityRealCostRowDto>();
+}
+
+public sealed class UtilityRealBillingRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string CompanyTaxId { get; set; } = "";
+    public string EmissionDateValue { get; set; } = "";
+    public string EmissionDateDisplay { get; set; } = "";
+    public string ContractTypeLabel { get; set; } = "";
+    public string PublicUrl { get; set; } = "";
+    public decimal TotalInvoice { get; set; }
+    public decimal CreditNoteTotal { get; set; }
+    public decimal NetTotalInvoice { get; set; }
+}
+
+public sealed class UtilityRealCostRowDto
+{
+    public string RecordId { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string Vendor { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string DateValue { get; set; } = "";
+    public string DateDisplay { get; set; } = "";
+    public string ContractTypeLabel { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal UnitUsd { get; set; }
+    public decimal TotalUsd { get; set; }
+    public decimal Trm { get; set; }
+    public decimal Cost { get; set; }
 }
 
 public sealed class UtilityUnresolvedRowDto

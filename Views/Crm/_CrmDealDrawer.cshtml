@@ -1,0 +1,186 @@
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    var companyId = Convert.ToString(ViewData["CrmDealCompanyId"]) ?? "";
+    var companyName = Convert.ToString(ViewData["CrmDealCompanyName"]) ?? "";
+    var contactId = Convert.ToString(ViewData["CrmDealContactId"]) ?? "";
+    var contactName = Convert.ToString(ViewData["CrmDealContactName"]) ?? "";
+    var contactOptions = ViewData["CrmDealContactOptions"] as IEnumerable<SelectListItem>
+        ?? Enumerable.Empty<SelectListItem>();
+    var panelTitleId = $"crmDealPanelTitle-{Guid.NewGuid():N}";
+}
+
+<div class="crm-drawer" data-deal-drawer hidden>
+    <button class="crm-drawer__backdrop" type="button" aria-label="Cerrar panel" data-close-deal></button>
+    <aside class="crm-drawer__panel crm-drawer__panel--wide"
+           role="dialog"
+           aria-modal="true"
+           aria-labelledby="@panelTitleId">
+        <header class="crm-drawer__head">
+            <div>
+                <span class="crm-eyebrow">Pipeline comercial</span>
+                <h2 id="@panelTitleId">Nuevo negocio</h2>
+                <p>Crea una oportunidad estimada o continúa su preparación en la calculadora.</p>
+            </div>
+            <button class="crm-drawer__close" type="button" aria-label="Cerrar" data-close-deal>×</button>
+        </header>
+
+        <div class="crm-status" data-deal-status role="status" aria-live="polite" hidden></div>
+
+        <form class="crm-form" data-deal-form>
+            <fieldset class="crm-deal-mode">
+                <legend>Forma de creación</legend>
+                <div class="crm-segmented" data-deal-mode-control>
+                    <label>
+                        <input type="radio"
+                               name="DealCreationMode"
+                               value="manual"
+                               checked
+                               data-deal-mode
+                               data-deal-first-focus />
+                        <span>
+                            <strong>Sin calculadora</strong>
+                            <small>Registrar un estimado</small>
+                        </span>
+                    </label>
+                    <label>
+                        <input type="radio"
+                               name="DealCreationMode"
+                               value="calculator"
+                               data-deal-mode />
+                        <span>
+                            <strong>Con calculadora</strong>
+                            <small>Construir una cotización</small>
+                        </span>
+                    </label>
+                </div>
+            </fieldset>
+
+            @if (string.IsNullOrWhiteSpace(companyId))
+            {
+                <div class="crm-company-picker" data-deal-company-picker>
+                    <label class="crm-field">
+                        <span>Empresa *</span>
+                        <input type="search"
+                               name="CompanySearch"
+                               maxlength="200"
+                               autocomplete="off"
+                               placeholder="Escribe el nombre o NIT"
+                               data-deal-company-search
+                               aria-autocomplete="list"
+                               aria-controls="crmDealCompanyResults" />
+                    </label>
+                    <input type="hidden" name="CompanyId" required />
+                    <input type="hidden" name="CompanyName" />
+                    <div class="crm-company-picker__results"
+                         id="crmDealCompanyResults"
+                         data-deal-company-results
+                         role="listbox"
+                         hidden></div>
+                    <small>Selecciona una empresa de los resultados para continuar.</small>
+                </div>
+            }
+            else
+            {
+                <div class="crm-deal-context">
+                    <span>Empresa</span>
+                    <strong>@companyName</strong>
+                    <input type="hidden" name="CompanyId" value="@companyId" required />
+                    <input type="hidden" name="CompanyName" value="@companyName" />
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(contactId))
+            {
+                <div class="crm-deal-context">
+                    <span>Contacto principal</span>
+                    <strong>@contactName</strong>
+                    <input type="hidden" name="PrimaryContactId" value="@contactId" />
+                    <input type="hidden" name="PrimaryContactName" value="@contactName" />
+                </div>
+            }
+            else if (contactOptions.Any())
+            {
+                <label class="crm-field">
+                    <span>Contacto principal</span>
+                    <select name="PrimaryContactId" data-deal-contact-select>
+                        <option value="">Sin contacto principal</option>
+                        @foreach (var contact in contactOptions)
+                        {
+                            <option value="@contact.Value"
+                                    data-company-id="@contact.Group?.Name"
+                                    selected="@contact.Selected">@contact.Text</option>
+                        }
+                    </select>
+                </label>
+            }
+
+            <div class="crm-form__grid" data-deal-manual-fields>
+                <label class="crm-field crm-field--wide">
+                    <span>Nombre del negocio *</span>
+                    <input type="text"
+                           name="Name"
+                           maxlength="200"
+                           minlength="3"
+                           required
+                           placeholder="Ej. Renovación Microsoft 365" />
+                </label>
+                <label class="crm-field">
+                    <span>Contrato estimado *</span>
+                    <input type="number"
+                           name="EstimatedContractValue"
+                           min="0"
+                           step="1000"
+                           inputmode="decimal"
+                           required
+                           placeholder="0" />
+                </label>
+                <label class="crm-field">
+                    <span>Puntaje estimado *</span>
+                    <input type="number"
+                           name="EstimatedScore"
+                           step="0.01"
+                           inputmode="decimal"
+                           required
+                           placeholder="0" />
+                </label>
+                <label class="crm-field crm-field--wide">
+                    <span>Categoría *</span>
+                    <input type="text"
+                           name="Category"
+                           list="crmDealCategories"
+                           maxlength="120"
+                           required
+                           placeholder="Ej. Modern Work" />
+                </label>
+                <label class="crm-field crm-field--wide">
+                    <span>Descripción breve *</span>
+                    <textarea name="BriefDescription"
+                              rows="4"
+                              maxlength="1000"
+                              required
+                              placeholder="Necesidad, alcance preliminar y contexto comercial"></textarea>
+                </label>
+            </div>
+
+            <div class="crm-deal-calculator" data-deal-calculator-panel hidden>
+                <strong>Continúa en la calculadora</strong>
+                <p>La empresa y el contacto quedarán precargados para construir la cotización.</p>
+            </div>
+
+            <footer class="crm-drawer__footer">
+                <button class="crm-btn crm-btn--quiet" type="button" data-close-deal>Cancelar</button>
+                <button class="crm-btn crm-btn--primary" type="submit" data-save-deal>Crear negocio</button>
+            </footer>
+        </form>
+
+        <datalist id="crmDealCategories">
+            <option value="Modern Work"></option>
+            <option value="Azure"></option>
+            <option value="Ciberseguridad"></option>
+            <option value="Hardware"></option>
+            <option value="Impresión y digitalización"></option>
+            <option value="Servicios profesionales"></option>
+            <option value="Otro"></option>
+        </datalist>
+    </aside>
+</div>

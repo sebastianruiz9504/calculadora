@@ -17,11 +17,16 @@ public class HomeController : Controller
 {
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private readonly IDataverseService _dataverse;
+    private readonly IAutomaticTaskSyncQueue _automaticTaskSyncQueue;
     private readonly ILogger<HomeController> _logger;
 
-    public HomeController(IDataverseService dataverse, ILogger<HomeController> logger)
+    public HomeController(
+        IDataverseService dataverse,
+        IAutomaticTaskSyncQueue automaticTaskSyncQueue,
+        ILogger<HomeController> logger)
     {
         _dataverse = dataverse;
+        _automaticTaskSyncQueue = automaticTaskSyncQueue;
         _logger = logger;
     }
 
@@ -32,7 +37,7 @@ public class HomeController : Controller
         IReadOnlyList<CotizadorInterno.Web.Models.Tasks.TaskBoardItemDto> pendingTasks = Array.Empty<CotizadorInterno.Web.Models.Tasks.TaskBoardItemDto>();
         try
         {
-            await _dataverse.SyncAutomaticTasksAsync(ct);
+            _automaticTaskSyncQueue.TryQueue(HttpContext.User);
             pendingTasks = await _dataverse.GetPendingTasksForCurrentUserAsync(ct);
         }
         catch (Exception ex)

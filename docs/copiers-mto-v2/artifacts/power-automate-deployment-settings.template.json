@@ -1,0 +1,61 @@
+{
+  "artifactType": "digital-tech/power-automate-deployment-settings-template",
+  "schemaVersion": "1.0",
+  "flow": {
+    "displayName": "Copiers MTO V2 - Send Ready Report",
+    "solutionUniqueName": "CopiersMtoFirmadoV2",
+    "enabled": false,
+    "processingEnabled": false
+  },
+  "environment": {
+    "displayName": "Digital Tech Copiers (default)",
+    "url": "https://orgc79ca19c.crm2.dynamics.com/"
+  },
+  "connections": {
+    "dataverse": {
+      "connectionReferenceLogicalName": null,
+      "ownerUpn": null
+    },
+    "graph": {
+      "connectionReferenceLogicalName": null,
+      "ownerUpn": null
+    }
+  },
+  "mail": {
+    "senderMailbox": null,
+    "alertRecipient": null,
+    "graphCorrelationExtendedPropertyId": null,
+    "maxEmailEncodedBytes": 26214400,
+    "maxEmailEncodedBytesStatus": "proposed"
+  },
+  "dataverse": {
+    "mainTableLogicalName": "dtc_copiersmtov2",
+    "mainTableEntitySetName": "dtc_copiersmtov2s",
+    "evidenceTableLogicalName": "dtc_copiersmtoevidenciav2",
+    "evidenceTableEntitySetName": "dtc_copiersmtoevidenciav2s",
+    "triggerFilter": "dtc_workflowstate eq 827270002 and dtc_emailstate eq 827270001",
+    "choiceValues": {
+      "workflowReadyToSend": 827270002,
+      "emailPending": 827270001,
+      "emailProcessing": 827270002,
+      "emailSent": 827270003,
+      "emailFailed": 827270004,
+      "purposeSignedReport": 827270001,
+      "purposeCustomerAttachment": 827270003,
+      "securityScanPassed": 827270002
+    },
+    "dataverseDownloadBase64Expression": null
+  },
+  "operationalGates": {
+    "applicationUserRoleAssignedAndVerified": false,
+    "optimisticConcurrency412Verified": false,
+    "customerAttachmentSecurityVerified": false,
+    "graphDraftAndSentReconciliationVerified": false,
+    "dlpAndMailboxPermissionsApproved": false
+  },
+  "notes": [
+    "This template contains no credentials or connection IDs.",
+    "Keep the flow disabled and processingEnabled false until every operational gate is true.",
+    "The final action shapes and binary expression must be read back from the exported flow before activation."
+  ]
+}

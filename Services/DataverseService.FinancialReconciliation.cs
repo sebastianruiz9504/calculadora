@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Reconciliation;
 
@@ -45,6 +46,8 @@ public sealed partial class DataverseService
     private const string ReconciliationBillingTaxValueField = "cr07a_impuestovalor";
     private const string ReconciliationBillingRequiredTaxField = "cr07a_impuesto";
     private const string ReconciliationBillingLegacyNitField = "cr07a_nit";
+    private const string FinancialClientNitField = "cr07a_nit";
+    private const string FinancialClientNameField = "cr07a_nombre";
 
     public async Task<IReadOnlyList<ReconciliationDataverseBillingRow>> GetFinancialReconciliationBillingRowsAsync(
         DateOnly startInclusive,
@@ -240,9 +243,12 @@ public sealed partial class DataverseService
         var creditNoteAttributes = await GetFinancialReconciliationAttributeNamesAppAsync(creditNoteMetadata.LogicalName, ct);
 
         var activeInvoices = siigo.Invoices
-            .Where(static invoice => !invoice.Annulled)
-            .GroupBy(static invoice => FirstNonEmpty(invoice.Id, invoice.Name), StringComparer.OrdinalIgnoreCase)
+            .Where(IsImportableFinancialSiigoInvoice)
+            .Where(invoice => invoice.Date >= startInclusive && invoice.Date < endExclusive)
+            .GroupBy(static invoice => BuildSiigoInvoiceKey(invoice), StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
+            .OrderBy(static invoice => invoice.Date)
+            .ThenBy(static invoice => invoice.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var billingIndex = BuildFinancialBillingIndex(dataverseBilling);
         var creditNotesBySiigoId = dataverseCreditNotes
@@ -255,9 +261,17 @@ public sealed partial class DataverseService
         {
             try
             {
-                var match = FindBillingMatch(invoice, billingIndex);
+                var existing = FindBillingMatch(invoice, billingIndex)
+                    ?? await FindBillingRecordForSiigoInvoiceAsync(
+                        billingMetadata,
+                        billingAttributes,
+                        invoice.Id,
+                        invoice.Name,
+                        invoice.Prefix,
+                        invoice.Number?.ToString(CultureInfo.InvariantCulture),
+                        ct);
                 var relatedCreditNotes = GetRelatedSiigoCreditNotes(invoice, siigoCreditNotesByInvoiceKey);
-                var action = match is null
+                var action = existing is null
                     ? await CreateBillingInvoiceFromSiigoAsync(
                         billingMetadata,
                         billingAttributes,
@@ -267,45 +281,48 @@ public sealed partial class DataverseService
                     : await UpdateBillingInvoiceFromSiigoAsync(
                         billingMetadata,
                         billingAttributes,
-                        match,
+                        existing,
                         invoice,
                         relatedCreditNotes,
                         ct);
 
-                if (action is not null)
-                {
-                    actions.Add(action);
-                    if (string.Equals(action.Action, "Creada", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var created = await FindBillingRecordForSiigoInvoiceAsync(
-                            billingMetadata,
-                            billingAttributes,
-                            invoice.Id,
-                            invoice.Name,
-                            invoice.Prefix,
-                            invoice.Number?.ToString(CultureInfo.InvariantCulture),
-                            ct);
-                        if (created is not null)
-                            AddBillingIndexRecord(billingIndex, created);
-                    }
-                }
+                if (existing is not null)
+                    AddBillingIndexRecord(billingIndex, existing);
+
+                if (action is null)
+                    continue;
+
+                actions.Add(action);
+                if (!string.Equals(action.Action, "Creada", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var created = await FindBillingRecordForSiigoInvoiceAsync(
+                    billingMetadata,
+                    billingAttributes,
+                    invoice.Id,
+                    invoice.Name,
+                    invoice.Prefix,
+                    invoice.Number?.ToString(CultureInfo.InvariantCulture),
+                    ct);
+                if (created is not null)
+                    AddBillingIndexRecord(billingIndex, created);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                _logger.LogWarning(ex, "No fue posible corregir la factura {InvoiceName} en Dataverse.", invoice.Name);
+                _logger.LogWarning(ex, "No fue posible sincronizar la factura {InvoiceName} en Dataverse.", invoice.Name);
                 actions.Add(new FinancialReconciliationCorrectionAction
                 {
                     Entity = "Factura",
                     Action = "Error",
                     Document = FirstNonEmpty(invoice.Name, invoice.Id),
-                    NewTotal = invoice.Total,
+                    NewTotal = ResolveSiigoInvoiceGrossTotal(invoice),
                     NewVat = invoice.Vat,
                     Notes = ex.Message
                 });
             }
         }
 
-        foreach (var creditNote in siigo.CreditNotes)
+        foreach (var creditNote in siigo.CreditNotes.Where(IsAcceptedFinancialSiigoCreditNote))
         {
             try
             {
@@ -340,14 +357,187 @@ public sealed partial class DataverseService
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                _logger.LogWarning(ex, "No fue posible corregir la nota credito {CreditNoteName} en Dataverse.", creditNote.Name);
+                _logger.LogWarning(ex, "No fue posible registrar la nota credito {CreditNoteName} en Dataverse.", creditNote.Name);
                 actions.Add(new FinancialReconciliationCorrectionAction
                 {
                     Entity = "NC",
                     Action = "Error",
                     Document = FirstNonEmpty(creditNote.Name, creditNote.Id),
-                    NewTotal = creditNote.Total,
+                    NewTotal = ResolveSiigoCreditNoteGrossTotal(creditNote),
                     NewVat = creditNote.Vat,
+                    Notes = ex.Message
+                });
+            }
+        }
+
+        return new FinancialReconciliationCorrectionResult
+        {
+            Actions = actions
+        };
+    }
+
+    public async Task<FinancialReconciliationCorrectionResult> CreateFinancialReconciliationMissingBillingInvoicesAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        IReadOnlyList<ReconciliationDataverseBillingRow> dataverseBilling,
+        IReadOnlyList<ReconciliationDataverseCreditNoteRow> dataverseCreditNotes,
+        SiigoFinancialReconciliationData siigo,
+        IReadOnlyList<string> invoiceKeys,
+        CancellationToken ct = default)
+    {
+        if (startInclusive >= endExclusive)
+            throw new InvalidOperationException("El periodo de conciliacion de facturacion no es valido.");
+
+        var selectedKeys = BuildSelectedInvoiceKeySet(invoiceKeys);
+        if (selectedKeys.Count == 0)
+            return new FinancialReconciliationCorrectionResult();
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        var activeInvoices = siigo.Invoices
+            .Where(IsImportableFinancialSiigoInvoice)
+            .GroupBy(static invoice => FirstNonEmpty(invoice.Id, invoice.Name), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .Where(invoice => IsSelectedInvoice(invoice, selectedKeys))
+            .OrderBy(static invoice => invoice.Date)
+            .ThenBy(static invoice => invoice.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var actions = new List<FinancialReconciliationCorrectionAction>();
+        var billingIndex = BuildFinancialBillingIndex(dataverseBilling);
+        var siigoCreditNotesByInvoiceKey = BuildSiigoCreditNotesByInvoiceKey(siigo.CreditNotes, activeInvoices);
+
+        foreach (var invoice in activeInvoices)
+        {
+            try
+            {
+                var existing = FindBillingMatch(invoice, billingIndex)
+                    ?? await FindBillingRecordForSiigoInvoiceAsync(
+                        metadata,
+                        attributes,
+                        invoice.Id,
+                        invoice.Name,
+                        invoice.Prefix,
+                        invoice.Number?.ToString(CultureInfo.InvariantCulture),
+                        ct);
+                if (existing is not null)
+                {
+                    AddBillingIndexRecord(billingIndex, existing);
+                    actions.Add(new FinancialReconciliationCorrectionAction
+                    {
+                        Entity = "Factura",
+                        Action = "Omitida",
+                        Document = FirstNonEmpty(invoice.Name, invoice.Id),
+                        RecordId = existing.RecordId,
+                        PreviousTotal = existing.Total,
+                        NewTotal = ResolveSiigoInvoiceGrossTotal(invoice),
+                        PreviousVat = existing.Vat,
+                        NewVat = invoice.Vat,
+                        Notes = "Ya existe en Dataverse al recalcular la diferencia."
+                    });
+                    continue;
+                }
+
+                var relatedCreditNotes = GetRelatedSiigoCreditNotes(invoice, siigoCreditNotesByInvoiceKey);
+                var action = await CreateBillingInvoiceFromSiigoAsync(metadata, attributes, invoice, relatedCreditNotes, ct);
+                if (action is not null)
+                {
+                    actions.Add(action);
+                    var created = await FindBillingRecordForSiigoInvoiceAsync(
+                        metadata,
+                        attributes,
+                        invoice.Id,
+                        invoice.Name,
+                        invoice.Prefix,
+                        invoice.Number?.ToString(CultureInfo.InvariantCulture),
+                        ct);
+                    if (created is not null)
+                        AddBillingIndexRecord(billingIndex, created);
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "No fue posible crear la factura {InvoiceName} en Dataverse desde conciliacion.", invoice.Name);
+                actions.Add(new FinancialReconciliationCorrectionAction
+                {
+                    Entity = "Factura",
+                    Action = "Error",
+                    Document = FirstNonEmpty(invoice.Name, invoice.Id),
+                    NewTotal = ResolveSiigoInvoiceGrossTotal(invoice),
+                    NewVat = invoice.Vat,
+                    Notes = ex.Message
+                });
+            }
+        }
+
+        return new FinancialReconciliationCorrectionResult
+        {
+            Actions = actions
+        };
+    }
+
+    public async Task<FinancialReconciliationCorrectionResult> DeleteFinancialReconciliationBillingRowsAsync(
+        IReadOnlyList<string> recordIds,
+        CancellationToken ct = default)
+    {
+        var normalizedIds = (recordIds ?? Array.Empty<string>())
+            .Select(static value => value?.Trim() ?? "")
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (normalizedIds.Count == 0)
+            return new FinancialReconciliationCorrectionResult();
+
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            ct);
+        var actions = new List<FinancialReconciliationCorrectionAction>();
+
+        foreach (var recordId in normalizedIds)
+        {
+            try
+            {
+                using var response = await CallDataverseAppResponseAsync(
+                    $"/api/data/v9.2/{metadata.EntitySetName}({recordId})",
+                    "DELETE",
+                    ct);
+                if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    actions.Add(new FinancialReconciliationCorrectionAction
+                    {
+                        Entity = "Factura",
+                        Action = response.StatusCode == HttpStatusCode.NotFound ? "Omitida" : "Eliminada",
+                        RecordId = recordId,
+                        Notes = response.StatusCode == HttpStatusCode.NotFound
+                            ? "Ya no existia en Dataverse al aplicar la eliminacion."
+                            : "Solo existia en Dataverse; se elimino desde conciliacion."
+                    });
+                    continue;
+                }
+
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "Dataverse app error {StatusCode} {ReasonPhrase}. Body: {Body}",
+                    (int)response.StatusCode,
+                    response.ReasonPhrase,
+                    body);
+                throw new InvalidOperationException(BuildDataverseAppFailureMessage(response.StatusCode));
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "No fue posible eliminar la factura {RecordId} en Dataverse desde conciliacion.", recordId);
+                actions.Add(new FinancialReconciliationCorrectionAction
+                {
+                    Entity = "Factura",
+                    Action = "Error",
+                    RecordId = recordId,
                     Notes = ex.Message
                 });
             }
@@ -394,6 +584,7 @@ public sealed partial class DataverseService
             ReconciliationCreditNoteInvoiceNumberField,
             ReconciliationCreditNoteInvoicePrefixField,
             ReconciliationCreditNoteDateField,
+            ReconciliationCreditNoteCreatedField,
             ReconciliationCreditNoteTotalField,
             ReconciliationCreditNoteVatField,
             ReconciliationCreditNoteCustomerIdentificationField,
@@ -440,6 +631,7 @@ public sealed partial class DataverseService
                 recordId),
             CreditNoteNumber = ReadLong(item, ReconciliationCreditNoteSiigoNumberField),
             Date = ReadDateOnlyFromString(item, ReconciliationCreditNoteDateField),
+            CreatedAt = ReadFinancialReconciliationDateTimeOffset(item, ReconciliationCreditNoteCreatedField),
             InvoiceId = ReadString(item, ReconciliationCreditNoteInvoiceIdField).Trim(),
             InvoiceName = ReadString(item, ReconciliationCreditNoteInvoiceNameField).Trim(),
             InvoicePrefix = ReadString(item, ReconciliationCreditNoteInvoicePrefixField).Trim(),
@@ -463,6 +655,7 @@ public sealed partial class DataverseService
         CancellationToken ct)
     {
         var payload = BuildBillingInvoiceCorrectionPayload(metadata, attributes, invoice, relatedCreditNotes, current: null);
+        await AddFinancialBillingDashboardFieldsAsync(metadata, attributes, payload, invoice, current: null, ct);
         var body = await CallDataverseAppSendAsync(
             $"/api/data/v9.2/{metadata.EntitySetName}",
             "POST",
@@ -477,7 +670,7 @@ public sealed partial class DataverseService
             Action = "Creada",
             Document = FirstNonEmpty(invoice.Name, invoice.Id),
             RecordId = recordId,
-            NewTotal = invoice.Total,
+            NewTotal = ResolveSiigoInvoiceGrossTotal(invoice),
             NewVat = invoice.Vat,
             Notes = "No existia en Dataverse; se creo con base Siigo."
         };
@@ -492,6 +685,7 @@ public sealed partial class DataverseService
         CancellationToken ct)
     {
         var payload = BuildBillingInvoiceCorrectionPayload(metadata, attributes, invoice, relatedCreditNotes, current);
+        await AddFinancialBillingDashboardFieldsAsync(metadata, attributes, payload, invoice, current, ct);
         if (payload.Count == 0)
             return null;
 
@@ -508,7 +702,7 @@ public sealed partial class DataverseService
             Document = FirstNonEmpty(invoice.Name, current.InvoiceNumber, invoice.Id),
             RecordId = current.RecordId,
             PreviousTotal = current.Total,
-            NewTotal = invoice.Total,
+            NewTotal = ResolveSiigoInvoiceGrossTotal(invoice),
             PreviousVat = current.Vat,
             NewVat = invoice.Vat,
             Notes = BuildUpdateNotes(payload.Keys)
@@ -524,10 +718,10 @@ public sealed partial class DataverseService
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         var invoiceName = FirstNonEmpty(invoice.Name, BuildInvoiceName(invoice.Prefix, invoice.Number), invoice.Id);
-        var vatPercent = GuessVatPercent(invoice.Total, invoice.Vat);
-        var creditNoteTotal = RoundCurrency(relatedCreditNotes.Sum(static row => row.Total));
-        var adjustedTotal = Math.Max(0m, RoundCurrency(invoice.Total - creditNoteTotal));
+        var grossTotal = ResolveSiigoInvoiceGrossTotal(invoice);
+        var vatPercent = GuessVatPercent(grossTotal, invoice.Vat);
         var shouldCreate = current is null;
+        var hasTotalDifference = shouldCreate || HasVatDifference(current?.Total ?? 0m, grossTotal);
         var hasVatDifference = shouldCreate || HasVatDifference(current?.Vat ?? 0m, invoice.Vat);
 
         SetIfDifferent(payload, attributes, metadata.PrimaryNameField, current?.InvoiceNumber, invoiceName, force: shouldCreate);
@@ -538,16 +732,11 @@ public sealed partial class DataverseService
         SetIfDifferent(payload, attributes, ReconciliationBillingSiigoInvoiceNameField, current?.SiigoInvoiceName, invoice.Name, force: shouldCreate);
         SetIfDifferent(payload, attributes, _dashboardBillingCompanyTaxIdField, current?.CompanyTaxId, invoice.CustomerIdentification, force: shouldCreate);
         SetIfDifferent(payload, attributes, _dashboardBillingEmissionDateField, current?.EmissionDate, invoice.Date, force: shouldCreate);
-        SetCurrencyIfDifferent(payload, attributes, _dashboardBillingTotalField, current?.Total, invoice.Total, force: shouldCreate);
-        SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingBeforeVatField, null, RoundCurrency(invoice.Total - invoice.Vat), force: hasVatDifference);
+        SetCurrencyIfDifferent(payload, attributes, _dashboardBillingTotalField, current?.Total, grossTotal, force: shouldCreate);
+        SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingBeforeVatField, null, RoundCurrency(grossTotal - invoice.Vat), force: hasTotalDifference || hasVatDifference);
         SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingTaxValueField, current?.Vat, invoice.Vat, force: hasVatDifference);
-        SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingOriginalValueField, null, invoice.Total, force: shouldCreate);
-        SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingCreditNotesValueField, null, creditNoteTotal, force: shouldCreate || creditNoteTotal > 0m);
-        SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingAdjustedValueField, null, adjustedTotal, force: shouldCreate || creditNoteTotal > 0m);
-        SetIfDifferent(payload, attributes, ReconciliationBillingCreditNotesCountField, (int?)null, relatedCreditNotes.Count, force: shouldCreate || relatedCreditNotes.Count > 0);
-        SetIfDifferent(payload, attributes, ReconciliationBillingLastCreditNoteIdField, null, relatedCreditNotes.LastOrDefault()?.Id, force: relatedCreditNotes.Count > 0);
-        SetIfDifferent(payload, attributes, ReconciliationBillingLastCreditNoteDateField, null, relatedCreditNotes.LastOrDefault()?.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), force: relatedCreditNotes.Count > 0);
-        SetIfDifferent(payload, attributes, ReconciliationBillingCreditNoteLogField, null, BuildCreditNoteSyncLog(invoice, creditNoteTotal, adjustedTotal), force: shouldCreate || creditNoteTotal > 0m);
+        SetCurrencyIfDifferent(payload, attributes, _dashboardBillingVatField, current?.Vat, invoice.Vat, force: true);
+        SetCurrencyIfDifferent(payload, attributes, ReconciliationBillingOriginalValueField, null, grossTotal, force: hasTotalDifference);
         SetIfDifferent(payload, attributes, _dashboardBillingVatPercentField, current?.VatPercent, vatPercent, force: hasVatDifference);
         SetIfDifferent(payload, attributes, ReconciliationBillingRequiredTaxField, (int?)null, Convert.ToInt32(vatPercent, CultureInfo.InvariantCulture), force: shouldCreate);
 
@@ -557,6 +746,206 @@ public sealed partial class DataverseService
 
         return payload;
     }
+
+    private async Task AddFinancialBillingDashboardFieldsAsync(
+        RhEntityMetadata metadata,
+        ISet<string> attributes,
+        IDictionary<string, object?> payload,
+        SiigoReconciliationInvoice invoice,
+        ReconciliationDataverseBillingRow? current,
+        CancellationToken ct)
+    {
+        var defaults = await ResolveFinancialBillingDashboardDefaultsAsync(
+            metadata,
+            attributes,
+            invoice.CustomerIdentification,
+            current?.RecordId,
+            ct);
+
+        if (attributes.Contains(_dashboardBillingVerticalField)
+            && (current is null || IsMissingFinancialOption(current.VerticalOptionValue)))
+        {
+            payload[_dashboardBillingVerticalField] = defaults.VerticalOptionValue ?? DashboardVerticalCloudOption;
+        }
+
+        if (attributes.Contains(_dashboardBillingContractTypeField)
+            && (current is null || IsMissingFinancialOption(current.ContractTypeOptionValue)))
+        {
+            payload[_dashboardBillingContractTypeField] = defaults.ContractTypeOptionValue ?? DashboardContractTypeMonthlyOption;
+        }
+
+        if (!attributes.Contains(_dashboardBillingClientField)
+            || (current is not null && !string.IsNullOrWhiteSpace(current.ClientId)))
+        {
+            return;
+        }
+
+        var clientId = FirstNonEmpty(
+            defaults.ClientId,
+            await ResolveFinancialClientIdByTaxIdAppAsync(invoice.CustomerIdentification, ct));
+        if (string.IsNullOrWhiteSpace(clientId))
+            return;
+
+        var navigationProperty = await ResolveFinancialLookupNavigationPropertyAppAsync(
+            metadata.LogicalName,
+            _dashboardBillingClientField,
+            _dashboardBillingClientField,
+            ct);
+        if (string.IsNullOrWhiteSpace(navigationProperty))
+            return;
+
+        payload[$"{navigationProperty}@odata.bind"] = $"/{ClientsEntitySetName}({clientId})";
+    }
+
+    private async Task<FinancialBillingDashboardDefaults> ResolveFinancialBillingDashboardDefaultsAsync(
+        RhEntityMetadata metadata,
+        ISet<string> attributes,
+        string customerIdentification,
+        string? currentRecordId,
+        CancellationToken ct)
+    {
+        var digits = ExtractDigits(customerIdentification);
+        if (string.IsNullOrWhiteSpace(digits) || !attributes.Contains(_dashboardBillingCompanyTaxIdField))
+            return new FinancialBillingDashboardDefaults();
+
+        var select = BuildFinancialReconciliationBillingSelectClause(metadata, attributes);
+        var filter = $"{_dashboardBillingCompanyTaxIdField} eq '{EscapeOdataLiteral(digits)}'";
+        var relativeUrl =
+            $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={_dashboardBillingEmissionDateField} desc&$top=25";
+
+        List<ReconciliationDataverseBillingRow> rows;
+        try
+        {
+            rows = (await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders))
+                .Select(item =>
+                {
+                    var parsed = ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField);
+                    return parsed is null ? null : BuildFinancialReconciliationBillingRow(item, parsed, attributes);
+                })
+                .Where(static row => row is not null)
+                .Cast<ReconciliationDataverseBillingRow>()
+                .Where(row => string.IsNullOrWhiteSpace(currentRecordId)
+                    || !string.Equals(row.RecordId, currentRecordId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(ex, "No fue posible resolver defaults de facturacion para el NIT {CustomerIdentification}.", customerIdentification);
+            return new FinancialBillingDashboardDefaults();
+        }
+
+        return new FinancialBillingDashboardDefaults
+        {
+            ClientId = rows.Select(static row => row.ClientId).FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? "",
+            VerticalOptionValue = ResolveMostRecentFinancialOption(rows.Select(static row => row.VerticalOptionValue)),
+            ContractTypeOptionValue = ResolveMostRecentFinancialOption(rows.Select(static row => row.ContractTypeOptionValue))
+        };
+    }
+
+    private async Task<string> ResolveFinancialClientIdByTaxIdAppAsync(string customerIdentification, CancellationToken ct)
+    {
+        var digits = ExtractDigits(customerIdentification);
+        if (string.IsNullOrWhiteSpace(digits))
+            return "";
+
+        var select = $"{FinancialClientNameField},{FinancialClientNitField},cr07a_clienteid";
+        var filters = new List<string>();
+        if (int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+            filters.Add($"{FinancialClientNitField} eq {intValue.ToString(CultureInfo.InvariantCulture)}");
+
+        var escaped = EscapeOdataLiteral(digits);
+        filters.Add($"{FinancialClientNitField} eq '{escaped}' or contains({FinancialClientNitField},'{escaped}')");
+
+        foreach (var filter in filters.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var relativeUrl = $"/api/data/v9.2/{ClientsEntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={FinancialClientNameField} asc&$top=25";
+                var rows = await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+                var matches = rows
+                    .Select(item => new
+                    {
+                        Id = ReadString(item, "cr07a_clienteid").Trim(),
+                        NitDigits = ExtractDigits(ReadString(item, FinancialClientNitField))
+                    })
+                    .Where(row => !string.IsNullOrWhiteSpace(row.Id)
+                        && !string.IsNullOrWhiteSpace(row.NitDigits)
+                        && (string.Equals(row.NitDigits, digits, StringComparison.OrdinalIgnoreCase)
+                            || row.NitDigits.StartsWith(digits, StringComparison.OrdinalIgnoreCase)))
+                    .Select(static row => row.Id)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (matches.Count == 1)
+                    return matches[0];
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                _logger.LogWarning(ex, "No fue posible resolver cliente por NIT {CustomerIdentification} con filtro {Filter}.", customerIdentification, filter);
+            }
+        }
+
+        return "";
+    }
+
+    private async Task<string> ResolveFinancialLookupNavigationPropertyAppAsync(
+        string entityLogicalName,
+        string lookupLogicalName,
+        string fallbackNavigationProperty,
+        CancellationToken ct)
+    {
+        var cacheKey = $"{entityLogicalName}|{lookupLogicalName}";
+        if (_rhLookupNavigationPropertyCache.TryGetValue(cacheKey, out var cached)
+            && !string.IsNullOrWhiteSpace(cached))
+        {
+            return cached;
+        }
+
+        try
+        {
+            var relativeUrl =
+                $"/api/data/v9.2/EntityDefinitions(LogicalName='{EscapeOdataLiteral(entityLogicalName)}')" +
+                "?$select=LogicalName" +
+                "&$expand=ManyToOneRelationships($select=ReferencingAttribute,ReferencingEntityNavigationPropertyName)";
+            var json = await CallDataverseAppGetJsonAsync(relativeUrl, ct);
+
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("ManyToOneRelationships", out var relationships)
+                && relationships.ValueKind == JsonValueKind.Array)
+            {
+                var navigationProperty = relationships
+                    .EnumerateArray()
+                    .Where(relationship => string.Equals(
+                        ReadString(relationship, "ReferencingAttribute"),
+                        lookupLogicalName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(relationship => ReadString(relationship, "ReferencingEntityNavigationPropertyName"))
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+                if (!string.IsNullOrWhiteSpace(navigationProperty))
+                {
+                    _rhLookupNavigationPropertyCache[cacheKey] = navigationProperty.Trim();
+                    return navigationProperty.Trim();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible resolver la propiedad de navegacion app-only del lookup {LookupLogicalName} para la entidad {EntityLogicalName}.",
+                lookupLogicalName,
+                entityLogicalName);
+        }
+
+        return fallbackNavigationProperty;
+    }
+
+    private static bool IsMissingFinancialOption(int? value) =>
+        !value.HasValue || value.Value == 0;
+
+    private static int? ResolveMostRecentFinancialOption(IEnumerable<int?> values) =>
+        values.FirstOrDefault(static value => value.HasValue && value.Value != 0);
 
     private async Task<FinancialReconciliationCorrectionAction?> CreateCreditNoteFromSiigoAsync(
         RhEntityMetadata metadata,
@@ -580,7 +969,7 @@ public sealed partial class DataverseService
             Action = "Creada",
             Document = FirstNonEmpty(creditNote.Name, creditNote.Id),
             RecordId = recordId,
-            NewTotal = creditNote.Total,
+            NewTotal = ResolveSiigoCreditNoteGrossTotal(creditNote),
             NewVat = creditNote.Vat,
             Notes = billingMatch is null
                 ? "Se creo la NC, pero no se encontro la factura afectada en Dataverse."
@@ -613,7 +1002,7 @@ public sealed partial class DataverseService
             Document = FirstNonEmpty(creditNote.Name, current.CreditNoteName, creditNote.Id),
             RecordId = current.RecordId,
             PreviousTotal = current.Total,
-            NewTotal = creditNote.Total,
+            NewTotal = ResolveSiigoCreditNoteGrossTotal(creditNote),
             PreviousVat = current.Vat,
             NewVat = creditNote.Vat,
             Notes = BuildUpdateNotes(payload.Keys)
@@ -630,6 +1019,7 @@ public sealed partial class DataverseService
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         var shouldCreate = current is null;
         var creditNoteName = FirstNonEmpty(creditNote.Name, creditNote.Id);
+        var grossTotal = ResolveSiigoCreditNoteGrossTotal(creditNote);
 
         SetIfDifferent(payload, attributes, metadata.PrimaryNameField, current?.CreditNoteName, creditNoteName, force: shouldCreate);
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteSiigoIdField, current?.CreditNoteId, creditNote.Id, force: shouldCreate);
@@ -641,7 +1031,7 @@ public sealed partial class DataverseService
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteInvoiceNumberField, current?.InvoiceNumber, creditNote.InvoiceNumber, force: shouldCreate);
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteDateField, current?.Date, creditNote.Date, force: shouldCreate);
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteCreatedField, null, creditNote.CreatedAt?.ToString("O", CultureInfo.InvariantCulture), force: shouldCreate);
-        SetCurrencyIfDifferent(payload, attributes, ReconciliationCreditNoteTotalField, current?.Total, creditNote.Total, force: shouldCreate);
+        SetCurrencyIfDifferent(payload, attributes, ReconciliationCreditNoteTotalField, current?.Total, grossTotal, force: shouldCreate);
         SetCurrencyIfDifferent(payload, attributes, ReconciliationCreditNoteVatField, current?.Vat, creditNote.Vat, force: shouldCreate);
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteCustomerIdentificationField, current?.CustomerIdentification, creditNote.CustomerIdentification, force: shouldCreate);
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteCustomerIdField, null, creditNote.CustomerId, force: shouldCreate);
@@ -651,7 +1041,7 @@ public sealed partial class DataverseService
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteMatchByField, current?.MatchBy, ResolveCreditNoteMatchBy(creditNote, billingMatch), force: billingMatch is not null);
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteProcessedField, current?.Processed, billingMatch is not null, force: shouldCreate || current?.Processed != (billingMatch is not null));
         SetIfDifferent(payload, attributes, ReconciliationCreditNoteLogField, null, BuildCreditNoteProcessingLog(creditNote, billingMatch), force: true);
-        SetIfDifferent(payload, attributes, ReconciliationCreditNoteRawJsonField, null, Truncate(creditNote.RawJson, 100000), force: shouldCreate);
+        SetIfDifferent(payload, attributes, ReconciliationCreditNoteRawJsonField, null, Truncate(creditNote.RawJson, 100000), force: true);
 
         return payload;
     }
@@ -736,6 +1126,8 @@ public sealed partial class DataverseService
             ClientName = row.ClientName,
             CompanyTaxId = row.CompanyTaxId,
             EmissionDate = row.EmissionDate,
+            VerticalOptionValue = row.VerticalOptionValue == 0 ? null : row.VerticalOptionValue,
+            ContractTypeOptionValue = row.ContractTypeOptionValue == 0 ? null : row.ContractTypeOptionValue,
             Total = row.TotalInvoice,
             Vat = ResolveFinancialReconciliationBillingVat(item, attributes, row.VatValue),
             VatPercent = row.VatPercent == 0 ? null : row.VatPercent
@@ -818,7 +1210,7 @@ public sealed partial class DataverseService
             .ToDictionary(static group => group.Key, static group => BuildSiigoInvoiceKey(group.First()), StringComparer.OrdinalIgnoreCase);
         var result = new Dictionary<string, List<SiigoReconciliationCreditNote>>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var creditNote in creditNotes)
+        foreach (var creditNote in creditNotes.Where(IsAcceptedFinancialSiigoCreditNote))
         {
             var key = "";
             if (!string.IsNullOrWhiteSpace(creditNote.InvoiceId)
@@ -851,6 +1243,74 @@ public sealed partial class DataverseService
         return creditNotesByInvoiceKey.TryGetValue(key, out var rows)
             ? rows
             : Array.Empty<SiigoReconciliationCreditNote>();
+    }
+
+    private static bool IsImportableFinancialSiigoInvoice(SiigoReconciliationInvoice invoice) =>
+        !invoice.Annulled
+        && string.Equals(invoice.StampStatus?.Trim(), "Accepted", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAcceptedFinancialSiigoCreditNote(SiigoReconciliationCreditNote creditNote) =>
+        string.Equals(creditNote.StampStatus?.Trim(), "Accepted", StringComparison.OrdinalIgnoreCase);
+
+    private static decimal ResolveSiigoInvoiceGrossTotal(SiigoReconciliationInvoice invoice) =>
+        ResolveSiigoGrossTotal(invoice.Total, invoice.SuggestedWithholdingTotal, invoice.GrossTotal);
+
+    private static decimal ResolveSiigoCreditNoteGrossTotal(SiigoReconciliationCreditNote creditNote) =>
+        ResolveSiigoGrossTotal(creditNote.Total, creditNote.SuggestedWithholdingTotal, creditNote.GrossTotal);
+
+    private static decimal ResolveSiigoGrossTotal(decimal total, decimal suggestedWithholdingTotal, decimal grossTotal)
+    {
+        var calculated = RoundCurrency(total + suggestedWithholdingTotal);
+        return grossTotal == 0m && calculated != 0m
+            ? calculated
+            : RoundCurrency(grossTotal);
+    }
+
+    private static HashSet<string> BuildSelectedInvoiceKeySet(IEnumerable<string> values)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values ?? Array.Empty<string>())
+        {
+            var trimmed = value?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(trimmed))
+                continue;
+
+            result.Add(trimmed);
+            var normalized = NormalizeDocumentKey(trimmed);
+            if (!string.IsNullOrWhiteSpace(normalized))
+                result.Add(normalized);
+        }
+
+        return result;
+    }
+
+    private static bool IsSelectedInvoice(SiigoReconciliationInvoice invoice, ISet<string> selectedKeys)
+    {
+        foreach (var key in EnumerateInvoiceSelectionKeys(invoice))
+        {
+            if (selectedKeys.Contains(key))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> EnumerateInvoiceSelectionKeys(SiigoReconciliationInvoice invoice)
+    {
+        var candidates = new[]
+        {
+            invoice.Id,
+            invoice.Name,
+            NormalizeDocumentKey(invoice.Name),
+            BuildPrefixNumberKey(invoice.Prefix, invoice.Number?.ToString(CultureInfo.InvariantCulture)),
+            invoice.Number?.ToString(CultureInfo.InvariantCulture) ?? ""
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(candidate))
+                yield return candidate.Trim();
+        }
     }
 
     private static string BuildSiigoInvoiceKey(SiigoReconciliationInvoice invoice) =>
@@ -982,7 +1442,7 @@ public sealed partial class DataverseService
     }
 
     private static string BuildCreditNoteSyncLog(SiigoReconciliationInvoice invoice, decimal creditNoteTotal, decimal adjustedTotal) =>
-        $"Conciliacion mensual {DateTimeOffset.Now:O}. Siigo={invoice.Total:0.00} NC={creditNoteTotal:0.00} Neto={adjustedTotal:0.00}.";
+        $"Conciliacion mensual {DateTimeOffset.Now:O}. Siigo={ResolveSiigoInvoiceGrossTotal(invoice):0.00} NC={creditNoteTotal:0.00} Neto={adjustedTotal:0.00}.";
 
     private static string BuildCreditNoteProcessingLog(SiigoReconciliationCreditNote creditNote, ReconciliationDataverseBillingRow? billingMatch) =>
         billingMatch is null
@@ -1053,6 +1513,20 @@ public sealed partial class DataverseService
         return null;
     }
 
+    private static DateTimeOffset? ReadFinancialReconciliationDateTimeOffset(JsonElement item, string fieldName)
+    {
+        var text = ReadString(item, fieldName).Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var offset))
+            return offset;
+
+        return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dateTime)
+            ? new DateTimeOffset(dateTime.ToUniversalTime())
+            : null;
+    }
+
     private static int? TryParsePositiveInt(string value)
     {
         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0)
@@ -1077,6 +1551,13 @@ public sealed partial class DataverseService
         public Dictionary<string, ReconciliationDataverseBillingRow> BySiigoId { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, ReconciliationDataverseBillingRow> ByName { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, ReconciliationDataverseBillingRow> ByPrefixAndNumber { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class FinancialBillingDashboardDefaults
+    {
+        public string ClientId { get; init; } = "";
+        public int? VerticalOptionValue { get; init; }
+        public int? ContractTypeOptionValue { get; init; }
     }
 
     private async Task<RhEntityMetadata> ResolveFinancialReconciliationEntityMetadataAppAsync(

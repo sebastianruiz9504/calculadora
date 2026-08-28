@@ -1,0 +1,294 @@
+@model PrimaLegalPageViewModel
+@{
+    ViewData["Title"] = "Prima legal";
+    var board = Model.Board;
+}
+
+@functions {
+    private static string Money(decimal value) =>
+        value.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("es-CO"));
+
+    private static string Number(decimal value) =>
+        value.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-CO"));
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/prima-legal.css" asp-append-version="true" />
+}
+
+<div class="prima-shell">
+    <section class="prima-hero">
+        <div>
+            <div class="prima-kicker">Admin · Nomina</div>
+            <h1 class="prima-title">Prima legal</h1>
+            <p class="prima-subtitle">
+                Liquidacion semestral con base en los pagos de nomina registrados en Dataverse.
+            </p>
+        </div>
+        <div class="prima-user-pill">
+            <span>Acceso</span>
+            <strong>@Model.CurrentUser.Email</strong>
+        </div>
+    </section>
+
+    <section class="prima-panel">
+        <form class="prima-filter" method="get">
+            <label class="prima-field" for="year">
+                <span>Ano</span>
+                <select class="form-select" id="year" name="year">
+                    @foreach (var year in Model.YearOptions)
+                    {
+                        <option value="@year" selected="@(year == Model.SelectedYear)">@year</option>
+                    }
+                </select>
+            </label>
+            <label class="prima-field" for="semester">
+                <span>Semestre</span>
+                <select class="form-select" id="semester" name="semester">
+                    <option value="1" selected="@(Model.SelectedSemester == 1)">Enero - Junio</option>
+                    <option value="2" selected="@(Model.SelectedSemester == 2)">Julio - Diciembre</option>
+                </select>
+            </label>
+            <button class="btn btn-primary" type="submit">Consultar</button>
+        </form>
+    </section>
+
+    <section class="prima-summary" aria-label="Resumen prima legal">
+        <article class="prima-metric">
+            <span>Periodo</span>
+            <strong>@board.SemesterLabel</strong>
+            <small>@board.PeriodLabel</small>
+        </article>
+        <article class="prima-metric">
+            <span>Fecha limite</span>
+            <strong>@board.PaymentDeadlineDisplay</strong>
+            <small>@board.LegalDaysInSemester dias legales</small>
+        </article>
+        <article class="prima-metric">
+            <span>Total a pagar</span>
+            <strong data-prima-total>@Money(board.TotalPrimaAmount)</strong>
+            <small>@board.EmployeeCount empleados</small>
+        </article>
+        <article class="prima-metric prima-metric--cloud">
+            <span>Cloud</span>
+            <strong data-cloud-total>@Money(board.TotalCloudAmount)</strong>
+            <small>segun porcentaje por empleado</small>
+        </article>
+        <article class="prima-metric prima-metric--copiers">
+            <span>Copiers</span>
+            <strong data-copiers-total>@Money(board.TotalCopiersAmount)</strong>
+            <small>segun porcentaje por empleado</small>
+        </article>
+    </section>
+
+    <section class="prima-panel">
+        <div class="prima-section-header">
+            <div>
+                <div class="prima-kicker">Base legal</div>
+                <h2>Liquidacion por empleado</h2>
+            </div>
+            <div class="prima-rule">
+                <strong>Formula</strong>
+                <span>(acumulado / dias acumulados x 30) x dias base / 360</span>
+            </div>
+        </div>
+
+        @if (TempData["PrimaLegalMessage"] is string savedMessage)
+        {
+            <div class="prima-save-alert">@savedMessage</div>
+        }
+
+        @if (board.Rows.Count == 0)
+        {
+            <div class="prima-empty">No hay registros de nomina con tipo de contrato para el semestre seleccionado.</div>
+        }
+        else
+        {
+            <form method="post" asp-action="Liquidar" class="prima-liquidation-form" data-prima-form>
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Year" value="@Model.SelectedYear" />
+                <input type="hidden" name="Semester" value="@Model.SelectedSemester" />
+
+                <div class="table-responsive prima-table-wrap">
+                    <table class="table prima-table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Empleado</th>
+                                <th class="text-end">Meses</th>
+                                <th class="text-end">Dias acum.</th>
+                                <th class="text-end">Dias base</th>
+                                <th class="text-end">Acumulado</th>
+                                <th class="text-end">Salario promedio</th>
+                                <th class="text-end">Cloud</th>
+                                <th class="text-end">Copiers</th>
+                                <th class="text-end">Prima a pagar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var index = 0; index < board.Rows.Count; index++)
+                            {
+                                var row = board.Rows[index];
+                                <tr data-prima-row data-prima-amount="@row.PrimaAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                                    <td>
+                                        <input type="hidden" name="Rows[@index].EmployeeId" value="@row.EmployeeId" />
+                                        <details class="prima-detail">
+                                            <summary>
+                                                <strong>@row.EmployeeName</strong>
+                                                <span>@row.ContractTypeLabel</span>
+                                            </summary>
+                                            <div class="prima-detail-body">
+                                                @if (!string.IsNullOrWhiteSpace(row.AdmissionDateDisplay))
+                                                {
+                                                    <div class="prima-note">Ingreso: @row.AdmissionDateDisplay</div>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(row.ExitDateDisplay))
+                                                {
+                                                    <div class="prima-note">Salida: @row.ExitDateDisplay</div>
+                                                }
+                                                @if (row.MissingMonthLabels.Count > 0)
+                                                {
+                                                    <div class="prima-alert">Salario promedio tomado de acumulado / dias acumulados. Faltan: @string.Join(", ", row.MissingMonthLabels)</div>
+                                                }
+                                                @foreach (var warning in row.Warnings)
+                                                {
+                                                    <div class="prima-alert">@warning</div>
+                                                }
+                                                <table class="table prima-detail-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Mes</th>
+                                                            <th class="text-end">Dias sueldo</th>
+                                                            <th class="text-end">Dias novedad</th>
+                                                            <th class="text-end">Dias acum.</th>
+                                                            <th class="text-end">No rem.</th>
+                                                            <th class="text-end">Sueldo</th>
+                                                            <th class="text-end">Auxilio no salarial</th>
+                                                            <th class="text-end">Ausencias incluidas</th>
+                                                            <th class="text-end">Vacaciones excluidas</th>
+                                                            <th class="text-end">Bono</th>
+                                                            <th class="text-end">Comision</th>
+                                                            <th class="text-end">Base</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var month in row.PayrollMonths)
+                                                        {
+                                                            <tr>
+                                                                <td>@month.MonthLabel</td>
+                                                                <td class="text-end">@Number(month.LegalDays)</td>
+                                                                <td class="text-end">@Number(month.PaidAbsenceDays)</td>
+                                                                <td class="text-end">@Number(month.AccumulatedDays)</td>
+                                                                <td class="text-end">@Number(month.NonRemuneratedDays)</td>
+                                                                <td class="text-end">@Money(month.SalaryBase)</td>
+                                                                <td class="text-end">@Money(month.ConnectivityAllowance)</td>
+                                                                <td class="text-end">@Money(month.IncludedAbsencePayment)</td>
+                                                                <td class="text-end">@Money(month.ExcludedVacationPayment)</td>
+                                                                <td class="text-end">@Money(month.BonusCompliance)</td>
+                                                                <td class="text-end">@Money(month.Commissions)</td>
+                                                                <td class="text-end"><strong>@Money(month.IncludedBase)</strong></td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </details>
+                                    </td>
+                                    <td class="text-end">@row.LoadedMonths / 6</td>
+                                    <td class="text-end">@Number(row.AccumulatedDays)</td>
+                                    <td class="text-end">@Number(row.BaseDays)</td>
+                                    <td class="text-end">@Money(row.AccumulatedBase)</td>
+                                    <td class="text-end">@Money(row.BaseAmount)</td>
+                                    <td class="text-end">
+                                        <div class="prima-share prima-share--cloud">
+                                            <input class="form-control form-control-sm prima-percent prima-percent--cloud" type="number" min="0" max="100" step="0.01" name="Rows[@index].CloudPercentage" value="@row.CloudPercentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" data-cloud-percent />
+                                            <span data-cloud-amount>@Money(row.CloudAmount)</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="prima-share prima-share--copiers">
+                                            <input class="form-control form-control-sm prima-percent prima-percent--copiers" type="number" min="0" max="100" step="0.01" name="Rows[@index].CopiersPercentage" value="@row.CopiersPercentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" data-copiers-percent />
+                                            <span data-copiers-amount>@Money(row.CopiersAmount)</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-end"><strong>@Money(row.PrimaAmount)</strong></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="prima-actions">
+                    <button class="btn btn-primary" type="submit">Liquidar y guardar</button>
+                </div>
+            </form>
+        }
+    </section>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.querySelector("[data-prima-form]");
+            if (!form) return;
+
+            const formatter = new Intl.NumberFormat("es-CO", {
+                style: "currency",
+                currency: "COP",
+                maximumFractionDigits: 0
+            });
+
+            const clamp = (value) => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+
+            const updateTotals = () => {
+                let primaTotal = 0;
+                let cloudTotal = 0;
+                let copiersTotal = 0;
+
+                form.querySelectorAll("[data-prima-row]").forEach((row) => {
+                    const prima = Number(row.dataset.primaAmount || 0);
+                    const cloudInput = row.querySelector("[data-cloud-percent]");
+                    const cloudPercent = clamp(Number(cloudInput?.value || 0));
+                    const cloudAmount = Math.round(prima * cloudPercent / 100);
+                    const copiersAmount = Math.round(prima - cloudAmount);
+
+                    primaTotal += prima;
+                    cloudTotal += cloudAmount;
+                    copiersTotal += copiersAmount;
+
+                    const cloudCell = row.querySelector("[data-cloud-amount]");
+                    const copiersCell = row.querySelector("[data-copiers-amount]");
+                    if (cloudCell) cloudCell.textContent = formatter.format(cloudAmount);
+                    if (copiersCell) copiersCell.textContent = formatter.format(copiersAmount);
+                });
+
+                document.querySelector("[data-prima-total]")?.replaceChildren(document.createTextNode(formatter.format(primaTotal)));
+                document.querySelector("[data-cloud-total]")?.replaceChildren(document.createTextNode(formatter.format(cloudTotal)));
+                document.querySelector("[data-copiers-total]")?.replaceChildren(document.createTextNode(formatter.format(copiersTotal)));
+            };
+
+            form.addEventListener("input", (event) => {
+                const target = event.target;
+                const row = target.closest("[data-prima-row]");
+                if (!row) return;
+
+                const cloudInput = row.querySelector("[data-cloud-percent]");
+                const copiersInput = row.querySelector("[data-copiers-percent]");
+                if (!cloudInput || !copiersInput) return;
+
+                if (target.matches("[data-cloud-percent]")) {
+                    const cloud = clamp(Number(cloudInput.value));
+                    cloudInput.value = cloud.toFixed(2).replace(/\\.00$/, "");
+                    copiersInput.value = (100 - cloud).toFixed(2).replace(/\\.00$/, "");
+                } else if (target.matches("[data-copiers-percent]")) {
+                    const copiers = clamp(Number(copiersInput.value));
+                    copiersInput.value = copiers.toFixed(2).replace(/\\.00$/, "");
+                    cloudInput.value = (100 - copiers).toFixed(2).replace(/\\.00$/, "");
+                }
+
+                updateTotals();
+            });
+
+            updateTotals();
+        })();
+    </script>
+}

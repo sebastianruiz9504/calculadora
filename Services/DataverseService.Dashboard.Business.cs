@@ -2,12 +2,22 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Dashboard;
+using CotizadorInterno.Web.Models.Licenciamiento;
+using CotizadorInterno.Web.Models.Nomina;
 using CotizadorInterno.Web.Models.Puntajes;
 
 namespace CotizadorInterno.Web.Services;
 
 public sealed partial class DataverseService
 {
+    private static readonly string[] BusinessProjectionExcludedPayrollNames =
+    {
+        "german ruiz",
+        "jeison romero",
+        "luis carlos rivera",
+        "yolanda rosero"
+    };
+
     public async Task<BusinessDashboardDto> GetBusinessDashboardAsync(CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -23,6 +33,7 @@ public sealed partial class DataverseService
             .Select(ResolveBusinessProductKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
+        var projection = await BuildBusinessProjectionAsync(rows, today, httpContext.User, ct);
 
         return new BusinessDashboardDto
         {
@@ -38,6 +49,7 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos negocios cerrados.",
             EmptyStateMessage = "Cuando existan filas en cr07a_salesperformancerecords las veras aqui.",
             Kpis = BuildBusinessKpis(rows, clientGroups, totalAnnualValue, monthlyBilling, productsCount),
+            Projection = projection,
             TopContracts = clientGroups.Take(10).ToList(),
             LineSummaries = BuildBusinessLineSummaries(rows, totalAnnualValue),
             TopProducts = BuildBusinessProductSummaries(rows, totalAnnualValue),
@@ -73,7 +85,6 @@ public sealed partial class DataverseService
         var quantity = ReadIntFlexible(item, DefaultSalesPerformanceQuantityField);
         var unitSaleUsd = RoundCurrency(ReadDecimal(item, DefaultSalesPerformanceUnitSaleUsdField) ?? 0m);
         var billingDay = ReadIntFlexible(item, _salesPerformanceBillingDayField);
-        var productLineValue = ReadOptionValue(item, _salesPerformanceProductLineField);
         var contractTypeValue = ReadOptionValue(item, _salesPerformanceContractTypeField);
         var clientName = FirstNonEmpty(
             ReadLookupFormattedValue(item, clientLookupProperty),
@@ -84,8 +95,12 @@ public sealed partial class DataverseService
             ReadLookupFormattedValue(item, productLookupProperty),
             ReadString(item, $"{_salesPerformanceProductLookupLogicalName}{FormattedValueAnnotationSuffix}"),
             ReadString(item, _salesPerformanceProductLookupLogicalName),
+            ReadString(item, "cr07a_productname"),
             ReadString(item, _salesPerformancePrimaryNameField),
             "Producto sin asignar");
+        var productLineValue = ResolveBusinessProductLineValue(
+            ReadOptionValue(item, _salesPerformanceProductLineField),
+            productName);
 
         return new BusinessRecordRow
         {
@@ -95,7 +110,7 @@ public sealed partial class DataverseService
             ProductId = ReadString(item, productLookupProperty).Trim(),
             ProductName = productName.Trim(),
             ProductLineValue = productLineValue,
-            ProductLineLabel = ResolveBusinessProductLineLabel(item, productLineValue),
+            ProductLineLabel = ResolveBusinessProductLineLabel(item, productLineValue, productName),
             ContractTypeValue = contractTypeValue,
             ContractTypeLabel = ResolveBusinessContractTypeLabel(item, contractTypeValue),
             Quantity = quantity,
@@ -160,6 +175,353 @@ public sealed partial class DataverseService
                 ValueFormat = "number",
                 SecondaryLabel = "Unidades",
                 SecondaryValue = quantity.ToString("N0", DashboardCulture)
+            }
+        };
+    }
+
+    private async Task<BusinessProjectionDto> BuildBusinessProjectionAsync(
+        IReadOnlyList<BusinessRecordRow> rows,
+        DateOnly today,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+        var monthEnd = monthStart.AddMonths(1);
+        var periodLabel = ToTitleCase(monthStart.ToString("MMMM yyyy", DashboardCulture));
+        var recurringRows = rows
+            .Where(static row => row.BillingDay > 0)
+            .ToList();
+        var recurringBillingUsd = RoundCurrency(recurringRows.Sum(static row => row.MonthlyBillingUsd));
+        var recurringBillingCop = RoundCurrency(recurringBillingUsd * UtilityStandardTrm);
+        var costs = await GetBusinessProjectionMonthlyCostsAsync(monthStart, ct);
+        var payroll = await GetBusinessProjectionCurrentPayrollAsync(monthStart, ct);
+        var projectedUtility = RoundCurrency(recurringBillingCop - costs.TotalCost);
+        var projectedAfterPayroll = RoundCurrency(projectedUtility - payroll.TotalPayroll);
+        var monthlyRows = await BuildBusinessProjectionMonthlyRowsAsync(today, user, ct);
+
+        var projection = new BusinessProjectionDto
+        {
+            PeriodLabel = periodLabel,
+            DateRangeLabel = BuildDateRangeLabel(monthStart, monthEnd),
+            HistoryPeriodLabel = BuildBusinessProjectionHistoryPeriodLabel(monthlyRows),
+            StandardTrm = UtilityStandardTrm,
+            RecurringBillingUsd = recurringBillingUsd,
+            RecurringBillingCop = recurringBillingCop,
+            RecurringRecordsCount = recurringRows.Count,
+            CurrentCostsCop = costs.TotalCost,
+            CostRecordsCount = costs.RecordsCount,
+            ProjectedMonthlyUtilityCop = projectedUtility,
+            ProjectedMonthlyUtilityPercent = CalculateBusinessProjectionPercent(projectedUtility, recurringBillingCop),
+            CurrentPayrollCop = payroll.TotalPayroll,
+            PayrollRecordsCount = payroll.RecordsCount,
+            ProjectedMonthlyUtilityAfterPayrollCop = projectedAfterPayroll,
+            ProjectedMonthlyUtilityAfterPayrollPercent = CalculateBusinessProjectionPercent(projectedAfterPayroll, recurringBillingCop),
+            MonthlyRows = monthlyRows
+        };
+        projection.Kpis = BuildBusinessProjectionKpis(projection);
+
+        return projection;
+    }
+
+    private async Task<IReadOnlyList<BusinessProjectionMonthRowDto>> BuildBusinessProjectionMonthlyRowsAsync(
+        DateOnly today,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var startDate = new DateOnly(2026, 1, 1);
+        if (today < startDate)
+            return Array.Empty<BusinessProjectionMonthRowDto>();
+
+        var months = BuildUtilityMonthSequence(startDate, today);
+        var monthMap = months.ToDictionary(
+            static month => month,
+            static month => new BusinessProjectionMonthAccumulator { Month = month });
+
+        await ApplyBusinessProjectionBillingHistoryAsync(monthMap, startDate, today, user, ct);
+        await ApplyBusinessProjectionCostHistoryAsync(monthMap, user, ct);
+        await ApplyBusinessProjectionPayrollHistoryAsync(monthMap, ct);
+
+        return months
+            .OrderByDescending(static month => month)
+            .Select(month =>
+            {
+                var item = monthMap[month];
+                var utility = RoundCurrency(item.RealMonthlyBillingCop - item.CurrentCostsCop);
+                var netUtility = RoundCurrency(utility - item.PayrollCop);
+
+                return new BusinessProjectionMonthRowDto
+                {
+                    Key = month.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+                    MonthYearLabel = ToTitleCase(month.ToString("MMMM yyyy", DashboardCulture)),
+                    RealMonthlyBillingCop = item.RealMonthlyBillingCop,
+                    BillingRecordsCount = item.BillingRecordsCount,
+                    CurrentCostsCop = item.CurrentCostsCop,
+                    CostRecordsCount = item.CostRecordsCount,
+                    ProjectedMonthlyUtilityCop = utility,
+                    ProjectedMonthlyUtilityPercent = CalculateBusinessProjectionPercent(utility, item.RealMonthlyBillingCop),
+                    PayrollCop = item.PayrollCop,
+                    PayrollRecordsCount = item.PayrollRecordsCount,
+                    ProjectedNetUtilityCop = netUtility,
+                    ProjectedNetUtilityPercent = CalculateBusinessProjectionPercent(netUtility, item.RealMonthlyBillingCop)
+                };
+            })
+            .ToList();
+    }
+
+    private async Task ApplyBusinessProjectionBillingHistoryAsync(
+        Dictionary<DateOnly, BusinessProjectionMonthAccumulator> monthMap,
+        DateOnly startDate,
+        DateOnly today,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            var billingMetadata = await ResolveRhEntityMetadataAsync(
+                _dashboardBillingTableLogicalName,
+                _dashboardBillingTableSetName,
+                _dashboardBillingIdField,
+                _dashboardBillingPrimaryNameField,
+                user,
+                ct);
+            var endExclusive = new DateOnly(today.Year, today.Month, 1).AddMonths(1);
+            var billingRows = await GetSiigoRevenueLedgerRowsAsync(
+                billingMetadata,
+                startDate,
+                endExclusive,
+                user,
+                ct);
+
+            foreach (var row in billingRows)
+            {
+                if (!row.EmissionDate.HasValue || !IsBusinessProjectionRealMonthlyBilling(row))
+                    continue;
+
+                var month = new DateOnly(row.EmissionDate.Value.Year, row.EmissionDate.Value.Month, 1);
+                if (!monthMap.TryGetValue(month, out var accumulator))
+                    continue;
+
+                accumulator.RealMonthlyBillingCop = RoundCurrency(accumulator.RealMonthlyBillingCop + row.NetBeforeVatValue);
+                if (!row.IsCreditNoteLedgerEntry)
+                    accumulator.BillingRecordsCount++;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "No fue posible calcular facturacion real mensual Cloud Monthly para la proyeccion de negocios.");
+        }
+    }
+
+    private async Task ApplyBusinessProjectionCostHistoryAsync(
+        Dictionary<DateOnly, BusinessProjectionMonthAccumulator> monthMap,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        try
+        {
+            var consumptionRows = await GetUtilityConsumptionRowsAsync(user, ct);
+            foreach (var row in consumptionRows)
+            {
+                if (!TryResolveUtilityConsumptionMonth(row, out var month)
+                    || !monthMap.TryGetValue(month, out var accumulator)
+                    || ClassifyUtilityContract(row.ContractTypeValue, row.ContractTypeLabel, "consumption") != UtilityBucket.Monthly)
+                {
+                    continue;
+                }
+
+                accumulator.CurrentCostsCop = RoundCurrency(accumulator.CurrentCostsCop + ResolveUtilityConsumptionCost(row));
+                accumulator.CostRecordsCount++;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "No fue posible calcular costos historicos Monthly de consumo Intcomex para la proyeccion de negocios.");
+        }
+    }
+
+    private async Task ApplyBusinessProjectionPayrollHistoryAsync(
+        Dictionary<DateOnly, BusinessProjectionMonthAccumulator> monthMap,
+        CancellationToken ct)
+    {
+        try
+        {
+            var years = monthMap.Keys
+                .Select(static month => month.Year)
+                .Distinct()
+                .OrderBy(static year => year)
+                .ToList();
+
+            foreach (var year in years)
+            {
+                var history = await GetNominaPaymentHistoryAsync(year, ct);
+                foreach (var row in history.Records ?? Array.Empty<NominaPaymentRecordDto>())
+                {
+                    if (IsBusinessProjectionExcludedPayrollRecord(row)
+                        || !TryParseBusinessProjectionPayrollDate(row.PaymentDateValue, out var paymentDate))
+                    {
+                        continue;
+                    }
+
+                    var month = new DateOnly(paymentDate.Year, paymentDate.Month, 1);
+                    if (!monthMap.TryGetValue(month, out var accumulator))
+                        continue;
+
+                    accumulator.PayrollCop = RoundCurrency(accumulator.PayrollCop + row.TotalPaid);
+                    accumulator.PayrollRecordsCount++;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "No fue posible calcular nomina historica para la proyeccion de negocios.");
+        }
+    }
+
+    private async Task<(decimal TotalCost, int RecordsCount)> GetBusinessProjectionMonthlyCostsAsync(
+        DateOnly monthStart,
+        CancellationToken ct)
+    {
+        try
+        {
+            var monthKey = monthStart.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            var cruce = await GetLicenciamientoCruceDashboardAsync(monthStart.Year, monthStart.Month, "month", ct);
+            var rows = (cruce.Rows ?? Array.Empty<LicenciamientoCruceRowDto>())
+                .Where(row => string.Equals(row.TipoContratoKey, LicenciamientoCruceMonthlyKey, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(row.MesCierre, monthKey, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            return (RoundCurrency(rows.Sum(static row => row.CostoLicenciamiento)), rows.Count);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "No fue posible calcular costos actuales de negocios desde consumo Intcomex.");
+            return (0m, 0);
+        }
+    }
+
+    private async Task<(decimal TotalPayroll, int RecordsCount)> GetBusinessProjectionCurrentPayrollAsync(
+        DateOnly monthStart,
+        CancellationToken ct)
+    {
+        try
+        {
+            var history = await GetNominaPaymentHistoryAsync(monthStart.Year, ct);
+            var records = (history.Records ?? Array.Empty<NominaPaymentRecordDto>())
+                .Where(row => IsBusinessProjectionPayrollRecordInMonth(row.PaymentDateValue, monthStart)
+                    && !IsBusinessProjectionExcludedPayrollRecord(row))
+                .ToList();
+
+            return (RoundCurrency(records.Sum(static row => row.TotalPaid)), records.Count);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "No fue posible calcular la ultima nomina del mes para negocios.");
+            return (0m, 0);
+        }
+    }
+
+    private static bool IsBusinessProjectionPayrollRecordInMonth(string? paymentDateValue, DateOnly monthStart)
+    {
+        if (!TryParseBusinessProjectionPayrollDate(paymentDateValue, out var paymentDate))
+        {
+            return false;
+        }
+
+        return paymentDate.Year == monthStart.Year && paymentDate.Month == monthStart.Month;
+    }
+
+    private static bool TryParseBusinessProjectionPayrollDate(string? paymentDateValue, out DateOnly paymentDate) =>
+        DateOnly.TryParseExact(
+            paymentDateValue ?? "",
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out paymentDate);
+
+    private static bool IsBusinessProjectionExcludedPayrollRecord(NominaPaymentRecordDto row)
+    {
+        var employeeName = NormalizeUtilityText(row.EmployeeName);
+        var recordName = NormalizeUtilityText(row.RecordName);
+
+        return BusinessProjectionExcludedPayrollNames.Any(excluded =>
+            (!string.IsNullOrWhiteSpace(employeeName)
+                && employeeName.Contains(excluded, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(recordName)
+                && recordName.Contains(excluded, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool IsBusinessProjectionRealMonthlyBilling(BillingRecordRow row)
+    {
+        var isCloud = row.VerticalOptionValue == DashboardVerticalCloudOption || IsUtilityCloudLabel(row.VerticalLabel);
+        var isMonthly = ClassifyUtilityContract(row.ContractTypeOptionValue, row.ContractTypeLabel, "billing") == UtilityBucket.Monthly;
+        return isCloud && isMonthly;
+    }
+
+    private static string BuildBusinessProjectionHistoryPeriodLabel(IReadOnlyList<BusinessProjectionMonthRowDto> monthlyRows)
+    {
+        if (monthlyRows.Count == 0)
+            return "Desde 2026";
+
+        var ordered = monthlyRows
+            .OrderBy(static row => row.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return $"{ordered.First().MonthYearLabel} - {ordered.Last().MonthYearLabel}";
+    }
+
+    private static IReadOnlyList<BusinessKpiDto> BuildBusinessProjectionKpis(BusinessProjectionDto projection)
+    {
+        return new[]
+        {
+            new BusinessKpiDto
+            {
+                Key = "recurring-monthly-billing",
+                Label = "Facturacion mensual recurrente",
+                Hint = $"Filas con dia de facturacion. TRM {FormatBusinessNumber(projection.StandardTrm)} para COP.",
+                Value = projection.RecurringBillingUsd,
+                ValueFormat = "usd",
+                SecondaryLabel = "Estimado",
+                SecondaryValue = FormatCopValue(projection.RecurringBillingCop)
+            },
+            new BusinessKpiDto
+            {
+                Key = "current-costs",
+                Label = "Costos actuales",
+                Hint = $"Consumo Intcomex Monthly de {projection.PeriodLabel}.",
+                Value = projection.CurrentCostsCop,
+                ValueFormat = "currency",
+                SecondaryLabel = "Cruces",
+                SecondaryValue = projection.CostRecordsCount.ToString("N0", DashboardCulture)
+            },
+            new BusinessKpiDto
+            {
+                Key = "projected-monthly-utility",
+                Label = "Utilidad mensual proyectada",
+                Hint = "Facturacion recurrente estimada menos costos actuales.",
+                Value = projection.ProjectedMonthlyUtilityCop,
+                ValueFormat = "currency",
+                SecondaryLabel = "Margen",
+                SecondaryValue = FormatBusinessPercent(projection.ProjectedMonthlyUtilityPercent)
+            },
+            new BusinessKpiDto
+            {
+                Key = "current-payroll",
+                Label = "Ultima nomina",
+                Hint = $"Pagos de nomina de {projection.PeriodLabel}.",
+                Value = projection.CurrentPayrollCop,
+                ValueFormat = "currency",
+                SecondaryLabel = "Registros",
+                SecondaryValue = projection.PayrollRecordsCount.ToString("N0", DashboardCulture)
+            },
+            new BusinessKpiDto
+            {
+                Key = "projected-net-utility",
+                Label = "Utilidad mensual neta proyectada",
+                Hint = "Utilidad mensual proyectada menos ultima nomina.",
+                Value = projection.ProjectedMonthlyUtilityAfterPayrollCop,
+                ValueFormat = "currency",
+                SecondaryLabel = "Margen neto",
+                SecondaryValue = FormatBusinessPercent(projection.ProjectedMonthlyUtilityAfterPayrollPercent)
             }
         };
     }
@@ -308,8 +670,17 @@ public sealed partial class DataverseService
             .ToList();
     }
 
-    private string ResolveBusinessProductLineLabel(JsonElement item, int optionValue)
+    private static int ResolveBusinessProductLineValue(int optionValue, string productName) =>
+        IsAcronisBusinessProduct(productName) ? 3 : optionValue;
+
+    private string ResolveBusinessProductLineLabel(JsonElement item, int optionValue) =>
+        ResolveBusinessProductLineLabel(item, optionValue, "");
+
+    private string ResolveBusinessProductLineLabel(JsonElement item, int optionValue, string productName)
     {
+        if (IsAcronisBusinessProduct(productName))
+            return "Acronis";
+
         var formatted = ReadString(item, $"{_salesPerformanceProductLineField}{FormattedValueAnnotationSuffix}").Trim();
         if (!string.IsNullOrWhiteSpace(formatted))
             return formatted;
@@ -319,6 +690,10 @@ public sealed partial class DataverseService
 
         return ResolveProductLineLabel(optionValue);
     }
+
+    private static bool IsAcronisBusinessProduct(string? productName) =>
+        !string.IsNullOrWhiteSpace(productName)
+        && productName.Contains("Acronis", StringComparison.OrdinalIgnoreCase);
 
     private string ResolveBusinessContractTypeLabel(JsonElement item, int optionValue)
     {
@@ -366,6 +741,23 @@ public sealed partial class DataverseService
     private static string FormatUsdValue(decimal value) =>
         $"USD {RoundCurrency(value).ToString("N0", DashboardCulture)}";
 
+    private static string FormatCopValue(decimal value) =>
+        $"COP {RoundCurrency(value).ToString("N0", DashboardCulture)}";
+
+    private static string FormatBusinessNumber(decimal value) =>
+        RoundCurrency(value).ToString("N0", DashboardCulture);
+
+    private static string FormatBusinessPercent(decimal? value) =>
+        value.HasValue ? $"{RoundCurrency(value.Value).ToString("N2", DashboardCulture)}%" : "Sin margen";
+
+    private static decimal? CalculateBusinessProjectionPercent(decimal utility, decimal sales)
+    {
+        if (Math.Abs(sales) < 0.01m)
+            return null;
+
+        return RoundCurrency((utility / sales) * 100m);
+    }
+
     private sealed class BusinessRecordRow
     {
         public string RecordId { get; set; } = "";
@@ -383,5 +775,16 @@ public sealed partial class DataverseService
         public DateOnly? RenewalDate { get; set; }
         public decimal MonthlyBillingUsd { get; set; }
         public decimal AnnualValueUsd { get; set; }
+    }
+
+    private sealed class BusinessProjectionMonthAccumulator
+    {
+        public DateOnly Month { get; set; }
+        public decimal RealMonthlyBillingCop { get; set; }
+        public int BillingRecordsCount { get; set; }
+        public decimal CurrentCostsCop { get; set; }
+        public int CostRecordsCount { get; set; }
+        public decimal PayrollCop { get; set; }
+        public int PayrollRecordsCount { get; set; }
     }
 }

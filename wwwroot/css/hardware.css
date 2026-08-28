@@ -179,7 +179,7 @@
 
 .hardware-toolbar {
     display: grid;
-    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 16px;
     padding-bottom: 14px;
     border-bottom: 1px solid var(--hardware-line);
@@ -214,6 +214,14 @@
     min-width: 0;
 }
 
+.hardware-field--year {
+    min-width: 120px;
+}
+
+.hardware-field--month {
+    min-width: 190px;
+}
+
 .hardware-field--span-2 {
     grid-column: span 2;
 }
@@ -231,6 +239,10 @@
 .hardware-field .form-select:focus {
     border-color: var(--hardware-brand);
     box-shadow: 0 0 0 .18rem rgba(23, 104, 172, .14);
+}
+
+.hardware-month-select {
+    min-height: 138px;
 }
 
 .hardware-status,
@@ -411,6 +423,167 @@
     font-size: 13px;
 }
 
+.hardware-dashboard-table {
+    min-width: 920px;
+}
+
+.hardware-dashboard-row {
+    cursor: pointer;
+}
+
+.hardware-dashboard-row:hover {
+    background: #f8fbff;
+}
+
+.hardware-dashboard-table tfoot td,
+.hardware-dashboard-detail-table tfoot td {
+    border-top: 1px solid var(--hardware-line);
+    background: var(--hardware-soft);
+    color: var(--hardware-ink);
+    font-weight: 700;
+}
+
+.hardware-dashboard-table__order {
+    cursor: default;
+}
+
+.hardware-dashboard-table__nested-row td {
+    padding: 0;
+    background: #fbfdff;
+}
+
+.hardware-dashboard-proformas {
+    padding: 12px;
+}
+
+.hardware-dashboard-proforma-table {
+    min-width: 860px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.hardware-dashboard-proforma-row {
+    cursor: pointer;
+}
+
+.hardware-dashboard-proforma-row:hover {
+    background: #f8fbff;
+}
+
+.hardware-dashboard-state-cell,
+.hardware-manual-state {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.hardware-manual-state {
+    min-width: min(420px, 100%);
+}
+
+.hardware-manual-state .form-select {
+    width: min(220px, 100%);
+}
+
+.hardware-dashboard-flow-row td {
+    padding: 12px;
+    background: #f7fbff;
+}
+
+.hardware-dashboard-flow {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(120px, 1fr));
+    gap: 8px;
+    align-items: stretch;
+}
+
+.hardware-dashboard-flow-step {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-content: start;
+    min-height: 112px;
+    padding: 8px;
+}
+
+.hardware-dashboard-flow-step__head {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 6px;
+    align-items: center;
+}
+
+.hardware-dashboard-flow-step__docs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.hardware-dashboard-detail-table {
+    min-width: 980px;
+}
+
+.hardware-dashboard-detail-table--wide {
+    min-width: 1800px;
+}
+
+.hardware-readonly {
+    display: grid;
+    gap: 16px;
+}
+
+.hardware-readonly-section {
+    display: grid;
+    gap: 10px;
+}
+
+.hardware-readonly-section h3 {
+    margin: 0;
+    color: var(--hardware-ink);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.hardware-readonly-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
+}
+
+.hardware-readonly-field {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--hardware-line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.hardware-readonly-field dt {
+    margin: 0 0 4px;
+    color: var(--hardware-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.hardware-readonly-field dd {
+    margin: 0;
+    color: var(--hardware-ink);
+    font-size: 13px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.hardware-readonly-docs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .hardware-commercial-create {
     gap: 18px;
 }
@@ -512,11 +685,11 @@
 }
 
 .hardware-supplier-payment-table th:nth-child(1) {
-    width: 18%;
+    width: 17%;
 }
 
 .hardware-supplier-payment-table th:nth-child(2) {
-    width: 22%;
+    width: 17%;
 }
 
 .hardware-supplier-payment-table th:nth-child(3) {
@@ -524,12 +697,51 @@
 }
 
 .hardware-supplier-payment-table th:nth-child(4) {
+    width: 10%;
+}
+
+.hardware-supplier-payment-table th:nth-child(5) {
+    width: 13%;
+}
+
+.hardware-supplier-payment-table th:nth-child(6),
+.hardware-supplier-payment-table th:nth-child(7) {
+    width: 11.5%;
+}
+
+.hardware-supplier-payment-history-table {
+    min-width: 980px;
+}
+
+.hardware-supplier-payment-history-table th:nth-child(1) {
+    width: 12%;
+}
+
+.hardware-supplier-payment-history-table th:nth-child(2) {
     width: 18%;
 }
 
-.hardware-supplier-payment-table th:nth-child(5),
-.hardware-supplier-payment-table th:nth-child(6) {
-    width: 11%;
+.hardware-supplier-payment-history-table th:nth-child(3),
+.hardware-supplier-payment-history-table th:nth-child(4) {
+    width: 16%;
+}
+
+.hardware-supplier-payment-history-table th:nth-child(5) {
+    width: 13%;
+}
+
+.hardware-supplier-payment-history-table th:nth-child(6) {
+    width: 15%;
+}
+
+.hardware-supplier-payment-history-table th:nth-child(7) {
+    width: 10%;
+}
+
+.hardware-supplier-payment-history__file {
+    display: grid;
+    gap: 4px;
+    justify-items: start;
 }
 
 .hardware-commercial-table th:nth-child(1) {
@@ -1496,11 +1708,16 @@ body.hardware-modal-open {
 
     .hardware-import-grid,
     .hardware-form__grid,
-    .hardware-form__grid--nested {
+    .hardware-form__grid--nested,
+    .hardware-readonly-grid {
         grid-template-columns: 1fr;
     }
 
     .hardware-flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hardware-dashboard-flow {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 

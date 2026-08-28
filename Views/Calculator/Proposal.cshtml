@@ -1,0 +1,210 @@
+@model CotizadorInterno.Web.Models.Calculator.CalculatorProposalViewModel
+@using System.Text.Json
+@{
+    Layout = null;
+    var jsonOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+    var backUrl = Url.Action("Index", "Calculator", new
+    {
+        groupId = Model.GroupId,
+        scenarioId = Model.ScenarioId,
+        crmDealId = string.IsNullOrWhiteSpace(Model.CrmDealId) ? null : Model.CrmDealId
+    }) ?? "/Calculator";
+}
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Configurar propuesta | Digital Tech</title>
+    <link rel="stylesheet" href="~/css/calculator-proposal.css" asp-append-version="true" />
+</head>
+<body>
+    @Html.AntiForgeryToken()
+    <header class="proposal-hero">
+        <div class="proposal-wrap proposal-hero__top">
+            <a class="back-link" href="@backUrl" aria-label="Volver a la calculadora">← Volver a la calculadora</a>
+            <span class="scenario-badge">Negocio guardado</span>
+        </div>
+        <div class="proposal-wrap proposal-hero__grid">
+            <div>
+                <img class="proposal-logo" src="~/img/proposals/v17/coverLogo.jpg" alt="Digital Tech" />
+                <span class="proposal-kicker">Configurador de propuesta comercial</span>
+                <h1>De la cotización a una oferta lista para el cliente.</h1>
+                <p>Completa los datos comerciales, selecciona el alcance y genera el PDF. La oferta económica proviene de la calculadora y está bloqueada.</p>
+                <div class="hero-actions">
+                    <a class="button button--primary" href="#section-client">Configurar propuesta</a>
+                    <button class="button button--ghost" id="heroGeneratePdf" type="button">Generar oferta PDF</button>
+                </div>
+            </div>
+            <aside class="hero-summary" aria-label="Resumen de la propuesta">
+                <span>Propuesta para</span>
+                <strong id="heroClient">@Model.ScenarioName</strong>
+                <div class="metric-grid">
+                    <div class="metric"><small>Negocio</small><b>@Model.ScenarioName</b></div>
+                    <div class="metric"><small>Escenarios</small><b id="heroPossibilityCount">—</b></div>
+                    <div class="metric"><small>Moneda</small><b id="heroCurrency">COP</b></div>
+                    <div class="metric"><small>Oferta económica</small><b>Por escenario</b></div>
+                </div>
+            </aside>
+        </div>
+    </header>
+
+    <main class="proposal-wrap proposal-main">
+        <nav class="section-nav" aria-label="Secciones del configurador">
+            <a href="#section-client">1. Datos</a>
+            <a href="#section-modules">2. Solución</a>
+            <a href="#section-economic">3. Oferta económica</a>
+            <a href="#section-value">4. Valor agregado</a>
+            <a href="#section-preview">5. Vista previa</a>
+        </nav>
+
+        <section class="proposal-section" id="section-client">
+            <div class="section-title">
+                <div><span>01</span><h2>Datos variables de la propuesta</h2></div>
+                <p>Estos datos se usan en la portada y en las condiciones comerciales del PDF.</p>
+            </div>
+            <div class="panel form-grid">
+                <div class="field field--wide">
+                    <label for="clientName">Cliente</label>
+                    <input id="clientName" maxlength="180" value="@Model.ScenarioName" />
+                </div>
+                <div class="field">
+                    <label for="clientNit">NIT del cliente</label>
+                    <input id="clientNit" maxlength="40" placeholder="Ej. 900.123.456-7" />
+                </div>
+                <div class="field">
+                    <label for="clientContact">Contacto del cliente</label>
+                    <input id="clientContact" maxlength="160" placeholder="Nombre y correo" />
+                </div>
+                <div class="field">
+                    <label for="sellerName">Comercial</label>
+                    <input id="sellerName" value="@Model.PreparedByName" readonly aria-readonly="true" />
+                </div>
+                <div class="field">
+                    <label for="sellerEmail">Correo del comercial</label>
+                    <input id="sellerEmail" value="@Model.PreparedByEmail" readonly aria-readonly="true" />
+                </div>
+                <div class="field">
+                    <label for="proposalType">Tipo de cotización</label>
+                    <select id="proposalType">
+                        <option>Seguridad</option>
+                        <option>Licenciamiento</option>
+                        <option>Backup y continuidad</option>
+                        <option>Azure / Infraestructura</option>
+                        <option>Copiers - Hardware</option>
+                        <option selected>Mixta</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="currency">Moneda</label>
+                    <select id="currency" disabled aria-disabled="true"><option selected>COP</option></select>
+                    <small>La moneda proviene de la calculadora y no se puede modificar.</small>
+                </div>
+                <div class="field">
+                    <label for="validity">Vigencia</label>
+                    <input id="validity" value="15 días calendario" maxlength="80" />
+                </div>
+                <div class="field">
+                    <label for="paymentTerms">Forma de pago</label>
+                    <input id="paymentTerms" value="A definir" maxlength="120" />
+                </div>
+                <div class="field">
+                    <label for="deliveryTime">Tiempo de entrega</label>
+                    <input id="deliveryTime" value="A definir" maxlength="120" />
+                </div>
+                <div class="field">
+                    <label for="contractDuration">Duración</label>
+                    <input id="contractDuration" readonly aria-readonly="true" />
+                </div>
+                <div class="field field--full">
+                    <label for="summary">Resumen ejecutivo</label>
+                    <textarea id="summary" maxlength="1200">Propuesta diseñada para fortalecer la operación del cliente con una solución integral, acompañamiento consultivo y soporte especializado de Digital Tech.</textarea>
+                </div>
+                <div class="field field--full">
+                    <label for="notes">Notas y aclaraciones</label>
+                    <textarea id="notes" maxlength="1200">Los valores y alcances están sujetos a las cantidades aprobadas, validación técnica final y condiciones comerciales indicadas.</textarea>
+                </div>
+            </div>
+        </section>
+
+        <section class="proposal-section" id="section-modules">
+            <div class="section-title">
+                <div><span>02</span><h2>Configuración de la solución</h2></div>
+                <p>Selecciona los frentes que aparecerán como alcance narrativo de la propuesta.</p>
+            </div>
+            <div class="panel">
+                <div class="module-helper">Los módulos describen la solución. No cambian los productos ni los valores bloqueados de la calculadora.</div>
+                <div class="module-grid" id="moduleGrid"></div>
+            </div>
+        </section>
+
+        <section class="proposal-section" id="section-economic">
+            <div class="section-title">
+                <div><span>03</span><h2>Oferta económica</h2></div>
+                <p>Cada escenario fue recalculado en el servidor y se presenta por separado. No se suman entre sí.</p>
+            </div>
+            <div class="panel economic-panel">
+                <div class="locked-banner"><span aria-hidden="true">🔒</span><div><strong>Ofertas bloqueadas</strong><small>Información recalculada en el servidor. Cada escenario muestra su Venta mensual y su Total contrato; para cambiar productos, cantidades, duración o valores, regresa a la calculadora.</small></div></div>
+                <div id="economicPossibilities" data-economic-locked="true" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section class="proposal-section" id="section-value">
+            <div class="section-title">
+                <div><span>04</span><h2>Valores agregados</h2></div>
+                <p>Elige beneficios y luego ajusta su detalle o modalidad.</p>
+            </div>
+            <div class="panel">
+                <div class="value-tabs" id="valueTabs"></div>
+                <div class="module-grid module-grid--compact" id="valueModuleGrid"></div>
+                <div class="panel-actions"><button class="button button--secondary" id="addValueButton" type="button">+ Agregar valor agregado</button></div>
+                <p class="module-helper">Puedes incluir hasta 24 valores agregados. Los campos tienen límites de longitud para conservar la legibilidad del PDF.</p>
+                <div class="table-wrap value-table-wrap">
+                    <table id="valueTable">
+                        <thead><tr><th>Frente</th><th>Valor agregado</th><th>Detalle</th><th>Modalidad</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    <p class="empty-state" id="valueEmpty">Aún no has agregado valores. Selecciona uno o varios arriba.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="proposal-section" id="section-preview">
+            <div class="section-title">
+                <div><span>05</span><h2>Vista previa y generación</h2></div>
+                <p>Revisa los datos principales antes de descargar la oferta.</p>
+            </div>
+            <div class="preview-card">
+                <div class="preview-card__head"><span>Propuesta comercial</span><b>Digital Tech</b></div>
+                <div class="preview-card__body">
+                    <span class="preview-pill" id="previewType">Mixta</span>
+                    <h2 id="previewClient">@Model.ScenarioName</h2>
+                    <p id="previewSummary"></p>
+                    <div class="preview-facts">
+                        <div><small>Comercial</small><strong id="previewSeller"></strong></div>
+                        <div><small>Duración</small><strong id="previewDuration"></strong></div>
+                        <div><small>Escenarios económicos</small><strong id="previewPossibilityCount">—</strong></div>
+                    </div>
+                    <div class="preview-modules" id="previewModules"></div>
+                </div>
+            </div>
+            <div class="final-actions">
+                <a class="button button--secondary" href="@backUrl">Volver a la calculadora</a>
+                <button class="button button--primary button--large" id="generatePdfButton" type="button">Generar oferta PDF</button>
+            </div>
+            <div class="generation-status" id="generationStatus" role="status" aria-live="polite"></div>
+        </section>
+    </main>
+
+    <footer class="proposal-footer">Digital Tech Colombia · Configurador de propuestas comerciales</footer>
+
+    <script>
+        window.calculatorProposal = @Html.Raw(JsonSerializer.Serialize(Model, jsonOptions));
+    </script>
+    <script src="~/js/proposal-pdf-v17.js" asp-append-version="true"></script>
+    <script src="~/js/calculator-proposal.js" asp-append-version="true"></script>
+</body>
+</html>

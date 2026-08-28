@@ -129,6 +129,17 @@ public sealed partial class DataverseService
         {
             ct.ThrowIfCancellationRequested();
 
+            if (expense.AutomationState.Equals("ProcesandoSiigo", StringComparison.OrdinalIgnoreCase)
+                || expense.AutomationState.Equals("VerificacionSiigoPendiente", StringComparison.OrdinalIgnoreCase)
+                || expense.AutomationState.Equals("ProcesandoProveedorSiigo", StringComparison.OrdinalIgnoreCase)
+                || expense.AutomationState.Equals("VerificacionProveedorSiigoPendiente", StringComparison.OrdinalIgnoreCase)
+                || expense.ReviewReason.Contains("[SIIGO_SUPPLIER_WRITE_AMBIGUOUS]", StringComparison.OrdinalIgnoreCase)
+                || expense.ReviewReason.Contains("[SIIGO_WRITE_AMBIGUOUS]", StringComparison.OrdinalIgnoreCase))
+            {
+                alreadyHandled++;
+                continue;
+            }
+
             if (!overwrite && (!string.IsNullOrWhiteSpace(expense.AccountCode) || existingLines.ContainsKey(expense.RecordId)))
             {
                 alreadyHandled++;
@@ -143,7 +154,7 @@ public sealed partial class DataverseService
             {
                 noTemplate++;
                 var noTemplateNotes = BuildNoAccountingTemplateReason(expense, movementType);
-                if (!dryRun && await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, noTemplateNotes, ct))
+                if (!dryRun && await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, expense.ConcurrencyToken, noTemplateNotes, ct))
                     updated++;
 
                 resultRows.Add(BuildExpenseAccountingTemplateResultRow(expense, null, "SinPlantilla", noTemplateNotes, Array.Empty<ExpenseAccountingTemplateGeneratedLineDto>()));
@@ -154,7 +165,7 @@ public sealed partial class DataverseService
             {
                 invalidTemplate++;
                 var invalidTemplateNotes = $"La plantilla {match.Template.Name} no tiene lineas contables activas.";
-                if (!dryRun && await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, invalidTemplateNotes, ct))
+                if (!dryRun && await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, expense.ConcurrencyToken, invalidTemplateNotes, ct))
                     updated++;
 
                 resultRows.Add(BuildExpenseAccountingTemplateResultRow(expense, match.Template, "PlantillaInvalida", invalidTemplateNotes, Array.Empty<ExpenseAccountingTemplateGeneratedLineDto>()));
@@ -165,7 +176,7 @@ public sealed partial class DataverseService
             if (!string.IsNullOrWhiteSpace(invalidReason))
             {
                 invalidTemplate++;
-                if (!dryRun && await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, invalidReason, ct))
+                if (!dryRun && await UpdateExpenseAccountingReviewStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, expense.ConcurrencyToken, invalidReason, ct))
                     updated++;
 
                 resultRows.Add(BuildExpenseAccountingTemplateResultRow(expense, match.Template, "PlantillaInvalida", invalidReason, evaluatedLines));
@@ -204,7 +215,7 @@ public sealed partial class DataverseService
                     generatedLineCount++;
                 }
 
-                if (await UpdateExpenseAccountingTemplateStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, status, match.Confidence, notes, ct))
+                if (await UpdateExpenseAccountingTemplateStateAsync(expenseMetadata, expenseAttributes, expense.RecordId, expense.ConcurrencyToken, status, match.Confidence, notes, ct))
                     updated++;
             }
             else
@@ -262,7 +273,9 @@ public sealed partial class DataverseService
             fields.RecipientNitField,
             DashboardExpenseCategoryField,
             ExpenseAccountCodeField,
-            ExpenseAccountNameField
+            ExpenseAccountNameField,
+            ExpenseAutomationStateField,
+            ExpenseReviewReasonField
         }
         .Concat(textFields)
         .Where(field => !string.IsNullOrWhiteSpace(field)
@@ -319,6 +332,7 @@ public sealed partial class DataverseService
         return new ExpenseAccountingTemplateExpenseRow
         {
             RecordId = recordId,
+            ConcurrencyToken = ReadString(item, "@odata.etag").Trim(),
             Name = FirstNonEmpty(ReadString(item, metadata.PrimaryNameField), ReadString(item, fields.InvoiceNumberField), recordId),
             InvoiceNumber = FirstNonEmpty(
                 ReadString(item, $"{fields.InvoiceNumberField}{FormattedValueAnnotationSuffix}"),
@@ -331,6 +345,8 @@ public sealed partial class DataverseService
             CategoryName = categoryLabel,
             AccountCode = ReadString(item, ExpenseAccountCodeField).Trim(),
             AccountName = ReadString(item, ExpenseAccountNameField).Trim(),
+            AutomationState = ReadString(item, ExpenseAutomationStateField).Trim(),
+            ReviewReason = ReadString(item, ExpenseReviewReasonField).Trim(),
             Total = RoundCurrency(ReadDecimal(item, fields.TotalField) ?? 0m),
             BaseAmount = RoundCurrency(ReadDecimal(item, baseAmountField) ?? 0m),
             Vat = RoundCurrency(ReadDecimal(item, fields.VatField) ?? 0m),
@@ -571,6 +587,7 @@ public sealed partial class DataverseService
         RhEntityMetadata metadata,
         ISet<string> attributes,
         string recordId,
+        string concurrencyToken,
         string status,
         decimal confidence,
         string reason,
@@ -583,12 +600,7 @@ public sealed partial class DataverseService
         if (payload.Count == 0)
             return false;
 
-        await CallDataverseAppSendAsync(
-            $"/api/data/v9.2/{metadata.EntitySetName}({recordId})",
-            "PATCH",
-            payload,
-            ct);
-        return true;
+        return await TryPatchExpenseAccountingRowAsync(metadata, recordId, concurrencyToken, payload, ct);
     }
 
     private static IReadOnlyList<ExpenseAccountingTemplateGeneratedLineDto> EvaluateExpenseAccountingTemplateLines(
@@ -879,6 +891,7 @@ public sealed partial class DataverseService
     private sealed class ExpenseAccountingTemplateExpenseRow
     {
         public string RecordId { get; init; } = "";
+        public string ConcurrencyToken { get; init; } = "";
         public string Name { get; init; } = "";
         public string InvoiceNumber { get; init; } = "";
         public string ProviderNit { get; init; } = "";
@@ -889,6 +902,8 @@ public sealed partial class DataverseService
         public string CategoryName { get; init; } = "";
         public string AccountCode { get; init; } = "";
         public string AccountName { get; init; } = "";
+        public string AutomationState { get; init; } = "";
+        public string ReviewReason { get; init; } = "";
         public decimal Total { get; init; }
         public decimal BaseAmount { get; init; }
         public decimal Vat { get; init; }

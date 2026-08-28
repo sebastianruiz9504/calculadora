@@ -12,6 +12,7 @@ public interface IFinancialReconciliationService
 {
     Task<FinancialReconciliationSnapshotResult> BuildSnapshotAsync(int year, int month, CancellationToken ct = default);
     Task<FinancialReconciliationReportResult> BuildReportAsync(int year, int month, CancellationToken ct = default);
+    Task<FinancialReconciliationReportResult> RepairBillingAsync(int year, int month, CancellationToken ct = default);
     Task<FinancialReconciliationRunResult> RunAndSendAsync(int year, int month, CancellationToken ct = default);
     Task<FinancialReconciliationRunResult> RunConfiguredPeriodAsync(DateTimeOffset? now = null, CancellationToken ct = default);
 }
@@ -23,6 +24,7 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
     private readonly IDataverseService _dataverse;
     private readonly ISiigoService _siigo;
     private readonly IReconciliationReportSender _sender;
+    private readonly ITaxesReteFuenteReportService _reteFuenteReportService;
     private readonly FinancialReconciliationOptions _options;
     private readonly ILogger<FinancialReconciliationService> _logger;
 
@@ -30,12 +32,14 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         IDataverseService dataverse,
         ISiigoService siigo,
         IReconciliationReportSender sender,
+        ITaxesReteFuenteReportService reteFuenteReportService,
         IOptions<FinancialReconciliationOptions> options,
         ILogger<FinancialReconciliationService> logger)
     {
         _dataverse = dataverse;
         _siigo = siigo;
         _sender = sender;
+        _reteFuenteReportService = reteFuenteReportService;
         _options = options.Value;
         _logger = logger;
     }
@@ -46,6 +50,14 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         CancellationToken ct = default)
     {
         return await BuildReportCoreAsync(year, month, applyBillingCorrections: false, ct);
+    }
+
+    public async Task<FinancialReconciliationReportResult> RepairBillingAsync(
+        int year,
+        int month,
+        CancellationToken ct = default)
+    {
+        return await BuildReportCoreAsync(year, month, applyBillingCorrections: true, ct);
     }
 
     public async Task<FinancialReconciliationSnapshotResult> BuildSnapshotAsync(
@@ -178,7 +190,9 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
             {
                 Report = report,
                 EmailSent = false,
-                EmailStatus = "No se envio correo porque no hubo diferencias y SendWhenNoDifferences esta desactivado."
+                EmailStatus = "No se envio correo porque no hubo diferencias y SendWhenNoDifferences esta desactivado.",
+                ReteFuenteEmailSent = false,
+                ReteFuenteEmailStatus = "No se envio reporte de retefuente porque la conciliacion no envio correo."
             };
         }
 
@@ -201,11 +215,31 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
             report.Summary.BillingDifferenceCount,
             report.Summary.ExpenseDifferenceCount);
 
+        var reteFuenteReport = await _reteFuenteReportService.BuildAsync(year, month, ct: ct);
+        await _sender.SendAsync(new ReconciliationEmailMessage
+        {
+            To = recipient,
+            Subject = $"Reporte retefuente {reteFuenteReport.PeriodLabel}",
+            HtmlBody = BuildReteFuenteEmailHtml(reteFuenteReport),
+            AttachmentFileName = reteFuenteReport.FileName,
+            AttachmentContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            AttachmentContent = reteFuenteReport.ExcelContent
+        }, ct);
+
+        _logger.LogInformation(
+            "Reporte de retefuente {Year}-{Month:D2} enviado a {Recipient}. Total: {TotalReteFuente}.",
+            reteFuenteReport.Year,
+            reteFuenteReport.Month,
+            recipient,
+            reteFuenteReport.TotalReteFuente);
+
         return new FinancialReconciliationRunResult
         {
             Report = report,
             EmailSent = true,
-            EmailStatus = $"Enviado a {recipient}."
+            EmailStatus = $"Enviado a {recipient}.",
+            ReteFuenteEmailSent = true,
+            ReteFuenteEmailStatus = $"Reporte de retefuente enviado a {recipient}."
         };
     }
 
@@ -229,10 +263,11 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         IReadOnlyList<ExpenseComparisonRow> expenseComparisons)
     {
         var activeInvoices = FilterActiveInvoices(siigo.Invoices).ToList();
-        var siigoBillingGross = SumCurrency(activeInvoices, static row => row.Total);
-        var siigoBillingCreditNotes = SumCurrency(siigo.CreditNotes, static row => row.Total);
+        var acceptedCreditNotes = FilterAcceptedCreditNotes(siigo.CreditNotes).ToList();
+        var siigoBillingGross = SumCurrency(activeInvoices, ResolveSiigoInvoiceGrossTotal);
+        var siigoBillingCreditNotes = SumCurrency(acceptedCreditNotes, ResolveSiigoCreditNoteGrossTotal);
         var siigoVatGross = SumCurrency(activeInvoices, static row => row.Vat);
-        var siigoVatCreditNotes = SumCurrency(siigo.CreditNotes, static row => row.Vat);
+        var siigoVatCreditNotes = SumCurrency(acceptedCreditNotes, static row => row.Vat);
         var dataverseBillingGross = SumCurrency(dataverseBilling, static row => row.Total);
         var dataverseBillingCreditNotes = SumCurrency(dataverseCreditNotes, static row => row.Total);
         var dataverseBillingNet = RoundCurrency(dataverseBillingGross - dataverseBillingCreditNotes);
@@ -250,7 +285,7 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
             SiigoBillingCreditNotes = siigoBillingCreditNotes,
             SiigoBillingNet = RoundCurrency(siigoBillingGross - siigoBillingCreditNotes),
             SiigoBillingInvoiceCount = activeInvoices.Count,
-            SiigoBillingCreditNoteCount = siigo.CreditNotes.Count,
+            SiigoBillingCreditNoteCount = acceptedCreditNotes.Count,
             DataverseBillingGross = dataverseBillingGross,
             DataverseBillingCreditNotes = dataverseBillingCreditNotes,
             DataverseBillingNet = dataverseBillingNet,
@@ -344,13 +379,13 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
                     {
                         InvoiceNumber = FirstNonEmpty(group.Select(static item => item.Name).FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)), group.First().Id),
                         CustomerIdentification = FirstNonEmpty(group.Select(static item => item.CustomerIdentification).FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)), ""),
-                        GrossTotal = SumCurrency(group, static item => item.Total),
+                        GrossTotal = SumCurrency(group, ResolveSiigoInvoiceGrossTotal),
                         GrossVat = SumCurrency(group, static item => item.Vat)
                     };
                 },
                 StringComparer.OrdinalIgnoreCase);
 
-        foreach (var creditNote in siigo.CreditNotes)
+        foreach (var creditNote in FilterAcceptedCreditNotes(siigo.CreditNotes))
         {
             var key = ResolveCreditNoteBillingKey(creditNote, invoiceKeyById);
             if (string.IsNullOrWhiteSpace(key))
@@ -366,7 +401,7 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
                 summaries[key] = summary;
             }
 
-            summary.CreditNoteTotal = RoundCurrency(summary.CreditNoteTotal + creditNote.Total);
+            summary.CreditNoteTotal = RoundCurrency(summary.CreditNoteTotal + ResolveSiigoCreditNoteGrossTotal(creditNote));
             summary.CreditNoteVat = RoundCurrency(summary.CreditNoteVat + creditNote.Vat);
             if (!string.IsNullOrWhiteSpace(creditNote.Name))
                 summary.CreditNoteNames.Add(creditNote.Name.Trim());
@@ -457,8 +492,30 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
 
     private IEnumerable<SiigoReconciliationInvoice> FilterActiveInvoices(IEnumerable<SiigoReconciliationInvoice> invoices) =>
         _options.ExcludeAnnulledSiigoInvoices
-            ? invoices.Where(static invoice => !invoice.Annulled)
-            : invoices;
+            ? invoices.Where(static invoice => !invoice.Annulled && IsAcceptedSiigoInvoice(invoice))
+            : invoices.Where(IsAcceptedSiigoInvoice);
+
+    private static bool IsAcceptedSiigoInvoice(SiigoReconciliationInvoice invoice) =>
+        string.Equals(invoice.StampStatus?.Trim(), "Accepted", StringComparison.OrdinalIgnoreCase);
+
+    private static IEnumerable<SiigoReconciliationCreditNote> FilterAcceptedCreditNotes(
+        IEnumerable<SiigoReconciliationCreditNote> creditNotes) =>
+        creditNotes.Where(static creditNote =>
+            string.Equals(creditNote.StampStatus?.Trim(), "Accepted", StringComparison.OrdinalIgnoreCase));
+
+    private static decimal ResolveSiigoInvoiceGrossTotal(SiigoReconciliationInvoice invoice) =>
+        ResolveSiigoGrossTotal(invoice.Total, invoice.SuggestedWithholdingTotal, invoice.GrossTotal);
+
+    private static decimal ResolveSiigoCreditNoteGrossTotal(SiigoReconciliationCreditNote creditNote) =>
+        ResolveSiigoGrossTotal(creditNote.Total, creditNote.SuggestedWithholdingTotal, creditNote.GrossTotal);
+
+    private static decimal ResolveSiigoGrossTotal(decimal total, decimal suggestedWithholdingTotal, decimal grossTotal)
+    {
+        var calculated = RoundCurrency(total + suggestedWithholdingTotal);
+        return grossTotal == 0m && calculated != 0m
+            ? calculated
+            : RoundCurrency(grossTotal);
+    }
 
     private static string ResolveCreditNoteBillingKey(
         SiigoReconciliationCreditNote creditNote,
@@ -806,7 +863,7 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         var rowIndex = 2;
         foreach (var row in rows.OrderBy(static item => item.Date).ThenBy(static item => item.Name, StringComparer.OrdinalIgnoreCase))
         {
-            WriteRow(sheet, rowIndex++, row.Name, FormatDate(row.Date), row.CustomerIdentification, row.Total, row.Vat, row.Annulled ? "Si" : "No", row.Id);
+            WriteRow(sheet, rowIndex++, row.Name, FormatDate(row.Date), row.CustomerIdentification, ResolveSiigoInvoiceGrossTotal(row), row.Vat, row.Annulled ? "Si" : "No", row.Id);
         }
 
         FormatUsedRange(sheet);
@@ -819,7 +876,7 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         var rowIndex = 2;
         foreach (var row in rows.OrderBy(static item => item.Date).ThenBy(static item => item.Name, StringComparer.OrdinalIgnoreCase))
         {
-            WriteRow(sheet, rowIndex++, row.Name, FormatDate(row.Date), row.InvoiceName, row.CustomerIdentification, row.Total, row.Vat, row.Id);
+            WriteRow(sheet, rowIndex++, row.Name, FormatDate(row.Date), row.InvoiceName, row.CustomerIdentification, ResolveSiigoCreditNoteGrossTotal(row), row.Vat, row.Id);
         }
 
         FormatUsedRange(sheet);
@@ -996,6 +1053,38 @@ public sealed class FinancialReconciliationService : IFinancialReconciliationSer
         builder.Append(").</li>");
         builder.Append("</ul>");
         builder.Append("<p>Base de facturacion: Siigo neto despues de notas credito. En Dataverse se cruza facturacion menos notas credito. Base de gastos: Power Apps.</p>");
+        return builder.ToString();
+    }
+
+    private static string BuildReteFuenteEmailHtml(TaxesReteFuenteReportResult report)
+    {
+        var builder = new StringBuilder();
+        builder.Append("<p>Hola,</p>");
+        builder.Append("<p>Adjunto esta el reporte de retefuente generado automaticamente para ");
+        builder.Append(WebUtility.HtmlEncode(report.PeriodLabel));
+        builder.Append(".</p>");
+        builder.Append("<ul>");
+        builder.Append("<li>Rango: ");
+        builder.Append(WebUtility.HtmlEncode(report.DateRangeLabel));
+        builder.Append(".</li>");
+        builder.Append("<li>Autofuente: ");
+        builder.Append(WebUtility.HtmlEncode(FormatCurrency(report.AutoFuenteTotal)));
+        builder.Append(" (");
+        builder.Append(report.AutoFuenteRows.ToString(CultureInfo.InvariantCulture));
+        builder.Append(" registros).</li>");
+        builder.Append("<li>ReteFuente gastos: ");
+        builder.Append(WebUtility.HtmlEncode(FormatCurrency(report.ExpensesReteFuenteTotal)));
+        builder.Append(" (");
+        builder.Append(report.ExpensesRows.ToString(CultureInfo.InvariantCulture));
+        builder.Append(" registros).</li>");
+        builder.Append("<li>Total retefuente a pagar: ");
+        builder.Append(WebUtility.HtmlEncode(FormatCurrency(report.TotalReteFuente)));
+        builder.Append(".</li>");
+        builder.Append("<li>Notas credito en el anexo: ");
+        builder.Append(report.CreditNoteRows.ToString(CultureInfo.InvariantCulture));
+        builder.Append(" registros.</li>");
+        builder.Append("</ul>");
+        builder.Append("<p>Este archivo es el mismo reporte que se descarga desde Dashboard > Impuestos > Retefuente.</p>");
         return builder.ToString();
     }
 

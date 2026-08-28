@@ -6,13 +6,22 @@ public enum MetricsRangeFilter
 {
     ThisMonth = 0,
     ThisYear = 1,
-    PreviousYear = 2
+    PreviousYear = 2,
+    All = 3
 }
 
 public enum MetricsViewMode
 {
     Global = 0,
     Individual = 1
+}
+
+public enum MetricsPeriodGranularity
+{
+    Month = 0,
+    Quarter = 1,
+    Semester = 2,
+    Year = 3
 }
 
 public static class MetricsRangeFilterExtensions
@@ -27,6 +36,7 @@ public static class MetricsRangeFilterExtensions
             "thismonth" or "this-month" or "este-mes" => MetricsRangeFilter.ThisMonth,
             "thisyear" or "this-year" or "este-ano" or "este-a\u00f1o" => MetricsRangeFilter.ThisYear,
             "previousyear" or "previous-year" or "ano-pasado" or "a\u00f1o-pasado" => MetricsRangeFilter.PreviousYear,
+            "all" or "todo" or "todos" => MetricsRangeFilter.All,
             _ => MetricsRangeFilter.ThisYear
         };
     }
@@ -36,6 +46,7 @@ public static class MetricsRangeFilterExtensions
         MetricsRangeFilter.ThisMonth => "this-month",
         MetricsRangeFilter.ThisYear => "this-year",
         MetricsRangeFilter.PreviousYear => "previous-year",
+        MetricsRangeFilter.All => "all",
         _ => "this-year"
     };
 
@@ -44,7 +55,49 @@ public static class MetricsRangeFilterExtensions
         MetricsRangeFilter.ThisMonth => "Este mes",
         MetricsRangeFilter.ThisYear => "Este a\u00f1o",
         MetricsRangeFilter.PreviousYear => "A\u00f1o pasado",
+        MetricsRangeFilter.All => "Todo",
         _ => "Este a\u00f1o"
+    };
+}
+
+public static class MetricsPeriodGranularityExtensions
+{
+    public static MetricsPeriodGranularity ParseOrDefault(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return MetricsPeriodGranularity.Month;
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "quarter" or "trimestre" or "trimestral" => MetricsPeriodGranularity.Quarter,
+            "semester" or "semestre" or "semestral" => MetricsPeriodGranularity.Semester,
+            "year" or "ano" or "a\u00f1o" or "anual" => MetricsPeriodGranularity.Year,
+            _ => MetricsPeriodGranularity.Month
+        };
+    }
+
+    public static string ToKey(this MetricsPeriodGranularity value) => value switch
+    {
+        MetricsPeriodGranularity.Quarter => "quarter",
+        MetricsPeriodGranularity.Semester => "semester",
+        MetricsPeriodGranularity.Year => "year",
+        _ => "month"
+    };
+
+    public static string ToLabel(this MetricsPeriodGranularity value) => value switch
+    {
+        MetricsPeriodGranularity.Quarter => "Trimestral",
+        MetricsPeriodGranularity.Semester => "Semestral",
+        MetricsPeriodGranularity.Year => "Anual",
+        _ => "Mensual"
+    };
+
+    public static int MonthsPerPeriod(this MetricsPeriodGranularity value) => value switch
+    {
+        MetricsPeriodGranularity.Quarter => 3,
+        MetricsPeriodGranularity.Semester => 6,
+        MetricsPeriodGranularity.Year => 12,
+        _ => 1
     };
 }
 
@@ -80,6 +133,7 @@ public sealed class MetricasPageViewModel
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public MetricsRangeFilter InitialFilter { get; set; } = MetricsRangeFilter.ThisYear;
     public MetricsViewMode InitialView { get; set; } = MetricsViewMode.Global;
+    public MetricsPeriodGranularity InitialPeriod { get; set; } = MetricsPeriodGranularity.Month;
 }
 
 public sealed class MetricsDashboardDto
@@ -88,6 +142,8 @@ public sealed class MetricsDashboardDto
     public string FilterLabel { get; set; } = MetricsRangeFilter.ThisYear.ToLabel();
     public string View { get; set; } = MetricsViewMode.Global.ToKey();
     public string ViewLabel { get; set; } = MetricsViewMode.Global.ToLabel();
+    public string Period { get; set; } = MetricsPeriodGranularity.Month.ToKey();
+    public string PeriodLabel { get; set; } = MetricsPeriodGranularity.Month.ToLabel();
     public string GranularityLabel { get; set; } = "Mensual";
     public string AppliedSellerKey { get; set; } = "";
     public string AppliedSellerName { get; set; } = "Todos los vendedores";
@@ -125,12 +181,28 @@ public sealed class MetricsChartDto
 
 public sealed class MetricsGoalStatusDto
 {
+    public string CategoryKey { get; set; } = "";
     public string Category { get; set; } = "";
     public decimal ActualValue { get; set; }
     public decimal TargetValue { get; set; }
+    public decimal PreviousYearValue { get; set; }
+    public decimal? GrowthPercent { get; set; }
+    public bool HasTarget { get; set; }
     public bool IsMet { get; set; }
     public string StatusTone { get; set; } = "";
     public string StatusLabel { get; set; } = "";
+    public IReadOnlyList<MetricsBusinessDetailDto> Details { get; set; } = Array.Empty<MetricsBusinessDetailDto>();
+}
+
+public sealed class MetricsBusinessDetailDto
+{
+    public string RecordId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public decimal Score { get; set; }
+    public decimal ContractValue { get; set; }
+    public string ContractStartDateValue { get; set; } = "";
+    public string ContractStartDateDisplay { get; set; } = "";
+    public string Detail { get; set; } = "";
 }
 
 public sealed class MetricsSeriesDto

@@ -1,5 +1,5 @@
 (function () {
-    const roots = Array.from(document.querySelectorAll("#soporteCloudApp, #dashboardSupportCloudApp"));
+    const roots = Array.from(document.querySelectorAll("#soporteCloudApp, #dashboardSupportCloudApp, #soporteCloudTrainingApp"));
     if (!roots.length) {
         return;
     }
@@ -24,9 +24,12 @@
             loadUrl: root.dataset.loadUrl || "",
             clientSearchUrl: root.dataset.clientSearchUrl || "",
             saveUrl: root.dataset.saveUrl || "",
+            deleteUrl: root.dataset.deleteUrl || "",
             uploadUrl: root.dataset.uploadUrl || "",
             downloadUrl: root.dataset.downloadUrl || "",
             trainingsUrl: root.dataset.trainingsUrl || "",
+            saveTrainingUrl: root.dataset.saveTrainingUrl || "",
+            defaultAllTrainings: String(root.dataset.defaultAll || "").toLowerCase() === "true",
             currentUserName: root.dataset.currentUserName || "Usuario actual"
         };
 
@@ -46,6 +49,8 @@
             totalClients: root.querySelector("[data-sc-total-clients]"),
             creators: root.querySelector("[data-sc-creators]"),
             recordsCount: root.querySelector("[data-sc-records-count]"),
+            filterInputs: Array.from(root.querySelectorAll("[data-sc-filter]")),
+            clearFilters: root.querySelector("[data-sc-clear-filters]"),
             rows: root.querySelector("[data-sc-rows]"),
             empty: root.querySelector("[data-sc-empty]"),
             chartsSection: root.querySelector("[data-sc-charts-section]"),
@@ -64,6 +69,22 @@
             trainingsTopicChart: root.querySelector('[data-sct-chart="topic"]'),
             trainingsClientChart: root.querySelector('[data-sct-chart="clients"]'),
             trainingsTimeChart: root.querySelector('[data-sct-chart="time"]'),
+            trainingsShowAll: root.querySelector("[data-sct-show-all]"),
+            newTraining: root.querySelector("[data-sct-new-training]"),
+            trainingModal: root.querySelector("[data-sct-modal]"),
+            trainingForm: root.querySelector("[data-sct-form]"),
+            trainingModalStatus: root.querySelector("[data-sct-modal-status]"),
+            trainingCloseModalButtons: Array.from(root.querySelectorAll("[data-sct-close-modal]")),
+            trainingClientId: root.querySelector("[data-sct-client-id]"),
+            trainingClientOptions: root.querySelector("[data-sct-client-options]"),
+            trainingFields: {
+                topicText: root.querySelector('[data-sct-field="topicText"]'),
+                dateValue: root.querySelector('[data-sct-field="dateValue"]'),
+                durationMinutes: root.querySelector('[data-sct-field="durationMinutes"]'),
+                clientName: root.querySelector('[data-sct-field="clientName"]'),
+                attendees: root.querySelector('[data-sct-field="attendees"]'),
+                topicValue: root.querySelector('[data-sct-field="topicValue"]')
+            },
             modal: root.querySelector("[data-sc-modal]"),
             modalStatus: root.querySelector("[data-sc-modal-status]"),
             modalTitle: root.querySelector("[data-sc-modal-title]"),
@@ -94,19 +115,25 @@
         };
 
         const state = {
-            activeSubtab: "tickets",
+            activeSubtab: config.loadUrl ? "tickets" : (config.trainingsUrl ? "trainings" : "tickets"),
             board: null,
             records: [],
+            filters: {},
             trainingsBoard: null,
             trainingsRecords: [],
             clientSuggestions: [],
             busy: false,
             trainingsBusy: false,
             saving: false,
+            trainingSaving: false,
             loaded: false,
             trainingsLoaded: false,
+            trainingsShowAll: config.defaultAllTrainings,
             lookupTimer: 0,
             lookupSequence: 0,
+            trainingClientSuggestions: [],
+            trainingLookupTimer: 0,
+            trainingLookupSequence: 0,
             draft: null,
             pendingFile: null
         };
@@ -142,8 +169,54 @@
             openModal();
         });
 
+        elements.filterInputs.forEach(input => {
+            const eventName = input instanceof HTMLSelectElement ? "change" : "input";
+            input.addEventListener(eventName, () => {
+                const key = input.dataset.scFilter || "";
+                if (!key) {
+                    return;
+                }
+
+                state.filters[key] = input.value || "";
+                renderTable();
+            });
+        });
+
+        elements.clearFilters?.addEventListener("click", () => {
+            state.filters = {};
+            elements.filterInputs.forEach(input => {
+                input.value = "";
+            });
+            renderTable();
+        });
+
+        elements.trainingsShowAll?.addEventListener("click", () => {
+            state.trainingsShowAll = true;
+            if (elements.startDate) {
+                elements.startDate.value = "";
+            }
+            if (elements.endDate) {
+                elements.endDate.value = "";
+            }
+            if (elements.rangeLabel) {
+                elements.rangeLabel.textContent = "Todas las capacitaciones";
+            }
+            state.trainingsLoaded = false;
+            loadTrainings({ force: true });
+        });
+
+        elements.newTraining?.addEventListener("click", async () => {
+            if (!state.trainingsLoaded && config.trainingsUrl) {
+                await loadTrainings({ force: true });
+            }
+            openTrainingModal();
+        });
+
         [elements.startDate, elements.endDate].forEach(input => {
             input?.addEventListener("change", () => {
+                if (state.activeSubtab === "trainings") {
+                    state.trainingsShowAll = false;
+                }
                 if (elements.rangeLabel) {
                     elements.rangeLabel.textContent = buildRangeLabel(
                         elements.startDate?.value || "",
@@ -155,13 +228,21 @@
             });
         });
 
-        elements.rows?.addEventListener("click", event => {
+        elements.rows?.addEventListener("click", async event => {
             const target = event.target;
             if (!(target instanceof HTMLElement)) {
                 return;
             }
 
-            if (target.closest("a")) {
+            const deleteButton = target.closest("[data-sc-delete-ticket]");
+            if (deleteButton instanceof HTMLElement) {
+                event.preventDefault();
+                event.stopPropagation();
+                await deleteTicket(deleteButton.dataset.scDeleteTicket || "");
+                return;
+            }
+
+            if (target.closest("a,button")) {
                 return;
             }
 
@@ -180,6 +261,10 @@
             }
 
             if (event.key !== "Enter" && event.key !== " ") {
+                return;
+            }
+
+            if (target.closest("a,button")) {
                 return;
             }
 
@@ -206,8 +291,15 @@
         });
 
         document.addEventListener("keydown", event => {
-            if (event.key === "Escape" && elements.modal && !elements.modal.hidden) {
+            if (event.key !== "Escape") {
+                return;
+            }
+
+            if (elements.modal && !elements.modal.hidden) {
                 closeModal();
+            }
+            if (elements.trainingModal && !elements.trainingModal.hidden) {
+                closeTrainingModal();
             }
         });
 
@@ -252,22 +344,54 @@
         elements.fields.clientName?.addEventListener("change", syncClientSelection);
         elements.fields.clientName?.addEventListener("blur", syncClientSelection);
 
+        elements.trainingCloseModalButtons.forEach(button => {
+            button.addEventListener("click", () => {
+                closeTrainingModal();
+            });
+        });
+
+        elements.trainingModal?.addEventListener("click", event => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.hasAttribute("data-sct-close-modal")) {
+                closeTrainingModal();
+            }
+        });
+
+        elements.trainingFields.clientName?.addEventListener("input", handleTrainingClientLookup);
+        elements.trainingFields.clientName?.addEventListener("change", syncTrainingClientSelection);
+        elements.trainingFields.clientName?.addEventListener("blur", syncTrainingClientSelection);
+
+        elements.trainingForm?.addEventListener("submit", async event => {
+            event.preventDefault();
+            await saveTraining();
+        });
+
         elements.form?.addEventListener("submit", async event => {
             event.preventDefault();
             await saveTicket();
         });
 
-        const dashboardTabButton = document.querySelector('[data-dashboard-tab="support-cloud"]');
+        const dashboardTabButtons = Array.from(document.querySelectorAll(
+            '[data-dashboard-tab="support-cloud"], [data-dashboard-group-target="support-cloud"]'));
         if (root.id === "dashboardSupportCloudApp") {
-            dashboardTabButton?.addEventListener("click", () => {
+            dashboardTabButtons.forEach(button => button.addEventListener("click", () => {
                 loadActiveSupportSubtab();
-            });
+            }));
 
-            if (dashboardTabButton?.classList.contains("is-active")) {
+            const dashboardPanel = root.closest('[data-dashboard-panel="support-cloud"]');
+            if (dashboardPanel && window.MutationObserver) {
+                new MutationObserver(() => {
+                    if (!dashboardPanel.hidden) {
+                        loadActiveSupportSubtab();
+                    }
+                }).observe(dashboardPanel, { attributes: true, attributeFilter: ["hidden"] });
+            }
+
+            if (dashboardTabButtons.some(button => button.classList.contains("is-active")) || !dashboardPanel?.hidden) {
                 loadActiveSupportSubtab();
             }
         } else {
-            loadBoard();
+            loadActiveSupportSubtab();
         }
 
         function resolveRowFromEvent(target) {
@@ -299,17 +423,27 @@
 
         function buildTrainingsUrl() {
             const url = new URL(config.trainingsUrl, window.location.origin);
-            if (elements.startDate?.value) {
-                url.searchParams.set("startDate", elements.startDate.value);
-            }
-            if (elements.endDate?.value) {
-                url.searchParams.set("endDate", elements.endDate.value);
+            if (state.trainingsShowAll) {
+                url.searchParams.set("all", "true");
+            } else {
+                if (elements.startDate?.value) {
+                    url.searchParams.set("startDate", elements.startDate.value);
+                }
+                if (elements.endDate?.value) {
+                    url.searchParams.set("endDate", elements.endDate.value);
+                }
             }
             return `${url.pathname}${url.search}`;
         }
 
         function buildDownloadUrl(recordId) {
             const url = new URL(config.downloadUrl, window.location.origin);
+            url.searchParams.set("recordId", recordId);
+            return `${url.pathname}${url.search}`;
+        }
+
+        function buildDeleteUrl(recordId) {
+            const url = new URL(config.deleteUrl, window.location.origin);
             url.searchParams.set("recordId", recordId);
             return `${url.pathname}${url.search}`;
         }
@@ -414,11 +548,11 @@
         }
 
         function syncRangeInputs(board) {
-            if (elements.startDate && board?.startDateValue) {
-                elements.startDate.value = board.startDateValue;
+            if (elements.startDate && board && Object.prototype.hasOwnProperty.call(board, "startDateValue")) {
+                elements.startDate.value = board.startDateValue || "";
             }
-            if (elements.endDate && board?.endDateValue) {
-                elements.endDate.value = board.endDateValue;
+            if (elements.endDate && board && Object.prototype.hasOwnProperty.call(board, "endDateValue")) {
+                elements.endDate.value = board.endDateValue || "";
             }
             if (elements.rangeLabel) {
                 elements.rangeLabel.textContent = board?.dateRangeLabel
@@ -500,6 +634,7 @@
         }
 
         function renderTrainingsDashboard() {
+            populateTrainingTopicSelect();
             renderTrainingSummary();
             renderTrainingOwnerBars();
             renderTrainingCharts();
@@ -512,7 +647,8 @@
                 elements.trainingsTotal.textContent = numberFormatter.format(Number(board.totalTrainings || 0));
             }
             if (elements.trainingsTotalHours) {
-                elements.trainingsTotalHours.textContent = numberFormatter.format(Number(board.totalHoursDelivered || 0));
+                const totalMinutes = board.totalMinutesDelivered ?? (Number(board.totalHoursDelivered || 0) * 60);
+                elements.trainingsTotalHours.textContent = numberFormatter.format(Number(totalMinutes || 0));
             }
             if (elements.trainingsTotalClients) {
                 elements.trainingsTotalClients.textContent = numberFormatter.format(Number(board.totalClients || 0));
@@ -570,11 +706,12 @@
             const maxTrainings = Math.max(1, ...rows.map(item => Number(item.totalTrainings || 0)));
             container.innerHTML = rows.map(item => {
                 const width = Math.max(6, Math.round((Number(item.totalTrainings || 0) / maxTrainings) * 100));
+                const totalMinutes = item.totalMinutes ?? (Number(item.totalHours || 0) * 60);
                 return `
                     <div class="support-cloud-breakdown__row">
                         <div class="support-cloud-breakdown__head">
                             <span class="support-cloud-breakdown__label">${escapeHtml(item.label || "Sin dato")}</span>
-                            <span class="support-cloud-breakdown__value">${escapeHtml(numberFormatter.format(Number(item.totalTrainings || 0)))} cap. · ${escapeHtml(numberFormatter.format(Number(item.totalHours || 0)))} h · ${escapeHtml(numberFormatter.format(Number(item.totalAttendees || 0)))} asistentes</span>
+                            <span class="support-cloud-breakdown__value">${escapeHtml(numberFormatter.format(Number(item.totalTrainings || 0)))} cap. · ${escapeHtml(numberFormatter.format(Number(totalMinutes || 0)))} min · ${escapeHtml(numberFormatter.format(Number(item.totalAttendees || 0)))} asistentes</span>
                         </div>
                         <div class="support-cloud-breakdown__track">
                             <span class="support-cloud-breakdown__fill" style="width:${width}%"></span>
@@ -682,16 +819,210 @@
                     <td data-label="Duracion">
                         <div class="support-cloud-table__ticket">
                             <div class="support-cloud-table__ticket-title">${escapeHtml(row.durationDisplay || "-")}</div>
-                            <div class="support-cloud-table__ticket-description">${escapeHtml(numberFormatter.format(Number(row.durationHours || 0)))} horas entregadas</div>
+                            <div class="support-cloud-table__ticket-description">${escapeHtml(numberFormatter.format(Number(row.durationMinutes || 0)))} minutos</div>
                         </div>
                     </td>
                     <td data-label="Cliente">${escapeHtml(row.clientName || "-")}</td>
                     <td data-label="Asistentes" class="text-end support-cloud-table__hours">${escapeHtml(numberFormatter.format(Number(row.attendees || 0)))}</td>
-                    <td data-label="Tema">${renderPill(row.topicLabel || "Sin tema")}</td>
+                    <td data-label="Tema">
+                        <div class="support-cloud-table__ticket">
+                            <div class="support-cloud-table__ticket-title">${escapeHtml(row.topicText || row.topicLabel || "Sin tema")}</div>
+                            <div class="support-cloud-table__ticket-meta">${renderPill(row.topicLabel || "Sin tema")}</div>
+                        </div>
+                    </td>
                     <td data-label="Propietario">${escapeHtml(row.ownerName || "-")}</td>
                     <td data-label="ID"><span class="support-cloud-table__muted">${escapeHtml(truncateText(row.recordId || "-", 12))}</span></td>
                 </tr>
             `).join("");
+        }
+
+        function openTrainingModal() {
+            resetTrainingForm();
+            populateTrainingTopicSelect();
+            clearStatus(elements.trainingModalStatus);
+
+            if (elements.trainingModal) {
+                elements.trainingModal.hidden = false;
+            }
+
+            document.body.classList.add("support-cloud-modal-open");
+        }
+
+        function closeTrainingModal() {
+            if (state.trainingSaving) {
+                return;
+            }
+
+            clearStatus(elements.trainingModalStatus);
+            if (elements.trainingModal) {
+                elements.trainingModal.hidden = true;
+            }
+
+            if (!root.querySelector(".support-cloud-modal:not([hidden])")) {
+                document.body.classList.remove("support-cloud-modal-open");
+            }
+        }
+
+        function resetTrainingForm() {
+            setFieldValue(elements.trainingFields.topicText, "");
+            setFieldValue(elements.trainingFields.dateValue, elements.endDate?.value || new Date().toISOString().slice(0, 10));
+            setFieldValue(elements.trainingFields.durationMinutes, "60");
+            setFieldValue(elements.trainingFields.clientName, "");
+            setFieldValue(elements.trainingFields.attendees, "0");
+            setFieldValue(elements.trainingFields.topicValue, "");
+            setFieldValue(elements.trainingClientId, "");
+            state.trainingClientSuggestions = [];
+            renderTrainingClientSuggestions();
+        }
+
+        function populateTrainingTopicSelect() {
+            populateSelect(
+                elements.trainingFields.topicValue,
+                state.trainingsBoard?.topicOptions,
+                elements.trainingFields.topicValue?.value || "");
+        }
+
+        async function saveTraining() {
+            if (state.trainingSaving || !config.saveTrainingUrl) {
+                return;
+            }
+
+            let payload;
+            try {
+                payload = buildTrainingPayload();
+            } catch (error) {
+                setStatus(elements.trainingModalStatus, "error", error instanceof Error ? error.message : "Revisa los datos de la capacitacion.");
+                return;
+            }
+
+            state.trainingSaving = true;
+            setTrainingsBusy(true);
+            setStatus(elements.trainingModalStatus, "info", "Guardando capacitacion...");
+
+            try {
+                const result = await fetchJson(config.saveTrainingUrl, {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+                state.trainingsShowAll = true;
+                if (elements.startDate) {
+                    elements.startDate.value = "";
+                }
+                if (elements.endDate) {
+                    elements.endDate.value = "";
+                }
+                state.trainingsBoard = result?.board || state.trainingsBoard;
+                state.trainingsRecords = Array.isArray(state.trainingsBoard?.records)
+                    ? state.trainingsBoard.records.map(hydrateTrainingRecord)
+                    : [];
+                state.trainingsLoaded = true;
+                syncRangeInputs(state.trainingsBoard);
+                renderTrainingsDashboard();
+
+                state.trainingSaving = false;
+                setTrainingsBusy(false);
+                closeTrainingModal();
+                const message = result?.message || "Capacitacion registrada correctamente.";
+                showSavedPopup(message);
+                returnToTable("trainings");
+                setStatus(elements.trainingsStatus, "success", message);
+            } catch (error) {
+                setStatus(elements.trainingModalStatus, "error", buildErrorMessage(error));
+            } finally {
+                state.trainingSaving = false;
+                setTrainingsBusy(false);
+            }
+        }
+
+        function buildTrainingPayload() {
+            const topicText = (elements.trainingFields.topicText?.value || "").trim();
+            const dateValue = elements.trainingFields.dateValue?.value || "";
+            const durationMinutes = parseDecimal(elements.trainingFields.durationMinutes?.value || "0");
+            const clientId = elements.trainingClientId?.value || "";
+            const clientName = (elements.trainingFields.clientName?.value || "").trim();
+            const attendees = Math.max(0, Math.trunc(parseDecimal(elements.trainingFields.attendees?.value || "0")));
+            const topicValue = elements.trainingFields.topicValue?.value || "";
+
+            if (!topicText) {
+                throw new Error("Debes indicar el tema de la capacitacion.");
+            }
+            if (!dateValue) {
+                throw new Error("Debes indicar la fecha de la capacitacion.");
+            }
+            if (durationMinutes < 0) {
+                throw new Error("La duracion no puede ser negativa.");
+            }
+            if (!clientId && !clientName) {
+                throw new Error("Debes seleccionar un cliente.");
+            }
+            if (!topicValue) {
+                throw new Error("Debes seleccionar una categoria.");
+            }
+
+            return {
+                topicText,
+                dateValue,
+                durationMinutes,
+                clientId,
+                clientName,
+                attendees,
+                topicValue: Number(topicValue)
+            };
+        }
+
+        function handleTrainingClientLookup() {
+            if (!config.clientSearchUrl) {
+                return;
+            }
+
+            setFieldValue(elements.trainingClientId, "");
+            const query = (elements.trainingFields.clientName?.value || "").trim();
+            window.clearTimeout(state.trainingLookupTimer);
+
+            if (query.length < 2) {
+                state.trainingClientSuggestions = [];
+                renderTrainingClientSuggestions();
+                return;
+            }
+
+            const currentSequence = ++state.trainingLookupSequence;
+            state.trainingLookupTimer = window.setTimeout(async () => {
+                try {
+                    const items = await fetchJson(buildClientSearchUrl(query));
+                    if (currentSequence !== state.trainingLookupSequence) {
+                        return;
+                    }
+
+                    state.trainingClientSuggestions = Array.isArray(items) ? items : [];
+                    renderTrainingClientSuggestions();
+                    syncTrainingClientSelection();
+                } catch {
+                    if (currentSequence !== state.trainingLookupSequence) {
+                        return;
+                    }
+
+                    state.trainingClientSuggestions = [];
+                    renderTrainingClientSuggestions();
+                }
+            }, 220);
+        }
+
+        function renderTrainingClientSuggestions() {
+            if (!elements.trainingClientOptions) {
+                return;
+            }
+
+            elements.trainingClientOptions.innerHTML = state.trainingClientSuggestions.map(item => `
+                <option value="${escapeHtml(item.name || "")}" data-id="${escapeHtml(item.id || "")}"></option>
+            `).join("");
+        }
+
+        function syncTrainingClientSelection() {
+            const inputValue = normalizeText(elements.trainingFields.clientName?.value || "");
+            const selectedItem = state.trainingClientSuggestions.find(item => normalizeText(item.name || "") === inputValue);
+            if (elements.trainingClientId) {
+                elements.trainingClientId.value = selectedItem?.id || "";
+            }
         }
 
         function renderTable() {
@@ -699,19 +1030,30 @@
                 return;
             }
 
-            const rows = state.records;
+            const rows = getFilteredRecords();
+            const activeFilterCount = getActiveFilterCount();
             if (elements.recordsCount) {
-                elements.recordsCount.textContent = `${numberFormatter.format(rows.length)} ticket(s)`;
+                elements.recordsCount.textContent = activeFilterCount
+                    ? `${numberFormatter.format(rows.length)} de ${numberFormatter.format(state.records.length)} ticket(s)`
+                    : `${numberFormatter.format(rows.length)} ticket(s)`;
+            }
+
+            if (elements.clearFilters) {
+                elements.clearFilters.disabled = activeFilterCount === 0;
             }
 
             if (elements.empty) {
-                elements.empty.hidden = rows.length > 0;
+                elements.empty.hidden = state.records.length > 0;
             }
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
                     <tr>
-                        <td colspan="8" class="support-cloud-table__empty">No encontramos tickets para este rango.</td>
+                        <td colspan="9" class="support-cloud-table__empty">${
+                            state.records.length
+                                ? "Ningún ticket coincide con los filtros aplicados."
+                                : "No encontramos tickets para este rango."
+                        }</td>
                     </tr>
                 `;
                 return;
@@ -737,8 +1079,109 @@
                             ? `<a class="support-cloud-table__link" href="${escapeHtml(buildDownloadUrl(row.recordId || ""))}" target="_blank" rel="noopener" title="${escapeHtml(row.attachmentFileName || "Adjunto")}">Descargar</a>`
                             : '<span class="support-cloud-table__muted">Sin adjunto</span>'}
                     </td>
+                    <td data-label="Acciones" class="text-end support-cloud-table__actions">
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-sc-delete-ticket="${escapeHtml(row.recordId || "")}" title="Eliminar ticket">
+                            Eliminar
+                        </button>
+                    </td>
                 </tr>
             `).join("");
+        }
+
+        function getFilteredRecords() {
+            const filters = state.filters || {};
+            return state.records.filter(row =>
+                matchesTextFilter(
+                    [row.creationDateDisplay, row.creationDateValue],
+                    filters.creationDate) &&
+                matchesTextFilter(
+                    [
+                        row.title,
+                        row.description,
+                        row.solution,
+                        row.categoryLabel,
+                        row.methodLabel
+                    ],
+                    filters.ticket) &&
+                matchesTextFilter([row.clientName], filters.client) &&
+                matchesTextFilter([row.stateLabel, row.stateValue], filters.state) &&
+                matchesTextFilter([row.typeLabel, row.typeValue], filters.type) &&
+                matchesTextFilter([row.creatorName], filters.creator) &&
+                matchesHoursFilter(row.hoursTaken, filters.hours) &&
+                matchesAttachmentFilter(row.hasAttachment, filters.attachment) &&
+                matchesTextFilter(["Eliminar"], filters.actions));
+        }
+
+        function getActiveFilterCount() {
+            return Object.values(state.filters || {})
+                .filter(value => normalizeText(value).length > 0)
+                .length;
+        }
+
+        function matchesTextFilter(values, filterValue) {
+            const terms = normalizeText(filterValue)
+                .split(/\s+/)
+                .filter(Boolean);
+            if (!terms.length) {
+                return true;
+            }
+
+            const haystack = normalizeText((values || []).filter(value =>
+                value !== null && value !== undefined).join(" "));
+            return terms.every(term => haystack.includes(term));
+        }
+
+        function matchesHoursFilter(hoursTaken, filterValue) {
+            const filter = normalizeText(filterValue).replace(",", ".");
+            if (!filter) {
+                return true;
+            }
+
+            const value = Number(hoursTaken || 0);
+            const rangeMatch = filter.match(/^(-?\d+(?:\.\d+)?)\s*(?:-|a)\s*(-?\d+(?:\.\d+)?)$/);
+            if (rangeMatch) {
+                const start = Number(rangeMatch[1]);
+                const end = Number(rangeMatch[2]);
+                return value >= Math.min(start, end) && value <= Math.max(start, end);
+            }
+
+            const comparisonMatch = filter.match(/^(>=|<=|>|<|=)\s*(-?\d+(?:\.\d+)?)$/);
+            if (comparisonMatch) {
+                const expected = Number(comparisonMatch[2]);
+                switch (comparisonMatch[1]) {
+                    case ">":
+                        return value > expected;
+                    case ">=":
+                        return value >= expected;
+                    case "<":
+                        return value < expected;
+                    case "<=":
+                        return value <= expected;
+                    default:
+                        return value === expected;
+                }
+            }
+
+            if (/^-?\d+(?:\.\d+)?$/.test(filter)) {
+                return value === Number(filter);
+            }
+
+            return matchesTextFilter(
+                [value, numberFormatter.format(value)],
+                filter);
+        }
+
+        function matchesAttachmentFilter(hasAttachment, filterValue) {
+            const filter = normalizeText(filterValue);
+            if (!filter) {
+                return true;
+            }
+
+            return filter === "with"
+                ? Boolean(hasAttachment)
+                : filter === "without"
+                    ? !hasAttachment
+                    : true;
         }
 
         function openModal(recordId) {
@@ -918,20 +1361,62 @@
                     state.draft = { ...savedRecord };
                 }
 
-                closeModal();
+                state.saving = false;
                 setBusy(false);
+                closeModal();
                 await loadBoard({ force: true });
+                const message = hadPendingFile
+                    ? "Ticket y adjunto guardados correctamente."
+                    : (result?.message || "Ticket guardado correctamente.");
+                showSavedPopup(message);
+                returnToTable("tickets");
                 setStatus(
                     elements.status,
                     "success",
-                    hadPendingFile
-                        ? "Ticket y adjunto guardados correctamente."
-                        : (result?.message || "Ticket guardado correctamente."));
+                    message);
             } catch (error) {
                 if (savedRecord?.recordId) {
                     renderModal();
                 }
                 setStatus(elements.modalStatus, "error", buildErrorMessage(error));
+            } finally {
+                state.saving = false;
+                if (state.busy) {
+                    setBusy(false);
+                }
+            }
+        }
+
+        async function deleteTicket(recordId) {
+            if (state.saving || state.busy || !recordId) {
+                return;
+            }
+
+            if (!config.deleteUrl) {
+                setStatus(elements.status, "error", "No se encontro la ruta para eliminar tickets.");
+                return;
+            }
+
+            const row = state.records.find(item => item.recordId === recordId);
+            const label = row?.title ? ` "${row.title}"` : "";
+            if (!window.confirm(`Eliminar el ticket${label}? Esta accion no se puede deshacer.`)) {
+                return;
+            }
+
+            state.saving = true;
+            setBusy(true);
+            setStatus(elements.status, "info", "Eliminando ticket de soporte cloud...");
+
+            try {
+                const result = await fetchJson(buildDeleteUrl(recordId), {
+                    method: "DELETE"
+                });
+
+                await loadBoard({ force: true });
+                returnToTable("tickets");
+                setStatus(elements.status, "success", result?.message || "Ticket de soporte cloud eliminado correctamente.");
+            } catch (error) {
+                setStatus(elements.status, "error", buildErrorMessage(error));
             } finally {
                 state.saving = false;
                 if (state.busy) {
@@ -1051,7 +1536,8 @@
                 topicValue: record?.topicValue ?? "",
                 topicLabel: record?.topicLabel || "",
                 ownerId: record?.ownerId || "",
-                ownerName: record?.ownerName || ""
+                ownerName: record?.ownerName || "",
+                topicText: record?.topicText || ""
             };
         }
 
@@ -1070,6 +1556,31 @@
             const selectedItem = state.clientSuggestions.find(item => normalizeText(item.name || "") === inputValue);
             if (elements.clientId) {
                 elements.clientId.value = selectedItem?.id || "";
+            }
+        }
+
+        function returnToTable(targetSubtab) {
+            if (targetSubtab && targetSubtab !== state.activeSubtab && elements.subtabButtons.length) {
+                setActiveSupportSubtab(targetSubtab);
+            }
+
+            const rowContainer = targetSubtab === "trainings"
+                ? elements.trainingsRows
+                : elements.rows;
+            const target = rowContainer?.closest(".support-cloud-card")
+                || rowContainer?.closest(".support-cloud-table-wrap")
+                || rowContainer;
+
+            if (target && typeof target.scrollIntoView === "function") {
+                window.setTimeout(() => {
+                    target.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 50);
+            }
+        }
+
+        function showSavedPopup(message) {
+            if (message && typeof window.alert === "function") {
+                window.alert(message);
             }
         }
 
@@ -1108,6 +1619,10 @@
             elements.closeModalButtons.forEach(button => {
                 button.disabled = isBusy;
             });
+
+            elements.rows?.querySelectorAll("[data-sc-delete-ticket]").forEach(button => {
+                button.disabled = isBusy;
+            });
         }
 
         function setTrainingsBusy(isBusy) {
@@ -1116,12 +1631,37 @@
             [
                 elements.startDate,
                 elements.endDate,
-                elements.refresh
+                elements.refresh,
+                elements.trainingsShowAll,
+                elements.newTraining
             ].forEach(element => {
                 if (element) {
                     element.disabled = isBusy;
                 }
             });
+
+            [
+                elements.trainingFields.topicText,
+                elements.trainingFields.dateValue,
+                elements.trainingFields.durationMinutes,
+                elements.trainingFields.clientName,
+                elements.trainingFields.attendees,
+                elements.trainingFields.topicValue
+            ].forEach(element => {
+                if (element) {
+                    element.disabled = isBusy;
+                }
+            });
+
+            elements.trainingCloseModalButtons.forEach(button => {
+                button.disabled = isBusy;
+            });
+
+            if (elements.trainingForm) {
+                elements.trainingForm.querySelectorAll("button").forEach(button => {
+                    button.disabled = isBusy;
+                });
+            }
 
             elements.subtabButtons.forEach(button => {
                 button.disabled = isBusy;

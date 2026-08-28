@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>0</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>0</isdefault>
+    <savedqueryid>{4a2b2f60-897e-4b2d-af45-d1cef4f22b61}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="primaryfield" select="1" icon="1" preview="1">
+        <row name="result" id="entityid">
+          <cell name="cr07a_estadodelequipo" width="150" />
+          <cell name="cr07a_estadodelequiponame" width="150" />
+          <cell name="cr07a_fechadecompra" width="150" />
+          <cell name="cr07a_nombredelequipo" width="150" />
+          <cell name="cr07a_numerodeserie" width="150" />
+          <cell name="cr07a_tipodeequipo" width="150" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">
+        <entity name="cr07a_equipo">
+          <attribute name="cr07a_estadodelequipo" />
+          <attribute name="cr07a_estadodelequiponame" />
+          <attribute name="cr07a_fechadecompra" />
+          <attribute name="cr07a_nombredelequipo" />
+          <attribute name="cr07a_numerodeserie" />
+          <attribute name="cr07a_tipodeequipo" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Equipo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

@@ -9,7 +9,7 @@ namespace CotizadorInterno.Web.Services;
 public static class ReportesHtmlRenderer
 {
     private const string CompanyName = "Digital Tech Copiers S.A.S.";
-    private const string ContactEmail = "contacto@digitaltechcolombia.com";
+    private const string ContactEmail = "abarriga@digitaltechcolombia.com";
     private const string ContactWeb = "www.digitaltechcolombia.com";
 
     public static string Render(ReporteConsolidadoPayload payload, ReporteAnalysisPayload analysis)
@@ -38,16 +38,14 @@ public static class ReportesHtmlRenderer
         html.AppendLine(RenderSidebar());
         html.AppendLine("<main class=\"main\">");
         html.AppendLine(RenderHero(payload, analysis, clientName, periodLabel, tenant));
-        html.AppendLine(RenderMarcoIso(analysis));
         html.AppendLine(RenderWhyDigitalTech());
         html.AppendLine(RenderResumen(payload, analysis, secureScoreLabel));
         html.AppendLine(RenderSoportes(payload));
-        html.AppendLine(RenderCumplimientoIso(analysis));
         html.AppendLine(RenderImplementacion(analysis));
         html.AppendLine(RenderSeguridad(payload, analysis));
         html.AppendLine(RenderHallazgos(analysis));
         html.AppendLine(RenderConclusiones(analysis));
-        html.AppendLine(RenderRecomendaciones(analysis));
+        html.AppendLine(RenderRecomendacionMensual(payload, analysis));
         html.AppendLine(RenderContacto());
         html.AppendLine("<footer class=\"footer\"><strong>DIGITAL TECH</strong> · Informe mensual generado para " + H(clientName) + " · " + H(periodLabel) + "</footer>");
         html.AppendLine("</main>");
@@ -68,16 +66,14 @@ public static class ReportesHtmlRenderer
   </div>
   <nav>
     <a href="#portada"><span>▣</span> Portada</a>
-    <a href="#marco-iso"><span>▣</span> Marco Normativo</a>
     <a href="#porqueDT"><span>▣</span> Digital Tech</a>
     <a href="#resumen"><span>▣</span> Resumen</a>
     <a href="#soportes"><span>▣</span> Soportes</a>
-    <a href="#cumplimiento-iso"><span>▣</span> ISO 27001</a>
     <a href="#implementacion"><span>▣</span> Implementacion</a>
     <a href="#seguridad"><span>▣</span> Seguridad</a>
     <a href="#hallazgos"><span>▣</span> Hallazgos</a>
     <a href="#conclusiones"><span>▣</span> Conclusiones</a>
-    <a href="#recomendaciones"><span>▣</span> Recomendaciones</a>
+    <a href="#recomendacion-mensual"><span>▣</span> Recomendacion</a>
     <a href="#contacto"><span>▣</span> Contacto</a>
   </nav>
   <div class="sidebar-footer"><span>Informe ejecutivo mensual</span></div>
@@ -113,36 +109,6 @@ public static class ReportesHtmlRenderer
 """;
     }
 
-    private static string RenderMarcoIso(ReporteAnalysisPayload analysis)
-    {
-        var rows = new StringBuilder();
-        foreach (var item in analysis.Iso)
-        {
-            rows.AppendLine("<tr>");
-            rows.AppendLine("<td>" + H(item.Dominio) + "</td>");
-            rows.AppendLine("<td>" + H(item.Evidencia) + "</td>");
-            rows.AppendLine("<td>" + H(item.Riesgo) + "</td>");
-            rows.AppendLine("<td><span class=\"badge badge-neutral\">" + H(item.Madurez) + "</span></td>");
-            rows.AppendLine("<td>" + H(item.Recomendacion) + "</td>");
-            rows.AppendLine("</tr>");
-        }
-
-        return $$"""
-<section class="section" id="marco-iso">
-  <h2 class="section-title"><span>01</span> Alcance y Marco Normativo</h2>
-  <p class="section-subtitle">Gestion operativa, continuidad de servicio y postura de seguridad Microsoft 365.</p>
-  <div class="divider"></div>
-  <p class="section-text">{{H(analysis.AlcanceMarco)}}</p>
-  <div class="table-wrapper">
-    <table>
-      <thead><tr><th>Dominio</th><th>Evidencia</th><th>Riesgo</th><th>Madurez</th><th>Recomendacion</th></tr></thead>
-      <tbody>{{rows}}</tbody>
-    </table>
-  </div>
-</section>
-""";
-    }
-
     private static string RenderWhyDigitalTech()
     {
         return """
@@ -154,7 +120,7 @@ public static class ReportesHtmlRenderer
     <div class="partner-card"><strong>Operacion gestionada</strong><p>Seguimiento mensual con evidencias, prioridades y acciones.</p></div>
     <div class="partner-card"><strong>Seguridad Microsoft 365</strong><p>Lectura ejecutiva de Secure Score, alertas e incidentes.</p></div>
     <div class="partner-card"><strong>Gestion por tickets</strong><p>Trazabilidad sobre actividades, horas, responsables y resultados.</p></div>
-    <div class="partner-card"><strong>Mejora continua</strong><p>Recomendaciones accionables orientadas a madurez operativa.</p></div>
+    <div class="partner-card"><strong>Mejora continua</strong><p>Acciones mensuales orientadas a madurez operativa.</p></div>
   </div>
 </section>
 """;
@@ -171,7 +137,7 @@ public static class ReportesHtmlRenderer
 
         return $$"""
 <section class="section" id="resumen">
-  <h2 class="section-title"><span>02</span> 1. Resumen Ejecutivo</h2>
+  <h2 class="section-title"><span>01</span> 1. Resumen Ejecutivo</h2>
   <p class="section-subtitle">Lectura ejecutiva del periodo con indicadores operativos y de seguridad.</p>
   <div class="divider"></div>
   <div class="stats-grid">
@@ -215,7 +181,7 @@ public static class ReportesHtmlRenderer
 
         return $$"""
 <section class="section section-alt" id="soportes">
-  <h2 class="section-title"><span>03</span> 1.1 Soportes Tecnicos Realizados</h2>
+  <h2 class="section-title"><span>02</span> 1.1 Soportes Tecnicos Realizados</h2>
   <p class="section-subtitle">Detalle de tickets usados como evidencia operacional del informe.</p>
   <div class="divider"></div>
   <div class="table-wrapper support-table">
@@ -228,27 +194,12 @@ public static class ReportesHtmlRenderer
 """;
     }
 
-    private static string RenderCumplimientoIso(ReporteAnalysisPayload analysis)
-    {
-        var cards = string.Join(Environment.NewLine, analysis.Iso.Take(4).Select(item =>
-            "<div class=\"stat-card\"><div class=\"stat-number small\">" + H(item.Madurez) + "</div><div class=\"stat-label\">" + H(item.Dominio) + "</div><div class=\"stat-sub\">" + H(item.Riesgo) + "</div></div>"));
-
-        return $$"""
-<section class="section" id="cumplimiento-iso">
-  <h2 class="section-title"><span>04</span> Cumplimiento ISO 27001:2022</h2>
-  <p class="section-subtitle">Alineacion operativa observada, no equivalente a certificacion ni auditoria formal.</p>
-  <div class="divider"></div>
-  <div class="stats-grid">{{cards}}</div>
-</section>
-""";
-    }
-
     private static string RenderImplementacion(ReporteAnalysisPayload analysis)
     {
         var items = string.Join(Environment.NewLine, analysis.Implementacion.Select(text => "<li><span>✓</span><p>" + H(text) + "</p></li>"));
         return $$"""
 <section class="section section-alt" id="implementacion">
-  <h2 class="section-title"><span>05</span> 2. Implementacion</h2>
+  <h2 class="section-title"><span>03</span> 2. Implementacion</h2>
   <p class="section-subtitle">Actividades ejecutadas, cambios y gestion operativa evidenciada.</p>
   <div class="divider"></div>
   <ul class="impl-list">{{items}}</ul>
@@ -261,7 +212,6 @@ public static class ReportesHtmlRenderer
         var security = payload.SeguridadMicrosoft365 ?? new ReporteSecurityPromptPayload();
         var score = Math.Clamp((double)security.SecureScorePorcentaje, 0, 100);
         var dashOffset = 565.48d - (565.48d * score / 100d);
-        var recommendations = RenderJsonList(security.Recomendaciones, "No se recibieron recomendaciones de Secure Score para este periodo.");
         var alerts = RenderJsonList(security.Alertas, "No se recibieron alertas detalladas para este periodo.");
         var incidents = RenderJsonList(security.Incidentes, "No se recibieron incidentes detallados para este periodo.");
         var limitation = security.TieneSnapshot
@@ -270,8 +220,8 @@ public static class ReportesHtmlRenderer
 
         return $$"""
 <section class="section" id="seguridad">
-  <h2 class="section-title"><span>06</span> 3. Reporte de Seguridad</h2>
-  <p class="section-subtitle">Secure Score, alertas, incidentes y recomendaciones Microsoft 365.</p>
+  <h2 class="section-title"><span>04</span> 3. Reporte de Seguridad</h2>
+  <p class="section-subtitle">Secure Score, alertas e incidentes Microsoft 365.</p>
   <div class="divider"></div>
   {{limitation}}
   <div class="gauge-container">
@@ -297,7 +247,6 @@ public static class ReportesHtmlRenderer
     {{RenderStatCard(FormatInteger(security.IncidentesResueltos), "Incidentes resueltos", "Cierre registrado")}}
   </div>
   <div class="three-columns">
-    <div><h3>Recomendaciones top</h3>{{recommendations}}</div>
     <div><h3>Alertas relevantes</h3>{{alerts}}</div>
     <div><h3>Incidentes</h3>{{incidents}}</div>
   </div>
@@ -319,7 +268,7 @@ public static class ReportesHtmlRenderer
 
         return $$"""
 <section class="section section-alt" id="hallazgos">
-  <h2 class="section-title"><span>07</span> 4. Hallazgos de Auditoria</h2>
+  <h2 class="section-title"><span>05</span> 4. Hallazgos</h2>
   <p class="section-subtitle">Observaciones derivadas de tickets, metricas y snapshot Microsoft 365.</p>
   <div class="divider"></div>
   <div class="finding-list">{{items}}</div>
@@ -332,7 +281,7 @@ public static class ReportesHtmlRenderer
         var items = string.Join(Environment.NewLine, analysis.Conclusiones.Select(text => "<li><span>✓</span><p>" + H(text) + "</p></li>"));
         return $$"""
 <section class="section" id="conclusiones">
-  <h2 class="section-title"><span>08</span> Conclusiones</h2>
+  <h2 class="section-title"><span>06</span> Conclusiones</h2>
   <p class="section-subtitle">Cierre ejecutivo del periodo evaluado.</p>
   <div class="divider"></div>
   <ul class="impl-list">{{items}}</ul>
@@ -340,30 +289,23 @@ public static class ReportesHtmlRenderer
 """;
     }
 
-    private static string RenderRecomendaciones(ReporteAnalysisPayload analysis)
+    private static string RenderRecomendacionMensual(ReporteConsolidadoPayload payload, ReporteAnalysisPayload analysis)
     {
-        var rows = new StringBuilder();
-        foreach (var item in analysis.Recomendaciones)
-        {
-            rows.AppendLine("<tr>");
-            rows.AppendLine("<td><span class=\"badge badge-abierto\">" + H(item.Prioridad) + "</span></td>");
-            rows.AppendLine("<td>" + H(item.Recomendacion) + "</td>");
-            rows.AppendLine("<td>" + H(item.Evidencia) + "</td>");
-            rows.AppendLine("<td>" + H(item.Responsable) + "</td>");
-            rows.AppendLine("<td>" + H(item.Plazo) + "</td>");
-            rows.AppendLine("</tr>");
-        }
+        var recomendacion = FirstNonEmpty(analysis.RecomendacionMensual, payload.RecomendacionMensual);
+        if (string.IsNullOrWhiteSpace(recomendacion))
+            return "";
 
         return $$"""
-<section class="section section-alt" id="recomendaciones">
-  <h2 class="section-title"><span>09</span> Recomendaciones</h2>
-  <p class="section-subtitle">Plan de accion sugerido con priorizacion ejecutiva.</p>
+<section class="section section-alt" id="recomendacion-mensual">
+  <h2 class="section-title"><span>07</span> Recomendacion mensual</h2>
+  <p class="section-subtitle">Prioridad definida para el periodo y redactada en tono ejecutivo.</p>
   <div class="divider"></div>
-  <div class="table-wrapper">
-    <table>
-      <thead><tr><th>Prioridad</th><th>Recomendacion</th><th>Evidencia</th><th>Responsable sugerido</th><th>Plazo</th></tr></thead>
-      <tbody>{{rows}}</tbody>
-    </table>
+  <div class="finding-list">
+    <article class="finding-card">
+      <span class="badge badge-abierto">Prioridad mensual</span>
+      <h3>Recomendacion del mes</h3>
+      <p>{{H(recomendacion)}}</p>
+    </article>
   </div>
 </section>
 """;
@@ -373,7 +315,7 @@ public static class ReportesHtmlRenderer
     {
         return $$"""
 <section class="section" id="contacto">
-  <h2 class="section-title"><span>10</span> Contacto</h2>
+  <h2 class="section-title"><span>08</span> Contacto</h2>
   <p class="section-subtitle">Equipo responsable del acompanamiento y mejora continua.</p>
   <div class="divider"></div>
   <div class="contact-card">
@@ -425,25 +367,12 @@ public static class ReportesHtmlRenderer
             };
         }
 
-        if (string.IsNullOrWhiteSpace(analysis.AlcanceMarco))
-            analysis.AlcanceMarco = "El informe consolida evidencias de soporte cloud, continuidad operativa, gestion de tickets y postura de seguridad Microsoft 365, usando ISO/IEC 27001:2022 como marco de referencia operativo.";
-
-        if (analysis.Iso.Count == 0)
-        {
-            analysis.Iso = new[]
-            {
-                new ReporteIsoAnalysisItem { Dominio = "Gestion de incidentes", Evidencia = $"{summary.TotalTickets} ticket(s) registrados en el periodo.", Riesgo = "Riesgo operativo dependiente del cierre y trazabilidad de casos.", Madurez = summary.TotalTickets > 0 ? "Medio" : "Sin evidencia", Recomendacion = "Mantener cierre documentado y clasificacion consistente." },
-                new ReporteIsoAnalysisItem { Dominio = "Monitoreo de seguridad", Evidencia = security.TieneSnapshot ? $"Secure Score {FormatDecimal(security.SecureScorePorcentaje)}%." : "Sin snapshot mensual.", Riesgo = security.TieneSnapshot ? "Riesgo sujeto a alertas e incidentes activos." : "Visibilidad limitada de postura de seguridad.", Madurez = security.TieneSnapshot ? "Medio" : "Sin evidencia", Recomendacion = "Recolectar y revisar snapshot mensualmente." },
-                new ReporteIsoAnalysisItem { Dominio = "Mejora continua", Evidencia = "Metricas por estado, categoria, metodo y creador.", Riesgo = "Priorizacion incompleta si no se revisan tendencias.", Madurez = "Medio", Recomendacion = "Convertir hallazgos en plan de accion mensual." }
-            };
-        }
-
         if (analysis.Implementacion.Count == 0)
             analysis.Implementacion = new[] { "Se evidencian actividades operativas y de soporte asociadas a la administracion cloud del periodo, de acuerdo con los tickets registrados." };
 
         if (string.IsNullOrWhiteSpace(analysis.SeguridadNarrativa))
             analysis.SeguridadNarrativa = security.TieneSnapshot
-                ? "La postura de seguridad se interpreta a partir del snapshot mensual Microsoft 365, considerando Secure Score, alertas, incidentes y recomendaciones disponibles."
+                ? "La postura de seguridad se interpreta a partir del snapshot mensual Microsoft 365, considerando Secure Score, alertas e incidentes disponibles."
                 : "La postura de seguridad no pudo evaluarse completamente por ausencia de snapshot mensual Microsoft 365.";
 
         if (analysis.Hallazgos.Count == 0)
@@ -451,21 +380,15 @@ public static class ReportesHtmlRenderer
             analysis.Hallazgos = new[]
             {
                 new ReporteFindingAnalysisItem { Titulo = "Seguimiento operacional del periodo", Evidencia = summary.Resumen, Impacto = "Permite visualizar carga operativa y esfuerzo reportado.", Accion = "Revisar tendencias y priorizar casos abiertos o de mayor consumo.", Severidad = "Media" },
-                new ReporteFindingAnalysisItem { Titulo = security.TieneSnapshot ? "Postura Microsoft 365 observada" : "Limitacion de evidencia de seguridad", Evidencia = security.TieneSnapshot ? $"Secure Score {FormatDecimal(security.SecureScorePorcentaje)}%." : "No se encontro snapshot mensual.", Impacto = security.TieneSnapshot ? "Permite priorizar alertas, incidentes y recomendaciones." : "Reduce visibilidad de riesgos de seguridad.", Accion = "Formalizar revision mensual de seguridad.", Severidad = security.TieneSnapshot ? "Media" : "Alta" }
+                new ReporteFindingAnalysisItem { Titulo = security.TieneSnapshot ? "Postura Microsoft 365 observada" : "Limitacion de evidencia de seguridad", Evidencia = security.TieneSnapshot ? $"Secure Score {FormatDecimal(security.SecureScorePorcentaje)}%." : "No se encontro snapshot mensual.", Impacto = security.TieneSnapshot ? "Permite priorizar alertas e incidentes." : "Reduce visibilidad de riesgos de seguridad.", Accion = "Formalizar revision mensual de seguridad.", Severidad = security.TieneSnapshot ? "Media" : "Alta" }
             };
         }
 
         if (analysis.Conclusiones.Count == 0)
             analysis.Conclusiones = new[] { "El periodo cuenta con evidencia operativa suficiente para revisar la gestion de soporte cloud.", "La postura de seguridad debe mantenerse bajo seguimiento mensual con acciones priorizadas." };
 
-        if (analysis.Recomendaciones.Count == 0)
-        {
-            analysis.Recomendaciones = new[]
-            {
-                new ReporteRecommendationAnalysisItem { Prioridad = "Alta", Recomendacion = "Revisar y cerrar tickets pendientes o de mayor esfuerzo.", Evidencia = summary.Resumen, Responsable = "Equipo Cloud", Plazo = "Corto plazo" },
-                new ReporteRecommendationAnalysisItem { Prioridad = security.TieneSnapshot ? "Media" : "Alta", Recomendacion = security.TieneSnapshot ? "Priorizar recomendaciones de Secure Score e incidentes activos." : "Recolectar snapshot mensual de seguridad Microsoft 365.", Evidencia = security.TieneSnapshot ? $"Alertas altas: {security.AlertasHigh}; incidentes activos: {security.IncidentesActivos}." : "Sin snapshot disponible.", Responsable = "Equipo Seguridad", Plazo = "Corto plazo" }
-            };
-        }
+        if (string.IsNullOrWhiteSpace(analysis.RecomendacionMensual))
+            analysis.RecomendacionMensual = payload.RecomendacionMensual;
 
         return analysis;
     }

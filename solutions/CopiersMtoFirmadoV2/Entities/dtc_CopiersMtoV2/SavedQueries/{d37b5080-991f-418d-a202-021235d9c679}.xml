@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{d37b5080-991f-418d-a202-021235d9c679}</savedqueryid>
+    <layoutxml>
+      <grid name="dtc_copiersmtov2s" jump="dtc_name" select="1" icon="1" preview="0">
+        <row name="dtc_copiersmtov2" id="dtc_copiersmtov2id">
+          <cell name="dtc_name" width="300" />
+          <cell name="createdon" width="125" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>64</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="dtc_copiersmtov2">
+          <attribute name="dtc_copiersmtov2id" />
+          <attribute name="dtc_name" />
+          <attribute name="createdon" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Vista de búsqueda de MTO Firmado V2" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

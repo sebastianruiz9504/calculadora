@@ -8,6 +8,8 @@
      data-hw-can-impersonate="@(Model.CanImpersonate ? "true" : "false")"
      data-hw-current-user-id="@Model.CurrentUserId"
      data-hw-current-user-email="@Model.CurrentUserEmail"
+     data-hw-current-user-is-supplier-payment="@(Model.CurrentUserIsSupplierPayment ? "true" : "false")"
+     data-hw-current-user-is-billing="@(Model.CurrentUserIsBilling ? "true" : "false")"
      data-hw-allow-create="@(Model.AllowCreate ? "true" : "false")"
      data-hw-allow-commercial-draft-edit="@(Model.AllowCommercialDraftEdit ? "true" : "false")"
      data-hw-supplier-payment-email="@HardwareAccessPolicy.SupplierPaymentEmail"
@@ -68,14 +70,28 @@
                         <option value="">Todos los estados</option>
                     </select>
                 </label>
-                <label class="hardware-field">
-                    <span class="hardware-field__label">Desde ODC</span>
-                    <input type="date" class="form-control" data-hw-start-date />
-                </label>
-                <label class="hardware-field">
-                    <span class="hardware-field__label">Hasta ODC</span>
-                    <input type="date" class="form-control" data-hw-end-date />
-                </label>
+                @if (Model.IsCommercialMode)
+                {
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Desde ODC</span>
+                        <input type="date" class="form-control" data-hw-start-date />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Hasta ODC</span>
+                        <input type="date" class="form-control" data-hw-end-date />
+                    </label>
+                }
+                else
+                {
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Desde creaci&oacute;n</span>
+                        <input type="date" class="form-control" data-hw-start-date />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Hasta creaci&oacute;n</span>
+                        <input type="date" class="form-control" data-hw-end-date />
+                    </label>
+                }
             </div>
             <div class="hardware-toolbar__actions">
                 <div class="hardware-toolbar__summary">
@@ -88,16 +104,16 @@
                         <button type="button" class="btn btn-primary" data-hw-open-create-modal>Nuevo registro</button>
                         <button type="button" class="btn btn-outline-primary" data-hw-open-purchase-order-modal>Generar Orden de Compra</button>
                     }
-                    <button type="button" class="btn btn-primary" data-hw-selected-action disabled @(Model.IsCommercialMode ? "hidden" : "")>Gestionar selección</button>
+                    <button type="button" class="btn btn-primary" data-hw-selected-action disabled hidden>Gestionar selección</button>
                     @if (!Model.IsCommercialMode)
                     {
-                        <button type="button" class="btn btn-outline-primary" data-hw-edit-selected disabled>Editar selección</button>
+                        <button type="button" class="btn btn-outline-primary" data-hw-edit-selected disabled hidden>Editar selección</button>
                     }
                     <button type="button" class="btn btn-outline-secondary" data-hw-refresh>Actualizar</button>
                 </div>
                 @if (!Model.IsCommercialMode)
                 {
-                    <div class="hardware-selection-summary" data-hw-selection-summary>Selecciona una o varias filas.</div>
+                    <div class="hardware-selection-summary" data-hw-selection-summary hidden>Selecciona una o varias filas.</div>
                 }
             </div>
         </div>
@@ -109,6 +125,43 @@
             <div class="hardware-empty">Cargando tabla...</div>
         </div>
     </section>
+
+    @if (Model.IsCommercialMode)
+    {
+        <section class="hardware-card hardware-supplier-payment-history" data-hw-supplier-payment-history hidden>
+            <div class="hardware-section-header">
+                <div>
+                    <div class="hardware-kicker">Cartera</div>
+                    <h2 class="hardware-section-title">Historial de pagos subidos</h2>
+                    <p class="hardware-section-subtitle">Comprobantes de pago a proveedor registrados en Hardware.</p>
+                </div>
+                <div class="hardware-toolbar__summary">
+                    <span class="hardware-toolbar__summary-label">Pagos registrados</span>
+                    <strong data-hw-supplier-payment-history-count>0</strong>
+                </div>
+            </div>
+            <div class="hardware-table-wrap">
+                <table class="table align-middle hardware-table hardware-supplier-payment-history-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha pago</th>
+                            <th>Proforma</th>
+                            <th>Proveedor</th>
+                            <th>Clientes</th>
+                            <th class="text-end">Valor pagado</th>
+                            <th>Comprobante</th>
+                            <th>Estado actual</th>
+                        </tr>
+                    </thead>
+                    <tbody data-hw-supplier-payment-history-rows>
+                        <tr>
+                            <td colspan="7" class="hardware-table__empty">Cargando historial...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
 
     @if (Model.IsCommercialMode)
     {
@@ -266,12 +319,13 @@
                     <section class="hardware-stage-panel" data-hw-create-proformas-section>
                         <div class="hardware-stage-panel__header">
                             <h3>Proformas proveedor</h3>
+                            <p>Usa el número o nombre real de la proforma para consolidarla aunque sus líneas estén en varias ODC.</p>
                         </div>
                         <div class="hardware-table-wrap hardware-commercial-create__lines">
                             <table class="table align-middle hardware-stage-table hardware-create-table">
                                 <thead>
                                     <tr>
-                                        <th>Nombre</th>
+                                        <th>No. / nombre proforma</th>
                                         <th>Archivo</th>
                                         <th></th>
                                     </tr>
@@ -690,6 +744,27 @@
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="hardware-modal" data-hw-detail-modal hidden>
+        <div class="hardware-modal__backdrop" data-hw-close-detail-modal></div>
+        <div class="hardware-modal__dialog hardware-modal__dialog--detail" role="dialog" aria-modal="true" aria-labelledby="hardwareDetailModalTitle-@Model.RootId">
+            <div class="hardware-modal__header">
+                <div>
+                    <div class="hardware-kicker">Detalle</div>
+                    <h2 class="hardware-modal__title" id="hardwareDetailModalTitle-@Model.RootId" data-hw-detail-title>Detalle de proforma</h2>
+                    <p class="hardware-modal__subtitle" data-hw-detail-subtitle>Lineas registradas en esta proforma.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-hw-close-detail-modal>Cerrar</button>
+            </div>
+            <div data-hw-detail-body></div>
+            <div class="hardware-modal__footer">
+                <div class="hardware-modal__meta" data-hw-detail-meta></div>
+                <div class="hardware-actions">
+                    <button type="button" class="btn btn-primary" data-hw-close-detail-modal>Cerrar</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>

@@ -11,6 +11,13 @@ public interface ISiigoService
 
     Task<IReadOnlyList<SiigoCustomerLookupItemDto>> SearchCustomersAsync(string query, int top = 12, CancellationToken ct = default);
 
+    Task<ConciliacionSiigoOpenPurchaseSearchResultDto> GetOpenPurchasesAsync(
+        string? supplierId,
+        string? supplierQuery,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default);
+
     Task<SiigoInvoiceSearchResultDto> GetInvoicesAsync(
         string? customerId,
         string? customerQuery,
@@ -18,10 +25,43 @@ public interface ISiigoService
         DateOnly endDate,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<SiigoInvoiceRowDto>> GetInvoicesByDateRangeAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default);
+
+    Task<SiigoInvoiceRowDto?> GetInvoiceByIdAsync(
+        string invoiceId,
+        CancellationToken ct = default) =>
+        Task.FromResult<SiigoInvoiceRowDto?>(null);
+
     Task<SiigoFinancialReconciliationData> GetFinancialReconciliationDocumentsAsync(
         DateOnly startDate,
         DateOnly endDate,
         CancellationToken ct = default);
+
+    Task<SiigoFinancialReconciliationData> GetBillingDocumentsAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<SiigoReconciliationPurchase>> GetPurchasesByDateRangeAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default);
+
+    Task<SiigoReconciliationPurchase?> GetPurchaseByIdAsync(
+        string purchaseId,
+        CancellationToken ct = default) =>
+        Task.FromResult<SiigoReconciliationPurchase?>(null);
+
+    Task<decimal?> GetAccountsPayableBalanceAsync(
+        string supplierIdentification,
+        string duePrefix,
+        int dueConsecutive,
+        int dueQuote = 1,
+        CancellationToken ct = default) =>
+        Task.FromResult<decimal?>(null);
 
     Task<IReadOnlyList<SiigoObservedAccountDto>> GetObservedAccountCatalogAsync(
         DateOnly startDate,
@@ -51,6 +91,30 @@ public interface ISiigoService
         object payload,
         string? idempotencyKey = null,
         CancellationToken ct = default);
+
+    Task<SiigoVoucherCreateResultDto> CreatePurchaseSupportDocumentAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default);
+
+    Task<SiigoVoucherCreateResultDto> CreatePaymentReceiptAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default);
+
+    Task<SiigoVoucherCreateResultDto?> FindPaymentReceiptByObservationAsync(
+        string uniqueObservation,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default) =>
+        Task.FromResult<SiigoVoucherCreateResultDto?>(null);
+
+    Task<SiigoVoucherCreateResultDto?> FindJournalByObservationAsync(
+        string uniqueObservation,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default) =>
+        Task.FromResult<SiigoVoucherCreateResultDto?>(null);
 
     Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
         object payload,

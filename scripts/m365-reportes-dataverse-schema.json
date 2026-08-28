@@ -67,6 +67,8 @@
       "ownership": "UserOwned",
       "columns": [
         { "logicalName": "cr07a_nombre", "displayName": "Nombre empresa", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_nombrepersonaacargo", "displayName": "Nombre persona a cargo", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_correoelectronico", "displayName": "Correo electronico", "type": "Text", "maxLength": 250, "required": false },
         { "logicalName": "cr07a_logocliente", "displayName": "Logo cliente", "type": "MultilineText", "maxLength": 1048576, "required": false },
         { "logicalName": "cr07a_colorcorporativo", "displayName": "Color corporativo", "type": "Text", "maxLength": 30, "required": false }
       ]
@@ -89,6 +91,25 @@
         { "logicalName": "cr07a_fechageneracion", "displayName": "Fecha generacion", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false },
         { "logicalName": "cr07a_promptversion", "displayName": "Prompt version", "type": "Text", "maxLength": 120, "required": false },
         { "logicalName": "cr07a_errores", "displayName": "Errores", "type": "MultilineText", "maxLength": 4000, "required": false }
+      ]
+    },
+    {
+      "displayName": "Anexo informe Microsoft 365",
+      "displayCollectionName": "Anexos informes Microsoft 365",
+      "logicalName": "cr07a_m365reportattachment",
+      "entitySetName": "cr07a_m365reportattachments",
+      "primaryIdAttribute": "cr07a_m365reportattachmentid",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "hasNotes": true,
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Nombre", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_reporte", "displayName": "Reporte", "type": "Lookup", "targetTable": "cr07a_m365generatedreport", "required": false },
+        { "logicalName": "cr07a_reporteidinterno", "displayName": "Reporte interno", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_filename", "displayName": "Archivo", "type": "Text", "maxLength": 260, "required": true },
+        { "logicalName": "cr07a_contenttype", "displayName": "Tipo de contenido", "type": "Text", "maxLength": 200, "required": false },
+        { "logicalName": "cr07a_size", "displayName": "Tamano bytes", "type": "WholeNumber", "minValue": 0, "maxValue": 2147483647, "required": false },
+        { "logicalName": "cr07a_fechacarga", "displayName": "Fecha carga", "type": "DateTime", "behavior": "UserLocal", "format": "DateAndTime", "required": false }
       ]
     }
   ]

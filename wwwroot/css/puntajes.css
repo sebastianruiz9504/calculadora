@@ -137,7 +137,8 @@
     flex-wrap: wrap;
 }
 
-.scores-filter-btn.active {
+.scores-filter-btn.active,
+.scores-business-filter-btn.active {
     background: var(--scores-brand);
     color: #fff;
     border-color: var(--scores-brand);

@@ -1,0 +1,257 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Entity xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Name LocalizedName="Empleado" OriginalName="Empleado">cr07a_Empleado</Name>
+  <EntityInfo>
+    <entity Name="cr07a_Empleado">
+      <attributes>
+        <attribute PhysicalName="cr07a_Modulos">
+          <Type>multiselectpicklist</Type>
+          <Name>cr07a_modulos</Name>
+          <LogicalName>cr07a_modulos</LogicalName>
+          <RequiredLevel>none</RequiredLevel>
+          <DisplayMask>ValidForAdvancedFind|ValidForForm|ValidForGrid</DisplayMask>
+          <ImeMode>auto</ImeMode>
+          <ValidForUpdateApi>1</ValidForUpdateApi>
+          <ValidForReadApi>1</ValidForReadApi>
+          <ValidForCreateApi>1</ValidForCreateApi>
+          <IsCustomField>1</IsCustomField>
+          <IsAuditEnabled>1</IsAuditEnabled>
+          <IsSecured>0</IsSecured>
+          <IntroducedVersion>1.0.0.0</IntroducedVersion>
+          <IsCustomizable>1</IsCustomizable>
+          <IsRenameable>1</IsRenameable>
+          <CanModifySearchSettings>1</CanModifySearchSettings>
+          <CanModifyRequirementLevelSettings>1</CanModifyRequirementLevelSettings>
+          <CanModifyAdditionalSettings>1</CanModifyAdditionalSettings>
+          <SourceType>0</SourceType>
+          <IsGlobalFilterEnabled>0</IsGlobalFilterEnabled>
+          <IsSortableEnabled>0</IsSortableEnabled>
+          <CanModifyGlobalFilterSettings>1</CanModifyGlobalFilterSettings>
+          <CanModifyIsSortableSettings>1</CanModifyIsSortableSettings>
+          <IsDataSourceSecret>0</IsDataSourceSecret>
+          <AutoNumberFormat></AutoNumberFormat>
+          <IsSearchable>0</IsSearchable>
+          <IsFilterable>0</IsFilterable>
+          <IsRetrievable>0</IsRetrievable>
+          <IsLocalizable>0</IsLocalizable>
+          <optionset Name="cr07a_empleado_cr07a_modulos">
+            <OptionSetType>picklist</OptionSetType>
+            <IntroducedVersion>1.0.0.0</IntroducedVersion>
+            <IsCustomizable>1</IsCustomizable>
+            <ExternalTypeName></ExternalTypeName>
+            <displaynames>
+              <displayname description="Modulos" languagecode="3082" />
+            </displaynames>
+            <Descriptions>
+              <Description description="" languagecode="3082" />
+            </Descriptions>
+            <options>
+              <option value="645250000" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="Calculadora" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250001" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="Renovaciones" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250002" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="Puntajes" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250003" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="Nomina" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250004" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="RH" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250005" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="Proveedor" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250006" ExternalValue="" IsHidden="0">
+                <labels>
+                  <label description="Gestion humana" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250007" IsHidden="0">
+                <labels>
+                  <label description="Permisos" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250008" IsHidden="0">
+                <labels>
+                  <label description="Dashboard" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250009" IsHidden="0">
+                <labels>
+                  <label description="Metricas" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250010" IsHidden="0">
+                <labels>
+                  <label description="Cuentas de Cobro" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250011" IsHidden="0">
+                <labels>
+                  <label description="Copiers" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250012" IsHidden="0">
+                <labels>
+                  <label description="Inventario" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250013" IsHidden="0">
+                <labels>
+                  <label description="Licenciamiento" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250014" IsHidden="0">
+                <labels>
+                  <label description="Soporte Cloud" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250015" IsHidden="0">
+                <labels>
+                  <label description="Ventas Hardware" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250016" IsHidden="0">
+                <labels>
+                  <label description="Iron Man" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250017" IsHidden="0">
+                <labels>
+                  <label description="Envío" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250018" IsHidden="0">
+                <labels>
+                  <label description="Transportador" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250020" IsHidden="0">
+                <labels>
+                  <label description="Cruce Licenciamiento" languagecode="3082" />
+                </labels>
+              </option>
+              <option value="645250019" IsHidden="0">
+                <labels>
+                  <label description="Rebates/Inversiones" languagecode="3082" />
+                </labels>
+              </option>
+              <option value="645250021" IsHidden="0">
+                <labels>
+                  <label description="Registro pagos clientes" languagecode="3082" />
+                </labels>
+              </option>
+              <option value="645250022" IsHidden="0">
+                <labels>
+                  <label description="Conciliacion" languagecode="3082" />
+                </labels>
+              </option>
+              <option value="645250023" IsHidden="0">
+                <labels>
+                  <label description="Prima legal" languagecode="3082" />
+                </labels>
+              </option>
+              <option value="645250024" IsHidden="0">
+                <labels>
+                  <label description="Contratos" languagecode="3082" />
+                </labels>
+              </option>
+              <option value="645250025" IsHidden="0">
+                <labels>
+                  <label description="CRM Usuario" languagecode="3082" />
+                </labels>
+                <Descriptions>
+                  <Description description="" languagecode="3082" />
+                </Descriptions>
+              </option>
+              <option value="645250026" IsHidden="0">
+                <labels>
+                  <label description="CRM Administrador" languagecode="3082" />
+                </labels>
+              </option>
+            </options>
+          </optionset>
+          <displaynames>
+            <displayname description="Modulos" languagecode="3082" />
+          </displaynames>
+          <Descriptions>
+            <Description description="" languagecode="3082" />
+          </Descriptions>
+        </attribute>
+      </attributes>
+    </entity>
+  </EntityInfo>
+  <RibbonDiffXml />
+</Entity>

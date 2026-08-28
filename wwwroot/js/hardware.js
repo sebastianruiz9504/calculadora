@@ -1,6 +1,28 @@
 (function () {
     const roots = Array.from(document.querySelectorAll("[data-hw-root]"));
-    roots.forEach(initHardwareWorkspace);
+    roots.forEach(root => {
+        const dashboardPanel = root.closest('[data-dashboard-panel="hardware"]');
+        if (!dashboardPanel || !dashboardPanel.hidden) {
+            initHardwareWorkspace(root);
+            return;
+        }
+
+        let initialized = false;
+        const initializeWhenVisible = () => {
+            if (initialized || dashboardPanel.hidden) {
+                return;
+            }
+
+            initialized = true;
+            observer.disconnect();
+            initHardwareWorkspace(root);
+        };
+        const observer = new MutationObserver(initializeWhenVisible);
+        observer.observe(dashboardPanel, { attributes: true, attributeFilter: ["hidden"] });
+        document.querySelector('[data-dashboard-tab="hardware"]')?.addEventListener("click", () => {
+            window.setTimeout(initializeWhenVisible, 0);
+        }, { once: true });
+    });
 
     function initHardwareWorkspace(root) {
         const config = {
@@ -8,6 +30,8 @@
             canImpersonate: root.dataset.hwCanImpersonate === "true",
             currentUserId: root.dataset.hwCurrentUserId || "",
             currentUserEmail: root.dataset.hwCurrentUserEmail || "",
+            currentUserIsSupplierPayment: root.dataset.hwCurrentUserIsSupplierPayment === "true",
+            currentUserIsBilling: root.dataset.hwCurrentUserIsBilling === "true",
             allowCreate: root.dataset.hwAllowCreate !== "false",
             allowCommercialDraftEdit: root.dataset.hwAllowCommercialDraftEdit !== "false",
             supplierPaymentEmail: root.dataset.hwSupplierPaymentEmail || "",
@@ -34,6 +58,25 @@
         const hardwareStateOkForSupplierPayment = 645250001;
         const hardwareStatePaidToSupplier = 645250002;
         const hardwareStateDeliveredAwaitingBilling = 645250004;
+        const hardwarePeriodMonths = [
+            { value: 1, label: "Enero", shortLabel: "Ene" },
+            { value: 2, label: "Febrero", shortLabel: "Feb" },
+            { value: 3, label: "Marzo", shortLabel: "Mar" },
+            { value: 4, label: "Abril", shortLabel: "Abr" },
+            { value: 5, label: "Mayo", shortLabel: "May" },
+            { value: 6, label: "Junio", shortLabel: "Jun" },
+            { value: 7, label: "Julio", shortLabel: "Jul" },
+            { value: 8, label: "Agosto", shortLabel: "Ago" },
+            { value: 9, label: "Septiembre", shortLabel: "Sep" },
+            { value: 10, label: "Octubre", shortLabel: "Oct" },
+            { value: 11, label: "Noviembre", shortLabel: "Nov" },
+            { value: 12, label: "Diciembre", shortLabel: "Dic" }
+        ];
+
+        ensureHardwareDetailModalMarkup(root);
+        if (!isCommercialMode) {
+            normalizeDashboardHardwareMarkup(root);
+        }
 
         const elements = {
             status: root.querySelector("[data-hw-status]"),
@@ -55,6 +98,8 @@
             stateFilter: root.querySelector("[data-hw-state-filter]"),
             startDate: root.querySelector("[data-hw-start-date]"),
             endDate: root.querySelector("[data-hw-end-date]"),
+            yearFilter: root.querySelector("[data-hw-year-filter]"),
+            monthFilter: root.querySelector("[data-hw-month-filter]"),
             filterLabel: root.querySelector("[data-hw-filter-label]"),
             refreshBtn: root.querySelector("[data-hw-refresh]"),
             selectedActionBtn: root.querySelector("[data-hw-selected-action]"),
@@ -63,6 +108,9 @@
             warnings: root.querySelector("[data-hw-warnings]"),
             stateSummary: root.querySelector("[data-hw-state-summary]"),
             rows: root.querySelector("[data-hw-rows]"),
+            supplierPaymentHistory: root.querySelector("[data-hw-supplier-payment-history]"),
+            supplierPaymentHistoryCount: root.querySelector("[data-hw-supplier-payment-history-count]"),
+            supplierPaymentHistoryRows: root.querySelector("[data-hw-supplier-payment-history-rows]"),
             createForm: root.querySelector("[data-hw-create-form]"),
             createModal: root.querySelector("[data-hw-create-modal]"),
             createStatus: root.querySelector("[data-hw-create-status]"),
@@ -129,6 +177,12 @@
             recordMeta: root.querySelector("[data-hw-record-meta]"),
             recordState: root.querySelector("[data-hw-record-state]"),
             closeModalButtons: Array.from(root.querySelectorAll("[data-hw-close-modal]")),
+            detailModal: root.querySelector("[data-hw-detail-modal]"),
+            detailTitle: root.querySelector("[data-hw-detail-title]"),
+            detailSubtitle: root.querySelector("[data-hw-detail-subtitle]"),
+            detailBody: root.querySelector("[data-hw-detail-body]"),
+            detailMeta: root.querySelector("[data-hw-detail-meta]"),
+            closeDetailModalButtons: Array.from(root.querySelectorAll("[data-hw-close-detail-modal]")),
             stagePanels: Array.from(root.querySelectorAll("[data-hw-stage-panel]")),
             documentationRows: root.querySelector("[data-hw-documentation-rows]"),
             invoiceOptions: root.querySelector("[data-hw-invoice-options]"),
@@ -198,6 +252,7 @@
             preview: null,
             board: null,
             rows: [],
+            supplierPaymentHistoryRows: [],
             displayItems: [],
             selectedRecordIds: new Set(),
             expandedGroups: new Set(),
@@ -357,14 +412,18 @@
             renderFileCards();
             updateDocumentationModalMeta();
         });
+        const initialDateRange = resolveInitialDateRange();
         if (elements.startDate) {
-            elements.startDate.value = config.initialStartDate || "";
+            elements.startDate.value = config.initialStartDate || (!isCommercialMode ? initialDateRange.startDate : "");
             elements.startDate.addEventListener("change", handleDateFilterChange);
         }
         if (elements.endDate) {
-            elements.endDate.value = config.initialEndDate || "";
+            elements.endDate.value = config.initialEndDate || (!isCommercialMode ? initialDateRange.endDate : "");
             elements.endDate.addEventListener("change", handleDateFilterChange);
         }
+        initPeriodFilters();
+        elements.yearFilter?.addEventListener("change", handlePeriodFilterChange);
+        elements.monthFilter?.addEventListener("change", handlePeriodFilterChange);
         elements.stateFilter.addEventListener("change", () => {
             elements.filterLabel.textContent = elements.stateFilter.options[elements.stateFilter.selectedIndex]?.text || "Todos los estados";
             state.selectedRecordIds.clear();
@@ -374,6 +433,151 @@
         function handleDateFilterChange() {
             state.selectedRecordIds.clear();
             loadBoard();
+        }
+
+        function handlePeriodFilterChange() {
+            state.selectedRecordIds.clear();
+            loadBoard();
+        }
+
+        function resolveInitialDateRange() {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = today.getMonth() + 1;
+            return {
+                startDate: formatIsoDate(year, month, 1),
+                endDate: formatIsoDate(year, month, today.getDate())
+            };
+        }
+
+        function normalizeDashboardHardwareMarkup(rootElement) {
+            if (!rootElement) {
+                return;
+            }
+
+            const selectedAction = rootElement.querySelector("[data-hw-selected-action]");
+            const editSelected = rootElement.querySelector("[data-hw-edit-selected]");
+            const selectionSummary = rootElement.querySelector("[data-hw-selection-summary]");
+            if (selectedAction) {
+                selectedAction.hidden = true;
+            }
+            if (editSelected) {
+                editSelected.hidden = true;
+            }
+            if (selectionSummary) {
+                selectionSummary.hidden = true;
+            }
+
+            rootElement.querySelector("[data-hw-year-filter]")?.closest(".hardware-field")?.remove();
+            rootElement.querySelector("[data-hw-month-filter]")?.closest(".hardware-field")?.remove();
+
+            if (!rootElement.querySelector("[data-hw-start-date]") || !rootElement.querySelector("[data-hw-end-date]")) {
+                const anchor = rootElement.querySelector("[data-hw-state-filter]")?.closest(".hardware-field");
+                const dateRangeMarkup = `
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Desde creación</span>
+                        <input type="date" class="form-control" data-hw-start-date />
+                    </label>
+                    <label class="hardware-field">
+                        <span class="hardware-field__label">Hasta creación</span>
+                        <input type="date" class="form-control" data-hw-end-date />
+                    </label>
+                `;
+
+                anchor?.insertAdjacentHTML("afterend", dateRangeMarkup);
+            }
+
+            if (!rootElement.querySelector("[data-hw-detail-modal]")) {
+                ensureHardwareDetailModalMarkup(rootElement);
+            }
+        }
+
+        function ensureHardwareDetailModalMarkup(rootElement) {
+            if (!rootElement || rootElement.querySelector("[data-hw-detail-modal]")) {
+                return;
+            }
+
+            rootElement.insertAdjacentHTML("beforeend", `
+                <div class="hardware-modal" data-hw-detail-modal hidden>
+                    <div class="hardware-modal__backdrop" data-hw-close-detail-modal></div>
+                    <div class="hardware-modal__dialog hardware-modal__dialog--detail" role="dialog" aria-modal="true">
+                        <div class="hardware-modal__header">
+                            <div>
+                                <div class="hardware-kicker">Detalle</div>
+                                <h2 class="hardware-modal__title" data-hw-detail-title>Detalle de proforma</h2>
+                                <p class="hardware-modal__subtitle" data-hw-detail-subtitle>Lineas registradas en esta proforma.</p>
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary" data-hw-close-detail-modal>Cerrar</button>
+                        </div>
+                        <div data-hw-detail-body></div>
+                        <div class="hardware-modal__footer">
+                            <div class="hardware-modal__meta" data-hw-detail-meta></div>
+                            <div class="hardware-actions">
+                                <button type="button" class="btn btn-primary" data-hw-close-detail-modal>Cerrar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+
+        function initPeriodFilters() {
+            if (!elements.yearFilter && !elements.monthFilter) {
+                return;
+            }
+
+            const period = resolveInitialPeriodSelection();
+            if (elements.yearFilter) {
+                const currentYear = new Date().getFullYear();
+                const lastYear = Math.max(currentYear + 1, period.year);
+                const firstYear = Math.min(2020, period.year, currentYear - 6);
+                const options = [];
+                for (let year = lastYear; year >= firstYear; year -= 1) {
+                    options.push(`
+                        <option value="${year}" ${year === period.year ? "selected" : ""}>${year}</option>
+                    `);
+                }
+                elements.yearFilter.innerHTML = options.join("");
+                elements.yearFilter.value = String(period.year);
+            }
+
+            if (elements.monthFilter) {
+                const selectedMonths = new Set(period.months);
+                elements.monthFilter.innerHTML = hardwarePeriodMonths.map(month => `
+                    <option value="${month.value}" ${selectedMonths.has(month.value) ? "selected" : ""}>
+                        ${escapeHtml(month.label)}
+                    </option>
+                `).join("");
+            }
+        }
+
+        function resolveInitialPeriodSelection() {
+            const start = parseIsoDateParts(config.initialStartDate);
+            const end = parseIsoDateParts(config.initialEndDate);
+            const today = new Date();
+            const fallbackYear = today.getFullYear();
+            const fallbackMonth = today.getMonth() + 1;
+            const year = start?.year || end?.year || fallbackYear;
+            const months = [];
+
+            if (start && end && start.year === end.year) {
+                const firstMonth = Math.min(start.month, end.month);
+                const lastMonth = Math.max(start.month, end.month);
+                for (let month = firstMonth; month <= lastMonth; month += 1) {
+                    months.push(month);
+                }
+            } else if (start && start.year === year) {
+                months.push(start.month);
+            } else if (end && end.year === year) {
+                months.push(end.month);
+            } else {
+                months.push(fallbackMonth);
+            }
+
+            return {
+                year,
+                months: months.filter(month => month >= 1 && month <= 12)
+            };
         }
 
         elements.selectAll?.addEventListener("change", () => {
@@ -451,7 +655,67 @@
                 return;
             }
 
+            const detailButton = target.closest("[data-hw-dashboard-detail]");
+            if (detailButton instanceof HTMLButtonElement) {
+                const group = findDisplayGroup(detailButton.dataset.hwDashboardDetail || "");
+                if (group) {
+                    openDashboardDetailModal(group);
+                }
+                return;
+            }
+
+            const manualStateButton = target.closest("[data-hw-manual-state-save]");
+            if (manualStateButton instanceof HTMLButtonElement) {
+                const group = findDisplayGroup(manualStateButton.dataset.hwManualStateSave || "");
+                if (group) {
+                    saveDashboardManualState(group);
+                }
+                return;
+            }
+
             if (target.closest("a, button, input, select, textarea, label")) {
+                return;
+            }
+
+            const dashboardRow = target.closest("[data-hw-dashboard-row]");
+            if (!isCommercialMode && dashboardRow instanceof HTMLElement) {
+                const record = findRow(dashboardRow.dataset.hwDashboardRow || "");
+                if (record) {
+                    openDashboardRecordDetailModal(record);
+                }
+                return;
+            }
+
+            const readOnlyRecordRow = target.closest("[data-hw-readonly-record]");
+            if (isCommercialMode && readOnlyRecordRow instanceof HTMLElement) {
+                const record = findRow(readOnlyRecordRow.dataset.hwReadonlyRecord || "");
+                if (record) {
+                    openHardwareReadOnlyModal([record], record.name || "Detalle de hardware");
+                }
+                return;
+            }
+
+            const readOnlyGroupRow = target.closest("[data-hw-readonly-group]");
+            if (isCommercialMode && readOnlyGroupRow instanceof HTMLElement) {
+                const group = findDisplayGroup(readOnlyGroupRow.dataset.hwReadonlyGroup || "");
+                if (group) {
+                    openHardwareReadOnlyModal(
+                        group.rows,
+                        group.supplierDocumentLabel || group.orderNumber || "Detalle de hardware");
+                }
+                return;
+            }
+
+            const dashboardProformaRow = target.closest("[data-hw-dashboard-proforma-row]");
+            if (dashboardProformaRow instanceof HTMLElement) {
+                const groupKey = dashboardProformaRow.dataset.hwDashboardProformaRow || "";
+                if (state.expandedGroups.has(groupKey)) {
+                    state.expandedGroups.delete(groupKey);
+                } else {
+                    state.expandedGroups.add(groupKey);
+                }
+
+                renderRows(state.board);
                 return;
             }
 
@@ -580,6 +844,10 @@
             button.addEventListener("click", closeEditModal);
         });
 
+        elements.closeDetailModalButtons.forEach(button => {
+            button.addEventListener("click", closeDetailModal);
+        });
+
         elements.modal.addEventListener("click", event => {
             const target = event.target;
             if (target instanceof HTMLElement && target.hasAttribute("data-hw-close-modal")) {
@@ -607,6 +875,13 @@
             const ownerOption = target.closest("[data-hw-owner-option]");
             if (ownerOption instanceof HTMLElement) {
                 selectOwnerOption(ownerOption);
+            }
+        });
+
+        elements.detailModal?.addEventListener("click", event => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.hasAttribute("data-hw-close-detail-modal")) {
+                closeDetailModal();
             }
         });
 
@@ -683,6 +958,8 @@
                 closeCreateModal();
             } else if (elements.editModal && !elements.editModal.hidden) {
                 closeEditModal();
+            } else if (elements.detailModal && !elements.detailModal.hidden) {
+                closeDetailModal();
             } else if (!elements.modal.hidden) {
                 closeModal();
             }
@@ -755,6 +1032,7 @@
             closeModal(true);
             closeCreateModal(true);
             closeEditModal(true);
+            closeDetailModal(true);
             loadBoard();
         }
 
@@ -947,9 +1225,12 @@
                 elements.refreshBtn.disabled = true;
                 setStatus(elements.boardStatus, "info", "Cargando tabla de Hardware...");
 
-                const result = await fetchJson(buildBoardUrl(), { method: "GET" });
+                const result = applyPeriodFilterToBoard(await fetchJson(buildBoardUrl(), { method: "GET" }));
                 state.board = result;
                 state.rows = Array.isArray(result?.rows) ? result.rows : [];
+                state.supplierPaymentHistoryRows = Array.isArray(result?.supplierPaymentHistoryRows)
+                    ? result.supplierPaymentHistoryRows
+                    : [];
                 trimSelectionToVisibleRows();
                 renderBoard(result);
             } catch (error) {
@@ -964,12 +1245,58 @@
             }
         }
 
+        function applyPeriodFilterToBoard(board) {
+            if (!elements.yearFilter) {
+                return board;
+            }
+
+            const rows = Array.isArray(board?.rows) ? board.rows : [];
+            const year = getSelectedHardwareYear();
+            const selectedMonths = getSelectedHardwareMonths();
+            const selectedMonthSet = new Set(selectedMonths);
+            const shouldApplyExactMonthFilter = Boolean(year) && selectedMonths.length > 0 && selectedMonths.length < 12;
+            const filteredRows = shouldApplyExactMonthFilter
+                ? rows.filter(row => rowMatchesSelectedPeriod(row, year, selectedMonthSet))
+                : rows;
+            const message = filteredRows.length === 0
+                ? "No hay registros de Hardware para mostrar con el filtro actual."
+                : `Se cargaron ${formatNumber(filteredRows.length)} registro(s) de Hardware.`;
+
+            return {
+                ...board,
+                rows: filteredRows,
+                totalCount: filteredRows.length,
+                dateFilterLabel: buildSelectedPeriodLabel(),
+                message,
+                stateSummaries: recalculateStateSummaries(board?.stateSummaries, filteredRows)
+            };
+        }
+
+        function rowMatchesSelectedPeriod(row, year, selectedMonthSet) {
+            const date = parseIsoDateParts(row?.odcDateValue || "");
+            return Boolean(date)
+                && date.year === year
+                && selectedMonthSet.has(date.month);
+        }
+
+        function recalculateStateSummaries(summaries, rows) {
+            if (!Array.isArray(summaries)) {
+                return summaries;
+            }
+
+            return summaries.map(summary => ({
+                ...summary,
+                count: rows.filter(row => Number(row?.stateValue || 0) === Number(summary?.value || 0)).length
+            }));
+        }
+
         function renderBoard(board) {
             renderFilterOptions(board);
             renderWarnings(board);
             renderStateSummary(board);
             renderSummaryCards(board);
             renderRows(board);
+            renderSupplierPaymentHistory(board);
             syncAccessControls();
 
             const warnings = Array.isArray(board?.warnings) ? board.warnings.filter(Boolean) : [];
@@ -1052,8 +1379,11 @@
                 return;
             }
 
-            const ownerTables = buildOwnerTables(rows);
-            state.displayItems = ownerTables.flatMap(owner => flattenDisplayItems(owner.items));
+            renderDashboardRows(rows);
+        }
+
+        function renderDashboardRows(rows) {
+            state.displayItems = [];
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
@@ -1063,10 +1393,66 @@
                 return;
             }
 
-            elements.rows.innerHTML = ownerTables.map(renderOwnerTable).join("");
+            const totals = buildDashboardTableTotals(rows);
+            elements.rows.innerHTML = `
+                <div class="hardware-table-wrap">
+                    <table class="table align-middle hardware-table hardware-dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha de creación</th>
+                                <th>Propietario</th>
+                                <th class="text-end">% de utilidad</th>
+                                <th class="text-end">Totales proveedor</th>
+                                <th class="text-end">Valor margen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map(renderDashboardTableRow).join("")}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">
+                                    <strong>Totales</strong>
+                                    <div class="hardware-table__submeta">${formatNumber(rows.length)} fila(s)</div>
+                                </td>
+                                <td class="text-end"><strong>${formatHardwarePercent(totals.utilityPercent)}</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.supplierTotal)}</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.marginValue)}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
 
-            syncGroupCheckboxStates();
             syncSelectAllState();
+        }
+
+        function renderDashboardTableRow(row) {
+            return `
+                <tr class="hardware-table__row hardware-dashboard-row ${toneClass(row?.stateTone)}"
+                    data-hw-dashboard-row="${escapeHtml(row?.recordId || "")}"
+                    title="Ver detalle de la fila">
+                    <td>
+                        <strong>${escapeHtml(row?.createdOnDisplay || row?.createdOnValue || "-")}</strong>
+                        <div class="hardware-table__submeta">${escapeHtml(row?.name || "Hardware")}</div>
+                    </td>
+                    <td>${escapeHtml(row?.ownerName || "Sin propietario")}</td>
+                    <td class="text-end">${formatHardwarePercent(row?.utility || 0)}</td>
+                    <td class="text-end">${formatCurrency(getSupplierLineTotal(row))}</td>
+                    <td class="text-end">${formatCurrency(row?.marginValue || 0)}</td>
+                </tr>
+            `;
+        }
+
+        function buildDashboardTableTotals(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const marginValue = sumValues(items, "marginValue");
+            const totalSale = sumValues(items, "totalSale");
+            return {
+                utilityPercent: totalSale > 0 ? marginValue / totalSale : 0,
+                supplierTotal: sumSupplierLineTotals(items),
+                marginValue
+            };
         }
 
         function renderCommercialRows(rows) {
@@ -1079,12 +1465,12 @@
         }
 
         function renderSupplierPaymentRows(rows) {
-            const groups = buildCommercialGroups(rows, "supplier-payment");
-            state.displayItems = flattenGroupTree(groups);
+            const groups = buildConsolidatedSupplierDocumentGroups(rows, "supplier-payment");
+            state.displayItems = groups;
 
             if (!rows.length) {
                 elements.rows.innerHTML = `
-                    <div class="hardware-empty">No hay registros de Hardware para tu usuario.</div>
+                    <div class="hardware-empty">No hay proformas pendientes de pago a proveedor.</div>
                 `;
                 syncSelectAllState();
                 return;
@@ -1095,21 +1481,151 @@
                     <table class="table align-middle hardware-table hardware-supplier-payment-table">
                         <thead>
                             <tr>
-                                <th>ODC</th>
                                 <th>Proforma</th>
-                                <th>Cliente</th>
                                 <th>Proveedor</th>
+                                <th>Clientes</th>
+                                <th>Líneas</th>
                                 <th class="text-end">Valor total a pagar</th>
                                 <th>Descargar</th>
                                 <th>Registrar pago</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${groups.map(renderSupplierPaymentOrderGroupRows).join("")}
+                            ${groups.map(renderSupplierPaymentGroupRow).join("")}
                         </tbody>
                     </table>
                 </div>
             `;
+        }
+
+        function renderSupplierPaymentHistory(board) {
+            if (!elements.supplierPaymentHistory || !elements.supplierPaymentHistoryRows) {
+                return;
+            }
+
+            const showHistory = isCommercialMode && isSupplierPaymentEffectiveUser();
+            elements.supplierPaymentHistory.hidden = !showHistory;
+            if (!showHistory) {
+                elements.supplierPaymentHistoryRows.innerHTML = "";
+                setText(elements.supplierPaymentHistoryCount, "0");
+                return;
+            }
+
+            const rows = Array.isArray(board?.supplierPaymentHistoryRows)
+                ? board.supplierPaymentHistoryRows
+                : state.supplierPaymentHistoryRows;
+            const groups = buildSupplierPaymentHistoryGroups(rows);
+            setText(elements.supplierPaymentHistoryCount, `${formatNumber(groups.length)} pago(s)`);
+
+            if (!groups.length) {
+                elements.supplierPaymentHistoryRows.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="hardware-table__empty">No hay comprobantes de pago a proveedor subidos.</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            elements.supplierPaymentHistoryRows.innerHTML = groups
+                .map(renderSupplierPaymentHistoryRow)
+                .join("");
+        }
+
+        function buildSupplierPaymentHistoryGroups(rows) {
+            return buildConsolidatedSupplierDocumentGroups(rows, "supplier-payment-history")
+                .map(group => ({
+                    ...group,
+                    historyDateValue: resolveSupplierPaymentHistoryDateValue(group.rows),
+                    historyModifiedValue: resolveSupplierPaymentHistoryModifiedValue(group.rows)
+                }))
+                .sort((left, right) =>
+                    compareOptionalIsoDates(left.historyDateValue, right.historyDateValue)
+                    || compareOptionalIsoDates(left.historyModifiedValue, right.historyModifiedValue)
+                    || String(left.supplierDocumentLabel || "").localeCompare(String(right.supplierDocumentLabel || ""), "es")
+                    || left.index - right.index);
+        }
+
+        function renderSupplierPaymentHistoryRow(group) {
+            const rows = Array.isArray(group?.rows) ? group.rows : [];
+            const paymentRecord = rows.find(row => row?.hasSupplierPaymentProof && row?.recordId) || rows[0] || {};
+            const clientLabels = getGroupClientNames(rows);
+            const providerLabel = getCommonValue(rows, "provider") || "Varios proveedores";
+            const paymentTotal = calculateSupplierPaymentTotal(rows);
+            const paymentDate = resolveSupplierPaymentHistoryDateDisplay(rows);
+            const modifiedDate = resolveSupplierPaymentHistoryModifiedDisplay(rows);
+            const proofName = paymentRecord?.supplierPaymentProofFileName || "Comprobante de pago";
+            const proofUrl = paymentRecord?.recordId
+                ? buildDownloadUrl(paymentRecord.recordId, "cr07a_pagoaproveedor")
+                : "";
+            const stateLabels = getDistinctLabels(rows, row => row?.stateLabel || "");
+
+            return `
+                <tr class="hardware-table__row ${toneClass(paymentRecord?.stateTone)}">
+                    <td>
+                        <strong>${escapeHtml(paymentDate || "-")}</strong>
+                        ${modifiedDate ? `<div class="hardware-table__submeta">Subido ${escapeHtml(modifiedDate)}</div>` : ""}
+                    </td>
+                    <td>
+                        <div class="hardware-table__title">
+                            <strong>${escapeHtml(group?.supplierDocumentLabel || "Sin proforma")}</strong>
+                            <div class="hardware-table__submeta">${formatNumber(rows.length)} línea(s)</div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(providerLabel || "-")}</td>
+                    <td class="hardware-table__client-cell">${escapeHtml(formatCompactList(clientLabels, "Sin cliente"))}</td>
+                    <td class="text-end"><strong>${formatCurrency(paymentTotal)}</strong></td>
+                    <td>
+                        <div class="hardware-supplier-payment-history__file">
+                            ${proofUrl
+                                ? `<a class="btn btn-sm btn-outline-primary" href="${escapeHtml(proofUrl)}" target="_blank" rel="noopener">Descargar</a>`
+                                : `<span class="hardware-table__submeta">Sin enlace</span>`}
+                            <span class="hardware-table__submeta">${escapeHtml(proofName)}</span>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(formatCompactList(stateLabels, paymentRecord?.stateLabel || "-"))}</td>
+                </tr>
+            `;
+        }
+
+        function resolveSupplierPaymentHistoryDateValue(rows) {
+            return resolveEarliestIsoDate(rows, "supplierPaymentDateValue")
+                || resolveSupplierPaymentHistoryModifiedValue(rows);
+        }
+
+        function resolveSupplierPaymentHistoryModifiedValue(rows) {
+            return resolveEarliestIsoDate(rows, "modifiedOnValue");
+        }
+
+        function resolveSupplierPaymentHistoryDateDisplay(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const row = items
+                .filter(item => item?.supplierPaymentDateValue || item?.modifiedOnValue)
+                .sort((left, right) => compareOptionalIsoDates(
+                    left?.supplierPaymentDateValue || left?.modifiedOnValue,
+                    right?.supplierPaymentDateValue || right?.modifiedOnValue))[0];
+            return row?.supplierPaymentDateDisplay || row?.modifiedOnDisplay || "";
+        }
+
+        function resolveSupplierPaymentHistoryModifiedDisplay(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const row = items
+                .filter(item => item?.modifiedOnValue)
+                .sort((left, right) => compareOptionalIsoDates(left?.modifiedOnValue, right?.modifiedOnValue))[0];
+            return row?.modifiedOnDisplay || "";
+        }
+
+        function resolveEarliestIsoDate(rows, propertyName) {
+            const values = (Array.isArray(rows) ? rows : [])
+                .map(row => String(row?.[propertyName] || "").trim())
+                .filter(Boolean)
+                .sort(compareOptionalIsoDates);
+            return values[0] || "";
+        }
+
+        function compareOptionalIsoDates(left, right) {
+            const leftValue = String(left || "9999-12-31");
+            const rightValue = String(right || "9999-12-31");
+            return leftValue.localeCompare(rightValue);
         }
 
         function renderCommercialStateSections(rows) {
@@ -1216,7 +1732,7 @@
                                         <th>Producto / referencia</th>
                                         <th class="text-end">Cant.</th>
                                         <th class="text-end">Costo proveedor</th>
-                                        <th class="text-end">Venta unidad</th>
+                                        <th class="text-end">Total proveedor</th>
                                         <th>Proveedor</th>
                                         <th>Acción</th>
                                     </tr>
@@ -1242,7 +1758,7 @@
             const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
             const odcDate = getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas";
             return `
-                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
+                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}" data-hw-readonly-group="${escapeHtml(group.key)}" title="Ver detalle en modo lectura">
                     <td colspan="7">
                         <div class="hardware-commercial-order">
                             <div>
@@ -1280,11 +1796,11 @@
             const expanded = state.expandedGroups.has(group.key);
             const validation = validateActionRecords(group.rows);
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
-            const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const supplierTotal = sumSupplierLineTotals(group.rows);
             const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
             const draftAction = isDraftDocumentationGroup(group.rows);
             return `
-                <tr class="hardware-table__row hardware-table__group--proforma ${toneClass(first.stateTone)}">
+                <tr class="hardware-table__row hardware-table__group--proforma ${toneClass(first.stateTone)}" data-hw-readonly-group="${escapeHtml(group.key)}" title="Ver detalle en modo lectura">
                     <td colspan="7">
                         <div class="hardware-commercial-order hardware-commercial-order--nested">
                             <div>
@@ -1292,7 +1808,7 @@
                                     ${renderGroupToggle(group.key, expanded, `Proforma ${group.supplierDocumentLabel || ""}`)}
                                     <strong>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</strong>
                                 </div>
-                                <span>${escapeHtml(providerLabel)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(totalSale)}</span>
+                                <span>${escapeHtml(providerLabel)} · ${formatNumber(group.rows.length)} fila(s) · ${formatNumber(totalQuantity)} und · ${formatCurrency(supplierTotal)}</span>
                                 <div class="hardware-commercial-order__files">
                                     ${renderCommercialGroupFileLink(group.rows, resolveSupplierDocumentField(first), group.supplierDocumentLabel || "")}
                                     ${renderCommercialGroupFileLink(group.rows, "cr07a_pagoaproveedor")}
@@ -1315,12 +1831,9 @@
 
         function renderCommercialStateRecordRow(row) {
             const editable = isCommercialLineEditable(row);
-            const editAttributes = editable
-                ? ` data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"`
-                : "";
             const actionLabel = resolveCommercialLineStatusLabel(row, editable);
             return `
-                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${toneClass(row?.stateTone)}"${editAttributes}>
+                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${toneClass(row?.stateTone)}" data-hw-readonly-record="${escapeHtml(row?.recordId || "")}" title="Ver detalle en modo lectura">
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__submeta">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</div>
                         <strong>${escapeHtml(row?.clientName || "Sin cliente")}</strong>
@@ -1333,7 +1846,7 @@
                     </td>
                     <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
-                    <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
+                    <td class="text-end">${formatCurrency(getSupplierLineTotal(row))}</td>
                     <td>${escapeHtml(row?.provider || "-")}</td>
                     <td>
                         <div class="hardware-action-cell">
@@ -1351,7 +1864,7 @@
             const groups = new Map();
             rows.forEach((row, index) => {
                 const orderNumber = String(row?.purchaseOrderNumber || "").trim() || "Sin orden";
-                const baseKey = normalizeText(orderNumber) || `sin-orden-${index}`;
+                const baseKey = buildCommercialOrderGroupKey(row, index);
                 const key = keyPrefix ? `${keyPrefix}|odc|${baseKey}` : `odc|${baseKey}`;
                 if (!groups.has(key)) {
                     groups.set(key, {
@@ -1381,7 +1894,7 @@
             rows.forEach((row, index) => {
                 const orderNumber = String(row?.purchaseOrderNumber || "").trim() || "Sin orden";
                 const documentKey = resolveSupplierDocumentGroupKey(row, index);
-                const baseKey = `${normalizeText(orderNumber) || `sin-orden-${index}`}|${normalizeText(documentKey) || `proforma-${index}`}`;
+                const baseKey = `${buildCommercialOrderGroupKey(row, index)}|${normalizeText(documentKey) || `proforma-${index}`}`;
                 const key = keyPrefix ? `${keyPrefix}|${baseKey}` : baseKey;
                 if (!groups.has(key)) {
                     groups.set(key, {
@@ -1401,6 +1914,91 @@
 
             return Array.from(groups.values())
                 .sort((left, right) => left.index - right.index);
+        }
+
+        function buildConsolidatedSupplierDocumentGroups(rows, keyPrefix = "") {
+            const groups = new Map();
+            (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+                const documentKey = buildConsolidatedSupplierDocumentKey(row, index);
+                const key = keyPrefix ? `${keyPrefix}|${documentKey}` : documentKey;
+                if (!groups.has(key)) {
+                    groups.set(key, {
+                        type: "group",
+                        groupKind: "proforma",
+                        key,
+                        orderNumber: String(row?.purchaseOrderNumber || "").trim() || "Sin orden",
+                        supplierDocumentKey: documentKey,
+                        supplierDocumentLabel: resolveSupplierDocumentGroupLabel(row, index),
+                        rows: [],
+                        index
+                    });
+                }
+
+                groups.get(key).rows.push(row);
+            });
+
+            return Array.from(groups.values())
+                .sort((left, right) => {
+                    const byDate = getDashboardLatestDateValue(right.rows) - getDashboardLatestDateValue(left.rows);
+                    return byDate || left.index - right.index;
+                });
+        }
+
+        function buildConsolidatedSupplierDocumentKey(row, index = 0) {
+            const providerKey = normalizeText(row?.provider || "sin-proveedor") || "sin-proveedor";
+            const fieldKey = resolveSupplierDocumentField(row);
+            const label = resolveSupplierDocumentGroupLabel(row, index);
+            const labelKey = isGenericProformaLabel(label) ? "" : normalizeText(label);
+            const fileNameKey = normalizeText(resolveExistingFileName(row, fieldKey));
+            const storedGroupKey = resolveSupplierDocumentGroupKey(row, index);
+            const storedKey = isGenericProformaLabel(storedGroupKey) ? "" : normalizeText(storedGroupKey);
+            const identityKey = labelKey || fileNameKey || storedKey || normalizeText(row?.recordId || `proforma-${index + 1}`);
+            return `${fieldKey}|${providerKey}|${identityKey}`;
+        }
+
+        function getDistinctLabels(rows, resolver) {
+            const values = [];
+            const seen = new Set();
+            (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+                const raw = String(resolver(row, index) || "").trim();
+                if (!raw) {
+                    return;
+                }
+
+                const key = normalizeText(raw);
+                if (seen.has(key)) {
+                    return;
+                }
+
+                seen.add(key);
+                values.push(raw);
+            });
+            return values;
+        }
+
+        function formatCompactList(values, emptyLabel = "-") {
+            const items = (Array.isArray(values) ? values : []).filter(Boolean);
+            if (!items.length) {
+                return emptyLabel;
+            }
+
+            if (items.length <= 3) {
+                return items.join(", ");
+            }
+
+            return `${items.slice(0, 3).join(", ")} +${items.length - 3}`;
+        }
+
+        function getGroupOrderNumbers(rows) {
+            return getDistinctLabels(rows, row => row?.purchaseOrderNumber || "Sin ODC");
+        }
+
+        function getGroupClientNames(rows) {
+            return getDistinctLabels(rows, row => row?.clientName || "Sin cliente");
+        }
+
+        function getGroupOwnerNames(rows) {
+            return getDistinctLabels(rows, row => row?.ownerName || "Sin vendedor");
         }
 
         function shouldGroupCommercialStateBySupplierDocument(stateValue) {
@@ -1522,7 +2120,7 @@
             const groupStateTone = getCommonValue(group.rows, "stateTone") || first.stateTone || "";
             const columnCount = showLineProforma ? 9 : 8;
             return `
-                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}">
+                <tr class="hardware-table__row hardware-commercial-table__group ${toneClass(first.stateTone)}" data-hw-readonly-group="${escapeHtml(group.key)}" title="Ver detalle en modo lectura">
                     <td colspan="${columnCount}">
                         <div class="hardware-commercial-order">
                             <div>
@@ -1580,23 +2178,22 @@
             const first = group.rows[0] || {};
             const expanded = state.expandedGroups.has(group.key);
             const validation = validateActionRecords(group.rows);
-            const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
             const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const clientLabels = getGroupClientNames(group.rows);
             const paymentTotal = calculateSupplierPaymentTotal(group.rows);
             const downloads = resolveSupplierPaymentDocumentDownloads(group.rows);
             return `
-                <tr class="hardware-table__row hardware-supplier-payment-row hardware-table__group--proforma ${toneClass(first.stateTone)}" data-hw-open-group="${escapeHtml(group.key)}" title="Abrir gestión de pago a proveedor">
-                    <td class="hardware-table__order-cell">
+                <tr class="hardware-table__row hardware-supplier-payment-row hardware-table__group--proforma ${toneClass(first.stateTone)}" data-hw-readonly-group="${escapeHtml(group.key)}" title="Ver detalle en modo lectura">
+                    <td>
                         <div class="hardware-table__title">
                             ${renderGroupToggle(group.key, expanded, `Proforma ${group.supplierDocumentLabel || ""}`)}
-                            <span class="hardware-order-number">${escapeHtml(group.orderNumber || "Sin ODC")}</span>
+                            <strong>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</strong>
+                            <div class="hardware-table__submeta">${formatNumber(group.rows.length)} línea(s)</div>
                         </div>
                     </td>
-                    <td>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</td>
-                    <td class="hardware-table__client-cell">
-                        <strong>${escapeHtml(clientLabel)}</strong>
-                    </td>
                     <td>${escapeHtml(providerLabel || "-")}</td>
+                    <td class="hardware-table__client-cell">${escapeHtml(formatCompactList(clientLabels, "Sin cliente"))}</td>
+                    <td>${formatNumber(group.rows.length)} línea(s)</td>
                     <td class="text-end"><strong>${formatCurrency(paymentTotal)}</strong></td>
                     <td>
                         <div class="hardware-action-cell">
@@ -1618,33 +2215,33 @@
         }
 
         function renderSupplierPaymentLineRow(row) {
+            const validation = validateActionRecords([row]);
             return `
-                <tr class="hardware-table__row hardware-table__row--child ${toneClass(row?.stateTone)}">
-                    <td></td>
+                <tr class="hardware-table__row hardware-table__row--child ${toneClass(row?.stateTone)}" data-hw-readonly-record="${escapeHtml(row?.recordId || "")}" title="Ver detalle en modo lectura">
                     <td>
                         <div class="hardware-table__title">
                             <strong>${escapeHtml(row?.name || "Hardware")}</strong>
                             <div class="hardware-table__submeta">${formatNumber(row?.quantity || 0)} und</div>
                         </div>
                     </td>
-                    <td>${escapeHtml(row?.clientName || "-")}</td>
                     <td>${escapeHtml(row?.provider || "-")}</td>
-                    <td class="text-end">${formatCurrency(Number(row?.supplierTotal || 0) || Number(row?.quantity || 0) * Number(row?.supplierUnitCost || 0))}</td>
-                    <td>${renderCommercialLineProformaLink(row, findSupplierDocumentRows(row, state.rows))}</td>
-                    <td><span class="hardware-table__submeta">${escapeHtml(row?.actionLabel || row?.stateLabel || "")}</span></td>
+                    <td>${escapeHtml(row?.clientName || "-")}</td>
+                    <td><span class="hardware-order-number">${escapeHtml(row?.purchaseOrderNumber || "Sin ODC")}</span></td>
+                    <td class="text-end">${formatCurrency(getSupplierLineTotal(row))}</td>
+                    <td><span class="hardware-table__submeta">Incluida</span></td>
+                    <td>
+                        <div class="hardware-action-cell">
+                            ${validation.ok
+                                ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-record="${escapeHtml(row?.recordId || "")}">Subir comprobante</button>`
+                                : `<span class="hardware-table__submeta">${escapeHtml(validation.message || row?.actionLabel || row?.stateLabel || "")}</span>`}
+                        </div>
+                    </td>
                 </tr>
             `;
         }
 
         function calculateSupplierPaymentTotal(rows) {
-            return (Array.isArray(rows) ? rows : []).reduce((total, row) => {
-                const supplierTotal = Number(row?.supplierTotal || 0);
-                if (supplierTotal > 0) {
-                    return total + supplierTotal;
-                }
-
-                return total + (Number(row?.quantity || 0) * Number(row?.supplierUnitCost || 0));
-            }, 0);
+            return sumSupplierLineTotals(rows);
         }
 
         function resolveSupplierPaymentDocumentDownloads(rows) {
@@ -1698,12 +2295,8 @@
             const editable = isCommercialLineEditable(row);
             const openable = isSupplierPaymentEffectiveUser() && Boolean(row?.recordId) && Boolean(row?.hasAction) && Boolean(row?.actionKey);
             const actionLabel = resolveCommercialLineStatusLabel(row, editable, openable);
-            const rowAttributes = [
-                editable ? `data-hw-edit-record="${escapeHtml(row?.recordId || "")}" title="Editar línea"` : "",
-                openable ? `data-hw-open-record="${escapeHtml(row?.recordId || "")}" title="Abrir gestión de pago a proveedor"` : ""
-            ].filter(Boolean).join(" ");
             return `
-                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${openable ? "is-actionable" : ""} ${toneClass(row?.stateTone)}"${rowAttributes ? ` ${rowAttributes}` : ""}>
+                <tr class="hardware-table__row hardware-table__row--child ${editable ? "is-editable" : ""} ${openable ? "is-actionable" : ""} ${toneClass(row?.stateTone)}" data-hw-readonly-record="${escapeHtml(row?.recordId || "")}" title="Ver detalle en modo lectura">
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__submeta">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</div>
                         <strong>${escapeHtml(row?.clientName || "Sin cliente")}</strong>
@@ -1836,6 +2429,338 @@
             }
         }
 
+        function buildDashboardOrderGroups(rows) {
+            const groups = new Map();
+            (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+                const key = buildCommercialOrderGroupKey(row, index);
+                if (!groups.has(key)) {
+                    groups.set(key, {
+                        type: "group",
+                        groupKind: "odc",
+                        key,
+                        orderNumber: String(row?.purchaseOrderNumber || "").trim() || "Sin orden",
+                        rows: [],
+                        proformaGroups: [],
+                        index
+                    });
+                }
+
+                groups.get(key).rows.push(row);
+            });
+
+            return Array.from(groups.values())
+                .map(group => ({
+                    ...group,
+                    proformaGroups: buildSupplierDocumentGroups(group.rows, `${group.key}|dashboard-proforma`),
+                    sortDate: getDashboardLatestDateValue(group.rows)
+                }))
+                .sort((left, right) => {
+                    const byDate = Number(right.sortDate || 0) - Number(left.sortDate || 0);
+                    return byDate || left.index - right.index;
+                });
+        }
+
+        function renderDashboardConsolidatedProformaRows(group) {
+            const first = group.rows[0] || {};
+            const expanded = state.expandedGroups.has(group.key);
+            const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const orderLabels = getGroupOrderNumbers(group.rows);
+            const clientLabels = getGroupClientNames(group.rows);
+            const proformaTotal = sumSupplierLineTotals(group.rows);
+            const stateLabel = getCommonValue(group.rows, "stateLabel") || first.stateLabel || "Varios estados";
+            const stateTone = getCommonValue(group.rows, "stateTone") || first.stateTone || "";
+            return `
+                <tr class="hardware-table__row hardware-dashboard-proforma-row ${toneClass(stateTone)}"
+                    data-hw-dashboard-proforma-row="${escapeHtml(group.key)}"
+                    title="Ver flujo de esta proforma">
+                    <td>
+                        <div class="hardware-table__title">
+                            ${renderGroupToggle(group.key, expanded, `Proforma ${group.supplierDocumentLabel || ""}`)}
+                            <strong>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</strong>
+                            <div class="hardware-table__submeta">${formatNumber(group.rows.length)} linea(s)</div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(providerLabel)}</td>
+                    <td>${escapeHtml(formatCompactList(orderLabels, "Sin ODC"))}</td>
+                    <td class="hardware-table__client-cell">${escapeHtml(formatCompactList(clientLabels, "Sin cliente"))}</td>
+                    <td class="text-end"><strong>${formatCurrency(proformaTotal)}</strong></td>
+                    <td class="hardware-table__state-cell">
+                        <div class="hardware-dashboard-state-cell">
+                            ${renderStatePill(stateLabel, stateTone)}
+                            ${renderDashboardManualStateControl(group)}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-hw-dashboard-detail="${escapeHtml(group.key)}">Ver detalle</button>
+                        </div>
+                    </td>
+                </tr>
+                ${expanded ? renderDashboardProformaFlowRow(group, 6) : ""}
+            `;
+        }
+
+        function renderDashboardOrderRows(group) {
+            const expanded = state.expandedGroups.has(group.key);
+            const totalSale = sumValues(group.rows, "totalSale");
+            const clientLabel = getCommonValue(group.rows, "clientName") || "Varios clientes";
+            const ownerLabel = getCommonValue(group.rows, "ownerName") || "Varios vendedores";
+            return `
+                <tr class="hardware-table__row hardware-dashboard-table__order">
+                    <td class="hardware-table__order-cell">
+                        <div class="hardware-table__title">
+                            ${renderGroupToggle(group.key, expanded, `ODC ${group.orderNumber || "sin orden"}`)}
+                            <span class="hardware-order-number">${escapeHtml(group.orderNumber || "Sin orden")}</span>
+                        </div>
+                    </td>
+                    <td class="hardware-table__client-cell">
+                        <strong>${escapeHtml(clientLabel)}</strong>
+                        <div class="hardware-table__submeta">${formatNumber(group.proformaGroups?.length || 0)} proforma(s) · ${formatNumber(group.rows.length)} linea(s)</div>
+                    </td>
+                    <td>${escapeHtml(resolveDashboardDateDisplay(group.rows))}</td>
+                    <td class="text-end"><strong>${formatCurrency(totalSale)}</strong></td>
+                    <td>${escapeHtml(ownerLabel)}</td>
+                </tr>
+                ${expanded ? renderDashboardProformaTableRow(group) : ""}
+            `;
+        }
+
+        function renderDashboardProformaTableRow(orderGroup) {
+            return `
+                <tr class="hardware-dashboard-table__nested-row">
+                    <td colspan="5">
+                        <div class="hardware-dashboard-proformas">
+                            <table class="table align-middle hardware-table hardware-dashboard-proforma-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre Proforma</th>
+                                        <th>Proveedor</th>
+                                        <th class="text-end">Valor total proforma</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${(orderGroup.proformaGroups || []).map(renderDashboardProformaRows).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderDashboardProformaRows(group) {
+            const first = group.rows[0] || {};
+            const expanded = state.expandedGroups.has(group.key);
+            const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
+            const proformaTotal = sumSupplierLineTotals(group.rows);
+            const stateLabel = getCommonValue(group.rows, "stateLabel") || first.stateLabel || "Varios estados";
+            const stateTone = getCommonValue(group.rows, "stateTone") || first.stateTone || "";
+            return `
+                <tr class="hardware-table__row hardware-dashboard-proforma-row ${toneClass(stateTone)}"
+                    data-hw-dashboard-proforma-row="${escapeHtml(group.key)}"
+                    title="Ver flujo de esta proforma">
+                    <td>
+                        <div class="hardware-table__title">
+                            <strong>${escapeHtml(group.supplierDocumentLabel || "Sin proforma")}</strong>
+                            <div class="hardware-table__submeta">${formatNumber(group.rows.length)} linea(s)</div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(providerLabel)}</td>
+                    <td class="text-end"><strong>${formatCurrency(proformaTotal)}</strong></td>
+                    <td class="hardware-table__state-cell">
+                        <div class="hardware-dashboard-state-cell">
+                            ${renderStatePill(stateLabel, stateTone)}
+                            ${renderDashboardManualStateControl(group)}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-hw-dashboard-detail="${escapeHtml(group.key)}">Ver detalle</button>
+                        </div>
+                    </td>
+                </tr>
+                ${expanded ? renderDashboardProformaFlowRow(group) : ""}
+            `;
+        }
+
+        function renderDashboardManualStateControl(group) {
+            const first = group.rows[0] || {};
+            const selectedValue = String(first.stateValue || "");
+            const options = Array.isArray(state.board?.stateOptions) ? state.board.stateOptions : [];
+            return `
+                <div class="hardware-manual-state">
+                    <select class="form-select form-select-sm" data-hw-manual-state-select="${escapeHtml(group.key)}" aria-label="Estado manual para ${escapeHtml(group.supplierDocumentLabel || "proforma")}">
+                        ${options.map(option => `
+                            <option value="${escapeHtml(option.value)}" ${String(option.value) === selectedValue ? "selected" : ""}>
+                                ${escapeHtml(option.label || "")}
+                            </option>
+                        `).join("")}
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-hw-manual-state-save="${escapeHtml(group.key)}">Cambiar estado manualmente</button>
+                </div>
+            `;
+        }
+
+        function renderDashboardProformaFlowRow(group, columnCount = 4) {
+            return `
+                <tr class="hardware-dashboard-flow-row">
+                    <td colspan="${Number(columnCount) || 4}">
+                        ${renderDashboardProformaFlow(group)}
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderDashboardProformaFlow(group) {
+            const first = group.rows[0] || {};
+            const steps = getHardwareFlowSteps();
+            const currentValue = Number(first?.stateValue || hardwareStateWaitingDocumentation);
+            const skipsSupplierPayment = normalizeSupplierDocumentType(first?.supplierDocumentType || "") === "odc-proveedor";
+            const nextActiveStep = steps.find(step =>
+                step.value > currentValue
+                && !(skipsSupplierPayment && step.value === hardwareStateOkForSupplierPayment));
+
+            const renderedSteps = steps.map(step => {
+                const skipped = skipsSupplierPayment && step.value === hardwareStateOkForSupplierPayment && currentValue >= hardwareStatePaidToSupplier;
+                const current = currentValue === step.value;
+                const done = !current && !skipped && currentValue > step.value;
+                const next = !current && !done && !skipped && nextActiveStep?.value === step.value;
+                const stateClass = skipped
+                    ? "is-skipped"
+                    : current
+                        ? "is-current"
+                        : done
+                            ? "is-done"
+                            : next
+                                ? "is-next"
+                                : "is-pending";
+
+                return `
+                    <article class="hardware-dashboard-flow-step hardware-flow-step ${stateClass} ${toneClass(step.tone)}">
+                        <div class="hardware-dashboard-flow-step__head">
+                            <span class="hardware-flow-step__dot" aria-hidden="true"></span>
+                            <span class="hardware-flow-step__label">${escapeHtml(step.label)}</span>
+                        </div>
+                        <div class="hardware-dashboard-flow-step__docs">
+                            ${renderDashboardStepDocuments(group, step.value)}
+                        </div>
+                    </article>
+                `;
+            }).join("");
+
+            return `
+                <div class="hardware-dashboard-flow" aria-label="Flujo de estados de ${escapeHtml(group.supplierDocumentLabel || "proforma")}">
+                    ${renderedSteps}
+                </div>
+            `;
+        }
+
+        function renderDashboardStepDocuments(group, stepValue) {
+            const docs = getDashboardStepDocuments(group, stepValue);
+            if (!docs.length) {
+                return `<span class="hardware-table__submeta">Sin documento</span>`;
+            }
+
+            return docs.map(doc => doc.html).join("");
+        }
+
+        function getDashboardStepDocuments(group, stepValue) {
+            const first = group.rows[0] || {};
+            const supplierDocumentField = resolveSupplierDocumentField(first);
+            const docs = [];
+
+            if (stepValue === hardwareStateWaitingDocumentation) {
+                docs.push({
+                    html: renderDashboardOrderDocumentChips(group.rows, "cr07a_ordendecompra", "ODC cliente")
+                });
+                docs.push({
+                    html: renderDashboardDocumentChip(
+                        group.rows,
+                        supplierDocumentField,
+                        supplierDocumentField === "cr07a_odcproveedor"
+                            ? "ODC proveedor"
+                            : group.supplierDocumentLabel || "Proforma")
+                });
+            }
+
+            if (stepValue === hardwareStatePaidToSupplier) {
+                docs.push({
+                    html: renderDashboardDocumentChip(group.rows, "cr07a_pagoaproveedor", "Pago proveedor")
+                });
+            }
+
+            if (stepValue === hardwareStateDeliveredAwaitingBilling) {
+                docs.push({
+                    html: renderDashboardDocumentChip(group.rows, "cr07a_actadeentrega", "Acta entrega")
+                });
+            }
+
+            if (stepValue === 645250005) {
+                docs.push({
+                    html: renderCommercialGroupInvoiceChip(group.rows)
+                });
+            }
+
+            return docs.filter(doc => doc.html);
+        }
+
+        function renderDashboardOrderDocumentChips(rows, fieldName, label) {
+            const groups = new Map();
+            (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+                const key = buildCommercialOrderGroupKey(row, index);
+                if (!groups.has(key)) {
+                    groups.set(key, []);
+                }
+
+                groups.get(key).push(row);
+            });
+
+            const chips = Array.from(groups.values()).map((orderRows, index) => {
+                const orderNumber = getCommonValue(orderRows, "purchaseOrderNumber") || orderRows[0]?.purchaseOrderNumber || `ODC ${index + 1}`;
+                return renderDashboardDocumentChip(orderRows, fieldName, `${label} ${orderNumber}`);
+            });
+            return chips.join("");
+        }
+
+        function renderDashboardDocumentChip(rows, fieldName, label) {
+            const record = resolveOrderFileRecord(rows, fieldName);
+            if (!record?.recordId || !hasExistingFile(record, fieldName)) {
+                return `<span class="hardware-file-chip is-missing">${escapeHtml(label)} pendiente</span>`;
+            }
+
+            const fileName = resolveExistingFileName(record, fieldName);
+            return `
+                <a class="hardware-file-chip" href="${escapeHtml(buildDownloadUrl(record.recordId, fieldName))}" target="_blank" rel="noopener">
+                    ${escapeHtml(label)}${fileName ? ` · ${escapeHtml(fileName)}` : ""}
+                </a>
+            `;
+        }
+
+        function getHardwareFlowSteps() {
+            return [
+                { value: 645250000, label: "Documentación", tone: "documentation" },
+                { value: 645250001, label: "Ok para pago a proveedor", tone: "supplier-ready" },
+                { value: 645250002, label: "Ok pago proveedor", tone: "supplier-paid" },
+                { value: 645250003, label: "Tránsito", tone: "in-transit" },
+                { value: 645250004, label: "Entrega", tone: "awaiting-billing" },
+                { value: 645250005, label: "Factura", tone: "awaiting-payment" },
+                { value: 645250006, label: "Cierre", tone: "closed" }
+            ];
+        }
+
+        function getDashboardLatestDateValue(rows) {
+            return (Array.isArray(rows) ? rows : []).reduce((latest, row) => {
+                const parts = parseIsoDateParts(row?.odcDateValue || "");
+                const value = parts ? Number(`${parts.year}${String(parts.month).padStart(2, "0")}${String(parts.day).padStart(2, "0")}`) : 0;
+                return Math.max(latest, value);
+            }, 0);
+        }
+
+        function resolveDashboardDateDisplay(rows) {
+            const common = getCommonValue(rows, "odcDateDisplay");
+            if (common) {
+                return common;
+            }
+
+            const datedRows = (Array.isArray(rows) ? rows : [])
+                .filter(row => parseIsoDateParts(row?.odcDateValue || ""))
+                .sort((left, right) => getDashboardLatestDateValue([right]) - getDashboardLatestDateValue([left]));
+            return datedRows[0]?.odcDateDisplay || "Varias fechas";
+        }
+
         function buildOwnerTables(rows) {
             const owners = new Map();
             rows.forEach((row, index) => {
@@ -1893,7 +2818,7 @@
                                     <th>Fecha ODC</th>
                                     <th class="text-end">Cantidad</th>
                                     <th class="text-end">Venta unidad</th>
-                                    <th class="text-end">Total línea</th>
+                                    <th class="text-end">Total proveedor</th>
                                     <th class="hardware-table__state-col">Estado</th>
                                     <th class="hardware-table__action-col">Botón</th>
                                 </tr>
@@ -1911,6 +2836,7 @@
 
         function renderGroupRows(group) {
             const expanded = state.expandedGroups.has(group.key);
+            const supplierPaymentView = isSupplierPaymentEffectiveUser();
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
             const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
             const allSelected = group.rows.every(row => state.selectedRecordIds.has(row.recordId));
@@ -1921,7 +2847,9 @@
             return `
                 <tr class="hardware-table__row hardware-table__group ${toneClass(first.stateTone)}">
                     <td>
-                        <input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar grupo ${escapeHtml(group.orderNumber)}" />
+                        ${supplierPaymentView
+                            ? ""
+                            : `<input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar grupo ${escapeHtml(group.orderNumber)}" />`}
                     </td>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
@@ -1938,7 +2866,9 @@
                     <td class="hardware-table__state-cell">${renderStatePill(first.stateLabel || "Sin estado", first.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
-                            ${validation.ok
+                            ${supplierPaymentView
+                                ? `<span class="hardware-table__submeta">Desglosa la ODC</span>`
+                                : validation.ok
                                 ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-group="${escapeHtml(group.key)}">${escapeHtml(resolveActionButtonLabel(first))}</button>`
                                 : `<span class="hardware-table__submeta">${escapeHtml(validation.message || "Sin botón")}</span>`}
                         </div>
@@ -1946,14 +2876,15 @@
                 </tr>
                 ${expanded
                     ? (group.proformaGroups || []).map(renderGenericProformaGroupRows).join("")
-                    : renderHardwareFlowTableRow(first, 9, false, "hardware-flow-row--group")}
+                    : supplierPaymentView ? "" : renderHardwareFlowTableRow(first, 9, false, "hardware-flow-row--group")}
             `;
         }
 
         function renderGenericProformaGroupRows(group) {
             const expanded = state.expandedGroups.has(group.key);
+            const supplierPaymentView = isSupplierPaymentEffectiveUser();
             const totalQuantity = group.rows.reduce((total, row) => total + Number(row?.quantity || 0), 0);
-            const totalSale = group.rows.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const supplierTotal = sumSupplierLineTotals(group.rows);
             const allSelected = group.rows.every(row => state.selectedRecordIds.has(row.recordId));
             const first = group.rows[0] || {};
             const providerLabel = getCommonValue(group.rows, "provider") || "Varios proveedores";
@@ -1961,7 +2892,9 @@
             return `
                 <tr class="hardware-table__row hardware-table__group--proforma ${toneClass(first.stateTone)}">
                     <td>
-                        <input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar proforma ${escapeHtml(group.supplierDocumentLabel || "")}" />
+                        ${supplierPaymentView
+                            ? ""
+                            : `<input type="checkbox" class="form-check-input" data-hw-select-group="${escapeHtml(group.key)}" ${allSelected ? "checked" : ""} aria-label="Seleccionar proforma ${escapeHtml(group.supplierDocumentLabel || "")}" />`}
                     </td>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
@@ -1974,7 +2907,7 @@
                     <td>${escapeHtml(getCommonValue(group.rows, "odcDateDisplay") || "Varias fechas")}</td>
                     <td class="text-end">${formatNumber(totalQuantity)}</td>
                     <td class="text-end">-</td>
-                    <td class="text-end">${formatCurrency(totalSale)}</td>
+                    <td class="text-end">${formatCurrency(supplierTotal)}</td>
                     <td class="hardware-table__state-cell">${renderStatePill(first.stateLabel || "Sin estado", first.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
@@ -1984,16 +2917,25 @@
                         </div>
                     </td>
                 </tr>
-                ${expanded ? group.rows.map(row => renderRecordRow(row, true)).join("") : ""}
+                ${expanded ? group.rows.map(row => renderRecordRow(row, true, {
+                    suppressAction: supplierPaymentView,
+                    suppressSelection: supplierPaymentView,
+                    suppressFlow: supplierPaymentView
+                })).join("") : ""}
             `;
         }
 
-        function renderRecordRow(row, isChild) {
+        function renderRecordRow(row, isChild, options = {}) {
             const selected = state.selectedRecordIds.has(row?.recordId || "");
+            const suppressAction = Boolean(options.suppressAction);
+            const suppressSelection = Boolean(options.suppressSelection);
+            const suppressFlow = Boolean(options.suppressFlow);
             return `
                 <tr class="hardware-table__row ${isChild ? "hardware-table__row--child" : ""} ${toneClass(row?.stateTone)}">
                     <td>
-                        <input type="checkbox" class="form-check-input" data-hw-select-record="${escapeHtml(row?.recordId || "")}" ${selected ? "checked" : ""} aria-label="Seleccionar ${escapeHtml(row?.name || "hardware")}" />
+                        ${suppressSelection
+                            ? ""
+                            : `<input type="checkbox" class="form-check-input" data-hw-select-record="${escapeHtml(row?.recordId || "")}" ${selected ? "checked" : ""} aria-label="Seleccionar ${escapeHtml(row?.name || "hardware")}" />`}
                     </td>
                     <td class="hardware-table__client-cell">
                         <div class="hardware-table__title">
@@ -2004,17 +2946,19 @@
                     <td>${row?.odcDateDisplay ? escapeHtml(row.odcDateDisplay) : `<span class="hardware-table__submeta">Sin fecha</span>`}</td>
                     <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
                     <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
-                    <td class="text-end">${formatCurrency(row?.totalSale || 0)}</td>
+                    <td class="text-end">${formatCurrency(getSupplierLineTotal(row))}</td>
                     <td class="hardware-table__state-cell">${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
                     <td>
                         <div class="hardware-action-cell">
-                            ${row?.hasAction
+                            ${suppressAction
+                                ? `<span class="hardware-table__submeta">Incluida en proforma</span>`
+                                : row?.hasAction
                                 ? `<button type="button" class="btn btn-sm btn-primary" data-hw-action-record="${escapeHtml(row?.recordId || "")}">${escapeHtml(row?.actionLabel || "Gestionar")}</button>`
                                 : `<span class="hardware-table__submeta">Sin botón</span>`}
                         </div>
                     </td>
                 </tr>
-                ${renderHardwareFlowTableRow(row, 9, isChild)}
+                ${suppressFlow ? "" : renderHardwareFlowTableRow(row, 9, isChild)}
             `;
         }
 
@@ -2220,7 +3164,7 @@
             elements.recordName.textContent = state.modalRecords.length === 1
                 ? first.name || "Hardware"
                 : `${formatNumber(state.modalRecords.length)} filas seleccionadas`;
-            elements.recordMeta.textContent = buildModalMeta(state.modalRecords);
+            elements.recordMeta.textContent = buildModalMeta(state.modalRecords, actionKey);
             elements.recordState.className = `hardware-pill ${toneClass(first.stateTone)}`;
             elements.recordState.textContent = first.stateLabel || "Sin estado";
 
@@ -2253,15 +3197,17 @@
             clearStatus(elements.modalStatus);
         }
 
-        function buildModalMeta(records) {
+        function buildModalMeta(records, actionKey = "") {
             const quantity = records.reduce((total, row) => total + Number(row?.quantity || 0), 0);
-            const totalSale = records.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
+            const amount = actionKey === "register-supplier-payment" || isSupplierPaymentEffectiveUser()
+                ? sumSupplierLineTotals(records)
+                : records.reduce((total, row) => total + Number(row?.totalSale || 0), 0);
             const clientName = getCommonValue(records, "clientName") || "Varios clientes";
             const orderNumber = getCommonValue(records, "purchaseOrderNumber");
             const parts = [
                 clientName,
                 `${formatNumber(quantity)} und`,
-                formatCurrency(totalSale)
+                formatCurrency(amount)
             ];
             if (orderNumber) {
                 parts.push(`Orden ${orderNumber}`);
@@ -2571,6 +3517,377 @@
 
             elements.editModal.hidden = false;
             document.body.classList.add("hardware-modal-open");
+        }
+
+        function openDashboardRecordDetailModal(row) {
+            if (!row || !elements.detailModal) {
+                return;
+            }
+
+            setText(elements.detailTitle, row.name || "Detalle de hardware");
+            setText(
+                elements.detailSubtitle,
+                `${row.purchaseOrderNumber || "Sin orden"} · ${row.clientName || "Sin cliente"}`);
+            setText(elements.detailMeta, "Click en los adjuntos disponibles para descargarlos.");
+            if (elements.detailBody) {
+                elements.detailBody.innerHTML = renderDashboardRecordDetailTable([row]);
+            }
+
+            clearStatus(elements.boardStatus);
+            elements.detailModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+        }
+
+        function openDashboardDetailModal(group) {
+            if (!group || !elements.detailModal) {
+                return;
+            }
+
+            const rows = Array.isArray(group.rows) ? group.rows : [];
+            const first = rows[0] || {};
+            const providerLabel = getCommonValue(rows, "provider") || "Varios proveedores";
+            setText(elements.detailTitle, group.supplierDocumentLabel || "Detalle de proforma");
+            setText(
+                elements.detailSubtitle,
+                `${first.purchaseOrderNumber || "Sin orden"} · ${providerLabel} · ${formatNumber(rows.length)} linea(s)`);
+            setText(elements.detailMeta, `${formatNumber(rows.length)} linea(s) registradas en esta proforma.`);
+            if (elements.detailBody) {
+                elements.detailBody.innerHTML = renderDashboardDetailTable(rows);
+            }
+
+            elements.detailModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+        }
+
+        function openHardwareReadOnlyModal(records, title = "Detalle de hardware") {
+            if (!elements.detailModal) {
+                return;
+            }
+
+            const rows = (Array.isArray(records) ? records : [])
+                .filter(record => Boolean(record?.recordId));
+            if (!rows.length) {
+                setStatus(elements.boardStatus, "warning", "No hay informacion para mostrar.");
+                return;
+            }
+
+            const first = rows[0] || {};
+            const orderNumber = getCommonValue(rows, "purchaseOrderNumber") || first.purchaseOrderNumber || "Sin orden";
+            const clientName = getCommonValue(rows, "clientName") || first.clientName || "Varios clientes";
+            setText(elements.detailTitle, title || first.name || "Detalle de hardware");
+            setText(elements.detailSubtitle, `${orderNumber} · ${clientName} · modo lectura`);
+            setText(elements.detailMeta, `${formatNumber(rows.length)} fila(s) en modo lectura.`);
+            if (elements.detailBody) {
+                elements.detailBody.innerHTML = rows.length === 1
+                    ? renderReadOnlyRecordDetail(rows[0])
+                    : renderReadOnlyGroupDetail(rows, title);
+            }
+
+            clearStatus(elements.boardStatus);
+            elements.detailModal.hidden = false;
+            document.body.classList.add("hardware-modal-open");
+        }
+
+        function renderReadOnlyRecordDetail(row) {
+            const supplierDocumentField = resolveSupplierDocumentField(row);
+            const supplierDocumentLabel = supplierDocumentField === "cr07a_odcproveedor"
+                ? "ODC proveedor"
+                : resolveSupplierDocumentGroupLabel(row, 0);
+            const fields = [
+                ["No orden", row?.purchaseOrderNumber || "-"],
+                ["Cliente", row?.clientName || "-"],
+                ["Vendedor", row?.ownerName || "-"],
+                ["Fecha ODC", row?.odcDateDisplay || "-"],
+                ["Estado", { html: renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "") }],
+                ["Producto / referencia", row?.name || "-"],
+                ["Cantidad", formatNumber(row?.quantity || 0)],
+                ["Venta unidad", formatCurrency(row?.saleUnit || 0)],
+                ["Total linea", formatCurrency(row?.totalSale || 0)],
+                ["Costo unt proveedor", formatCurrency(row?.supplierUnitCost || 0)],
+                ["Total proveedor", formatCurrency(getSupplierLineTotal(row))],
+                ["Valor flete", formatCurrency(row?.freightValue || 0)],
+                ["Utilidad", formatCurrency(row?.utility || 0)],
+                ["Valor margen", formatCurrency(row?.marginValue || 0)],
+                ["Proveedor", row?.provider || "-"],
+                ["Documento proveedor", supplierDocumentLabel || "-"],
+                ["Fecha pago proveedor", row?.supplierPaymentDateDisplay || "-"],
+                ["Fecha acta entrega", row?.deliveryRecordDateDisplay || "-"],
+                ["Factura", row?.invoiceNumber || "-"],
+                ["Pago cliente", row?.invoiceHasClientPayment ? "Con pago registrado" : "Sin pago registrado"],
+                ["Ultima modificacion", row?.modifiedOnDisplay || "-"]
+            ];
+
+            return `
+                <div class="hardware-readonly">
+                    <section class="hardware-readonly-section">
+                        <h3>Informacion registrada</h3>
+                        ${renderReadOnlyFieldGrid(fields)}
+                    </section>
+                    <section class="hardware-readonly-section">
+                        <h3>Documentacion</h3>
+                        <div class="hardware-readonly-docs">
+                            ${renderReadOnlyDocumentChips([row])}
+                        </div>
+                    </section>
+                </div>
+            `;
+        }
+
+        function renderReadOnlyGroupDetail(rows, title) {
+            const first = rows[0] || {};
+            const summaryFields = [
+                ["Grupo", title || "-"],
+                ["ODCs relacionadas", formatCompactList(getGroupOrderNumbers(rows), "-")],
+                ["Cliente", getCommonValue(rows, "clientName") || "Varios clientes"],
+                ["Vendedor", getCommonValue(rows, "ownerName") || "Varios vendedores"],
+                ["Fecha ODC", getCommonValue(rows, "odcDateDisplay") || "Varias fechas"],
+                ["Proveedor", getCommonValue(rows, "provider") || "Varios proveedores"],
+                ["Estado", getCommonValue(rows, "stateLabel") || "Varios estados"],
+                ["Total venta", formatCurrency(sumValues(rows, "totalSale"))],
+                ["Total proveedor", formatCurrency(sumSupplierLineTotals(rows))]
+            ];
+
+            return `
+                <div class="hardware-readonly">
+                    <section class="hardware-readonly-section">
+                        <h3>Resumen</h3>
+                        ${renderReadOnlyFieldGrid(summaryFields)}
+                    </section>
+                    <section class="hardware-readonly-section">
+                        <h3>Documentacion</h3>
+                        <div class="hardware-readonly-docs">
+                            ${renderReadOnlyDocumentChips(rows)}
+                        </div>
+                    </section>
+                    <section class="hardware-readonly-section">
+                        <h3>Lineas</h3>
+                        ${renderDashboardDetailTable(rows)}
+                    </section>
+                </div>
+            `;
+        }
+
+        function renderReadOnlyFieldGrid(fields) {
+            return `
+                <dl class="hardware-readonly-grid">
+                    ${fields.map(([label, value]) => `
+                        <div class="hardware-readonly-field">
+                            <dt>${escapeHtml(label)}</dt>
+                            <dd>${value && typeof value === "object" && "html" in value ? value.html : escapeHtml(value ?? "-")}</dd>
+                        </div>
+                    `).join("")}
+                </dl>
+            `;
+        }
+
+        function renderReadOnlyDocumentChips(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const first = items[0] || {};
+            const supplierDocumentField = resolveSupplierDocumentField(first);
+            return [
+                renderDashboardOrderDocumentChips(items, "cr07a_ordendecompra", "ODC cliente"),
+                renderDashboardDocumentChip(
+                    items,
+                    supplierDocumentField,
+                    supplierDocumentField === "cr07a_odcproveedor"
+                        ? "ODC proveedor"
+                        : resolveSupplierDocumentGroupLabel(first, 0) || "Proforma"),
+                renderDashboardDocumentChip(items, "cr07a_pagoaproveedor", "Pago proveedor"),
+                renderDashboardDocumentChip(items, "cr07a_actadeentrega", "Acta entrega"),
+                renderCommercialGroupInvoiceChip(items)
+            ].join("");
+        }
+
+        function renderDashboardDetailTable(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            if (!items.length) {
+                return `<div class="hardware-empty">Esta proforma no tiene lineas para mostrar.</div>`;
+            }
+
+            return `
+                <div class="hardware-table-wrap">
+                    <table class="table align-middle hardware-table hardware-dashboard-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Linea</th>
+                                <th>ODC</th>
+                                <th class="text-end">Cantidad</th>
+                                <th class="text-end">Venta unidad</th>
+                                <th class="text-end">Total linea</th>
+                                <th class="text-end">Costo proveedor</th>
+                                <th class="text-end">Total proveedor</th>
+                                <th>Estado</th>
+                                <th>Factura</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(row => `
+                                <tr>
+                                    <td>
+                                        <strong>${escapeHtml(row?.name || "Hardware")}</strong>
+                                        <div class="hardware-table__submeta">${escapeHtml(row?.clientName || "Sin cliente")}</div>
+                                    </td>
+                                    <td><span class="hardware-order-number">${escapeHtml(row?.purchaseOrderNumber || "Sin ODC")}</span></td>
+                                    <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
+                                    <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
+                                    <td class="text-end">${formatCurrency(row?.totalSale || 0)}</td>
+                                    <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
+                                    <td class="text-end">${formatCurrency(getSupplierLineTotal(row))}</td>
+                                    <td>${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
+                                    <td>${escapeHtml(row?.invoiceNumber || "-")}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderDashboardRecordDetailTable(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            if (!items.length) {
+                return `<div class="hardware-empty">No hay filas para mostrar.</div>`;
+            }
+
+            const totals = buildDashboardRecordDetailTotals(items);
+            return `
+                <div class="hardware-table-wrap">
+                    <table class="table align-middle hardware-table hardware-dashboard-detail-table hardware-dashboard-detail-table--wide">
+                        <thead>
+                            <tr>
+                                <th>Fecha de creación</th>
+                                <th>Propietario</th>
+                                <th class="text-end">% de utilidad</th>
+                                <th class="text-end">Totales proveedor</th>
+                                <th class="text-end">Valor margen</th>
+                                <th>Nombre</th>
+                                <th class="text-end">Cantidad</th>
+                                <th class="text-end">Costo unt</th>
+                                <th>No orden</th>
+                                <th class="text-end">Precio venta</th>
+                                <th>Proveedor</th>
+                                <th class="text-end">Venta unidad</th>
+                                <th>Cliente</th>
+                                <th>Orden de compra (adjunto)</th>
+                                <th>Proforma (adjunto)</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(renderDashboardRecordDetailRow).join("")}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">
+                                    <strong>Totales</strong>
+                                    <div class="hardware-table__submeta">${formatNumber(items.length)} fila(s)</div>
+                                </td>
+                                <td class="text-end"><strong>${formatHardwarePercent(totals.utilityPercent)}</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.supplierTotal)}</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.marginValue)}</strong></td>
+                                <td></td>
+                                <td class="text-end"><strong>${formatNumber(totals.quantity)}</strong></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.supplierUnitCost)}</strong></td>
+                                <td></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.totalSale)}</strong></td>
+                                <td></td>
+                                <td class="text-end"><strong>${formatCurrency(totals.saleUnit)}</strong></td>
+                                <td colspan="4"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderDashboardRecordDetailRow(row) {
+            return `
+                <tr>
+                    <td>${escapeHtml(row?.createdOnDisplay || row?.createdOnValue || "-")}</td>
+                    <td>${escapeHtml(row?.ownerName || "Sin propietario")}</td>
+                    <td class="text-end">${formatHardwarePercent(row?.utility || 0)}</td>
+                    <td class="text-end">${formatCurrency(getSupplierLineTotal(row))}</td>
+                    <td class="text-end">${formatCurrency(row?.marginValue || 0)}</td>
+                    <td><strong>${escapeHtml(row?.name || "Hardware")}</strong></td>
+                    <td class="text-end">${formatNumber(row?.quantity || 0)}</td>
+                    <td class="text-end">${formatCurrency(row?.supplierUnitCost || 0)}</td>
+                    <td><span class="hardware-order-number">${escapeHtml(row?.purchaseOrderNumber || "Sin orden")}</span></td>
+                    <td class="text-end">${formatCurrency(row?.totalSale || 0)}</td>
+                    <td>${escapeHtml(row?.provider || "-")}</td>
+                    <td class="text-end">${formatCurrency(row?.saleUnit || 0)}</td>
+                    <td>${escapeHtml(row?.clientName || "Sin cliente")}</td>
+                    <td>${renderDashboardDocumentChip([row], "cr07a_ordendecompra", "Orden de compra")}</td>
+                    <td>${renderDashboardDocumentChip([row], "cr07a_adjuntarproforma", "Proforma")}</td>
+                    <td>${renderStatePill(row?.stateLabel || "Sin estado", row?.stateTone || "")}</td>
+                </tr>
+            `;
+        }
+
+        function buildDashboardRecordDetailTotals(rows) {
+            const items = Array.isArray(rows) ? rows : [];
+            const marginValue = sumValues(items, "marginValue");
+            const totalSale = sumValues(items, "totalSale");
+            return {
+                utilityPercent: totalSale > 0 ? marginValue / totalSale : 0,
+                supplierTotal: sumSupplierLineTotals(items),
+                marginValue,
+                quantity: sumValues(items, "quantity"),
+                supplierUnitCost: sumValues(items, "supplierUnitCost"),
+                totalSale,
+                saleUnit: sumValues(items, "saleUnit")
+            };
+        }
+
+        async function saveDashboardManualState(group) {
+            if (!config.editUrl) {
+                setStatus(elements.boardStatus, "warning", "No está configurado el cambio manual de estado.");
+                return;
+            }
+
+            const select = Array.from(elements.rows.querySelectorAll("[data-hw-manual-state-select]"))
+                .find(item => item.dataset.hwManualStateSelect === group.key);
+            const stateValue = Number.parseInt(select?.value || "", 10);
+            if (!Number.isInteger(stateValue)) {
+                setStatus(elements.boardStatus, "warning", "Selecciona un estado válido.");
+                return;
+            }
+
+            const recordIds = (Array.isArray(group.rows) ? group.rows : [])
+                .map(row => row?.recordId || "")
+                .filter(Boolean);
+            if (!recordIds.length) {
+                setStatus(elements.boardStatus, "warning", "La proforma no tiene registros para actualizar.");
+                return;
+            }
+
+            const button = Array.from(elements.rows.querySelectorAll("[data-hw-manual-state-save]"))
+                .find(item => item.dataset.hwManualStateSave === group.key);
+            try {
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = true;
+                    button.textContent = "Guardando...";
+                }
+                setStatus(elements.boardStatus, "info", "Actualizando estado de la proforma...");
+                const result = await fetchJson(buildImpersonatedUrl(config.editUrl), {
+                    method: "POST",
+                    body: JSON.stringify({
+                        recordIds,
+                        stateChanged: true,
+                        stateValue,
+                        applyStateChangeToOrderScope: false
+                    })
+                });
+
+                await loadBoard();
+                setStatus(elements.status, "success", result?.message || "Estado de proforma actualizado.");
+            } catch (error) {
+                setStatus(elements.boardStatus, "error", getErrorMessage(error));
+            } finally {
+                if (button instanceof HTMLButtonElement) {
+                    button.disabled = false;
+                    button.textContent = "Cambiar estado manualmente";
+                }
+            }
         }
 
         function renderBulkEditModal() {
@@ -3378,7 +4695,9 @@
             elements.createProformas.innerHTML = state.createProformas.map(item => `
                 <tr data-hw-create-proforma="${escapeHtml(item.key)}">
                     <td>
-                        <input type="text" class="form-control form-control-sm" data-hw-create-proforma-label value="${escapeHtml(item.label || "")}" />
+                        <input type="text" class="form-control form-control-sm" data-hw-create-proforma-label
+                               value="${escapeHtml(item.label || "")}"
+                               placeholder="No. o nombre real de proforma" />
                     </td>
                     <td>
                         <div class="hardware-file-card__actions">
@@ -3933,6 +5252,9 @@
                 .filter(item => usedKeys.has(item.key))
                 .map((item, index) => {
                     const label = (item.label || "").trim() || `Proforma ${index + 1}`;
+                    if (isGenericProformaLabel(label)) {
+                        throw new Error(`Diligencia el número o nombre real de la proforma en lugar de "${label}".`);
+                    }
                     if (!(item.file instanceof File) && !item.existingFileName) {
                         throw new Error(`Debes adjuntar el archivo de ${label}.`);
                     }
@@ -4057,13 +5379,13 @@
         }
 
         function findCommercialOrderRows(record) {
-            const orderNumber = normalizeText(record?.purchaseOrderNumber || "");
-            if (!orderNumber) {
+            const orderKey = buildCommercialOrderGroupKey(record, 0);
+            if (!orderKey) {
                 return [record];
             }
 
             const rows = state.rows.filter(row =>
-                normalizeText(row?.purchaseOrderNumber || "") === orderNumber);
+                buildCommercialOrderGroupKey(row, 0) === orderKey);
             return rows.length ? rows : [record];
         }
 
@@ -4246,7 +5568,31 @@
 
             if ((!elements.modal || elements.modal.hidden)
                 && (!elements.createModal || elements.createModal.hidden)
-                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)) {
+                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)
+                && (!elements.detailModal || elements.detailModal.hidden)) {
+                document.body.classList.remove("hardware-modal-open");
+            }
+        }
+
+        function closeDetailModal(force = false) {
+            if (state.saving && !force) {
+                return;
+            }
+
+            if (elements.detailModal) {
+                elements.detailModal.hidden = true;
+            }
+            if (elements.detailBody) {
+                elements.detailBody.innerHTML = "";
+            }
+            setText(elements.detailTitle, "Detalle de proforma");
+            setText(elements.detailSubtitle, "Lineas registradas en esta proforma.");
+            setText(elements.detailMeta, "");
+
+            if ((!elements.modal || elements.modal.hidden)
+                && (!elements.createModal || elements.createModal.hidden)
+                && (!elements.purchaseOrderModal || elements.purchaseOrderModal.hidden)
+                && (!elements.editModal || elements.editModal.hidden)) {
                 document.body.classList.remove("hardware-modal-open");
             }
         }
@@ -4498,11 +5844,11 @@
             }
 
             const orderNumbers = new Set(items
-                .map(record => normalizeText(record?.purchaseOrderNumber || ""))
+                .map(record => buildCommercialOrderGroupKey(record, 0))
                 .filter(Boolean));
             if (orderNumbers.size > 0) {
                 const orderRecord = state.rows.find(record =>
-                    orderNumbers.has(normalizeText(record?.purchaseOrderNumber || ""))
+                    orderNumbers.has(buildCommercialOrderGroupKey(record, 0))
                     && hasExistingFile(record, fieldName));
                 if (orderRecord) {
                     return orderRecord;
@@ -4513,10 +5859,10 @@
         }
 
         function findSupplierDocumentRows(row, candidates = state.rows) {
-            const orderKey = normalizeText(row?.purchaseOrderNumber || "");
+            const orderKey = buildCommercialOrderGroupKey(row, 0);
             const groupKey = normalizeText(resolveSupplierDocumentGroupKey(row, 0));
             const matches = (Array.isArray(candidates) ? candidates : []).filter(candidate =>
-                normalizeText(candidate?.purchaseOrderNumber || "") === orderKey
+                buildCommercialOrderGroupKey(candidate, 0) === orderKey
                 && normalizeText(resolveSupplierDocumentGroupKey(candidate, 0)) === groupKey);
             return matches.length ? matches : [row].filter(Boolean);
         }
@@ -4614,8 +5960,9 @@
         function buildBoardUrl() {
             const url = new URL(config.boardUrl, window.location.origin);
             const stateValue = elements.stateFilter.value || "";
-            const startDate = (elements.startDate?.value || "").trim();
-            const endDate = (elements.endDate?.value || "").trim();
+            const periodRange = resolveBoardDateRange();
+            const startDate = periodRange?.startDate || (elements.startDate?.value || "").trim();
+            const endDate = periodRange?.endDate || (elements.endDate?.value || "").trim();
             if (stateValue) {
                 url.searchParams.set("stateValue", stateValue);
             }
@@ -4628,6 +5975,104 @@
             appendImpersonationParam(url);
 
             return `${url.pathname}${url.search}`;
+        }
+
+        function resolveBoardDateRange() {
+            if (!elements.yearFilter) {
+                return null;
+            }
+
+            const year = getSelectedHardwareYear();
+            if (!year) {
+                return null;
+            }
+
+            const selectedMonths = getSelectedHardwareMonths();
+            const months = selectedMonths.length
+                ? selectedMonths
+                : hardwarePeriodMonths.map(month => month.value);
+            const firstMonth = Math.min(...months);
+            const lastMonth = Math.max(...months);
+
+            return {
+                startDate: formatIsoDate(year, firstMonth, 1),
+                endDate: formatIsoDate(year, lastMonth, getDaysInMonth(year, lastMonth))
+            };
+        }
+
+        function getSelectedHardwareYear() {
+            const value = Number.parseInt(elements.yearFilter?.value || "", 10);
+            return Number.isInteger(value) && value >= 2000 && value <= 2100 ? value : 0;
+        }
+
+        function getSelectedHardwareMonths() {
+            if (!elements.monthFilter) {
+                return [];
+            }
+
+            return Array.from(elements.monthFilter.selectedOptions || [])
+                .map(option => Number.parseInt(option.value || "", 10))
+                .filter(month => Number.isInteger(month) && month >= 1 && month <= 12)
+                .filter((month, index, months) => months.indexOf(month) === index)
+                .sort((left, right) => left - right);
+        }
+
+        function buildSelectedPeriodLabel() {
+            if (!elements.yearFilter) {
+                return "";
+            }
+
+            const year = getSelectedHardwareYear();
+            if (!year) {
+                return "Todas las fechas ODC";
+            }
+
+            const selectedMonths = getSelectedHardwareMonths();
+            if (!selectedMonths.length || selectedMonths.length === 12) {
+                return `ODC ${year}`;
+            }
+
+            if (selectedMonths.length === 1) {
+                const month = hardwarePeriodMonths.find(item => item.value === selectedMonths[0]);
+                return `ODC ${month?.label || selectedMonths[0]} ${year}`;
+            }
+
+            const monthLabels = selectedMonths
+                .map(value => hardwarePeriodMonths.find(item => item.value === value)?.shortLabel || String(value))
+                .join(", ");
+            return `ODC ${monthLabels} ${year}`;
+        }
+
+        function formatIsoDate(year, month, day) {
+            return [
+                String(year).padStart(4, "0"),
+                String(month).padStart(2, "0"),
+                String(day).padStart(2, "0")
+            ].join("-");
+        }
+
+        function getDaysInMonth(year, month) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        function parseIsoDateParts(value) {
+            const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (!match) {
+                return null;
+            }
+
+            const year = Number.parseInt(match[1], 10);
+            const month = Number.parseInt(match[2], 10);
+            const day = Number.parseInt(match[3], 10);
+            if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+                return null;
+            }
+
+            if (month < 1 || month > 12 || day < 1 || day > getDaysInMonth(year, month)) {
+                return null;
+            }
+
+            return { year, month, day };
         }
 
         function buildClientSearchUrl(query) {
@@ -4675,7 +6120,25 @@
         }
 
         function buildGroupKey(row) {
-            return `${normalizeText(row?.ownerId || row?.ownerName || "sin-owner")}|${Number(row?.stateValue || 0)}|${normalizeText(row?.purchaseOrderNumber || "")}`;
+            return `${normalizeText(row?.ownerId || row?.ownerName || "sin-owner")}|${Number(row?.stateValue || 0)}|${buildCommercialOrderGroupKey(row, 0)}`;
+        }
+
+        function buildCommercialOrderGroupKey(row, index = 0) {
+            const recordId = normalizeGuid(row?.recordId || "");
+            const orderNumber = normalizeText(row?.purchaseOrderNumber || "");
+            if (!orderNumber) {
+                return recordId ? `record|${recordId}` : `sin-orden|${index}`;
+            }
+
+            const clientKey = normalizeGuid(row?.clientId || "")
+                || normalizeText(row?.clientName || "sin-cliente");
+            const dateKey = normalizeText(row?.odcDateValue || row?.odcDateDisplay || "sin-fecha");
+            const ownerKey = normalizeGuid(row?.ownerId || "")
+                || normalizeText(row?.ownerName || "sin-owner");
+
+            return [orderNumber, clientKey, dateKey, ownerKey]
+                .filter(Boolean)
+                .join("|");
         }
 
         function normalizeSupplierDocumentType(value) {
@@ -4719,6 +6182,13 @@
                 row?.supplierDocumentGroupLabel
                 || row?.provider
                 || `Proforma ${index + 1}`).trim();
+        }
+
+        function isGenericProformaLabel(value) {
+            const normalized = normalizeText(value || "");
+            return /^proforma-\d+$/.test(normalized)
+                || /^proforma\d+$/.test(normalized)
+                || normalized === "proforma";
         }
 
         function isOrderDocumentationFile(fieldName) {
@@ -4797,6 +6267,25 @@
             return Number.isFinite(numeric) ? String(numeric) : value;
         }
 
+        function getSupplierLineTotal(row) {
+            const storedSupplierTotal = Number(row?.supplierTotal || 0);
+            if (Number.isFinite(storedSupplierTotal) && storedSupplierTotal > 0) {
+                return storedSupplierTotal;
+            }
+
+            const quantity = Number(row?.quantity || 0);
+            const supplierUnitCost = Number(row?.supplierUnitCost || 0);
+            if (!Number.isFinite(quantity) || !Number.isFinite(supplierUnitCost)) {
+                return 0;
+            }
+
+            return quantity * supplierUnitCost;
+        }
+
+        function sumSupplierLineTotals(rows) {
+            return (Array.isArray(rows) ? rows : []).reduce((total, row) => total + getSupplierLineTotal(row), 0);
+        }
+
         function sumValues(rows, property) {
             return rows.reduce((total, row) => total + Number(row?.[property] || 0), 0);
         }
@@ -4809,6 +6298,10 @@
             const email = state.impersonatedOwnerId
                 ? state.impersonatedOwnerEmail
                 : config.currentUserEmail;
+            if (!state.impersonatedOwnerId && config.currentUserIsSupplierPayment) {
+                return true;
+            }
+
             return Boolean(config.supplierPaymentEmail)
                 && normalizeText(email) === normalizeText(config.supplierPaymentEmail);
         }
@@ -4817,6 +6310,10 @@
             const email = state.impersonatedOwnerId
                 ? state.impersonatedOwnerEmail
                 : config.currentUserEmail;
+            if (!state.impersonatedOwnerId && config.currentUserIsBilling) {
+                return true;
+            }
+
             return Boolean(config.billingEmail)
                 && normalizeText(email) === normalizeText(config.billingEmail);
         }
@@ -4855,6 +6352,8 @@
                 elements.stateFilter,
                 elements.startDate,
                 elements.endDate,
+                elements.yearFilter,
+                elements.monthFilter,
                 elements.refreshBtn,
                 elements.impersonationSelect,
                 elements.impersonationReset,
@@ -5051,7 +6550,7 @@
 
         function buildActiveFilterLabel(board) {
             const stateLabel = elements.stateFilter.options[elements.stateFilter.selectedIndex]?.text || "Todos los estados";
-            const dateLabel = board?.dateFilterLabel || "";
+            const dateLabel = elements.yearFilter ? buildSelectedPeriodLabel() : board?.dateFilterLabel || "";
             return dateLabel ? `${stateLabel} · ${dateLabel}` : stateLabel;
         }
 
@@ -5107,6 +6606,15 @@
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0
             }).format(Number(value || 0));
+        }
+
+        function formatHardwarePercent(value) {
+            const numeric = Number(value || 0);
+            const normalized = Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
+            return `${new Intl.NumberFormat("es-CO", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(normalized)}%`;
         }
 
         function parseDecimal(value) {

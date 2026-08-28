@@ -179,7 +179,7 @@
         const paidCount = rows.filter(row => row.paymentStatusKey === "paid").length;
         const overdueCount = rows.filter(row => row.paymentStatusKey === "overdue").length;
         const pendingValue = rows
-            .filter(row => row.paymentStatusKey !== "paid")
+            .filter(row => row.paymentStatusKey !== "paid" && row.paymentStatusKey !== "credited")
             .reduce((total, row) => total + Number(row.totalInvoice || 0), 0);
 
         updateSummary({
@@ -634,7 +634,7 @@
         differenceValue && (differenceValue.textContent = formatCurrency(calculation.difference));
 
         if (differenceCard) {
-            const balanced = Math.abs(calculation.difference) <= 5000;
+            const balanced = Math.abs(calculation.difference) <= 2000;
             differenceCard.classList.toggle("is-balanced", balanced);
             differenceCard.classList.toggle("is-unbalanced", !balanced);
         }

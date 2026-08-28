@@ -12,6 +12,7 @@ namespace CotizadorInterno.Web.Services;
 
 public sealed partial class DataverseService
 {
+    private const string CopiersExternalEquipmentValue = "__external__";
     private const string CopiersSupplyLogicalName = "cr07a_suministro";
     private const string CopiersSupplyFallbackEntitySetName = "cr07a_suministros";
     private const string CopiersSupplyFallbackIdField = "cr07a_suministroid";
@@ -117,20 +118,13 @@ public sealed partial class DataverseService
             DashboardMaintenancePrimaryNameField,
             httpContext.User,
             ct);
-        var equipmentMetadata = await ResolveRhEntityMetadataAsync(
-            DashboardEquipmentTableLogicalName,
-            DashboardEquipmentTableSetName,
-            DashboardEquipmentIdField,
-            DashboardEquipmentPrimaryNameField,
-            httpContext.User,
-            ct);
-
         var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
         var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
         var currentUser = await GetCurrentUserAsync(ct);
+        CopiersMaintenanceRecordRow? current = null;
         if (!isCreate)
         {
-            var current = await GetCopiersMaintenanceRowByIdAsync(metadata, normalizedRecordId, httpContext.User, ct);
+            current = await GetCopiersMaintenanceRowByIdAsync(metadata, normalizedRecordId, httpContext.User, ct);
             if (!string.Equals(
                 NormalizeOptionalGuid(current.TechnicianId),
                 NormalizeOptionalGuid(currentUser?.SystemUserId),
@@ -141,10 +135,15 @@ public sealed partial class DataverseService
         }
 
         var maintenanceDate = ParseCopiersRequiredDate(request.DateValue, "fecha de mantenimiento");
-        var equipmentId = NormalizeGuid(request.EquipmentId, nameof(request.EquipmentId));
+        var isExternalEquipment = IsCopiersExternalEquipmentRequest(request.EquipmentId);
+        var equipmentId = isExternalEquipment
+            ? ""
+            : NormalizeGuid(request.EquipmentId, nameof(request.EquipmentId));
         var clientId = NormalizeOptionalGuid(request.ClientId);
         if (string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(request.ClientName))
             clientId = await ResolveCopiersClientIdAsync(request.ClientName.Trim(), ct);
+        if (isExternalEquipment && string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("Debes seleccionar un cliente valido para registrar un equipo externo.");
 
         var title = FirstNonEmpty(
             request.Title?.Trim(),
@@ -172,7 +171,17 @@ public sealed partial class DataverseService
             DashboardMaintenanceEquipmentField,
             httpContext.User,
             ct);
-        payload[$"{equipmentNavigationProperty}@odata.bind"] = $"/{equipmentMetadata.EntitySetName}({equipmentId})";
+        if (!isExternalEquipment)
+        {
+            var equipmentMetadata = await ResolveRhEntityMetadataAsync(
+                DashboardEquipmentTableLogicalName,
+                DashboardEquipmentTableSetName,
+                DashboardEquipmentIdField,
+                DashboardEquipmentPrimaryNameField,
+                httpContext.User,
+                ct);
+            payload[$"{equipmentNavigationProperty}@odata.bind"] = $"/{equipmentMetadata.EntitySetName}({equipmentId})";
+        }
 
         if (!string.IsNullOrWhiteSpace(clientId))
         {
@@ -200,6 +209,16 @@ public sealed partial class DataverseService
             ? ExtractRhRecordId(response, body, metadata.PrimaryIdField)
             : normalizedRecordId;
 
+        if (!isCreate && isExternalEquipment && !string.IsNullOrWhiteSpace(current?.EquipmentId))
+        {
+            await ClearCopiersMaintenanceEquipmentAsync(
+                metadata,
+                recordId,
+                equipmentNavigationProperty,
+                httpContext.User,
+                ct);
+        }
+
         var record = await GetCopiersMaintenanceRowByIdAsync(metadata, recordId, httpContext.User, ct);
         return new CopiersMaintenanceSaveResultDto
         {
@@ -208,6 +227,19 @@ public sealed partial class DataverseService
                 : "Mantenimiento actualizado correctamente.",
             Record = BuildMaintenanceRows(new[] { record }).First()
         };
+    }
+
+    private async Task ClearCopiersMaintenanceEquipmentAsync(
+        RhEntityMetadata metadata,
+        string maintenanceId,
+        string equipmentNavigationProperty,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var relativeUrl =
+            $"/api/data/v9.2/{metadata.EntitySetName}({NormalizeGuid(maintenanceId, nameof(maintenanceId))})" +
+            $"/{equipmentNavigationProperty}/$ref";
+        await CallDataverseDeleteAsync(relativeUrl, user, ct);
     }
 
     public async Task<CopiersMaintenanceSaveResultDto> UploadCopiersMaintenanceAttachmentAsync(
@@ -857,6 +889,9 @@ public sealed partial class DataverseService
 
         return value.Value;
     }
+
+    private static bool IsCopiersExternalEquipmentRequest(string? value) =>
+        string.Equals((value ?? "").Trim(), CopiersExternalEquipmentValue, StringComparison.OrdinalIgnoreCase);
 
     private async Task<RhEntityMetadata> ResolveCopiersSupplyMetadataAsync(ClaimsPrincipal user, CancellationToken ct) =>
         await ResolveRhEntityMetadataAsync(

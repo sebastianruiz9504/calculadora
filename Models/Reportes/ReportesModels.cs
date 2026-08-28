@@ -6,6 +6,7 @@ public sealed class ReporteGenerarRequest
 {
     public string ClienteId { get; set; } = "";
     public string Periodo { get; set; } = "";
+    public string RecomendacionMensual { get; set; } = "";
 }
 
 public sealed class ReporteGenerarResult
@@ -30,6 +31,8 @@ public sealed class ReporteClienteData
 {
     public string ClienteId { get; set; } = "";
     public string Nombre { get; set; } = "";
+    public string PersonaACargo { get; set; } = "";
+    public string Correo { get; set; } = "";
     public string Logo { get; set; } = "";
     public string ColorCorporativo { get; set; } = "";
 }
@@ -87,10 +90,31 @@ public sealed class ReporteHtmlGeneradoRecord
     public string Errores { get; set; } = "";
 }
 
+public sealed class ReporteEmailAttachment
+{
+    public string Id { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "application/octet-stream";
+    public long Size { get; set; }
+    public byte[] Content { get; set; } = Array.Empty<byte>();
+}
+
+public class ReporteSendEmailRequest
+{
+    public string SubjectTemplate { get; set; } = "";
+    public string BodyTemplate { get; set; } = "";
+}
+
+public sealed class ReporteTestEmailRequest : ReporteSendEmailRequest
+{
+    public string TestEmail { get; set; } = "";
+}
+
 public sealed class ReporteConsolidadoPayload
 {
     public ReporteClienteData Cliente { get; set; } = new();
     public ReportePeriodoPayload Periodo { get; set; } = new();
+    public string RecomendacionMensual { get; set; } = "";
     public ReporteTicketSummaryPayload ResumenTickets { get; set; } = new();
     public ReporteTicketMetricsPayload MetricasTickets { get; set; } = new();
     public IReadOnlyList<ReporteTicketPromptItem> TicketsRelevantes { get; set; } = Array.Empty<ReporteTicketPromptItem>();
@@ -158,7 +182,6 @@ public sealed class ReporteSecurityPromptPayload
     public int AlertasLow { get; set; }
     public int IncidentesActivos { get; set; }
     public int IncidentesResueltos { get; set; }
-    public IReadOnlyList<JsonElement> Recomendaciones { get; set; } = Array.Empty<JsonElement>();
     public IReadOnlyList<JsonElement> Alertas { get; set; } = Array.Empty<JsonElement>();
     public IReadOnlyList<JsonElement> Incidentes { get; set; } = Array.Empty<JsonElement>();
 }

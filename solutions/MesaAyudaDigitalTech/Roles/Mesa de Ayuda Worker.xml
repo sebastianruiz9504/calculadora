@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Role id="{9ebb7bd6-0987-f111-8075-70a8a5a95cf5}" name="Mesa de Ayuda Worker" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <IsCustomizable>1</IsCustomizable>
+  <IsAutoAssigned>0</IsAutoAssigned>
+  <Description>Acceso app-only minimo para ingesta de Mesa de Ayuda; sin eliminar ni administrar el entorno.</Description>
+  <RolePrivileges>
+    <RolePrivilege name="prvAppendcr07a_Ticket" level="Global" />
+    <RolePrivilege name="prvAppendhd_SupportInteraction" level="Global" />
+    <RolePrivilege name="prvAppendTocr07a_Ticket" level="Global" />
+    <RolePrivilege name="prvAssigncr07a_Ticket" level="Global" />
+    <RolePrivilege name="prvCreatecr07a_Ticket" level="Global" />
+    <RolePrivilege name="prvCreatehd_SupportInteraction" level="Global" />
+    <RolePrivilege name="prvCreateSharePointData" level="Global" />
+    <RolePrivilege name="prvReadBusinessUnit" level="Global" />
+    <RolePrivilege name="prvReadcr07a_Ticket" level="Global" />
+    <RolePrivilege name="prvReadhd_CustomerTenant" level="Global" />
+    <RolePrivilege name="prvReadhd_SupportChannel" level="Global" />
+    <RolePrivilege name="prvReadhd_SupportInteraction" level="Global" />
+    <RolePrivilege name="prvReadOrganization" level="Global" />
+    <RolePrivilege name="prvReadPluginAssembly" level="Global" />
+    <RolePrivilege name="prvReadPluginType" level="Global" />
+    <RolePrivilege name="prvReadSdkMessage" level="Global" />
+    <RolePrivilege name="prvReadSdkMessageProcessingStep" level="Global" />
+    <RolePrivilege name="prvReadSdkMessageProcessingStepImage" level="Global" />
+    <RolePrivilege name="prvReadSharePointData" level="Global" />
+    <RolePrivilege name="prvReadSharePointDocument" level="Global" />
+    <RolePrivilege name="prvReadUser" level="Global" />
+    <RolePrivilege name="prvWritecr07a_Ticket" level="Global" />
+    <RolePrivilege name="prvWritehd_SupportChannel" level="Global" />
+    <RolePrivilege name="prvWritehd_SupportInteraction" level="Global" />
+    <RolePrivilege name="prvWriteSharePointData" level="Global" />
+  </RolePrivileges>
+</Role>

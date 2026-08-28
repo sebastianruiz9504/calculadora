@@ -1,4 +1,5 @@
 using CotizadorInterno.Web.Models;
+using System.Text.Json.Serialization;
 
 namespace CotizadorInterno.Web.Models.SoporteCloud;
 
@@ -82,6 +83,7 @@ public sealed class SoporteCloudBoardDto
 public sealed class SoporteCloudTrainingRowDto
 {
     public string RecordId { get; set; } = "";
+    public string TopicText { get; set; } = "";
     public string DateValue { get; set; } = "";
     public string DateDisplay { get; set; } = "";
     public decimal DurationMinutes { get; set; }
@@ -101,6 +103,7 @@ public sealed class SoporteCloudTrainingOwnerSummaryDto
     public string OwnerId { get; set; } = "";
     public string OwnerName { get; set; } = "";
     public int TotalTrainings { get; set; }
+    public decimal TotalMinutes { get; set; }
     public decimal TotalHours { get; set; }
     public int TotalAttendees { get; set; }
 }
@@ -110,6 +113,7 @@ public sealed class SoporteCloudTrainingBreakdownDto
     public string Key { get; set; } = "";
     public string Label { get; set; } = "";
     public int TotalTrainings { get; set; }
+    public decimal TotalMinutes { get; set; }
     public decimal TotalHours { get; set; }
     public int TotalAttendees { get; set; }
     public decimal SharePercent { get; set; }
@@ -120,6 +124,7 @@ public sealed class SoporteCloudTrainingTimePointDto
     public string Key { get; set; } = "";
     public string Label { get; set; } = "";
     public int TotalTrainings { get; set; }
+    public decimal TotalMinutes { get; set; }
     public decimal TotalHours { get; set; }
     public int TotalAttendees { get; set; }
 }
@@ -130,6 +135,7 @@ public sealed class SoporteCloudTrainingsBoardDto
     public string EndDateValue { get; set; } = "";
     public string DateRangeLabel { get; set; } = "";
     public int TotalTrainings { get; set; }
+    public decimal TotalMinutesDelivered { get; set; }
     public decimal TotalHoursDelivered { get; set; }
     public int TotalClients { get; set; }
     public int TotalAttendees { get; set; }
@@ -140,6 +146,23 @@ public sealed class SoporteCloudTrainingsBoardDto
     public IReadOnlyList<SoporteCloudTrainingBreakdownDto> ClientBreakdowns { get; set; } = Array.Empty<SoporteCloudTrainingBreakdownDto>();
     public IReadOnlyList<SoporteCloudTrainingTimePointDto> TimeSeries { get; set; } = Array.Empty<SoporteCloudTrainingTimePointDto>();
     public IReadOnlyList<SoporteCloudOptionDto> TopicOptions { get; set; } = Array.Empty<SoporteCloudOptionDto>();
+}
+
+public sealed class SoporteCloudTrainingSaveRequest
+{
+    public string TopicText { get; set; } = "";
+    public string DateValue { get; set; } = "";
+    public decimal DurationMinutes { get; set; }
+    public string ClientId { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public int Attendees { get; set; }
+    public int? TopicValue { get; set; }
+}
+
+public sealed class SoporteCloudTrainingSaveResultDto
+{
+    public string Message { get; set; } = "";
+    public SoporteCloudTrainingsBoardDto Board { get; set; } = new();
 }
 
 public sealed class SoporteCloudSaveRequest
@@ -162,6 +185,12 @@ public sealed class SoporteCloudSaveResultDto
 {
     public string Message { get; set; } = "";
     public SoporteCloudTicketRowDto Record { get; set; } = new();
+}
+
+public sealed class SoporteCloudDeleteResultDto
+{
+    public string Message { get; set; } = "";
+    public string RecordId { get; set; } = "";
 }
 
 public sealed class SoporteCloudFileUploadResultDto
@@ -326,17 +355,184 @@ public sealed class SoporteCloudSurveySessionSaveRequest
     public string DateValue { get; set; } = "";
 }
 
-public sealed class SoporteCloudSurveyAnswerSubmitDto
+public sealed class SoporteCloudLiveSurveyStartResultDto
 {
+    public string Message { get; set; } = "";
+    public SoporteCloudSurveyBoardDto Board { get; set; } = new();
+    public SoporteCloudSurveySessionDto Session { get; set; } = new();
+    public SoporteCloudLiveSurveyStateDto State { get; set; } = new();
+}
+
+public sealed class SoporteCloudLiveSurveyStateDto
+{
+    public string SessionId { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string SessionName { get; set; } = "";
+    public string TopicName { get; set; } = "";
+    public string PublicUrl { get; set; } = "";
+    public string Phase { get; set; } = "registration";
+    public string PhaseLabel { get; set; } = "";
+    public string Message { get; set; } = "";
+    public int Sequence { get; set; }
+    public int RegisteredCount { get; set; }
+    public int CompletedCount { get; set; }
+    public int CurrentQuestionIndex { get; set; } = -1;
+    public int CurrentQuestionAnsweredCount { get; set; }
+    public int TotalQuestions { get; set; }
+    public bool IsClosed { get; set; }
+    public bool CanAdvance { get; set; }
+    public DateTimeOffset ServerNowUtc { get; set; }
+    public DateTimeOffset? QuestionStartedOnUtc { get; set; }
+    public DateTimeOffset? QuestionEndsOnUtc { get; set; }
+    public int QuestionDurationSeconds { get; set; }
+    public DateTimeOffset? RankingEndsOnUtc { get; set; }
+    public SoporteCloudSurveyQuestionDto? CurrentQuestion { get; set; }
+    public IReadOnlyList<SoporteCloudLiveSurveyQuestionResponseDto> QuestionResponses { get; set; } = Array.Empty<SoporteCloudLiveSurveyQuestionResponseDto>();
+    public IReadOnlyList<SoporteCloudLiveSurveyParticipantItemDto> Participants { get; set; } = Array.Empty<SoporteCloudLiveSurveyParticipantItemDto>();
+    public IReadOnlyList<SoporteCloudLiveSurveyRankingItemDto> Ranking { get; set; } = Array.Empty<SoporteCloudLiveSurveyRankingItemDto>();
+    public IReadOnlyList<SoporteCloudLiveWheelRankingItemDto> WheelRanking { get; set; } = Array.Empty<SoporteCloudLiveWheelRankingItemDto>();
+    public SoporteCloudLiveSurveyParticipantProgressDto? ParticipantProgress { get; set; }
+}
+
+public sealed class SoporteCloudLiveSurveyParticipantItemDto
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Company { get; set; } = "";
+    public string Role { get; set; } = "";
+    public decimal Score { get; set; }
+    public int AnsweredCount { get; set; }
+    public bool Completed { get; set; }
+    public int? WheelNumber { get; set; }
+}
+
+public sealed class SoporteCloudLiveSurveyQuestionResponseDto
+{
+    public string QuestionId { get; set; } = "";
+    public string QuestionText { get; set; } = "";
+    public int QuestionIndex { get; set; }
+    public int AnsweredCount { get; set; }
+    public int RegisteredCount { get; set; }
+}
+
+public sealed class SoporteCloudLiveSurveyRankingItemDto
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Company { get; set; } = "";
+    public decimal Score { get; set; }
+    public decimal MaxScore { get; set; }
+    public int AnsweredCount { get; set; }
+    public int CorrectAnswers { get; set; }
+}
+
+public sealed class SoporteCloudLiveWheelRankingItemDto
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Company { get; set; } = "";
+    public int Number { get; set; }
+    public DateTimeOffset? SpunAtUtc { get; set; }
+}
+
+public sealed class SoporteCloudLiveSurveyParticipantProgressDto
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Identification { get; set; } = "";
+    public string Company { get; set; } = "";
+    public string Role { get; set; } = "";
+    public string Email { get; set; } = "";
+    public decimal Score { get; set; }
+    public decimal MaxScore { get; set; }
+    public int CorrectAnswers { get; set; }
+    public bool Completed { get; set; }
+    public int? WheelNumber { get; set; }
+    public IReadOnlyList<SoporteCloudLiveSurveyAnswerRestoreDto> Answers { get; set; } = Array.Empty<SoporteCloudLiveSurveyAnswerRestoreDto>();
+}
+
+public sealed class SoporteCloudLiveSurveyAnswerRestoreDto
+{
+    public string QuestionId { get; set; } = "";
+    public string OptionId { get; set; } = "";
+    public decimal? NumericValue { get; set; }
+    public string TextValue { get; set; } = "";
+    public decimal Points { get; set; }
+    public decimal MaxPoints { get; set; }
+    public bool IsCorrect { get; set; }
+    public decimal ResponseSeconds { get; set; }
+}
+
+public sealed class SoporteCloudLiveSurveyRegisterRequest
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Identification { get; set; } = "";
+    public string Company { get; set; } = "";
+    public string Role { get; set; } = "";
+    public string Email { get; set; } = "";
+}
+
+public sealed class SoporteCloudLiveSurveyRegisterResultDto
+{
+    public string ParticipantKey { get; set; } = "";
+    public string Message { get; set; } = "";
+    public SoporteCloudLiveSurveyStateDto State { get; set; } = new();
+}
+
+public sealed class SoporteCloudLiveSurveyCompleteRequest
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Email { get; set; } = "";
+}
+
+public sealed class SoporteCloudLiveSurveyAnswerRequest
+{
+    public string ParticipantKey { get; set; } = "";
     public string QuestionId { get; set; } = "";
     public string OptionId { get; set; } = "";
     public decimal? NumericValue { get; set; }
     public string TextValue { get; set; } = "";
 }
 
+public sealed class SoporteCloudLiveWheelSpinRequest
+{
+    public string ParticipantKey { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Email { get; set; } = "";
+}
+
+public sealed class SoporteCloudLiveWheelSpinResultDto
+{
+    public int Number { get; set; }
+    public SoporteCloudLiveSurveyStateDto State { get; set; } = new();
+}
+
+public sealed class SoporteCloudSurveyCloseSessionRequest
+{
+    public decimal? DurationMinutes { get; set; }
+}
+
+public sealed class SoporteCloudSurveyAnswerSubmitDto
+{
+    public string QuestionId { get; set; } = "";
+    public string OptionId { get; set; } = "";
+    public decimal? NumericValue { get; set; }
+    public string TextValue { get; set; } = "";
+    [JsonIgnore]
+    public decimal? PointsOverride { get; set; }
+    [JsonIgnore]
+    public decimal? MaxPointsOverride { get; set; }
+    [JsonIgnore]
+    public bool? IsCorrectOverride { get; set; }
+}
+
 public sealed class SoporteCloudSurveySubmitRequest
 {
     public string Code { get; set; } = "";
+    public string ParticipantKey { get; set; } = "";
     public string FullName { get; set; } = "";
     public string Email { get; set; } = "";
     public string Company { get; set; } = "";

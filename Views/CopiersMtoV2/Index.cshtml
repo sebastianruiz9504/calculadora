@@ -1,0 +1,382 @@
+@{
+    ViewData["Title"] = "MTO Firmado V2";
+    var technicianLabel = User?.Identity?.Name ?? "Técnico autenticado";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/copiers-mto-v2.css" asp-append-version="true" />
+}
+
+<div class="mto-v2-shell"
+     id="copiersMtoV2App"
+     data-bootstrap-url="/CopiersMtoV2/Bootstrap"
+     data-finalize-url="/CopiersMtoV2/Finalize"
+     data-max-files="8"
+     data-max-file-bytes="8388608"
+     data-max-total-bytes="20971520"
+     data-max-location-accuracy-meters="250"
+     data-max-location-age-ms="900000">
+    <header class="mto-v2-hero">
+        <div class="mto-v2-hero__copy">
+            <span class="mto-v2-eyebrow">Copiers · Servicio en sitio</span>
+            <h1>MTO Firmado V2</h1>
+            <p>Registra el mantenimiento, reúne la evidencia y obtén la conformidad del cliente desde el celular o la tableta.</p>
+        </div>
+        <div class="mto-v2-user-card" aria-label="Técnico autenticado">
+            <span>Técnico</span>
+            <strong id="mtoV2TechnicianName">@technicianLabel</strong>
+        </div>
+    </header>
+
+    <form id="mtoV2Form"
+          class="mto-v2-form"
+          action="/CopiersMtoV2/Finalize"
+          method="post"
+          enctype="multipart/form-data"
+          novalidate>
+        @Html.AntiForgeryToken()
+
+        <input type="hidden" name="SubmissionKey" id="mtoV2SubmissionKey" />
+        <input type="hidden" name="RecordId" id="mtoV2RecordId" />
+        <input type="hidden" name="ExpectedVersion" id="mtoV2ExpectedVersion" />
+        <input type="hidden" name="FormVersion" id="mtoV2FormVersion" value="copiers-mto-v2-2026-08-27" />
+        <input type="hidden" name="AnswersJson" id="mtoV2AnswersJson" value="[]" />
+        <input type="hidden" name="Title" id="mtoV2Title" />
+        <input type="hidden" name="ServiceDate" id="mtoV2ServiceDate" />
+        <input type="hidden" name="FormStartedAtUtc" id="mtoV2StartedAtUtc" />
+        <input type="hidden" name="DeviceSignedAtUtc" id="mtoV2SignedAtUtc" />
+        <input type="hidden" name="ClientSubmittedAtUtc" id="mtoV2SubmittedAtUtc" />
+        <input type="hidden" name="Latitude" id="mtoV2Latitude" />
+        <input type="hidden" name="Longitude" id="mtoV2Longitude" />
+        <input type="hidden" name="AccuracyMeters" id="mtoV2Accuracy" />
+        <input type="hidden" name="LocationCapturedAtUtc" id="mtoV2GeoCapturedAtUtc" />
+        <input type="hidden" name="LocationSource" value="navigator.geolocation" />
+        <input type="hidden" name="GeolocationStatus" id="mtoV2GeoStatus" value="pending" />
+        <input type="hidden" name="GeolocationVisibility" value="internal-only" />
+        <input type="hidden" name="ExcludeGeolocationFromPdf" value="true" />
+        <input type="hidden" name="ServiceAddressVisibility" value="internal-only" />
+        <input type="hidden" name="ExcludeServiceAddressFromPdf" value="true" />
+        <input type="hidden" name="SignaturePointCount" id="mtoV2SignaturePointCount" value="0" />
+        <input type="hidden" name="TechnicianDisplayName" value="@technicianLabel" />
+
+        <nav class="mto-v2-progress" aria-label="Progreso del formulario">
+            <ol>
+                <li class="is-active" data-step-indicator="1">
+                    <button type="button" data-step-target="1" aria-current="step">
+                        <span>1</span>
+                        <strong>Servicio</strong>
+                    </button>
+                </li>
+                <li data-step-indicator="2">
+                    <button type="button" data-step-target="2" disabled>
+                        <span>2</span>
+                        <strong>Trabajo</strong>
+                    </button>
+                </li>
+                <li data-step-indicator="3">
+                    <button type="button" data-step-target="3" disabled>
+                        <span>3</span>
+                        <strong>Evidencia y firma</strong>
+                    </button>
+                </li>
+                <li data-step-indicator="4">
+                    <button type="button" data-step-target="4" disabled>
+                        <span>4</span>
+                        <strong>Revisar y enviar</strong>
+                    </button>
+                </li>
+            </ol>
+        </nav>
+
+        <div class="mto-v2-status" id="mtoV2Status" role="status" aria-live="polite"></div>
+        <div class="mto-v2-bootstrap-retry">
+            <button class="btn btn-outline-primary btn-sm" type="button" id="mtoV2RetryBootstrap" hidden>
+                Reintentar carga del catálogo
+            </button>
+        </div>
+
+        <fieldset class="mto-v2-step is-active" data-step-panel="1">
+            <legend>
+                <span>Paso 1</span>
+                Identificación del servicio
+            </legend>
+            <p class="mto-v2-step__intro">Selecciona el cliente y el equipo antes de registrar el trabajo técnico.</p>
+
+            <div class="mto-v2-grid">
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Cliente <b aria-hidden="true">*</b></span>
+                    <input class="form-control"
+                           type="text"
+                           name="ClientName"
+                           id="mtoV2ClientName"
+                           list="mtoV2ClientOptions"
+                           aria-describedby="mtoV2CatalogFeedback"
+                           autocomplete="organization"
+                           required />
+                    <input type="hidden" name="ClientId" id="mtoV2ClientId" />
+                    <datalist id="mtoV2ClientOptions"></datalist>
+                    <small id="mtoV2CatalogFeedback">Cargando clientes de Copiers…</small>
+                </label>
+
+                <label class="mto-v2-field">
+                    <span>Serial del equipo <b aria-hidden="true">*</b></span>
+                    <input class="form-control"
+                           type="text"
+                           name="EquipmentSerial"
+                           id="mtoV2EquipmentSerial"
+                           list="mtoV2EquipmentOptions"
+                           aria-describedby="mtoV2EquipmentFeedback"
+                           autocomplete="off"
+                           required />
+                    <input type="hidden" name="EquipmentId" id="mtoV2EquipmentId" />
+                    <datalist id="mtoV2EquipmentOptions"></datalist>
+                    <small id="mtoV2EquipmentFeedback">Selecciona primero un cliente.</small>
+                </label>
+
+                <label class="mto-v2-field">
+                    <span>Orden o referencia</span>
+                    <input class="form-control" type="text" name="ServiceReference" id="mtoV2ServiceReference" autocomplete="off" maxlength="120" />
+                </label>
+
+                <label class="mto-v2-field">
+                    <span>Inicio de la visita <b aria-hidden="true">*</b></span>
+                    <input class="form-control" type="datetime-local" name="ServiceStartedAtLocal" id="mtoV2ServiceStartedAtLocal" required />
+                </label>
+
+                <label class="mto-v2-field">
+                    <span>Persona que atiende <b aria-hidden="true">*</b></span>
+                    <input class="form-control" type="text" name="CustomerContactName" id="mtoV2OnsiteContactName" autocomplete="name" required maxlength="160" />
+                    <small id="mtoV2ContactFeedback">Se completa desde el cliente; podrás escribirlo si Copiers no tiene contacto.</small>
+                </label>
+
+                <label class="mto-v2-field">
+                    <span>Correo de envío registrado en Copiers <b aria-hidden="true">*</b></span>
+                    <input class="form-control" type="email" name="CustomerEmail" id="mtoV2OnsiteContactEmail" autocomplete="email" required readonly maxlength="250" />
+                    <small id="mtoV2CustomerEmailFeedback">El reporte se enviará a este correo. Debe actualizarse en Copiers si está vacío o incorrecto.</small>
+                </label>
+
+                <label class="mto-v2-field mto-v2-field--wide" data-pdf-exclude="true" data-client-preview-exclude="true">
+                    <span>Dirección o sede <em class="mto-v2-field__privacy">Uso interno</em></span>
+                    <input class="form-control" type="text" name="ServiceAddress" id="mtoV2ServiceAddress" autocomplete="street-address" maxlength="300" />
+                    <small>No se muestra en la vista previa ni debe incluirse en el PDF enviado al cliente.</small>
+                </label>
+            </div>
+
+            <section class="mto-v2-private-card" data-pdf-exclude="true" aria-labelledby="mtoV2GeoTitle">
+                <div>
+                    <span class="mto-v2-private-card__badge">Uso interno</span>
+                    <h2 id="mtoV2GeoTitle">Ubicación de la visita</h2>
+                    <p>Se guardará como dato interno de auditoría. Las coordenadas no aparecerán en la vista previa ni en el PDF enviado al cliente.</p>
+                </div>
+                <div class="mto-v2-private-card__action">
+                    <button class="btn btn-outline-primary" type="button" id="mtoV2CaptureLocation">Capturar ubicación</button>
+                    <span id="mtoV2GeoFeedback">Pendiente de captura</span>
+                </div>
+            </section>
+
+            <div class="mto-v2-step__actions">
+                <span class="mto-v2-required-note"><b>*</b> Campos obligatorios</span>
+                <button class="btn btn-primary" type="button" data-next-step="2">Continuar</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="mto-v2-step" data-step-panel="2" hidden>
+            <legend>
+                <span>Paso 2</span>
+                Trabajo técnico
+            </legend>
+            <p class="mto-v2-step__intro">Describe lo encontrado y lo realizado con información que el cliente pueda entender.</p>
+
+            <div class="mto-v2-grid">
+                <label class="mto-v2-field">
+                    <span>Tipo de mantenimiento <b aria-hidden="true">*</b></span>
+                    <select class="form-select" name="MaintenanceTypeValue" id="mtoV2MaintenanceType" required>
+                        <option value="">Selecciona una opción</option>
+                    </select>
+                </label>
+
+                <label class="mto-v2-field">
+                    <span>Resultado del servicio <b aria-hidden="true">*</b></span>
+                    <select class="form-select" name="ServiceResult" id="mtoV2ServiceResult" required>
+                        <option value="">Selecciona una opción</option>
+                        <option value="completed">Finalizado y operativo</option>
+                        <option value="completed-observation">Finalizado con observaciones</option>
+                        <option value="pending-parts">Pendiente por repuesto</option>
+                        <option value="pending-approval">Pendiente por autorización</option>
+                        <option value="not-completed">No finalizado</option>
+                    </select>
+                </label>
+
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Solicitud o falla reportada <b aria-hidden="true">*</b></span>
+                    <textarea class="form-control" name="ReportedIssue" id="mtoV2ReportedIssue" rows="3" required maxlength="4000"></textarea>
+                </label>
+
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Diagnóstico técnico <b aria-hidden="true">*</b></span>
+                    <textarea class="form-control" name="TechnicalDiagnosis" id="mtoV2TechnicalDiagnosis" rows="4" required maxlength="4000"></textarea>
+                </label>
+
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Trabajo realizado <b aria-hidden="true">*</b></span>
+                    <textarea class="form-control" name="WorkPerformed" id="mtoV2WorkPerformed" rows="4" required maxlength="6000"></textarea>
+                </label>
+
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Repuestos, consumibles o materiales utilizados</span>
+                    <textarea class="form-control" name="PartsUsed" id="mtoV2PartsUsed" rows="3" maxlength="3000"></textarea>
+                </label>
+            </div>
+
+            <section class="mto-v2-subcard" aria-labelledby="mtoV2CountersTitle">
+                <div class="mto-v2-subcard__header">
+                    <div>
+                        <span class="mto-v2-eyebrow">Lecturas</span>
+                        <h2 id="mtoV2CountersTitle">Contadores del equipo</h2>
+                    </div>
+                    <span>Opcional cuando no aplique</span>
+                </div>
+                <div class="mto-v2-grid mto-v2-grid--four">
+                    <label class="mto-v2-field">
+                        <span>Copias antes</span>
+                        <input class="form-control" type="number" name="CopiesBefore" id="mtoV2CopiesBefore" min="0" step="1" inputmode="numeric" />
+                    </label>
+                    <label class="mto-v2-field">
+                        <span>Copias después</span>
+                        <input class="form-control" type="number" name="CopiesAfter" id="mtoV2CopiesAfter" min="0" step="1" inputmode="numeric" />
+                    </label>
+                    <label class="mto-v2-field">
+                        <span>Escaneos antes</span>
+                        <input class="form-control" type="number" name="ScansBefore" id="mtoV2ScansBefore" min="0" step="1" inputmode="numeric" />
+                    </label>
+                    <label class="mto-v2-field">
+                        <span>Escaneos después</span>
+                        <input class="form-control" type="number" name="ScansAfter" id="mtoV2ScansAfter" min="0" step="1" inputmode="numeric" />
+                    </label>
+                </div>
+            </section>
+
+            <div class="mto-v2-grid">
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Recomendaciones al cliente</span>
+                    <textarea class="form-control" name="Recommendations" id="mtoV2Recommendations" rows="3" maxlength="4000"></textarea>
+                </label>
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Observaciones internas</span>
+                    <textarea class="form-control" name="InternalNotes" id="mtoV2InternalNotes" rows="3" maxlength="4000"></textarea>
+                    <small>No se incluirán en la vista previa destinada al cliente.</small>
+                </label>
+            </div>
+
+            <div class="mto-v2-step__actions">
+                <button class="btn btn-outline-secondary" type="button" data-previous-step="1">Atrás</button>
+                <button class="btn btn-primary" type="button" data-next-step="3">Continuar</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="mto-v2-step" data-step-panel="3" hidden>
+            <legend>
+                <span>Paso 3</span>
+                Evidencia y firma del cliente
+            </legend>
+            <p class="mto-v2-step__intro">Adjunta evidencias y solicita la firma solo después de revisar el trabajo con el cliente.</p>
+
+            <section class="mto-v2-upload-card" aria-labelledby="mtoV2EvidenceTitle">
+                <div class="mto-v2-upload-card__copy">
+                    <span class="mto-v2-eyebrow">Evidencias</span>
+                    <h2 id="mtoV2EvidenceTitle">Evidencia fotográfica</h2>
+                    <p>Hasta 8 imágenes · máximo 8 MB por archivo · máximo 20 MB en total. Formatos: JPG, JPEG y PNG. La copia para el cliente se reconstruye sin metadatos GPS.</p>
+                </div>
+                <label class="mto-v2-file-picker">
+                    <span>Seleccionar archivos</span>
+                    <input type="file"
+                           id="mtoV2EvidenceInput"
+                           accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                           multiple />
+                </label>
+                <div class="mto-v2-file-summary" id="mtoV2FileSummary">0 de 8 archivos · 0 MB de 20 MB</div>
+                <ul class="mto-v2-file-list" id="mtoV2FileList" aria-live="polite"></ul>
+            </section>
+
+            <div class="mto-v2-grid">
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Observaciones del cliente</span>
+                    <textarea class="form-control" name="CustomerObservations" id="mtoV2CustomerObservations" rows="3" maxlength="6000"></textarea>
+                </label>
+                <label class="mto-v2-field">
+                    <span>Nombre de quien firma <b aria-hidden="true">*</b></span>
+                    <input class="form-control" type="text" name="SignerName" id="mtoV2SignerName" autocomplete="name" required maxlength="160" />
+                </label>
+                <label class="mto-v2-field">
+                    <span>Cargo <b aria-hidden="true">*</b></span>
+                    <input class="form-control" type="text" name="SignerRole" id="mtoV2SignerRole" autocomplete="organization-title" required maxlength="150" />
+                </label>
+                <label class="mto-v2-field">
+                    <span>Identificación</span>
+                    <input class="form-control" type="text" name="SignerDocument" id="mtoV2SignerDocument" autocomplete="off" inputmode="numeric" maxlength="40" />
+                </label>
+            </div>
+
+            <section class="mto-v2-signature-card" aria-labelledby="mtoV2SignatureTitle">
+                <div class="mto-v2-signature-card__header">
+                    <div>
+                        <span class="mto-v2-eyebrow">Conformidad</span>
+                        <h2 id="mtoV2SignatureTitle">Firma con dedo o lápiz</h2>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" id="mtoV2ClearSignature">Limpiar firma</button>
+                </div>
+                <div class="mto-v2-signature-pad">
+                    <canvas id="mtoV2SignatureCanvas"
+                            aria-label="Área para la firma del cliente"
+                            aria-describedby="mtoV2SignatureFeedback"
+                            tabindex="0"
+                            role="img"></canvas>
+                    <span>Firma aquí</span>
+                </div>
+                <p class="mto-v2-signature-feedback" id="mtoV2SignatureFeedback">Firma pendiente</p>
+            </section>
+
+            <div class="mto-v2-consents">
+                <label class="mto-v2-check">
+                    <input type="checkbox" name="CustomerAccepted" id="mtoV2CustomerAcceptance" value="true" required />
+                    <span>Confirmo que revisé con el técnico la información registrada y acepto firmar este reporte de servicio.</span>
+                </label>
+            </div>
+
+            <div class="mto-v2-step__actions">
+                <button class="btn btn-outline-secondary" type="button" data-previous-step="2">Atrás</button>
+                <button class="btn btn-primary" type="button" data-next-step="4">Revisar reporte</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="mto-v2-step" data-step-panel="4" hidden>
+            <legend>
+                <span>Paso 4</span>
+                Revisión y envío
+            </legend>
+            <p class="mto-v2-step__intro">Verifica la información visible para el cliente antes de crear el ticket y enviar el reporte.</p>
+
+            <div class="mto-v2-review" id="mtoV2Review" aria-live="polite"></div>
+
+            <label class="mto-v2-check mto-v2-check--final">
+                <input type="checkbox" name="FinalReviewConfirmed" id="mtoV2FinalReviewConfirmed" value="true" required />
+                <span>Confirmo que la vista previa es correcta y autorizo crear el ticket y enviar el reporte al correo indicado.</span>
+            </label>
+
+            <div class="mto-v2-submit-status" id="mtoV2SubmitStatus" role="status" aria-live="polite"></div>
+
+            <div class="mto-v2-step__actions">
+                <button class="btn btn-outline-secondary" type="button" data-previous-step="3">Atrás</button>
+                <button class="btn btn-primary mto-v2-submit" type="submit" id="mtoV2SubmitButton">
+                    <span data-submit-label>Crear ticket y enviar</span>
+                    <span class="mto-v2-submit__spinner" aria-hidden="true"></span>
+                </button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+
+@section Scripts {
+    <script src="~/js/copiers-mto-v2.js" asp-append-version="true"></script>
+}
+

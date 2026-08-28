@@ -17,6 +17,17 @@ public sealed class CuentaCobroMonthOptionDto
     public int Count { get; set; }
 }
 
+public sealed class CuentaCobroRetentionDto
+{
+    public string Kind { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string TaxId { get; set; } = "";
+    public string AccountCode { get; set; } = "";
+    public decimal BaseValue { get; set; }
+    public decimal Rate { get; set; }
+    public decimal Value { get; set; }
+}
+
 public sealed class CuentaCobroRowDto
 {
     public string RecordId { get; set; } = "";
@@ -27,6 +38,8 @@ public sealed class CuentaCobroRowDto
     public decimal ReteFuentePorcentaje { get; set; }
     public decimal ValorPago { get; set; }
     public decimal ReteFuenteValor { get; set; }
+    public List<CuentaCobroRetentionDto> Retentions { get; set; } = new();
+    public decimal TotalRetentionsValue { get; set; }
     public bool TotalesCuadran { get; set; }
     public bool Impresa { get; set; }
     public bool HasAdjunto { get; set; }
@@ -55,6 +68,8 @@ public sealed class CuentaCobroBoardDto
     public decimal TotalValorTotal { get; set; }
     public decimal TotalValorPago { get; set; }
     public decimal TotalReteFuenteValor { get; set; }
+    public decimal TotalRetentionsValue { get; set; }
+    public bool RetentionJsonAvailable { get; set; }
     public string Message { get; set; } = "";
     public string PeriodSourceLabel { get; set; } = "";
 }
@@ -72,6 +87,16 @@ public sealed class CuentaCobroSaveRequest
     public decimal ValorTotal { get; set; }
     public decimal ReteFuentePorcentaje { get; set; }
     public decimal ValorPago { get; set; }
+    public decimal ReteFuenteValor { get; set; }
+    public List<CuentaCobroRetentionDto> Retentions { get; set; } = new();
+}
+
+public sealed class CuentaCobroReportDownloadRequest
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string PeriodLabel { get; set; } = "";
+    public List<CuentaCobroRowDto> Rows { get; set; } = new();
 }
 
 public sealed class CuentaCobroSaveResultDto

@@ -4,7 +4,7 @@ namespace CotizadorInterno.Web.Services.Calculator;
 
 public sealed class QuoteCalculator : IQuoteCalculator
 {
-    private const decimal USD_PER_100_POINTS = 750m;
+    private const decimal USD_PER_100_POINTS = 900m;
     private const decimal COP_EXCHANGE_RATE = 4000m;
 
     public QuoteScenarioResult Calculate(QuoteScenarioInput input)
@@ -24,6 +24,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
         foreach (var line in input.Lines)
         {
             var saleUnit = CalculateSaleUnit(line.CostUnit, line.MarginPercent);
+            var acceleratorFactor = NormalizeAccelerator(line.Acelerador);
             var monthly = saleUnit * line.Quantity;
             var total = monthly * line.ContractMonths;
 
@@ -32,7 +33,7 @@ public sealed class QuoteCalculator : IQuoteCalculator
 
             // Utilidad oculta por línea
             var lineUtility =
-                ((saleUnit - line.CostUnit) + (line.CostUnit * line.Acelerador))
+                ((saleUnit - line.CostUnit) + (line.CostUnit * acceleratorFactor))
                 * line.Quantity
                 * line.ContractMonths;
 
@@ -54,15 +55,15 @@ public sealed class QuoteCalculator : IQuoteCalculator
         result.UtilityAdjusted = adjusted;
 
         // 5) Conversión utilidad → puntos
-        // 750 USD utilidad anual = 100 puntos
+        // 3.000 USD de utilidad ajustada = 100 puntos
         var points = (adjusted / 3000m) * 100m;
         result.Points = Round2(points);
 
         // 6) Comisión
-        // 1 punto = 7.5 USD
-        // Comisión USD = puntos * 7.5
+        // 1 punto = 9 USD, equivalente al 30% de la utilidad ajustada
+        // Comisión USD = puntos * 9
         // Comisión COP = USD * 4000
-        var commissionUsd = result.Points * (USD_PER_100_POINTS / 100m); // 7.5 USD por punto
+        var commissionUsd = result.Points * (USD_PER_100_POINTS / 100m); // 9 USD por punto
         var commissionCop = commissionUsd * COP_EXCHANGE_RATE;
 
         result.Commission = RoundMoney(commissionCop);
@@ -107,6 +108,15 @@ public sealed class QuoteCalculator : IQuoteCalculator
         // Venta UND = Costo UND + Margen %
         var sale = cost * (1m + (marginPercent / 100m));
         return RoundMoney(sale);
+    }
+
+    private static decimal NormalizeAccelerator(decimal accelerator)
+    {
+        if (accelerator <= 0m)
+            return 0m;
+
+        // El catalogo guarda el acelerador como porcentaje: 4 significa 4%, no 4x.
+        return accelerator >= 1m ? accelerator / 100m : accelerator;
     }
 
     private static decimal RoundMoney(decimal v) =>

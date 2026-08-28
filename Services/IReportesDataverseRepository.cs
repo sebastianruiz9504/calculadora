@@ -22,4 +22,18 @@ public interface IReportesDataverseRepository
     Task<ReporteHtmlGeneradoRecord?> GetGeneratedReportAsync(
         string reportId,
         CancellationToken ct = default);
+
+    Task<ReporteClienteData?> GetClientAsync(
+        string clienteId,
+        CancellationToken ct = default);
+
+    Task ReplaceGeneratedReportAttachmentsAsync(
+        string reportId,
+        IReadOnlyList<ReporteEmailAttachment> attachments,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<ReporteEmailAttachment>> ListGeneratedReportAttachmentsAsync(
+        string reportId,
+        bool includeContent,
+        CancellationToken ct = default);
 }

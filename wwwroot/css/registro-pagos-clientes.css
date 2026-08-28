@@ -327,6 +327,11 @@
     color: #067647;
 }
 
+.rpc-status-badge.is-credited {
+    background: #eef4ff;
+    color: #3538cd;
+}
+
 .rpc-status-badge.is-overdue {
     background: #fff1f3;
     color: #b42318;

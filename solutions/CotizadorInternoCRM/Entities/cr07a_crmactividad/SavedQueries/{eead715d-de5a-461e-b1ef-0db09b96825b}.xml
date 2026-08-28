@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>0</isdefault>
+    <savedqueryid>{eead715d-de5a-461e-b1ef-0db09b96825b}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_asunto" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_crmactividadid">
+          <cell name="cr07a_asunto" width="300" />
+          <cell name="createdon" width="125" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_crmactividad">
+          <attribute name="cr07a_crmactividadid" />
+          <attribute name="cr07a_asunto" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_asunto" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="1" />
+          </filter>
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Actividades CRM inactivo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

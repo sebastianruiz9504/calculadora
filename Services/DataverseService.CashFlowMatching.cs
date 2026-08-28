@@ -38,14 +38,14 @@ public sealed partial class DataverseService
     private const string ClientPaymentMatchExternalKeyField = "cr07a_claveexterna";
     private const string ClientPaymentMatchSourceHashField = "cr07a_hashorigen";
     private static readonly Regex CashFlowInvoiceTokenRegex = new(
-        @"\b(?:FV|FVE|FEV|FEM|FE|FEDT|FEKT)[-\s]*\d+(?:[-\s]*\d+)?\b",
+        @"\b(?<prefix>FEDT|FEKT|FVE|FEV|FEM|FV|FE)[-\s]*(?:(?<series>\d+)[-\s]+)?(?<number>\d+)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     public async Task<CashFlowClientPaymentMatchResultDto> MatchCashFlowClientPaymentsAsync(
         DateOnly startDate,
         DateOnly endDate,
         bool dryRun = false,
-        decimal differenceTolerance = 5000m,
+        decimal differenceTolerance = 2000m,
         CancellationToken ct = default)
     {
         if (startDate > endDate)
@@ -177,7 +177,7 @@ public sealed partial class DataverseService
 
         return items
             .Select(item => ParseCashFlowClientPaymentMovement(item, metadata))
-            .Where(static row => row is not null && row.EntryValue > 0m)
+            .Where(static row => row is not null && row.EntryValue > 0m && !IsCashFlowClientPaymentMovementExcluded(row))
             .Cast<CashFlowClientPaymentMovementRow>()
             .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
@@ -273,7 +273,7 @@ public sealed partial class DataverseService
             return FinalizeCashFlowClientPaymentMatchRow(row, matched);
         }
 
-        var invoiceTotal = RoundCurrency(matched.Sum(static invoice => invoice.TotalInvoice));
+        var invoiceTotal = RoundCurrency(matched.Sum(static invoice => invoice.NetTotalInvoice));
         var reteFteValue = RoundCurrency(matched.Sum(ResolveCashFlowClientPaymentReteFteValue));
         var reteIcaValue = RoundCurrency(matched.Sum(ResolveCashFlowClientPaymentReteIcaValue));
         var rteIvaValue = RoundCurrency(matched.Sum(ResolveCashFlowClientPaymentRteIvaValue));
@@ -334,6 +334,9 @@ public sealed partial class DataverseService
 
         if (existingIndex.TryGetValue(row.ExternalKey, out var existing))
         {
+            if (IsCashFlowClientPaymentProtectedMatchStatus(existing.Status))
+                return CashFlowClientPaymentMatchOutcome.Unchanged;
+
             if (attributes.Contains(ClientPaymentMatchSourceHashField)
                 && !string.IsNullOrWhiteSpace(existing.SourceHash)
                 && string.Equals(existing.SourceHash, row.SourceHash, StringComparison.OrdinalIgnoreCase))
@@ -377,7 +380,8 @@ public sealed partial class DataverseService
             {
                 metadata.PrimaryIdField,
                 ClientPaymentMatchExternalKeyField,
-                ClientPaymentMatchSourceHashField
+                ClientPaymentMatchSourceHashField,
+                ClientPaymentMatchStatusField
             }
             .Where(field => attributes.Contains(field) || string.Equals(field, metadata.PrimaryIdField, StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase));
@@ -391,6 +395,9 @@ public sealed partial class DataverseService
                 Key = ReadString(row, ClientPaymentMatchExternalKeyField).Trim(),
                 Hash = attributes.Contains(ClientPaymentMatchSourceHashField)
                     ? ReadString(row, ClientPaymentMatchSourceHashField).Trim()
+                    : "",
+                Status = attributes.Contains(ClientPaymentMatchStatusField)
+                    ? ReadString(row, ClientPaymentMatchStatusField).Trim()
                     : ""
             })
             .Where(static row => !string.IsNullOrWhiteSpace(row.Id) && !string.IsNullOrWhiteSpace(row.Key))
@@ -400,7 +407,7 @@ public sealed partial class DataverseService
                 static group =>
                 {
                     var first = group.First();
-                    return new CashFlowClientPaymentMatchExistingRecord(first.Id, first.Hash);
+                    return new CashFlowClientPaymentMatchExistingRecord(first.Id, first.Hash, first.Status);
                 },
                 StringComparer.OrdinalIgnoreCase);
     }
@@ -463,7 +470,10 @@ public sealed partial class DataverseService
                 ReadString(item, CashFlowBankAccountNameField),
                 ReadString(item, CashFlowBankField)).Trim(),
             Description = ReadString(item, CashFlowDescriptionField).Trim(),
-            EntryValue = RoundCurrency(ReadDecimal(item, CashFlowEntryField) ?? 0m)
+            EntryValue = RoundCurrency(ReadDecimal(item, CashFlowEntryField) ?? 0m),
+            DataverseStatus = ReadString(item, CashFlowStatusField).Trim(),
+            SiigoStatus = ReadString(item, CashFlowSiigoStatusField).Trim(),
+            SiigoDocumentId = ReadString(item, CashFlowSiigoDocumentIdField).Trim()
         };
     }
 
@@ -503,12 +513,89 @@ public sealed partial class DataverseService
         if (string.IsNullOrWhiteSpace(description))
             return Array.Empty<string>();
 
-        return CashFlowInvoiceTokenRegex
-            .Matches(description)
-            .Select(match => NormalizeDocumentToken(match.Value))
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var tokens = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var matches = CashFlowInvoiceTokenRegex.Matches(description).Cast<Match>().ToArray();
+
+        for (var index = 0; index < matches.Length; index++)
+        {
+            var match = matches[index];
+            var prefix = match.Groups["prefix"].Value.Trim().ToUpperInvariant();
+            var series = match.Groups["series"].Value.Trim();
+            var number = match.Groups["number"].Value.Trim();
+            AddCashFlowClientPaymentInvoiceToken(tokens, seen, BuildCashFlowClientPaymentInvoiceToken(prefix, series, number));
+
+            var nextMatchStart = index + 1 < matches.Length ? matches[index + 1].Index : description.Length;
+            AddCashFlowClientPaymentInvoiceContinuationTokens(
+                description,
+                match.Index + match.Length,
+                nextMatchStart,
+                prefix,
+                series,
+                tokens,
+                seen);
+        }
+
+        return tokens.ToArray();
+    }
+
+    private static void AddCashFlowClientPaymentInvoiceContinuationTokens(
+        string description,
+        int startIndex,
+        int endIndex,
+        string prefix,
+        string series,
+        ICollection<string> tokens,
+        ISet<string> seen)
+    {
+        var index = startIndex;
+        while (index < endIndex)
+        {
+            var remaining = description[index..endIndex];
+            var separator = Regex.Match(
+                remaining,
+                @"^[\s,;/+&]+(?:(?:y|e)\s+)?",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+                TimeSpan.FromMilliseconds(100));
+            if (!separator.Success)
+                break;
+
+            index += separator.Length;
+            if (index >= endIndex)
+                break;
+
+            remaining = description[index..endIndex];
+            var numberMatch = Regex.Match(
+                remaining,
+                @"^(?<number>\d{3,})(?!\d)(?!\s*[-/]\s*\d)",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(100));
+            if (!numberMatch.Success)
+                break;
+
+            AddCashFlowClientPaymentInvoiceToken(
+                tokens,
+                seen,
+                BuildCashFlowClientPaymentInvoiceToken(prefix, series, numberMatch.Groups["number"].Value));
+            index += numberMatch.Length;
+        }
+    }
+
+    private static void AddCashFlowClientPaymentInvoiceToken(
+        ICollection<string> tokens,
+        ISet<string> seen,
+        string token)
+    {
+        token = NormalizeDocumentToken(token);
+        if (!string.IsNullOrWhiteSpace(token) && seen.Add(token))
+            tokens.Add(token);
+    }
+
+    private static string BuildCashFlowClientPaymentInvoiceToken(string prefix, string series, string number)
+    {
+        return string.IsNullOrWhiteSpace(series)
+            ? $"{prefix}-{number}"
+            : $"{prefix}-{series}-{number}";
     }
 
     private static string NormalizeDocumentToken(string value)
@@ -525,7 +612,7 @@ public sealed partial class DataverseService
             return 0m;
 
         return invoice.RteFteValue <= 1m
-            ? CalculateRegistroPagoReteFteValue(invoice.TotalInvoice, invoice.VatValue, invoice.RteFteValue)
+            ? CalculateRegistroPagoReteFteValue(invoice.NetTotalInvoice, invoice.NetVatValue, invoice.RteFteValue)
             : RoundCurrency(invoice.RteFteValue);
     }
 
@@ -535,7 +622,7 @@ public sealed partial class DataverseService
             return 0m;
 
         return invoice.ReteIcaValue <= 50m
-            ? CalculateRegistroPagoReteIcaValue(invoice.TotalInvoice, invoice.VatValue, invoice.ReteIcaValue)
+            ? CalculateRegistroPagoReteIcaValue(invoice.NetTotalInvoice, invoice.NetVatValue, invoice.ReteIcaValue)
             : RoundCurrency(invoice.ReteIcaValue);
     }
 
@@ -545,7 +632,7 @@ public sealed partial class DataverseService
             return 0m;
 
         return invoice.RteIvaValue <= 1m
-            ? CalculateRegistroPagoRteIvaValue(invoice.TotalInvoice, invoice.RteIvaValue)
+            ? CalculateRegistroPagoRteIvaValue(invoice.NetTotalInvoice, invoice.NetVatValue, invoice.RteIvaValue)
             : RoundCurrency(invoice.RteIvaValue);
     }
 
@@ -653,8 +740,8 @@ public sealed partial class DataverseService
                 recordId = invoice.RecordId,
                 number = invoice.InvoiceNumber,
                 client = invoice.ClientName,
-                total = invoice.TotalInvoice,
-                vat = invoice.VatValue,
+                total = invoice.NetTotalInvoice,
+                vat = invoice.NetVatValue,
                 reteFtePercent = invoice.RteFteValue,
                 reteIcaRate = invoice.ReteIcaValue,
                 rteIvaPercent = invoice.RteIvaValue
@@ -768,7 +855,10 @@ public sealed partial class DataverseService
                 CashFlowSourceFlowField,
                 CashFlowBankAccountCodeField,
                 CashFlowBankAccountNameField,
-                CashFlowBankField
+                CashFlowBankField,
+                CashFlowStatusField,
+                CashFlowSiigoStatusField,
+                CashFlowSiigoDocumentIdField
             }
             .Where(field => !string.IsNullOrWhiteSpace(field)
                 && (attributes.Contains(field)
@@ -796,7 +886,10 @@ public sealed partial class DataverseService
             CashFlowSourceFlowField,
             CashFlowBankAccountCodeField,
             CashFlowBankAccountNameField,
-            CashFlowBankField
+            CashFlowBankField,
+            CashFlowStatusField,
+            CashFlowSiigoStatusField,
+            CashFlowSiigoDocumentIdField
         }, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -841,6 +934,26 @@ public sealed partial class DataverseService
     private static bool IsCashFlowClientPaymentSuggested(string status) =>
         string.Equals(status, "Sugerido", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsCashFlowClientPaymentMovementExcluded(CashFlowClientPaymentMovementRow row) =>
+        !string.IsNullOrWhiteSpace(row.SiigoDocumentId)
+        || string.Equals(row.DataverseStatus, ConciliacionCashFlowPendingReviewStatus, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.DataverseStatus, ConciliacionCashFlowOmittedStatus, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.DataverseStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.DataverseStatus, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.SiigoStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.SiigoStatus, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCashFlowClientPaymentProtectedMatchStatus(string? status) =>
+        string.Equals(status, "Aprobado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "ListoSiigo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "AplicadoDataverse", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "EnviadoSiigo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "ErrorSiigo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "ReasignadoCategoria", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Omitido", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Rechazado", StringComparison.OrdinalIgnoreCase);
+
     private sealed class CashFlowClientPaymentMovementRow
     {
         public string RecordId { get; set; } = "";
@@ -851,6 +964,9 @@ public sealed partial class DataverseService
         public string BankAccountName { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal EntryValue { get; set; }
+        public string DataverseStatus { get; set; } = "";
+        public string SiigoStatus { get; set; } = "";
+        public string SiigoDocumentId { get; set; } = "";
     }
 
     private enum CashFlowClientPaymentMatchOutcome
@@ -861,5 +977,5 @@ public sealed partial class DataverseService
         Skipped
     }
 
-    private sealed record CashFlowClientPaymentMatchExistingRecord(string Id, string SourceHash);
+    private sealed record CashFlowClientPaymentMatchExistingRecord(string Id, string SourceHash, string Status);
 }

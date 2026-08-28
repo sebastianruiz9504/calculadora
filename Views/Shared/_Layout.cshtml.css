@@ -28,10 +28,18 @@
   padding: 0;
 }
 
+.app-shell__container,
+.app-shell__content {
+  width: 100%;
+  max-width: none;
+  padding-right: clamp(1rem, 2.2vw, 2.5rem);
+  padding-left: clamp(1rem, 2.2vw, 2.5rem);
+}
+
 .app-shell__nav-frame {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: clamp(1rem, 1.8vw, 2.5rem);
   width: 100%;
   min-height: 76px;
   padding: 0.9rem 0;
@@ -70,15 +78,16 @@
 }
 
 .app-shell__collapse {
+  min-width: 0;
   align-items: center;
-  gap: 1.25rem;
+  gap: clamp(1rem, 1.8vw, 2rem);
 }
 
 .app-shell__nav-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin: 0 auto 0 1.5rem;
+  margin: 0;
   padding: 0;
 }
 

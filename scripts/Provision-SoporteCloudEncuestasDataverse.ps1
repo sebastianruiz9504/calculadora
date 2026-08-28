@@ -257,7 +257,7 @@ function New-DvEntity($table) {
         Description = New-DvLabel $table.displayName
         OwnershipType = $table.ownership
         HasActivities = $false
-        HasNotes = $false
+        HasNotes = if ($null -eq $table.hasNotes) { $false } else { [bool]$table.hasNotes }
         IsActivity = $false
         Attributes = @(
             New-AttributePayload $table $primaryNameColumn
@@ -265,6 +265,34 @@ function New-DvEntity($table) {
     }
 
     Invoke-DvRequest -Method Post -Path "EntityDefinitions" -Body $payload | Out-Null
+}
+
+function Update-EntityFlagsIfNeeded($table) {
+    if ($null -eq $table.hasNotes) {
+        return
+    }
+
+    $entity = [uri]::EscapeDataString("LogicalName='$($table.logicalName)'")
+    $metadata = Invoke-DvRequest -Method Get -Path "EntityDefinitions($entity)?`$select=LogicalName,HasNotes" -AllowNotFound
+    if ($null -eq $metadata) {
+        return
+    }
+
+    $targetHasNotes = [bool]$table.hasNotes
+    if ([bool]$metadata.HasNotes -eq $targetHasNotes) {
+        Write-Host "  OK notas: $($table.logicalName) HasNotes=$targetHasNotes"
+        return
+    }
+
+    Write-Host "  Actualizando notas: $($table.logicalName) HasNotes=$targetHasNotes"
+    try {
+        Invoke-DvRequest -Method Patch -Path "EntityDefinitions($entity)" -Body @{
+            HasNotes = $targetHasNotes
+        } | Out-Null
+    }
+    catch {
+        Write-Warning "  No fue posible actualizar HasNotes para $($table.logicalName). Si la tabla ya existe, crea una tabla auxiliar con notas habilitadas o habilitalas desde personalizacion clasica."
+    }
 }
 
 function Wait-ForEntity([string]$LogicalName) {
@@ -278,9 +306,52 @@ function Wait-ForEntity([string]$LogicalName) {
     throw "La tabla $LogicalName no estuvo disponible despues de crearla."
 }
 
+function Get-ChoiceOptionValues($table, $column) {
+    $entity = [uri]::EscapeDataString("LogicalName='$($table.logicalName)'")
+    $attribute = [uri]::EscapeDataString("LogicalName='$($column.logicalName)'")
+    $path = "EntityDefinitions($entity)/Attributes($attribute)/Microsoft.Dynamics.CRM.PicklistAttributeMetadata?`$select=LogicalName&`$expand=OptionSet(`$select=Options)"
+    $metadata = Invoke-DvRequest -Method Get -Path $path -AllowNotFound
+    if ($null -eq $metadata -or $null -eq $metadata.OptionSet -or $null -eq $metadata.OptionSet.Options) {
+        return @()
+    }
+
+    return @($metadata.OptionSet.Options | ForEach-Object { [int]$_.Value })
+}
+
+function Add-ChoiceOptionsIfMissing($table, $column) {
+    $optionsRef = [string]$column.optionsRef
+    if ([string]::IsNullOrWhiteSpace($optionsRef)) {
+        return
+    }
+
+    $schemaOptions = @($schema.optionSets.$optionsRef)
+    if ($schemaOptions.Count -eq 0) {
+        return
+    }
+
+    $existingValues = @(Get-ChoiceOptionValues $table $column)
+    foreach ($option in $schemaOptions) {
+        $value = [int]$option.value
+        if ($existingValues -contains $value) {
+            continue
+        }
+
+        Write-Host "  Agregando opcion choice: $($table.logicalName).$($column.logicalName) -> $($option.label) ($value)"
+        Invoke-DvRequest -Method Post -Path "InsertOptionValue" -Body @{
+            EntityLogicalName = [string]$table.logicalName
+            AttributeLogicalName = [string]$column.logicalName
+            Value = $value
+            Label = New-DvLabel ([string]$option.label)
+        } | Out-Null
+    }
+}
+
 function Add-ColumnIfMissing($table, $column) {
     if (Test-AttributeExists $table.logicalName $column.logicalName) {
         Write-Host "  OK columna existente: $($table.logicalName).$($column.logicalName)"
+        if ([string]$column.type -eq "Choice") {
+            Add-ChoiceOptionsIfMissing $table $column
+        }
         return
     }
 
@@ -320,6 +391,10 @@ foreach ($table in $schema.tables) {
         New-DvEntity $table
         Wait-ForEntity $table.logicalName
     }
+}
+
+foreach ($table in $schema.tables) {
+    Update-EntityFlagsIfNeeded $table
 }
 
 foreach ($table in $schema.tables) {

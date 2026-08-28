@@ -16,7 +16,7 @@ Dataverse queda como centro operativo y Siigo como sistema contable oficial.
 - Usar reglas versionadas en Dataverse para categoria, vertical y cuenta
   contable. Las correcciones humanas deben poder guardarse como nueva regla.
 - Usar tolerancia de redondeo de COP 1 para conciliacion contable exacta y una
-  tolerancia operacional de COP 5.000 para aplicar pagos de clientes cuando la
+  tolerancia operacional de COP 2.000 para aplicar pagos de clientes cuando la
   diferencia corresponda a retenciones o ajuste al peso.
 
 ## Fuentes actuales
@@ -644,8 +644,11 @@ Reglas:
   con facturas, documentos soporte o comprobantes.
 - Cloud se registra con banco `11100504` - Bancolombia Cloud 8100.
 - Copiers se registra con banco `11100505` - Bancolombia Copiers 7316.
-- `TRASLADO` no va a Siigo. Se guarda en tabla independiente
-  `cr07a_trasladointernoflujocaja`.
+- `TRASLADO` se guarda en la tabla independiente
+  `cr07a_trasladointernoflujocaja` y se envía a Siigo como comprobante contable
+  `CC-17`: crédito a la cuenta bancaria origen, débito a la cuenta bancaria
+  destino y Bancolombia como tercero. Solo queda conciliado cuando Siigo
+  confirma el comprobante y Dataverse confirma el estado `EnviadoSiigo`.
 - Por defecto no se importan filas futuras; quedan fuera hasta que llegue la
   fecha. Esto evita convertir planeacion de caja en movimiento real.
 - La automatizacion es idempotente por fila del Excel y usa `cr07a_hashorigen`
@@ -950,8 +953,8 @@ Pendientes operativos:
 | --- | ---: | --- |
 | Conciliacion total/IVA exacta | COP 1 | Aceptar redondeo |
 | Cloud + Copiers vs total/base | COP 1 | Aceptar redondeo |
-| Pago cliente vs factura + retenciones | COP 5.000 | Subir automatico si cliente/factura/banco coinciden |
-| Ajuste al peso | COP 5.000 | Crear linea `42958101` |
+| Pago cliente vs factura + retenciones | COP 2.000 | Subir automatico si cliente/factura/banco coinciden |
+| Ajuste al peso | COP 2.000 | Crear linea `42958101` |
 | Pago proveedor vs saldo documento | COP 1.000 | Sugerir; automatico solo si proveedor/documento/banco coinciden |
 | Match por NIT + factura + total | COP 1 | Confianza alta |
 | Match por NIT + fecha + total | COP 1.000 | Confianza media, requiere aprobacion |
@@ -998,7 +1001,7 @@ Fuentes oficiales:
 7. Construir bandeja de supervision para gastos sin regla o con baja confianza.
 8. Automatizar cuentas de cobro hacia documento soporte Siigo.
 9. Importar flujo de caja a Dataverse como movimientos bancarios.
-10. Automatizar pagos de clientes con tolerancia de COP 5.000.
+10. Automatizar pagos de clientes con tolerancia de COP 2.000.
 11. Automatizar pagos a proveedores con sugerencia y aprobacion.
 12. Automatizar comprobantes contables varios desde reglas de banco/texto.
 13. Integrar todo al reporte mensual de conciliacion.

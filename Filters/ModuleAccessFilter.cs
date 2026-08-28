@@ -20,7 +20,9 @@ public sealed class ModuleAccessFilter : IAsyncActionFilter
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (context.Filters.OfType<IAllowAnonymousFilter>().Any())
+        var allowsAnonymous = context.Filters.OfType<IAllowAnonymousFilter>().Any()
+            || context.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any();
+        if (allowsAnonymous)
         {
             await next();
             return;

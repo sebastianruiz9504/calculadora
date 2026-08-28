@@ -1,0 +1,76 @@
+@{
+    ViewData["Title"] = "Propuestas";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/proposal-chat.css" asp-append-version="true" />
+}
+
+<main class="proposal-chat-shell"
+      data-proposal-chat-app
+      data-chat-url="@Url.Action("Chat", "ProposalChat")"
+      data-export-pdf-url="@Url.Action("ExportPdf", "ProposalChat")"
+      data-export-word-url="@Url.Action("ExportWord", "ProposalChat")">
+    <section class="proposal-chat-header">
+        <div>
+            <div class="proposal-chat-kicker">Area comercial</div>
+            <h1 class="proposal-chat-title">Propuestas</h1>
+        </div>
+        <div class="proposal-chat-actions">
+            <button type="button" class="btn btn-primary" data-proposal-download-pdf disabled>Descargar PDF</button>
+            <button type="button" class="btn btn-outline-secondary" data-proposal-download-word disabled>Descargar Word</button>
+            <button type="button" class="btn btn-outline-secondary" data-proposal-clear>Nuevo chat</button>
+        </div>
+    </section>
+
+    <section class="proposal-chat-workspace" aria-label="Chat de propuestas">
+        <div class="proposal-chat-panel">
+            <div class="proposal-chat-messages" data-proposal-messages aria-live="polite">
+                <article class="proposal-chat-message proposal-chat-message--assistant">
+                    <div class="proposal-chat-message__role">Agente</div>
+                    <div class="proposal-chat-message__bubble">Listo. Genero el preview y solo te muestro preguntas pendientes.</div>
+                </article>
+            </div>
+
+            <form class="proposal-chat-composer" data-proposal-form>
+                <div class="proposal-chat-prompts" aria-label="Acciones rapidas">
+                    <button type="button" data-proposal-prompt="Crea una propuesta comercial de licenciamiento Microsoft con este contenido: ">Licenciamiento Microsoft</button>
+                    <button type="button" data-proposal-prompt="Crea una propuesta comercial de infraestructura en Azure con este contenido: ">Azure</button>
+                    <button type="button" data-proposal-prompt="Crea una propuesta comercial de renta de impresoras con este contenido: ">Renta impresoras</button>
+                    <button type="button" data-proposal-prompt="Crea una propuesta comercial de desarrollo de aplicaciones con este contenido: ">Desarrollo apps</button>
+                    <button type="button" data-proposal-prompt="Ajusta la propuesta actual con esta correccion: ">Corregir</button>
+                    <button type="button" data-proposal-prompt="Revisa si faltan preguntas pendientes para cerrar la propuesta.">Preguntas pendientes</button>
+                </div>
+                <label class="visually-hidden" for="proposalChatInput">Mensaje para el agente de propuestas</label>
+                <textarea id="proposalChatInput"
+                          class="proposal-chat-input"
+                          data-proposal-input
+                          rows="5"
+                          maxlength="12000"
+                          autocomplete="off"
+                          placeholder="Pega el contenido, condiciones o correccion"></textarea>
+                <div class="proposal-chat-composer__footer">
+                    <div class="proposal-chat-status" data-proposal-status role="status" aria-live="polite"></div>
+                    <button type="submit" class="btn btn-primary" data-proposal-send>Enviar</button>
+                </div>
+            </form>
+        </div>
+
+        <aside class="proposal-preview" aria-label="Preview de la propuesta">
+            <div class="proposal-preview__header">
+                <div>
+                    <div class="proposal-chat-kicker">Preview</div>
+                    <h2 data-proposal-preview-title>Sin documento</h2>
+                </div>
+            </div>
+            <iframe class="proposal-preview__frame" data-proposal-preview sandbox="" title="Preview de propuesta"></iframe>
+            <div class="proposal-preview__empty" data-proposal-preview-empty>
+                El documento aparecerá aquí cuando el agente genere la propuesta.
+            </div>
+        </aside>
+    </section>
+</main>
+
+@section Scripts {
+    <script src="~/js/proposal-chat.js" asp-append-version="true"></script>
+}

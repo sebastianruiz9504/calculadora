@@ -1,0 +1,429 @@
+@model CotizadorInterno.Web.Models.Crm.CrmDealDetailViewModel
+@using System.Globalization
+@using CotizadorInterno.Web.Models.Crm
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    ViewData["Title"] = Model.Deal.Name;
+    var culture = CultureInfo.GetCultureInfo("es-CO");
+    string Money(decimal value) => value.ToString("C0", culture);
+    string DateLabel(DateOnly? value) => value?.ToString("dd MMM yyyy", culture) ?? "Sin registro";
+    TimeZoneInfo BogotaTimeZone()
+    {
+        foreach (var id in new[] { "SA Pacific Standard Time", "America/Bogota" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(id);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+    var bogotaTimeZone = BogotaTimeZone();
+    DateTimeOffset InBogota(DateTimeOffset value) =>
+        TimeZoneInfo.ConvertTime(value, bogotaTimeZone);
+    string DateTimeLabel(DateTimeOffset? value) =>
+        value.HasValue
+            ? InBogota(value.Value).ToString("dd MMM yyyy · HH:mm", culture)
+            : "Sin registro";
+    string CrmDetailUrlTemplate(string action)
+    {
+        var sentinel = Guid.Empty.ToString("D");
+        return (Url.Action(
+                action,
+                "Crm",
+                new
+                {
+                    id = Guid.Empty,
+                    ViewAsOwnerId = Model.Access.ViewAsOwnerId
+                }) ?? "")
+            .Replace(sentinel, "__id__", StringComparison.Ordinal);
+    }
+    var companyId = Model.Company?.Id ?? Model.Deal.CompanyId;
+    var companyName = Model.Company?.Name ?? Model.Deal.CompanyName;
+    var contactId = Model.PrimaryContact?.Id ?? Model.Deal.PrimaryContactId;
+    var contactName = Model.PrimaryContact?.FullName ?? Model.Deal.PrimaryContactName;
+    var calculatorUrl = string.IsNullOrWhiteSpace(Model.Deal.ScenarioId)
+        ? ""
+        : Url.Action(
+            "Index",
+            "Calculator",
+            new
+            {
+                scenarioId = Model.Deal.ScenarioId,
+                crmDealId = Model.Deal.Id,
+                crmCompanyId = companyId,
+                crmCompanyName = companyName,
+                crmContactId = contactId,
+                crmContactName = contactName,
+                crmDealKind = Model.Deal.KindValue,
+                crmDealName = Model.Deal.Name,
+                crmProbability = Model.Deal.Probability.ToString(CultureInfo.InvariantCulture),
+                crmEstimatedValue = Model.Deal.EstimatedValue.ToString(CultureInfo.InvariantCulture),
+                viewAsOwnerId = Model.Access.ViewAsOwnerId
+            }) ?? "";
+    var isQuoted = Model.Deal.KindValue == (int)CrmDealKind.QuotedBusiness;
+    ViewData["CrmAllowContact"] = false;
+    ViewData["CrmCompanyId"] = companyId;
+    ViewData["CrmCompanyName"] = companyName;
+    ViewData["CrmContactId"] = contactId;
+    ViewData["CrmContactName"] = contactName;
+    ViewData["CrmDealId"] = Model.Deal.Id;
+    ViewData["CrmDealName"] = Model.Deal.Name;
+    ViewData["CrmIsAdministrator"] = Model.Access.IsAdministrator;
+    ViewData["CrmViewAsOwnerId"] = Model.Access.ViewAsOwnerId;
+    ViewData["CrmScopeOptions"] = Model.Access.Owners
+        .Select(owner => new SelectListItem
+        {
+            Value = owner.Id,
+            Text = string.IsNullOrWhiteSpace(owner.Email)
+                ? owner.Name
+                : $"{owner.Name} · {owner.Email}",
+            Selected = string.Equals(owner.Id, Model.Access.ViewAsOwnerId, StringComparison.OrdinalIgnoreCase)
+        })
+        .ToList();
+    ViewData["CrmObjectType"] = "Deal";
+    ViewData["CrmRecordId"] = Model.Deal.Id;
+    ViewData["CrmCurrentOwnerName"] = Model.Deal.Audit.OwnerName;
+    ViewData["CrmOwnerOptions"] = Model.Access.Owners
+        .Select(owner => new SelectListItem
+        {
+            Value = owner.Id,
+            Text = string.IsNullOrWhiteSpace(owner.Email)
+                ? owner.Name
+                : $"{owner.Name} · {owner.Email}",
+            Selected = string.Equals(owner.Id, Model.Deal.Audit.OwnerId, StringComparison.OrdinalIgnoreCase)
+        })
+        .ToList();
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/crm.css" asp-append-version="true" />
+}
+
+<div class="crm-app crm-detail-app"
+     id="crmDetailApp"
+     data-record-type="deal"
+     data-create-contact-url="@Url.Action("CreateContact", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-create-activity-url="@Url.Action("CreateActivity", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-update-owner-url="@Url.Action("UpdateOwner", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-crm-index-url="@Url.Action("Index", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-contact-detail-url-template="@CrmDetailUrlTemplate("Contact")"
+     data-activity-detail-url-template="@CrmDetailUrlTemplate("Activity")"
+     data-view-as-owner-id="@Model.Access.ViewAsOwnerId"
+     data-planned-activity-status="@((int)CrmActivityStatus.Planned)"
+     data-completed-activity-status="@((int)CrmActivityStatus.Completed)"
+     data-meeting-activity-type="@((int)CrmActivityType.Meeting)">
+    @Html.AntiForgeryToken()
+
+    <div class="crm-workspace">
+        <partial name="_CrmSidebar" model="@("negocios")" />
+
+        <main class="crm-workspace__main">
+            <nav class="crm-breadcrumb" aria-label="Ruta de navegación">
+                <a asp-action="Index"
+                   asp-controller="Crm"
+                   asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                   asp-fragment="crm-negocios">Negocios</a>
+                <span aria-hidden="true">/</span>
+                <span aria-current="page">@Model.Deal.Name</span>
+            </nav>
+
+            <partial name="_CrmScopeSelector" />
+
+            <header class="crm-record-header">
+                <div class="crm-record-header__identity">
+                    <span class="crm-record-header__mark" aria-hidden="true">N</span>
+                    <div>
+                        <span class="crm-eyebrow">@Model.Deal.KindLabel</span>
+                        <div class="crm-record-header__title">
+                            <h1>@Model.Deal.Name</h1>
+                            <span class="crm-record-status">@Model.Deal.StageLabel</span>
+                        </div>
+                        <p>@(string.IsNullOrWhiteSpace(companyName) ? "Sin empresa asociada" : companyName)</p>
+                    </div>
+                </div>
+                <div class="crm-record-header__actions">
+                    @if (!string.IsNullOrWhiteSpace(calculatorUrl))
+                    {
+                        <a class="crm-btn crm-btn--soft" href="@calculatorUrl">Editar en calculadora</a>
+                    }
+                    else
+                    {
+                        <span class="crm-btn crm-btn--quiet crm-btn--disabled" aria-disabled="true">Sin escenario de calculadora</span>
+                    }
+                    <button class="crm-btn crm-btn--primary" type="button" data-detail-open-activity>Registrar actividad</button>
+                </div>
+            </header>
+
+            <div class="crm-status" data-detail-global-status role="status" aria-live="polite" hidden></div>
+
+            <section class="crm-record-metrics" aria-label="Medidores del negocio">
+                <article>
+                    <span>Puntaje</span>
+                    <strong>@(Model.Deal.Score.HasValue ? Model.Deal.Score.Value.ToString("0", culture) : "—")</strong>
+                    <small>@(isQuoted ? "Puntos calculados" : "Puntaje estimado")</small>
+                </article>
+                <article>
+                    <span>@(isQuoted ? "Valor del contrato" : "Contrato estimado")</span>
+                    <strong>@Money(Model.Deal.PipelineValue)</strong>
+                    <small>@(isQuoted ? "Métrica de la cotización" : "Estimado comercial")</small>
+                </article>
+                <article>
+                    <span>Probabilidad</span>
+                    <strong>@Model.Deal.Probability.ToString("0", culture)%</strong>
+                    <small>Probabilidad comercial</small>
+                </article>
+            </section>
+
+            <div class="crm-record-layout">
+                <div class="crm-record-layout__main">
+                    <section class="crm-record-card" aria-labelledby="dealGeneralTitle">
+                        <header class="crm-record-card__head">
+                            <div>
+                                <span class="crm-eyebrow">Hoja de vida</span>
+                                <h2 id="dealGeneralTitle">Información general</h2>
+                            </div>
+                        </header>
+                        <dl class="crm-fact-grid">
+                            <div><dt>Tipo</dt><dd>@Model.Deal.KindLabel</dd></div>
+                            <div><dt>Etapa</dt><dd>@Model.Deal.StageLabel</dd></div>
+                            <div>
+                                <dt>@(isQuoted ? "Línea de negocio" : "Categoría")</dt>
+                                <dd>@(string.IsNullOrWhiteSpace(Model.Deal.BusinessLine) ? "Sin categoría registrada" : Model.Deal.BusinessLine)</dd>
+                            </div>
+                            <div><dt>Cierre esperado</dt><dd>@DateLabel(Model.Deal.ExpectedCloseDate)</dd></div>
+                            <div><dt>Cierre real</dt><dd>@DateLabel(Model.Deal.ActualCloseDate)</dd></div>
+                            <div><dt>Última actualización</dt><dd>@DateTimeLabel(Model.Deal.Audit.ModifiedAtUtc ?? Model.Deal.ModifiedAtUtc)</dd></div>
+                            @if (!isQuoted)
+                            {
+                                <div class="crm-fact-grid__wide">
+                                    <dt>Descripción</dt>
+                                    <dd>@(string.IsNullOrWhiteSpace(Model.Deal.Description) ? "Sin descripción registrada" : Model.Deal.Description)</dd>
+                                </div>
+                            }
+                            <div class="crm-fact-grid__wide"><dt>Siguiente paso</dt><dd>@(string.IsNullOrWhiteSpace(Model.Deal.NextAction) ? "Sin siguiente paso registrado" : Model.Deal.NextAction)</dd></div>
+                            @if (!string.IsNullOrWhiteSpace(Model.Deal.LostReason))
+                            {
+                                <div class="crm-fact-grid__wide"><dt>Motivo de pérdida</dt><dd>@Model.Deal.LostReason</dd></div>
+                            }
+                        </dl>
+                    </section>
+
+                    <section class="crm-record-card" aria-labelledby="dealProvisioningTitle">
+                        <header class="crm-record-card__head">
+                            <div>
+                                <span class="crm-eyebrow">Operación</span>
+                                <h2 id="dealProvisioningTitle">Aprovisionamiento</h2>
+                            </div>
+                        </header>
+                        <dl class="crm-fact-grid">
+                            <div><dt>Solicitud</dt><dd>@(Model.Deal.ProvisioningRequested ? "Solicitada" : "Pendiente")</dd></div>
+                            <div><dt>Fecha</dt><dd>@DateTimeLabel(Model.Deal.ProvisioningRequestedAtUtc)</dd></div>
+                            <div class="crm-fact-grid__wide"><dt>Identificador</dt><dd>@(string.IsNullOrWhiteSpace(Model.Deal.ProvisioningRequestId) ? "Sin solicitud registrada" : Model.Deal.ProvisioningRequestId)</dd></div>
+                        </dl>
+                        @if (!Model.Deal.CanMarkWon)
+                        {
+                            <p class="crm-record-note">El negocio solo podrá marcarse como ganado cuando exista evidencia completa de la solicitud de aprovisionamiento.</p>
+                        }
+                    </section>
+
+                    <section class="crm-association-card" aria-labelledby="dealRelationsTitle">
+                        <header class="crm-association-card__head">
+                            <div><h2 id="dealRelationsTitle">Empresa y contacto</h2><span>Relaciones principales</span></div>
+                        </header>
+                        <div class="crm-related-objects">
+                            @if (Model.Company is not null)
+                            {
+                                <article>
+                                    <span>Empresa</span>
+                                    <a asp-action="Company"
+                                       asp-controller="Crm"
+                                       asp-route-id="@Model.Company.Id"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@Model.Company.Name</a>
+                                    <small>@Model.Company.LifecycleLabel</small>
+                                </article>
+                            }
+                            else
+                            {
+                                <article><span>Empresa</span><strong>Sin empresa disponible</strong><small>Asociación no accesible</small></article>
+                            }
+                            @if (Model.PrimaryContact is not null)
+                            {
+                                <article>
+                                    <span>Contacto principal</span>
+                                    <a asp-action="Contact"
+                                       asp-controller="Crm"
+                                       asp-route-id="@Model.PrimaryContact.Id"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@Model.PrimaryContact.FullName</a>
+                                    <small>@(string.IsNullOrWhiteSpace(Model.PrimaryContact.JobTitle) ? "Sin cargo registrado" : Model.PrimaryContact.JobTitle)</small>
+                                </article>
+                            }
+                            else
+                            {
+                                <article><span>Contacto principal</span><strong>Sin contacto asociado</strong><small>Puede asignarse desde la Calculadora</small></article>
+                            }
+                        </div>
+                    </section>
+
+                    <section class="crm-association-card" aria-labelledby="dealActivitiesTitle">
+                        <header class="crm-association-card__head">
+                            <div><h2 id="dealActivitiesTitle">Actividad registrada</h2><span>@Model.Activities.TotalCount registros</span></div>
+                            <button class="crm-association-card__action" type="button" data-detail-open-activity>Registrar actividad</button>
+                        </header>
+                        @if (Model.Activities.Items.Count == 0)
+                        {
+                            <div class="crm-association-empty"><strong>Sin actividad registrada</strong><span>Agrega el primer seguimiento de este negocio.</span></div>
+                        }
+                        else
+                        {
+                            <div class="crm-timeline">
+                                @foreach (var activity in Model.Activities.Items)
+                                {
+                                    <article class="crm-timeline__item">
+                                        <span class="crm-timeline__marker" aria-hidden="true"></span>
+                                        <div>
+                                            <a asp-action="Activity"
+                                               asp-controller="Crm"
+                                               asp-route-id="@activity.Id"
+                                               asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@activity.Subject</a>
+                                            <p>@activity.TypeDisplayLabel · @activity.StatusLabel</p>
+                                        </div>
+                                        <time datetime="@((activity.CompletedAtUtc ?? activity.PlannedAtUtc)?.ToString("O"))">
+                                            @DateTimeLabel(activity.CompletedAtUtc ?? activity.PlannedAtUtc)
+                                        </time>
+                                    </article>
+                                }
+                            </div>
+                        }
+                        @if (Model.Activities.HasPrevious || Model.Activities.HasNext)
+                        {
+                            <nav class="crm-detail-pagination" aria-label="Paginación de actividad asociada">
+                                @if (Model.Activities.HasPrevious)
+                                {
+                                    <a asp-action="Deal" asp-route-id="@Model.Deal.Id"
+                                       asp-route-activityPage="@(Model.Activities.Page - 1)"
+                                       asp-route-historyPage="@Model.Query.HistoryPage"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Anterior</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Anterior</span>
+                                }
+                                <span>Página @Model.Activities.Page</span>
+                                @if (Model.Activities.HasNext)
+                                {
+                                    <a asp-action="Deal" asp-route-id="@Model.Deal.Id"
+                                       asp-route-activityPage="@(Model.Activities.Page + 1)"
+                                       asp-route-historyPage="@Model.Query.HistoryPage"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Siguiente</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Siguiente</span>
+                                }
+                            </nav>
+                        }
+                    </section>
+
+                    <section class="crm-association-card" aria-labelledby="dealHistoryTitle">
+                        <header class="crm-association-card__head">
+                            <div><h2 id="dealHistoryTitle">Historial de etapas</h2><span>@Model.StageHistory.TotalCount cambios</span></div>
+                        </header>
+                        @if (Model.StageHistory.Items.Count == 0)
+                        {
+                            <div class="crm-association-empty"><strong>Sin cambios de etapa</strong><span>Los movimientos del pipeline aparecerán aquí.</span></div>
+                        }
+                        else
+                        {
+                            <div class="crm-timeline crm-timeline--history">
+                                @foreach (var item in Model.StageHistory.Items)
+                                {
+                                    <article class="crm-timeline__item">
+                                        <span class="crm-timeline__marker" aria-hidden="true"></span>
+                                        <div>
+                                            <strong>@(string.IsNullOrWhiteSpace(item.NewStageLabel) ? item.Name : item.NewStageLabel)</strong>
+                                            <p>
+                                                @(string.IsNullOrWhiteSpace(item.PreviousStageLabel) ? "Etapa inicial" : $"Desde {item.PreviousStageLabel}")
+                                                @if (item.DurationDays.HasValue)
+                                                {
+                                                    <text> · @item.DurationDays días</text>
+                                                }
+                                            </p>
+                                            @if (!string.IsNullOrWhiteSpace(item.Reason))
+                                            {
+                                                <p>@item.Reason</p>
+                                            }
+                                        </div>
+                                        <time datetime="@item.ChangedAtUtc?.ToString("O")">@DateTimeLabel(item.ChangedAtUtc)</time>
+                                    </article>
+                                }
+                            </div>
+                        }
+                        @if (Model.StageHistory.HasPrevious || Model.StageHistory.HasNext)
+                        {
+                            <nav class="crm-detail-pagination" aria-label="Paginación del historial de etapas">
+                                @if (Model.StageHistory.HasPrevious)
+                                {
+                                    <a asp-action="Deal" asp-route-id="@Model.Deal.Id"
+                                       asp-route-activityPage="@Model.Query.ActivityPage"
+                                       asp-route-historyPage="@(Model.StageHistory.Page - 1)"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Anterior</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Anterior</span>
+                                }
+                                <span>Página @Model.StageHistory.Page</span>
+                                @if (Model.StageHistory.HasNext)
+                                {
+                                    <a asp-action="Deal" asp-route-id="@Model.Deal.Id"
+                                       asp-route-activityPage="@Model.Query.ActivityPage"
+                                       asp-route-historyPage="@(Model.StageHistory.Page + 1)"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId"
+                                       asp-route-pageSize="@Model.Query.PageSize">Siguiente</a>
+                                }
+                                else
+                                {
+                                    <span aria-disabled="true">Siguiente</span>
+                                }
+                            </nav>
+                        }
+                    </section>
+                </div>
+
+                <aside class="crm-record-layout__rail" aria-label="Auditoría del registro">
+                    <section class="crm-record-card crm-audit-card">
+                        <span class="crm-eyebrow">Auditoría</span>
+                        <h2>Historial del registro</h2>
+                        <dl>
+                            <div>
+                                <dt>Propietario</dt>
+                                <dd><partial name="_CrmOwnerField" /></dd>
+                            </div>
+                            <div><dt>Creado por</dt><dd>@(string.IsNullOrWhiteSpace(Model.Deal.Audit.CreatedByName) ? "Sin registro" : Model.Deal.Audit.CreatedByName)</dd></div>
+                            <div><dt>Creación</dt><dd>@DateTimeLabel(Model.Deal.Audit.CreatedAtUtc)</dd></div>
+                            <div><dt>Modificado por</dt><dd>@(string.IsNullOrWhiteSpace(Model.Deal.Audit.ModifiedByName) ? "Sin registro" : Model.Deal.Audit.ModifiedByName)</dd></div>
+                            <div><dt>Última modificación</dt><dd>@DateTimeLabel(Model.Deal.Audit.ModifiedAtUtc)</dd></div>
+                        </dl>
+                    </section>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <partial name="_CrmDetailDrawers" />
+</div>
+
+@section Scripts {
+    <script src="~/js/crm-detail.js" asp-append-version="true"></script>
+}

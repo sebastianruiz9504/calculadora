@@ -27,7 +27,8 @@ public sealed class MetricasController : Controller
         {
             CurrentUser = await GetCurrentUserAsync(ct),
             InitialFilter = MetricsRangeFilter.ThisYear,
-            InitialView = MetricsViewMode.Global
+            InitialView = MetricsViewMode.Global,
+            InitialPeriod = MetricsPeriodGranularity.Month
         };
 
         return View(model);
@@ -35,13 +36,19 @@ public sealed class MetricasController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Charts([FromQuery] string? filter, [FromQuery] string? view, [FromQuery] string? seller, CancellationToken ct)
+    public async Task<IActionResult> Charts(
+        [FromQuery] string? filter,
+        [FromQuery] string? view,
+        [FromQuery] string? seller,
+        [FromQuery] string? period,
+        CancellationToken ct)
     {
         try
         {
             var parsedFilter = MetricsRangeFilterExtensions.ParseOrDefault(filter);
             var parsedView = MetricsViewModeExtensions.ParseOrDefault(view);
-            var dashboard = await _dataverse.GetMetricsDashboardAsync(parsedFilter, parsedView, seller, ct);
+            var parsedPeriod = MetricsPeriodGranularityExtensions.ParseOrDefault(period);
+            var dashboard = await _dataverse.GetMetricsDashboardAsync(parsedFilter, parsedView, parsedPeriod, seller, ct);
             return Json(dashboard);
         }
         catch (InvalidOperationException ex)

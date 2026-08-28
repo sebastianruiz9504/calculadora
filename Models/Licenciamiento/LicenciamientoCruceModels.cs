@@ -27,6 +27,8 @@ public sealed class LicenciamientoCruceDashboardDto
     public IReadOnlyList<LicenciamientoCruceContractSegmentDto> ContractSegments { get; set; } = Array.Empty<LicenciamientoCruceContractSegmentDto>();
     public IReadOnlyList<LicenciamientoCruceMatrixSegmentDto> MatrixSegments { get; set; } = Array.Empty<LicenciamientoCruceMatrixSegmentDto>();
     public IReadOnlyList<LicenciamientoCruceMatrixMonthDto> MatrixMonths { get; set; } = Array.Empty<LicenciamientoCruceMatrixMonthDto>();
+    public IReadOnlyList<LicenciamientoCruceMatrixSegmentDto> ChartMatrixSegments { get; set; } = Array.Empty<LicenciamientoCruceMatrixSegmentDto>();
+    public IReadOnlyList<LicenciamientoCruceMatrixMonthDto> ChartMatrixMonths { get; set; } = Array.Empty<LicenciamientoCruceMatrixMonthDto>();
     public IReadOnlyList<LicenciamientoCruceOrphanRecordDto> Orphans { get; set; } = Array.Empty<LicenciamientoCruceOrphanRecordDto>();
     public IReadOnlyList<LicenciamientoCruceOptionDto> CostContractTypeOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();
     public IReadOnlyList<LicenciamientoCruceOptionDto> BillingContractTypeOptions { get; set; } = Array.Empty<LicenciamientoCruceOptionDto>();

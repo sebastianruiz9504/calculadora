@@ -43,12 +43,10 @@ public sealed partial class DataverseService
 
         var productRows = await GetBusinessRecordsAsync(user, ct);
         var priceMap = await LoadUtilityProductPriceMapAsync(user, ct);
-        var billingRows = await GetBillingRecordsAsync(
+        var billingRows = await GetSiigoRevenueLedgerRowsAsync(
             billingMetadata,
             startDate,
             endExclusive,
-            _dashboardBillingEmissionDateField,
-            _dashboardBillingEmissionDateFieldKind,
             user,
             ct);
         var consumptionRows = await GetUtilityConsumptionRowsAsync(user, ct);
@@ -411,8 +409,23 @@ public sealed partial class DataverseService
                 continue;
 
             var target = bucket == UtilityBucket.Monthly ? monthly[month] : prepaid[month];
-            target.Sales = RoundCurrency(target.Sales + row.TotalInvoice);
-            target.BillingRecordsCount++;
+            target.Sales = RoundCurrency(target.Sales + row.NetBeforeVatValue);
+            if (!row.IsCreditNoteLedgerEntry)
+                target.BillingRecordsCount++;
+            target.BillingRows.Add(new UtilityRealBillingRowDto
+            {
+                RecordId = row.RecordId,
+                InvoiceNumber = row.InvoiceNumber,
+                ClientName = row.ClientName,
+                CompanyTaxId = row.CompanyTaxId,
+                EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",
+                ContractTypeLabel = FirstNonEmpty(row.ContractTypeLabel, bucket == UtilityBucket.Monthly ? "Monthly" : "Prepaid"),
+                PublicUrl = row.PublicUrl,
+                TotalInvoice = row.TotalInvoice,
+                CreditNoteTotal = row.CreditNoteTotal,
+                NetTotalInvoice = row.NetBeforeVatValue
+            });
         }
 
         foreach (var row in consumptionRows)
@@ -445,8 +458,25 @@ public sealed partial class DataverseService
                 continue;
 
             var target = bucket == UtilityBucket.Monthly ? monthly[month] : prepaid[month];
-            target.Cost = RoundCurrency(target.Cost + ResolveUtilityConsumptionCost(row));
+            var cost = ResolveUtilityConsumptionCost(row);
+            target.Cost = RoundCurrency(target.Cost + cost);
             target.CostRecordsCount++;
+            target.CostRows.Add(new UtilityRealCostRowDto
+            {
+                RecordId = row.RecordId,
+                Reference = FirstNonEmpty(row.FacturaDisplay, row.FacturaValue, row.BillingInterval, row.RecordId),
+                ClientName = row.NombreCliente,
+                Vendor = row.Vendor,
+                ProductName = row.ProductDisplay,
+                DateValue = FirstNonEmpty(row.FacturaValue, month.ToString("yyyy-MM", CultureInfo.InvariantCulture)),
+                DateDisplay = FirstNonEmpty(row.FacturaDisplay, row.BillingInterval, FormatUtilityMonthLabel(month)),
+                ContractTypeLabel = FirstNonEmpty(row.ContractTypeLabel, bucket == UtilityBucket.Monthly ? "Monthly" : "Prepaid"),
+                Quantity = row.Cantidad,
+                UnitUsd = row.UnidadUsd,
+                TotalUsd = row.ValorTotalUsd,
+                Trm = row.Trm,
+                Cost = cost
+            });
         }
 
         return new UtilityRealSegments(
@@ -484,7 +514,17 @@ public sealed partial class DataverseService
                     Utility = utility,
                     UtilityPercent = CalculateUtilityPercent(utility, item.Sales),
                     BillingRecordsCount = item.BillingRecordsCount,
-                    CostRecordsCount = item.CostRecordsCount
+                    CostRecordsCount = item.CostRecordsCount,
+                    BillingRows = item.BillingRows
+                        .OrderBy(static row => row.EmissionDateValue, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    CostRows = item.CostRows
+                        .OrderBy(static row => row.DateValue, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(static row => row.ClientName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(static row => row.ProductName, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
                 };
             })
             .ToList();
@@ -565,7 +605,7 @@ public sealed partial class DataverseService
             SuggestedBucket = bucket == UtilityBucket.Monthly
                 ? "monthly"
                 : bucket == UtilityBucket.Prepaid ? "prepaid" : "",
-            Amount = row.TotalInvoice,
+            Amount = row.NetBeforeVatValue,
             CanAssign = canAssign
         };
     }
@@ -827,6 +867,8 @@ public sealed partial class DataverseService
         public decimal Cost { get; set; }
         public int BillingRecordsCount { get; set; }
         public int CostRecordsCount { get; set; }
+        public List<UtilityRealBillingRowDto> BillingRows { get; } = new();
+        public List<UtilityRealCostRowDto> CostRows { get; } = new();
     }
 
     private sealed class UtilityProductPriceRow

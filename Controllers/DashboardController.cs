@@ -8,6 +8,7 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 
 namespace CotizadorInterno.Web.Controllers;
@@ -20,11 +21,19 @@ public sealed class DashboardController : Controller
     private static readonly Encoding PdfEncoding = Encoding.Latin1;
     private readonly IDataverseService _dataverse;
     private readonly ISiigoService _siigo;
+    private readonly IAzureOpenAIDashboardAgentService _agent;
+    private readonly ITaxesReteFuenteReportService _reteFuenteReportService;
 
-    public DashboardController(IDataverseService dataverse, ISiigoService siigo)
+    public DashboardController(
+        IDataverseService dataverse,
+        ISiigoService siigo,
+        IAzureOpenAIDashboardAgentService agent,
+        ITaxesReteFuenteReportService reteFuenteReportService)
     {
         _dataverse = dataverse;
         _siigo = siigo;
+        _agent = agent;
+        _reteFuenteReportService = reteFuenteReportService;
     }
 
     [HttpGet]
@@ -43,6 +52,150 @@ public sealed class DashboardController : Controller
         };
 
         return View(model);
+    }
+
+    [HttpGet]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Today(CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var currentStart = new DateOnly(today.Year, today.Month, 1);
+            var previousStart = currentStart.AddMonths(-1);
+            var previousEnd = previousStart.AddDays(
+                Math.Min(today.Day, DateTime.DaysInMonth(previousStart.Year, previousStart.Month)) - 1);
+
+            var currentSupportTask = _dataverse.GetSoporteCloudBoardAsync(currentStart, today, ct);
+            var previousSupportTask = _dataverse.GetSoporteCloudBoardAsync(previousStart, previousEnd, ct);
+            var copiersEquipmentTask = _dataverse.GetCopiersEquipmentDashboardAsync(ct);
+            var portfolioTask = _dataverse.GetPortfolioDashboardSummaryAsync(ct);
+            var currentYtdTask = _dataverse.GetYtdDashboardAsync(today.Year, ct);
+            await Task.WhenAll(
+                currentSupportTask,
+                previousSupportTask,
+                copiersEquipmentTask,
+                portfolioTask,
+                currentYtdTask);
+
+            YtdDashboardDto? previousYtd = null;
+            if (previousStart.Year != today.Year)
+            {
+                previousYtd = await _dataverse.GetYtdDashboardAsync(previousStart.Year, ct);
+            }
+
+            return Json(DashboardTodaySummaryBuilder.Build(
+                today,
+                await portfolioTask,
+                await currentYtdTask,
+                previousYtd,
+                await currentSupportTask,
+                await previousSupportTask,
+                await copiersEquipmentTask));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el resumen ejecutivo de hoy.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Agent([FromBody] DashboardAgentChatRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _agent.AskAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible responder con el agente del dashboard.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public IActionResult AgentExport([FromQuery] string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)
+            || id.Length > 64
+            || id.Any(static ch => !char.IsLetterOrDigit(ch) && ch != '-'))
+        {
+            return NotFound();
+        }
+
+        var filePath = Path.Combine(Directory.GetCurrentDirectory(), "App_Data", "dashboard-agent-exports", $"{id}.xlsx");
+        if (!System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var fileName = $"dashboard-agent-{id}.xlsx";
+        return File(
+            System.IO.File.OpenRead(filePath),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AgentFeedback([FromBody] DashboardAgentFeedbackRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.CreateDashboardAgentFeedbackAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible enviar la solicitud de aprendizaje.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AgentLearning(CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.GetDashboardAgentLearningFeedbackAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la bandeja de aprendizaje.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AgentLearningStatus([FromBody] DashboardAgentLearningStatusUpdateRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.UpdateDashboardAgentLearningFeedbackStatusAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible actualizar el aprendizaje.");
+        }
     }
 
     [HttpGet]
@@ -72,11 +225,24 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> BillingInvoices(CancellationToken ct)
+    public async Task<IActionResult> BillingInvoices(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] bool duplicatesOnly = false,
+        CancellationToken ct = default)
     {
         try
         {
-            return Json(await _dataverse.GetBillingInvoicesAsync(ct));
+            var today = ResolveBogotaToday();
+            return Json(await _dataverse.GetBillingInvoicesPageAsync(
+                year ?? today.Year,
+                month ?? today.Month,
+                page,
+                pageSize,
+                duplicatesOnly,
+                ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -84,7 +250,31 @@ public sealed class DashboardController : Controller
         }
         catch (Exception)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la tabla completa de facturacion.");
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la tabla de facturacion.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingCurrentMonth(CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var monthStart = new DateOnly(today.Year, today.Month, 1);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            var dashboard = await _dataverse.GetCloudBillingCurrentMonthDashboardAsync(ct);
+            await EnrichCloudBillingCurrentMonthWithSiigoAsync(dashboard, monthStart, monthEnd, ct);
+
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la auditoria de facturacion Cloud del mes actual.");
         }
     }
 
@@ -142,6 +332,42 @@ public sealed class DashboardController : Controller
         }
     }
 
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> YtdBillingRecord([FromBody] YtdBillingRecordUpdateRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.UpdateYtdBillingRecordAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible actualizar la factura YTD.");
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> YtdRecords([FromBody] YtdRecordsUpdateRequestDto request, CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.UpdateYtdRecordsAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar los cambios YTD.");
+        }
+    }
+
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> BillingClientReport([FromQuery] string clientId, [FromQuery] string? clientName, CancellationToken ct)
@@ -187,16 +413,16 @@ public sealed class DashboardController : Controller
             foreach (var invoice in selectedInvoices)
             {
                 var requested = requestedItems[invoice.RecordId];
-                var exportAmount = Math.Round(requested.ExportAmount ?? invoice.TotalInvoice, 2, MidpointRounding.AwayFromZero);
+                var exportAmount = Math.Round(requested.ExportAmount ?? invoice.NetTotalInvoice, 2, MidpointRounding.AwayFromZero);
 
-                if (exportAmount < 0m || exportAmount > invoice.TotalInvoice)
+                if (exportAmount < 0m || exportAmount > invoice.NetTotalInvoice)
                 {
-                    return BadRequest($"El valor a exportar de la factura {invoice.InvoiceNumber} debe estar entre 0 y el total de la factura.");
+                    return BadRequest($"El valor a exportar de la factura {invoice.InvoiceNumber} debe estar entre 0 y el total neto de la factura.");
                 }
 
-                var fraction = invoice.TotalInvoice == 0m
+                var fraction = invoice.NetTotalInvoice == 0m
                     ? 0m
-                    : Math.Round(exportAmount / invoice.TotalInvoice, 4, MidpointRounding.AwayFromZero);
+                    : Math.Round(exportAmount / invoice.NetTotalInvoice, 4, MidpointRounding.AwayFromZero);
                 exportRows.Add((invoice, exportAmount, fraction));
             }
 
@@ -218,10 +444,14 @@ public sealed class DashboardController : Controller
                 "Cliente",
                 "NIT empresa",
                 "% IVA",
-                "Valor IVA",
-                "Total factura",
+                "IVA bruto",
+                "IVA nota credito",
+                "IVA neto",
+                "Total bruto",
+                "Notas credito",
+                "Total neto",
                 "Valor reportado",
-                "Fraccion",
+                "Fraccion del neto",
                 "Fecha emision",
                 "Vertical",
                 "Contrato",
@@ -241,17 +471,21 @@ public sealed class DashboardController : Controller
                 worksheet.Cell(rowIndex, 3).Value = row.Invoice.CompanyTaxId;
                 worksheet.Cell(rowIndex, 4).Value = row.Invoice.VatPercent;
                 worksheet.Cell(rowIndex, 5).Value = row.Invoice.VatValue;
-                worksheet.Cell(rowIndex, 6).Value = row.Invoice.TotalInvoice;
-                worksheet.Cell(rowIndex, 7).Value = row.ExportAmount;
-                worksheet.Cell(rowIndex, 8).Value = row.Fraction;
-                worksheet.Cell(rowIndex, 9).Value = row.Invoice.EmissionDateDisplay;
-                worksheet.Cell(rowIndex, 10).Value = row.Invoice.VerticalLabel;
-                worksheet.Cell(rowIndex, 11).Value = row.Invoice.ContractTypeLabel;
-                worksheet.Cell(rowIndex, 12).Value = row.Invoice.PublicUrl;
+                worksheet.Cell(rowIndex, 6).Value = row.Invoice.CreditNoteVat;
+                worksheet.Cell(rowIndex, 7).Value = row.Invoice.NetVatValue;
+                worksheet.Cell(rowIndex, 8).Value = row.Invoice.TotalInvoice;
+                worksheet.Cell(rowIndex, 9).Value = row.Invoice.CreditNoteTotal;
+                worksheet.Cell(rowIndex, 10).Value = row.Invoice.NetTotalInvoice;
+                worksheet.Cell(rowIndex, 11).Value = row.ExportAmount;
+                worksheet.Cell(rowIndex, 12).Value = row.Fraction;
+                worksheet.Cell(rowIndex, 13).Value = row.Invoice.EmissionDateDisplay;
+                worksheet.Cell(rowIndex, 14).Value = row.Invoice.VerticalLabel;
+                worksheet.Cell(rowIndex, 15).Value = row.Invoice.ContractTypeLabel;
+                worksheet.Cell(rowIndex, 16).Value = row.Invoice.PublicUrl;
 
                 if (Uri.TryCreate(row.Invoice.PublicUrl, UriKind.Absolute, out _))
                 {
-                    worksheet.Cell(rowIndex, 12).SetHyperlink(new XLHyperlink(row.Invoice.PublicUrl));
+                    worksheet.Cell(rowIndex, 16).SetHyperlink(new XLHyperlink(row.Invoice.PublicUrl));
                 }
 
                 rowIndex++;
@@ -259,8 +493,10 @@ public sealed class DashboardController : Controller
 
             worksheet.Cell(rowIndex, 1).Value = "Total";
             worksheet.Cell(rowIndex, 2).Value = $"{exportRows.Count:N0} facturas";
-            worksheet.Cell(rowIndex, 6).Value = exportRows.Sum(static row => row.Invoice.TotalInvoice);
-            worksheet.Cell(rowIndex, 7).Value = totalExported;
+            worksheet.Cell(rowIndex, 8).Value = exportRows.Sum(static row => row.Invoice.TotalInvoice);
+            worksheet.Cell(rowIndex, 9).Value = exportRows.Sum(static row => row.Invoice.CreditNoteTotal);
+            worksheet.Cell(rowIndex, 10).Value = exportRows.Sum(static row => row.Invoice.NetTotalInvoice);
+            worksheet.Cell(rowIndex, 11).Value = totalExported;
 
             var usedRange = worksheet.Range(1, 1, rowIndex, headers.Length);
             usedRange.Style.Font.FontName = "Aptos";
@@ -269,8 +505,8 @@ public sealed class DashboardController : Controller
             worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Font.Bold = true;
             worksheet.Range(rowIndex, 1, rowIndex, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F9FF");
             worksheet.Range(4, 2, 4, 2).Style.NumberFormat.Format = "$ #,##0";
-            worksheet.Range(7, 5, rowIndex, 7).Style.NumberFormat.Format = "$ #,##0";
-            worksheet.Range(7, 8, rowIndex, 8).Style.NumberFormat.Format = "0.00%";
+            worksheet.Range(7, 5, rowIndex, 11).Style.NumberFormat.Format = "$ #,##0";
+            worksheet.Range(7, 12, rowIndex, 12).Style.NumberFormat.Format = "0.00%";
             worksheet.Columns().AdjustToContents();
 
             using var stream = new MemoryStream();
@@ -378,6 +614,7 @@ public sealed class DashboardController : Controller
     }
 
     [HttpGet]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Portfolio(CancellationToken ct)
     {
@@ -398,6 +635,67 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AccountStatementClientSearch([FromQuery] string q, CancellationToken ct)
+    {
+        try
+        {
+            var items = await _dataverse.SearchClientsAsync(q, top: 12, ct: ct);
+            return Json(items);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible buscar clientes para el estado de cuenta.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AccountStatement([FromQuery] string clientId, [FromQuery] string? clientName, CancellationToken ct)
+    {
+        try
+        {
+            var statement = await _dataverse.GetAccountStatementAsync(clientId, clientName, ct);
+            return Json(statement);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible generar el estado de cuenta.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> AccountStatementPdf([FromQuery] string clientId, [FromQuery] string? clientName, CancellationToken ct)
+    {
+        try
+        {
+            var statement = await _dataverse.GetAccountStatementAsync(clientId, clientName, ct);
+            var content = BuildAccountStatementPdf(statement);
+            var clientToken = BuildSafeFileName(FirstNonEmpty(statement.ClientName, clientName, "cliente"));
+            var fileName = $"estado-de-cuenta-{clientToken}-{ResolveBogotaToday():yyyyMMdd}.pdf";
+
+            return File(content, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible generar el PDF del estado de cuenta.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Business(CancellationToken ct)
     {
         try
@@ -412,6 +710,43 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de negocios.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingCreditNotes(CancellationToken ct)
+    {
+        try
+        {
+            return Json(await _dataverse.GetBillingCreditNotesAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la tabla de notas credito.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BusinessBilling([FromQuery] DateOnly? start, [FromQuery] DateOnly? end, [FromQuery] string? granularity, CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetBusinessBillingDashboardAsync(start, end, granularity, ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar la facturacion de negocio.");
         }
     }
 
@@ -610,16 +945,6 @@ public sealed class DashboardController : Controller
                 clientName,
                 ct);
 
-            if (!dashboard.CanExport)
-            {
-                var details = dashboard.ExportBlockers?.Select(static item => item.Message).Where(static value => !string.IsNullOrWhiteSpace(value)).Take(8).ToList()
-                    ?? new List<string>();
-                var message = details.Count == 0
-                    ? "Hay pendientes por solucionar antes de exportar el reporte de contadores."
-                    : $"Soluciona estos pendientes antes de exportar: {string.Join(" ", details)}";
-                return BadRequest(message);
-            }
-
             var content = BuildCopiersCountersPdf(dashboard);
             var periodToken = string.IsNullOrWhiteSpace(dashboard.PeriodValue)
                 ? $"{dashboard.Year:D4}-{dashboard.Month:D2}"
@@ -655,6 +980,25 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el detalle del equipo.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersEquipmentMovements(CancellationToken ct)
+    {
+        try
+        {
+            var dashboard = await _dataverse.GetCopiersEquipmentMovementsDashboardAsync(ct);
+            return Json(dashboard);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar los movimientos de equipos.");
         }
     }
 
@@ -774,6 +1118,28 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> CopiersEquipmentMovementAttachment([FromQuery] string movementId, CancellationToken ct)
+    {
+        try
+        {
+            var file = await _dataverse.DownloadCopiersEquipmentMovementAttachmentAsync(movementId, ct);
+            if (file is null)
+                return NotFound();
+
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible descargar el acta de entrega del movimiento.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> SupportCloud([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate, CancellationToken ct)
     {
         try
@@ -834,6 +1200,27 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible guardar el ticket de soporte cloud.");
+        }
+    }
+
+    [HttpDelete]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SupportCloudTicketDelete([FromQuery] string recordId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(recordId))
+            return BadRequest("Debes indicar el ticket a eliminar.");
+
+        try
+        {
+            return Json(await _dataverse.DeleteSoporteCloudTicketAsync(recordId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible eliminar el ticket de soporte cloud.");
         }
     }
 
@@ -1010,15 +1397,12 @@ public sealed class DashboardController : Controller
             var today = ResolveBogotaToday();
             request ??= new TaxesDashboardRequestDto();
             request.Year ??= today.Year;
-            var dashboard = await _dataverse.GetTaxesDashboardAsync(request, ct);
-            var content = BuildTaxesReteFuenteExcel(dashboard);
-            var periodToken = BuildSafeFileName(FirstNonEmpty(dashboard.ReteFuente.Filter.ValueLabel, dashboard.ReteFuente.PeriodLabel, "retefuente"));
-            var fileName = $"reporte-retefuente-{dashboard.ReteFuente.Filter.Year}-{periodToken}-{ResolveBogotaToday():yyyyMMdd}.xlsx";
+            var report = await _reteFuenteReportService.BuildAsync(request, today, ct);
 
             return File(
-                content,
+                report.ExcelContent,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                fileName);
+                report.FileName);
         }
         catch (InvalidOperationException ex)
         {
@@ -1127,6 +1511,26 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de utilidad.");
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Ytd([FromQuery] int? year, CancellationToken ct)
+    {
+        try
+        {
+            var today = ResolveBogotaToday();
+            var resolvedYear = year is < 2000 or > 2100 ? today.Year : year ?? today.Year;
+            return Json(await _dataverse.GetYtdDashboardAsync(resolvedYear, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard YTD.");
         }
     }
 
@@ -1271,10 +1675,22 @@ public sealed class DashboardController : Controller
             ShowReteIcaPercentColumn = true,
             ShowCategoryColumn = true
         };
+        var creditNotesTable = FindTaxReportTable(section, "notas-credito") ?? new TaxReportTableDto
+        {
+            Label = "Notas credito",
+            DateColumnLabel = "Fecha creacion",
+            DocumentColumnLabel = "Nota credito",
+            NameColumnLabel = "Factura relacionada",
+            CustomerIdentificationColumnLabel = "NIT cliente",
+            TotalColumnLabel = "Total nota credito",
+            AmountColumnLabel = "IVA nota credito",
+            ShowCustomerIdentificationColumn = true
+        };
 
         AddReteFuenteSummaryWorksheet(workbook, section, autoTable, expensesTable);
         AddTaxReportWorksheet(workbook, "Autofuente", autoTable);
         AddTaxReportWorksheet(workbook, "ReteFuente gastos", expensesTable);
+        AddTaxReportWorksheet(workbook, "Notas credito", creditNotesTable);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -1403,9 +1819,12 @@ public sealed class DashboardController : Controller
         var headers = new List<string>
         {
             table.DateColumnLabel,
-            "Numero factura",
+            string.IsNullOrWhiteSpace(table.DocumentColumnLabel) ? "Numero factura" : table.DocumentColumnLabel,
             table.NameColumnLabel
         };
+
+        if (table.ShowCustomerIdentificationColumn)
+            headers.Add(string.IsNullOrWhiteSpace(table.CustomerIdentificationColumnLabel) ? "Identificacion" : table.CustomerIdentificationColumnLabel);
 
         if (table.ShowCategoryColumn)
             headers.Add(table.CategoryColumnLabel);
@@ -1437,6 +1856,9 @@ public sealed class DashboardController : Controller
             worksheet.Cell(rowIndex, columnIndex++).Value = row.InvoiceNumber;
             worksheet.Cell(rowIndex, columnIndex++).Value = row.Name;
 
+            if (table.ShowCustomerIdentificationColumn)
+                worksheet.Cell(rowIndex, columnIndex++).Value = row.CustomerIdentification;
+
             if (table.ShowCategoryColumn)
                 worksheet.Cell(rowIndex, columnIndex++).Value = row.Category;
 
@@ -1456,7 +1878,9 @@ public sealed class DashboardController : Controller
             rowIndex++;
         }
 
-        var totalColumnIndex = 4 + (table.ShowCategoryColumn ? 1 : 0);
+        var totalColumnIndex = 4
+            + (table.ShowCustomerIdentificationColumn ? 1 : 0)
+            + (table.ShowCategoryColumn ? 1 : 0);
         var amountColumnIndex = totalColumnIndex + (table.ShowBaseColumn ? 1 : 0) + 1;
         worksheet.Cell(rowIndex, 1).Value = "Total";
         worksheet.Cell(rowIndex, 2).Value = $"{table.Rows.Count:N0} registros";
@@ -1591,6 +2015,427 @@ public sealed class DashboardController : Controller
     private static decimal SumVatTableTax(TaxVatTableDto table) =>
         table.Rows.Sum(static row => row.TaxValue);
 
+    private async Task EnrichCloudBillingCurrentMonthWithSiigoAsync(
+        CloudBillingCurrentMonthDashboardDto dashboard,
+        DateOnly monthStart,
+        DateOnly monthEnd,
+        CancellationToken ct)
+    {
+        var rows = (dashboard.Rows ?? Array.Empty<CloudBillingCurrentMonthRowDto>()).ToList();
+        if (rows.Count == 0)
+        {
+            RefreshCloudBillingAuditCounters(dashboard);
+            return;
+        }
+
+        try
+        {
+            var siigoInvoices = await _siigo.GetInvoicesByDateRangeAsync(monthStart, monthEnd, ct);
+            dashboard.SiigoInvoicesCheckedCount = siigoInvoices.Count;
+
+            var lookup = BuildSiigoInvoiceLookup(siigoInvoices);
+            var matchedInvoiceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in rows)
+            {
+                var matches = FindSiigoInvoiceMatches(row, lookup);
+                var invoice = SelectBestSiigoInvoiceMatch(matches);
+                if (invoice is null)
+                {
+                    ApplyMissingSiigoAudit(row);
+                    continue;
+                }
+
+                matchedInvoiceIds.Add(FirstNonEmpty(invoice.Id, invoice.Name));
+                ApplySiigoAudit(row, invoice);
+            }
+
+            dashboard.SiigoMatchedInvoiceCount = matchedInvoiceIds.Count;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            dashboard.SiigoValidationError = $"No fue posible validar DIAN/correo en Siigo: {ex.Message}";
+            foreach (var row in rows)
+            {
+                row.DianStatusLabel = row.IsBilled ? "No validado" : "Sin factura";
+                row.DianStatusTone = row.IsBilled ? "warning" : "neutral";
+                row.MailStatusLabel = row.IsBilled ? "No validado" : "Sin factura";
+                row.MailStatusTone = row.IsBilled ? "warning" : "neutral";
+            }
+        }
+
+        RefreshCloudBillingAuditCounters(dashboard);
+    }
+
+    private static Dictionary<string, List<SiigoInvoiceRowDto>> BuildSiigoInvoiceLookup(IReadOnlyList<SiigoInvoiceRowDto> invoices)
+    {
+        var lookup = new Dictionary<string, List<SiigoInvoiceRowDto>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var invoice in invoices)
+        {
+            AddSiigoInvoiceLookupKey(lookup, invoice.Id, invoice);
+            AddSiigoInvoiceLookupKey(lookup, invoice.Name, invoice);
+
+            if (invoice.Number is not null)
+            {
+                AddSiigoInvoiceLookupKey(lookup, invoice.Number.Value.ToString(CultureInfo.InvariantCulture), invoice);
+                if (!string.IsNullOrWhiteSpace(invoice.Prefix))
+                {
+                    AddSiigoInvoiceLookupKey(lookup, $"{invoice.Prefix}{invoice.Number.Value}", invoice);
+                    AddSiigoInvoiceLookupKey(lookup, $"{invoice.Prefix}-{invoice.Number.Value}", invoice);
+                }
+            }
+        }
+
+        return lookup;
+    }
+
+    private static void AddSiigoInvoiceLookupKey(
+        Dictionary<string, List<SiigoInvoiceRowDto>> lookup,
+        string? value,
+        SiigoInvoiceRowDto invoice)
+    {
+        var key = NormalizeSiigoInvoiceReference(value);
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
+        if (!lookup.TryGetValue(key, out var matches))
+        {
+            matches = new List<SiigoInvoiceRowDto>();
+            lookup[key] = matches;
+        }
+
+        if (!matches.Any(item => string.Equals(FirstNonEmpty(item.Id, item.Name), FirstNonEmpty(invoice.Id, invoice.Name), StringComparison.OrdinalIgnoreCase)))
+            matches.Add(invoice);
+    }
+
+    private static List<SiigoInvoiceRowDto> FindSiigoInvoiceMatches(
+        CloudBillingCurrentMonthRowDto row,
+        IReadOnlyDictionary<string, List<SiigoInvoiceRowDto>> lookup)
+    {
+        var matchesByKey = new Dictionary<string, SiigoInvoiceRowDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var reference in BuildCloudBillingSiigoReferenceCandidates(row))
+        {
+            var key = NormalizeSiigoInvoiceReference(reference);
+            if (string.IsNullOrWhiteSpace(key) || !lookup.TryGetValue(key, out var matches))
+                continue;
+
+            foreach (var match in matches)
+            {
+                matchesByKey.TryAdd(FirstNonEmpty(match.Id, match.Name), match);
+            }
+        }
+
+        return matchesByKey.Values.ToList();
+    }
+
+    private static IEnumerable<string> BuildCloudBillingSiigoReferenceCandidates(CloudBillingCurrentMonthRowDto row)
+    {
+        yield return row.LastSiigoInvoiceId;
+
+        foreach (var invoice in row.MonthInvoices ?? Array.Empty<CloudBillingInvoiceReferenceDto>())
+        {
+            yield return invoice.SiigoInvoiceId;
+            yield return invoice.SiigoInvoiceName;
+            yield return invoice.InvoiceNumber;
+            yield return invoice.InvoiceCode;
+
+            if (!string.IsNullOrWhiteSpace(invoice.InvoicePrefix) && !string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
+            {
+                yield return $"{invoice.InvoicePrefix}{invoice.InvoiceNumber}";
+                yield return $"{invoice.InvoicePrefix}-{invoice.InvoiceNumber}";
+            }
+        }
+
+        var monthInvoiceNumbers = (row.MonthInvoiceNumbers ?? "").Trim();
+        if (!monthInvoiceNumbers.Contains(',', StringComparison.Ordinal)
+            && !monthInvoiceNumbers.Contains('+', StringComparison.Ordinal))
+        {
+            yield return monthInvoiceNumbers;
+        }
+    }
+
+    private static SiigoInvoiceRowDto? SelectBestSiigoInvoiceMatch(IReadOnlyList<SiigoInvoiceRowDto> matches) =>
+        matches
+            .OrderBy(static invoice => invoice.Annulled ? 1 : 0)
+            .ThenByDescending(static invoice => IsSiigoDianAccepted(invoice.StampStatus))
+            .ThenByDescending(static invoice => IsSiigoMailSent(invoice.MailStatus))
+            .ThenByDescending(static invoice => invoice.DateValue, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+    private static void ApplyMissingSiigoAudit(CloudBillingCurrentMonthRowDto row)
+    {
+        row.HasSiigoInvoice = false;
+        row.IsDianAccepted = false;
+        row.IsDianRejected = false;
+        row.IsEmailSent = false;
+        row.IsBillingComplete = false;
+        row.DianStatusLabel = row.IsBilled ? "Sin match Siigo" : "Sin factura";
+        row.DianStatusTone = row.IsBilled ? "warning" : "neutral";
+        row.MailStatusLabel = row.IsBilled ? "Sin match Siigo" : "Sin factura";
+        row.MailStatusTone = row.IsBilled ? "warning" : "neutral";
+
+        if (row.IsBilled)
+        {
+            row.StatusKey = "siigo-missing";
+            row.StatusLabel = "Sin validar Siigo";
+            row.StatusTone = "warning";
+            row.EvidenceLabel = FirstNonEmpty(row.EvidenceLabel, "Log/Dataverse");
+        }
+    }
+
+    private static void ApplySiigoAudit(CloudBillingCurrentMonthRowDto row, SiigoInvoiceRowDto invoice)
+    {
+        row.HasSiigoInvoice = true;
+        row.IsBilled = true;
+        row.MatchedSiigoInvoiceId = invoice.Id;
+        row.MatchedSiigoInvoiceName = invoice.Name;
+        row.IsSiigoInvoiceAnnulled = invoice.Annulled;
+        row.DianStatus = invoice.StampStatus;
+        row.DianObservations = invoice.StampObservations;
+        row.DianErrors = invoice.StampErrors;
+        row.MailStatus = invoice.MailStatus;
+        row.MailObservations = invoice.MailObservations;
+        row.IsDianAccepted = !invoice.Annulled && IsSiigoDianAccepted(invoice.StampStatus);
+        row.IsDianRejected = !invoice.Annulled && IsSiigoDianRejected(invoice.StampStatus);
+        row.IsEmailSent = !invoice.Annulled && IsSiigoMailSent(invoice.MailStatus);
+        row.IsBillingComplete = row.IsDianAccepted && row.IsEmailSent;
+        row.DianStatusLabel = ResolveDianStatusLabel(invoice.StampStatus, invoice.Annulled);
+        row.DianStatusTone = ResolveDianStatusTone(invoice.StampStatus, invoice.Annulled);
+        row.MailStatusLabel = ResolveMailStatusLabel(invoice.MailStatus, invoice.Annulled);
+        row.MailStatusTone = ResolveMailStatusTone(invoice.MailStatus, invoice.Annulled);
+        row.EvidenceLabel = ResolveSiigoAuditEvidence(row);
+
+        if (string.IsNullOrWhiteSpace(row.BillingError) && !string.IsNullOrWhiteSpace(invoice.StampErrors))
+        {
+            row.BillingError = invoice.StampErrors.Trim();
+        }
+        else if (string.IsNullOrWhiteSpace(row.BillingError) && row.IsDianRejected)
+        {
+            row.BillingError = FirstNonEmpty(invoice.StampObservations, "Factura rechazada por DIAN.");
+        }
+        else if (string.IsNullOrWhiteSpace(row.BillingError)
+            && string.Equals(row.MailStatusTone, "danger", StringComparison.OrdinalIgnoreCase))
+        {
+            row.BillingError = FirstNonEmpty(invoice.MailObservations, "Error de correo en Siigo.");
+        }
+
+        if (invoice.Annulled)
+        {
+            row.StatusKey = "annulled";
+            row.StatusLabel = "Anulada";
+            row.StatusTone = "danger";
+            row.HasBillingError = true;
+            return;
+        }
+
+        if (!row.IsDianAccepted)
+        {
+            row.StatusKey = row.IsDianRejected ? "dian-rejected" : "dian-pending";
+            row.StatusLabel = row.IsDianRejected ? "DIAN rechazada" : "DIAN pendiente";
+            row.StatusTone = row.IsDianRejected ? "danger" : "warning";
+            row.HasBillingError = row.HasBillingError || row.IsDianRejected;
+            return;
+        }
+
+        if (!row.IsEmailSent)
+        {
+            row.StatusKey = "mail-pending";
+            row.StatusLabel = "Correo pendiente";
+            row.StatusTone = "warning";
+            return;
+        }
+
+        row.StatusKey = "billed";
+        row.StatusLabel = "Facturado";
+        row.StatusTone = "success";
+    }
+
+    private static string ResolveSiigoAuditEvidence(CloudBillingCurrentMonthRowDto row)
+    {
+        if (row.IsBillingComplete)
+            return "DIAN + correo";
+
+        if (row.IsDianAccepted)
+            return "DIAN aceptada";
+
+        if (row.HasSiigoInvoice)
+            return "Factura Siigo";
+
+        return FirstNonEmpty(row.EvidenceLabel, "");
+    }
+
+    private static void RefreshCloudBillingAuditCounters(CloudBillingCurrentMonthDashboardDto dashboard)
+    {
+        var rows = (dashboard.Rows ?? Array.Empty<CloudBillingCurrentMonthRowDto>()).ToList();
+        var completeRows = rows.Where(static row => row.IsBillingComplete).ToList();
+        var dianPendingRows = rows
+            .Where(static row => row.IsBilled && !row.IsBillingComplete && !row.IsDianAccepted && !row.IsSiigoInvoiceAnnulled)
+            .ToList();
+        var mailPendingRows = rows
+            .Where(static row => row.IsDianAccepted && !row.IsEmailSent && !row.IsSiigoInvoiceAnnulled)
+            .ToList();
+        var pendingRows = rows.Where(static row => row.IsPending).ToList();
+        var dueTodayRows = rows.Where(static row => row.IsDueToday).ToList();
+        var overdueRows = rows.Where(static row => row.IsOverdue).ToList();
+        var errorRows = rows
+            .Where(static row => row.HasBillingError || row.IsDianRejected || row.IsSiigoInvoiceAnnulled)
+            .ToList();
+
+        dashboard.BilledCount = completeRows.Count;
+        dashboard.PendingCount = pendingRows.Count;
+        dashboard.DueTodayCount = dueTodayRows.Count;
+        dashboard.OverdueCount = overdueRows.Count;
+        dashboard.ErrorCount = errorRows.Count;
+        dashboard.DianAcceptedCount = rows.Count(static row => row.IsDianAccepted);
+        dashboard.DianPendingCount = dianPendingRows.Count;
+        dashboard.EmailSentCount = rows.Count(static row => row.IsEmailSent);
+        dashboard.EmailPendingCount = mailPendingRows.Count;
+        dashboard.BilledMonthlyUsd = RoundDashboardCurrency(completeRows.Sum(static row => row.MonthlyBillingUsd));
+        dashboard.PendingMonthlyUsd = RoundDashboardCurrency(pendingRows.Sum(static row => row.MonthlyBillingUsd));
+        dashboard.DueTodayMonthlyUsd = RoundDashboardCurrency(dueTodayRows.Sum(static row => row.MonthlyBillingUsd));
+        dashboard.OverdueMonthlyUsd = RoundDashboardCurrency(overdueRows.Sum(static row => row.MonthlyBillingUsd));
+        dashboard.Kpis = new[]
+        {
+            BuildCloudBillingAuditKpi("billed", "Completadas", "Aceptadas por DIAN y con correo enviado.", completeRows),
+            BuildCloudBillingAuditKpi("dian-pending", "DIAN pendiente", "Creadas en Siigo sin aceptacion DIAN confirmada.", dianPendingRows),
+            BuildCloudBillingAuditKpi("mail-pending", "Correo pendiente", "Aceptadas por DIAN, pero sin correo enviado.", mailPendingRows),
+            BuildCloudBillingAuditKpi("today", "Hoy", "Sin factura completa y con dia de facturacion igual al corte.", dueTodayRows),
+            BuildCloudBillingAuditKpi("overdue", "Vencidos", "Sin factura completa y con dia de facturacion vencido.", overdueRows),
+            BuildCloudBillingAuditKpi("pending", "Por llegar", "Sin factura completa cuyo dia de facturacion aun no llega.", pendingRows)
+        };
+    }
+
+    private static PortfolioKpiDto BuildCloudBillingAuditKpi(
+        string key,
+        string label,
+        string hint,
+        IReadOnlyList<CloudBillingCurrentMonthRowDto> rows) =>
+        new()
+        {
+            Key = key,
+            Label = label,
+            Hint = hint,
+            Value = rows.Count,
+            ValueFormat = "number",
+            SecondaryLabel = "Valor mensual",
+            SecondaryValue = FormatDashboardUsd(rows.Sum(static row => row.MonthlyBillingUsd))
+        };
+
+    private static string ResolveDianStatusLabel(string? status, bool annulled)
+    {
+        if (annulled)
+            return "Factura anulada";
+
+        var normalized = NormalizeSiigoStatus(status);
+        return normalized switch
+        {
+            "" => "Sin estado DIAN",
+            "accepted" => "DIAN aceptada",
+            "rejected" => "DIAN rechazada",
+            "pending" => "DIAN pendiente",
+            "draft" => "Borrador DIAN",
+            _ => $"DIAN {status?.Trim()}"
+        };
+    }
+
+    private static string ResolveDianStatusTone(string? status, bool annulled)
+    {
+        if (annulled)
+            return "danger";
+
+        var normalized = NormalizeSiigoStatus(status);
+        return normalized switch
+        {
+            "accepted" => "success",
+            "rejected" => "danger",
+            "" or "pending" or "draft" => "warning",
+            _ => "info"
+        };
+    }
+
+    private static string ResolveMailStatusLabel(string? status, bool annulled)
+    {
+        if (annulled)
+            return "Factura anulada";
+
+        if (IsSiigoMailSent(status))
+            return "Correo enviado";
+
+        var normalized = NormalizeSiigoStatus(status);
+        return normalized switch
+        {
+            "" => "Sin estado correo",
+            "notsent" => "No enviado",
+            "pending" => "Correo pendiente",
+            "failed" or "error" => "Error correo",
+            _ => $"Correo {status?.Trim()}"
+        };
+    }
+
+    private static string ResolveMailStatusTone(string? status, bool annulled)
+    {
+        if (annulled)
+            return "danger";
+
+        if (IsSiigoMailSent(status))
+            return "success";
+
+        var normalized = NormalizeSiigoStatus(status);
+        return normalized switch
+        {
+            "failed" or "error" => "danger",
+            "" or "notsent" or "pending" => "warning",
+            _ => "info"
+        };
+    }
+
+    private static bool IsSiigoDianAccepted(string? status) =>
+        string.Equals(NormalizeSiigoStatus(status), "accepted", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSiigoDianRejected(string? status) =>
+        string.Equals(NormalizeSiigoStatus(status), "rejected", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSiigoMailSent(string? status)
+    {
+        var normalized = NormalizeSiigoStatus(status);
+        return normalized is "sent" or "sended" or "enviado" or "enviada";
+    }
+
+    private static string NormalizeSiigoStatus(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var chars = value
+            .Trim()
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray();
+
+        return new string(chars);
+    }
+
+    private static string NormalizeSiigoInvoiceReference(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var chars = value
+            .Trim()
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray();
+
+        return new string(chars);
+    }
+
+    private static decimal RoundDashboardCurrency(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static string FormatDashboardUsd(decimal value) =>
+        $"USD {RoundDashboardCurrency(value).ToString("N0", PdfCulture)}";
+
+
     private static DateOnly ResolveBogotaToday()
     {
         var utcNow = DateTimeOffset.UtcNow;
@@ -1612,36 +2457,182 @@ public sealed class DashboardController : Controller
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
     }
 
-    private static byte[] BuildCopiersCountersPdf(CopiersCountersDashboardDto dashboard)
+    private static byte[] BuildAccountStatementPdf(AccountStatementDto statement)
     {
         const double pageWidth = 841.89;
         const double pageHeight = 595.28;
-        const double marginX = 24;
-        const double topY = 572;
-        const double tableTopY = 485;
+        const double marginX = 34;
+        const double headerHeight = 72;
+        const double tableTopY = 392;
+        const double bottomY = 44;
+        const double tableHeaderHeight = 24;
+        const double rowHeight = 22;
+
+        var rows = (statement.Invoices ?? Array.Empty<AccountStatementInvoiceDto>()).ToList();
+        var columns = new[]
+        {
+            new AccountStatementPdfColumn("NUMERO DE FACTURA", 145, false, row => FirstNonEmpty(row.InvoiceNumber, "-")),
+            new AccountStatementPdfColumn("VALOR NETO", 116, true, row => FormatPdfCurrency(row.NetTotalInvoice)),
+            new AccountStatementPdfColumn("FECHA EMISION", 104, false, row => FirstNonEmpty(row.EmissionDateDisplay, "-")),
+            new AccountStatementPdfColumn("FECHA VENCIMIENTO", 122, false, row => FirstNonEmpty(row.DueDateDisplay, "-")),
+            new AccountStatementPdfColumn("ESTADO", 92, false, row => FirstNonEmpty(row.StateLabel, "-")),
+            new AccountStatementPdfColumn("DIAS", 190, false, row => FirstNonEmpty(row.DaysDisplay, "-"))
+        };
+
+        var tableWidth = columns.Sum(static column => column.Width);
+        var tableX = Math.Max(marginX, (pageWidth - tableWidth) / 2);
+        var rowsPerPage = Math.Max(1, (int)Math.Floor((tableTopY - tableHeaderHeight - bottomY) / rowHeight));
+        var totalPages = Math.Max(1, (int)Math.Ceiling(rows.Count / (double)rowsPerPage));
+        var pages = new List<string>(totalPages);
+        var logo = TryLoadPngPdfImage(
+            Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "img", "digital-tech-white-logo.png"),
+            "DigitalTechLogo");
+        var pdfImages = logo is null
+            ? Array.Empty<PdfImageResource>()
+            : new[] { logo };
+
+        for (var pageIndex = 0; pageIndex < totalPages; pageIndex++)
+        {
+            var content = new StringBuilder();
+            var pageRows = rows
+                .Skip(pageIndex * rowsPerPage)
+                .Take(rowsPerPage)
+                .ToList();
+
+            AppendPdfRect(content, 0, pageHeight - headerHeight, pageWidth, headerHeight, "0.02 0.10 0.26", fill: true);
+            if (logo is not null)
+            {
+                AppendPdfImage(content, logo.ResourceName, marginX, pageHeight - 58, 42, 42);
+            }
+
+            AppendPdfText(content, "Digital Tech", marginX + 52, pageHeight - 38, 13, "F2", 160, color: "1 1 1");
+            AppendPdfText(content, "Dashboard financiero", marginX + 52, pageHeight - 53, 7.5, "F1", 160, color: "0.82 0.92 1");
+            AppendPdfText(content, "Estado de cuenta", pageWidth - marginX - 230, pageHeight - 34, 16, "F2", 230, alignRight: true, color: "1 1 1");
+            AppendPdfText(
+                content,
+                $"Pagina {pageIndex + 1} de {totalPages}",
+                pageWidth - marginX - 120,
+                pageHeight - 53,
+                8,
+                "F1",
+                120,
+                alignRight: true,
+                color: "0.86 0.92 1");
+
+            AppendPdfText(content, "Cliente", marginX, pageHeight - 104, 7.5, "F2", 80);
+            AppendPdfText(content, FirstNonEmpty(statement.ClientName, "Cliente"), marginX, pageHeight - 121, 12, "F2", 360);
+            AppendPdfText(content, "Corte", marginX + 385, pageHeight - 104, 7.5, "F2", 70);
+            AppendPdfText(content, FirstNonEmpty(statement.AsOfDateLabel, "-"), marginX + 385, pageHeight - 121, 10, "F1", 100);
+            AppendPdfText(content, "Facturas pendientes", marginX + 515, pageHeight - 104, 7.5, "F2", 120);
+            AppendPdfText(content, rows.Count.ToString("N0", PdfCulture), marginX + 515, pageHeight - 121, 10, "F1", 90);
+            AppendPdfText(content, "Total neto estado de cuenta", marginX + 650, pageHeight - 104, 7.5, "F2", 150);
+            AppendPdfText(content, FormatPdfCurrency(statement.TotalAmount), marginX + 650, pageHeight - 121, 12, "F2", 150);
+
+            AppendPdfRect(content, tableX, tableTopY - tableHeaderHeight, tableWidth, tableHeaderHeight, "0.90 0.95 1", fill: true);
+
+            var currentX = tableX;
+            foreach (var column in columns)
+            {
+                AppendPdfCellBorder(content, currentX, tableTopY - tableHeaderHeight, column.Width, tableHeaderHeight);
+                AppendPdfText(
+                    content,
+                    column.Header,
+                    currentX + 4,
+                    tableTopY - 15,
+                    6.8,
+                    "F2",
+                    column.Width - 8,
+                    alignRight: column.AlignRight);
+                currentX += column.Width;
+            }
+
+            var currentY = tableTopY - tableHeaderHeight;
+            if (rows.Count == 0)
+            {
+                var rowY = currentY - rowHeight;
+                AppendPdfCellBorder(content, tableX, rowY, tableWidth, rowHeight);
+                AppendPdfText(
+                    content,
+                    FirstNonEmpty(statement.EmptyStateTitle, "No hay facturas pendientes para este cliente."),
+                    tableX + 6,
+                    rowY + 7,
+                    8,
+                    "F1",
+                    tableWidth - 12);
+            }
+            else
+            {
+                for (var rowIndex = 0; rowIndex < pageRows.Count; rowIndex++)
+                {
+                    var row = pageRows[rowIndex];
+                    var rowY = currentY - rowHeight;
+                    if (rowIndex % 2 == 1)
+                    {
+                        AppendPdfRect(content, tableX, rowY, tableWidth, rowHeight, "0.98 0.99 1", fill: true);
+                    }
+
+                    currentX = tableX;
+                    foreach (var column in columns)
+                    {
+                        AppendPdfCellBorder(content, currentX, rowY, column.Width, rowHeight);
+                        AppendPdfText(
+                            content,
+                            column.ValueSelector(row),
+                            currentX + 4,
+                            rowY + 7,
+                            7,
+                            "F1",
+                            column.Width - 8,
+                            alignRight: column.AlignRight);
+                        currentX += column.Width;
+                    }
+
+                    currentY = rowY;
+                }
+            }
+
+            AppendPdfText(
+                content,
+                "Documento generado desde Dashboard > Cartera > Generar estado de cuenta.",
+                marginX,
+                24,
+                7,
+                "F1",
+                pageWidth - (marginX * 2));
+
+            pages.Add(content.ToString());
+        }
+
+        return BuildPdfDocument(pages, pageWidth, pageHeight, pdfImages);
+    }
+
+    private static byte[] BuildCopiersCountersPdf(CopiersCountersDashboardDto dashboard)
+    {
+        const double pageWidth = 1190.55;
+        const double pageHeight = 841.89;
+        const double marginX = 18;
+        const double topY = 816;
+        const double tableTopY = 738;
         const double bottomY = 34;
         const double headerHeight = 19;
         const double rowHeight = 15.5;
 
         var rows = (dashboard.EquipmentRows ?? Array.Empty<CopiersCountersEquipmentRowDto>()).ToList();
-        var summaries = dashboard.ClientSummaries ?? Array.Empty<CopiersCountersClientSummaryDto>();
-        var totalIncludedOperations = summaries.Sum(static row => row.IncludedOperations);
-        var totalExcessQuantity = summaries.Sum(static row => row.ExcessQuantity);
-        var totalExcessValue = summaries.Sum(static row => row.ExcessTotal);
+        var totalCopies = rows.Sum(static row => row.CopiesConsumption ?? 0);
+        var totalScans = rows.Sum(static row => row.ScansConsumption ?? 0);
         var columns = new[]
         {
-            new PdfTableColumn("Equipo", 76, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
-            new PdfTableColumn("Ubicacion", 68, false, row => FirstNonEmpty(row.Area, row.Site)),
-            new PdfTableColumn("Linea", 86, false, row => row.IsBackup ? "Backup" : FirstNonEmpty(row.ProductLineName, row.AssignmentStatus)),
-            new PdfTableColumn("Fecha ant.", 49, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
-            new PdfTableColumn("Fecha act.", 49, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
-            new PdfTableColumn("Copias", 48, true, row => FormatPdfNumber(row.CopiesConsumption)),
-            new PdfTableColumn("Escaneos", 52, true, row => FormatPdfNumber(row.ScansConsumption)),
-            new PdfTableColumn("Total ops.", 54, true, row => FormatPdfNumber(row.TotalConsumption)),
-            new PdfTableColumn("Incluidas", 58, true, row => FormatPdfDecimal(row.IncludedOperations)),
-            new PdfTableColumn("Exced.", 50, true, row => row.ExcessQuantity > 0 ? FormatPdfNumber(row.ExcessQuantity) : "-"),
-            new PdfTableColumn("Unitario", 60, true, row => row.UnitExcessCost > 0m ? FormatPdfCurrency(row.UnitExcessCost) : "-"),
-            new PdfTableColumn("Total exc.", 64, true, row => row.ExcessTotal > 0m ? FormatPdfCurrency(row.ExcessTotal) : "-")
+            new PdfTableColumn("EQUIPO", 92, false, row => FirstNonEmpty(row.EquipmentName, "Sin equipo")),
+            new PdfTableColumn("FECHA TOMA ANTERIOR", 108, false, row => FirstNonEmpty(row.PreviousDateDisplay, "-")),
+            new PdfTableColumn("FECHA TOMA ACTUAL", 102, false, row => FirstNonEmpty(row.CurrentDateDisplay, "-")),
+            new PdfTableColumn("CONTADOR ACTUAL COPIAS", 118, true, row => FormatPdfNumber(row.CurrentCopiesCounter)),
+            new PdfTableColumn("CONTADOR ANTERIOR COPIAS", 126, true, row => FormatPdfNumber(row.PreviousCopiesCounter)),
+            new PdfTableColumn("COPIAS", 68, true, row => FormatPdfNumber(row.CopiesConsumption)),
+            new PdfTableColumn("CONTADOR ACTUAL ESCANEOS", 132, true, row => FormatPdfNumber(row.CurrentScansCounter)),
+            new PdfTableColumn("CONTADOR ANTERIOR ESCANEOS", 140, true, row => FormatPdfNumber(row.PreviousScansCounter)),
+            new PdfTableColumn("ESCANEOS", 76, true, row => FormatPdfNumber(row.ScansConsumption)),
+            new PdfTableColumn("DIAS ENTRE TOMAS", 96, true, row => FormatPdfNumber(row.DaysBetweenReadings)),
+            new PdfTableColumn("TOTAL EQUIPO", 86, true, row => FormatPdfNumber(row.TotalConsumption))
         };
 
         var tableWidth = columns.Sum(static column => column.Width);
@@ -1677,19 +2668,11 @@ public sealed class DashboardController : Controller
                 620);
             AppendPdfText(
                 content,
-                $"Operaciones incluidas: {FormatPdfDecimal(totalIncludedOperations)} | Cantidad de excedentes: {FormatPdfNumber(totalExcessQuantity)} | Valor total excedentes: {FormatPdfCurrency(totalExcessValue)}",
+                $"Totales: copias {FormatPdfNumber(totalCopies)} | escaneos {FormatPdfNumber(totalScans)} | total equipo {FormatPdfNumber(totalCopies + totalScans)}",
                 marginX,
                 topY - 43,
                 7.5,
                 "F2",
-                640);
-            AppendPdfText(
-                content,
-                $"Costo unitario de excedentes: {BuildCopiersCountersPdfUnitCostSummary(summaries)}",
-                marginX,
-                topY - 56,
-                7.5,
-                "F1",
                 640);
             AppendPdfText(
                 content,
@@ -1772,10 +2755,32 @@ public sealed class DashboardController : Controller
         return BuildPdfDocument(pages, pageWidth, pageHeight);
     }
 
-    private static byte[] BuildPdfDocument(IReadOnlyList<string> pageContents, double pageWidth, double pageHeight)
+    private static byte[] BuildPdfDocument(
+        IReadOnlyList<string> pageContents,
+        double pageWidth,
+        double pageHeight,
+        IReadOnlyList<PdfImageResource>? imageResources = null)
     {
         var pageCount = Math.Max(1, pageContents.Count);
-        var objectCount = 4 + (pageCount * 2);
+        var images = (imageResources ?? Array.Empty<PdfImageResource>())
+            .Where(static image => !string.IsNullOrWhiteSpace(image.ResourceName)
+                && image.Width > 0
+                && image.Height > 0
+                && image.RgbBytes.Length > 0)
+            .ToList();
+        var nextObjectNumber = 5;
+        var imageObjects = new List<PdfImageObject>(images.Count);
+        foreach (var image in images)
+        {
+            var alphaObjectNumber = image.AlphaBytes is { Length: > 0 }
+                ? nextObjectNumber++
+                : (int?)null;
+            var imageObjectNumber = nextObjectNumber++;
+            imageObjects.Add(new PdfImageObject(image, imageObjectNumber, alphaObjectNumber));
+        }
+
+        var firstPageObjectNumber = nextObjectNumber;
+        var objectCount = (firstPageObjectNumber - 1) + (pageCount * 2);
         var offsets = new long[objectCount + 1];
 
         using var stream = new MemoryStream();
@@ -1783,21 +2788,47 @@ public sealed class DashboardController : Controller
 
         WritePdfObject(stream, offsets, 1, "<< /Type /Catalog /Pages 2 0 R >>");
 
-        var kids = string.Join(" ", Enumerable.Range(0, pageCount).Select(static index => $"{5 + (index * 2)} 0 R"));
+        var kids = string.Join(" ", Enumerable.Range(0, pageCount).Select(index => $"{firstPageObjectNumber + (index * 2)} 0 R"));
         WritePdfObject(stream, offsets, 2, $"<< /Type /Pages /Kids [{kids}] /Count {pageCount} >>");
         WritePdfObject(stream, offsets, 3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
         WritePdfObject(stream, offsets, 4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
 
+        foreach (var imageObject in imageObjects)
+        {
+            if (imageObject.AlphaObjectNumber is int alphaObjectNumber && imageObject.Resource.AlphaBytes is { Length: > 0 } alphaBytes)
+            {
+                WritePdfStreamObject(
+                    stream,
+                    offsets,
+                    alphaObjectNumber,
+                    CompressPdfStream(alphaBytes),
+                    FormattableString.Invariant(
+                        $"/Type /XObject /Subtype /Image /Width {imageObject.Resource.Width} /Height {imageObject.Resource.Height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode"));
+            }
+
+            var smask = imageObject.AlphaObjectNumber is int smaskObjectNumber
+                ? FormattableString.Invariant($" /SMask {smaskObjectNumber} 0 R")
+                : "";
+            WritePdfStreamObject(
+                stream,
+                offsets,
+                imageObject.ImageObjectNumber,
+                CompressPdfStream(imageObject.Resource.RgbBytes),
+                FormattableString.Invariant(
+                    $"/Type /XObject /Subtype /Image /Width {imageObject.Resource.Width} /Height {imageObject.Resource.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode{smask}"));
+        }
+
+        var resources = BuildPdfPageResources(imageObjects);
         for (var index = 0; index < pageCount; index++)
         {
-            var pageObjectNumber = 5 + (index * 2);
+            var pageObjectNumber = firstPageObjectNumber + (index * 2);
             var contentObjectNumber = pageObjectNumber + 1;
             WritePdfObject(
                 stream,
                 offsets,
                 pageObjectNumber,
                 FormattableString.Invariant(
-                    $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pageWidth:0.##} {pageHeight:0.##}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {contentObjectNumber} 0 R >>"));
+                    $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pageWidth:0.##} {pageHeight:0.##}] /Resources {resources} /Contents {contentObjectNumber} 0 R >>"));
             WritePdfStreamObject(stream, offsets, contentObjectNumber, pageContents[index]);
         }
 
@@ -1813,6 +2844,28 @@ public sealed class DashboardController : Controller
         return stream.ToArray();
     }
 
+    private static string BuildPdfPageResources(IReadOnlyList<PdfImageObject> imageObjects)
+    {
+        var resources = new StringBuilder("<< /Font << /F1 3 0 R /F2 4 0 R >>");
+        if (imageObjects.Count > 0)
+        {
+            resources.Append(" /XObject <<");
+            foreach (var imageObject in imageObjects)
+            {
+                resources.AppendFormat(
+                    CultureInfo.InvariantCulture,
+                    " /{0} {1} 0 R",
+                    imageObject.Resource.ResourceName,
+                    imageObject.ImageObjectNumber);
+            }
+
+            resources.Append(" >>");
+        }
+
+        resources.Append(" >>");
+        return resources.ToString();
+    }
+
     private static void WritePdfObject(MemoryStream stream, long[] offsets, int objectNumber, string body)
     {
         offsets[objectNumber] = stream.Position;
@@ -1821,9 +2874,16 @@ public sealed class DashboardController : Controller
 
     private static void WritePdfStreamObject(MemoryStream stream, long[] offsets, int objectNumber, string content)
     {
+        WritePdfStreamObject(stream, offsets, objectNumber, PdfEncoding.GetBytes(content), "");
+    }
+
+    private static void WritePdfStreamObject(MemoryStream stream, long[] offsets, int objectNumber, byte[] contentBytes, string dictionaryEntries)
+    {
         offsets[objectNumber] = stream.Position;
-        var contentBytes = PdfEncoding.GetBytes(content);
-        WritePdfString(stream, $"{objectNumber} 0 obj\n<< /Length {contentBytes.Length} >>\nstream\n");
+        var dictionary = string.IsNullOrWhiteSpace(dictionaryEntries)
+            ? $"<< /Length {contentBytes.Length} >>"
+            : $"<< /Length {contentBytes.Length} {dictionaryEntries} >>";
+        WritePdfString(stream, $"{objectNumber} 0 obj\n{dictionary}\nstream\n");
         stream.Write(contentBytes, 0, contentBytes.Length);
         WritePdfString(stream, "\nendstream\nendobj\n");
     }
@@ -1832,6 +2892,338 @@ public sealed class DashboardController : Controller
     {
         var bytes = PdfEncoding.GetBytes(value);
         stream.Write(bytes, 0, bytes.Length);
+    }
+
+    private static PdfImageResource? TryLoadPngPdfImage(string path, string resourceName)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                return null;
+
+            return DecodePngForPdf(System.IO.File.ReadAllBytes(path), resourceName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static PdfImageResource DecodePngForPdf(byte[] pngBytes, string resourceName)
+    {
+        if (pngBytes.Length < 8
+            || pngBytes[0] != 0x89
+            || pngBytes[1] != 0x50
+            || pngBytes[2] != 0x4E
+            || pngBytes[3] != 0x47
+            || pngBytes[4] != 0x0D
+            || pngBytes[5] != 0x0A
+            || pngBytes[6] != 0x1A
+            || pngBytes[7] != 0x0A)
+        {
+            throw new InvalidDataException("The file is not a valid PNG image.");
+        }
+
+        var offset = 8;
+        var width = 0;
+        var height = 0;
+        var bitDepth = 0;
+        var colorType = 0;
+        var compressionMethod = 0;
+        var filterMethod = 0;
+        var interlaceMethod = 0;
+        byte[]? palette = null;
+        byte[]? transparency = null;
+        using var idat = new MemoryStream();
+
+        while (offset + 8 <= pngBytes.Length)
+        {
+            var chunkLength = ReadPngInt32(pngBytes, offset);
+            offset += 4;
+            if (chunkLength < 0 || offset + 4 + chunkLength + 4 > pngBytes.Length)
+                throw new InvalidDataException("PNG chunk length is invalid.");
+
+            var chunkType = Encoding.ASCII.GetString(pngBytes, offset, 4);
+            offset += 4;
+            var chunkDataOffset = offset;
+
+            switch (chunkType)
+            {
+                case "IHDR":
+                    if (chunkLength < 13)
+                        throw new InvalidDataException("PNG header is invalid.");
+
+                    width = ReadPngInt32(pngBytes, chunkDataOffset);
+                    height = ReadPngInt32(pngBytes, chunkDataOffset + 4);
+                    bitDepth = pngBytes[chunkDataOffset + 8];
+                    colorType = pngBytes[chunkDataOffset + 9];
+                    compressionMethod = pngBytes[chunkDataOffset + 10];
+                    filterMethod = pngBytes[chunkDataOffset + 11];
+                    interlaceMethod = pngBytes[chunkDataOffset + 12];
+                    break;
+                case "IDAT":
+                    idat.Write(pngBytes, chunkDataOffset, chunkLength);
+                    break;
+                case "PLTE":
+                    palette = new byte[chunkLength];
+                    Buffer.BlockCopy(pngBytes, chunkDataOffset, palette, 0, chunkLength);
+                    break;
+                case "tRNS":
+                    transparency = new byte[chunkLength];
+                    Buffer.BlockCopy(pngBytes, chunkDataOffset, transparency, 0, chunkLength);
+                    break;
+            }
+
+            offset = chunkDataOffset + chunkLength + 4;
+            if (chunkType == "IEND")
+                break;
+        }
+
+        if (width <= 0 || height <= 0 || idat.Length == 0)
+            throw new InvalidDataException("PNG image data is incomplete.");
+        if (bitDepth != 8 || compressionMethod != 0 || filterMethod != 0 || interlaceMethod != 0)
+            throw new NotSupportedException("Only non-interlaced 8-bit PNG images are supported.");
+
+        var bytesPerPixel = GetPngBytesPerPixel(colorType);
+        var decompressed = InflatePngData(idat.ToArray());
+        var pixels = UnfilterPngRows(decompressed, width, height, bytesPerPixel);
+        var (rgbBytes, alphaBytes) = ConvertPngPixelsForPdf(pixels, width, height, colorType, palette, transparency);
+        return new PdfImageResource(resourceName, width, height, rgbBytes, alphaBytes);
+    }
+
+    private static int GetPngBytesPerPixel(int colorType) =>
+        colorType switch
+        {
+            0 => 1,
+            2 => 3,
+            3 => 1,
+            4 => 2,
+            6 => 4,
+            _ => throw new NotSupportedException("PNG color type is not supported.")
+        };
+
+    private static byte[] InflatePngData(byte[] compressedBytes)
+    {
+        using var input = new MemoryStream(compressedBytes);
+        using var zlib = new ZLibStream(input, CompressionMode.Decompress);
+        using var output = new MemoryStream();
+        zlib.CopyTo(output);
+        return output.ToArray();
+    }
+
+    private static byte[] UnfilterPngRows(byte[] decompressedBytes, int width, int height, int bytesPerPixel)
+    {
+        var stride = checked(width * bytesPerPixel);
+        var pixels = new byte[checked(stride * height)];
+        var sourceOffset = 0;
+
+        for (var row = 0; row < height; row++)
+        {
+            if (sourceOffset >= decompressedBytes.Length)
+                throw new InvalidDataException("PNG scanline data is incomplete.");
+
+            var filterType = decompressedBytes[sourceOffset++];
+            var rowOffset = row * stride;
+            if (sourceOffset + stride > decompressedBytes.Length)
+                throw new InvalidDataException("PNG scanline data is incomplete.");
+
+            Buffer.BlockCopy(decompressedBytes, sourceOffset, pixels, rowOffset, stride);
+            sourceOffset += stride;
+
+            for (var index = 0; index < stride; index++)
+            {
+                var left = index >= bytesPerPixel ? pixels[rowOffset + index - bytesPerPixel] : 0;
+                var up = row > 0 ? pixels[rowOffset - stride + index] : 0;
+                var upperLeft = row > 0 && index >= bytesPerPixel ? pixels[rowOffset - stride + index - bytesPerPixel] : 0;
+                var raw = pixels[rowOffset + index];
+                var value = filterType switch
+                {
+                    0 => raw,
+                    1 => raw + left,
+                    2 => raw + up,
+                    3 => raw + ((left + up) / 2),
+                    4 => raw + PaethPngPredictor(left, up, upperLeft),
+                    _ => throw new InvalidDataException("PNG scanline filter is invalid.")
+                };
+                pixels[rowOffset + index] = (byte)(value & 0xFF);
+            }
+        }
+
+        return pixels;
+    }
+
+    private static (byte[] RgbBytes, byte[]? AlphaBytes) ConvertPngPixelsForPdf(
+        byte[] pixels,
+        int width,
+        int height,
+        int colorType,
+        byte[]? palette,
+        byte[]? transparency)
+    {
+        var pixelCount = checked(width * height);
+        var rgbBytes = new byte[checked(pixelCount * 3)];
+        byte[]? alphaBytes = null;
+        var hasTransparency = false;
+
+        switch (colorType)
+        {
+            case 0:
+            {
+                var transparentGray = transparency is { Length: >= 2 }
+                    ? ReadPngInt16(transparency, 0)
+                    : (int?)null;
+                if (transparentGray.HasValue)
+                {
+                    alphaBytes = new byte[pixelCount];
+                    Array.Fill(alphaBytes, (byte)255);
+                }
+
+                for (var pixel = 0; pixel < pixelCount; pixel++)
+                {
+                    var gray = pixels[pixel];
+                    var target = pixel * 3;
+                    rgbBytes[target] = gray;
+                    rgbBytes[target + 1] = gray;
+                    rgbBytes[target + 2] = gray;
+
+                    if (transparentGray.HasValue && gray == transparentGray.Value)
+                    {
+                        alphaBytes![pixel] = 0;
+                        hasTransparency = true;
+                    }
+                }
+
+                break;
+            }
+            case 2:
+            {
+                Buffer.BlockCopy(pixels, 0, rgbBytes, 0, rgbBytes.Length);
+                if (transparency is { Length: >= 6 })
+                {
+                    var transparentRed = ReadPngInt16(transparency, 0);
+                    var transparentGreen = ReadPngInt16(transparency, 2);
+                    var transparentBlue = ReadPngInt16(transparency, 4);
+                    alphaBytes = new byte[pixelCount];
+                    Array.Fill(alphaBytes, (byte)255);
+
+                    for (var pixel = 0; pixel < pixelCount; pixel++)
+                    {
+                        var source = pixel * 3;
+                        if (pixels[source] == transparentRed
+                            && pixels[source + 1] == transparentGreen
+                            && pixels[source + 2] == transparentBlue)
+                        {
+                            alphaBytes[pixel] = 0;
+                            hasTransparency = true;
+                        }
+                    }
+                }
+
+                break;
+            }
+            case 3:
+            {
+                if (palette is null || palette.Length < 3)
+                    throw new InvalidDataException("Indexed PNG image has no palette.");
+
+                if (transparency is { Length: > 0 })
+                {
+                    alphaBytes = new byte[pixelCount];
+                    Array.Fill(alphaBytes, (byte)255);
+                }
+
+                for (var pixel = 0; pixel < pixelCount; pixel++)
+                {
+                    var paletteIndex = pixels[pixel];
+                    var paletteOffset = paletteIndex * 3;
+                    if (paletteOffset + 2 >= palette.Length)
+                        throw new InvalidDataException("PNG palette index is invalid.");
+
+                    var target = pixel * 3;
+                    rgbBytes[target] = palette[paletteOffset];
+                    rgbBytes[target + 1] = palette[paletteOffset + 1];
+                    rgbBytes[target + 2] = palette[paletteOffset + 2];
+
+                    if (alphaBytes is not null && paletteIndex < transparency!.Length)
+                    {
+                        alphaBytes[pixel] = transparency[paletteIndex];
+                        hasTransparency |= transparency[paletteIndex] != 255;
+                    }
+                }
+
+                break;
+            }
+            case 4:
+            {
+                alphaBytes = new byte[pixelCount];
+                for (var pixel = 0; pixel < pixelCount; pixel++)
+                {
+                    var source = pixel * 2;
+                    var gray = pixels[source];
+                    var alpha = pixels[source + 1];
+                    var target = pixel * 3;
+                    rgbBytes[target] = gray;
+                    rgbBytes[target + 1] = gray;
+                    rgbBytes[target + 2] = gray;
+                    alphaBytes[pixel] = alpha;
+                    hasTransparency |= alpha != 255;
+                }
+
+                break;
+            }
+            case 6:
+            {
+                alphaBytes = new byte[pixelCount];
+                for (var pixel = 0; pixel < pixelCount; pixel++)
+                {
+                    var source = pixel * 4;
+                    var target = pixel * 3;
+                    rgbBytes[target] = pixels[source];
+                    rgbBytes[target + 1] = pixels[source + 1];
+                    rgbBytes[target + 2] = pixels[source + 2];
+                    alphaBytes[pixel] = pixels[source + 3];
+                    hasTransparency |= pixels[source + 3] != 255;
+                }
+
+                break;
+            }
+            default:
+                throw new NotSupportedException("PNG color type is not supported.");
+        }
+
+        return (rgbBytes, hasTransparency ? alphaBytes : null);
+    }
+
+    private static byte[] CompressPdfStream(byte[] contentBytes)
+    {
+        using var output = new MemoryStream();
+        using (var zlib = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(contentBytes, 0, contentBytes.Length);
+        }
+
+        return output.ToArray();
+    }
+
+    private static int ReadPngInt32(byte[] bytes, int offset) =>
+        (bytes[offset] << 24)
+        | (bytes[offset + 1] << 16)
+        | (bytes[offset + 2] << 8)
+        | bytes[offset + 3];
+
+    private static int ReadPngInt16(byte[] bytes, int offset) =>
+        (bytes[offset] << 8) | bytes[offset + 1];
+
+    private static int PaethPngPredictor(int left, int up, int upperLeft)
+    {
+        var prediction = left + up - upperLeft;
+        var distanceLeft = Math.Abs(prediction - left);
+        var distanceUp = Math.Abs(prediction - up);
+        var distanceUpperLeft = Math.Abs(prediction - upperLeft);
+
+        if (distanceLeft <= distanceUp && distanceLeft <= distanceUpperLeft)
+            return left;
+        return distanceUp <= distanceUpperLeft ? up : upperLeft;
     }
 
     private static void AppendPdfRect(StringBuilder content, double x, double y, double width, double height, string color, bool fill)
@@ -1848,6 +3240,21 @@ public sealed class DashboardController : Controller
             height);
     }
 
+    private static void AppendPdfImage(StringBuilder content, string resourceName, double x, double y, double width, double height)
+    {
+        if (string.IsNullOrWhiteSpace(resourceName) || width <= 0 || height <= 0)
+            return;
+
+        AppendPdfCommand(
+            content,
+            "q {0:0.###} 0 0 {1:0.###} {2:0.###} {3:0.###} cm /{4} Do Q",
+            width,
+            height,
+            x,
+            y,
+            resourceName);
+    }
+
     private static void AppendPdfCellBorder(StringBuilder content, double x, double y, double width, double height)
     {
         AppendPdfCommand(content, "0.82 0.87 0.93 RG 0.35 w {0:0.###} {1:0.###} {2:0.###} {3:0.###} re S", x, y, width, height);
@@ -1861,7 +3268,8 @@ public sealed class DashboardController : Controller
         double fontSize,
         string fontResource,
         double maxWidth,
-        bool alignRight = false)
+        bool alignRight = false,
+        string color = "0.05 0.09 0.15")
     {
         var text = FitPdfText(CleanPdfText(value), maxWidth, fontSize);
         var textX = x;
@@ -1872,9 +3280,10 @@ public sealed class DashboardController : Controller
 
         AppendPdfCommand(
             content,
-            "BT /{0} {1:0.###} Tf 0.05 0.09 0.15 rg 1 0 0 1 {2:0.###} {3:0.###} Tm ({4}) Tj ET",
+            "BT /{0} {1:0.###} Tf {2} rg 1 0 0 1 {3:0.###} {4:0.###} Tm ({5}) Tj ET",
             fontResource,
             fontSize,
+            color,
             textX,
             y,
             EscapePdfText(text));
@@ -1978,4 +3387,22 @@ public sealed class DashboardController : Controller
         double Width,
         bool AlignRight,
         Func<CopiersCountersEquipmentRowDto, string> ValueSelector);
+
+    private sealed record AccountStatementPdfColumn(
+        string Header,
+        double Width,
+        bool AlignRight,
+        Func<AccountStatementInvoiceDto, string> ValueSelector);
+
+    private sealed record PdfImageResource(
+        string ResourceName,
+        int Width,
+        int Height,
+        byte[] RgbBytes,
+        byte[]? AlphaBytes);
+
+    private sealed record PdfImageObject(
+        PdfImageResource Resource,
+        int ImageObjectNumber,
+        int? AlphaObjectNumber);
 }

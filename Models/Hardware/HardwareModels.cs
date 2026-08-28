@@ -30,6 +30,8 @@ public sealed class HardwareWorkspaceViewModel
     public string InitialEndDate { get; set; } = "";
     public string CurrentUserId { get; set; } = "";
     public string CurrentUserEmail { get; set; } = "";
+    public bool CurrentUserIsSupplierPayment { get; set; }
+    public bool CurrentUserIsBilling { get; set; }
     public bool CanImpersonate { get; set; }
     public bool AllowCreate { get; set; } = true;
     public bool AllowCommercialDraftEdit { get; set; } = true;
@@ -81,6 +83,7 @@ public sealed class HardwareBoardDto
     public IReadOnlyList<HardwareStateOptionDto> StateOptions { get; set; } = Array.Empty<HardwareStateOptionDto>();
     public IReadOnlyList<HardwareStateSummaryDto> StateSummaries { get; set; } = Array.Empty<HardwareStateSummaryDto>();
     public IReadOnlyList<HardwareBoardRowDto> Rows { get; set; } = Array.Empty<HardwareBoardRowDto>();
+    public IReadOnlyList<HardwareBoardRowDto> SupplierPaymentHistoryRows { get; set; } = Array.Empty<HardwareBoardRowDto>();
 }
 
 public sealed class HardwareBoardRowDto
@@ -111,6 +114,8 @@ public sealed class HardwareBoardRowDto
     public decimal Utility { get; set; }
     public decimal MarginValue { get; set; }
     public bool InvoiceHasClientPayment { get; set; }
+    public string CreatedOnValue { get; set; } = "";
+    public string CreatedOnDisplay { get; set; } = "";
     public string OdcDateValue { get; set; } = "";
     public string OdcDateDisplay { get; set; } = "";
     public string SupplierPaymentDateValue { get; set; } = "";
@@ -128,6 +133,7 @@ public sealed class HardwareBoardRowDto
     public string SupplierPaymentProofFileName { get; set; } = "";
     public bool HasDeliveryRecord { get; set; }
     public string DeliveryRecordFileName { get; set; } = "";
+    public string ModifiedOnValue { get; set; } = "";
     public string ModifiedOnDisplay { get; set; } = "";
 }
 
@@ -177,6 +183,7 @@ public sealed class HardwareBulkEditRequest
     public decimal? TotalSale { get; set; }
     public bool StateChanged { get; set; }
     public int? StateValue { get; set; }
+    public bool ApplyStateChangeToOrderScope { get; set; } = true;
     public bool PurchaseOrderNumberChanged { get; set; }
     public string PurchaseOrderNumber { get; set; } = "";
     public bool OdcDateChanged { get; set; }

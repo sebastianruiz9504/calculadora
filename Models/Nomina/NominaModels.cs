@@ -1,4 +1,5 @@
 using CotizadorInterno.Web.Models;
+using System.Text.Json.Nodes;
 
 namespace CotizadorInterno.Web.Models.Nomina;
 
@@ -7,6 +8,25 @@ public sealed class NominaPageViewModel
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public string InitialPeriodKey { get; set; } = "";
     public string SuggestedPaymentDateValue { get; set; } = "";
+}
+
+public sealed class NominaDraftDto
+{
+    public int Version { get; set; }
+    public string SavedAt { get; set; } = "";
+    public string SavedByEmail { get; set; } = "";
+    public string SavedByName { get; set; } = "";
+    public string PeriodKey { get; set; } = "";
+    public string PaymentDateValue { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public string PaymentDateDisplay { get; set; } = "";
+    public JsonNode? Rows { get; set; }
+    public JsonNode? Logs { get; set; }
+}
+
+public sealed class NominaDraftLoadResultDto
+{
+    public NominaDraftDto? Draft { get; set; }
 }
 
 public class NominaPreviewRequest
@@ -30,13 +50,26 @@ public sealed class NominaAdjustmentInput
     public decimal? WorkedDays { get; set; }
     public string AbsenceReason { get; set; } = "";
     public decimal? AbsencePayment { get; set; }
+    public List<NominaNoveltyInput> Novelties { get; set; } = new();
     public decimal? FactorCopiers { get; set; }
     public decimal? FactorCloud { get; set; }
     public decimal BonusCompliance { get; set; }
+    public decimal NonCommissionBonus { get; set; }
+    public bool ApplyNonCommissionBonusWithholding { get; set; }
+    public decimal? NonCommissionBonusWithholdingRate { get; set; }
     public decimal OtherDeductions { get; set; }
     public decimal Loan { get; set; }
     public decimal PayrollWithholding { get; set; }
+    public bool ApplyExternalWithholding { get; set; }
+    public decimal? ExternalWithholdingRate { get; set; }
     public decimal ExternalWithholding { get; set; }
+}
+
+public sealed class NominaNoveltyInput
+{
+    public string Reason { get; set; } = "";
+    public decimal Days { get; set; }
+    public decimal? Payment { get; set; }
 }
 
 public sealed class NominaRowDto
@@ -62,11 +95,16 @@ public sealed class NominaRowDto
     public string AbsenceReason { get; set; } = "";
     public string AbsenceReasonLabel { get; set; } = "";
     public decimal AbsencePayment { get; set; }
+    public IReadOnlyList<NominaNoveltyDto> Novelties { get; set; } = Array.Empty<NominaNoveltyDto>();
     public decimal MonthlySalaryBase { get; set; }
     public decimal MonthlyAuxilio { get; set; }
     public decimal SalaryBase { get; set; }
     public decimal Auxilio { get; set; }
     public decimal BonusCompliance { get; set; }
+    public decimal NonCommissionBonus { get; set; }
+    public bool ApplyNonCommissionBonusWithholding { get; set; }
+    public decimal NonCommissionBonusWithholdingRate { get; set; }
+    public decimal NonCommissionBonusWithholding { get; set; }
     public decimal CommissionsCopiers { get; set; }
     public decimal CommissionsCloud { get; set; }
     public decimal CommissionsUnassigned { get; set; }
@@ -85,6 +123,7 @@ public sealed class NominaRowDto
     public decimal Loan { get; set; }
     public decimal PayrollWithholding { get; set; }
     public decimal CuentaDeCobro { get; set; }
+    public bool ApplyExternalWithholding { get; set; }
     public decimal ExternalWithholdingRate { get; set; }
     public decimal ExternalWithholding { get; set; }
     public decimal GrossSalary { get; set; }
@@ -95,6 +134,14 @@ public sealed class NominaRowDto
     public decimal TotalCopiers { get; set; }
     public decimal TotalCloud { get; set; }
     public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
+}
+
+public sealed class NominaNoveltyDto
+{
+    public string Reason { get; set; } = "";
+    public string ReasonLabel { get; set; } = "";
+    public decimal Days { get; set; }
+    public decimal Payment { get; set; }
 }
 
 public sealed class NominaVerticalSummaryDto
@@ -130,6 +177,71 @@ public sealed class NominaConfirmResultDto : NominaPreviewResultDto
     public int UpdatedCount { get; set; }
     public int ErrorCount { get; set; }
     public int WarningCount { get; set; }
+}
+
+public sealed class NominaClosedPeriodDto
+{
+    public bool HasRecords { get; set; }
+    public string PeriodKey { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public int EmployeesCount { get; set; }
+    public decimal TotalValueToPay { get; set; }
+    public decimal TotalCopiers { get; set; }
+    public decimal TotalCloud { get; set; }
+    public string Message { get; set; } = "";
+    public IReadOnlyList<NominaClosedPeriodRowDto> Rows { get; set; } = Array.Empty<NominaClosedPeriodRowDto>();
+}
+
+public sealed class NominaClosedPeriodRowDto
+{
+    public string PayrollRecordId { get; set; } = "";
+    public string EmployeeId { get; set; } = "";
+    public string EmployeeName { get; set; } = "";
+    public decimal ValueToPay { get; set; }
+    public decimal ValueCopiers { get; set; }
+    public decimal ValueCloud { get; set; }
+    public bool HasPaymentProof { get; set; }
+    public string PaymentProofFileName { get; set; } = "";
+    public bool HasCuentaDeCobroPaymentProof { get; set; }
+    public string CuentaDeCobroPaymentProofFileName { get; set; } = "";
+    public NominaRowDto Detail { get; set; } = new();
+}
+
+public sealed class NominaClosedVerticalsSaveRequest
+{
+    public List<NominaClosedVerticalDistributionInput> Rows { get; set; } = new();
+}
+
+public sealed class NominaClosedVerticalDistributionInput
+{
+    public string PayrollRecordId { get; set; } = "";
+    public string EmployeeId { get; set; } = "";
+    public decimal FactorCopiers { get; set; }
+    public decimal FactorCloud { get; set; }
+}
+
+public sealed class NominaClosedVerticalsSaveResultDto
+{
+    public string Message { get; set; } = "";
+    public int UpdatedCount { get; set; }
+    public IReadOnlyList<NominaClosedVerticalDistributionResultDto> Rows { get; set; } = Array.Empty<NominaClosedVerticalDistributionResultDto>();
+}
+
+public sealed class NominaClosedVerticalDistributionResultDto
+{
+    public string PayrollRecordId { get; set; } = "";
+    public string EmployeeId { get; set; } = "";
+    public decimal FactorCopiers { get; set; }
+    public decimal FactorCloud { get; set; }
+}
+
+public sealed class NominaPaymentProofUploadResultDto
+{
+    public string Message { get; set; } = "";
+    public string PayrollRecordId { get; set; } = "";
+    public string PaymentType { get; set; } = "nomina";
+    public bool HasPaymentProof { get; set; }
+    public string PaymentProofFileName { get; set; } = "";
 }
 
 public sealed class NominaProcessLogEntryDto

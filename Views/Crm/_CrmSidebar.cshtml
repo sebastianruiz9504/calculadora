@@ -1,0 +1,93 @@
+@model string
+@{
+    var activeSection = (Model ?? "").Trim().ToLowerInvariant();
+    string ItemClass(string section) =>
+        activeSection == section ? "crm-sidebar__item is-active" : "crm-sidebar__item";
+    string? Current(string section) =>
+        activeSection == section ? "page" : null;
+    var viewAsOwnerId = Convert.ToString(ViewData["CrmViewAsOwnerId"]);
+    var crmUrl = Url.Action(
+        "Index",
+        "Crm",
+        string.IsNullOrWhiteSpace(viewAsOwnerId)
+            ? null
+            : new { ViewAsOwnerId = viewAsOwnerId }) ?? "/Crm";
+}
+
+<aside class="crm-sidebar" data-crm-sidebar>
+    <a class="crm-sidebar__brand"
+       href="@(crmUrl + "#crm-resumen")"
+       aria-label="Ir al resumen del CRM">
+        <span class="crm-sidebar__brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M5 6.5h14M5 12h9M5 17.5h11"></path>
+            </svg>
+        </span>
+        <span class="crm-sidebar__brand-label">CRM</span>
+    </a>
+
+    <nav class="crm-sidebar__nav" aria-label="Secciones del CRM">
+        <a class="@ItemClass("resumen")"
+           href="@(crmUrl + "#crm-resumen")"
+           title="Resumen"
+           aria-current="@Current("resumen")">
+            <span class="crm-sidebar__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <rect x="4" y="4" width="6" height="6" rx="1"></rect>
+                    <rect x="14" y="4" width="6" height="6" rx="1"></rect>
+                    <rect x="4" y="14" width="6" height="6" rx="1"></rect>
+                    <rect x="14" y="14" width="6" height="6" rx="1"></rect>
+                </svg>
+            </span>
+            <span class="crm-sidebar__label">Resumen</span>
+        </a>
+        <a class="@ItemClass("contactos")"
+           href="@(crmUrl + "#crm-contactos")"
+           title="Contactos"
+           aria-current="@Current("contactos")">
+            <span class="crm-sidebar__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <circle cx="9" cy="8" r="3"></circle>
+                    <path d="M4 19c.4-3.2 2.1-5 5-5s4.6 1.8 5 5M16 6.5a2.6 2.6 0 0 1 0 5.1M17 14c1.9.5 2.9 2.1 3 4"></path>
+                </svg>
+            </span>
+            <span class="crm-sidebar__label">Contactos</span>
+        </a>
+        <a class="@ItemClass("empresas")"
+           href="@(crmUrl + "#crm-empresas")"
+           title="Empresas"
+           aria-current="@Current("empresas")">
+            <span class="crm-sidebar__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M5 20V6l7-3 7 3v14M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1M3 20h18"></path>
+                </svg>
+            </span>
+            <span class="crm-sidebar__label">Empresas</span>
+        </a>
+        <a class="@ItemClass("negocios")"
+           href="@(crmUrl + "#crm-negocios")"
+           title="Negocios"
+           aria-current="@Current("negocios")">
+            <span class="crm-sidebar__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 8.5h16v10H4zM9 8.5V6h6v2.5M4 12.5h16M10 12.5v2h4v-2"></path>
+                </svg>
+            </span>
+            <span class="crm-sidebar__label">Negocios</span>
+        </a>
+        <a class="@ItemClass("actividades")"
+           href="@(crmUrl + "#crm-actividades")"
+           title="Actividades"
+           aria-current="@Current("actividades")">
+            <span class="crm-sidebar__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <rect x="4" y="5.5" width="16" height="15" rx="2"></rect>
+                    <path d="M8 3.5v4M16 3.5v4M4 10h16M8 14h3M8 17h6"></path>
+                </svg>
+            </span>
+            <span class="crm-sidebar__label">Actividades</span>
+        </a>
+    </nav>
+
+    <span class="crm-sidebar__hint" aria-hidden="true">Pasa el cursor para expandir</span>
+</aside>

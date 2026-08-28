@@ -1,0 +1,32 @@
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    var isAdministrator = ViewData["CrmIsAdministrator"] is bool value && value;
+    var ownerOptions = ViewData["CrmScopeOptions"] as IEnumerable<SelectListItem>
+        ?? Enumerable.Empty<SelectListItem>();
+    var selectedOwner = ownerOptions.FirstOrDefault(option => option.Selected);
+}
+
+@if (isAdministrator)
+{
+    <form class="crm-scope"
+          method="get"
+          data-crm-scope-form
+          aria-label="Alcance de registros del CRM">
+        <label class="crm-scope__field">
+            <span>Vista de registros</span>
+            <select name="ViewAsOwnerId" data-crm-scope-select>
+                <option value="">Todos los usuarios</option>
+                @foreach (var owner in ownerOptions)
+                {
+                    <option value="@owner.Value" selected="@owner.Selected">Ver como @owner.Text</option>
+                }
+            </select>
+        </label>
+        <button class="crm-btn crm-btn--quiet crm-scope__apply" type="submit">Aplicar</button>
+        <p>
+            @(selectedOwner is null
+                ? "Vista administrativa completa."
+                : $"Solo registros de {selectedOwner.Text}.")
+        </p>
+    </form>
+}

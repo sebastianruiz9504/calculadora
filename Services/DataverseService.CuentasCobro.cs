@@ -23,6 +23,7 @@ public sealed partial class DataverseService
     private const string CuentaCobroReteFuentePorcentajeField = "cr07a_retefuenteporcentaje";
     private const string CuentaCobroValorPagoField = "cr07a_valorpago";
     private const string CuentaCobroReteFuenteValorField = "cr07a_rteftevalor";
+    private const string CuentaCobroRetentionsJsonField = "cr07a_retencionesjson";
     private const string CuentaCobroObservacionesField = "cr07a_observaciones";
     private const string CuentaCobroFechaEmisionField = "cr07a_fechadeemision";
     private const string CuentaCobroFechaPagoField = "cr07a_fechadepago";
@@ -30,6 +31,17 @@ public sealed partial class DataverseService
     private const string CuentaCobroAdjuntoNameField = "cr07a_adjunto_name";
     private const string CuentaCobroImpresaField = "cr07a_impresa";
     private static readonly CultureInfo CuentaCobroCulture = CultureInfo.GetCultureInfo("es-CO");
+    private static readonly JsonSerializerOptions CuentaCobroRetentionJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
+    private static readonly HashSet<string> CuentaCobroRetentionKinds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ReteFuente",
+        "ReteICA",
+        "RteIVA",
+        "Otra"
+    };
     private static readonly string[] CuentaCobroPeriodFieldCandidates =
     {
         CuentaCobroFechaEmisionField,
@@ -115,6 +127,8 @@ public sealed partial class DataverseService
             TotalValorTotal = RoundCurrency(filteredRows.Sum(item => item.ValorTotal)),
             TotalValorPago = RoundCurrency(filteredRows.Sum(item => item.ValorPago)),
             TotalReteFuenteValor = RoundCurrency(filteredRows.Sum(item => item.ReteFuenteValor)),
+            TotalRetentionsValue = RoundCurrency(filteredRows.Sum(item => item.TotalRetentionsValue)),
+            RetentionJsonAvailable = metadata.HasRetentionsJsonField,
             Message = filteredRows.Count == 0
                 ? $"No hay cuentas de cobro registradas para {BuildCuentaCobroPeriodLabel(selectedYear, resolvedMonth).ToLowerInvariant()}."
                 : $"Se cargaron {filteredRows.Count} cuenta(s) de cobro para {BuildCuentaCobroPeriodLabel(selectedYear, resolvedMonth).ToLowerInvariant()}.",
@@ -132,6 +146,7 @@ public sealed partial class DataverseService
 
         var metadata = await ResolveCuentaCobroMetadataAsync(httpContext.User, ct);
         var normalized = NormalizeCuentaCobroWriteModel(request);
+        ValidateCuentaCobroRetentionStorage(metadata, normalized);
         var normalizedRecordId = NormalizeOptionalGuid(request.RecordId);
         var isCreate = string.IsNullOrWhiteSpace(normalizedRecordId);
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -147,6 +162,13 @@ public sealed partial class DataverseService
             [CuentaCobroValorPagoField] = normalized.ValorPago,
             [CuentaCobroReteFuenteValorField] = normalized.ReteFuenteValor
         };
+
+        if (metadata.HasRetentionsJsonField)
+        {
+            payload[CuentaCobroRetentionsJsonField] = JsonSerializer.Serialize(
+                normalized.Retentions,
+                CuentaCobroRetentionJsonOptions);
+        }
 
         ApplyCuentaCobroPeriodPayload(payload, metadata, normalized.FechaEmision);
 
@@ -336,6 +358,7 @@ public sealed partial class DataverseService
                 }
 
                 resolved.PrintedValueMode = ResolveCuentaCobroPrintedValueMode(attributes);
+                resolved.HasRetentionsJsonField = ResolveCuentaCobroRetentionsJsonAvailability(attributes);
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or JsonException)
@@ -371,6 +394,7 @@ public sealed partial class DataverseService
                 CuentaCobroReteFuentePorcentajeField,
                 CuentaCobroValorPagoField,
                 CuentaCobroReteFuenteValorField,
+                metadata.HasRetentionsJsonField ? CuentaCobroRetentionsJsonField : "",
                 CuentaCobroFechaEmisionField,
                 CuentaCobroFechaPagoField,
                 CuentaCobroAdjuntoField,
@@ -391,9 +415,22 @@ public sealed partial class DataverseService
             return null;
 
         var valorTotal = RoundCurrency(ReadDecimal(item, CuentaCobroValorTotalField) ?? 0m);
-        var reteFuentePorcentaje = RoundCurrency(ReadDecimal(item, CuentaCobroReteFuentePorcentajeField) ?? 0m);
         var valorPago = RoundCurrency(ReadDecimal(item, CuentaCobroValorPagoField) ?? 0m);
-        var reteFuenteValor = CalculateCuentaCobroReteFuenteValue(valorTotal, reteFuentePorcentaje);
+        var legacyReteFuentePorcentaje = RoundRetentionRate(ReadDecimal(item, CuentaCobroReteFuentePorcentajeField) ?? 0m);
+        var legacyReteFuenteValor = RoundCurrency(
+            ReadDecimal(item, CuentaCobroReteFuenteValorField)
+            ?? CalculateCuentaCobroRetentionValue("ReteFuente", valorTotal, legacyReteFuentePorcentaje));
+        var retentions = ReadCuentaCobroRetentions(
+            metadata,
+            item,
+            valorTotal,
+            legacyReteFuentePorcentaje,
+            legacyReteFuenteValor);
+        var reteFuente = retentions.FirstOrDefault(item =>
+            string.Equals(item.Kind, "ReteFuente", StringComparison.OrdinalIgnoreCase));
+        var reteFuentePorcentaje = reteFuente?.Rate ?? legacyReteFuentePorcentaje;
+        var reteFuenteValor = reteFuente?.Value ?? legacyReteFuenteValor;
+        var totalRetentionsValue = RoundCurrency(retentions.Sum(item => item.Value));
         var fechaEmision = ResolveCuentaCobroDate(item, CuentaCobroFechaEmisionField);
         var fechaPago = ResolveCuentaCobroDate(item, CuentaCobroFechaPagoField);
         var periodDate = fechaEmision ?? ResolveCuentaCobroPeriodDate(item, metadata) ?? ResolveCuentaCobroDate(item, CuentaCobroPeriodFallbackField) ?? ResolveCuentaCobroNow();
@@ -413,7 +450,9 @@ public sealed partial class DataverseService
             ReteFuentePorcentaje = reteFuentePorcentaje,
             ValorPago = valorPago,
             ReteFuenteValor = reteFuenteValor,
-            TotalesCuadran = CuentaCobroTotalsMatch(valorTotal, valorPago, reteFuenteValor),
+            Retentions = retentions,
+            TotalRetentionsValue = totalRetentionsValue,
+            TotalesCuadran = CuentaCobroTotalsMatch(valorTotal, valorPago, totalRetentionsValue),
             Impresa = ReadCuentaCobroPrinted(item),
             HasAdjunto = hasAdjunto,
             AdjuntoFileName = hasAdjunto ? FirstNonEmpty(attachmentFileName, "Adjunto cargado") : "",
@@ -427,6 +466,52 @@ public sealed partial class DataverseService
             CreatedOnValue = createdOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             CreatedOnDisplay = createdOn.ToString("dd/MM/yyyy", CuentaCobroCulture),
             ModifiedOnDisplay = modifiedOn?.ToString("dd/MM/yyyy", CuentaCobroCulture) ?? ""
+        };
+    }
+
+    private List<CuentaCobroRetentionDto> ReadCuentaCobroRetentions(
+        CuentaCobroMetadata metadata,
+        JsonElement item,
+        decimal valorTotal,
+        decimal legacyRate,
+        decimal legacyValue)
+    {
+        if (metadata.HasRetentionsJsonField)
+        {
+            var rawJson = ReadString(item, CuentaCobroRetentionsJsonField);
+            if (!string.IsNullOrWhiteSpace(rawJson))
+            {
+                try
+                {
+                    var parsed = JsonSerializer.Deserialize<List<CuentaCobroRetentionDto>>(
+                        rawJson,
+                        CuentaCobroRetentionJsonOptions);
+                    if (parsed is not null)
+                        return NormalizeCuentaCobroRetentions(parsed, valorTotal, 0m, 0m);
+                }
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "El campo {RetentionJsonField} contiene un detalle de retenciones invalido. Se usaran los campos legados.",
+                        CuentaCobroRetentionsJsonField);
+                }
+            }
+        }
+
+        if (legacyRate <= 0m && legacyValue <= 0m)
+            return new List<CuentaCobroRetentionDto>();
+
+        return new List<CuentaCobroRetentionDto>
+        {
+            new()
+            {
+                Kind = "ReteFuente",
+                Label = ResolveCuentaCobroRetentionLabel("ReteFuente"),
+                BaseValue = valorTotal,
+                Rate = Math.Max(0m, RoundRetentionRate(legacyRate)),
+                Value = Math.Max(0m, RoundCurrency(legacyValue))
+            }
         };
     }
 
@@ -515,7 +600,6 @@ public sealed partial class DataverseService
         var nitOCedula = request.NitOCedula?.Trim() ?? "";
         var observaciones = request.Observaciones?.Trim() ?? "";
         var valorTotal = RoundCurrency(request.ValorTotal);
-        var reteFuentePorcentaje = RoundCurrency(request.ReteFuentePorcentaje);
         var valorPago = RoundCurrency(request.ValorPago);
         var rawFechaEmision = request.FechaEmisionValue?.Trim() ?? "";
         var rawFechaPago = request.FechaPagoValue?.Trim() ?? "";
@@ -541,15 +625,21 @@ public sealed partial class DataverseService
         if (valorTotal <= 0m)
             throw new InvalidOperationException("El valor total debe ser mayor a cero.");
 
-        if (reteFuentePorcentaje < 0m || reteFuentePorcentaje > 100m)
-            throw new InvalidOperationException("La rete fuente % debe estar entre 0 y 100.");
-
         if (valorPago < 0m)
             throw new InvalidOperationException("El valor pago no puede ser negativo.");
 
-        var reteFuenteValor = CalculateCuentaCobroReteFuenteValue(valorTotal, reteFuentePorcentaje);
-        if (!CuentaCobroTotalsMatch(valorTotal, valorPago, reteFuenteValor))
-            throw new InvalidOperationException("El valor total debe ser igual a valor pago + rete fuente valor.");
+        var retentions = NormalizeCuentaCobroRetentions(
+            request.Retentions,
+            valorTotal,
+            request.ReteFuentePorcentaje,
+            request.ReteFuenteValor);
+        var reteFuente = retentions.FirstOrDefault(item =>
+            string.Equals(item.Kind, "ReteFuente", StringComparison.OrdinalIgnoreCase));
+        var reteFuentePorcentaje = reteFuente?.Rate ?? 0m;
+        var reteFuenteValor = reteFuente?.Value ?? 0m;
+        var totalRetentionsValue = RoundCurrency(retentions.Sum(item => item.Value));
+        if (!CuentaCobroTotalsMatch(valorTotal, valorPago, totalRetentionsValue))
+            throw new InvalidOperationException("El valor total debe ser igual a valor pago + suma de retenciones.");
 
         return new CuentaCobroWriteModel
         {
@@ -563,18 +653,197 @@ public sealed partial class DataverseService
             ValorTotal = valorTotal,
             ReteFuentePorcentaje = reteFuentePorcentaje,
             ValorPago = valorPago,
-            ReteFuenteValor = reteFuenteValor
+            ReteFuenteValor = reteFuenteValor,
+            Retentions = retentions,
+            TotalRetentionsValue = totalRetentionsValue
         };
+    }
+
+    private static List<CuentaCobroRetentionDto> NormalizeCuentaCobroRetentions(
+        IReadOnlyList<CuentaCobroRetentionDto>? requestedRetentions,
+        decimal valorTotal,
+        decimal legacyRate,
+        decimal legacyValue)
+    {
+        var source = requestedRetentions?
+            .Where(item => item is not null)
+            .ToList()
+            ?? new List<CuentaCobroRetentionDto>();
+
+        if (source.Count > 25)
+            throw new InvalidOperationException("Una cuenta de cobro no puede tener mas de 25 retenciones.");
+
+        var normalized = new List<CuentaCobroRetentionDto>();
+        foreach (var retention in source)
+        {
+            var kind = NormalizeCuentaCobroRetentionKind(retention.Kind);
+            var label = FirstNonEmpty(retention.Label, ResolveCuentaCobroRetentionLabel(kind));
+            var taxId = retention.TaxId?.Trim() ?? "";
+            var accountCode = retention.AccountCode?.Trim() ?? "";
+            var baseValue = RoundCurrency(retention.BaseValue);
+            var rate = RoundRetentionRate(retention.Rate);
+            var value = RoundCurrency(retention.Value);
+            var hasValues = baseValue != 0m || rate != 0m || value != 0m;
+            var hasDetails = !string.IsNullOrWhiteSpace(retention.Label)
+                || !string.IsNullOrWhiteSpace(taxId)
+                || !string.IsNullOrWhiteSpace(accountCode);
+
+            if (!hasValues && !hasDetails)
+                continue;
+
+            if (!CuentaCobroRetentionKinds.Contains(kind))
+                throw new InvalidOperationException($"El tipo de retencion '{retention.Kind}' no es valido.");
+
+            if (!string.IsNullOrWhiteSpace(taxId))
+            {
+                if (!int.TryParse(taxId, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedTaxId)
+                    || parsedTaxId <= 0)
+                {
+                    throw new InvalidOperationException($"El ID de impuesto de {label} debe ser un entero positivo de Siigo.");
+                }
+
+                taxId = parsedTaxId.ToString(CultureInfo.InvariantCulture);
+            }
+            if (!string.IsNullOrWhiteSpace(accountCode)
+                && (accountCode.Length is < 4 or > 20 || !accountCode.All(char.IsDigit)))
+            {
+                throw new InvalidOperationException($"La cuenta contable de {label} debe tener entre 4 y 20 digitos.");
+            }
+
+            if (baseValue <= 0m)
+                throw new InvalidOperationException($"La base de {label} debe ser mayor a cero.");
+
+            if (rate < 0m || rate > (string.Equals(kind, "ReteICA", StringComparison.OrdinalIgnoreCase) ? 1000m : 100m))
+                throw new InvalidOperationException($"La tasa de {label} no es valida.");
+
+            if (value < 0m)
+                throw new InvalidOperationException($"El valor de {label} no puede ser negativo.");
+
+            if (value == 0m && rate > 0m)
+                value = CalculateCuentaCobroRetentionValue(kind, baseValue, rate);
+
+            if (value <= 0m)
+                throw new InvalidOperationException($"El valor de {label} debe ser mayor a cero.");
+
+            ValidateCuentaCobroRetentionText(label, "etiqueta", 120);
+            ValidateCuentaCobroRetentionText(taxId, "ID de impuesto", 100);
+            ValidateCuentaCobroRetentionText(accountCode, "cuenta contable", 50);
+
+            normalized.Add(new CuentaCobroRetentionDto
+            {
+                Kind = kind,
+                Label = label,
+                TaxId = taxId,
+                AccountCode = accountCode,
+                BaseValue = baseValue,
+                Rate = rate,
+                Value = value
+            });
+        }
+
+        if (normalized.Count == 0)
+        {
+            var normalizedLegacyRate = RoundRetentionRate(legacyRate);
+            var normalizedLegacyValue = RoundCurrency(legacyValue);
+            if (normalizedLegacyValue == 0m && normalizedLegacyRate > 0m)
+            {
+                normalizedLegacyValue = CalculateCuentaCobroRetentionValue(
+                    "ReteFuente",
+                    valorTotal,
+                    normalizedLegacyRate);
+            }
+
+            if (normalizedLegacyRate > 0m || normalizedLegacyValue > 0m)
+            {
+                normalized.Add(new CuentaCobroRetentionDto
+                {
+                    Kind = "ReteFuente",
+                    Label = ResolveCuentaCobroRetentionLabel("ReteFuente"),
+                    BaseValue = valorTotal,
+                    Rate = normalizedLegacyRate,
+                    Value = normalizedLegacyValue
+                });
+            }
+        }
+
+        return normalized;
+    }
+
+    private static decimal CalculateCuentaCobroRetentionValue(string kind, decimal baseValue, decimal rate)
+    {
+        var divisor = string.Equals(kind, "ReteICA", StringComparison.OrdinalIgnoreCase) ? 1000m : 100m;
+        return RoundCurrency(baseValue * rate / divisor);
     }
 
     private static decimal CalculateCuentaCobroReteFuenteValue(decimal valorTotal, decimal reteFuentePorcentaje)
     {
-        return RoundCurrency(valorTotal * (reteFuentePorcentaje / 100m));
+        return CalculateCuentaCobroRetentionValue("ReteFuente", valorTotal, reteFuentePorcentaje);
     }
 
-    private static bool CuentaCobroTotalsMatch(decimal valorTotal, decimal valorPago, decimal reteFuenteValor)
+    private static bool CuentaCobroTotalsMatch(decimal valorTotal, decimal valorPago, decimal totalRetentionsValue)
     {
-        return Math.Abs(valorTotal - (valorPago + reteFuenteValor)) <= 0.01m;
+        return Math.Abs(valorTotal - (valorPago + totalRetentionsValue)) <= 0.01m;
+    }
+
+    private static decimal RoundRetentionRate(decimal value) =>
+        Math.Round(value, 4, MidpointRounding.AwayFromZero);
+
+    private static string NormalizeCuentaCobroRetentionKind(string? value)
+    {
+        var normalized = (value ?? "")
+            .Trim()
+            .Replace("-", "", StringComparison.Ordinal)
+            .Replace("_", "", StringComparison.Ordinal)
+            .Replace(" ", "", StringComparison.Ordinal)
+            .ToLowerInvariant();
+
+        return normalized switch
+        {
+            "retefuente" or "retefte" or "retencionfuente" => "ReteFuente",
+            "reteica" or "retencionica" => "ReteICA",
+            "reteiva" or "rteiva" or "ivaretenido" => "RteIVA",
+            "otra" or "otro" => "Otra",
+            _ => value?.Trim() ?? ""
+        };
+    }
+
+    private static string ResolveCuentaCobroRetentionLabel(string kind)
+    {
+        return kind switch
+        {
+            "ReteFuente" => "Retencion en la fuente",
+            "ReteICA" => "Retencion ICA",
+            "RteIVA" => "IVA retenido",
+            _ => "Otra retencion"
+        };
+    }
+
+    private static void ValidateCuentaCobroRetentionText(string value, string fieldLabel, int maxLength)
+    {
+        if (value.Length > maxLength)
+            throw new InvalidOperationException($"La {fieldLabel} de la retencion supera {maxLength} caracteres.");
+    }
+
+    private static void ValidateCuentaCobroRetentionStorage(
+        CuentaCobroMetadata metadata,
+        CuentaCobroWriteModel model)
+    {
+        if (metadata.HasRetentionsJsonField || model.Retentions.Count == 0)
+            return;
+
+        var retention = model.Retentions.Count == 1 ? model.Retentions[0] : null;
+        var canUseLegacyFields = retention is not null
+            && string.Equals(retention.Kind, "ReteFuente", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(retention.Label, ResolveCuentaCobroRetentionLabel("ReteFuente"), StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(retention.TaxId)
+            && string.IsNullOrWhiteSpace(retention.AccountCode)
+            && Math.Abs(retention.BaseValue - model.ValorTotal) <= 0.01m;
+
+        if (!canUseLegacyFields)
+        {
+            throw new InvalidOperationException(
+                $"Para guardar retenciones multiples o detalladas debe existir el campo de texto {CuentaCobroRetentionsJsonField} en Dataverse.");
+        }
     }
 
     private static string BuildCuentaCobroPrimaryName(int year, int month, string receptor)
@@ -683,6 +952,17 @@ public sealed partial class DataverseService
         return attributeType.Contains("boolean", StringComparison.OrdinalIgnoreCase)
             ? CuentaCobroPrintedValueMode.Boolean
             : CuentaCobroPrintedValueMode.Numeric;
+    }
+
+    private static bool ResolveCuentaCobroRetentionsJsonAvailability(JsonElement attributes)
+    {
+        if (!TryFindCuentaCobroAttribute(attributes, CuentaCobroRetentionsJsonField, out var attribute))
+            return false;
+
+        var attributeType = ReadCuentaCobroAttributeType(attribute);
+        return string.IsNullOrWhiteSpace(attributeType)
+            || attributeType.Contains("string", StringComparison.OrdinalIgnoreCase)
+            || attributeType.Contains("memo", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryFindCuentaCobroAttribute(JsonElement attributes, string logicalName, out JsonElement attribute)
@@ -808,6 +1088,7 @@ public sealed partial class DataverseService
         public bool UsesExplicitPeriodField { get; set; }
         public string PeriodSourceLabel { get; set; } = "Mes de creacion";
         public CuentaCobroPrintedValueMode PrintedValueMode { get; set; } = CuentaCobroPrintedValueMode.Unknown;
+        public bool HasRetentionsJsonField { get; set; }
     }
 
     private sealed class CuentaCobroWriteModel
@@ -823,6 +1104,8 @@ public sealed partial class DataverseService
         public decimal ReteFuentePorcentaje { get; init; }
         public decimal ValorPago { get; init; }
         public decimal ReteFuenteValor { get; init; }
+        public List<CuentaCobroRetentionDto> Retentions { get; init; } = new();
+        public decimal TotalRetentionsValue { get; init; }
     }
 
     private enum CuentaCobroPrintedValueMode

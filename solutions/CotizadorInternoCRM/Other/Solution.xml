@@ -1,0 +1,238 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml version="9.2.26072.134" SolutionPackageVersion="9.2" languagecode="3082" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26072.134" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26072.00138">
+  <SolutionManifest>
+    <UniqueName>CotizadorInternoCRM</UniqueName>
+    <LocalizedNames>
+      <LocalizedName description="CRM Cotizador Interno" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions />
+    <Version>1.0.0.0</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>Cr44b61</UniqueName>
+      <LocalizedNames>
+        <LocalizedName description="CDS Default Publisher" languagecode="3082" />
+      </LocalizedNames>
+      <Descriptions />
+      <EMailAddress xsi:nil="true"></EMailAddress>
+      <SupportingWebsiteUrl xsi:nil="true"></SupportingWebsiteUrl>
+      <CustomizationPrefix>cr07a</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>64525</CustomizationOptionValuePrefix>
+      <Addresses>
+        <Address>
+          <AddressNumber>1</AddressNumber>
+          <AddressTypeCode xsi:nil="true"></AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode xsi:nil="true"></ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+        <Address>
+          <AddressNumber>2</AddressNumber>
+          <AddressTypeCode xsi:nil="true"></AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode xsi:nil="true"></ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+      </Addresses>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="1" schemaName="cr07a_cierreflujocajabanco" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_cliente" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_crmactividad" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_crmcontacto" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_crmempresa" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_crmhistorialetapa" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_crmnegocio" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_empleado" behavior="2" />
+      <RootComponent type="1" schemaName="cr07a_gastodelaempresa" behavior="2" />
+    </RootComponents>
+    <MissingDependencies>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_accountidicp" displayName="Account ID icp" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_asignacionequipolineacopiers" displayName="Asignacion equipo linea Copiers" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_capacitacion" displayName="Capacitación" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_capacitacionsesion" displayName="Sesion de encuesta de capacitacion" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_centrooperacionlicencia" displayName="Centro de operación licencia" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_consecutivocontrato" displayName="Consecutivo de contrato" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contractrecord1" displayName="Puntaje" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_contrato" displayName="Contrato" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_empleado" displayName="Empleado" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_empleado" displayName="Empleado" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_entrega" displayName="Entrega" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_envio" displayName="Envio" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_equipo" displayName="Equipo" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_equiposdigitalapp" displayName="Equipos(Digitalapp)" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_facturacion" displayName="Facturacion" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_gastodelaempresa" displayName="Gasto de la Empresa" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_gastodelaempresa" displayName="Gasto de la Empresa" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_hardware" displayName="Hardware" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_m365generatedreport" displayName="Informe HTML Microsoft 365" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_m365securitysnapshot" displayName="Snapshot seguridad Microsoft 365" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_m365tenantconnection" displayName="Conexion Microsoft 365" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_mantenimiento" displayName="Mantenimiento" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_mantenimientopreventivoagenda" displayName="Agenda de mantenimiento preventivo" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_movimientosequipos" displayName="Movimientos equipos" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_novedades" displayName="Novedades" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_ordenserviciocontrato" displayName="Orden de servicio de contrato" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_productoscopiers" displayName="Productos COPIERS" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_reportescloud" displayName="Reportes Cloud" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_salesperformancerecord" displayName="Productos CLOUD" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_solicitudaprovisionamiento" displayName="Solicitud Aprovisionamiento" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_solicituddemantenimiento" displayName="Solicitud de mantenimiento" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_solicitudesclientes" displayName="solicitudesclientes" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_tareacopier" displayName="Tareas Copiers" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_tareascloud" displayName="Tareas Cloud" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_ticket" displayName="Ticket" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_ubicacionesdigitalapp" displayName="ubicacionesdigitalapp" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="cr07a_usuariosconaccesolimitado" displayName="usuariosconaccesolimitado" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="1" schemaName="hd_customertenant" displayName="Tenant de cliente" solution="Active" />
+        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
+      </MissingDependency>
+    </MissingDependencies>
+  </SolutionManifest>
+</ImportExportXml>

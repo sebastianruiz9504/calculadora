@@ -31,20 +31,16 @@ public sealed class WeeklyCashFlowMatchingHostedService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var nextRunUtc = WeeklyExpenseAccountingRulesHostedService.CalculateNextRunUtc(
+            var nextRunUtc = CashFlowSchedule.CalculateNextDailyRunUtc(
                 DateTimeOffset.UtcNow,
-                new ExpenseAccountingRulesOptions
-                {
-                    RunDayOfWeek = _options.RunDayOfWeek,
-                    RunTime = _options.RunTime,
-                    TimeZoneId = _options.TimeZoneId
-                });
+                _options.RunTime,
+                _options.TimeZoneId);
             var delay = nextRunUtc - DateTimeOffset.UtcNow;
             if (delay < TimeSpan.Zero)
                 delay = TimeSpan.Zero;
 
             _logger.LogInformation(
-                "Proximo cruce semanal de flujo de caja programado para {NextRunUtc:u}.",
+                "Proximo cruce diario de flujo de caja programado para {NextRunUtc:u}.",
                 nextRunUtc);
 
             try
@@ -73,7 +69,7 @@ public sealed class WeeklyCashFlowMatchingHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fallo el cruce semanal de pagos de clientes desde flujo de caja.");
+            _logger.LogError(ex, "Fallo el cruce diario de pagos de clientes desde flujo de caja.");
         }
     }
 }

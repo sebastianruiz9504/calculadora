@@ -1,0 +1,15 @@
+<aiskillconfig uniquename="ais_FormFillFieldOptOut_cr07a_crmhistorialetapa_cr07a_motivo">
+  <aiskill>FormFillFieldOptOut</aiskill>
+  <attribute>
+    <entityid.logicalname>cr07a_crmhistorialetapa</entityid.logicalname>
+    <logicalname>cr07a_motivo</logicalname>
+  </attribute>
+  <description>cr07a_crmhistorialetapa - Motivo Optar por no usar el rellenado de formularios</description>
+  <entity>
+    <logicalname>cr07a_crmhistorialetapa</logicalname>
+  </entity>
+  <iscustomizable>1</iscustomizable>
+  <scope>1</scope>
+  <statecode>0</statecode>
+  <statuscode>1</statuscode>
+</aiskillconfig>

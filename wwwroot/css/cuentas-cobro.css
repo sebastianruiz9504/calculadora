@@ -415,14 +415,16 @@
     font-weight: 700;
 }
 
-.ccb-form__field .form-control {
+.ccb-form__field .form-control,
+.ccb-form__field .form-select {
     min-height: 48px;
     border-radius: 16px;
     border-color: #d5dde8;
     box-shadow: none;
 }
 
-.ccb-form__field .form-control:focus {
+.ccb-form__field .form-control:focus,
+.ccb-form__field .form-select:focus {
     border-color: #0f6f6f;
     box-shadow: 0 0 0 .2rem rgba(15, 111, 111, 0.12);
 }
@@ -466,6 +468,82 @@
 .ccb-validation-card__hint {
     font-size: 0.88rem;
     color: #617087;
+}
+
+.ccb-retentions {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid #d9e3ee;
+    border-radius: 20px;
+    background: #f8fbfe;
+}
+
+.ccb-retentions__header,
+.ccb-retention-row__heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.ccb-retentions__title {
+    margin: 0.2rem 0 0;
+    color: #23324f;
+    font-size: 1.05rem;
+}
+
+.ccb-retentions__hint {
+    margin: 0.35rem 0 0;
+    color: #617087;
+    font-size: 0.86rem;
+}
+
+.ccb-retentions__storage-warning {
+    padding: 0.8rem 0.9rem;
+    border: 1px solid #f1d183;
+    border-radius: 14px;
+    background: #fff7df;
+    color: #7a5710;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.ccb-retentions__storage-warning[hidden],
+.ccb-retentions__empty[hidden] {
+    display: none;
+}
+
+.ccb-retentions__list {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.ccb-retention-row {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem;
+    border: 1px solid #d5e1eb;
+    border-radius: 18px;
+    background: #fff;
+}
+
+.ccb-retention-row__heading strong {
+    color: #23324f;
+}
+
+.ccb-retention-row__grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.ccb-retentions__empty {
+    padding: 0.85rem;
+    border: 1px dashed #bfcbd8;
+    border-radius: 14px;
+    color: #6d7b8f;
+    text-align: center;
 }
 
 .ccb-file-card {
@@ -557,6 +635,10 @@
         display: grid;
     }
 
+    .ccb-retention-row__grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .ccb-file-card__actions {
         min-width: 0;
     }
@@ -582,6 +664,15 @@
 
     .ccb-form__field--span-2 {
         grid-column: span 1;
+    }
+
+    .ccb-retentions__header,
+    .ccb-retention-row__heading {
+        display: grid;
+    }
+
+    .ccb-retention-row__grid {
+        grid-template-columns: 1fr;
     }
 
     .ccb-toolbar__filters,

@@ -13,6 +13,7 @@
      data-save-url="@Url.Action("Save", "CuentasCobro")"
      data-upload-url="@Url.Action("UploadFile", "CuentasCobro")"
      data-download-url="@Url.Action("DownloadFile", "CuentasCobro")"
+     data-download-report-url="@Url.Action("DownloadReport", "CuentasCobro")"
      data-mark-printed-url="@Url.Action("MarkPrinted", "CuentasCobro")"
      data-print-url="@Url.Action("Print", "CuentasCobro")"
      data-initial-year="@Model.InitialYear"
@@ -50,6 +51,7 @@
                     El periodo cargado se toma desde la cuenta de cobro.
                 </div>
                 <div class="ccb-toolbar__buttons">
+                    <button type="button" class="btn btn-outline-success" id="ccbDownloadReportBtn" disabled>Descargar reporte</button>
                     <button type="button" class="btn btn-outline-secondary" id="ccbRefreshBtn">Recargar</button>
                     <button type="button" class="btn btn-primary" id="ccbAddRowBtn">Nuevo registro</button>
                 </div>
@@ -71,7 +73,7 @@
             <strong class="ccb-summary__value" id="ccbSummaryValorPago">$0</strong>
         </article>
         <article class="ccb-summary__card">
-            <span class="ccb-summary__label">Rete fuente valor</span>
+            <span class="ccb-summary__label">Total retenciones</span>
             <strong class="ccb-summary__value" id="ccbSummaryReteValor">$0</strong>
         </article>
     </section>
@@ -160,11 +162,6 @@
                 </label>
 
                 <label class="ccb-form__field">
-                    <span class="ccb-form__label">Rete fuente %</span>
-                    <input class="form-control" id="ccbRetePorcentajeInput" type="number" min="0" max="100" step="0.01" />
-                </label>
-
-                <label class="ccb-form__field">
                     <span class="ccb-form__label">Valor total</span>
                     <input class="form-control" id="ccbValorTotalInput" type="number" min="0" step="0.01" />
                 </label>
@@ -175,8 +172,8 @@
                 </label>
 
                 <label class="ccb-form__field">
-                    <span class="ccb-form__label">Rete fuente valor</span>
-                    <input class="form-control ccb-form__readonly" id="ccbReteValorInput" type="number" step="0.01" readonly />
+                    <span class="ccb-form__label">Total retenciones</span>
+                    <input class="form-control ccb-form__readonly" id="ccbTotalRetentionsInput" type="number" step="0.01" readonly />
                 </label>
 
                 <div class="ccb-form__field">
@@ -184,10 +181,28 @@
                     <div class="ccb-validation-card" id="ccbValidationCard">
                         <div class="ccb-validation-card__state" id="ccbValidationText">Cuadra</div>
                         <div class="ccb-validation-card__hint">
-                            El valor total debe ser igual a valor pago + rete fuente valor.
+                            El valor total debe ser igual a valor pago + suma de retenciones.
                         </div>
                     </div>
                 </div>
+
+                <section class="ccb-retentions ccb-form__field--span-2" aria-labelledby="ccbRetentionsTitle">
+                    <div class="ccb-retentions__header">
+                        <div>
+                            <span class="ccb-form__label">Retenciones</span>
+                            <h3 class="ccb-retentions__title" id="ccbRetentionsTitle">Desglose contable</h3>
+                            <p class="ccb-retentions__hint">
+                                En ReteICA la tasa se interpreta por mil (‰); en los demas tipos se interpreta como porcentaje (%).
+                            </p>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="ccbAddRetentionBtn">Agregar retencion</button>
+                    </div>
+                    <div class="ccb-retentions__storage-warning" id="ccbRetentionsStorageWarning" hidden>
+                        Dataverse aun no tiene el campo cr07a_retencionesjson. Solo se puede guardar una ReteFuente basica con los campos heredados.
+                    </div>
+                    <div class="ccb-retentions__list" id="ccbRetentionsList"></div>
+                    <div class="ccb-retentions__empty" id="ccbRetentionsEmpty">No hay retenciones registradas.</div>
+                </section>
 
                 <label class="ccb-form__field ccb-form__field--span-2">
                     <span class="ccb-form__label">Observaciones</span>

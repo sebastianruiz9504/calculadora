@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:digital-tech:copiers:mto-v2:flow-result:4.0",
+  "title": "Copiers MTO V2 email processing result",
+  "description": "Post-publication projection. The app accepts Pending, Processing, Sent or Failed while requiring the immutable base/artifact references to remain unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "recordKey",
+    "operationKey",
+    "workflowState",
+    "emailState",
+    "reportEvidenceKey",
+    "attachmentCount",
+    "emailOutboxKey",
+    "providerDraftId",
+    "internetMessageId",
+    "reconciliationRequired",
+    "alertRequired",
+    "lastUpdatedAtUtc"
+  ],
+  "properties": {
+    "contractVersion": { "const": "4.0" },
+    "recordKey": {
+      "type": "string",
+      "format": "uuid",
+      "description": "GUID of the principal signedMtoV2 row."
+    },
+    "operationKey": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "workflowState": { "const": "ReadyToSend" },
+    "emailState": {
+      "enum": ["Pending", "Processing", "Sent", "Failed"]
+    },
+    "reportEvidenceKey": { "$ref": "#/$defs/sha256" },
+    "attachmentCount": { "type": "integer", "minimum": 0, "maximum": 8 },
+    "emailOutboxKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "providerDraftId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "internetMessageId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 998
+    },
+    "reconciliationRequired": { "type": "boolean" },
+    "alertRequired": { "type": "boolean" },
+    "lastUpdatedAtUtc": { "type": "string", "format": "date-time" },
+    "lastError": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "safeMessage"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "safeMessage": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1500
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "emailState": { "const": "Sent" } },
+        "required": ["emailState"]
+      },
+      "then": {
+        "properties": {
+          "providerDraftId": { "type": "string", "minLength": 1 },
+          "internetMessageId": { "type": "string", "minLength": 1 },
+          "reconciliationRequired": { "const": false },
+          "alertRequired": { "const": false }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emailState": { "const": "Processing" },
+          "reconciliationRequired": { "const": true }
+        },
+        "required": ["emailState", "reconciliationRequired"]
+      },
+      "then": {
+        "properties": {
+          "alertRequired": { "const": true }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}
+

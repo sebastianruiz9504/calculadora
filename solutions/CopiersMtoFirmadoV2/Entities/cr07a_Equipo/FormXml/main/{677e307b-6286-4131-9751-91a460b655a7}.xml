@@ -1,0 +1,164 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{677e307b-6286-4131-9751-91a460b655a7}</formid>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <FormPresentation>1</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="{3e480564-0679-461a-b56f-fbc02dac8d87}" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="{e724e8f0-9679-46be-9763-8b16446ba021}">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="{12aea184-3d49-400b-a6a7-d09bbec657ec}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Fecha de creación" languagecode="3082" />
+                        </labels>
+                        <control id="createdon" classid="{5B773807-9FB2-42DB-97C3-7A91EFF8ADFF}" datafieldname="createdon" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{d7d60a12-9446-4dc8-b26b-3bd15a64a6c7}">
+                        <labels>
+                          <label description="Nombre del equipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nombredelequipo" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="cr07a_nombredelequipo" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{7013da07-2b0b-4b96-8171-6e3aa7d8be05}">
+                        <labels>
+                          <label description="Propietario" languagecode="3082" />
+                        </labels>
+                        <control id="ownerid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="ownerid" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{3f41455c-5f81-4217-bcee-2cb2cd1cbfe3}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Referencia" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_referencia" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="cr07a_referencia" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{3a16cbd3-a844-4d97-a842-afe65d0ef08b}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Cliente" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_cliente" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_cliente" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{d7bbd4cc-0802-484b-9134-0ff8608b3a57}" locklevel="0" colspan="1" rowspan="1" visible="false">
+                        <labels>
+                          <label description="Cliente Asignado" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_clienteasignado" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_clienteasignado" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{9b6e006f-aed6-49c9-ac4a-c1517b6f82c2}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Fecha de compra" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_fechadecompra" classid="{5B773807-9FB2-42DB-97C3-7A91EFF8ADFF}" datafieldname="cr07a_fechadecompra" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{e6897150-b3c4-46fb-93f7-824750d006ef}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Categoría de Equipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_categoriadeequipo" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_categoriadeequipo" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{18467b9a-df0e-4905-98ac-4af4bb85c882}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Ubicación" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_ubicacion" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="cr07a_ubicacion" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{a8b76cee-28fb-4919-9b2a-adacbdfdea75}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Tipo de equipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_tipodeequipo" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="cr07a_tipodeequipo" disabled="false" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="{5a45ef4f-d68e-42b6-bf6d-30949d3f6b17}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{0b286ea4-806d-48cc-bb02-5451555cf9da}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{ce14f900-5243-4306-92af-91fdbae81497}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{1a008135-cd40-49ac-9842-13d10cf1be2d}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="{d1a1d60e-7c51-46ff-81d6-93a3bd3a70df}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{54c3ef55-0f34-4192-9db1-5e62be97c206}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{6fe25416-01a5-43e9-8009-8a7afb513967}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{258406a0-26d7-4b45-b951-995a5eca34c7}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="0" FallbackForm="true">
+        <Everyone />
+      </DisplayConditions>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Información" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Formulario para esta entidad." languagecode="3082" />
+    </Descriptions>
+  </systemform>
+</forms>

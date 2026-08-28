@@ -55,6 +55,7 @@ public sealed partial class DataverseService
     private const string HardwareSupplierPaymentFileNameLogicalName = "cr07a_pagoaproveedor_name";
     private const string HardwareDeliveryRecordFileLogicalName = "cr07a_actadeentrega";
     private const string HardwareDeliveryRecordFileNameLogicalName = "cr07a_actadeentrega_name";
+    private const string HardwareCreatedOnLogicalName = "createdon";
     private const string HardwareModifiedOnLogicalName = "modifiedon";
     private const string HardwareTableDisplayName = "Hardware";
     private const string HardwarePrimaryNameSchemaName = "cr07a_Name";
@@ -482,7 +483,8 @@ public sealed partial class DataverseService
         DateOnly? endDate = null,
         CancellationToken ct = default,
         bool currentOwnerOnly = false,
-        CurrentUserInfo? ownerOverride = null)
+        CurrentUserInfo? ownerOverride = null,
+        bool filterByCreatedOn = false)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -507,11 +509,11 @@ public sealed partial class DataverseService
         await EnsureHardwareWorkflowSchemaAsync(user, ct);
         metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
-        if ((startDate.HasValue || endDate.HasValue) && !HasHardwareAttribute(attributes, HardwareOdcDateLogicalName))
+        if ((startDate.HasValue || endDate.HasValue) && !filterByCreatedOn && !HasHardwareAttribute(attributes, HardwareOdcDateLogicalName))
             throw new InvalidOperationException($"La tabla Hardware no tiene la columna {HardwareOdcDateLogicalName} para filtrar por fecha ODC.");
 
         var selectFields = BuildHardwareBoardSelectFields(metadata, attributes);
-        var filters = BuildHardwareBoardFilters(stateValue, startDate, endDate, attributes);
+        var filters = BuildHardwareBoardFilters(stateValue, startDate, endDate, attributes, filterByCreatedOn);
         if (currentOwnerOnly)
         {
             filters.Add(
@@ -520,13 +522,15 @@ public sealed partial class DataverseService
         var filter = filters.Count > 0
             ? $"&$filter={Uri.EscapeDataString(string.Join(" and ", filters))}"
             : "";
-        var orderBy = HasHardwareAttribute(attributes, HardwareOdcDateLogicalName)
+        var orderBy = filterByCreatedOn
+            ? $"{HardwareCreatedOnLogicalName} desc"
+            : HasHardwareAttribute(attributes, HardwareOdcDateLogicalName)
             ? $"{HardwareOdcDateLogicalName} desc,{HardwareModifiedOnLogicalName} desc"
             : $"{HardwareModifiedOnLogicalName} desc";
         var relativeUrl =
             $"/api/data/v9.2/{metadata.EntitySetName}?$select={string.Join(",", selectFields.Distinct(StringComparer.OrdinalIgnoreCase))}" +
             filter +
-            $"&$orderby={Uri.EscapeDataString(orderBy)}&$top=500";
+            $"&$orderby={Uri.EscapeDataString(orderBy)}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
         var rows = items
             .Select(item => BuildHardwareBoardRowDto(metadata, attributes, item))
@@ -541,13 +545,14 @@ public sealed partial class DataverseService
                 : $"Se cargaron {rows.Count} registro(s) de Hardware.",
             DateFilterStartValue = FormatHardwareDateValue(startDate),
             DateFilterEndValue = FormatHardwareDateValue(endDate),
-            DateFilterLabel = BuildHardwareDateFilterLabel(startDate, endDate),
+            DateFilterLabel = BuildHardwareDateFilterLabel(startDate, endDate, filterByCreatedOn),
             TotalCount = rows.Count,
             SelectedStateValue = stateValue,
             StateOptions = HardwareStates.ToList(),
             StateSummaries = BuildHardwareStateSummaries(rows),
             Warnings = BuildHardwareWarnings(attributes),
-            Rows = rows
+            Rows = rows,
+            SupplierPaymentHistoryRows = BuildHardwareSupplierPaymentHistoryRows(rows)
         };
     }
 
@@ -1076,7 +1081,7 @@ public sealed partial class DataverseService
         var metadata = await ResolveHardwareEntityMetadataAsync(user, ct);
         var attributes = await LoadHardwareAttributesAsync(user, ct);
         var recordIds = ResolveHardwareBulkEditRecordIds(request);
-        if (request.StateChanged)
+        if (request.StateChanged && request.ApplyStateChangeToOrderScope)
         {
             recordIds = await ExpandHardwareRecordIdsToOrderScopeAsync(
                 metadata,
@@ -2223,6 +2228,7 @@ public sealed partial class DataverseService
         {
             metadata.PrimaryIdField,
             string.IsNullOrWhiteSpace(metadata.PrimaryNameField) ? HardwarePrimaryNameLogicalName : metadata.PrimaryNameField,
+            HardwareCreatedOnLogicalName,
             HardwareModifiedOnLogicalName
         };
 
@@ -2300,6 +2306,7 @@ public sealed partial class DataverseService
         var ownerLookupProperty = BuildDashboardLookupValuePropertyName(HardwareOwnerLogicalName);
         var stateValue = NormalizeHardwareStateValue(ReadIntFlexible(item, HardwareStateLogicalName));
         var state = ResolveHardwareStateOption(stateValue);
+        var createdOn = ReadHardwareCreatedOnDate(item);
         var modifiedOn = ReadDateOnly(item, HardwareModifiedOnLogicalName);
 
         return new HardwareBoardRowDto
@@ -2341,6 +2348,8 @@ public sealed partial class DataverseService
             Utility = Math.Round(ReadDecimal(item, HardwareUtilityLogicalName) ?? 0m, 4, MidpointRounding.AwayFromZero),
             MarginValue = Math.Round(ReadDecimal(item, HardwareMarginValueLogicalName) ?? 0m, 2, MidpointRounding.AwayFromZero),
             InvoiceHasClientPayment = state.Value == HardwareStateClosed,
+            CreatedOnValue = FormatHardwareDateValue(createdOn),
+            CreatedOnDisplay = FormatHardwareDateDisplay(createdOn),
             OdcDateValue = FormatHardwareDateValue(ReadDateOnly(item, HardwareOdcDateLogicalName)),
             OdcDateDisplay = FormatHardwareDateDisplay(ReadDateOnly(item, HardwareOdcDateLogicalName)),
             SupplierPaymentDateValue = FormatHardwareDateValue(ReadDateOnly(item, HardwareSupplierPaymentDateLogicalName)),
@@ -2358,8 +2367,59 @@ public sealed partial class DataverseService
             SupplierPaymentProofFileName = ResolveHardwareFileName(item, HardwareSupplierPaymentFileLogicalName, HardwareSupplierPaymentFileNameLogicalName),
             HasDeliveryRecord = HasHardwareFile(item, HardwareDeliveryRecordFileLogicalName, HardwareDeliveryRecordFileNameLogicalName),
             DeliveryRecordFileName = ResolveHardwareFileName(item, HardwareDeliveryRecordFileLogicalName, HardwareDeliveryRecordFileNameLogicalName),
+            ModifiedOnValue = FormatHardwareDateValue(modifiedOn),
             ModifiedOnDisplay = modifiedOn?.ToString("dd/MM/yyyy", HardwareCulture) ?? ""
         };
+    }
+
+    private static IReadOnlyList<HardwareBoardRowDto> BuildHardwareSupplierPaymentHistoryRows(IEnumerable<HardwareBoardRowDto> rows) =>
+        rows
+            .Where(static row => row.HasSupplierPaymentProof)
+            .OrderBy(static row => ResolveHardwareSupplierPaymentHistoryDate(row) ?? DateOnly.MaxValue)
+            .ThenBy(static row => row.ModifiedOnValue)
+            .ThenBy(static row => row.PurchaseOrderNumber)
+            .ThenBy(static row => row.SupplierDocumentGroupLabel)
+            .ToList();
+
+    private static DateOnly? ResolveHardwareSupplierPaymentHistoryDate(HardwareBoardRowDto row) =>
+        TryParseHardwareIsoDate(row.SupplierPaymentDateValue)
+        ?? TryParseHardwareIsoDate(row.ModifiedOnValue);
+
+    private static DateOnly? TryParseHardwareIsoDate(string? value)
+    {
+        var normalized = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return DateOnly.TryParseExact(
+            normalized,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static DateOnly? ReadHardwareCreatedOnDate(JsonElement item)
+    {
+        if (!item.TryGetProperty(HardwareCreatedOnLogicalName, out var property) || property.ValueKind != JsonValueKind.String)
+            return null;
+
+        var raw = property.GetString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dateTimeOffset))
+            return DateOnly.FromDateTime(dateTimeOffset.ToOffset(TimeSpan.FromHours(-5)).DateTime);
+
+        if (DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var dateOnly))
+            return dateOnly;
+
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dateTime))
+            return DateOnly.FromDateTime(dateTime);
+
+        return null;
     }
 
     private async Task<HardwareBoardRowDto> GetHardwareRecordByIdAsync(
@@ -2483,13 +2543,18 @@ public sealed partial class DataverseService
         int? stateValue,
         DateOnly? startDate,
         DateOnly? endDate,
-        IReadOnlyList<HardwareAttributeMetadata> attributes)
+        IReadOnlyList<HardwareAttributeMetadata> attributes,
+        bool filterByCreatedOn)
     {
         var filters = new List<string>();
         if (stateValue.HasValue && stateValue.Value > 0)
             filters.Add($"{HardwareStateLogicalName} eq {NormalizeHardwareStateValue(stateValue.Value)}");
 
-        if (HasHardwareAttribute(attributes, HardwareOdcDateLogicalName))
+        if (filterByCreatedOn)
+        {
+            AddHardwareCreatedOnFilters(filters, startDate, endDate);
+        }
+        else if (HasHardwareAttribute(attributes, HardwareOdcDateLogicalName))
         {
             if (startDate.HasValue)
                 filters.Add($"{HardwareOdcDateLogicalName} ge {startDate.Value:yyyy-MM-dd}");
@@ -2501,18 +2566,36 @@ public sealed partial class DataverseService
         return filters;
     }
 
-    private static string BuildHardwareDateFilterLabel(DateOnly? startDate, DateOnly? endDate)
+    private static void AddHardwareCreatedOnFilters(ICollection<string> filters, DateOnly? startDate, DateOnly? endDate)
     {
-        if (startDate.HasValue && endDate.HasValue)
-            return $"ODC {startDate.Value:dd/MM/yyyy} - {endDate.Value:dd/MM/yyyy}";
-
         if (startDate.HasValue)
-            return $"ODC desde {startDate.Value:dd/MM/yyyy}";
+            filters.Add($"{HardwareCreatedOnLogicalName} ge {FormatHardwareCreatedOnBoundary(startDate.Value)}");
 
         if (endDate.HasValue)
-            return $"ODC hasta {endDate.Value:dd/MM/yyyy}";
+            filters.Add($"{HardwareCreatedOnLogicalName} lt {FormatHardwareCreatedOnBoundary(endDate.Value.AddDays(1))}");
+    }
 
-        return "Todas las fechas ODC";
+    private static string FormatHardwareCreatedOnBoundary(DateOnly date)
+    {
+        var localDateTime = date.ToDateTime(TimeOnly.MinValue);
+        var utcDateTime = DateTime.SpecifyKind(localDateTime.AddHours(5), DateTimeKind.Utc);
+        return utcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildHardwareDateFilterLabel(DateOnly? startDate, DateOnly? endDate, bool filterByCreatedOn = false)
+    {
+        var prefix = filterByCreatedOn ? "Creación" : "ODC";
+
+        if (startDate.HasValue && endDate.HasValue)
+            return $"{prefix} {startDate.Value:dd/MM/yyyy} - {endDate.Value:dd/MM/yyyy}";
+
+        if (startDate.HasValue)
+            return $"{prefix} desde {startDate.Value:dd/MM/yyyy}";
+
+        if (endDate.HasValue)
+            return $"{prefix} hasta {endDate.Value:dd/MM/yyyy}";
+
+        return filterByCreatedOn ? "Todas las fechas de creacion" : "Todas las fechas ODC";
     }
 
     private static IReadOnlyList<string> BuildHardwareWarnings(IReadOnlyList<HardwareAttributeMetadata> attributes)
@@ -2873,7 +2956,7 @@ public sealed partial class DataverseService
         int index)
     {
         var normalizedKey = NormalizeHardwareGroupToken(key);
-        if (!string.IsNullOrWhiteSpace(normalizedKey))
+        if (!string.IsNullOrWhiteSpace(normalizedKey) && !IsGenericHardwareSupplierDocumentGroupKey(normalizedKey))
             return normalizedKey;
 
         var normalizedLabel = NormalizeHardwareGroupToken(label);
@@ -2887,6 +2970,19 @@ public sealed partial class DataverseService
             return fallback;
 
         return $"proforma-{index + 1}";
+    }
+
+    private static bool IsGenericHardwareSupplierDocumentGroupKey(string? value)
+    {
+        var normalized = NormalizeHardwareGroupToken(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        if (string.Equals(normalized, "proforma", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return normalized.StartsWith("proforma-", StringComparison.OrdinalIgnoreCase)
+            && normalized["proforma-".Length..].All(char.IsDigit);
     }
 
     private static string ResolveHardwareSupplierDocumentGroupLabel(string? label, string? provider, int index)

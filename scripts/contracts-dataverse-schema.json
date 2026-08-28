@@ -1,0 +1,225 @@
+{
+  "moduleOption": {
+    "label": "Contratos",
+    "value": 645250024,
+    "targetTable": "cr07a_empleado",
+    "targetField": "cr07a_modulos"
+  },
+  "initialUsers": [
+    "Sebastian Ruiz",
+    "Angie Vanessa Daza"
+  ],
+  "optionSets": {
+    "contractTypes": [
+      { "label": "Copiers", "value": 645260000 }
+    ],
+    "contractStatuses": [
+      { "label": "Borrador", "value": 645260000 },
+      { "label": "Generado", "value": 645260001 },
+      { "label": "Firmado", "value": 645260002 },
+      { "label": "Activo", "value": 645260003 },
+      { "label": "Cerrado", "value": 645260004 },
+      { "label": "Cancelado", "value": 645260005 }
+    ],
+    "consecutiveStatuses": [
+      { "label": "Disponible", "value": 645260000 },
+      { "label": "Reservado", "value": 645260001 },
+      { "label": "Usado", "value": 645260002 }
+    ],
+    "orderTypes": [
+      { "label": "Inicial", "value": 645260000 },
+      { "label": "Adicion", "value": 645260001 },
+      { "label": "Retiro", "value": 645260002 },
+      { "label": "Traslado", "value": 645260003 },
+      { "label": "Reemplazo", "value": 645260004 }
+    ]
+  },
+  "tables": [
+    {
+      "displayName": "Contrato",
+      "displayCollectionName": "Contratos",
+      "description": "Contratos generados desde plantillas y vinculados al cliente.",
+      "logicalName": "cr07a_contrato",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Consecutivo", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_tipocontrato", "displayName": "Tipo de contrato", "type": "Choice", "optionsRef": "contractTypes", "required": true },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Choice", "optionsRef": "contractStatuses", "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": true },
+        { "logicalName": "cr07a_razonsocial", "displayName": "Razon social", "type": "Text", "maxLength": 300, "required": true },
+        { "logicalName": "cr07a_nit", "displayName": "NIT", "type": "Text", "maxLength": 50, "required": true },
+        { "logicalName": "cr07a_digitoverificacion", "displayName": "Digito de verificacion", "type": "Text", "maxLength": 5, "required": false },
+        { "logicalName": "cr07a_direccionprincipal", "displayName": "Direccion principal", "type": "Text", "maxLength": 400, "required": true },
+        { "logicalName": "cr07a_direccionnotificacion", "displayName": "Direccion de notificacion", "type": "Text", "maxLength": 400, "required": false },
+        { "logicalName": "cr07a_ciudad", "displayName": "Ciudad", "type": "Text", "maxLength": 120, "required": true },
+        { "logicalName": "cr07a_departamento", "displayName": "Departamento", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_correocliente", "displayName": "Correo del cliente", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_telefonocliente", "displayName": "Telefono del cliente", "type": "Text", "maxLength": 120, "required": false },
+        { "logicalName": "cr07a_representantelegal", "displayName": "Representante legal", "type": "Text", "maxLength": 250, "required": true },
+        { "logicalName": "cr07a_identificacionrepresentante", "displayName": "Identificacion representante", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_correofacturacion", "displayName": "Correo de facturacion", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_direccioninstalacion", "displayName": "Direccion de instalacion", "type": "Text", "maxLength": 400, "required": true },
+        { "logicalName": "cr07a_contactocliente", "displayName": "Contacto del cliente", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_fechacontrato", "displayName": "Fecha del contrato", "type": "DateOnly", "required": true },
+        { "logicalName": "cr07a_fechafirma", "displayName": "Fecha de firma", "type": "DateOnly", "required": false },
+        { "logicalName": "cr07a_fechainicio", "displayName": "Fecha de inicio", "type": "DateOnly", "required": false },
+        { "logicalName": "cr07a_fechafin", "displayName": "Fecha de terminacion", "type": "DateOnly", "required": false },
+        { "logicalName": "cr07a_ciudadfirma", "displayName": "Ciudad de firma", "type": "Text", "maxLength": 120, "required": true },
+        { "logicalName": "cr07a_duracionmeses", "displayName": "Duracion en meses", "type": "WholeNumber", "minValue": 1, "maxValue": 120, "required": true },
+        { "logicalName": "cr07a_diaspago", "displayName": "Dias para pago", "type": "WholeNumber", "minValue": 0, "maxValue": 365, "required": true },
+        { "logicalName": "cr07a_diasavisorenovacion", "displayName": "Dias de aviso de no renovacion", "type": "WholeNumber", "minValue": 0, "maxValue": 365, "required": true },
+        { "logicalName": "cr07a_actanumeroinicial", "displayName": "Numero de acta inicial", "type": "WholeNumber", "minValue": 0, "maxValue": 999999999, "required": false },
+        { "logicalName": "cr07a_rutjson", "displayName": "Extraccion RUT JSON", "type": "MultilineText", "maxLength": 200000, "required": false },
+        { "logicalName": "cr07a_ofertajson", "displayName": "Extraccion oferta JSON", "type": "MultilineText", "maxLength": 500000, "required": false },
+        { "logicalName": "cr07a_lineasequiposjson", "displayName": "Lineas de equipos JSON", "type": "MultilineText", "maxLength": 500000, "required": true },
+        { "logicalName": "cr07a_valoragregadojson", "displayName": "Valor agregado JSON", "type": "MultilineText", "maxLength": 500000, "required": false },
+        { "logicalName": "cr07a_condicionesjson", "displayName": "Condiciones particulares JSON", "type": "MultilineText", "maxLength": 500000, "required": false },
+        { "logicalName": "cr07a_advertenciasia", "displayName": "Advertencias de IA", "type": "MultilineText", "maxLength": 100000, "required": false },
+        { "logicalName": "cr07a_creadopor", "displayName": "Creado por", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_creadoporcorreo", "displayName": "Correo creador", "type": "Text", "maxLength": 250, "required": false },
+        { "logicalName": "cr07a_rut", "displayName": "RUT", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_oferta", "displayName": "Oferta aprobada", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_contratogenerado", "displayName": "Contrato generado", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_contratofirmado", "displayName": "Contrato firmado", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_actagenerada", "displayName": "Acta generada", "type": "File", "maxSizeMb": 128, "required": false }
+      ],
+      "keys": [
+        { "schemaName": "cr07a_contrato_consecutivo_key", "attributes": ["cr07a_name"] }
+      ]
+    },
+    {
+      "displayName": "Orden de servicio de contrato",
+      "displayCollectionName": "Ordenes de servicio de contratos",
+      "description": "Ordenes iniciales y adiciones vinculadas a contratos y clientes.",
+      "logicalName": "cr07a_ordenserviciocontrato",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "UserOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Orden de servicio", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_contrato", "displayName": "Contrato", "type": "Lookup", "targetTable": "cr07a_contrato", "required": true },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": true },
+        { "logicalName": "cr07a_tipoorden", "displayName": "Tipo de orden", "type": "Choice", "optionsRef": "orderTypes", "required": true },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Choice", "optionsRef": "contractStatuses", "required": true },
+        { "logicalName": "cr07a_numeroorden", "displayName": "Numero de orden", "type": "WholeNumber", "minValue": 1, "maxValue": 9999, "required": true },
+        { "logicalName": "cr07a_numeroacta", "displayName": "Numero de acta", "type": "WholeNumber", "minValue": 0, "maxValue": 999999999, "required": false },
+        { "logicalName": "cr07a_objeto", "displayName": "Objeto de la orden", "type": "MultilineText", "maxLength": 10000, "required": true },
+        { "logicalName": "cr07a_fechacreacion", "displayName": "Fecha de creacion", "type": "DateOnly", "required": true },
+        { "logicalName": "cr07a_fechainicio", "displayName": "Fecha de inicio", "type": "DateOnly", "required": false },
+        { "logicalName": "cr07a_duracionmeses", "displayName": "Duracion en meses", "type": "WholeNumber", "minValue": 1, "maxValue": 120, "required": true },
+        { "logicalName": "cr07a_direccionejecucion", "displayName": "Lugar de ejecucion", "type": "Text", "maxLength": 400, "required": true },
+        { "logicalName": "cr07a_lineasequiposjson", "displayName": "Lineas de equipos JSON", "type": "MultilineText", "maxLength": 500000, "required": true },
+        { "logicalName": "cr07a_valoragregadojson", "displayName": "Valor agregado JSON", "type": "MultilineText", "maxLength": 500000, "required": false },
+        { "logicalName": "cr07a_condicionesjson", "displayName": "Condiciones particulares JSON", "type": "MultilineText", "maxLength": 500000, "required": false },
+        { "logicalName": "cr07a_firmada", "displayName": "Orden firmada", "type": "TwoOptions", "defaultValue": false, "required": false },
+        { "logicalName": "cr07a_fechafirma", "displayName": "Fecha de firma", "type": "DateOnly", "required": false },
+        { "logicalName": "cr07a_ordengenerada", "displayName": "Orden generada", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_ordenfirmada", "displayName": "Orden firmada", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_actaentrega", "displayName": "Acta de entrega", "type": "File", "maxSizeMb": 128, "required": false }
+      ],
+      "keys": []
+    },
+    {
+      "displayName": "Consecutivo de contrato",
+      "displayCollectionName": "Consecutivos de contratos",
+      "description": "Banco de consecutivos disponibles y usados para contratos.",
+      "logicalName": "cr07a_consecutivocontrato",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "OrganizationOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Consecutivo", "type": "Text", "maxLength": 80, "required": true },
+        { "logicalName": "cr07a_anio", "displayName": "Año", "type": "WholeNumber", "minValue": 2000, "maxValue": 2200, "required": true },
+        { "logicalName": "cr07a_lineanegocio", "displayName": "Linea de negocio", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_estado", "displayName": "Estado", "type": "Choice", "optionsRef": "consecutiveStatuses", "required": true },
+        { "logicalName": "cr07a_clientehistorico", "displayName": "Cliente historico", "type": "Text", "maxLength": 300, "required": false },
+        { "logicalName": "cr07a_descripcion", "displayName": "Descripcion", "type": "Text", "maxLength": 500, "required": false },
+        { "logicalName": "cr07a_filafuente", "displayName": "Fila fuente", "type": "WholeNumber", "minValue": 1, "maxValue": 999999, "required": false },
+        { "logicalName": "cr07a_numeroacta", "displayName": "Numero de acta", "type": "WholeNumber", "minValue": 0, "maxValue": 999999999, "required": false },
+        { "logicalName": "cr07a_cliente", "displayName": "Cliente", "type": "Lookup", "targetTable": "cr07a_cliente", "required": false },
+        { "logicalName": "cr07a_contrato", "displayName": "Contrato", "type": "Lookup", "targetTable": "cr07a_contrato", "required": false },
+        { "logicalName": "cr07a_reservadoen", "displayName": "Reservado en", "type": "DateTime", "required": false },
+        { "logicalName": "cr07a_usadoen", "displayName": "Usado en", "type": "DateTime", "required": false }
+      ],
+      "keys": [
+        { "schemaName": "cr07a_consecutivo_codigo_key", "attributes": ["cr07a_name"] }
+      ]
+    },
+    {
+      "displayName": "Plantilla de contrato",
+      "displayCollectionName": "Plantillas de contratos",
+      "description": "Registro versionado de plantillas y esquemas de extracción.",
+      "logicalName": "cr07a_plantillacontrato",
+      "primaryNameAttribute": "cr07a_name",
+      "ownership": "OrganizationOwned",
+      "columns": [
+        { "logicalName": "cr07a_name", "displayName": "Plantilla", "type": "Text", "maxLength": 160, "required": true },
+        { "logicalName": "cr07a_tipocontrato", "displayName": "Tipo de contrato", "type": "Choice", "optionsRef": "contractTypes", "required": true },
+        { "logicalName": "cr07a_version", "displayName": "Version", "type": "Text", "maxLength": 40, "required": true },
+        { "logicalName": "cr07a_activa", "displayName": "Activa", "type": "TwoOptions", "defaultValue": true, "required": true },
+        { "logicalName": "cr07a_promptversion", "displayName": "Version del prompt", "type": "Text", "maxLength": 100, "required": false },
+        { "logicalName": "cr07a_esquemajson", "displayName": "Esquema de campos JSON", "type": "MultilineText", "maxLength": 500000, "required": false },
+        { "logicalName": "cr07a_notas", "displayName": "Notas", "type": "MultilineText", "maxLength": 100000, "required": false },
+        { "logicalName": "cr07a_hashcontrato", "displayName": "Hash fuente contrato", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_hashacta", "displayName": "Hash fuente acta", "type": "Text", "maxLength": 80, "required": false },
+        { "logicalName": "cr07a_archivocontrato", "displayName": "Archivo plantilla contrato", "type": "File", "maxSizeMb": 128, "required": false },
+        { "logicalName": "cr07a_archivoacta", "displayName": "Archivo plantilla acta", "type": "File", "maxSizeMb": 128, "required": false }
+      ],
+      "keys": [
+        { "schemaName": "cr07a_plantilla_nombre_key", "attributes": ["cr07a_name"] }
+      ]
+    }
+  ],
+  "templateSeed": {
+    "name": "Copiers v1.0",
+    "type": 645260000,
+    "version": "1.0",
+    "promptVersion": "contracts-copiers-extraction-v1",
+    "contractHash": "89BED595B52BF1FD7EC51FA1A637E296DAFB6D7EEEF4176D2D6A87ABAD0F1553",
+    "actaHash": "458AA30C4CA15B6FA10572FEE662B41435FBDC3E370A4CBB140CF62CAA834144"
+  },
+  "consecutiveSeed": [
+    ["WD001-2025", "CLOUD", "INSSA", "OUTSOURCING", null],
+    ["VE001-2025", "COPIERS", "CENTRAL DE SOLDADURAS", "IMPRESION SIN CLAUSULA DE DEVOLCION DE EQUIPOS", null],
+    ["UF001-2025", "COPIERS", "TRIADA", "IMPRESION CON CLAUSULA DE ROBO O DAÑO DE EQUIPO", null],
+    ["TG001-2025", "COPIERS", "AERORENTAL", "IMPRESION", null],
+    ["SH002-2025", "CLOUD", "HIPLANTRO", "ACRONIS EDR Y EMAIL SECURITY", null],
+    ["RI001-2025", "CLOUD", "IMPORTADORA OKLA", "AZURE", null],
+    ["QJ001-2025", "CLOUD", "ALCALICOOP", "POWER BI PRO", null],
+    ["PK001-2025", "CLOUD", "COMESTIBLES INTEGRALES", "POWER BI PRO", null],
+    ["OL001-2025", "CLOUD", "SECOM GPS", "MODERN WORK", null],
+    ["ÑM001-2026", "COPIERS", "JEN SA", "IMPRESION", null],
+    ["NN001-2026", "COPIERS", "CRIYA SAS", "IMPRESION", null],
+    ["MÑ001-2026", "COPIERS", "INVERSIONES SAINT PABLO", "IMPRESION", null],
+    ["LO001-2026", "CLOUD", "PAMPA", "PLANTILLA BORRADOR CLOUD", null],
+    ["KP001-2026", "CLOUD", "FARMALOGICA", "MIGRACION MODERNWORK", null],
+    ["JQ001-2026", "CLOUD", "COLEGIATURA", "AZURE", null],
+    ["IR001-2026", "CLOUD", "CONTINENTE", "MODERN WORK - MIGRACION", null],
+    ["ABZ001-2026", "CLOUD", "FLUXA", "MODERN WORK - MIGRACION - PENDIENTE", null],
+    ["ACY001-2026", "CLOUD", "DISPOMED", "MODERN WORK", null],
+    ["ADX001-2026", "CLOUD", "TERMOTECNICA", "MODERN WORK", null],
+    ["AEW001-2026", "CLOUD", "ISG", "MODERN WORK - MAYORISTA", null],
+    ["AFV001-2026", "CLOUD", "ELECTROFISIATRIA", "MODERN WORK FABRIC", null],
+    ["AGU001-2026", "CLOUD", "TRAFALGAR TOURS", "MODERN WORK", null],
+    ["UF002-2026", "COPIERS", "TRIADA", "MULTIFUNCIONAL CON CLAUSULA DE PERDIDA DE EQUIPO", null],
+    ["AHT001-2026", "CLOUD", "ORDUZ", "AZURE", null],
+    ["AIS001-2026", "CLOUD", "CONSULTING AND AUDITING", "MODERN WORK", null],
+    ["AJR001-2026", "CLOUD", "ORDUZ", "MODERN WORK", null],
+    ["AKQ001-2026", "CLOUD", "INFINITECH", "MODERN WORK - MAYORISTA", null],
+    ["ALP001-2026", "CLOUD", "COLEGIATURA", "MODERN WORK", null],
+    ["AMO001-2026", "CLOUD", "HNC", "MODERN WORK - MAYORISTA", null],
+    ["ANN001-2026", "CLOUD", "SINERGIA", "MODERN WORK", null],
+    ["AÑM001-2026", "CLOUD", "DAG", "MODERN WORK - MAYORISTA", null],
+    ["AOL001-2026", "CLOUD", "VICPARK", "MODERN WORK", null],
+    ["APK001-2026", "CLOUD", "ENERGEZA", "MODERN WORK", null],
+    ["AQJ001-2026", "COPIERS", "KAIROS SOLUTIONS", "IMPRESION CON ORDEN DE SERVICIO", 2453],
+    ["ARI001-2026", null, null, null, null],
+    ["ASH001-2026", null, null, null, null],
+    ["ATG001-2026", null, null, null, null],
+    ["AUF001-2026", null, null, null, null],
+    ["AVE001-2026", null, null, null, null],
+    ["AWD001-2026", null, null, null, null],
+    ["AXC001-2026", null, null, null, null],
+    ["AYB001-2026", null, null, null, null],
+    ["AZA001-2026", null, null, null, null]
+  ]
+}

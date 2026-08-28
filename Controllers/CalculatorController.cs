@@ -4,14 +4,16 @@ using Microsoft.Identity.Web;
 using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Models.Crm;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
+using CotizadorInterno.Web.Services.Crm;
 using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http.Json;
-using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -25,9 +27,10 @@ public sealed class CalculatorController : Controller
 {
     private readonly IDataverseService _dataverse;
     private readonly IQuoteCalculator _calculator;
-    private readonly IAzureOpenAIQuoteProposalService _proposalService;
+    private readonly ICrmRepository _crmRepository;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly CalculatorOptions _calculatorOptions;
+    private readonly bool _crmCalculatorSyncEnabled;
     private readonly ILogger<CalculatorController> _logger;
     private const string DataverseScope = "https://orgc79ca19c.crm2.dynamics.com/user_impersonation";
     private const int ProvisioningDescriptionMaxLength = 4000;
@@ -45,29 +48,345 @@ public sealed class CalculatorController : Controller
     public CalculatorController(
         IDataverseService dataverse,
         IQuoteCalculator calculator,
-        IAzureOpenAIQuoteProposalService proposalService,
+        ICrmRepository crmRepository,
         IHttpClientFactory httpClientFactory,
         IOptions<CalculatorOptions> calculatorOptions,
-        ILogger<CalculatorController> logger)
+        ILogger<CalculatorController> logger,
+        IConfiguration? configuration = null)
     {
         _dataverse = dataverse;
         _calculator = calculator;
-        _proposalService = proposalService;
+        _crmRepository = crmRepository;
         _httpClientFactory = httpClientFactory;
         _calculatorOptions = calculatorOptions.Value;
+        _crmCalculatorSyncEnabled =
+            configuration?.GetValue<bool>("Crm:CalculatorSyncEnabled") ?? false;
         _logger = logger;
     }
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> Index(CancellationToken ct)
+    public async Task<IActionResult> Index(
+        [FromQuery] string? scenarioId,
+        [FromQuery] string? crmDealId,
+        CancellationToken ct,
+        [FromQuery] bool embedded = false)
     {
         var currentUser = await _dataverse.GetCurrentUserAsync(ct);
-        var storedScenarios = await _dataverse.GetScenariosForUserAsync(ct);
+        if (embedded
+            && !Request.Query.ContainsKey("newCrmOpportunity")
+            && !string.IsNullOrWhiteSpace(scenarioId))
+        {
+            try
+            {
+                ScenarioStoredDto? embeddedScenario;
+                if (_crmCalculatorSyncEnabled
+                    && !string.IsNullOrWhiteSpace(crmDealId)
+                    && AppModuleAccessPolicy.CanAccess(AppModule.Crm, currentUser))
+                {
+                    embeddedScenario = await FindAuthorizedScenarioAsync(
+                        scenarioId,
+                        crmDealId,
+                        currentUser,
+                        ct);
+                }
+                else
+                {
+                    embeddedScenario = await _dataverse.GetScenarioByIdAsync(scenarioId.Trim(), ct);
+                    if (embeddedScenario is not null
+                        && (currentUser is null
+                            || string.IsNullOrWhiteSpace(currentUser.SystemUserId)
+                            || !string.Equals(
+                                embeddedScenario.OwnerSystemUserId,
+                                currentUser.SystemUserId,
+                                StringComparison.OrdinalIgnoreCase)))
+                    {
+                        throw new CrmAccessDeniedException(
+                            "El escenario no pertenece al usuario actual.");
+                    }
+                }
+
+                if (embeddedScenario is null)
+                {
+                    return NotFound(new
+                    {
+                        message = "El escenario solicitado no existe o no está disponible.",
+                        scenarioId,
+                        traceId = HttpContext.TraceIdentifier
+                    });
+                }
+
+                ViewData["EmbeddedCalculator"] = true;
+                ViewData["CurrentUser"] = currentUser;
+                ViewData["StoredScenarios"] = new List<ScenarioStoredDto> { embeddedScenario };
+                ViewData["ScenarioGroups"] = Array.Empty<ScenarioGroupStoredDto>();
+                ViewData["ProposalHistoryByGroup"] =
+                    new Dictionary<string, IReadOnlyList<ProposalExportHistoryItemDto>>(
+                        StringComparer.OrdinalIgnoreCase);
+                ViewData["CrmCalculatorSyncEnabled"] = _crmCalculatorSyncEnabled;
+                return View("Index");
+            }
+            catch (Exception ex) when (IsScenarioAccessException(ex))
+            {
+                return BuildScenarioAccessError(ex);
+            }
+        }
+
+        var storedScenarios = (await _dataverse.GetScenariosForUserAsync(ct)).ToList();
+        ScenarioStoredDto? contextualScenario = null;
+
+        if (_crmCalculatorSyncEnabled
+            && !string.IsNullOrWhiteSpace(scenarioId)
+            && !string.IsNullOrWhiteSpace(crmDealId)
+            && AppModuleAccessPolicy.CanAccess(AppModule.Crm, currentUser))
+        {
+            try
+            {
+                var requestedScenario = await FindAuthorizedScenarioAsync(
+                    scenarioId,
+                    crmDealId,
+                    currentUser,
+                    ct);
+                if (requestedScenario is not null)
+                {
+                    contextualScenario = requestedScenario;
+                    var existingIndex = storedScenarios.FindIndex(item =>
+                        string.Equals(
+                            item.ScenarioId?.Trim(),
+                            requestedScenario.ScenarioId?.Trim(),
+                            StringComparison.OrdinalIgnoreCase));
+                    if (existingIndex >= 0)
+                        storedScenarios[existingIndex] = requestedScenario;
+                    else
+                        storedScenarios.Add(requestedScenario);
+                }
+            }
+            catch (Exception ex) when (IsScenarioAccessException(ex))
+            {
+                return BuildScenarioAccessError(ex);
+            }
+        }
+
+        var proposalHistory = (await _dataverse.GetProposalHistoryForUserAsync(ct))
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+        if (contextualScenario is not null)
+        {
+            try
+            {
+                var contextualGroupId = FirstNonEmpty(
+                    contextualScenario.GroupId,
+                    contextualScenario.ScenarioId);
+                var groupScenarios = await _dataverse.GetScenariosByGroupIdAsync(contextualGroupId, ct);
+                if (groupScenarios.Any(item => !string.Equals(
+                        item.OwnerSystemUserId,
+                        contextualScenario.OwnerSystemUserId,
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new ScenarioPersistenceConflictException(
+                        "Los escenarios del negocio no comparten el mismo propietario.");
+                }
+                proposalHistory[contextualGroupId] =
+                    await _dataverse.GetProposalHistoryAsync(contextualGroupId, ct);
+            }
+            catch (Exception ex) when (IsScenarioAccessException(ex))
+            {
+                return BuildScenarioAccessError(ex);
+            }
+        }
+        var groups = BuildScenarioGroups(storedScenarios, proposalHistory);
+
+        if (embedded)
+        {
+            ViewData["EmbeddedCalculator"] = true;
+            if (!Request.Query.ContainsKey("newCrmOpportunity"))
+            {
+                storedScenarios = string.IsNullOrWhiteSpace(scenarioId)
+                    ? []
+                    : storedScenarios
+                        .Where(item => string.Equals(item.ScenarioId, scenarioId, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+            }
+        }
 
         ViewData["CurrentUser"] = currentUser;
         ViewData["StoredScenarios"] = storedScenarios;
-        return View();
+        ViewData["ScenarioGroups"] = groups;
+        ViewData["ProposalHistoryByGroup"] = proposalHistory;
+        ViewData["CrmCalculatorSyncEnabled"] = _crmCalculatorSyncEnabled;
+        return embedded ? View("Index") : View("Workspace");
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> Proposal(
+        [FromQuery] string? scenarioId,
+        [FromQuery] string? crmDealId,
+        CancellationToken ct,
+        [FromQuery] string? groupId = null)
+    {
+        if (string.IsNullOrWhiteSpace(groupId) && string.IsNullOrWhiteSpace(scenarioId))
+        {
+            return BadRequest(new
+            {
+                message = "Selecciona, calcula y guarda un escenario antes de generar la propuesta.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+        ScenarioStoredDto? accessScenario;
+        try
+        {
+            accessScenario = !string.IsNullOrWhiteSpace(scenarioId)
+                ? (_crmCalculatorSyncEnabled
+                    ? await FindAuthorizedScenarioAsync(scenarioId, crmDealId, currentUser, ct)
+                    : await FindCurrentUserScenarioAsync(scenarioId, ct))
+                : null;
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+
+        if (!string.IsNullOrWhiteSpace(scenarioId) && accessScenario is null)
+        {
+            return NotFound(new
+            {
+                message = "El escenario solicitado no existe o no está disponible para tu usuario.",
+                scenarioId,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        var normalizedGroupId = FirstNonEmpty(groupId, accessScenario?.GroupId, accessScenario?.ScenarioId).Trim();
+        if (accessScenario is not null
+            && !string.Equals(
+                FirstNonEmpty(accessScenario.GroupId, accessScenario.ScenarioId),
+                normalizedGroupId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Conflict(new
+            {
+                message = "El escenario seleccionado no pertenece al negocio solicitado.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+        IReadOnlyList<ScenarioStoredDto> authorizedScenarios;
+        try
+        {
+            // Autoriza el grupo completo antes de excluir posibilidades de la propuesta.
+            // Así una fila ajena no puede quedar oculta por IncludeInProposal y abrir acceso
+            // al historial o a la configuración compartida del grupo.
+            authorizedScenarios = await _dataverse.GetScenariosByGroupIdAsync(normalizedGroupId, ct);
+            if (authorizedScenarios.Count == 0)
+                throw new ScenarioPersistenceNotFoundException("El escenario no existe o no está disponible.");
+            var authorizedOwnerId = accessScenario?.OwnerSystemUserId
+                ?? currentUser?.SystemUserId
+                ?? "";
+            if (string.IsNullOrWhiteSpace(authorizedOwnerId))
+                throw new CrmAccessDeniedException("No fue posible validar el usuario actual.");
+            if (authorizedScenarios.Any(item => !string.Equals(
+                    item.OwnerSystemUserId,
+                    authorizedOwnerId,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                if (accessScenario is null)
+                    throw new CrmAccessDeniedException("El negocio no pertenece al usuario actual.");
+                throw new ScenarioPersistenceConflictException(
+                    "Los escenarios del negocio no comparten el mismo propietario.");
+            }
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+
+        var scenarios = authorizedScenarios
+            .Where(item => item.IncludeInProposal)
+            .OrderBy(item => item.PossibilityOrder)
+            .ToList();
+        if (scenarios.Count == 0)
+        {
+            return NotFound(new
+            {
+                message = "El negocio no contiene escenarios disponibles para la propuesta.",
+                groupId = normalizedGroupId,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+        if (scenarios.Count > 3)
+            return Conflict(new { message = "El negocio supera el máximo de tres escenarios.", traceId = HttpContext.TraceIdentifier });
+
+        if (accessScenario is null)
+        {
+            accessScenario = scenarios[0];
+        }
+
+        try
+        {
+            var possibilityModels = new List<CalculatorProposalPossibilityViewModel>(scenarios.Count);
+            foreach (var scenario in scenarios)
+            {
+                if (scenario.LastResult is null)
+                    throw new InvalidOperationException($"Calcula el escenario '{scenario.PossibilityName}' antes de generar la propuesta.");
+                var currentHash = ScenarioInputHasher.Compute(scenario);
+                if (!string.IsNullOrWhiteSpace(scenario.LastResult.InputHash)
+                    && !string.Equals(scenario.LastResult.InputHash, currentHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"El escenario '{scenario.PossibilityName}' cambió después del último cálculo.");
+                }
+                _ = RecalculateStoredScenario(scenario);
+                var possibilityLines = scenario.Lines.Select(BuildProposalLine).ToList();
+                possibilityModels.Add(new CalculatorProposalPossibilityViewModel
+                {
+                    ScenarioId = scenario.ScenarioId,
+                    Title = FirstNonEmpty(scenario.PossibilityName, scenario.ScenarioName, $"Escenario {scenario.PossibilityOrder}"),
+                    Order = scenario.PossibilityOrder,
+                    IsRecommended = scenario.IsRecommended,
+                    TotalMonthlySale = Round2(possibilityLines.Sum(line => line.MonthlySale)),
+                    TotalContractSale = Round2(possibilityLines.Sum(line => line.ContractSale)),
+                    TotalMonthlyVat = Round2(possibilityLines.Sum(line => line.MonthlyVat)),
+                    TotalContractVat = Round2(possibilityLines.Sum(line => line.ContractVat)),
+                    Lines = possibilityLines
+                });
+            }
+
+            var primary = possibilityModels.FirstOrDefault(item => item.IsRecommended) ?? possibilityModels[0];
+            var history = await _dataverse.GetProposalHistoryAsync(normalizedGroupId, ct);
+            var latestConfiguration = await _dataverse.GetLatestProposalConfigurationAsync(normalizedGroupId, ct);
+            var model = new CalculatorProposalViewModel
+            {
+                GroupId = normalizedGroupId,
+                GroupName = FirstNonEmpty(scenarios[0].GroupName, scenarios[0].ScenarioName, "Negocio"),
+                EconomicHash = BuildGroupEconomicHash(scenarios),
+                LatestConfigurationJson = latestConfiguration?.ConfigurationJson ?? "",
+                ScenarioId = accessScenario.ScenarioId,
+                CrmDealId = accessScenario.CrmDealId,
+                ScenarioName = FirstNonEmpty(scenarios[0].GroupName, scenarios[0].ScenarioName, "Negocio"),
+                PreparedByName = currentUser?.DisplayName?.Trim() ?? "",
+                PreparedByEmail = currentUser?.Email?.Trim() ?? "",
+                TotalMonthlySale = primary.TotalMonthlySale,
+                TotalContractSale = primary.TotalContractSale,
+                TotalMonthlyVat = primary.TotalMonthlyVat,
+                TotalContractVat = primary.TotalContractVat,
+                Lines = primary.Lines,
+                Possibilities = possibilityModels,
+                ExportHistory = history
+            };
+            return View("Proposal", model);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message,
+                groupId = normalizedGroupId,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
     }
 
     [HttpGet]
@@ -160,6 +479,7 @@ public sealed class CalculatorController : Controller
 
         return Json(new
         {
+            inputHash = ScenarioInputHasher.Compute(input),
             points = result.Points,
             commission = result.Commission,
             prorationDays = result.ProrationDays,
@@ -171,6 +491,7 @@ public sealed class CalculatorController : Controller
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveScenario([FromBody] ScenarioSaveRequest input, CancellationToken ct)
     {
         if (input is null)
@@ -181,22 +502,670 @@ public sealed class CalculatorController : Controller
         if (string.IsNullOrWhiteSpace(input.ScenarioId))
             return BadRequest("ScenarioId requerido.");
 
-        if (input.Lines is null || input.Lines.Count == 0)
-            return BadRequest("Debe incluir lÃ­neas.");
+        if (input.LastResult is not null)
+        {
+            try
+            {
+                input.LastResult = BuildAuthoritativeScenarioSnapshot(input);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.Message,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+        }
 
-        await _dataverse.UpsertScenarioAsync(input, ct);
-        return Ok(new { ok = true });
+        try
+        {
+            var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+            if (_crmCalculatorSyncEnabled
+                && !string.IsNullOrWhiteSpace(input.CrmDealId)
+                && AppModuleAccessPolicy.CanAccess(AppModule.Crm, currentUser))
+            {
+                var scenario = await FindAuthorizedScenarioAsync(
+                    input.ScenarioId,
+                    input.CrmDealId,
+                    currentUser,
+                    ct);
+                if (scenario is null)
+                {
+                    return NotFound(new
+                    {
+                        message = "El escenario asociado al negocio ya no existe.",
+                        scenarioId = input.ScenarioId,
+                        traceId = HttpContext.TraceIdentifier
+                    });
+                }
+
+                if (scenario.IsCrmSharedAccess)
+                {
+                    // El acceso compartido por CRM conserva el contrato de actualización
+                    // existente: la jerarquía solo puede administrarla su propietario.
+                    var sharedUpdate = await _dataverse.UpdateScenarioByIdAuthorizedAsync(
+                        input,
+                        scenario.OwnerSystemUserId,
+                        ct);
+                    return Ok(sharedUpdate);
+                }
+
+                var updated = await _dataverse.SaveScenarioV2Async(input, updateOnly: true, ct);
+                return Ok(updated);
+            }
+
+            var saved = await _dataverse.SaveScenarioV2Async(input, updateOnly: false, ct);
+            return Ok(saved);
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreatePossibility(
+        [FromBody] ScenarioPossibilityCreateRequest? request,
+        CancellationToken ct)
+    {
+        request ??= new ScenarioPossibilityCreateRequest();
+        try
+        {
+            var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+            if (currentUser is null || string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+                return Forbid();
+
+            var groupId = request.GroupId?.Trim() ?? "";
+            var isNewGroup = string.IsNullOrWhiteSpace(groupId);
+            var existing = isNewGroup
+                ? new List<ScenarioStoredDto>()
+                : (await _dataverse.GetScenariosByGroupIdAsync(groupId, ct))
+                    .OrderBy(item => item.PossibilityOrder)
+                    .ToList();
+
+            if (existing.Any(item => !string.Equals(
+                    item.OwnerSystemUserId,
+                    currentUser.SystemUserId,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                return Forbid();
+            }
+            if (existing.Count >= 3)
+                return Conflict(new { message = "Un negocio admite máximo tres escenarios.", traceId = HttpContext.TraceIdentifier });
+
+            groupId = isNewGroup ? Guid.NewGuid().ToString("D") : groupId;
+            var occupied = existing.Select(item => item.PossibilityOrder).ToHashSet();
+            var order = Enumerable.Range(1, 3).First(value => !occupied.Contains(value));
+            var source = existing.FirstOrDefault(item => string.Equals(
+                    item.ScenarioId,
+                    request.SourceScenarioId?.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                ?? (request.DuplicateSource ? existing.FirstOrDefault() : null);
+
+            if (!string.IsNullOrWhiteSpace(request.SourceScenarioId) && source is null)
+            {
+                return NotFound(new
+                {
+                    message = "El escenario que deseas duplicar no pertenece a este negocio.",
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            var groupName = isNewGroup
+                ? FirstNonEmpty(request.Name, $"Negocio {DateTime.Now:dd/MM/yyyy HH:mm}")
+                : FirstNonEmpty(existing[0].GroupName, existing[0].ScenarioName, "Negocio");
+            var possibilityName = isNewGroup
+                ? "Escenario 1"
+                : FirstNonEmpty(request.Name, $"Escenario {order}");
+            var save = new ScenarioSaveRequest
+            {
+                ScenarioId = Guid.NewGuid().ToString("D"),
+                GroupId = groupId,
+                GroupName = groupName,
+                PossibilityName = possibilityName,
+                ScenarioName = possibilityName,
+                PossibilityOrder = order,
+                IncludeInProposal = true,
+                IsRecommended = existing.Count == 0,
+                DealType = source?.DealType ?? (int)DealType.ClienteNuevo,
+                RequiresProration = source?.RequiresProration ?? false,
+                StartDate = ParseScenarioDate(source?.StartDate),
+                EndDate = ParseScenarioDate(source?.EndDate),
+                Lines = source is null || !request.DuplicateSource
+                    ? []
+                    : source.Lines.Select((line, index) => new ScenarioLineInput
+                    {
+                        LineId = Guid.NewGuid().ToString("D"),
+                        LineOrder = index + 1,
+                        BusinessType = line.BusinessType,
+                        ProductId = line.ProductId,
+                        ProductDescription = line.ProductDescription,
+                        CostUnit = line.CostUnit,
+                        MarginPercent = line.MarginPercent,
+                        ContractMonths = line.ContractMonths,
+                        Quantity = line.Quantity,
+                        SuggestedRetailPrice = line.SuggestedRetailPrice,
+                        Acelerador = line.Acelerador,
+                        HasVat = line.HasVat
+                    }).ToList(),
+                LastResult = source is null || !request.DuplicateSource || source.LastResult is null
+                    ? null
+                    : new ScenarioResultSnapshot
+                    {
+                        InputHash = source.LastResult.InputHash,
+                        Points = source.LastResult.Points,
+                        Commission = source.LastResult.Commission,
+                        ProrationDays = source.LastResult.ProrationDays,
+                        ProrationFactor = source.LastResult.ProrationFactor,
+                        ProrationText = source.LastResult.ProrationText,
+                        TotalMonthlySale = source.LastResult.TotalMonthlySale,
+                        TotalSale = source.LastResult.TotalSale
+                    }
+            };
+
+            var saved = await _dataverse.SaveScenarioV2Async(save, updateOnly: false, ct)
+                ?? throw new InvalidOperationException("Dataverse no devolvió el escenario creado.");
+            return Ok(saved);
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RenameScenarioGroup(
+        [FromBody] ScenarioGroupRenameRequest? request,
+        CancellationToken ct)
+    {
+        var groupId = request?.GroupId?.Trim() ?? "";
+        var groupName = request?.GroupName?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(groupId))
+            return BadRequest(new { message = "Selecciona un negocio válido.", traceId = HttpContext.TraceIdentifier });
+        if (groupId.Length > 100)
+            return BadRequest(new { message = "El identificador del negocio admite máximo 100 caracteres.", traceId = HttpContext.TraceIdentifier });
+        if (string.IsNullOrWhiteSpace(groupName))
+            return BadRequest(new { message = "El nombre del negocio es obligatorio.", traceId = HttpContext.TraceIdentifier });
+        if (groupName.Length > 200)
+            return BadRequest(new { message = "El nombre del negocio admite máximo 200 caracteres.", traceId = HttpContext.TraceIdentifier });
+
+        try
+        {
+            var changed = await _dataverse.RenameScenarioGroupAsync(groupId, groupName, ct);
+            if (!changed)
+                return NotFound(new { message = "El negocio no existe o no está disponible para tu usuario.", traceId = HttpContext.TraceIdentifier });
+            return Ok(new { ok = true, groupId, groupName });
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RecommendPossibility(
+        [FromBody] ScenarioPossibilityRecommendationRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null
+            || string.IsNullOrWhiteSpace(request.GroupId)
+            || string.IsNullOrWhiteSpace(request.ScenarioId))
+        {
+            return BadRequest(new { message = "Selecciona un escenario válido.", traceId = HttpContext.TraceIdentifier });
+        }
+
+        try
+        {
+            var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+            var scenarios = (await _dataverse.GetScenariosByGroupIdAsync(request.GroupId.Trim(), ct))
+                .OrderBy(item => item.PossibilityOrder)
+                .ToList();
+            if (scenarios.Count == 0)
+                return NotFound(new { message = "El negocio no existe.", traceId = HttpContext.TraceIdentifier });
+            if (currentUser is null || scenarios.Any(item => !string.Equals(
+                    item.OwnerSystemUserId,
+                    currentUser.SystemUserId,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                return Forbid();
+            }
+            if (!scenarios.Any(item => string.Equals(item.ScenarioId, request.ScenarioId.Trim(), StringComparison.OrdinalIgnoreCase)))
+                return NotFound(new { message = "El escenario no pertenece al negocio.", traceId = HttpContext.TraceIdentifier });
+
+            var changed = await _dataverse.RecommendScenarioPossibilityAsync(
+                request.GroupId.Trim(),
+                request.ScenarioId.Trim(),
+                ct);
+            if (!changed)
+                return NotFound(new { message = "El escenario no pertenece al negocio.", traceId = HttpContext.TraceIdentifier });
+            return Ok(new { ok = true });
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ModuleAuthorize(AppModule.Crm)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendToCrm(
+        [FromBody] CrmDealFromCalculatorRequest? request,
+        CancellationToken ct)
+    {
+        if (!_crmCalculatorSyncEnabled)
+        {
+            var problem = new ProblemDetails
+            {
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Title = "Sincronización con CRM temporalmente no disponible",
+                Detail = "Disponible cuando el CRM se publique para todos.",
+                Instance = HttpContext.Request.Path
+            };
+            problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+
+            var result = new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable
+            };
+            result.ContentTypes.Add("application/problem+json");
+            return result;
+        }
+
+        if (request is null)
+            ModelState.AddModelError("", "Envía los datos del registro comercial.");
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+
+        var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+        ScenarioStoredDto? scenario;
+        try
+        {
+            scenario = await FindAuthorizedScenarioAsync(
+                request!.ScenarioId,
+                request.DealId,
+                currentUser,
+                ct);
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+
+        if (scenario is null)
+        {
+            return NotFound(new
+            {
+                message = "El escenario solicitado no existe o no está disponible para tu usuario.",
+                scenarioId = request.ScenarioId,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        QuoteScenarioResult? authoritativeResult = null;
+        if (request.Kind == CrmDealKind.QuotedBusiness)
+        {
+            if (scenario.LastResult is null)
+            {
+                return BadRequest(new
+                {
+                    message = "Calcula y guarda el escenario antes de crear un negocio cotizado.",
+                    scenarioId = scenario.ScenarioId,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            try
+            {
+                authoritativeResult = RecalculateStoredScenario(scenario);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.Message,
+                    scenarioId = scenario.ScenarioId,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+        }
+
+        var command = new CrmCalculatorDealUpsertCommand
+        {
+            DealId = request.DealId?.Trim() ?? "",
+            ScenarioId = scenario.ScenarioId,
+            CompanyId = request.CompanyId?.Trim() ?? "",
+            PrimaryContactId = request.PrimaryContactId?.Trim() ?? "",
+            Name = request.Name?.Trim() ?? "",
+            Kind = request.Kind,
+            EstimatedValue = request.Kind == CrmDealKind.EstimatedOpportunity
+                ? request.EstimatedValue
+                : 0m,
+            Probability = request.Probability,
+            ExpectedCloseDate = request.ExpectedCloseDate,
+            NextAction = request.NextAction?.Trim() ?? "",
+            NextActionAtUtc = request.NextActionAtUtc,
+            BusinessLine = request.BusinessLine?.Trim() ?? "",
+            ApplyCommercialFields = true,
+            Score = authoritativeResult?.Points,
+            ContractValue = authoritativeResult?.TotalSale
+        };
+
+        try
+        {
+            var accessScope = BuildCalculatorCrmAccessScope(currentUser);
+            var saved = await _crmRepository.UpsertDealFromCalculatorAsync(
+                command,
+                accessScope,
+                ct);
+            return Ok(new
+            {
+                ok = true,
+                message = request.Kind == CrmDealKind.QuotedBusiness
+                    ? "Negocio cotizado sincronizado con el CRM."
+                    : "Oportunidad estimada sincronizada con el CRM.",
+                deal = saved,
+                canMarkWon = saved.CanMarkWon,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+        catch (CrmValidationException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+        catch (CrmNotFoundException ex)
+        {
+            return NotFound(new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+        catch (CrmConflictException ex)
+        {
+            return Conflict(new
+            {
+                message = ex.Message,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "No fue posible sincronizar el escenario {ScenarioId} con CRM. TraceId: {TraceId}.",
+                scenario.ScenarioId,
+                HttpContext.TraceIdentifier);
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = "No fue posible sincronizar el escenario con el CRM.",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
     }
 
     [HttpDelete]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteScenario([FromQuery] string scenarioId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(scenarioId))
             return BadRequest("ScenarioId requerido.");
 
-        await _dataverse.DeleteScenarioAsync(scenarioId, ct);
-        return Ok(new { ok = true });
+        var normalizedScenarioId = scenarioId.Trim();
+        if (_crmCalculatorSyncEnabled)
+        {
+            CrmDealSummary? linkedDeal;
+            try
+            {
+                linkedDeal = await _crmRepository.GetDealByScenarioIdAsync(
+                    normalizedScenarioId,
+                    ct);
+            }
+            catch (CrmConflictException ex)
+            {
+                return BuildScenarioAccessError(ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "No fue posible verificar el vínculo CRM antes de eliminar el escenario {ScenarioId}. TraceId: {TraceId}.",
+                    normalizedScenarioId,
+                    HttpContext.TraceIdentifier);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    message = "No fue posible verificar si el escenario está vinculado al CRM. No se eliminó ningún registro.",
+                    scenarioId = normalizedScenarioId,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            if (linkedDeal is not null)
+            {
+                return Conflict(new
+                {
+                    message = "El escenario está vinculado a un negocio CRM y no se puede eliminar.",
+                    scenarioId = normalizedScenarioId,
+                    crmDealId = linkedDeal.Id,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+        }
+
+        try
+        {
+            var deleted = await _dataverse.DeleteScenarioAsync(normalizedScenarioId, ct);
+            if (!deleted)
+            {
+                return NotFound(new
+                {
+                    message = "El escenario no existe o no pertenece a tu usuario.",
+                    scenarioId = normalizedScenarioId,
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            return Ok(new { ok = true });
+        }
+        catch (ScenarioPersistenceConflictException ex)
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ProposalHistory([FromQuery] string groupId, CancellationToken ct)
+    {
+        try
+        {
+            _ = await GetOwnedScenarioGroupAsync(groupId, ct);
+            var history = await _dataverse.GetProposalHistoryAsync(groupId.Trim(), ct);
+            return Json(history);
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> ProposalExport(
+        [FromQuery] string groupId,
+        [FromQuery] string exportId,
+        CancellationToken ct,
+        [FromQuery] string? scenarioId = null,
+        [FromQuery] string? crmDealId = null)
+    {
+        if (string.IsNullOrWhiteSpace(exportId))
+            return BadRequest(new { message = "ExportId requerido.", traceId = HttpContext.TraceIdentifier });
+        try
+        {
+            _ = await GetAuthorizedScenarioGroupAsync(groupId, scenarioId, crmDealId, ct);
+            var history = await _dataverse.GetProposalHistoryAsync(groupId.Trim(), ct);
+            if (!history.Any(item => string.Equals(item.ExportId, exportId.Trim(), StringComparison.OrdinalIgnoreCase)))
+                return NotFound(new { message = "La exportación no pertenece al escenario.", traceId = HttpContext.TraceIdentifier });
+            var download = await _dataverse.DownloadProposalExportAsync(exportId.Trim(), ct);
+            if (download is null)
+                return NotFound(new { message = "El PDF exportado no está disponible.", traceId = HttpContext.TraceIdentifier });
+            return File(download.Content, download.ContentType, download.FileName);
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(11 * 1024 * 1024)]
+    public async Task<IActionResult> ProposalExports(
+        [FromForm] string groupId,
+        [FromForm] string economicHash,
+        [FromForm] string idempotencyKey,
+        [FromForm] string configurationJson,
+        [FromForm] string fileName,
+        [FromForm] IFormFile? pdf,
+        CancellationToken ct,
+        [FromForm] string? scenarioId = null,
+        [FromForm] string? crmDealId = null)
+    {
+        if (pdf is null || pdf.Length is <= 0 or > 10 * 1024 * 1024)
+            return BadRequest(new { message = "El PDF debe tener un tamaño entre 1 byte y 10 MB.", traceId = HttpContext.TraceIdentifier });
+        if (!string.Equals(pdf.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "El archivo exportado debe ser un PDF.", traceId = HttpContext.TraceIdentifier });
+        if (!Guid.TryParse(idempotencyKey, out _))
+            return BadRequest(new { message = "La llave de exportación no es válida.", traceId = HttpContext.TraceIdentifier });
+        if (Encoding.UTF8.GetByteCount(configurationJson ?? "") > 128 * 1024)
+            return BadRequest(new { message = "La configuración de propuesta supera 128 KB.", traceId = HttpContext.TraceIdentifier });
+
+        try
+        {
+            var scenarios = (await GetAuthorizedScenarioGroupAsync(groupId, scenarioId, crmDealId, ct))
+                .Where(item => item.IncludeInProposal)
+                .OrderBy(item => item.PossibilityOrder)
+                .ToList();
+            if (scenarios.Count is < 1 or > 3)
+                return Conflict(new { message = "La propuesta debe incluir entre uno y tres escenarios.", traceId = HttpContext.TraceIdentifier });
+
+            foreach (var scenario in scenarios)
+            {
+                if (scenario.LastResult is null)
+                    return Conflict(new { message = $"Calcula el escenario '{scenario.PossibilityName}' antes de exportar.", traceId = HttpContext.TraceIdentifier });
+                var inputHash = ScenarioInputHasher.Compute(scenario);
+                if (!string.IsNullOrWhiteSpace(scenario.LastResult.InputHash)
+                    && !string.Equals(scenario.LastResult.InputHash, inputHash, StringComparison.OrdinalIgnoreCase))
+                    return Conflict(new { message = $"El escenario '{scenario.PossibilityName}' cambió después de calcularse.", traceId = HttpContext.TraceIdentifier });
+                _ = RecalculateStoredScenario(scenario);
+            }
+
+            var authoritativeHash = BuildGroupEconomicHash(scenarios);
+            if (!string.Equals(authoritativeHash, economicHash?.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return Conflict(new
+                {
+                    message = "Los valores del escenario cambiaron. Recarga la propuesta antes de exportar.",
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            using var configurationDocument = JsonDocument.Parse(string.IsNullOrWhiteSpace(configurationJson) ? "{}" : configurationJson);
+            var publicPossibilities = scenarios.Select(scenario =>
+            {
+                var lines = scenario.Lines.Select(BuildProposalLine).ToList();
+                return new
+                {
+                    scenarioId = scenario.ScenarioId,
+                    title = FirstNonEmpty(scenario.PossibilityName, scenario.ScenarioName, $"Escenario {scenario.PossibilityOrder}"),
+                    order = scenario.PossibilityOrder,
+                    isRecommended = scenario.IsRecommended,
+                    totalMonthlySale = Round2(lines.Sum(line => line.MonthlySale)),
+                    totalContractSale = Round2(lines.Sum(line => line.ContractSale)),
+                    totalMonthlyVat = Round2(lines.Sum(line => line.MonthlyVat)),
+                    totalContractVat = Round2(lines.Sum(line => line.ContractVat)),
+                    lines
+                };
+            }).ToList();
+            var snapshotJson = JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                groupId = groupId.Trim(),
+                economicHash = authoritativeHash,
+                configuration = configurationDocument.RootElement,
+                possibilities = publicPossibilities
+            });
+            if (Encoding.UTF8.GetByteCount(snapshotJson) > 512 * 1024)
+            {
+                return BadRequest(new
+                {
+                    message = "La propuesta completa supera el límite de 512 KB de configuración. Reduce los textos descriptivos antes de exportar.",
+                    traceId = HttpContext.TraceIdentifier
+                });
+            }
+
+            await using var stream = new MemoryStream((int)pdf.Length);
+            await pdf.CopyToAsync(stream, ct);
+            var bytes = stream.ToArray();
+            if (bytes.Length < 5 || Encoding.ASCII.GetString(bytes, 0, 5) != "%PDF-")
+                return BadRequest(new { message = "El archivo generado no tiene una cabecera PDF válida.", traceId = HttpContext.TraceIdentifier });
+
+            var result = await _dataverse.SaveProposalExportAsync(new ProposalExportSaveRequest
+            {
+                GroupId = groupId.Trim(),
+                OwnerSystemUserId = scenarios[0].OwnerSystemUserId,
+                IdempotencyKey = idempotencyKey.Trim(),
+                EconomicHash = authoritativeHash,
+                ConfigurationJson = snapshotJson,
+                FileName = fileName,
+                PdfContent = bytes,
+                PossibilityCount = scenarios.Count
+            }, ct);
+            return Ok(new
+            {
+                ok = true,
+                exportId = result.Export.ExportId,
+                version = result.Export.Version,
+                fileName = result.Export.FileName,
+                exportedAtUtc = result.Export.ExportedAtUtc,
+                alreadyExisted = result.AlreadyExisted,
+                downloadUrl = Url.Action(nameof(ProposalExport), new
+                {
+                    groupId = groupId.Trim(),
+                    exportId = result.Export.ExportId,
+                    scenarioId = string.IsNullOrWhiteSpace(scenarioId)
+                        ? scenarios[0].ScenarioId
+                        : scenarioId.Trim(),
+                    crmDealId = string.IsNullOrWhiteSpace(crmDealId) ? null : crmDealId.Trim()
+                })
+            });
+        }
+        catch (JsonException)
+        {
+            return BadRequest(new { message = "La configuración de propuesta no contiene JSON válido.", traceId = HttpContext.TraceIdentifier });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message, traceId = HttpContext.TraceIdentifier });
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
     }
 
     [HttpPost]
@@ -230,53 +1199,6 @@ public sealed class CalculatorController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> GenerateProposal([FromBody] QuoteScenarioInput input, CancellationToken ct)
-    {
-        if (input is null)
-            return BadRequest("Payload invalido.");
-
-        NormalizeProrationRules(input);
-
-        if (input.Lines is null || input.Lines.Count == 0)
-            return BadRequest("No hay lineas para generar la propuesta.");
-
-        var licenseValidation = ValidateLicenseCaps(input);
-        if (!string.IsNullOrWhiteSpace(licenseValidation))
-            return BadRequest(licenseValidation);
-
-        var productValidation = ValidateSelectedProducts(input.Lines, "generar la propuesta");
-        if (!string.IsNullOrWhiteSpace(productValidation))
-            return BadRequest(productValidation);
-
-        try
-        {
-            var result = _calculator.Calculate(input);
-            var proposalInput = new QuoteProposalGenerationInput
-            {
-                Scenario = input,
-                Result = result,
-                PreparedByName = ResolveCurrentUserName(),
-                PreparedByEmail = ResolveCurrentUserEmail(),
-                GeneratedAt = DateTimeOffset.UtcNow
-            };
-            var html = await _proposalService.GenerateProposalHtmlAsync(proposalInput, ct);
-            return File(
-                Encoding.UTF8.GetBytes(html),
-                "text/html; charset=utf-8",
-                BuildHtmlFileName(input.ScenarioName));
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "No fue posible generar la propuesta HTML.");
-            return BadRequest(BuildDiagnosticMessage(ex));
-        }
-    }
-
-    [HttpPost]
     public IActionResult ValidateProvisioning([FromBody] ProvisioningRequestInput? input)
     {
         if (input is null)
@@ -304,6 +1226,62 @@ public sealed class CalculatorController : Controller
         {
             return BadRequest("Configura la URL del flujo en Calculator:ProvisioningRequestFlowUrl antes de enviar la solicitud.");
         }
+
+        var currentUser = await _dataverse.GetCurrentUserAsync(ct);
+        ScenarioStoredDto? scenario;
+        try
+        {
+            scenario = _crmCalculatorSyncEnabled
+                ? await FindAuthorizedScenarioAsync(
+                    input.BusinessId,
+                    input.CrmDealId,
+                    currentUser,
+                    ct)
+                : await FindCurrentUserScenarioAsync(input.BusinessId, ct);
+        }
+        catch (Exception ex) when (IsScenarioAccessException(ex))
+        {
+            return BuildScenarioAccessError(ex);
+        }
+
+        if (scenario is null)
+        {
+            return NotFound(new
+            {
+                message = "El escenario de la solicitud no existe o no está disponible para tu usuario.",
+                scenarioId = input.BusinessId?.Trim() ?? "",
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        if (scenario.LastResult is null)
+        {
+            return BadRequest(new
+            {
+                message = "Calcula y guarda el escenario antes de solicitar el aprovisionamiento.",
+                scenarioId = scenario.ScenarioId,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        QuoteScenarioResult authoritativeResult;
+        try
+        {
+            authoritativeResult = RecalculateStoredScenario(scenario);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message,
+                scenarioId = scenario.ScenarioId,
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
+        input.BusinessId = scenario.ScenarioId;
+        input.Scenario = BuildProvisioningScenarioContext(scenario);
+        input.Resultado = BuildProvisioningResult(authoritativeResult);
 
         try
         {
@@ -335,12 +1313,522 @@ public sealed class CalculatorController : Controller
             return BadRequest(message);
         }
 
+        if (!_crmCalculatorSyncEnabled
+            || !AppModuleAccessPolicy.CanAccess(AppModule.Crm, currentUser))
+        {
+            return Ok(new
+            {
+                ok = true,
+                requestId,
+                crmDealId = "",
+                crmSynchronized = false,
+                canMarkWon = false,
+                deal = (CrmDealSummary?)null,
+                message = "Solicitud enviada a aprobación."
+            });
+        }
+
+        CrmDealSummary? markedDeal;
+        try
+        {
+            var accessScope = BuildCalculatorCrmAccessScope(currentUser);
+            _ = await _crmRepository.UpsertDealFromCalculatorAsync(
+                new CrmCalculatorDealUpsertCommand
+                {
+                    DealId = input.CrmDealId?.Trim() ?? "",
+                    ScenarioId = scenario.ScenarioId,
+                    CompanyId = input.Cliente?.ClienteId?.Trim() ?? "",
+                    PrimaryContactId = "",
+                    Name = BuildProvisioningDealName(scenario, input.Cliente),
+                    Kind = CrmDealKind.QuotedBusiness,
+                    EstimatedValue = 0m,
+                    Probability = 0m,
+                    ExpectedCloseDate = ParseDateOnlyValue(input.Aprovisionamiento?.Fecha),
+                    NextAction = "",
+                    NextActionAtUtc = null,
+                    BusinessLine = "",
+                    ApplyCommercialFields = false,
+                    Score = authoritativeResult.Points,
+                    ContractValue = authoritativeResult.TotalSale
+                },
+                accessScope,
+                ct);
+            markedDeal = await _crmRepository.MarkProvisioningRequestedAsync(
+                scenario.ScenarioId,
+                requestId,
+                DateTimeOffset.UtcNow,
+                accessScope,
+                ct);
+            if (markedDeal is null)
+            {
+                throw new CrmDataverseException(
+                    "El negocio quedó sincronizado, pero no fue posible registrar la evidencia de aprovisionamiento.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "El flujo aceptó la solicitud {RequestId}, pero falló el enlace CRM del escenario {ScenarioId}. TraceId: {TraceId}.",
+                requestId,
+                scenario.ScenarioId,
+                HttpContext.TraceIdentifier);
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                ok = false,
+                flowAccepted = true,
+                requestId,
+                canMarkWon = false,
+                message = "Aprovisionamiento recibió la solicitud, pero el CRM no pudo registrar el vínculo. No la envíes nuevamente; usa el RequestId para reconciliarla.",
+                detail = CompactDiagnosticMessage(ex.Message),
+                traceId = HttpContext.TraceIdentifier
+            });
+        }
+
         return Ok(new
         {
             ok = true,
             requestId,
-            message = "Solicitud enviada a aprobacion."
+            crmDealId = markedDeal.Id,
+            crmSynchronized = true,
+            canMarkWon = markedDeal.CanMarkWon,
+            deal = markedDeal,
+            message = "Solicitud enviada a aprobación y negocio actualizado en el CRM."
         });
+    }
+
+    private static IReadOnlyList<ScenarioGroupStoredDto> BuildScenarioGroups(
+        IReadOnlyCollection<ScenarioStoredDto> scenarios,
+        IReadOnlyDictionary<string, IReadOnlyList<ProposalExportHistoryItemDto>> historyByGroup)
+    {
+        return scenarios
+            .Where(item => !string.IsNullOrWhiteSpace(item.ScenarioId))
+            .GroupBy(
+                item => FirstNonEmpty(item.GroupId, item.ScenarioId),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var possibilities = group
+                    .OrderBy(item => item.PossibilityOrder)
+                    .ThenBy(item => item.ScenarioName, StringComparer.CurrentCultureIgnoreCase)
+                    .ToList();
+                var primary = possibilities.FirstOrDefault(item => item.IsRecommended) ?? possibilities[0];
+                historyByGroup.TryGetValue(group.Key, out var history);
+                return new ScenarioGroupStoredDto
+                {
+                    GroupId = group.Key,
+                    GroupName = FirstNonEmpty(primary.GroupName, primary.ScenarioName, "Negocio"),
+                    PrimaryScenarioId = primary.ScenarioId,
+                    Possibilities = possibilities,
+                    ProposalHistory = history ?? []
+                };
+            })
+            .OrderBy(group => group.GroupName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private string BuildGroupEconomicHash(IEnumerable<ScenarioStoredDto> source)
+    {
+        var possibilities = source
+            .Where(item => item.IncludeInProposal)
+            .OrderBy(item => item.PossibilityOrder)
+            .ThenBy(item => item.ScenarioId, StringComparer.Ordinal)
+            .Select(item =>
+            {
+                var lines = item.Lines.Select(BuildProposalLine).ToList();
+                return new
+                {
+                    scenarioId = item.ScenarioId.Trim(),
+                    inputHash = ScenarioInputHasher.Compute(item),
+                    title = FirstNonEmpty(item.PossibilityName, item.ScenarioName),
+                    order = item.PossibilityOrder,
+                    recommended = item.IsRecommended,
+                    lines = lines.Select(line => new
+                    {
+                        line.Front,
+                        line.Description,
+                        line.Quantity,
+                        line.ContractMonths,
+                        line.UnitSale,
+                        line.MonthlySale,
+                        line.ContractSale,
+                        line.HasVat,
+                        line.MonthlyVat,
+                        line.ContractVat
+                    })
+                };
+            });
+        var canonical = JsonSerializer.Serialize(possibilities);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    private async Task<IReadOnlyList<ScenarioStoredDto>> GetOwnedScenarioGroupAsync(
+        string? groupId,
+        CancellationToken ct)
+    {
+        var normalized = groupId?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new ScenarioPersistenceNotFoundException("GroupId requerido.");
+        var currentUser = await _dataverse.GetCurrentUserAsync(ct)
+            ?? throw new CrmAccessDeniedException("No fue posible validar el usuario actual.");
+        if (string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+            throw new CrmAccessDeniedException("No fue posible validar el usuario actual.");
+        var scenarios = await _dataverse.GetScenariosByGroupIdAsync(normalized, ct);
+        if (scenarios.Count == 0)
+            throw new ScenarioPersistenceNotFoundException("El escenario no existe o no está disponible.");
+        if (scenarios.Any(item => !string.Equals(
+                item.OwnerSystemUserId,
+                currentUser.SystemUserId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new CrmAccessDeniedException("El escenario no pertenece al usuario actual.");
+        }
+        return scenarios;
+    }
+
+    private async Task<IReadOnlyList<ScenarioStoredDto>> GetAuthorizedScenarioGroupAsync(
+        string? groupId,
+        string? scenarioId,
+        string? crmDealId,
+        CancellationToken ct)
+    {
+        var normalizedGroupId = groupId?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalizedGroupId))
+            throw new ScenarioPersistenceNotFoundException("GroupId requerido.");
+
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            return await GetOwnedScenarioGroupAsync(normalizedGroupId, ct);
+
+        var currentUser = await _dataverse.GetCurrentUserAsync(ct)
+            ?? throw new CrmAccessDeniedException("No fue posible validar el usuario actual.");
+        if (string.IsNullOrWhiteSpace(currentUser.SystemUserId))
+            throw new CrmAccessDeniedException("No fue posible validar el usuario actual.");
+
+        var accessScenario = _crmCalculatorSyncEnabled
+            ? await FindAuthorizedScenarioAsync(scenarioId, crmDealId, currentUser, ct)
+            : await FindCurrentUserScenarioAsync(scenarioId, ct);
+        if (accessScenario is null)
+            throw new ScenarioPersistenceNotFoundException("El escenario no existe o no está disponible.");
+
+        var authorizedGroupId = FirstNonEmpty(accessScenario.GroupId, accessScenario.ScenarioId).Trim();
+        if (!string.Equals(authorizedGroupId, normalizedGroupId, StringComparison.OrdinalIgnoreCase))
+            throw new CrmAccessDeniedException("El escenario no pertenece al negocio solicitado.");
+
+        var scenarios = await _dataverse.GetScenariosByGroupIdAsync(normalizedGroupId, ct);
+        if (scenarios.Count == 0)
+            throw new ScenarioPersistenceNotFoundException("El escenario no existe o no está disponible.");
+        if (scenarios.Any(item => !string.Equals(
+                item.OwnerSystemUserId,
+                accessScenario.OwnerSystemUserId,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ScenarioPersistenceConflictException(
+                "Los escenarios del negocio no comparten el mismo propietario.");
+        }
+        return scenarios;
+    }
+
+    private static ScenarioSaveRequest BuildScenarioSaveRequest(ScenarioStoredDto scenario) => new()
+    {
+        ScenarioId = scenario.ScenarioId,
+        GroupId = scenario.GroupId,
+        GroupName = scenario.GroupName,
+        PossibilityName = scenario.PossibilityName,
+        PossibilityOrder = scenario.PossibilityOrder,
+        IncludeInProposal = scenario.IncludeInProposal,
+        IsRecommended = scenario.IsRecommended,
+        ExpectedRowVersion = scenario.RowVersion,
+        CrmDealId = scenario.CrmDealId,
+        ScenarioName = scenario.ScenarioName,
+        DealType = scenario.DealType,
+        RequiresProration = scenario.RequiresProration,
+        StartDate = ParseScenarioDate(scenario.StartDate),
+        EndDate = ParseScenarioDate(scenario.EndDate),
+        Lines = scenario.Lines,
+        LastResult = scenario.LastResult
+    };
+
+    private async Task<ScenarioStoredDto?> FindCurrentUserScenarioAsync(
+        string? scenarioId,
+        CancellationToken ct)
+    {
+        var normalizedScenarioId = scenarioId?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalizedScenarioId))
+            return null;
+
+        var scenarios = await _dataverse.GetScenariosForUserAsync(ct);
+        return scenarios.FirstOrDefault(item =>
+            string.Equals(
+                item.ScenarioId?.Trim(),
+                normalizedScenarioId,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<ScenarioStoredDto?> FindAuthorizedScenarioAsync(
+        string? scenarioId,
+        string? crmDealId,
+        CurrentUserInfo? currentUser,
+        CancellationToken ct)
+    {
+        var normalizedScenarioId = scenarioId?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalizedScenarioId))
+            return null;
+
+        var normalizedDealId = crmDealId?.Trim() ?? "";
+        if (!AppModuleAccessPolicy.CanAccess(AppModule.Crm, currentUser)
+            || string.IsNullOrWhiteSpace(normalizedDealId))
+        {
+            return await FindCurrentUserScenarioAsync(normalizedScenarioId, ct);
+        }
+
+        if (!Guid.TryParse(normalizedDealId, out var dealGuid))
+            throw new CrmValidationException("El negocio CRM seleccionado no es válido.");
+
+        var accessScope = BuildCalculatorCrmAccessScope(currentUser);
+        var detail = await _crmRepository.GetDealDetailAsync(
+            dealGuid.ToString("D"),
+            new CrmDetailQuery { PageSize = 5 },
+            accessScope,
+            ct);
+        if (!string.Equals(
+            detail.Deal.ScenarioId?.Trim(),
+            normalizedScenarioId,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new CrmConflictException(
+                "El negocio CRM no está asociado al escenario solicitado.");
+        }
+
+        var scenario = await _dataverse.GetScenarioByIdAsync(normalizedScenarioId, ct)
+            ?? throw new CrmNotFoundException(
+                "El escenario asociado al negocio ya no existe.");
+        scenario.CrmDealId = detail.Deal.Id;
+        scenario.IsCrmSharedAccess = !string.Equals(
+            scenario.OwnerSystemUserId?.Trim(),
+            currentUser?.SystemUserId?.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+        return scenario;
+    }
+
+    private static CrmAccessScope BuildCalculatorCrmAccessScope(CurrentUserInfo? currentUser)
+    {
+        if (!Guid.TryParse(currentUser?.SystemUserId, out var actorSystemUserId)
+            || !CrmAccessPolicy.CanAccess(currentUser))
+        {
+            throw new CrmAccessDeniedException(
+                "No fue posible validar tu identidad de propietario en el CRM.");
+        }
+
+        var actorId = actorSystemUserId.ToString("D");
+        var isCrmAdministrator = CrmAccessPolicy.IsAdministrator(currentUser);
+        return new CrmAccessScope
+        {
+            ActorSystemUserId = actorId,
+            ActorName = currentUser?.DisplayName?.Trim() ?? "",
+            Role = isCrmAdministrator ? CrmRole.Administrator : CrmRole.User,
+            OwnerFilterSystemUserId = isCrmAdministrator ? "" : actorId
+        };
+    }
+
+    private static bool IsScenarioAccessException(Exception ex) =>
+        ex is CrmValidationException
+            or CrmNotFoundException
+            or CrmConflictException
+            or CrmAccessDeniedException
+            or ScenarioPersistenceConflictException
+            or ScenarioPersistenceNotFoundException
+            or ScenarioPersistenceConcurrencyException;
+
+    private IActionResult BuildScenarioAccessError(Exception ex)
+    {
+        var payload = new
+        {
+            message = ex.Message,
+            traceId = HttpContext.TraceIdentifier
+        };
+        return ex switch
+        {
+            CrmValidationException => BadRequest(payload),
+            CrmAccessDeniedException => StatusCode(StatusCodes.Status403Forbidden, payload),
+            CrmNotFoundException or ScenarioPersistenceNotFoundException => NotFound(payload),
+            _ => Conflict(payload)
+        };
+    }
+
+    private QuoteScenarioResult RecalculateStoredScenario(ScenarioStoredDto scenario)
+    {
+        if (scenario.Lines is null || scenario.Lines.Count == 0)
+            throw new InvalidOperationException("El negocio cotizado requiere al menos una línea guardada.");
+
+        var dealTypeValue = scenario.RequiresProration
+            ? (int)DealType.CrossSale
+            : scenario.DealType;
+        if (!Enum.IsDefined(typeof(DealType), dealTypeValue))
+            throw new InvalidOperationException("El escenario guardado tiene un tipo de negocio inválido.");
+
+        var startDate = ParseScenarioDate(scenario.StartDate);
+        var endDate = ParseScenarioDate(scenario.EndDate);
+        if (scenario.RequiresProration
+            && (!startDate.HasValue || !endDate.HasValue || endDate.Value.Date < startDate.Value.Date))
+        {
+            throw new InvalidOperationException(
+                "El escenario guardado requiere fechas válidas para calcular el prorrateo.");
+        }
+
+        var lines = new List<QuoteLineInput>(scenario.Lines.Count);
+        for (var index = 0; index < scenario.Lines.Count; index++)
+        {
+            var line = scenario.Lines[index];
+            if (!Enum.IsDefined(typeof(BusinessType), line.BusinessType))
+            {
+                throw new InvalidOperationException(
+                    $"La línea {index + 1} tiene un tipo de negocio inválido.");
+            }
+
+            if (string.IsNullOrWhiteSpace(line.ProductDescription))
+                throw new InvalidOperationException($"La línea {index + 1} no tiene producto.");
+            if (line.Quantity <= 0)
+                throw new InvalidOperationException($"La línea {index + 1} tiene una cantidad inválida.");
+            if (line.ContractMonths <= 0)
+                throw new InvalidOperationException($"La línea {index + 1} tiene una duración inválida.");
+
+            lines.Add(new QuoteLineInput
+            {
+                BusinessType = (BusinessType)line.BusinessType,
+                ProductId = line.ProductId?.Trim() ?? "",
+                ProductDescription = line.ProductDescription.Trim(),
+                CostUnit = line.CostUnit,
+                MarginPercent = line.MarginPercent,
+                ContractMonths = line.ContractMonths,
+                Quantity = line.Quantity,
+                SuggestedRetailPrice = line.SuggestedRetailPrice,
+                Acelerador = line.Acelerador,
+                HasVat = line.HasVat
+            });
+        }
+
+        var quote = new QuoteScenarioInput
+        {
+            ScenarioName = scenario.ScenarioName,
+            DealType = (DealType)dealTypeValue,
+            RequiresProration = scenario.RequiresProration,
+            StartDate = startDate,
+            EndDate = endDate,
+            Lines = lines
+        };
+        NormalizeProrationRules(quote);
+
+        var licenseValidation = ValidateLicenseCaps(quote);
+        if (!string.IsNullOrWhiteSpace(licenseValidation))
+            throw new InvalidOperationException(licenseValidation);
+
+        return _calculator.Calculate(quote);
+    }
+
+    private ScenarioResultSnapshot BuildAuthoritativeScenarioSnapshot(ScenarioSaveRequest request)
+    {
+        var scenario = new ScenarioStoredDto
+        {
+            ScenarioId = request.ScenarioId,
+            ScenarioName = request.ScenarioName,
+            DealType = request.DealType,
+            RequiresProration = request.RequiresProration,
+            StartDate = request.StartDate?.ToString("O", CultureInfo.InvariantCulture),
+            EndDate = request.EndDate?.ToString("O", CultureInfo.InvariantCulture),
+            Lines = request.Lines ?? []
+        };
+        var result = RecalculateStoredScenario(scenario);
+        return new ScenarioResultSnapshot
+        {
+            InputHash = ScenarioInputHasher.Compute(request),
+            Points = result.Points,
+            Commission = result.Commission,
+            ProrationDays = result.ProrationDays,
+            ProrationFactor = result.ProrationFactor,
+            ProrationText = result.ProrationDays > 0
+                ? $"{result.ProrationDays} días ({result.ProrationFactor:0.0000})"
+                : "No",
+            TotalMonthlySale = result.TotalMonthlySale,
+            TotalSale = result.TotalSale
+        };
+    }
+
+    private static ProvisioningScenarioContext BuildProvisioningScenarioContext(
+        ScenarioStoredDto scenario)
+    {
+        var dealTypeValue = scenario.RequiresProration
+            ? (int)DealType.CrossSale
+            : scenario.DealType;
+        return new ProvisioningScenarioContext
+        {
+            DealTypeValue = dealTypeValue,
+            DealTypeLabel = Enum.IsDefined(typeof(DealType), dealTypeValue)
+                ? ((DealType)dealTypeValue).ToString()
+                : "",
+            RequiresProration = scenario.RequiresProration,
+            StartDate = scenario.StartDate,
+            EndDate = scenario.EndDate
+        };
+    }
+
+    private static ProvisioningResultado BuildProvisioningResult(QuoteScenarioResult result) =>
+        new()
+        {
+            Puntaje = result.Points,
+            Comision = result.Commission,
+            ProrrateoDias = result.ProrationDays,
+            ProrrateoFactor = result.ProrationFactor,
+            ProrrateoTexto = result.ProrationDays > 0
+                ? $"{result.ProrationDays} días ({result.ProrationFactor:0.0000})"
+                : "No",
+            VentaMensualTotal = result.TotalMonthlySale,
+            VentaTotal = result.TotalSale,
+            VentaTotalAnual = result.TotalSale
+        };
+
+    private static string BuildProvisioningDealName(
+        ScenarioStoredDto scenario,
+        ProvisioningClient? client)
+    {
+        var scenarioName = scenario.ScenarioName?.Trim() ?? "";
+        var clientName = client?.Nombre?.Trim() ?? "";
+        var value = scenarioName.Length >= 3
+            ? scenarioName
+            : $"Negocio {clientName}".Trim();
+        if (value.Length < 3)
+            value = "Negocio cotizado";
+
+        return value.Length <= 200 ? value : value[..200];
+    }
+
+    private static DateTime? ParseScenarioDate(string? value)
+    {
+        var normalized = value?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return DateTime.TryParse(
+            normalized,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+            out var parsed)
+            ? parsed.Date
+            : null;
+    }
+
+    private static DateOnly? ParseDateOnlyValue(string? value)
+    {
+        var normalized = value?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return DateOnly.TryParse(
+            normalized,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces,
+            out var parsed)
+            ? parsed
+            : null;
     }
 
     private static XLWorkbook BuildWorkbook(QuoteScenarioInput input)
@@ -437,6 +1925,12 @@ public sealed class CalculatorController : Controller
 
     private static string? ValidateProvisioningPayload(ProvisioningRequestInput input)
     {
+        if (string.IsNullOrWhiteSpace(input.BusinessId))
+            return "No se recibió el identificador del escenario.";
+
+        if (input.Cliente is null || !Guid.TryParse(input.Cliente.ClienteId, out _))
+            return "Selecciona un cliente válido para solicitar el aprovisionamiento.";
+
         if (input.LineItems is null || input.LineItems.Count == 0)
             return "No hay lÃ­neas para enviar.";
 
@@ -554,6 +2048,9 @@ public sealed class CalculatorController : Controller
         var contractKindCode = ResolveProvisioningContractKindCode(aprovisionamiento);
         var contractKindLabel = ResolveProvisioningContractKindLabel(contractKindCode, aprovisionamiento);
         var isNewBusinessContract = contractKindCode == ProvisioningContractKindNewBusinessValue;
+        var contractValue = RoundWholeNumber(resultado is { VentaTotalAnual: > 0m }
+            ? resultado.VentaTotalAnual
+            : resultado?.VentaTotal ?? 0m);
         var normalizedScenarioStartDate = NormalizeDateLikeValue(scenario?.StartDate);
         var normalizedScenarioEndDate = NormalizeDateLikeValue(scenario?.EndDate);
         var lineItems = input.LineItems.Select(item => new ProvisioningFlowLinePayload
@@ -567,6 +2064,8 @@ public sealed class CalculatorController : Controller
             VentaUnd = Round2(item.VentaUnd),
             MargenPorcentaje = Round2(item.MargenPorcentaje),
             DuracionMeses = item.DuracionMeses,
+            SuggestedRetailPrice = Round2(item.SuggestedRetailPrice),
+            Acelerador = Round2(item.Acelerador),
             VentaMensual = Round2(item.VentaMensual),
             VentaTotal = Round2(item.VentaTotal),
             TieneIva = item.TieneIva,
@@ -588,6 +2087,7 @@ public sealed class CalculatorController : Controller
         return new
         {
             requestId,
+            cr07a_contractvalue = contractValue,
             source = input.Source?.Trim() ?? "",
             businessId = input.BusinessId?.Trim() ?? "",
             requester = requester is null ? null : new
@@ -608,6 +2108,7 @@ public sealed class CalculatorController : Controller
                 tipoContratoLabel = aprovisionamiento.TipoContratoLabel?.Trim() ?? "",
                 tipoContratoPuntajeCode = contractKindCode,
                 tipoContratoPuntajeLabel = contractKindLabel,
+                cr07a_contrato = contractKindCode,
                 cr07a_tipodecontrato = contractKindCode,
                 esNegocioNuevo = isNewBusinessContract,
                 esRenovacion = contractKindCode == ProvisioningContractKindRenewalValue
@@ -632,7 +2133,8 @@ public sealed class CalculatorController : Controller
                 prorrateoTexto = resultado.ProrrateoTexto?.Trim() ?? "",
                 ventaMensualTotal = RoundWholeNumber(resultado.VentaMensualTotal),
                 ventaTotal = RoundWholeNumber(resultado.VentaTotal),
-                ventaTotalAnual = RoundWholeNumber(resultado.VentaTotalAnual)
+                ventaTotalAnual = RoundWholeNumber(resultado.VentaTotalAnual),
+                cr07a_contractvalue = contractValue
             },
             descriptionText,
             legacyDescriptionText,
@@ -671,6 +2173,8 @@ public sealed class CalculatorController : Controller
                 ventaUnd = RoundWholeNumber(item.VentaUnd),
                 margenPorcentaje = RoundWholeNumber(item.MargenPorcentaje),
                 duracionMeses = item.DuracionMeses,
+                suggestedRetailPrice = RoundWholeNumber(item.SuggestedRetailPrice),
+                acelerador = item.Acelerador,
                 ventaMensual = RoundWholeNumber(item.VentaMensual),
                 ventaTotal = RoundWholeNumber(item.VentaTotal),
                 tieneIva = item.TieneIva,
@@ -881,11 +2385,11 @@ public sealed class CalculatorController : Controller
         var builder = new StringBuilder(lineItems.Count * 180);
         if (includeCommercialFields)
         {
-            builder.Append("| # | Tipo | Producto | Cant. | Costo und. | Venta und. | Margen % | Meses | Venta mensual | Venta total | IVA | Inicio | Final |");
+            builder.Append("| # | Tipo | Producto | Cant. | Costo und. | Venta und. | Margen % | Precio sugerido | Acelerador | Meses | Venta mensual | Venta total | IVA | Inicio | Final |");
             if (includeTechnicalFields)
                 builder.Append(" Producto Id |");
             builder.AppendLine();
-            builder.Append("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
+            builder.Append("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
             if (includeTechnicalFields)
                 builder.Append(" --- |");
             builder.AppendLine();
@@ -915,6 +2419,10 @@ public sealed class CalculatorController : Controller
                 builder.Append(FormatMoneyForNotification(item.VentaUnd));
                 builder.Append(" | ");
                 builder.Append(FormatPercentForNotification(item.MargenPorcentaje));
+                builder.Append(" | ");
+                builder.Append(FormatMoneyForNotification(item.SuggestedRetailPrice));
+                builder.Append(" | ");
+                builder.Append(FormatDecimalForNotification(item.Acelerador));
                 builder.Append(" | ");
                 builder.Append(item.DuracionMeses.ToString(CultureInfo.InvariantCulture));
                 builder.Append(" | ");
@@ -1045,6 +2553,8 @@ public sealed class CalculatorController : Controller
             ventaUnd = item.VentaUnd,
             margenPorcentaje = item.MargenPorcentaje,
             duracionMeses = item.DuracionMeses,
+            suggestedRetailPrice = item.SuggestedRetailPrice,
+            acelerador = item.Acelerador,
             ventaMensual = item.VentaMensual,
             ventaTotal = item.VentaTotal,
             tieneIva = item.TieneIva,
@@ -1294,6 +2804,43 @@ public sealed class CalculatorController : Controller
         return new ExportLine(saleUnit, monthly, total);
     }
 
+    private static CalculatorProposalLineViewModel BuildProposalLine(ScenarioLineInput line)
+    {
+        var saleUnit = Round2(line.CostUnit * (1m + (line.MarginPercent / 100m)));
+        var monthly = Round2(saleUnit * line.Quantity);
+        var contract = Round2(monthly * line.ContractMonths);
+        var monthlyVat = line.HasVat ? Round2(monthly * 0.19m) : 0m;
+        var contractVat = line.HasVat ? Round2(contract * 0.19m) : 0m;
+
+        return new CalculatorProposalLineViewModel
+        {
+            Front = GetProposalFront(line.BusinessType),
+            Description = line.ProductDescription?.Trim() ?? "",
+            Quantity = line.Quantity,
+            ContractMonths = line.ContractMonths,
+            UnitSale = saleUnit,
+            MonthlySale = monthly,
+            ContractSale = contract,
+            HasVat = line.HasVat,
+            MonthlyVat = monthlyVat,
+            ContractVat = contractVat,
+            MonthlyTotalWithVat = Round2(monthly + monthlyVat),
+            ContractTotalWithVat = Round2(contract + contractVat)
+        };
+    }
+
+    private static string GetProposalFront(int businessType) =>
+        businessType switch
+        {
+            (int)BusinessType.ModernWork => "Licenciamiento",
+            (int)BusinessType.Azure => "Azure",
+            (int)BusinessType.Acronis => "Backup y seguridad",
+            (int)BusinessType.Perpetuo => "Licenciamiento perpetuo",
+            (int)BusinessType.Copiers => "Copiers",
+            (int)BusinessType.Hardware => "Hardware",
+            _ => "Servicios profesionales"
+        };
+
     private static decimal Round2(decimal v) =>
         Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
@@ -1308,30 +2855,6 @@ public sealed class CalculatorController : Controller
         return $"{safe}.xlsx";
     }
 
-    private static string BuildHtmlFileName(string? scenarioName)
-    {
-        var safe = string.Join("_", (scenarioName ?? "Propuesta").Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
-        if (string.IsNullOrWhiteSpace(safe))
-            safe = "Propuesta";
-        return $"{safe}_propuesta.html";
-    }
-
-    private string ResolveCurrentUserName()
-    {
-        return User.FindFirst("name")?.Value
-            ?? User.FindFirst(ClaimTypes.Name)?.Value
-            ?? User.Identity?.Name
-            ?? "";
-    }
-
-    private string ResolveCurrentUserEmail()
-    {
-        return User.FindFirst("preferred_username")?.Value
-            ?? User.FindFirst(ClaimTypes.Email)?.Value
-            ?? User.FindFirst("email")?.Value
-            ?? "";
-    }
-
     private sealed class ProvisioningFlowLinePayload
     {
         public string LineId { get; set; } = "";
@@ -1343,6 +2866,8 @@ public sealed class CalculatorController : Controller
         public decimal VentaUnd { get; set; }
         public decimal MargenPorcentaje { get; set; }
         public int DuracionMeses { get; set; }
+        public decimal SuggestedRetailPrice { get; set; }
+        public decimal Acelerador { get; set; }
         public decimal VentaMensual { get; set; }
         public decimal VentaTotal { get; set; }
         public bool TieneIva { get; set; }

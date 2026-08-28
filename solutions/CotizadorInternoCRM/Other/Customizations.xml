@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26072.134" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26072.00138">
+  <Entities />
+  <Roles />
+  <Workflows />
+  <FieldSecurityProfiles />
+  <Templates />
+  <EntityImageConfigs>
+    <EntityImageConfig>
+      <parententitylogicalname>cr07a_empleado</parententitylogicalname>
+      <primaryimageattribute>cr07a_foto</primaryimageattribute>
+    </EntityImageConfig>
+  </EntityImageConfigs>
+  <EntityMaps />
+  <EntityRelationships />
+  <OrganizationSettings />
+  <optionsets />
+  <CustomControls />
+  <EntityDataProviders />
+  <Languages>
+    <Language>3082</Language>
+  </Languages>
+</ImportExportXml>

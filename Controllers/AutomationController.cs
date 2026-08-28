@@ -198,11 +198,21 @@ public sealed class AutomationController : Controller
     public async Task<IActionResult> ImportDianProviderDocuments(
         [FromQuery] string? localFilePath,
         [FromQuery] bool dryRun = true,
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await _dianSupplierDocumentImportService.ImportAsync(localFilePath, dryRun, ct);
+            DateOnly? periodStart = null;
+            if (year.HasValue || month.HasValue)
+            {
+                if (!year.HasValue || !month.HasValue || month is < 1 or > 12)
+                    return BadRequest("Indica year y month validos para limitar la importacion DIAN.");
+                periodStart = new DateOnly(year.Value, month.Value, 1);
+            }
+
+            var result = await _dianSupplierDocumentImportService.ImportAsync(localFilePath, dryRun, ct, periodStart);
             return Json(new
             {
                 dryRun = result.DryRun,
@@ -211,6 +221,7 @@ public sealed class AutomationController : Controller
                 importableRows = result.ImportableRows,
                 invoiceRows = result.InvoiceRows,
                 supportDocumentRows = result.SupportDocumentRows,
+                payrollRows = result.PayrollRows,
                 skippedRows = result.SkippedRows,
                 created = result.Created,
                 updated = result.Updated,
@@ -221,8 +232,56 @@ public sealed class AutomationController : Controller
                 reteFuenteValue = result.ReteFuenteValue,
                 reteIcaValue = result.ReteIcaValue,
                 reteIvaValue = result.ReteIvaValue,
+                supplierLookupReviewed = result.SupplierLookupReviewed,
+                supplierLookupFound = result.SupplierLookupFound,
+                supplierLookupMissing = result.SupplierLookupMissing,
+                autoClassificationUpdated = result.AutoClassificationUpdated,
+                siigoAutomation = result.SiigoAutomation,
                 skipped = result.Skipped.Take(100),
                 sampleRows = result.SampleRows.Take(50)
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("dian-provider-documents/resolve-suppliers")]
+    public async Task<IActionResult> ResolveDianProviderDocumentSuppliers(
+        [FromQuery] DateOnly? startDate,
+        [FromQuery] DateOnly? endDate,
+        [FromQuery] bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var resolvedStart = startDate ?? new DateOnly(today.Year, today.Month, 1);
+            var resolvedEnd = endDate ?? resolvedStart.AddMonths(1).AddDays(-1);
+            var result = await _dianSupplierDocumentImportService.ResolvePendingSuppliersAsync(
+                resolvedStart,
+                resolvedEnd,
+                dryRun,
+                ct);
+
+            return Json(new
+            {
+                dryRun = result.DryRun,
+                startDate = result.StartDate.ToString("yyyy-MM-dd"),
+                endDate = result.EndDate.ToString("yyyy-MM-dd"),
+                pendingRowsReviewed = result.PendingRowsReviewed,
+                supplierLookupReviewed = result.SupplierLookupReviewed,
+                supplierLookupFound = result.SupplierLookupFound,
+                supplierLookupMissing = result.SupplierLookupMissing,
+                supplierLookupFailed = result.SupplierLookupFailed,
+                supplierLookupRowsUpdated = result.SupplierLookupRowsUpdated,
+                autoClassificationReviewed = result.AutoClassificationReviewed,
+                autoClassificationUpdated = result.AutoClassificationUpdated,
+                autoClassificationAlreadyAssigned = result.AutoClassificationAlreadyAssigned,
+                autoClassificationNoRule = result.AutoClassificationNoRule,
+                autoClassificationInvalidRule = result.AutoClassificationInvalidRule,
+                autoClassificationMessage = result.AutoClassificationMessage
             });
         }
         catch (InvalidOperationException ex)

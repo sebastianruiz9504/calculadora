@@ -109,7 +109,7 @@
 }
 
 .cnc-workspace {
-    --cnc-menu-collapsed: 2.25rem;
+    --cnc-menu-collapsed: 2.6rem;
     --cnc-menu-expanded: min(20rem, calc(100vw - 2rem));
     position: relative;
     display: grid;
@@ -125,20 +125,21 @@
     z-index: 20;
     display: grid;
     align-content: start;
-    width: var(--cnc-menu-expanded);
+    width: var(--cnc-menu-collapsed);
     height: calc(100vh - 1.5rem);
     max-height: calc(100vh - 1.5rem);
+    border-radius: 8px 0 0 8px;
     border-right: 1px solid var(--cnc-line);
     background: var(--cnc-soft);
     box-shadow: 4px 0 14px rgba(15, 23, 42, 0.06);
-    overflow-y: auto;
-    transform: translateX(calc(var(--cnc-menu-collapsed) - var(--cnc-menu-expanded)));
-    transition: transform 180ms ease, box-shadow 180ms ease;
+    overflow: hidden;
+    transition: width 180ms ease, box-shadow 180ms ease;
 }
 
 .cnc-phase-nav:hover,
 .cnc-phase-nav:focus-within {
-    transform: translateX(0);
+    width: var(--cnc-menu-expanded);
+    overflow-y: auto;
     box-shadow: 12px 0 28px rgba(15, 23, 42, 0.14);
 }
 
@@ -173,13 +174,22 @@
 .cnc-phase-tab {
     display: grid;
     gap: 0.35rem;
-    width: 100%;
+    width: var(--cnc-menu-expanded);
     padding: 0.9rem 1rem;
     border: 0;
     border-bottom: 1px solid var(--cnc-line);
     background: transparent;
     color: var(--cnc-ink);
+    opacity: 0;
+    pointer-events: none;
     text-align: left;
+    transition: opacity 120ms ease;
+}
+
+.cnc-phase-nav:hover .cnc-phase-tab,
+.cnc-phase-nav:focus-within .cnc-phase-tab {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .cnc-phase-tab:hover,
@@ -294,6 +304,23 @@
     overflow: hidden;
 }
 
+.cnc-workspace--single-tab {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.cnc-workspace--single-tab .cnc-phase-nav {
+    display: none;
+}
+
+.cnc-workspace--single-tab .cnc-phase-panels {
+    grid-column: 1;
+    padding: 0;
+}
+
+.cnc-workspace--single-tab .cnc-phase-panel {
+    border: 0;
+}
+
 .cnc-vertical-bar {
     display: flex;
     align-items: center;
@@ -365,6 +392,17 @@
 .cnc-panel-header h2 {
     margin-top: 0.2rem;
     font-size: 1.25rem;
+}
+
+.cnc-title-inline {
+    display: flex;
+    align-items: baseline;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+}
+
+.cnc-title-inline span {
+    font: inherit;
 }
 
 .cnc-flow {
@@ -490,6 +528,16 @@
     min-width: 0;
 }
 
+.cnc-toolbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    flex: 1 1 18rem;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
 .cnc-filter-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
@@ -507,11 +555,109 @@
     max-width: min(100%, 34rem);
 }
 
+.cnc-deducciones-upload {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: end;
+    min-width: 0;
+}
+
+.cnc-deducciones-file {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    margin: 0;
+}
+
+.cnc-deducciones-file span {
+    color: var(--cnc-muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.cnc-deducciones-result .btn {
+    justify-self: start;
+}
+
 .cnc-table-wrap {
     max-width: 100%;
     overflow: hidden;
     border: 1px solid var(--cnc-line);
     border-radius: 8px;
+}
+
+.cnc-bank-summary {
+    max-width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+}
+
+.cnc-month-close-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 0.75rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.cnc-month-close-bar > div:first-child {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.cnc-month-close-bar small {
+    color: var(--cnc-muted);
+    overflow-wrap: anywhere;
+}
+
+.cnc-close-stats {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.cnc-close-stats span {
+    padding: 0.35rem 0.55rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--cnc-muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.cnc-close-issues {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.7rem 0.9rem 0.7rem 1.65rem;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+tr.is-highlighted td {
+    background: #eff6ff;
+}
+
+.cnc-table--summary {
+    margin-bottom: 0;
+}
+
+.cnc-table--summary th,
+.cnc-table--summary td {
+    white-space: normal;
 }
 
 .cnc-table {
@@ -541,6 +687,14 @@
 .cnc-table th,
 .cnc-table td {
     padding: 0.55rem;
+}
+
+.cnc-table .cnc-select-cell {
+    width: 2.1rem;
+    padding-left: 0.4rem;
+    padding-right: 0.25rem;
+    text-align: center;
+    vertical-align: middle;
 }
 
 .cnc-table--pipeline th,
@@ -573,6 +727,15 @@
     background: #f8fbff;
 }
 
+.cnc-click-row:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.28);
+    outline-offset: -3px;
+}
+
+.cnc-deducciones-history-link {
+    margin-top: 0.75rem;
+}
+
 .cnc-money-warning {
     color: var(--cnc-amber) !important;
     font-weight: 800;
@@ -592,6 +755,613 @@
 }
 
 .cnc-row-actions .btn {
+    white-space: normal;
+}
+
+.cnc-table .cnc-row-actions {
+    margin-top: 0.5rem;
+}
+
+.cnc-table-toolbar--cashflow {
+    align-items: center;
+}
+
+.cnc-start-button {
+    min-width: 7rem;
+    border: 0;
+    background: linear-gradient(135deg, #2563eb, #0f766e);
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+    font-weight: 850;
+}
+
+.cnc-start-button:hover,
+.cnc-start-button:focus-visible {
+    background: linear-gradient(135deg, #1d4ed8, #047857);
+}
+
+.cnc-click-row.is-manual-conciliated td {
+    background: #f0fdf4;
+}
+
+.cnc-click-row.is-manual-conciliated td:first-child {
+    box-shadow: inset 4px 0 0 #16a34a;
+}
+
+.cnc-click-row.is-review-pending td {
+    background: #fff7ed;
+}
+
+.cnc-click-row.is-review-pending td:first-child {
+    box-shadow: inset 4px 0 0 #f97316;
+}
+
+.cnc-click-row.is-omitted td {
+    background: #f1f5f9;
+}
+
+.cnc-click-row.is-omitted td:first-child {
+    box-shadow: inset 4px 0 0 #64748b;
+}
+
+.cnc-phase-panel--v2 {
+    align-content: start;
+}
+
+.cnc-v2-panel {
+    gap: 0.8rem;
+}
+
+.cnc-v2-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 0.75rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.cnc-v2-controls--minimal {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem) auto;
+    align-items: stretch;
+    gap: 0.8rem;
+    padding: 0.62rem 0.72rem;
+    background: #ffffff;
+}
+
+.cnc-v2-search {
+    display: grid;
+    grid-template-columns: minmax(16rem, 1fr) auto;
+    align-items: center;
+    gap: 0.65rem;
+    flex: 1 1 30rem;
+    min-width: 0;
+}
+
+.cnc-v2-search .cnc-table-search {
+    max-width: none;
+    height: 2.35rem;
+    border-color: #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 0.9rem;
+}
+
+.cnc-v2-filtersets {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    flex: 0 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.cnc-v2-controls--minimal .cnc-v2-filtersets {
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.cnc-v2-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.22rem 0.28rem 0.22rem 0.55rem;
+    border: 1px solid #dbe3ee;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.cnc-v2-controls--minimal .cnc-v2-switch {
+    flex: 0 1 25rem;
+    justify-content: space-between;
+    padding: 0.28rem 0.35rem 0.28rem 0.7rem;
+}
+
+.cnc-v2-controls--minimal > .cnc-counter {
+    align-self: center;
+}
+
+.cnc-v2-switch > span {
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.cnc-v2-controls--minimal .cnc-v2-switch > span {
+    font-size: 0.72rem;
+}
+
+.cnc-v2-segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18rem;
+    padding: 0.14rem;
+    border: 0;
+    border-radius: 999px;
+    background: #e5e7eb;
+}
+
+.cnc-v2-controls--minimal .cnc-v2-segment {
+    flex: 1 1 auto;
+}
+
+.cnc-v2-segment button {
+    min-width: 4.9rem;
+    height: 1.82rem;
+    padding: 0 0.62rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 850;
+    line-height: 1.1;
+    transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.cnc-v2-controls--minimal .cnc-v2-segment button {
+    flex: 1 1 0;
+    min-width: 6.5rem;
+    height: 2.18rem;
+    font-size: 0.86rem;
+}
+
+.cnc-v2-segment button:hover,
+.cnc-v2-segment button:focus-visible {
+    background: #f8fafc;
+    outline: none;
+}
+
+.cnc-v2-segment button.is-active {
+    background: var(--cnc-blue);
+    color: #fff;
+    box-shadow: 0 5px 13px rgba(37, 99, 235, 0.22);
+}
+
+[data-cnc-bank-balance-card] {
+    height: 100%;
+}
+
+.cnc-bank-balance-card {
+    display: grid;
+    align-content: center;
+    gap: 0.42rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #dbe3ee;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.cnc-bank-balance-card__header,
+.cnc-bank-balance-card__main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.cnc-bank-balance-card__header > span {
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.cnc-bank-balance-card__header .form-select {
+    width: min(12rem, 70%);
+    min-width: 0;
+    min-height: 1.8rem;
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
+    border-radius: 7px;
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.cnc-bank-balance-card__main > strong {
+    min-width: 0;
+    color: #0f172a;
+    font-size: clamp(1.2rem, 1.7vw, 1.55rem);
+    font-weight: 900;
+    line-height: 1;
+    overflow-wrap: anywhere;
+}
+
+.cnc-bank-balance-card__main > strong[data-tone="negative"] {
+    color: var(--cnc-red);
+}
+
+.cnc-bank-balance-card__main .btn {
+    min-height: 1.9rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 7px;
+    font-size: 0.7rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.cnc-bank-balance-card__breakdown {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.cnc-bank-balance-card__breakdown span {
+    display: grid;
+    gap: 0.06rem;
+    min-width: 0;
+    color: #64748b;
+    font-size: 0.61rem;
+    font-weight: 750;
+    text-transform: uppercase;
+}
+
+.cnc-bank-balance-card__breakdown strong {
+    color: #334155;
+    font-size: 0.69rem;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+    text-transform: none;
+}
+
+.cnc-bank-balance-modal__panel {
+    width: min(28rem, calc(100vw - 2rem));
+}
+
+.cnc-bank-balance-modal__description {
+    margin: 0;
+    color: var(--cnc-muted);
+}
+
+.cnc-bank-balance-modal__status {
+    min-height: 1.25rem;
+    margin: 0;
+    color: var(--cnc-muted);
+    font-size: 0.82rem;
+    font-weight: 750;
+}
+
+.cnc-bank-balance-modal__status[data-tone="error"] {
+    color: var(--cnc-red);
+}
+
+.cnc-bank-balance-modal__status[data-tone="success"] {
+    color: var(--cnc-green);
+}
+
+.cnc-v2-import {
+    display: grid;
+    grid-template-columns: minmax(10rem, 1fr) minmax(11rem, 14rem) minmax(16rem, 22rem) auto;
+    align-items: end;
+    gap: 0.65rem;
+    padding: 0.72rem 0.75rem;
+    border: 1px solid #dbe3ee;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.cnc-v2-import__title {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+}
+
+.cnc-v2-import__title strong {
+    color: #0f172a;
+    font-size: 0.86rem;
+    font-weight: 850;
+}
+
+.cnc-v2-import__title span,
+.cnc-v2-import label > span {
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.cnc-v2-import__title span[data-tone="success"] {
+    color: var(--cnc-green);
+}
+
+.cnc-v2-import__title span[data-tone="error"] {
+    color: var(--cnc-red);
+}
+
+.cnc-v2-import__title span[data-tone="info"] {
+    color: var(--cnc-blue);
+}
+
+.cnc-v2-import label {
+    display: grid;
+    gap: 0.24rem;
+    min-width: 0;
+}
+
+.cnc-v2-import .form-control,
+.cnc-v2-import .form-select,
+.cnc-v2-import .btn {
+    min-height: 2.1rem;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+
+.cnc-v2-table-wrap {
+    overflow: hidden;
+}
+
+.cnc-table--v2 {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+}
+
+.cnc-table--v2 .cnc-v2-col-status {
+    width: 3rem;
+}
+
+.cnc-table--v2 .cnc-v2-col-date {
+    width: 5.6rem;
+}
+
+.cnc-table--v2 .cnc-v2-col-imported-description {
+    width: 25%;
+}
+
+.cnc-table--v2 .cnc-v2-col-description {
+    width: auto;
+}
+
+.cnc-table--v2 .cnc-v2-col-amount {
+    width: 6.5rem;
+}
+
+.cnc-table--v2 th,
+.cnc-table--v2 td {
+    padding: 0.34rem 0.42rem;
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+.cnc-table--v2 td {
+    vertical-align: middle;
+    font-size: 0.82rem;
+    line-height: 1.18;
+}
+
+.cnc-table--v2 td > strong {
+    font-size: 0.84rem;
+    line-height: 1.18;
+}
+
+.cnc-table--v2 thead th {
+    height: 2.05rem;
+    white-space: normal;
+    text-align: left;
+    border-bottom-color: #dbe3ee;
+}
+
+.cnc-table--v2 thead th:first-child {
+    text-align: center;
+}
+
+.cnc-table--v2 td small {
+    margin-top: 0.06rem;
+    font-size: 0.68rem;
+    line-height: 1.12;
+}
+
+.cnc-table--v2 .cnc-badge {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cnc-v2-description-main,
+.cnc-v2-imported-description-main {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.cnc-v2-description-meta {
+    display: block !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cnc-v2-description-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.cnc-v2-description-editor .form-control {
+    min-width: 0;
+    height: 1.9rem;
+    min-height: 1.9rem;
+    padding: 0.22rem 0.45rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.cnc-v2-description-editor .form-control::placeholder {
+    color: #94a3b8;
+}
+
+.cnc-v2-description-editor .btn {
+    min-height: 1.9rem;
+    padding: 0 0.52rem;
+    border-radius: 7px;
+    font-size: 0.68rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.cnc-table--v2 .cnc-v2-filter-row th {
+    height: 2.4rem;
+    padding: 0.28rem 0.34rem 0.42rem;
+    border-top: 0;
+    background: #f8fafc;
+}
+
+.cnc-v2-filter-row .form-control,
+.cnc-v2-filter-row .form-select {
+    width: 100%;
+    min-width: 0;
+    height: 1.72rem;
+    min-height: 1.72rem;
+    padding: 0.18rem 0.36rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background-color: #fff;
+    color: #334155;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.1;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.cnc-v2-filter-row .form-control::placeholder {
+    color: #94a3b8;
+    opacity: 1;
+}
+
+.cnc-v2-filter-row .form-control:focus,
+.cnc-v2-filter-row .form-select:focus {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.cnc-v2-filter-row th:first-child .form-select {
+    padding-left: 0.3rem;
+    padding-right: 1.2rem;
+    text-align: center;
+}
+
+.cnc-v2-filter-row th:nth-child(2) .form-control,
+.cnc-v2-filter-row th:nth-child(5) .form-control {
+    padding-left: 0.34rem;
+    padding-right: 0.34rem;
+}
+
+.cnc-v2-conciliated-cell {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.cnc-v2-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 1.35rem;
+    font-size: 0.68rem;
+    font-weight: 850;
+    line-height: 1;
+}
+
+.cnc-v2-state--ok {
+    color: var(--cnc-green);
+    font-size: 1rem;
+}
+
+.cnc-v2-state--pending {
+    color: var(--cnc-amber);
+    font-size: 0.6rem;
+    white-space: nowrap;
+}
+
+.cnc-v2-state--review {
+    color: #c2410c;
+    font-size: 0.58rem;
+    white-space: nowrap;
+}
+
+.cnc-v2-state--omitted {
+    color: #475569;
+    font-size: 0.58rem;
+    white-space: nowrap;
+}
+
+.cnc-cashflow-pending-panel {
+    width: min(34rem, calc(100vw - 2rem));
+}
+
+.cnc-cashflow-pending-existing {
+    margin: 0;
+    padding: 0.75rem;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    background: #fff7ed;
+    color: #7c2d12;
+    white-space: pre-wrap;
+}
+
+.cnc-cashflow-pending-status {
+    min-height: 1.25rem;
+    margin: 0;
+    color: var(--cnc-red);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.cnc-muted-detail {
+    color: #94a3b8 !important;
+    font-size: 0.72rem !important;
+    font-weight: 650;
+}
+
+.cnc-inline-action {
+    display: inline-flex;
+    margin-top: 0.35rem;
     white-space: normal;
 }
 
@@ -632,6 +1402,36 @@
     white-space: pre-wrap;
 }
 
+.cnc-voucher-breakdown {
+    margin-top: 0.35rem;
+}
+
+.cnc-voucher-breakdown summary {
+    cursor: pointer;
+    color: #1d4ed8;
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.cnc-voucher-breakdown__grid {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+}
+
+.cnc-voucher-breakdown__line {
+    display: grid;
+    gap: 0.16rem;
+    padding: 0.45rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.cnc-voucher-breakdown__line .btn {
+    justify-self: start;
+}
+
 .cnc-pipeline {
     display: grid;
     gap: 1rem;
@@ -649,6 +1449,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
+    flex-wrap: wrap;
     padding-bottom: 0.25rem;
     border-bottom: 1px solid var(--cnc-line);
 }
@@ -664,6 +1465,101 @@
     color: var(--cnc-muted);
     font-size: 0.78rem;
     font-weight: 800;
+}
+
+.cnc-bulk-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    flex: 1 1 24rem;
+    min-width: min(100%, 18rem);
+    flex-wrap: wrap;
+}
+
+.cnc-bulk-count {
+    color: var(--cnc-muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.cnc-bulk-toolbar .btn {
+    white-space: normal;
+}
+
+.cnc-progress {
+    width: 100%;
+    height: 0.55rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+
+.cnc-progress__bar {
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--cnc-blue);
+    transition: width 160ms ease;
+}
+
+.cnc-bulk-progress-list {
+    display: grid;
+    gap: 0.4rem;
+    max-height: min(52vh, 26rem);
+    overflow: auto;
+    padding-right: 0.2rem;
+}
+
+.cnc-bulk-progress-item {
+    display: grid;
+    grid-template-columns: 1.7rem minmax(0, 1fr);
+    gap: 0.2rem 0.55rem;
+    align-items: start;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.cnc-bulk-progress-item__index {
+    grid-row: span 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 850;
+}
+
+.cnc-bulk-progress-item strong,
+.cnc-bulk-progress-item small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.cnc-bulk-progress-item small {
+    color: var(--cnc-muted);
+    font-weight: 750;
+}
+
+.cnc-bulk-progress-item[data-state="running"] {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+
+.cnc-bulk-progress-item[data-state="success"] {
+    border-color: #bbf7d0;
+    background: #ecfdf3;
+}
+
+.cnc-bulk-progress-item[data-state="error"] {
+    border-color: #fecdd3;
+    background: #fff1f3;
 }
 
 .cnc-collapse-button {
@@ -732,35 +1628,60 @@
     inset: 0;
     z-index: 1050;
     display: grid;
-    place-items: center;
-    padding: 1rem;
-    background: rgba(15, 23, 42, 0.46);
+    align-items: start;
+    justify-items: center;
+    padding: clamp(0.75rem, 2vw, 1.5rem);
+    overflow-y: auto;
+    background: rgba(15, 23, 42, 0.54);
 }
 
 .cnc-modal[hidden] {
     display: none;
 }
 
+.cnc-v2-row[hidden] {
+    display: none !important;
+}
+
+.cnc-modal--cashflow-wizard {
+    align-items: center;
+}
+
 .cnc-modal__panel {
     display: grid;
-    gap: 1rem;
+    gap: 1.05rem;
     width: min(100%, 34rem);
-    padding: 1rem;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.1rem;
     border: 1px solid var(--cnc-line);
-    border-radius: 8px;
+    border-radius: 10px;
     background: #fff;
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
 }
 
 .cnc-modal__panel--wide {
-    width: min(100%, 48rem);
+    width: min(100%, 54rem);
+}
+
+.cnc-modal__panel--preview {
+    width: min(100%, 66rem);
 }
 
 .cnc-modal__header {
+    position: sticky;
+    top: -1.1rem;
+    z-index: 2;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
+    margin: -1.1rem -1.1rem 0;
+    padding: 1rem 1.1rem 0.8rem;
+    border-bottom: 1px solid var(--cnc-line);
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(8px);
 }
 
 .cnc-modal__header h2 {
@@ -772,20 +1693,528 @@
 
 .cnc-modal__description {
     margin: 0;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #f8fafc;
     color: #334155;
     overflow-wrap: anywhere;
+}
+
+.cnc-modal__feedback {
+    margin: 0;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.88rem;
+    font-weight: 750;
+    overflow-wrap: anywhere;
+}
+
+.cnc-modal__feedback[hidden] {
+    display: none;
+}
+
+.cnc-modal__feedback[data-tone="error"] {
+    border-color: #fecdd3;
+    background: #fff1f3;
+    color: var(--cnc-red);
+}
+
+.cnc-modal__feedback[data-tone="success"] {
+    border-color: #bbf7d0;
+    background: #ecfdf3;
+    color: #047857;
+}
+
+.cnc-modal__field .is-invalid {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.14rem rgba(220, 53, 69, 0.12);
+}
+
+.cnc-rut-upload {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+}
+
+.cnc-rut-upload[hidden] {
+    display: none;
+}
+
+.cnc-rut-upload small {
+    grid-column: 1 / -1;
+    color: #334155;
 }
 
 .cnc-modal__field {
     display: grid;
     gap: 0.35rem;
+    min-width: 0;
+    margin: 0;
+}
+
+.cnc-modal__field .form-control,
+.cnc-modal__field .form-select {
+    min-width: 0;
+    border-color: #cbd5e1;
+    border-radius: 7px;
+    font-size: 0.9rem;
+}
+
+.cnc-modal__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: 0.65rem;
 }
 
 .cnc-modal__actions {
+    position: sticky;
+    bottom: -1.1rem;
+    z-index: 2;
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+    margin: 0 -1.1rem -1.1rem;
+    padding: 0.8rem 1.1rem 1rem;
+    border-top: 1px solid var(--cnc-line);
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(8px);
     flex-wrap: wrap;
+}
+
+.cnc-cashflow-wizard {
+    width: min(100%, 58rem);
+    gap: 1rem;
+}
+
+.cnc-cashflow-wizard__header {
+    align-items: center;
+}
+
+.cnc-cashflow-wizard__header h2 {
+    margin-top: 0.18rem;
+    font-size: 1.2rem;
+}
+
+.cnc-cashflow-wizard__close {
+    display: inline-grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    place-items: center;
+    flex: 0 0 2.25rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #64748b;
+    font-size: 1.6rem;
+    line-height: 1;
+}
+
+.cnc-cashflow-wizard__close:hover,
+.cnc-cashflow-wizard__close:focus-visible {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.cnc-cashflow-wizard__progress {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.cnc-cashflow-wizard__progress span {
+    color: var(--cnc-muted);
+    font-size: 0.76rem;
+    font-weight: 750;
+}
+
+.cnc-cashflow-wizard__card {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.cnc-cashflow-wizard__movement {
+    overflow: hidden;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.cnc-cashflow-wizard__facts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    border-bottom: 1px solid var(--cnc-line);
+    background: #f8fafc;
+}
+
+.cnc-cashflow-wizard__fact {
+    min-width: 0;
+    padding: 0.9rem 1rem;
+}
+
+.cnc-cashflow-wizard__fact + .cnc-cashflow-wizard__fact {
+    border-left: 1px solid var(--cnc-line);
+}
+
+.cnc-cashflow-wizard__fact span,
+.cnc-cashflow-wizard__description span {
+    display: block;
+    color: var(--cnc-muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cnc-cashflow-wizard__fact strong,
+.cnc-cashflow-wizard__description p {
+    display: block;
+    margin: 0.2rem 0 0;
+    color: var(--cnc-ink);
+    font-weight: 750;
+    overflow-wrap: anywhere;
+}
+
+.cnc-cashflow-wizard__fact--total {
+    text-align: right;
+}
+
+.cnc-cashflow-wizard__fact--total strong {
+    color: #0f172a;
+    font-size: 1.25rem;
+    font-weight: 850;
+}
+
+.cnc-cashflow-wizard__description {
+    min-width: 0;
+    padding: 1rem;
+}
+
+.cnc-cashflow-wizard__description p {
+    font-size: 0.96rem;
+    line-height: 1.5;
+}
+
+.cnc-cashflow-wizard__category {
+    gap: 0.45rem;
+}
+
+.cnc-cashflow-wizard__category > span {
+    color: #334155;
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cnc-cashflow-wizard__category .form-select {
+    min-height: 3rem;
+    padding-left: 0.9rem;
+    border-color: #cbd5e1;
+    background-color: #fff;
+    color: #0f172a;
+    font-size: 0.95rem;
+    font-weight: 650;
+}
+
+.cnc-cashflow-wizard__category .form-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cnc-cashflow-wizard__message {
+    padding: 0.65rem 0.75rem;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 800;
+}
+
+.cnc-cashflow-wizard__message.is-empty {
+    display: none;
+}
+
+.cnc-cashflow-wizard__message.is-warning {
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.cnc-cashflow-wizard__message.is-success {
+    background: #ecfdf3;
+    color: #047857;
+}
+
+.cnc-cashflow-wizard__message.is-error {
+    background: #fff1f3;
+    color: var(--cnc-red);
+}
+
+.cnc-cashflow-wizard__actions {
+    align-items: center;
+}
+
+.cnc-cashflow-wizard__actions .btn {
+    min-height: 2.55rem;
+    padding-inline: 1rem;
+    border-radius: 7px;
+    font-size: 0.9rem;
+    font-weight: 750;
+}
+
+.cnc-cashflow-wizard__actions [data-cnc-cashflow-wizard-pending] {
+    margin-left: auto;
+}
+
+.cnc-cashflow-wizard__actions [data-cnc-cashflow-wizard-process] {
+    min-width: 7rem;
+}
+
+.cnc-wizard-process {
+    display: grid;
+    gap: 0.7rem;
+}
+
+.cnc-wizard-process__summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.cnc-wizard-process__summary > div {
+    min-width: 0;
+}
+
+.cnc-wizard-process__summary span {
+    color: var(--cnc-muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cnc-wizard-process__summary p {
+    margin: 0.2rem 0 0;
+    color: var(--cnc-ink);
+    font-size: 0.92rem;
+    font-weight: 720;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.cnc-wizard-process__summary > strong {
+    color: #0f172a;
+    font-size: 1.08rem;
+    font-weight: 850;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.cnc-wizard-process__state {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.15rem 0.05rem;
+}
+
+.cnc-wizard-process__state strong {
+    min-width: 0;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.cnc-wizard-process__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--cnc-line);
+    flex-wrap: wrap;
+}
+
+.cnc-wizard-process__actions .btn {
+    min-height: 2.5rem;
+    padding-inline: 1rem;
+    border-radius: 7px;
+    font-size: 0.88rem;
+    font-weight: 750;
+}
+
+.cnc-wizard-process__actions .btn-primary {
+    min-width: 7rem;
+    margin-left: auto;
+}
+
+.cnc-wizard-optional {
+    border-top: 1px solid var(--cnc-line);
+    border-bottom: 1px solid var(--cnc-line);
+}
+
+.cnc-wizard-optional summary {
+    padding: 0.65rem 0;
+    cursor: pointer;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.cnc-wizard-retentions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.55rem;
+    padding: 0 0 0.75rem;
+}
+
+.cnc-cashflow-wizard__actions[hidden] {
+    display: none;
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-summary {
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-summary div {
+    border: 0;
+    border-radius: 0;
+    background: #f8fafc;
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-summary div + div {
+    border-left: 1px solid var(--cnc-line);
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-table {
+    table-layout: fixed;
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-table th:first-child {
+    width: 52%;
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-table td strong,
+.cnc-cashflow-wizard .cnc-supplier-payment-table td small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.cnc-cashflow-wizard .cnc-supplier-payment-table td small {
+    margin-top: 0.15rem;
+    color: var(--cnc-muted);
+}
+
+.cnc-cashflow-accumulated__intro {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+}
+
+.cnc-cashflow-accumulated__intro strong {
+    color: #1e3a8a;
+    font-weight: 900;
+}
+
+.cnc-cashflow-accumulated__intro small {
+    color: #1d4ed8;
+    font-weight: 750;
+}
+
+.cnc-cashflow-accumulated-list {
+    display: grid;
+    gap: 0.65rem;
+    max-height: min(52vh, 29rem);
+    overflow: auto;
+    padding-right: 0.2rem;
+}
+
+.cnc-cashflow-accumulated-card {
+    display: grid;
+    gap: 0.6rem;
+    padding: 0.85rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.cnc-cashflow-accumulated-card header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.cnc-cashflow-accumulated-card h3 {
+    margin: 0.35rem 0 0.1rem;
+    color: var(--cnc-ink);
+    font-size: 1rem;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.cnc-cashflow-accumulated-card header small {
+    color: var(--cnc-muted);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.cnc-cashflow-accumulated-card header > strong {
+    color: #047857;
+    font-size: 1.05rem;
+    font-weight: 950;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.cnc-cashflow-accumulated-card__meta {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.cnc-cashflow-accumulated-card__meta span {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 0.25rem 0.48rem;
+    border-radius: 999px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.74rem;
+    font-weight: 800;
+}
+
+.cnc-empty-state {
+    display: grid;
+    gap: 0.25rem;
+    padding: 1rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: var(--cnc-ink);
+}
+
+.cnc-empty-state small {
+    color: var(--cnc-muted);
+    font-weight: 700;
 }
 
 .cnc-invoice-search {
@@ -834,12 +2263,1349 @@
 }
 
 .cnc-invoice-selected {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.75rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+
+.cnc-invoice-selected strong {
+    font-weight: 900;
+}
+
+.cnc-invoice-selected small {
+    color: inherit;
+    font-weight: 750;
+}
+
+.cnc-invoice-selected__grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
+}
+
+.cnc-invoice-selected__grid span {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    padding: 0.4rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.78);
+    font-size: 0.72rem;
+    font-weight: 850;
+}
+
+.cnc-invoice-selected__grid b {
+    color: var(--cnc-ink);
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.cnc-invoice-selected--success {
+    border-color: #bbf7d0;
+    background: #ecfdf3;
+    color: #166534;
+}
+
+.cnc-invoice-selected--warning {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.cnc-invoice-selected--danger {
+    border-color: #fecdd3;
+    background: #fff1f3;
+    color: #be123c;
+}
+
+.cnc-supplier-payment-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.cnc-supplier-payment-summary div {
+    display: grid;
+    gap: 0.12rem;
+    padding: 0.5rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 6px;
+    background: #f8fafc;
+}
+
+.cnc-supplier-payment-summary span {
+    color: var(--cnc-muted);
+    font-size: 0.68rem;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.cnc-supplier-payment-summary strong {
+    color: var(--cnc-ink);
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.cnc-supplier-payment-search {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.6rem;
+    align-items: end;
+}
+
+.cnc-supplier-payment-suppliers {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.cnc-supplier-payment-selected {
     padding: 0.55rem 0.7rem;
     border: 1px solid #bbf7d0;
     border-radius: 8px;
     background: #ecfdf3;
     color: var(--cnc-green);
+    font-size: 0.8rem;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+}
+
+.cnc-supplier-payment-supplier {
+    display: grid;
+    gap: 0.16rem;
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--cnc-ink);
+    text-align: left;
+}
+
+.cnc-supplier-payment-supplier:hover,
+.cnc-supplier-payment-supplier:focus-visible {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
+.cnc-supplier-payment-supplier strong,
+.cnc-supplier-payment-supplier small {
+    overflow-wrap: anywhere;
+}
+
+.cnc-supplier-payment-supplier small {
+    color: var(--cnc-muted);
+    font-weight: 750;
+}
+
+.cnc-supplier-payment-table-wrap {
+    max-height: min(46vh, 24rem);
+    overflow: auto;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+}
+
+.cnc-supplier-payment-table {
+    margin-bottom: 0;
+}
+
+.cnc-supplier-payment-invoice {
+    cursor: pointer;
+}
+
+.cnc-supplier-payment-invoice:hover td {
+    background: #f8fbff;
+}
+
+.cnc-supplier-payment-invoice.is-selected td {
+    border-top-color: #86efac;
+    border-bottom-color: #86efac;
+    background: #dcfce7;
+    color: #14532d;
+}
+
+.cnc-party-picker {
+    position: relative;
+    z-index: 4;
+}
+
+.cnc-party-picker__results {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    left: 0;
+    max-height: 17rem;
+    overflow: auto;
+    padding: 0.3rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+
+.cnc-party-picker__option {
+    display: grid;
+    gap: 0.12rem;
+    width: 100%;
+    padding: 0.62rem 0.7rem;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--cnc-ink);
+    text-align: left;
+}
+
+.cnc-party-picker__option:hover,
+.cnc-party-picker__option:focus-visible {
+    background: #eff6ff;
+    outline: none;
+}
+
+.cnc-party-picker__option strong,
+.cnc-party-picker__option small {
+    overflow-wrap: anywhere;
+}
+
+.cnc-party-picker__option small {
+    color: var(--cnc-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.cnc-party-picker__selected {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+
+.cnc-party-picker__selected strong {
+    min-width: 0;
+    font-size: 0.82rem;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+}
+
+.cnc-party-picker__selected .btn {
+    flex: 0 0 auto;
+}
+
+.cnc-client-add-company {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 0.35rem;
+    padding: 0.2rem 0.1rem;
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 750;
+    text-decoration: none;
+}
+
+.cnc-client-add-company:hover,
+.cnc-client-add-company:focus-visible {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+.cnc-client-invoice-party {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0.22rem 0;
+    padding: 0.12rem 0.35rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.62rem;
     font-weight: 800;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.cnc-client-invoice-party.is-additional {
+    background: #ede9fe;
+    color: #6d28d9;
+}
+
+.cnc-client-invoice-remove {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.62rem;
+    font-weight: 750;
+    text-decoration: underline;
+}
+
+.cnc-additional-client-modal {
+    z-index: 1085;
+    place-items: center;
+}
+
+.cnc-additional-client-modal__dialog {
+    width: min(100%, 42rem);
+    max-height: min(86vh, 48rem);
+    overflow: auto;
+}
+
+.cnc-additional-client-invoices {
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+
+.cnc-additional-client-invoice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.cnc-additional-client-invoice > div {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.cnc-additional-client-invoice strong,
+.cnc-additional-client-invoice small {
+    overflow-wrap: anywhere;
+}
+
+.cnc-additional-client-invoice small {
+    color: var(--cnc-muted);
+    font-size: 0.75rem;
+}
+
+.cnc-cashflow-wizard.is-client-payment {
+    width: min(100%, 86rem);
+}
+
+.cnc-cashflow-wizard.is-supplier-payment {
+    width: min(100%, 96rem);
+}
+
+.cnc-payment-allocation-table {
+    min-width: 42rem;
+    margin-bottom: 0;
+    table-layout: fixed;
+}
+
+.cnc-payment-allocation-table th:nth-child(1) {
+    width: 32%;
+}
+
+.cnc-payment-allocation-table th:nth-child(2) {
+    width: 16%;
+}
+
+.cnc-payment-allocation-table th:nth-child(3) {
+    width: 20%;
+}
+
+.cnc-payment-allocation-table th:nth-child(4) {
+    width: 32%;
+}
+
+.cnc-client-payment-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    font-size: 0.76rem;
+}
+
+.cnc-client-payment-table th:nth-child(1) {
+    width: 12%;
+}
+
+.cnc-client-payment-table th:nth-child(2) {
+    width: 7%;
+}
+
+.cnc-client-payment-table th:nth-child(3) {
+    width: 10%;
+}
+
+.cnc-client-payment-table th:nth-child(4) {
+    width: 10%;
+}
+
+.cnc-client-payment-table th:nth-child(5),
+.cnc-client-payment-table th:nth-child(6),
+.cnc-client-payment-table th:nth-child(7) {
+    width: 15%;
+}
+
+.cnc-client-payment-table th:nth-child(8) {
+    width: 9%;
+}
+
+.cnc-client-payment-table th:nth-child(9) {
+    width: 7%;
+}
+
+.cnc-client-payment-table th,
+.cnc-client-payment-table td {
+    min-width: 0;
+    padding: 0.55rem 0.4rem;
+}
+
+.cnc-client-payment-table th {
+    font-size: 0.68rem;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.cnc-client-payment-table [data-cnc-client-apply] {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.35rem;
+    white-space: nowrap;
+}
+
+.cnc-client-payment-table .form-control,
+.cnc-client-payment-table .form-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.35rem;
+    border-color: #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    text-overflow: ellipsis;
+}
+
+.cnc-client-payment-table .form-control {
+    padding-inline: 0.45rem;
+}
+
+.cnc-client-payment-table .form-select {
+    padding-right: 1.7rem;
+    padding-left: 0.45rem;
+}
+
+.cnc-supplier-payment-table-wrap[data-cnc-wizard-client-invoice-wrap] {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.cnc-supplier-payment-table-wrap[data-cnc-wizard-supplier-purchase-wrap] {
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.cnc-supplier-payment-allocation-table {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    table-layout: fixed;
+    font-size: 0.74rem;
+}
+
+.cnc-supplier-payment-allocation-table th:nth-child(1) {
+    width: 30%;
+}
+
+.cnc-supplier-payment-allocation-table th:nth-child(2) {
+    width: 16%;
+}
+
+.cnc-supplier-payment-allocation-table th:nth-child(3),
+.cnc-supplier-payment-allocation-table th:nth-child(4) {
+    width: 20%;
+}
+
+.cnc-supplier-payment-allocation-table th:nth-child(5) {
+    width: 14%;
+}
+
+.cnc-supplier-payment-allocation-table th,
+.cnc-supplier-payment-allocation-table td {
+    min-width: 0;
+    padding: 0.5rem 0.35rem;
+    overflow-wrap: anywhere;
+}
+
+.cnc-supplier-payment-allocation-table th {
+    font-size: 0.66rem;
+    line-height: 1.2;
+    white-space: normal;
+}
+
+.cnc-supplier-payment-allocation-table .form-control,
+.cnc-supplier-payment-allocation-table .form-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.35rem;
+    border-color: #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.72rem;
+}
+
+.cnc-supplier-payment-allocation-table .form-control {
+    padding-inline: 0.4rem;
+}
+
+.cnc-supplier-payment-allocation-table .form-select {
+    padding-right: 1.7rem;
+    padding-left: 0.45rem;
+    text-overflow: ellipsis;
+}
+
+.cnc-supplier-payment-allocation-table .form-control:focus,
+.cnc-supplier-payment-allocation-table .form-select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.cnc-supplier-payment-allocation-table [data-cnc-supplier-apply] {
+    width: 100%;
+    max-width: 7rem;
+    min-width: 0;
+    padding-inline: 0.3rem;
+    white-space: nowrap;
+}
+
+.cnc-supplier-payment-allocation-table .cnc-payment-apply-cell {
+    text-align: center;
+}
+
+.cnc-supplier-dian-match {
+    font-weight: 800;
+}
+
+.cnc-supplier-dian-match.is-success {
+    color: #047857;
+}
+
+.cnc-supplier-dian-match.is-warning {
+    color: #b45309;
+}
+
+.cnc-supplier-dian-match.is-neutral {
+    color: #64748b;
+}
+
+.cnc-supplier-payment-allocation-row.is-error td {
+    background: #fff7ed;
+}
+
+.cnc-supplier-payment-allocation-row.is-sending td {
+    opacity: 0.72;
+}
+
+.cnc-supplier-payment-editor-modal {
+    z-index: 1080;
+    place-items: center;
+}
+
+.cnc-supplier-payment-editor-panel {
+    width: min(100%, 46rem);
+    gap: 0.9rem;
+    border-radius: 8px;
+}
+
+.cnc-supplier-payment-editor-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.cnc-supplier-payment-editor-facts > div {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+    padding: 0.7rem 0.8rem;
+}
+
+.cnc-supplier-payment-editor-facts > div + div {
+    border-left: 1px solid var(--cnc-line);
+}
+
+.cnc-supplier-payment-editor-facts span,
+.cnc-supplier-payment-editor-retention > div span,
+.cnc-supplier-payment-editor-balance span {
+    color: var(--cnc-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cnc-supplier-payment-editor-facts strong,
+.cnc-supplier-payment-editor-retention > div strong,
+.cnc-supplier-payment-editor-balance strong {
+    min-width: 0;
+    color: var(--cnc-ink);
+    font-size: 0.92rem;
+    overflow-wrap: anywhere;
+}
+
+.cnc-supplier-payment-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+.cnc-supplier-payment-editor-category {
+    grid-column: 1 / -1;
+}
+
+.cnc-supplier-payment-editor-retentions {
+    display: grid;
+    gap: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+}
+
+.cnc-supplier-payment-editor-retentions legend {
+    width: auto;
+    margin: 0 0 -0.35rem 0.7rem;
+    padding: 0 0.35rem;
+    background: #fff;
+    color: var(--cnc-muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cnc-supplier-payment-editor-retention {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+    gap: 0.75rem;
+    align-items: end;
+    min-width: 0;
+    padding: 0.75rem;
+}
+
+.cnc-supplier-payment-editor-retention + .cnc-supplier-payment-editor-retention {
+    border-top: 1px solid var(--cnc-line);
+}
+
+.cnc-supplier-payment-editor-retention > div {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    padding-bottom: 0.55rem;
+    text-align: right;
+}
+
+.cnc-supplier-payment-editor-balance {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-width: 0;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+}
+
+.cnc-supplier-payment-editor-balance strong {
+    color: #1d4ed8;
+    font-size: 1.05rem;
+    text-align: right;
+}
+
+.cnc-supplier-payment-editor-balance strong.is-zero {
+    color: #047857;
+}
+
+.cnc-supplier-payment-editor-balance strong.is-over {
+    color: #b91c1c;
+}
+
+.cnc-supplier-payment-editor-error {
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #fecdd3;
+    border-radius: 8px;
+    background: #fff1f2;
+    color: #be123c;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.cnc-client-payment-table .form-control:focus,
+.cnc-client-payment-table .form-select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.cnc-retention-editor {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.cnc-retention-editor small {
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-align: right;
+}
+
+.cnc-payment-allocation-row.is-over td {
+    background: #fff7ed;
+}
+
+.cnc-payment-balance {
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.cnc-payment-balance.is-zero {
+    color: #047857;
+}
+
+.cnc-payment-balance.is-over {
+    color: #b91c1c;
+}
+
+.cnc-payment-allocation-row td {
+    transition: background-color 140ms ease;
+}
+
+.cnc-payment-allocation-row.is-applied td {
+    background: #eff6ff;
+}
+
+.cnc-payment-allocation-row.is-saved td {
+    background: #f0fdf4;
+}
+
+.cnc-payment-apply-cell {
+    align-content: center;
+}
+
+.cnc-payment-apply-cell small {
+    display: block;
+    min-height: 1rem;
+    margin-top: 0.25rem;
+    color: #64748b;
+    font-size: 0.64rem;
+    font-weight: 750;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.cnc-payment-allocation-row.is-saved .cnc-payment-apply-cell small {
+    color: #047857;
+}
+
+.cnc-client-payment-progress-modal {
+    z-index: 1090;
+    place-items: center;
+}
+
+.cnc-client-payment-progress-panel {
+    width: min(100%, 31rem);
+    gap: 0.85rem;
+}
+
+.cnc-client-payment-progress-list {
+    border: 1px solid #dbe3ee;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cnc-client-payment-progress-step {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: 0.7rem;
+    align-items: center;
+    min-height: 4rem;
+    padding: 0.75rem 0.85rem;
+    background: #fff;
+}
+
+.cnc-client-payment-progress-step + .cnc-client-payment-progress-step {
+    border-top: 1px solid #e2e8f0;
+}
+
+.cnc-client-payment-progress-step > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.76rem;
+    font-weight: 850;
+}
+
+.cnc-client-payment-progress-step div {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.cnc-client-payment-progress-step strong {
+    color: #0f172a;
+    font-size: 0.86rem;
+}
+
+.cnc-client-payment-progress-step small {
+    color: #64748b;
+    font-size: 0.76rem;
+}
+
+.cnc-client-payment-progress-step[data-state="running"] {
+    background: #eff6ff;
+}
+
+.cnc-client-payment-progress-step[data-state="running"] > span {
+    background: #2563eb;
+    color: #fff;
+}
+
+.cnc-client-payment-progress-step[data-state="success"] {
+    background: #f0fdf4;
+}
+
+.cnc-client-payment-progress-step[data-state="success"] > span {
+    background: #059669;
+    color: #fff;
+}
+
+.cnc-client-payment-progress-step[data-state="error"] {
+    background: #fff1f2;
+}
+
+.cnc-client-payment-progress-step[data-state="error"] > span {
+    background: #dc2626;
+    color: #fff;
+}
+
+.cnc-client-payment-progress-step[data-state="warning"] {
+    background: #fff7ed;
+}
+
+.cnc-client-payment-progress-step[data-state="warning"] > span {
+    background: #ea580c;
+    color: #fff;
+}
+
+.cnc-client-payment-progress-summary {
+    min-height: 2.65rem;
+    margin: 0;
+    padding: 0.7rem 0.8rem;
+    border-radius: 7px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.cnc-client-payment-progress-modal[data-state="success"] .cnc-client-payment-progress-summary {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.cnc-client-payment-progress-modal[data-state="error"] .cnc-client-payment-progress-summary {
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.cnc-client-payment-progress-modal[data-state="warning"] .cnc-client-payment-progress-summary {
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+.cnc-payment-allocation-row td > strong,
+.cnc-payment-allocation-row td > small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.cnc-payment-allocation-row td > small {
+    margin-top: 0.12rem;
+    color: var(--cnc-muted);
+    font-size: 0.72rem;
+}
+
+.cnc-payment-allocation-control {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 1fr) auto;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.cnc-payment-allocation-control .form-control,
+.cnc-payment-allocation-control .btn {
+    min-height: 2.25rem;
+    font-size: 0.8rem;
+}
+
+.cnc-payment-allocation-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.cnc-payment-allocation-summary > div {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+    padding: 0.65rem 0.75rem;
+}
+
+.cnc-payment-allocation-summary > div + div {
+    border-left: 1px solid var(--cnc-line);
+}
+
+.cnc-payment-allocation-summary span {
+    color: var(--cnc-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cnc-payment-allocation-summary strong {
+    color: var(--cnc-ink);
+    font-size: 0.88rem;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+}
+
+.cnc-payment-allocation-summary.is-balanced {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.cnc-payment-allocation-summary.is-over {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.cnc-client-payment-summary {
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+}
+
+.cnc-cuenta-expense-editor {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.cnc-cuenta-expense-editor__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.75rem;
+}
+
+.cnc-cuenta-expense-editor__field--wide {
+    grid-column: 1 / -1;
+}
+
+.cnc-cuenta-expense-editor__legacy {
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.78rem;
+}
+
+.cnc-cuenta-expense-editor__legacy strong {
+    font-size: 0.82rem;
+}
+
+.cnc-cuenta-expense-editor__summary {
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.cnc-cuenta-expense-editor__summary table {
+    min-width: 42rem;
+    margin: 0;
+}
+
+.cnc-cuenta-expense-editor__summary.is-balanced {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.cnc-cuenta-expense-editor__summary.is-over {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.cnc-cuenta-expense-editor__validation {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+
+.cnc-cuenta-expense-editor__validation.is-valid {
+    color: #166534;
+}
+
+.cnc-cuenta-expense-editor__validation.is-invalid {
+    color: #b91c1c;
+}
+
+.cnc-cuenta-expense-editor__loading {
+    display: grid;
+    justify-items: start;
+    gap: 0.6rem;
+}
+
+.cnc-cuenta-expense-editor__loading p {
+    margin: 0;
+}
+
+.cnc-client-payment-history {
+    display: grid;
+    gap: 0.45rem;
+    padding-top: 0.2rem;
+}
+
+.cnc-client-payment-history h3 {
+    margin: 0;
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 850;
+}
+
+.cnc-client-payment-history__table {
+    overflow: hidden;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+}
+
+.cnc-client-payment-history table {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    table-layout: fixed;
+    font-size: 0.76rem;
+}
+
+.cnc-client-payment-history-table th:nth-child(1) {
+    width: 16%;
+}
+
+.cnc-client-payment-history-table th:nth-child(2) {
+    width: 13%;
+}
+
+.cnc-client-payment-history-table th:nth-child(3) {
+    width: 17%;
+}
+
+.cnc-client-payment-history-table th:nth-child(4),
+.cnc-client-payment-history-table th:nth-child(5),
+.cnc-client-payment-history-table th:nth-child(6) {
+    width: 18%;
+}
+
+.cnc-client-payment-history-table th,
+.cnc-client-payment-history-table td {
+    min-width: 0;
+    padding: 0.5rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+    .cnc-client-payment-table,
+    .cnc-client-payment-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .cnc-client-payment-table thead {
+        display: none;
+    }
+
+    .cnc-client-payment-table tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        border-bottom: 1px solid var(--cnc-line);
+    }
+
+    .cnc-client-payment-table tr:last-child {
+        border-bottom: 0;
+    }
+
+    .cnc-client-payment-table td {
+        display: grid;
+        align-content: start;
+        gap: 0.25rem;
+        border: 0;
+        text-align: left !important;
+    }
+
+    .cnc-client-payment-table td::before {
+        content: attr(data-label);
+        color: var(--cnc-muted);
+        font-size: 0.64rem;
+        font-weight: 850;
+        text-transform: uppercase;
+    }
+
+    .cnc-client-payment-table td:first-child,
+    .cnc-client-payment-table .cnc-payment-empty {
+        grid-column: 1 / -1;
+    }
+
+    .cnc-client-payment-table .cnc-payment-empty::before {
+        display: none;
+    }
+
+    .cnc-client-payment-table td[data-label="Accion"] {
+        align-content: end;
+    }
+
+    .cnc-client-payment-table [data-cnc-client-apply] {
+        max-width: 10rem;
+    }
+}
+
+@media (max-width: 760px) {
+    .cnc-supplier-payment-allocation-table,
+    .cnc-supplier-payment-allocation-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .cnc-supplier-payment-allocation-table thead {
+        display: none;
+    }
+
+    .cnc-supplier-payment-allocation-table tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        border-bottom: 1px solid var(--cnc-line);
+    }
+
+    .cnc-supplier-payment-allocation-table tr:last-child {
+        border-bottom: 0;
+    }
+
+    .cnc-supplier-payment-allocation-table td {
+        display: grid;
+        align-content: start;
+        gap: 0.25rem;
+        border: 0;
+        text-align: left !important;
+    }
+
+    .cnc-supplier-payment-allocation-table td::before {
+        content: attr(data-label);
+        color: var(--cnc-muted);
+        font-size: 0.64rem;
+        font-weight: 850;
+        text-transform: uppercase;
+    }
+
+    .cnc-supplier-payment-allocation-table td:first-child,
+    .cnc-supplier-payment-allocation-table .cnc-payment-empty {
+        grid-column: 1 / -1;
+    }
+
+    .cnc-supplier-payment-allocation-table .cnc-payment-empty::before {
+        display: none;
+    }
+
+    .cnc-supplier-payment-allocation-table [data-cnc-supplier-apply] {
+        max-width: 10rem;
+    }
+
+    .cnc-supplier-payment-editor-facts,
+    .cnc-supplier-payment-editor-grid,
+    .cnc-supplier-payment-editor-retention {
+        grid-template-columns: 1fr;
+    }
+
+    .cnc-supplier-payment-editor-facts > div + div {
+        border-top: 1px solid var(--cnc-line);
+        border-left: 0;
+    }
+
+    .cnc-supplier-payment-editor-retention > div {
+        padding-bottom: 0;
+        text-align: left;
+    }
+}
+
+.cnc-client-payment-history tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.cnc-paid-retention strong,
+.cnc-paid-retention small {
+    display: block;
+}
+
+.cnc-paid-retention strong {
+    color: #334155;
+    font-size: 0.78rem;
+}
+
+.cnc-paid-retention small {
+    margin-top: 0.12rem;
+    color: var(--cnc-muted);
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.cnc-payment-empty {
+    padding: 1.15rem !important;
+    color: var(--cnc-muted);
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 750;
+}
+
+.cnc-siigo-sheet {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background:
+        linear-gradient(#fff, #fff) padding-box,
+        repeating-linear-gradient(0deg, #f8fafc 0 2rem, #eef2f7 2rem calc(2rem + 1px)) border-box;
+    box-shadow: inset 0 0 0 1px #fff;
+}
+
+.cnc-siigo-sheet__mast {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #1f2937;
+}
+
+.cnc-siigo-sheet__mast span {
+    color: var(--cnc-muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.cnc-siigo-sheet__mast strong {
+    color: var(--cnc-ink);
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.cnc-siigo-sheet__meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+
+.cnc-siigo-sheet__meta div {
+    display: grid;
+    gap: 0.12rem;
+    padding: 0.5rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.cnc-siigo-sheet__meta span {
+    color: var(--cnc-muted);
+    font-size: 0.68rem;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.cnc-siigo-sheet__meta strong {
+    min-width: 0;
+    color: var(--cnc-ink);
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.cnc-siigo-sheet__table {
+    border: 1px solid var(--cnc-line);
+    background: #fff;
+}
+
+.cnc-siigo-sheet__table tfoot td {
+    border-top: 2px solid #1f2937;
+    font-weight: 850;
+}
+
+.cnc-sync-section {
+    display: grid;
+    gap: 0.85rem;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.cnc-sync-section + .cnc-sync-section {
+    margin-top: 1rem;
+}
+
+.cnc-sync-section-header,
+.cnc-sync-comparison-card > header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.85rem;
+    align-items: flex-start;
+    min-width: 0;
+}
+
+.cnc-sync-section-header h3,
+.cnc-sync-comparison-card h4 {
+    margin: 0;
+    color: var(--cnc-ink);
+    font-size: 1rem;
+    font-weight: 850;
+}
+
+.cnc-sync-section-header p,
+.cnc-sync-comparison-card p {
+    margin: 0.2rem 0 0;
+    color: var(--cnc-muted);
+}
+
+.cnc-sync-comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.cnc-sync-comparison-card {
+    display: grid;
+    align-content: start;
+    gap: 0.75rem;
+    min-width: 0;
 }
 
 .cnc-sync-summary {
@@ -930,6 +3696,33 @@
     background: #fbfdff;
 }
 
+button.cnc-sync-metric {
+    width: 100%;
+    appearance: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.cnc-sync-metric--clickable {
+    cursor: pointer;
+    transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.cnc-sync-metric--clickable:hover,
+.cnc-sync-metric--clickable:focus-visible {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+    transform: translateY(-1px);
+}
+
+.cnc-sync-metric--clickable span::after {
+    content: " · ver detalle";
+    color: #2563eb;
+    font-weight: 750;
+    text-transform: none;
+}
+
 .cnc-sync-system span,
 .cnc-sync-metric span {
     color: var(--cnc-muted);
@@ -966,6 +3759,158 @@
     font-weight: 750;
 }
 
+.cnc-sync-empty strong,
+.cnc-sync-empty small {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.cnc-sync-empty small {
+    margin-top: 0.2rem;
+    font-weight: 650;
+}
+
+.cnc-sync-header-actions,
+.cnc-sync-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.cnc-sync-actions {
+    justify-content: flex-end;
+}
+
+.cnc-sync-differences {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.cnc-sync-diff-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.cnc-sync-diff-summary strong,
+.cnc-sync-diff-summary small {
+    overflow-wrap: anywhere;
+}
+
+.cnc-sync-diff-summary small {
+    color: var(--cnc-muted);
+    font-weight: 750;
+}
+
+.cnc-sync-diff-section {
+    display: grid;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.cnc-sync-diff-section header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.cnc-sync-diff-section h3 {
+    margin: 0;
+    color: var(--cnc-ink);
+    font-size: 1rem;
+    font-weight: 850;
+}
+
+.cnc-sync-diff-section p {
+    margin: 0.2rem 0 0;
+    color: var(--cnc-muted);
+}
+
+.cnc-sync-table-wrap {
+    min-width: 0;
+    overflow-x: auto;
+    border: 1px solid var(--cnc-line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.cnc-sync-table {
+    width: 100%;
+    min-width: 58rem;
+    border-collapse: collapse;
+}
+
+.cnc-sync-table--compact {
+    min-width: 42rem;
+}
+
+.cnc-sync-table th,
+.cnc-sync-table td {
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid var(--cnc-line);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.cnc-sync-table th {
+    color: var(--cnc-muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    background: #f8fafc;
+}
+
+.cnc-sync-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.cnc-sync-table td {
+    color: var(--cnc-ink);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.cnc-sync-table small {
+    display: block;
+    margin-top: 0.15rem;
+    color: var(--cnc-muted);
+    font-weight: 650;
+}
+
+@media (max-width: 640px) {
+    .cnc-rut-upload {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cnc-rut-upload small {
+        grid-column: auto;
+    }
+}
+
+.cnc-sync-table .is-money {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.cnc-sync-table .is-select {
+    width: 2.75rem;
+    text-align: center;
+}
+
+.cnc-sync-table input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+}
+
 @media (max-width: 1100px) {
     .cnc-phase-nav {
         --cnc-menu-expanded: min(19rem, calc(100vw - 1rem));
@@ -981,6 +3926,42 @@
 }
 
 @media (max-width: 760px) {
+    .cnc-client-payment-history-table,
+    .cnc-client-payment-history-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .cnc-client-payment-history-table thead {
+        display: none;
+    }
+
+    .cnc-client-payment-history-table tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        border-bottom: 1px solid var(--cnc-line);
+    }
+
+    .cnc-client-payment-history-table td {
+        display: grid;
+        gap: 0.15rem;
+        border: 0;
+        text-align: left !important;
+    }
+
+    .cnc-client-payment-history-table td::before {
+        content: attr(data-label);
+        color: var(--cnc-muted);
+        font-size: 0.64rem;
+        font-weight: 850;
+        text-transform: uppercase;
+    }
+
+    .cnc-client-payment-history-table td:first-child {
+        grid-column: 1 / -1;
+    }
+
     .cnc-heading,
     .cnc-period,
     .cnc-table-toolbar {
@@ -990,10 +3971,146 @@
 
     .cnc-readiness,
     .cnc-filter-grid,
+    .cnc-v2-controls,
+    .cnc-v2-search,
+    .cnc-v2-import,
+    .cnc-modal__grid,
     .cnc-invoice-search,
+    .cnc-invoice-selected__grid,
+    .cnc-supplier-payment-summary,
+    .cnc-payment-allocation-summary,
+    .cnc-supplier-payment-search,
+    .cnc-sync-section-header,
+    .cnc-sync-comparison-card > header,
+    .cnc-sync-header-actions,
+    .cnc-sync-actions,
     .cnc-sync-card header,
     .cnc-sync-systems,
-    .cnc-sync-metrics {
+    .cnc-sync-metrics,
+    .cnc-cashflow-wizard__facts {
         grid-template-columns: 1fr;
     }
+
+    .cnc-payment-allocation-summary > div + div {
+        border-top: 1px solid var(--cnc-line);
+        border-left: 0;
+    }
+
+    .cnc-cashflow-wizard__fact + .cnc-cashflow-wizard__fact {
+        border-top: 1px solid var(--cnc-line);
+        border-left: 0;
+    }
+
+    .cnc-cashflow-wizard__fact--total {
+        text-align: left;
+    }
+
+    .cnc-cashflow-wizard__actions [data-cnc-cashflow-wizard-pending] {
+        margin-left: 0;
+    }
+
+    .cnc-cashflow-accumulated-card header,
+    .cnc-wizard-process__summary {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cnc-cashflow-accumulated-card header > strong,
+    .cnc-wizard-process__summary > strong {
+        text-align: left;
+        white-space: normal;
+    }
+
+    .cnc-wizard-retentions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cnc-wizard-process__actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cnc-wizard-process__actions .btn-primary {
+        margin-left: 0;
+    }
+
+    .cnc-sync-header-actions,
+    .cnc-sync-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cnc-deducciones-upload {
+        grid-template-columns: 1fr;
+    }
+
+    .cnc-month-close-bar,
+    .cnc-sync-section-header,
+    .cnc-sync-comparison-card > header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cnc-close-stats {
+        justify-content: flex-start;
+    }
+
+    .cnc-v2-controls {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cnc-v2-controls--minimal {
+        grid-template-columns: 1fr;
+    }
+
+    .cnc-v2-controls--minimal .cnc-counter {
+        justify-self: start;
+    }
+
+    .cnc-v2-filtersets,
+    .cnc-v2-search,
+    .cnc-v2-import,
+    .cnc-bank-balance-card,
+    .cnc-v2-switch,
+    .cnc-v2-segment {
+        width: 100%;
+    }
+
+    .cnc-bank-balance-card__header,
+    .cnc-bank-balance-card__main {
+        flex-wrap: wrap;
+    }
+
+    .cnc-bank-balance-card__header .form-select {
+        width: 100%;
+    }
+
+    .cnc-v2-filtersets {
+        justify-content: stretch;
+    }
+
+    .cnc-v2-switch {
+        justify-content: space-between;
+    }
+
+    .cnc-v2-controls--minimal .cnc-v2-switch {
+        flex-basis: auto;
+    }
+
+    .cnc-v2-segment button {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+.cnc-payment-allocation-row.is-blocked {
+    background: color-mix(in srgb, var(--bs-danger-bg-subtle, #f8d7da) 45%, transparent);
+}
+
+.cnc-payment-due-warning {
+    color: var(--bs-danger-text-emphasis, #842029);
+    display: block;
+    font-weight: 600;
+    margin-top: .3rem;
+    max-width: 24rem;
 }

@@ -45,7 +45,9 @@ public sealed class HardwareController : Controller
                 ? currentUser.DisplayName
                 : currentUser.Email,
             CurrentUserId = currentUser.SystemUserId,
-            CurrentUserEmail = currentUser.Email,
+            CurrentUserEmail = FirstNonEmpty(currentUser.Email, currentUser.EmployeeUserEmail),
+            CurrentUserIsSupplierPayment = isSupplierPaymentUser,
+            CurrentUserIsBilling = isBillingUser,
             CanImpersonate = HardwareAccessPolicy.IsImpersonationUser(currentUser),
             AllowCreate = !isSupplierPaymentUser && !isBillingUser,
             AllowCommercialDraftEdit = !isSupplierPaymentUser && !isBillingUser,
@@ -181,7 +183,7 @@ public sealed class HardwareController : Controller
             if (HardwareAccessPolicy.IsSupplierPaymentUser(effectiveUser))
             {
                 board = await _dataverse.GetHardwareBoardAsync(
-                    HardwareAccessPolicy.OkForSupplierPaymentStateValue,
+                    null,
                     startDate,
                     endDate,
                     ct);
@@ -370,22 +372,23 @@ public sealed class HardwareController : Controller
             if (HardwareAccessPolicy.IsSupplierPaymentUser(currentUser))
             {
                 var board = await _dataverse.GetHardwareBoardAsync(
-                    HardwareAccessPolicy.OkForSupplierPaymentStateValue,
+                    null,
                     startDate,
                     endDate,
-                    ct);
+                    ct,
+                    filterByCreatedOn: true);
                 ApplyCommercialBoardAccess(board, currentUser);
                 return Json(board);
             }
 
             if (HardwareAccessPolicy.IsBillingUser(currentUser))
             {
-                var board = await _dataverse.GetHardwareBoardAsync(null, startDate, endDate, ct);
+                var board = await _dataverse.GetHardwareBoardAsync(null, startDate, endDate, ct, filterByCreatedOn: true);
                 ApplyCommercialBoardAccess(board, currentUser);
                 return Json(board);
             }
 
-            return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct));
+            return Json(await _dataverse.GetHardwareBoardAsync(stateValue, startDate, endDate, ct, filterByCreatedOn: true));
         }
         catch (Exception ex)
         {
@@ -605,7 +608,9 @@ public sealed class HardwareController : Controller
                 recordId,
                 fieldName,
                 ct,
-                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null);
+                requiredStateValue: isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName)
+                    ? HardwareAccessPolicy.OkForSupplierPaymentStateValue
+                    : null);
             if (file is null || file.Content.Length == 0)
                 return NotFound();
 
@@ -641,7 +646,9 @@ public sealed class HardwareController : Controller
                 ct,
                 requireCurrentOwner: !isSupplierPaymentUser && !isBillingUser,
                 ownerOverride: isSupplierPaymentUser || isBillingUser ? null : effectiveUser,
-                requiredStateValue: isSupplierPaymentUser ? HardwareAccessPolicy.OkForSupplierPaymentStateValue : null);
+                requiredStateValue: isSupplierPaymentUser && !IsSupplierPaymentFile(fieldName)
+                    ? HardwareAccessPolicy.OkForSupplierPaymentStateValue
+                    : null);
             if (file is null || file.Content.Length == 0)
                 return NotFound();
 
@@ -781,6 +788,10 @@ public sealed class HardwareController : Controller
 
     private static void ApplySupplierPaymentBoardAccess(HardwareBoardDto board)
     {
+        var historyRows = (board.SupplierPaymentHistoryRows.Count > 0
+                ? board.SupplierPaymentHistoryRows
+                : board.Rows.Where(static row => row.HasSupplierPaymentProof))
+            .ToList();
         var rows = board.Rows
             .Where(row =>
                 row.StateValue == HardwareAccessPolicy.OkForSupplierPaymentStateValue
@@ -813,6 +824,7 @@ public sealed class HardwareController : Controller
                     Count = rows.Count
                 }
             };
+        board.SupplierPaymentHistoryRows = historyRows;
         board.Message = rows.Count == 0
             ? $"No hay líneas de Hardware en estado {HardwareAccessPolicy.OkForSupplierPaymentStateLabel} pendientes de comprobante de pago a proveedor."
             : $"Se cargaron {rows.Count} línea(s) de Hardware en estado {HardwareAccessPolicy.OkForSupplierPaymentStateLabel} pendientes de comprobante de pago a proveedor.";

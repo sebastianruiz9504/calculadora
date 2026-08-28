@@ -1,166 +1,134 @@
+@using System.Text.Json
 @model SoporteCloudPublicSurveyViewModel
 @{
     Layout = null;
     var title = string.IsNullOrWhiteSpace(Model.SessionName) ? "Encuesta de capacitacion" : Model.SessionName;
+    var payload = new
+    {
+        code = Model.Code,
+        sessionId = Model.SessionId,
+        sessionName = title,
+        topicName = Model.TopicName,
+        isClosed = Model.IsClosed,
+        message = Model.Message,
+        submitUrl = Url.Action("SubmitSurvey", "SoporteCloud", new { code = Model.Code }),
+        resultsUrl = Url.Action("PublicSurveyResults", "SoporteCloud", new { code = Model.Code }),
+        liveStateUrl = Url.Action("PublicLiveSurveyState", "SoporteCloud", new { code = Model.Code }),
+        liveRegisterUrl = Url.Action("PublicLiveSurveyRegister", "SoporteCloud", new { code = Model.Code }),
+        liveAnswerUrl = Url.Action("PublicLiveSurveyAnswer", "SoporteCloud", new { code = Model.Code }),
+        liveCompleteUrl = Url.Action("PublicLiveSurveyComplete", "SoporteCloud", new { code = Model.Code }),
+        liveWheelUrl = Url.Action("PublicLiveWheelSpin", "SoporteCloud", new { code = Model.Code }),
+        knowledgeQuestions = Model.KnowledgeQuestions.Select(question => new
+        {
+            questionId = question.QuestionId,
+            text = question.Text,
+            inputTypeValue = question.InputTypeValue,
+            inputTypeLabel = question.InputTypeLabel,
+            maxPoints = 10,
+            sortOrder = question.SortOrder,
+            options = question.Options
+                .Where(option => option.IsActive)
+                .OrderBy(option => option.SortOrder)
+                .Select(option => new
+                {
+                    optionId = option.OptionId,
+                    text = option.Text,
+                    isCorrect = option.IsCorrect,
+                    points = option.Points,
+                    sortOrder = option.SortOrder
+                })
+        }),
+        satisfactionQuestions = Model.SatisfactionQuestions.Select(question => new
+        {
+            questionId = question.QuestionId,
+            text = question.Text,
+            inputTypeValue = question.InputTypeValue,
+            inputTypeLabel = question.InputTypeLabel,
+            sortOrder = question.SortOrder,
+            options = question.Options
+                .Where(option => option.IsActive)
+                .OrderBy(option => option.SortOrder)
+                .Select(option => new
+                {
+                    optionId = option.OptionId,
+                    text = option.Text,
+                    isCorrect = option.IsCorrect,
+                    points = option.Points,
+                    sortOrder = option.SortOrder
+                })
+        }),
+        leaderboard = Model.Leaderboard.Select(item => new
+        {
+            fullName = item.FullName,
+            company = item.Company,
+            score = item.Score,
+            scorePercent = item.ScorePercent
+        })
+    };
 }
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@title - Digital Tech</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <title>Asistente de aprendizaje Digital Tech</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/font-weight-reset.css" asp-append-version="true" />
 </head>
-<body class="support-cloud-public-body">
-    <main class="support-cloud-public"
-          id="soporteCloudPublicSurvey"
-          data-code="@Model.Code"
-          data-submit-url="@Url.Action("SubmitSurvey", "SoporteCloud", new { code = Model.Code })"
-          data-results-url="@Url.Action("PublicSurveyResults", "SoporteCloud", new { code = Model.Code })">
-        <section class="support-cloud-public-hero">
-            <div>
-                <div class="support-cloud-kicker">Digital Tech</div>
-                <h1 class="support-cloud-title">@title</h1>
-                <p class="support-cloud-subtitle">@Model.TopicName</p>
+<body class="support-cloud-live-public-body">
+    <main class="support-cloud-live-public"
+          id="soporteCloudLivePublicSurvey"
+          data-code="@Model.Code">
+        <header class="support-cloud-live-chat-header">
+            <div class="support-cloud-live-avatar">
+                <img src="~/img/digital-tech-white-logo.png" asp-append-version="true" alt="Digital Tech" />
             </div>
-            <div class="support-cloud-user-pill">
-                <span class="support-cloud-user-pill__label">Codigo</span>
-                <span>@Model.Code</span>
+            <div class="support-cloud-live-chat-title">
+                <strong>Asistente de aprendizaje Digital Tech</strong>
+                <small>@title</small>
             </div>
+            <div class="support-cloud-live-score" data-sclp-score hidden>
+                <i class="fa-solid fa-star" aria-hidden="true"></i>
+                <span data-sclp-score-value>0</span>
+            </div>
+        </header>
+
+        <section class="support-cloud-live-topbar" data-sclp-topbar hidden>
+            <span data-sclp-progress>Esperando al presentador</span>
+            <span data-sclp-phase>Registro</span>
         </section>
 
-        <div class="support-cloud-status is-visible is-info" data-scs-public-status>@Model.Message</div>
+        <section class="support-cloud-live-messages" data-sclp-messages aria-live="polite"></section>
 
-        @if (!Model.IsClosed && (Model.KnowledgeQuestions.Count > 0 || Model.SatisfactionQuestions.Count > 0))
-        {
-            <form class="support-cloud-public-form" data-scs-public-form>
-                <section class="support-cloud-card">
-                    <div class="support-cloud-section-header">
-                        <div>
-                            <div class="support-cloud-kicker">Satisfaccion</div>
-                            <h2 class="support-cloud-section-title">Experiencia</h2>
-                        </div>
-                    </div>
-                    <div class="support-cloud-public-question-list">
-                        @foreach (var question in Model.SatisfactionQuestions)
-                        {
-                            var questionText = question.Text ?? "";
-                            var isFullName = string.Equals(questionText.Trim(), "Nombre Completo", StringComparison.OrdinalIgnoreCase);
-                            var isCompany = string.Equals(questionText.Trim(), "Empresa", StringComparison.OrdinalIgnoreCase);
-                            var questionType = question.InputTypeValue == 645250001 ? "rating" : "text";
-                            <article class="support-cloud-public-question" data-scs-question="@question.QuestionId" data-scs-question-type="@questionType">
-                                <h3>@question.Text</h3>
-                                @if (questionType == "rating")
-                                {
-                                    <div class="support-cloud-star-rating" role="radiogroup" aria-label="@question.Text">
-                                        @for (var rating = 1; rating <= 5; rating++)
-                                        {
-                                            <label>
-                                                <input type="radio" name="q_@question.QuestionId" value="@rating" required />
-                                                <span aria-hidden="true">&#9733;</span>
-                                                <em>@rating</em>
-                                            </label>
-                                        }
-                                    </div>
-                                }
-                                else if (isFullName)
-                                {
-                                    <input type="text" class="form-control" data-scs-full-name required />
-                                }
-                                else if (isCompany)
-                                {
-                                    <input type="text" class="form-control" data-scs-company required />
-                                }
-                                else
-                                {
-                                    <textarea class="form-control" rows="3" required></textarea>
-                                }
-                            </article>
-                        }
-                    </div>
-                </section>
+        <section class="support-cloud-live-bottom" data-sclp-bottom hidden>
+            <div class="support-cloud-live-input-context" data-sclp-input-context hidden></div>
+            <div class="support-cloud-live-input" data-sclp-input-panel hidden>
+                <textarea data-sclp-input rows="1" placeholder="Escribe aqui..."></textarea>
+                <button type="button" data-sclp-send aria-label="Enviar">
+                    <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                </button>
+            </div>
 
-                <section class="support-cloud-card">
-                    <div class="support-cloud-section-header">
-                        <div>
-                            <div class="support-cloud-kicker">Preguntas</div>
-                            <h2 class="support-cloud-section-title">Conocimiento</h2>
-                        </div>
-                    </div>
-                    <div class="support-cloud-public-question-list">
-                        @foreach (var question in Model.KnowledgeQuestions)
-                        {
-                            <article class="support-cloud-public-question" data-scs-question="@question.QuestionId" data-scs-question-type="single">
-                                <h3>@question.Text</h3>
-                                <div class="support-cloud-public-options">
-                                    @foreach (var option in question.Options.Where(option => option.IsActive))
-                                    {
-                                        <label>
-                                            <input type="radio" name="q_@question.QuestionId" value="@option.OptionId" required />
-                                            <span>@option.Text</span>
-                                        </label>
-                                    }
-                                </div>
-                            </article>
-                        }
-                    </div>
-                </section>
-
-                <div class="support-cloud-public-actions">
-                    <button type="submit" class="btn btn-primary btn-lg">Enviar respuestas</button>
+            <div class="support-cloud-live-wheel" data-sclp-wheel-panel hidden>
+                <h3>Ruleta de la suerte</h3>
+                <div class="support-cloud-live-wheel-wrap">
+                    <div class="support-cloud-live-wheel-arrow">▼</div>
+                    <div class="support-cloud-live-wheel-disk" data-sclp-wheel></div>
                 </div>
-            </form>
-        }
-        else if (Model.IsClosed && Model.Leaderboard.Count > 0)
-        {
-            <section class="support-cloud-card">
-                <div class="support-cloud-section-header">
-                    <div>
-                        <div class="support-cloud-kicker">Resultados</div>
-                        <h2 class="support-cloud-section-title">Ganadores</h2>
-                    </div>
-                </div>
-                <ol class="support-cloud-leaderboard support-cloud-leaderboard--public">
-                    @for (var i = 0; i < Model.Leaderboard.Count; i++)
-                    {
-                        var item = Model.Leaderboard[i];
-                        <li>
-                            <span>@(i + 1)</span>
-                            <strong>@item.FullName</strong>
-                            <em>@item.ScorePercent.ToString("N2")%</em>
-                        </li>
-                    }
-                </ol>
-            </section>
-
-            <section class="support-cloud-card">
-                <div class="support-cloud-section-header">
-                    <div>
-                        <div class="support-cloud-kicker">Preguntas</div>
-                        <h2 class="support-cloud-section-title">Detalle de conocimiento</h2>
-                    </div>
-                </div>
-                <div class="support-cloud-breakdown">
-                    @foreach (var stat in Model.QuestionStats)
-                    {
-                        var width = Math.Max(6, Math.Min(100, (int)Math.Round(stat.CorrectPercent)));
-                        <div class="support-cloud-breakdown__row">
-                            <div class="support-cloud-breakdown__head">
-                                <span class="support-cloud-breakdown__label">@stat.QuestionText</span>
-                                <span class="support-cloud-breakdown__value">@stat.CorrectPercent.ToString("N2")% correcto · @stat.TotalAnswers respuestas</span>
-                            </div>
-                            <div class="support-cloud-breakdown__track">
-                                <span class="support-cloud-breakdown__fill" style="width:@width%"></span>
-                            </div>
-                        </div>
-                    }
-                </div>
-            </section>
-        }
+                <button type="button" class="support-cloud-live-spin" data-sclp-spin>Girar</button>
+                <div class="support-cloud-live-result" data-sclp-result></div>
+                <div class="support-cloud-live-wheel-ranking" data-sclp-wheel-ranking></div>
+            </div>
+        </section>
     </main>
 
+    <script type="application/json" id="supportCloudLiveSurveyPayload">
+        @Html.Raw(JsonSerializer.Serialize(payload))
+    </script>
     <script src="~/js/support-cloud-surveys.js" asp-append-version="true"></script>
 </body>
 </html>

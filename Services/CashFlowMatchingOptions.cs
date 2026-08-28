@@ -9,5 +9,5 @@ public sealed class CashFlowMatchingOptions
     public string TimeZoneId { get; set; } = "SA Pacific Standard Time";
     public bool DryRun { get; set; }
     public int LookbackDays { get; set; } = 180;
-    public decimal DifferenceTolerance { get; set; } = 5000m;
+    public decimal DifferenceTolerance { get; set; } = 2000m;
 }

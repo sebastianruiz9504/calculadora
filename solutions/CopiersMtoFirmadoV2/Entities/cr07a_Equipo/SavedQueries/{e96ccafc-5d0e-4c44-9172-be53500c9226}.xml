@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{e96ccafc-5d0e-4c44-9172-be53500c9226}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_nombredelequipo" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_equipoid">
+          <cell name="cr07a_nombredelequipo" width="164" />
+          <cell name="cr07a_cliente" width="100" />
+          <cell name="cr07a_referencia" width="101" />
+          <cell name="cr07a_fechaultimalectura" width="152" />
+          <cell name="cr07a_ultimoniveldetoner" width="161" />
+          <cell name="cr07a_categoriadeequipo" width="156" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_equipo">
+          <attribute name="cr07a_equipoid" />
+          <attribute name="cr07a_nombredelequipo" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_nombredelequipo" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_cliente" />
+          <attribute name="cr07a_referencia" />
+          <attribute name="cr07a_fechaultimalectura" />
+          <attribute name="cr07a_ultimoniveldetoner" />
+          <attribute name="cr07a_categoriadeequipo" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Equipo activo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

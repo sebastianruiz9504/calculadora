@@ -1,0 +1,83 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{45c995af-3157-4362-b96a-c75927a292fa}</formid>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <FormPresentation>0</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="45c995af-3157-4362-b96a-c75927a292fa" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="cbd5c5bc-b7f1-4d1d-8a49-ca999a7fb620" labelid="73ca50dd-8adb-49da-8edf-d8dd3b851e8c">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="dbd9fd9a-701d-44c5-a6f2-05ddc459d0cf" labelid="aecc1c1e-59d4-46f7-bad5-af351a290f17">
+                        <labels>
+                          <label description="Correo electrónico" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_correoelectronico" classid="73f29517-49fc-43f2-bad9-ff104ee749ca" datafieldname="cr07a_correoelectronico" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="b2e52dbd-ded1-4164-a03c-dc857e103f73" labelid="01fdac0c-bee6-44ab-8566-b5ef6e90e54a">
+                        <labels>
+                          <label description="Nombre" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_nombre" classid="40d93cf9-83d6-438c-b8c3-dddb482de32c" datafieldname="cr07a_nombre" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="45c26b20-f9f0-421e-b3ff-36e2f45c527f" labelid="02215ea0-f7f4-4c84-b1e2-4301cb7e73ab">
+                        <labels>
+                          <label description="Teléfono" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_telefono" classid="1fa575d7-0565-426f-bcee-c229765d2afb" datafieldname="cr07a_telefono" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="9c955688-3520-46fe-846e-90eac03d9fd1" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="b4d7eea6-cd21-4064-9711-13afd29000b0" showlabel="false" labelid="52959155-0a64-4dbf-a1e4-2ea6bff4ddc4">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="93fdecd0-82a0-430b-bb42-91accde94ca8" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="9a6c56e0-8f7b-43c6-8d5e-fbdfcb0329f7" showlabel="false" labelid="be40f6ab-fac4-47a9-bf4c-d0695b7ba7c2">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="1" FallbackForm="true"></DisplayConditions>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Cliente" languagecode="3082" />
+    </LocalizedNames>
+  </systemform>
+</forms>

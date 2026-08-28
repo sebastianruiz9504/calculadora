@@ -1,0 +1,99 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{37444d06-6853-40cd-8827-87f64f52cb18}</formid>
+    <IntroducedVersion>1.0.0.0</IntroducedVersion>
+    <FormPresentation>0</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="37444d06-6853-40cd-8827-87f64f52cb18" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="8241a177-553e-47c7-bb52-ddfb826c8c1f" labelid="91864497-2ec5-4e15-9321-e07bdc86219d">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="51f4d473-417d-4262-ae0c-0be2320006d3" labelid="a9948d0b-00c1-42ff-98ea-fce4e9ede9ff">
+                        <labels>
+                          <label description="Descripción" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_descripcion" classid="be9f5237-d9ab-4e5f-a3fa-46c939d7c22b" datafieldname="cr07a_descripcion" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="8eedd118-c833-4404-85cb-44e50f798dc2" labelid="df246474-0dfb-4f50-9f93-37725242b4a0">
+                        <labels>
+                          <label description="Estado" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_estado" classid="2af8a327-b245-416d-8ec8-3f917edbb9de" datafieldname="cr07a_estado" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="ebe7857c-ee29-4c68-9524-6a651da0e652" labelid="592d0a12-630a-45f3-a0ee-802fe325aa41">
+                        <labels>
+                          <label description="cr07a_estadoname" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_estadoname" classid="c668f6b5-3e25-459f-8bda-d20edfbf95a0" datafieldname="cr07a_estadoname" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="c8d8045f-276f-49cb-88b8-63e9a344b967" labelid="ae269c16-2662-47cb-ad79-b771dd41291c">
+                        <labels>
+                          <label description="Fecha Creación" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_fechacreacion" classid="ace8c41e-73a8-452d-a287-c536bb78558b" datafieldname="cr07a_fechacreacion" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="fbe342a2-413e-4f77-8fcc-2476a53e1686" labelid="94684f7d-932d-41e4-bb25-1396368de214">
+                        <labels>
+                          <label description="Título Ticket" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_tituloticket" classid="9d4062a4-56a6-422b-8a73-242517899503" datafieldname="cr07a_tituloticket" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="25659a06-4908-4c1a-a638-c38eaddccbd4" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="c5cb8f2d-7deb-4dea-8ad4-ed4084f71657" showlabel="false" labelid="d00fe43c-f866-4239-a4bd-30aee332eb31">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="fb24a273-aeec-4185-a5a7-cdbfdd0d09ed" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="7e046848-c59f-4df3-b628-05fa9e43a17c" showlabel="false" labelid="a8672ed9-bf03-4f8d-89b7-8eedaf3e6ff7">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="1" FallbackForm="true"></DisplayConditions>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Ticket" languagecode="3082" />
+    </LocalizedNames>
+  </systemform>
+</forms>

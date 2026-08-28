@@ -10,6 +10,12 @@ public enum ScorePeriodFilter
     ThisYear = 3
 }
 
+public enum ScoreBusinessFilter
+{
+    NewBusiness = 0,
+    Renewals = 1
+}
+
 public static class ScorePeriodFilterExtensions
 {
     public static ScorePeriodFilter ParseOrDefault(string? value)
@@ -46,10 +52,39 @@ public static class ScorePeriodFilterExtensions
     };
 }
 
+public static class ScoreBusinessFilterExtensions
+{
+    public static ScoreBusinessFilter ParseOrDefault(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return ScoreBusinessFilter.NewBusiness;
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "newbusiness" or "new-business" or "negocio-nuevo" or "negocios-nuevos" or "nuevo" or "nuevos" => ScoreBusinessFilter.NewBusiness,
+            "renewals" or "renewal" or "renovaciones" or "renovacion" or "renovación" => ScoreBusinessFilter.Renewals,
+            _ => ScoreBusinessFilter.NewBusiness
+        };
+    }
+
+    public static string ToKey(this ScoreBusinessFilter value) => value switch
+    {
+        ScoreBusinessFilter.Renewals => "renewals",
+        _ => "new-business"
+    };
+
+    public static string ToLabel(this ScoreBusinessFilter value) => value switch
+    {
+        ScoreBusinessFilter.Renewals => "Renovaciones",
+        _ => "Negocios nuevos"
+    };
+}
+
 public sealed class PuntajesPageViewModel
 {
     public CurrentUserInfo CurrentUser { get; set; } = new();
     public ScorePeriodFilter InitialFilter { get; set; } = ScorePeriodFilter.ThisMonth;
+    public ScoreBusinessFilter InitialBusinessFilter { get; set; } = ScoreBusinessFilter.NewBusiness;
     public IReadOnlyList<ScoreOptionItem> DealTypeOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> FirstContractOptions { get; set; } = Array.Empty<ScoreOptionItem>();
     public IReadOnlyList<ScoreOptionItem> LineOptions { get; set; } = Array.Empty<ScoreOptionItem>();
@@ -65,6 +100,8 @@ public sealed class ScoreBoardDto
 {
     public string Filter { get; set; } = ScorePeriodFilter.ThisMonth.ToKey();
     public string FilterLabel { get; set; } = ScorePeriodFilter.ThisMonth.ToLabel();
+    public string BusinessFilter { get; set; } = ScoreBusinessFilter.NewBusiness.ToKey();
+    public string BusinessFilterLabel { get; set; } = ScoreBusinessFilter.NewBusiness.ToLabel();
     public int ClientsCount { get; set; }
     public int RecordsCount { get; set; }
     public int ProductLinesCount { get; set; }
@@ -142,6 +179,7 @@ public sealed class ScoreRecordDto
     public int AutoBillOptionValue { get; set; }
     public int ProductLineOptionValue { get; set; }
     public int ContractTypeOptionValue { get; set; }
+    public int ContractOptionValue { get; set; }
     public int ContractKindOptionValue { get; set; }
     public string ContractKindLabel { get; set; } = "";
     public int DealTypeValue { get; set; }
@@ -170,6 +208,8 @@ public sealed class ScoreProductLineDto
     public decimal CostUnit { get; set; }
     public decimal MarginPercent { get; set; }
     public int ContractMonths { get; set; }
+    public decimal SuggestedRetailPrice { get; set; }
+    public decimal Acelerador { get; set; }
     public decimal MonthlyUnitValue { get; set; }
     public decimal MonthlyValue { get; set; }
     public decimal TotalValue { get; set; }
@@ -275,6 +315,7 @@ public sealed class ScoreRecordDeleteResultDto
 
 public sealed class ScoreMoveToRenewalRequest
 {
+    public string RecordId { get; set; } = "";
     public List<string> RecordIds { get; set; } = new();
 }
 

@@ -10,6 +10,7 @@
         uploadMaintenance: app.dataset.uploadMaintenanceUrl || "",
         downloadMaintenance: app.dataset.downloadMaintenanceUrl || "",
         preventiveMaintenance: app.dataset.preventiveMaintenanceUrl || "",
+        preventiveMaintenanceFrequency: app.dataset.preventiveMaintenanceFrequencyUrl || "",
         schedulePreventiveMaintenance: app.dataset.schedulePreventiveMaintenanceUrl || "",
         calendarConsent: app.dataset.calendarConsentUrl || "",
         saveCounter: app.dataset.saveCounterUrl || "",
@@ -21,6 +22,12 @@
         equipmentAssignment: app.dataset.equipmentAssignmentUrl || "",
         saveEquipment: app.dataset.saveEquipmentUrl || "",
         registerEquipmentMovement: app.dataset.registerEquipmentMovementUrl || "",
+        uploadEquipmentMovement: app.dataset.uploadEquipmentMovementUrl || "",
+        downloadEquipmentMovement: app.dataset.downloadEquipmentMovementUrl || "",
+        billingDays: app.dataset.billingDaysUrl || "",
+        equipmentMovements: app.dataset.equipmentMovementsUrl || "",
+        lineEquipmentAssignment: app.dataset.lineEquipmentAssignmentUrl || "",
+        saveLineEquipmentAssignment: app.dataset.lineEquipmentAssignmentSaveUrl || "",
         saveEquipmentClient: app.dataset.saveEquipmentClientUrl || "",
         supplies: app.dataset.suppliesUrl || "",
         saveSupplyQuantity: app.dataset.saveSupplyQuantityUrl || "",
@@ -32,6 +39,7 @@
         downloadDelivery: app.dataset.downloadDeliveryUrl || "",
         clientSearch: app.dataset.clientSearchUrl || ""
     };
+    const externalEquipmentValue = "__external__";
 
     const statusBanner = document.getElementById("copiersStatus");
     const tabButtons = Array.from(document.querySelectorAll("[data-copiers-tab]"));
@@ -74,6 +82,7 @@
     const preventiveScheduleTimeInput = document.getElementById("copiersPreventiveScheduleTime");
     const preventiveScheduleDurationInput = document.getElementById("copiersPreventiveScheduleDuration");
     const preventiveScheduleSaveBtn = document.getElementById("copiersPreventiveScheduleSaveBtn");
+    const preventivePeriodButtons = Array.from(document.querySelectorAll("[data-copiers-preventive-period]"));
     const counterModal = document.getElementById("copiersCounterModal");
     const counterForm = document.getElementById("copiersCounterForm");
     const counterStatus = document.getElementById("copiersCounterStatus");
@@ -84,6 +93,27 @@
     const counterDateInput = document.getElementById("copiersCounterDate");
     const counterFileInput = document.getElementById("copiersCounterFile");
     const counterSaveBtn = document.getElementById("copiersCounterSaveBtn");
+
+    const billingDaysRefreshBtn = document.getElementById("copiersBillingDaysRefreshBtn");
+    const billingDaysCount = document.getElementById("copiersBillingDaysCount");
+    const billingDaysBody = document.getElementById("copiersBillingDaysBody");
+    const billingDaysEmpty = document.getElementById("copiersBillingDaysEmpty");
+    const movementsRefreshBtn = document.getElementById("copiersMovementsRefreshBtn");
+    const movementsCount = document.getElementById("copiersMovementsCount");
+    const movementsSearchInput = document.getElementById("copiersMovementsSearch");
+    const movementsBody = document.getElementById("copiersMovementsBody");
+    const movementsEmpty = document.getElementById("copiersMovementsEmpty");
+    const movementSortButtons = Array.from(document.querySelectorAll("[data-copiers-movement-sort]"));
+    const lineEquipmentModal = document.getElementById("copiersLineEquipmentModal");
+    const lineEquipmentStatus = document.getElementById("copiersLineEquipmentStatus");
+    const lineEquipmentTitle = document.getElementById("copiersLineEquipmentTitle");
+    const lineEquipmentSubtitle = document.getElementById("copiersLineEquipmentSubtitle");
+    const lineEquipmentSummary = document.getElementById("copiersLineEquipmentSummary");
+    const lineEquipmentAssignedCount = document.getElementById("copiersLineEquipmentAssignedCount");
+    const lineEquipmentAvailableCount = document.getElementById("copiersLineEquipmentAvailableCount");
+    const lineEquipmentAssignedBody = document.getElementById("copiersLineEquipmentAssignedBody");
+    const lineEquipmentAvailableBody = document.getElementById("copiersLineEquipmentAvailableBody");
+    const lineEquipmentSaveBtn = document.getElementById("copiersLineEquipmentSaveBtn");
 
     const equipmentRefreshBtn = document.getElementById("copiersEquipmentRefreshBtn");
     const equipmentCount = document.getElementById("copiersEquipmentCount");
@@ -124,6 +154,7 @@
     const movementClientOptions = document.getElementById("copiersMovementClientOptions");
     const movementDateInput = document.getElementById("copiersMovementDate");
     const movementReasonInput = document.getElementById("copiersMovementReason");
+    const movementFileInput = document.getElementById("copiersMovementFile");
     const movementSaveBtn = document.getElementById("copiersMovementSaveBtn");
     const clientDetailModal = document.getElementById("copiersClientDetailModal");
     const clientDetailForm = document.getElementById("copiersClientDetailForm");
@@ -207,9 +238,21 @@
         busy: false,
         maintenance: null,
         preventiveMaintenance: null,
+        preventivePeriod: "this-month",
         preventiveExpandedClients: new Set(),
+        preventiveFrequencySavingKeys: new Set(),
+        canEditPreventiveFrequency: app.dataset.canEditPreventiveFrequency === "true",
         counterSaving: false,
         scheduleSaving: false,
+        billingDays: null,
+        billingDaysExpandedGroups: new Set(),
+        movements: null,
+        movementsSearchTerm: "",
+        movementsSortKey: "dateValue",
+        movementsSortDirection: "desc",
+        lineEquipmentDetail: null,
+        lineEquipmentDraftIds: new Set(),
+        lineEquipmentSaving: false,
         equipment: null,
         equipmentSerialSearch: "",
         equipmentDetail: null,
@@ -247,6 +290,21 @@
 
     maintenanceRefreshBtn?.addEventListener("click", () => loadMaintenance());
     preventiveRefreshBtn?.addEventListener("click", () => loadPreventiveMaintenance());
+    preventivePeriodButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const period = button.dataset.copiersPreventivePeriod === "previous-month" ? "previous-month" : "this-month";
+            if (state.preventivePeriod === period) {
+                return;
+            }
+
+            state.preventivePeriod = period;
+            state.preventiveExpandedClients.clear();
+            updatePreventivePeriodButtons();
+            loadPreventiveMaintenance();
+        });
+    });
+    billingDaysRefreshBtn?.addEventListener("click", () => loadBillingDays());
+    movementsRefreshBtn?.addEventListener("click", () => loadMovements());
     equipmentRefreshBtn?.addEventListener("click", () => loadEquipment());
     inventoryLoadBtn?.addEventListener("click", () => loadEquipmentInventory());
     inventoryClearBtn?.addEventListener("click", clearEquipmentInventory);
@@ -256,6 +314,25 @@
     equipmentSerialSearch?.addEventListener("input", () => {
         state.equipmentSerialSearch = equipmentSerialSearch.value || "";
         renderEquipment();
+    });
+
+    movementsSearchInput?.addEventListener("input", () => {
+        state.movementsSearchTerm = movementsSearchInput.value || "";
+        renderMovements();
+    });
+
+    movementSortButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const key = button.dataset.copiersMovementSort || "dateValue";
+            if (state.movementsSortKey === key) {
+                state.movementsSortDirection = state.movementsSortDirection === "desc" ? "asc" : "desc";
+            } else {
+                state.movementsSortKey = key;
+                state.movementsSortDirection = key === "dateValue" ? "desc" : "asc";
+            }
+
+            renderMovements();
+        });
     });
 
     newMaintenanceBtn?.addEventListener("click", async () => {
@@ -286,6 +363,12 @@
     preventiveBody?.addEventListener("click", async (event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const frequencyButton = target.closest("[data-preventive-frequency]");
+        if (frequencyButton instanceof HTMLElement) {
+            await togglePreventiveFrequency(frequencyButton.dataset.preventiveFrequency || "");
             return;
         }
 
@@ -328,6 +411,60 @@
             if (client && equipment) {
                 openCounterModal(client, equipment);
             }
+        }
+    });
+
+    billingDaysBody?.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const assignmentButton = target.closest("[data-billing-line-assignment]");
+        if (assignmentButton instanceof HTMLElement) {
+            const row = findBillingDayLine(assignmentButton.dataset.billingLineAssignment || "");
+            if (row) {
+                await loadLineEquipmentAssignment(row);
+            }
+            return;
+        }
+
+        const toggleButton = target.closest("[data-billing-group-toggle]");
+        if (toggleButton instanceof HTMLElement) {
+            const groupId = toggleButton.dataset.billingGroupToggle || "";
+            if (state.billingDaysExpandedGroups.has(groupId)) {
+                state.billingDaysExpandedGroups.delete(groupId);
+            } else {
+                state.billingDaysExpandedGroups.add(groupId);
+            }
+
+            renderBillingDays();
+        }
+    });
+
+    lineEquipmentSaveBtn?.addEventListener("click", saveLineEquipmentAssignment);
+
+    lineEquipmentAssignedBody?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const button = target.closest("[data-line-equipment-remove]");
+        if (button instanceof HTMLElement) {
+            removeLineEquipment(button.dataset.lineEquipmentRemove || "");
+        }
+    });
+
+    lineEquipmentAvailableBody?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const button = target.closest("[data-line-equipment-assign]");
+        if (button instanceof HTMLElement) {
+            assignLineEquipment(button.dataset.lineEquipmentAssign || "");
         }
     });
 
@@ -517,6 +654,8 @@
             closeModal(preventiveScheduleModal);
         } else if (closeTarget === "counter") {
             closeModal(counterModal);
+        } else if (closeTarget === "lineEquipment") {
+            closeLineEquipmentModal();
         } else if (closeTarget === "equipmentDetail") {
             closeModal(equipmentDetailModal);
         } else if (closeTarget === "equipmentMovement") {
@@ -539,9 +678,13 @@
             return;
         }
 
-        [confirmIngresoModal, ingresoModal, supplyModal, counterModal, preventiveScheduleModal, equipmentMovementModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
+        [confirmIngresoModal, ingresoModal, supplyModal, counterModal, lineEquipmentModal, preventiveScheduleModal, equipmentMovementModal, clientDetailModal, equipmentDetailModal, maintenanceModal, deliveryModal].forEach((modal) => {
             if (modal && !modal.hidden) {
-                closeModal(modal);
+                if (modal === lineEquipmentModal) {
+                    closeLineEquipmentModal();
+                } else {
+                    closeModal(modal);
+                }
             }
         });
     });
@@ -614,6 +757,10 @@
             await loadMaintenance();
         } else if (tab === "preventiveMaintenance" && !state.preventiveMaintenance) {
             await loadPreventiveMaintenance();
+        } else if (tab === "billingDays" && !state.billingDays) {
+            await loadBillingDays();
+        } else if (tab === "movements" && !state.movements) {
+            await loadMovements();
         } else if (tab === "equipment" && !state.equipment) {
             await loadEquipment();
         } else if (tab === "equipmentInventory" && !state.equipmentInventory) {
@@ -664,7 +811,7 @@
 
             return `
                 <tr class="is-selectable" data-record-id="${escapeHtml(row.recordId)}" tabindex="0">
-                    <td data-label="Equipo">${escapeHtml(row.equipmentSerial || "Sin equipo")}</td>
+                    <td data-label="Equipo">${escapeHtml(row.equipmentSerial || "Equipo externo")}</td>
                     <td data-label="Cliente">${escapeHtml(row.clientName || "Sin cliente")}</td>
                     <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
                     <td data-label="Tipo"><span class="copiers-badge">${escapeHtml(row.maintenanceTypeLabel || "Sin tipo")}</span></td>
@@ -680,7 +827,11 @@
         try {
             setBusy(true);
             showStatus(statusBanner, "info", "Cargando mantenimientos preventivos...");
-            state.preventiveMaintenance = await fetchJson(urls.preventiveMaintenance);
+            const url = new URL(urls.preventiveMaintenance, window.location.origin);
+            url.searchParams.set("period", state.preventivePeriod || "this-month");
+            state.preventiveMaintenance = await fetchJson(url.toString());
+            state.preventivePeriod = state.preventiveMaintenance?.periodFilter || state.preventivePeriod;
+            state.canEditPreventiveFrequency = Boolean(state.preventiveMaintenance?.canEditMaintenanceFrequency);
             renderPreventiveMaintenance();
             clearStatus(statusBanner);
         } catch (error) {
@@ -692,6 +843,7 @@
 
     function renderPreventiveMaintenance() {
         const clients = Array.isArray(state.preventiveMaintenance?.clients) ? state.preventiveMaintenance.clients : [];
+        updatePreventivePeriodButtons();
         if (preventiveCount) {
             preventiveCount.textContent = `${clients.length} cliente${clients.length === 1 ? "" : "s"}`;
         }
@@ -711,13 +863,30 @@
             const scheduleLabel = client.scheduleButtonLabel || "Programar mantenimiento";
             const scheduleDisabled = Boolean(client.scheduleButtonDisabled);
             const scheduledHint = client.scheduledDateDisplay ? ` - ${client.scheduledDateDisplay}` : "";
+            const frequencyLabel = client.maintenanceFrequencyLabel || "Mensual";
+            const frequencyClass = client.isBimonthlyMaintenance ? "is-bimonthly" : "is-monthly";
+            const canEditFrequency = Boolean(state.canEditPreventiveFrequency && client.clientId);
+            const frequencySaving = state.preventiveFrequencySavingKeys.has(clientKey);
+            const frequencyTitle = canEditFrequency
+                ? `Cambiar periodicidad. Actual: ${frequencyLabel}`
+                : `Periodicidad ${frequencyLabel}. Solo lectura.`;
+            const clientCity = (client.clientCity || "").trim();
             return `
                 <tr class="copiers-preventive-client-row ${expanded ? "is-expanded" : ""}">
                     <td data-label="Cliente">
-                        <button type="button" class="copiers-preventive-toggle" data-preventive-toggle="${escapeHtml(clientKey)}" aria-expanded="${expanded ? "true" : "false"}">
-                            <span class="copiers-preventive-toggle__icon">${expanded ? "-" : "+"}</span>
-                            <strong>${escapeHtml(client.clientName || "Sin cliente")}</strong>
-                        </button>
+                        <div class="copiers-preventive-client-main">
+                            <button type="button" class="copiers-preventive-toggle" data-preventive-toggle="${escapeHtml(clientKey)}" aria-expanded="${expanded ? "true" : "false"}">
+                                <span class="copiers-preventive-toggle__icon">${expanded ? "-" : "+"}</span>
+                                <strong>${escapeHtml(client.clientName || "Sin cliente")}</strong>
+                            </button>
+                            <div class="copiers-preventive-client-meta">
+                                <button type="button" class="copiers-frequency-switch ${frequencyClass} ${canEditFrequency ? "is-editable" : "is-readonly"} ${frequencySaving ? "is-saving" : ""}" data-preventive-frequency="${escapeHtml(clientKey)}" role="switch" aria-checked="${client.isBimonthlyMaintenance ? "true" : "false"}" aria-label="Periodicidad ${escapeHtml(frequencyLabel)}" title="${escapeHtml(frequencyTitle)}" ${canEditFrequency && !frequencySaving ? "" : "disabled"}>
+                                    <span>Mensual</span>
+                                    <span>Bimensual</span>
+                                </button>
+                                ${clientCity ? `<span class="copiers-client-city" title="Ciudad">${escapeHtml(clientCity)}</span>` : ""}
+                            </div>
+                        </div>
                     </td>
                     <td data-label="Acciones" class="text-end">
                         <button type="button" class="btn btn-sm copiers-preventive-action ${getPreventiveActionClass(client.scheduleButtonTone || "primary")}" data-preventive-schedule="${escapeHtml(clientKey)}" title="${escapeHtml(statusLabel + scheduledHint)}" ${scheduleDisabled ? "disabled" : ""}>${escapeHtml(scheduleLabel)}</button>
@@ -768,8 +937,68 @@
         `;
     }
 
+    async function togglePreventiveFrequency(clientKey) {
+        const client = findPreventiveClient(clientKey);
+        if (!client) {
+            return;
+        }
+
+        if (!state.canEditPreventiveFrequency) {
+            showStatus(statusBanner, "error", "Solo adaza@digitaltechcolombia.com o sruiz@digitaltechcolombia.com pueden cambiar esta periodicidad.");
+            return;
+        }
+
+        if (!client.clientId) {
+            showStatus(statusBanner, "error", "Este cliente no tiene ID de Dataverse para guardar la periodicidad.");
+            return;
+        }
+
+        if (!urls.preventiveMaintenanceFrequency || state.preventiveFrequencySavingKeys.has(clientKey)) {
+            return;
+        }
+
+        const previous = {
+            key: client.maintenanceFrequencyKey || "monthly",
+            label: client.maintenanceFrequencyLabel || "Mensual",
+            isBimonthly: Boolean(client.isBimonthlyMaintenance)
+        };
+        const nextKey = previous.isBimonthly ? "monthly" : "bimonthly";
+        applyPreventiveFrequency(client, nextKey);
+        state.preventiveFrequencySavingKeys.add(clientKey);
+        renderPreventiveMaintenance();
+
+        try {
+            const result = await fetchJson(urls.preventiveMaintenanceFrequency, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    clientId: client.clientId || "",
+                    clientName: client.clientName || "",
+                    frequencyKey: nextKey
+                })
+            });
+            applyPreventiveFrequency(client, result?.maintenanceFrequencyKey || nextKey, result);
+            showStatus(statusBanner, "success", result?.message || "Periodicidad actualizada.");
+        } catch (error) {
+            client.maintenanceFrequencyKey = previous.key;
+            client.maintenanceFrequencyLabel = previous.label;
+            client.isBimonthlyMaintenance = previous.isBimonthly;
+            showStatus(statusBanner, "error", getErrorMessage(error));
+        } finally {
+            state.preventiveFrequencySavingKeys.delete(clientKey);
+            renderPreventiveMaintenance();
+        }
+    }
+
+    function applyPreventiveFrequency(client, frequencyKey, result) {
+        const normalized = frequencyKey === "bimonthly" ? "bimonthly" : "monthly";
+        client.maintenanceFrequencyKey = normalized;
+        client.maintenanceFrequencyLabel = result?.maintenanceFrequencyLabel || (normalized === "bimonthly" ? "Bimensual" : "Mensual");
+        client.isBimonthlyMaintenance = result?.isBimonthlyMaintenance ?? normalized === "bimonthly";
+    }
+
     function renderPreventiveEquipmentRow(clientKey, row) {
-        const hasCounter = Boolean(row.hasCurrentCounter);
+        const hasCounter = Boolean(row.hasMonthlyCounter);
         const statusTone = hasCounter ? "is-good" : "is-warning";
         const statusLabel = row.counterDateDisplay || (hasCounter ? "Registrado" : "Pendiente");
         const maintenanceButtonLabel = row.maintenanceButtonLabel || (row.hasMonthlyMaintenance ? "Mantenimiento registrado" : "Registrar mantenimiento");
@@ -802,7 +1031,7 @@
         preventiveScheduleClientIdInput.value = client.clientId || "";
         preventiveScheduleClientNameInput.value = client.clientName || "";
         preventiveScheduleClientDisplayInput.value = client.clientName || "Sin cliente";
-        preventiveScheduleDateInput.value = todayValue();
+        preventiveScheduleDateInput.value = selectedPreventiveDateValue();
         preventiveScheduleTimeInput.value = defaultTimeValue();
         preventiveScheduleDurationInput.value = "60";
         preventiveScheduleSubtitle.textContent = `Reserva un espacio para ${client.clientName || "este cliente"}.`;
@@ -847,7 +1076,7 @@
             equipmentId: equipment.recordId || "",
             clientId: client.clientId || equipment.clientId || "",
             clientName: client.clientName || equipment.clientName || "",
-            dateValue: todayValue(),
+            dateValue: selectedPreventiveDateValue(),
             description: "",
             maintenanceTypeValue: maintenanceTypePreventive,
             maintenanceStatusValue: maintenanceStatusPending
@@ -859,7 +1088,7 @@
         counterEquipmentNameInput.value = `${equipment.serial || "Equipo"} - ${client.clientName || equipment.clientName || "Sin cliente"}`;
         counterCopiesInput.value = "";
         counterScansInput.value = "";
-        counterDateInput.value = todayValue();
+        counterDateInput.value = selectedPreventiveDateValue();
         counterFileInput.value = "";
         clearStatus(counterStatus);
         showModal(counterModal);
@@ -897,6 +1126,565 @@
             counterSaveBtn.disabled = false;
             state.counterSaving = false;
             setBusy(false);
+        }
+    }
+
+    async function loadBillingDays() {
+        try {
+            setBusy(true);
+            billingDaysRefreshBtn && (billingDaysRefreshBtn.disabled = true);
+            showStatus(statusBanner, "info", "Cargando dias de facturacion...");
+            state.billingDays = await fetchJson(urls.billingDays);
+            renderBillingDays();
+            clearStatus(statusBanner);
+        } catch (error) {
+            showStatus(statusBanner, "error", getErrorMessage(error));
+        } finally {
+            billingDaysRefreshBtn && (billingDaysRefreshBtn.disabled = false);
+            setBusy(false);
+        }
+    }
+
+    function buildFallbackBillingDayGroups(rows) {
+        const groups = new Map();
+        (rows || []).forEach((row) => {
+            const billingDay = Number(row.billingDay || 0);
+            const clientKey = row.clientId || normalizeText(row.clientName || "sin-cliente");
+            const groupId = `${clientKey}|day:${billingDay}`;
+            if (!groups.has(groupId)) {
+                groups.set(groupId, {
+                    groupId,
+                    clientId: row.clientId || "",
+                    clientName: row.clientName || "Sin cliente",
+                    billingDay,
+                    billingDayDisplay: row.billingDayDisplay || (billingDay > 0 ? `Dia ${billingDay}` : "Sin dia"),
+                    productLinesCount: 0,
+                    equipmentCount: 0,
+                    quantity: 0,
+                    includedOperations: 0,
+                    additionalOperation: 0,
+                    equipmentAssignmentSummary: "Sin asignacion",
+                    lines: []
+                });
+            }
+
+            const group = groups.get(groupId);
+            group.lines.push(row);
+            group.productLinesCount += 1;
+            group.quantity += Number(row.quantity || 0);
+            group.includedOperations += Number(row.includedOperations || 0);
+            group.additionalOperation += Number(row.additionalOperation || 0);
+        });
+
+        return Array.from(groups.values());
+    }
+
+    function getBillingDayGroups() {
+        const dashboard = state.billingDays || {};
+        const groups = Array.isArray(dashboard.groups) && dashboard.groups.length
+            ? [...dashboard.groups]
+            : buildFallbackBillingDayGroups(Array.isArray(dashboard.rows) ? dashboard.rows : []);
+
+        return groups.sort((left, right) => {
+            const leftDay = Number(left.billingDay || 0) > 0 ? Number(left.billingDay || 0) : Number.MAX_SAFE_INTEGER;
+            const rightDay = Number(right.billingDay || 0) > 0 ? Number(right.billingDay || 0) : Number.MAX_SAFE_INTEGER;
+            if (leftDay !== rightDay) {
+                return leftDay - rightDay;
+            }
+
+            return normalizeText(left.clientName).localeCompare(normalizeText(right.clientName), "es");
+        });
+    }
+
+    function renderBillingDays() {
+        const groups = getBillingDayGroups();
+        const dashboardRows = Array.isArray(state.billingDays?.rows) ? state.billingDays.rows : [];
+        const rowCount = dashboardRows.length || groups.reduce((sum, group) => sum + Number(group.productLinesCount || 0), 0);
+
+        if (billingDaysCount) {
+            billingDaysCount.textContent = `${numberFormatter.format(groups.length)} grupo${groups.length === 1 ? "" : "s"} / ${numberFormatter.format(rowCount)} linea${rowCount === 1 ? "" : "s"}`;
+        }
+
+        if (billingDaysEmpty) {
+            billingDaysEmpty.hidden = groups.length > 0;
+        }
+
+        if (!billingDaysBody) {
+            return;
+        }
+
+        billingDaysBody.innerHTML = groups.length
+            ? groups.map((group) => renderBillingDayGroupRows(group)).join("")
+            : `<tr><td colspan="6" class="text-center copiers-muted">${escapeHtml(state.billingDays?.emptyStateMessage || "No hay registros de facturacion copiers disponibles.")}</td></tr>`;
+    }
+
+    function renderBillingDayGroupRows(group) {
+        const groupId = group.groupId || "";
+        const expanded = state.billingDaysExpandedGroups.has(groupId);
+        const lineCount = Number(group.productLinesCount || (Array.isArray(group.lines) ? group.lines.length : 0));
+        const equipmentCount = Number(group.equipmentCount || 0);
+
+        return `
+            <tr class="copiers-billing-group-row ${expanded ? "is-expanded" : ""}">
+                <td data-label="Dia fact.">
+                    <button type="button" class="copiers-group-toggle" data-billing-group-toggle="${escapeHtml(groupId)}" aria-expanded="${expanded ? "true" : "false"}">
+                        <span>${expanded ? "-" : "+"}</span>
+                        ${escapeHtml(group.billingDayDisplay || "Sin dia")}
+                    </button>
+                </td>
+                <td data-label="Cliente">${escapeHtml(group.clientName || "Sin cliente")}</td>
+                <td data-label="Lineas">${escapeHtml(numberFormatter.format(lineCount))} linea${lineCount === 1 ? "" : "s"}</td>
+                <td data-label="Cantidad" class="text-end">${escapeHtml(numberFormatter.format(Number(group.quantity || 0)))}</td>
+                <td data-label="Equipos">${renderBillingAssignmentSummary(equipmentCount, group.equipmentAssignmentSummary || "Sin asignacion")}</td>
+                <td data-label="Detalle" class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-billing-group-toggle="${escapeHtml(groupId)}">
+                        ${expanded ? "Ocultar" : "Desglosar"}
+                    </button>
+                </td>
+            </tr>
+            ${expanded ? renderBillingDayGroupDetail(group) : ""}
+        `;
+    }
+
+    function renderBillingAssignmentSummary(count, summary) {
+        return `
+            <span class="copiers-assignment-inline">
+                <strong>${escapeHtml(numberFormatter.format(Number(count || 0)))}</strong>
+                <small>${escapeHtml(summary || "Sin asignacion")}</small>
+            </span>
+        `;
+    }
+
+    function renderBillingDayGroupDetail(group) {
+        const lines = Array.isArray(group?.lines) ? group.lines : [];
+
+        return `
+            <tr class="copiers-billing-detail-row">
+                <td colspan="6">
+                    <div class="copiers-billing-detail">
+                        <div class="copiers-billing-detail__header">
+                            <strong>Lineas de productos Copiers</strong>
+                            <span>${escapeHtml(group?.equipmentAssignmentSummary || `${numberFormatter.format(lines.length)} linea(s)`)}</span>
+                        </div>
+                        ${renderBillingDayProductLines(lines)}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    function renderBillingDayProductLines(lines) {
+        const items = Array.isArray(lines) ? lines : [];
+        if (!items.length) {
+            return `<div class="copiers-empty copiers-empty--inline">No hay lineas de productos para este grupo.</div>`;
+        }
+
+        return `
+            <div class="copiers-billing-lines">
+                <div class="copiers-billing-line copiers-billing-line--header">
+                    <span>Producto</span>
+                    <span>Cant.</span>
+                    <span>Equipos</span>
+                    <span>Oper. incl.</span>
+                    <span>Oper. adic.</span>
+                </div>
+                ${items.map((row) => `
+                    <div class="copiers-billing-line">
+                        <span>${escapeHtml(row.productName || "Producto sin nombre")}</span>
+                        <span class="text-end">${escapeHtml(numberFormatter.format(Number(row.quantity || 0)))}</span>
+                        <button type="button"
+                                class="copiers-assignment-btn ${row.hasAssignmentOverflow ? "is-warning" : ""}"
+                                data-billing-line-assignment="${escapeHtml(row.recordId || "")}"
+                                title="Asignar equipos a esta linea">
+                            <strong>${escapeHtml(`${numberFormatter.format(Number(row.assignedEquipmentCount || 0))}/${numberFormatter.format(Number(row.equipmentAssignmentCapacity || 0))}`)}</strong>
+                            <small>${escapeHtml(row.equipmentAssignmentSummary || "Sin asignacion")}</small>
+                        </button>
+                        <span class="text-end">${escapeHtml(numberFormatter.format(Number(row.includedOperations || 0)))}</span>
+                        <span class="text-end">${escapeHtml(numberFormatter.format(Number(row.additionalOperation || 0)))}</span>
+                    </div>
+                `).join("")}
+            </div>
+        `;
+    }
+
+    function findBillingDayLine(recordId) {
+        const normalizedId = (recordId || "").toLowerCase();
+        if (!normalizedId) {
+            return null;
+        }
+
+        const direct = (state.billingDays?.rows || []).find((row) => (row.recordId || "").toLowerCase() === normalizedId);
+        if (direct) {
+            return direct;
+        }
+
+        for (const group of getBillingDayGroups()) {
+            const row = (group.lines || []).find((item) => (item.recordId || "").toLowerCase() === normalizedId);
+            if (row) {
+                return row;
+            }
+        }
+
+        return null;
+    }
+
+    async function loadMovements() {
+        try {
+            setBusy(true);
+            movementsRefreshBtn && (movementsRefreshBtn.disabled = true);
+            showStatus(statusBanner, "info", "Cargando movimientos de equipos...");
+            state.movements = await fetchJson(urls.equipmentMovements);
+            renderMovements();
+            clearStatus(statusBanner);
+        } catch (error) {
+            showStatus(statusBanner, "error", getErrorMessage(error));
+        } finally {
+            movementsRefreshBtn && (movementsRefreshBtn.disabled = false);
+            setBusy(false);
+        }
+    }
+
+    function renderMovements() {
+        const allRecords = Array.isArray(state.movements?.records) ? state.movements.records : [];
+        const records = getFilteredMovementRows(allRecords);
+
+        if (movementsCount) {
+            movementsCount.textContent = state.movementsSearchTerm
+                ? `${records.length} de ${allRecords.length} registros`
+                : `${records.length} registro${records.length === 1 ? "" : "s"}`;
+        }
+
+        if (movementsEmpty) {
+            movementsEmpty.hidden = allRecords.length > 0;
+        }
+
+        updateMovementSortButtons();
+
+        if (!movementsBody) {
+            return;
+        }
+
+        movementsBody.innerHTML = records.length ? records.map((row) => `
+            <tr>
+                <td data-label="Fecha movimiento">${escapeHtml(row.dateDisplay || "-")}</td>
+                <td data-label="Equipo">${escapeHtml(row.equipmentSerial || "Sin equipo")}</td>
+                <td data-label="Cliente nuevo">${escapeHtml(row.clientName || "Sin cliente")}</td>
+                <td data-label="Motivo movimiento">${escapeHtml(row.reason || "Sin motivo")}</td>
+                <td data-label="Acta de entrega">${renderMovementAttachmentLink(row)}</td>
+            </tr>
+        `).join("") : `<tr><td colspan="5" class="text-center copiers-muted">${escapeHtml(allRecords.length ? "No hay movimientos para el filtro aplicado." : (state.movements?.emptyStateMessage || "No hay movimientos de equipos registrados."))}</td></tr>`;
+    }
+
+    function getFilteredMovementRows(rows) {
+        const query = normalizeText(state.movementsSearchTerm);
+        const sortKey = state.movementsSortKey || "dateValue";
+        const direction = state.movementsSortDirection === "asc" ? 1 : -1;
+
+        return [...rows]
+            .filter((row) => {
+                if (!query) {
+                    return true;
+                }
+
+                return normalizeText(getMovementSearchText(row)).includes(query);
+            })
+            .sort((left, right) => {
+                const comparison = compareMovementValues(
+                    getMovementSortValue(left, sortKey),
+                    getMovementSortValue(right, sortKey));
+
+                if (comparison !== 0) {
+                    return comparison * direction;
+                }
+
+                return compareMovementValues(left.equipmentSerial || "", right.equipmentSerial || "");
+            });
+    }
+
+    function getMovementSearchText(row) {
+        return [
+            row?.dateDisplay || "",
+            row?.dateValue || "",
+            row?.equipmentSerial || "",
+            row?.clientName || "",
+            row?.reason || "",
+            row?.hasAttachment ? "Con acta" : "Sin acta",
+            row?.attachmentFileName || ""
+        ].join(" ");
+    }
+
+    function getMovementSortValue(row, sortKey) {
+        if (sortKey === "attachment") {
+            return row?.hasAttachment ? 1 : 0;
+        }
+
+        if (sortKey === "dateValue") {
+            return `${row?.dateValue || row?.dateDisplay || ""}|${row?.createdOnValue || ""}`;
+        }
+
+        return row?.[sortKey] || "";
+    }
+
+    function compareMovementValues(left, right) {
+        const leftIsEmpty = left === null || left === undefined || left === "";
+        const rightIsEmpty = right === null || right === undefined || right === "";
+        if (leftIsEmpty && rightIsEmpty) {
+            return 0;
+        }
+
+        if (leftIsEmpty) {
+            return 1;
+        }
+
+        if (rightIsEmpty) {
+            return -1;
+        }
+
+        if (typeof left === "number" || typeof right === "number") {
+            return Number(left || 0) - Number(right || 0);
+        }
+
+        return left.toString().localeCompare(right.toString(), "es", { numeric: true, sensitivity: "base" });
+    }
+
+    function updateMovementSortButtons() {
+        movementSortButtons.forEach((button) => {
+            const key = button.dataset.copiersMovementSort || "";
+            const isActive = key === state.movementsSortKey;
+            button.classList.toggle("is-active", isActive);
+            button.dataset.sortDirection = isActive ? state.movementsSortDirection : "";
+            button.setAttribute("aria-pressed", isActive ? "true" : "false");
+        });
+    }
+
+    function resetLineEquipmentModal() {
+        state.lineEquipmentDetail = null;
+        state.lineEquipmentDraftIds = new Set();
+        state.lineEquipmentSaving = false;
+        lineEquipmentTitle && (lineEquipmentTitle.textContent = "Equipos de la linea");
+        lineEquipmentSubtitle && (lineEquipmentSubtitle.textContent = "Asigna equipos del cliente a esta linea de producto Copiers.");
+        lineEquipmentSummary && (lineEquipmentSummary.innerHTML = "");
+        lineEquipmentAssignedCount && (lineEquipmentAssignedCount.textContent = "0 equipos");
+        lineEquipmentAvailableCount && (lineEquipmentAvailableCount.textContent = "0 equipos");
+        lineEquipmentSaveBtn && (lineEquipmentSaveBtn.disabled = false);
+        lineEquipmentAssignedBody && (lineEquipmentAssignedBody.innerHTML = `<tr><td colspan="3" class="text-center copiers-muted">No hay equipos asignados a esta linea.</td></tr>`);
+        lineEquipmentAvailableBody && (lineEquipmentAvailableBody.innerHTML = `<tr><td colspan="3" class="text-center copiers-muted">No hay equipos disponibles para asignar.</td></tr>`);
+        clearStatus(lineEquipmentStatus);
+    }
+
+    function closeLineEquipmentModal() {
+        closeModal(lineEquipmentModal);
+        resetLineEquipmentModal();
+    }
+
+    function renderLineEquipmentLoading(row) {
+        resetLineEquipmentModal();
+        lineEquipmentTitle && (lineEquipmentTitle.textContent = row?.productName || "Equipos de la linea");
+        lineEquipmentSubtitle && (lineEquipmentSubtitle.textContent = "Cargando equipos asignados y disponibles del cliente...");
+        lineEquipmentSaveBtn && (lineEquipmentSaveBtn.disabled = true);
+        showStatus(lineEquipmentStatus, "info", "Consultando asignacion de equipos...");
+        showModal(lineEquipmentModal);
+    }
+
+    function buildLineEquipmentAssignmentUrl(lineId, clientId) {
+        const params = new URLSearchParams({
+            lineId: lineId || "",
+            clientId: clientId || ""
+        });
+        return `${urls.lineEquipmentAssignment}?${params.toString()}`;
+    }
+
+    async function loadLineEquipmentAssignment(row) {
+        if (!row || !urls.lineEquipmentAssignment) {
+            showStatus(statusBanner, "error", "No hay una URL configurada para consultar asignaciones.");
+            return;
+        }
+
+        renderLineEquipmentLoading(row);
+        try {
+            const detail = await fetchJson(buildLineEquipmentAssignmentUrl(row.recordId || "", row.clientId || ""));
+            renderLineEquipmentDetail(detail);
+            clearStatus(lineEquipmentStatus);
+        } catch (error) {
+            lineEquipmentSubtitle && (lineEquipmentSubtitle.textContent = "No fue posible cargar la asignacion de equipos de esta linea.");
+            showStatus(lineEquipmentStatus, "error", getErrorMessage(error));
+        }
+    }
+
+    function getLineEquipmentPool(detail) {
+        const byId = new Map();
+        [...(detail?.assignedEquipment || []), ...(detail?.availableEquipment || [])].forEach((item) => {
+            const id = item?.equipmentId || "";
+            if (id && !byId.has(id)) {
+                byId.set(id, item);
+            }
+        });
+
+        return Array.from(byId.values()).sort((left, right) =>
+            String(left?.serial || "").localeCompare(String(right?.serial || ""), "es", { numeric: true, sensitivity: "base" }));
+    }
+
+    function buildLineEquipmentDetailText(item) {
+        return [item?.categoryLabel, item?.reference, item?.site, item?.area]
+            .filter((value) => value && String(value).trim())
+            .join(" · ") || "Sin detalle";
+    }
+
+    function renderLineEquipmentRow(item, action) {
+        const isAssign = action === "assign";
+        return `
+            <tr>
+                <td data-label="Equipo"><strong>${escapeHtml(item?.serial || "Equipo sin serial")}</strong></td>
+                <td data-label="Detalle">${escapeHtml(buildLineEquipmentDetailText(item))}</td>
+                <td data-label="Accion" class="text-end">
+                    <button type="button"
+                            class="btn btn-sm ${isAssign ? "btn-outline-primary" : "btn-outline-secondary"}"
+                            data-line-equipment-${isAssign ? "assign" : "remove"}="${escapeHtml(item?.equipmentId || "")}">
+                        ${isAssign ? "Asignar" : "Quitar"}
+                    </button>
+                </td>
+            </tr>
+        `;
+    }
+
+    function renderLineEquipmentDetail(detail) {
+        state.lineEquipmentDetail = detail || null;
+        state.lineEquipmentDraftIds = new Set(
+            (detail?.assignedEquipment || [])
+                .map((item) => item?.equipmentId || "")
+                .filter(Boolean)
+        );
+        renderLineEquipmentDraft();
+    }
+
+    function renderLineEquipmentSummary(detail, assignedCount, availableCount) {
+        if (!lineEquipmentSummary) {
+            return;
+        }
+
+        const capacity = Number(detail?.assignmentCapacity || 0);
+        const overflow = assignedCount > capacity;
+        lineEquipmentSummary.innerHTML = `
+            <article class="copiers-detail-card ${overflow ? "is-warning" : ""}">
+                <span>Cupos de la linea</span>
+                <strong>${escapeHtml(numberFormatter.format(capacity))}</strong>
+            </article>
+            <article class="copiers-detail-card">
+                <span>Asignados</span>
+                <strong>${escapeHtml(numberFormatter.format(assignedCount))}</strong>
+            </article>
+            <article class="copiers-detail-card">
+                <span>Disponibles</span>
+                <strong>${escapeHtml(numberFormatter.format(availableCount))}</strong>
+            </article>
+            <article class="copiers-detail-card">
+                <span>Oper. incluidas</span>
+                <strong>${escapeHtml(numberFormatter.format(Number(detail?.includedOperations || 0)))}</strong>
+            </article>
+        `;
+    }
+
+    function renderLineEquipmentDraft() {
+        const detail = state.lineEquipmentDetail;
+        const pool = getLineEquipmentPool(detail);
+        const assignedIds = state.lineEquipmentDraftIds || new Set();
+        const assigned = pool.filter((item) => assignedIds.has(item?.equipmentId || ""));
+        const available = pool.filter((item) => !assignedIds.has(item?.equipmentId || ""));
+        const capacity = Number(detail?.assignmentCapacity || 0);
+
+        lineEquipmentTitle && (lineEquipmentTitle.textContent = detail?.productName || "Equipos de la linea");
+        lineEquipmentSubtitle && (lineEquipmentSubtitle.textContent = [
+            detail?.clientName || "",
+            `${numberFormatter.format(assigned.length)}/${numberFormatter.format(capacity)} asignados`
+        ].filter(Boolean).join(" · "));
+        lineEquipmentAssignedCount && (lineEquipmentAssignedCount.textContent = `${numberFormatter.format(assigned.length)} equipo${assigned.length === 1 ? "" : "s"}`);
+        lineEquipmentAvailableCount && (lineEquipmentAvailableCount.textContent = `${numberFormatter.format(available.length)} equipo${available.length === 1 ? "" : "s"}`);
+        renderLineEquipmentSummary(detail, assigned.length, available.length);
+
+        if (lineEquipmentAssignedBody) {
+            lineEquipmentAssignedBody.innerHTML = assigned.length
+                ? assigned.map((item) => renderLineEquipmentRow(item, "remove")).join("")
+                : `<tr><td colspan="3" class="text-center copiers-muted">No hay equipos asignados a esta linea.</td></tr>`;
+        }
+
+        if (lineEquipmentAvailableBody) {
+            lineEquipmentAvailableBody.innerHTML = available.length
+                ? available.map((item) => renderLineEquipmentRow(item, "assign")).join("")
+                : `<tr><td colspan="3" class="text-center copiers-muted">No hay equipos disponibles para asignar.</td></tr>`;
+        }
+
+        if (lineEquipmentSaveBtn) {
+            lineEquipmentSaveBtn.disabled = state.lineEquipmentSaving || assigned.length > capacity;
+        }
+
+        if (assigned.length > capacity) {
+            showStatus(lineEquipmentStatus, "error", `Esta linea permite maximo ${numberFormatter.format(capacity)} equipo(s).`);
+        } else if (!state.lineEquipmentSaving && !lineEquipmentStatus?.classList.contains("is-success")) {
+            clearStatus(lineEquipmentStatus);
+        }
+    }
+
+    function assignLineEquipment(equipmentId) {
+        const capacity = Number(state.lineEquipmentDetail?.assignmentCapacity || 0);
+        const normalizedId = equipmentId || "";
+        if (!normalizedId) {
+            return;
+        }
+
+        if ((state.lineEquipmentDraftIds?.size || 0) >= capacity) {
+            showStatus(lineEquipmentStatus, "error", `Esta linea permite maximo ${numberFormatter.format(capacity)} equipo(s).`);
+            return;
+        }
+
+        state.lineEquipmentDraftIds.add(normalizedId);
+        clearStatus(lineEquipmentStatus);
+        renderLineEquipmentDraft();
+    }
+
+    function removeLineEquipment(equipmentId) {
+        const normalizedId = equipmentId || "";
+        if (!normalizedId) {
+            return;
+        }
+
+        state.lineEquipmentDraftIds.delete(normalizedId);
+        clearStatus(lineEquipmentStatus);
+        renderLineEquipmentDraft();
+    }
+
+    async function saveLineEquipmentAssignment() {
+        const detail = state.lineEquipmentDetail;
+        if (!detail || state.lineEquipmentSaving) {
+            return;
+        }
+
+        if (!urls.saveLineEquipmentAssignment) {
+            showStatus(lineEquipmentStatus, "error", "No hay una URL configurada para guardar la asignacion.");
+            return;
+        }
+
+        try {
+            state.lineEquipmentSaving = true;
+            lineEquipmentSaveBtn && (lineEquipmentSaveBtn.disabled = true);
+            showStatus(lineEquipmentStatus, "info", "Guardando asignacion...");
+            const result = await fetchJson(urls.saveLineEquipmentAssignment, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    lineId: detail.lineId || "",
+                    clientId: detail.clientId || "",
+                    equipmentIds: Array.from(state.lineEquipmentDraftIds || [])
+                })
+            });
+
+            renderLineEquipmentDetail(result?.detail || detail);
+            showStatus(lineEquipmentStatus, "success", result?.message || "Asignacion actualizada correctamente.");
+            await loadBillingDays();
+        } catch (error) {
+            showStatus(lineEquipmentStatus, "error", getErrorMessage(error));
+        } finally {
+            state.lineEquipmentSaving = false;
+            renderLineEquipmentDraft();
         }
     }
 
@@ -1147,7 +1935,7 @@
             equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Cargando historial del equipo...</td></tr>`;
         }
         if (equipmentMovementsBody) {
-            equipmentMovementsBody.innerHTML = `<tr><td colspan="3" class="text-center copiers-muted">Cargando movimientos del equipo...</td></tr>`;
+            equipmentMovementsBody.innerHTML = `<tr><td colspan="4" class="text-center copiers-muted">Cargando movimientos del equipo...</td></tr>`;
         }
         showStatus(equipmentDetailStatus, "info", "Consultando detalle del equipo...");
     }
@@ -1214,7 +2002,7 @@
             equipmentMaintenanceBody.innerHTML = `<tr><td colspan="9" class="text-center copiers-muted">Selecciona un equipo para ver sus mantenimientos.</td></tr>`;
         }
         if (equipmentMovementsBody) {
-            equipmentMovementsBody.innerHTML = `<tr><td colspan="3" class="text-center copiers-muted">Selecciona un equipo para ver sus movimientos.</td></tr>`;
+            equipmentMovementsBody.innerHTML = `<tr><td colspan="4" class="text-center copiers-muted">Selecciona un equipo para ver sus movimientos.</td></tr>`;
         }
     }
 
@@ -1257,7 +2045,16 @@
                 <td data-label="Fecha">${escapeHtml(row.dateDisplay || "")}</td>
                 <td data-label="Cliente nuevo">${escapeHtml(row.clientName || "Sin cliente")}</td>
                 <td data-label="Motivo">${escapeHtml(row.reason || "")}</td>
-            </tr>`).join("") : `<tr><td colspan="3" class="text-center copiers-muted">Este equipo no tiene movimientos registrados.</td></tr>`;
+                <td data-label="Acta">${renderMovementAttachmentLink(row)}</td>
+            </tr>`).join("") : `<tr><td colspan="4" class="text-center copiers-muted">Este equipo no tiene movimientos registrados.</td></tr>`;
+    }
+
+    function renderMovementAttachmentLink(row) {
+        if (!row?.hasAttachment) {
+            return `<span class="copiers-muted">Sin acta</span>`;
+        }
+
+        return `<a class="copiers-link" href="${buildDownloadUrl(urls.downloadEquipmentMovement, "movementId", row.recordId)}" target="_blank" rel="noopener">${escapeHtml(row.attachmentFileName || "Descargar")}</a>`;
     }
 
     function populateEquipmentCategoryOptions(selectedValue, options) {
@@ -1283,6 +2080,7 @@
         movementClientOptions.innerHTML = "";
         movementDateInput.value = todayValue();
         movementReasonInput.value = "";
+        movementFileInput && (movementFileInput.value = "");
         state.movementClientSuggestions = [];
         equipmentMovementTitle.textContent = "Registrar movimiento";
         equipmentMovementSubtitle.textContent = equipment.serial
@@ -1327,13 +2125,26 @@
                 reason
             };
 
-            const result = await fetchJson(urls.registerEquipmentMovement, {
+            let result = await fetchJson(urls.registerEquipmentMovement, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
 
+            const file = movementFileInput?.files?.[0];
+            if (file && !result.recordId) {
+                throw new Error("El movimiento se registro, pero no recibimos el ID para adjuntar el acta. Actualiza e intenta adjuntar nuevamente.");
+            }
+
+            if (file) {
+                showStatus(equipmentMovementStatus, "info", "Adjuntando acta de entrega...");
+                result = await uploadFile(urls.uploadEquipmentMovement, "movementId", result.recordId, file);
+            }
+
             await loadEquipment();
+            if (state.movements) {
+                await loadMovements();
+            }
             if (state.equipmentInventory) {
                 await loadEquipmentInventory();
             }
@@ -1649,7 +2460,10 @@
         maintenanceTitleInput.value = row?.title || "";
         maintenanceClientIdInput.value = row?.clientId || "";
         maintenanceClientNameInput.value = row?.clientName || "";
-        populateMaintenanceOptions(row?.equipmentId || "");
+        const selectedEquipmentId = row?.recordId && !row?.equipmentId
+            ? externalEquipmentValue
+            : (row?.equipmentId || "");
+        populateMaintenanceOptions(selectedEquipmentId);
         maintenanceDateInput.value = row?.dateValue || todayValue();
         maintenanceTypeSelect.value = row?.maintenanceTypeValue || "";
         maintenanceStatusSelect.value = row?.maintenanceStatusValue ? String(row.maintenanceStatusValue) : String(maintenanceStatusPending);
@@ -1702,11 +2516,15 @@
             }
         }
 
-        const placeholder = clientId || clientName
+        const hasClient = Boolean(clientId || clientName);
+        const placeholder = hasClient
             ? "Selecciona un equipo"
             : "Selecciona primero un cliente";
-        maintenanceEquipmentSelect.disabled = !(clientId || clientName);
-        maintenanceEquipmentSelect.innerHTML = `<option value="">${placeholder}</option>` + rows.map((row) => {
+        const externalOption = hasClient
+            ? `<option value="${externalEquipmentValue}">Equipo externo</option>`
+            : "";
+        maintenanceEquipmentSelect.disabled = !hasClient;
+        maintenanceEquipmentSelect.innerHTML = `<option value="">${placeholder}</option>` + externalOption + rows.map((row) => {
             const label = `${row.serial || "Equipo"}${row.reference ? " - " + row.reference : ""}`;
             return `<option value="${escapeHtml(row.recordId)}">${escapeHtml(label)}</option>`;
         }).join("");
@@ -1720,11 +2538,18 @@
             maintenanceSaveBtn.disabled = true;
             showStatus(maintenanceModalStatus, "info", "Guardando mantenimiento...");
             syncClientSelection(maintenanceClientNameInput, maintenanceClientIdInput, state.maintenanceClientSuggestions);
+            const selectedEquipmentId = maintenanceEquipmentSelect.value;
+            if (!selectedEquipmentId) {
+                throw new Error("Selecciona un equipo o Equipo externo.");
+            }
+            if (selectedEquipmentId === externalEquipmentValue && !maintenanceClientIdInput.value && !maintenanceClientNameInput.value.trim()) {
+                throw new Error("Selecciona el cliente del equipo externo.");
+            }
             const payload = {
                 recordId: maintenanceRecordIdInput.value,
                 title: maintenanceTitleInput.value,
                 internalId: "",
-                equipmentId: maintenanceEquipmentSelect.value,
+                equipmentId: selectedEquipmentId,
                 clientId: maintenanceClientIdInput.value,
                 clientName: maintenanceClientNameInput.value,
                 dateValue: maintenanceDateInput.value,
@@ -1749,7 +2574,11 @@
             if (state.preventiveMaintenance) {
                 await loadPreventiveMaintenance();
             }
-            showStatus(statusBanner, "success", result.message || "Mantenimiento guardado.");
+            const message = result.message || "Mantenimiento guardado.";
+            setActiveTab("maintenance");
+            showSaveConfirmation(message);
+            returnToCopiersTable("maintenance");
+            showStatus(statusBanner, "success", message);
         } catch (error) {
             showStatus(maintenanceModalStatus, "error", getErrorMessage(error));
         } finally {
@@ -1830,7 +2659,11 @@
 
             closeModal(deliveryModal);
             await Promise.all([loadDeliveries(), loadSupplies()]);
-            showStatus(statusBanner, "success", result.message || "Entrega guardada.");
+            const message = result.message || "Entrega guardada.";
+            setActiveTab("deliveries");
+            showSaveConfirmation(message);
+            returnToCopiersTable("deliveries");
+            showStatus(statusBanner, "success", message);
         } catch (error) {
             showStatus(deliveryModalStatus, "error", getErrorMessage(error));
         } finally {
@@ -2058,6 +2891,24 @@
         }
     }
 
+    function returnToCopiersTable(tab) {
+        const target = tab === "deliveries"
+            ? deliveriesBody?.closest(".copiers-panel")
+            : maintenanceBody?.closest(".copiers-panel");
+
+        if (target && typeof target.scrollIntoView === "function") {
+            window.setTimeout(() => {
+                target.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 50);
+        }
+    }
+
+    function showSaveConfirmation(message) {
+        if (message && typeof window.alert === "function") {
+            window.alert(message);
+        }
+    }
+
     function findById(rows, id) {
         return (rows || []).find((row) => row.recordId === id);
     }
@@ -2070,6 +2921,23 @@
     function findPreventiveEquipment(client, equipmentId) {
         const equipment = Array.isArray(client?.equipment) ? client.equipment : [];
         return equipment.find((row) => (row.recordId || "") === (equipmentId || "")) || null;
+    }
+
+    function updatePreventivePeriodButtons() {
+        preventivePeriodButtons.forEach((button) => {
+            const period = button.dataset.copiersPreventivePeriod === "previous-month" ? "previous-month" : "this-month";
+            const isActive = period === (state.preventivePeriod || "this-month");
+            button.classList.toggle("is-active", isActive);
+            button.setAttribute("aria-pressed", isActive ? "true" : "false");
+        });
+    }
+
+    function selectedPreventiveDateValue() {
+        if ((state.preventivePeriod || "this-month") === "previous-month") {
+            return state.preventiveMaintenance?.periodEndValue || todayValue();
+        }
+
+        return todayValue();
     }
 
     function getPreventiveActionClass(tone) {

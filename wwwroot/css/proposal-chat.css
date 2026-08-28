@@ -1,0 +1,302 @@
+.proposal-chat-shell {
+    --proposal-ink: #102033;
+    --proposal-muted: #607084;
+    --proposal-line: #d9e2ee;
+    --proposal-soft: #f5f8fc;
+    --proposal-brand: #061943;
+    --proposal-cyan: #18bdd7;
+    --proposal-green: #20a464;
+    min-height: calc(100vh - 120px);
+    padding: 24px;
+    color: var(--proposal-ink);
+    background: #f7f9fc;
+}
+
+.proposal-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: 1180px;
+    margin: 0 auto 18px;
+}
+
+.proposal-chat-kicker {
+    color: var(--proposal-cyan);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.proposal-chat-title {
+    margin: 0;
+    color: var(--proposal-brand);
+    font-size: 32px;
+    font-weight: 900;
+}
+
+.proposal-chat-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.proposal-chat-workspace {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    max-width: 1180px;
+    min-height: calc(100vh - 230px);
+    margin: 0 auto;
+    border: 1px solid var(--proposal-line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #ffffff;
+    box-shadow: 0 16px 34px rgba(15, 31, 54, .08);
+}
+
+.proposal-chat-panel {
+    display: grid;
+    grid-template-rows: minmax(220px, 1fr) auto;
+    min-height: calc(100vh - 230px);
+    border-right: 1px solid var(--proposal-line);
+}
+
+.proposal-chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 22px;
+    overflow: auto;
+}
+
+.proposal-chat-message {
+    display: grid;
+    gap: 6px;
+    max-width: 100%;
+}
+
+.proposal-chat-message--user {
+    align-self: flex-end;
+}
+
+.proposal-chat-message--assistant {
+    align-self: flex-start;
+}
+
+.proposal-chat-message__role {
+    color: var(--proposal-muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.proposal-chat-message--user .proposal-chat-message__role {
+    text-align: right;
+}
+
+.proposal-chat-message__bubble {
+    border: 1px solid var(--proposal-line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    background: var(--proposal-soft);
+}
+
+.proposal-chat-question-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.proposal-chat-question-list li + li {
+    margin-top: 6px;
+}
+
+.proposal-chat-message--user .proposal-chat-message__bubble {
+    border-color: #bdd7e2;
+    color: #ffffff;
+    background: #0f5f78;
+}
+
+.proposal-chat-composer {
+    border-top: 1px solid var(--proposal-line);
+    padding: 14px;
+    background: #fbfdff;
+}
+
+.proposal-preview {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: calc(100vh - 230px);
+    background: #e9eef5;
+}
+
+.proposal-preview__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--proposal-line);
+    background: #ffffff;
+}
+
+.proposal-preview__header h2 {
+    margin: 0;
+    color: var(--proposal-brand);
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.proposal-preview__frame {
+    width: 100%;
+    height: 100%;
+    min-height: 560px;
+    border: 0;
+    background: #ffffff;
+}
+
+.proposal-preview__empty {
+    position: absolute;
+    inset: 74px 18px 18px;
+    display: grid;
+    place-items: center;
+    border: 1px dashed #b8c6d8;
+    border-radius: 8px;
+    color: var(--proposal-muted);
+    text-align: center;
+    background: rgba(255, 255, 255, .78);
+}
+
+.proposal-chat-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.proposal-chat-prompts button {
+    border: 1px solid #cdd8e7;
+    border-radius: 999px;
+    padding: 7px 12px;
+    color: #25384d;
+    font-size: 13px;
+    font-weight: 700;
+    background: #ffffff;
+}
+
+.proposal-chat-prompts button:hover {
+    border-color: var(--proposal-cyan);
+    color: var(--proposal-brand);
+}
+
+.proposal-chat-input {
+    display: block;
+    width: 100%;
+    min-height: 120px;
+    max-height: 280px;
+    border: 1px solid #cdd8e7;
+    border-radius: 8px;
+    padding: 13px 14px;
+    resize: vertical;
+    color: var(--proposal-ink);
+    background: #ffffff;
+}
+
+.proposal-chat-input:focus {
+    border-color: var(--proposal-cyan);
+    box-shadow: 0 0 0 3px rgba(24, 189, 215, .16);
+    outline: none;
+}
+
+.proposal-chat-composer__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.proposal-chat-status {
+    min-height: 20px;
+    color: var(--proposal-green);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+html[data-bs-theme="dark"] .proposal-chat-shell {
+    --proposal-ink: #e8eef7;
+    --proposal-muted: #a8b5c7;
+    --proposal-line: #2d3a4c;
+    --proposal-soft: #111b29;
+    background: #0b1220;
+}
+
+html[data-bs-theme="dark"] .proposal-chat-title {
+    color: #f1f5fb;
+}
+
+html[data-bs-theme="dark"] .proposal-chat-workspace,
+html[data-bs-theme="dark"] .proposal-chat-composer,
+html[data-bs-theme="dark"] .proposal-chat-input,
+html[data-bs-theme="dark"] .proposal-preview__header,
+html[data-bs-theme="dark"] .proposal-chat-prompts button {
+    color: var(--proposal-ink);
+    background: #0f1826;
+}
+
+html[data-bs-theme="dark"] .proposal-preview {
+    background: #09111d;
+}
+
+html[data-bs-theme="dark"] .proposal-preview__empty {
+    background: rgba(15, 24, 38, .82);
+}
+
+html[data-bs-theme="dark"] .proposal-chat-prompts button {
+    border-color: var(--proposal-line);
+}
+
+@media (max-width: 720px) {
+    .proposal-chat-shell {
+        padding: 14px;
+    }
+
+    .proposal-chat-header,
+    .proposal-chat-composer__footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .proposal-chat-actions,
+    .proposal-chat-composer__footer .btn {
+        width: 100%;
+    }
+
+    .proposal-chat-actions .btn,
+    .proposal-chat-composer__footer .btn {
+        width: 100%;
+    }
+
+    .proposal-chat-title {
+        font-size: 26px;
+    }
+
+    .proposal-chat-workspace {
+        grid-template-columns: 1fr;
+        min-height: calc(100vh - 210px);
+    }
+
+    .proposal-chat-panel,
+    .proposal-preview {
+        min-height: auto;
+    }
+
+    .proposal-preview__frame {
+        min-height: 520px;
+    }
+
+    .proposal-chat-message {
+        max-width: 100%;
+    }
+}

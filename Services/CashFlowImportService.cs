@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -15,6 +16,8 @@ public sealed class CashFlowImportService : ICashFlowImportService
 {
     private const string GraphDefaultScope = "https://graph.microsoft.com/.default";
     private static readonly CultureInfo ColombianCulture = CultureInfo.GetCultureInfo("es-CO");
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> BancolombiaImportLocks =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IDataverseService _dataverse;
     private readonly CashFlowImportOptions _options;
@@ -73,6 +76,51 @@ public sealed class CashFlowImportService : ICashFlowImportService
         {
             await TrySendImportFailureEmailAsync(resolvedDryRun, ex, ct);
             throw;
+        }
+    }
+
+    public async Task<CashFlowImportResultDto> ImportBancolombiaStatementAsync(
+        Stream workbookStream,
+        string sourceFileName,
+        string accountKey,
+        DateOnly periodStart,
+        bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        if (workbookStream is null)
+            throw new ArgumentNullException(nameof(workbookStream));
+
+        var resolvedDryRun = dryRun || _options.DryRun;
+        var account = ResolveBancolombiaStatementAccount(_options, accountKey);
+        var importLock = BancolombiaImportLocks.GetOrAdd(
+            account.BankAccountCode,
+            static _ => new SemaphoreSlim(1, 1));
+
+        await importLock.WaitAsync(ct);
+        try
+        {
+            var readResult = ReadBancolombiaStatementRowsWithSkipped(
+                workbookStream,
+                _options,
+                sourceFileName,
+                account,
+                periodStart);
+
+            _logger.LogInformation(
+                "Extracto Bancolombia leido desde {FileName}: {Rows} filas validas para {SourceFlow}/{Account} en {Period}. DryRun={DryRun}.",
+                sourceFileName,
+                readResult.Rows.Count,
+                account.SourceFlow,
+                account.BankAccountName,
+                periodStart.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+                resolvedDryRun);
+
+            var upsert = await _dataverse.UpsertCashFlowRowsAsync(readResult.Rows, resolvedDryRun, ct);
+            return BuildResult(readResult, upsert, resolvedDryRun);
+        }
+        finally
+        {
+            importLock.Release();
         }
     }
 
@@ -216,7 +264,112 @@ public sealed class CashFlowImportService : ICashFlowImportService
         blankRowsSkipped += ReadTableRows(workbook, options, options.CopiersTableName, "Copiers", options.CopiersBankAccountCode, options.CopiersBankAccountName, today, rows, skippedRows, out var copiersFutureRows);
         futureRowsSkipped = cloudFutureRows + copiersFutureRows;
 
-        return new CashFlowWorkbookReadResult(rows, blankRowsSkipped, futureRowsSkipped, skippedRows);
+        return new CashFlowWorkbookReadResult(rows, blankRowsSkipped, futureRowsSkipped, 0, skippedRows);
+    }
+
+    internal static CashFlowWorkbookReadResult ReadBancolombiaStatementRowsForPeriod(
+        Stream workbookStream,
+        CashFlowImportOptions options,
+        string sourceFileName,
+        string accountKey,
+        DateOnly periodStart)
+    {
+        return ReadBancolombiaStatementRowsWithSkipped(
+            workbookStream,
+            options,
+            sourceFileName,
+            ResolveBancolombiaStatementAccount(options, accountKey),
+            periodStart);
+    }
+
+    private static CashFlowWorkbookReadResult ReadBancolombiaStatementRowsWithSkipped(
+        Stream workbookStream,
+        CashFlowImportOptions options,
+        string sourceFileName,
+        BancolombiaStatementAccount account,
+        DateOnly periodStart)
+    {
+        using var workbook = new XLWorkbook(workbookStream);
+        var worksheet = workbook.Worksheets.FirstOrDefault(static sheet => sheet.RangeUsed() is not null)
+            ?? throw new InvalidOperationException("El archivo de Bancolombia no contiene hojas con datos.");
+        var usedRange = worksheet.RangeUsed()
+            ?? throw new InvalidOperationException("El archivo de Bancolombia no contiene datos para importar.");
+        var headerRow = FindBancolombiaHeaderRow(usedRange)
+            ?? throw new InvalidOperationException("El archivo de Bancolombia debe tener las columnas Fecha, Tipo de transaccion, Descripcion y Valor.");
+        var headers = BuildBancolombiaHeaderMap(headerRow);
+        var rows = new List<CashFlowImportRowDto>();
+        var skippedRows = new List<CashFlowImportSkippedRowDto>();
+        var blankRowsSkipped = 0;
+        var periodRowsSkipped = 0;
+        var periodEndExclusive = periodStart.AddMonths(1);
+        var identityOccurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var resolvedSourceFileName = string.IsNullOrWhiteSpace(sourceFileName)
+            ? "Extracto Bancolombia.xlsx"
+            : Path.GetFileName(sourceFileName.Trim());
+
+        foreach (var rangeRow in usedRange.Rows())
+        {
+            var rowNumber = rangeRow.RangeAddress.FirstAddress.RowNumber;
+            if (rowNumber <= headerRow.RangeAddress.FirstAddress.RowNumber)
+                continue;
+
+            var date = ReadDate(GetCell(rangeRow, headers, "fecha"));
+            var transactionType = ReadText(GetCell(rangeRow, headers, "tipodetransaccion"));
+            var bankDescription = ReadText(GetCell(rangeRow, headers, "descripcion"));
+            var signedValue = ReadDecimal(GetCell(rangeRow, headers, "valor"));
+            if (IsEmptyBancolombiaStatementRow(date, transactionType, bankDescription, signedValue))
+            {
+                blankRowsSkipped++;
+                continue;
+            }
+
+            var row = new CashFlowImportRowDto
+            {
+                SourceFileName = resolvedSourceFileName,
+                SourceSystem = "Bancolombia",
+                SourceFlow = account.SourceFlow,
+                TableName = $"Bancolombia {account.Key}",
+                RowNumber = rowNumber,
+                Date = date,
+                MovementType = ResolveBancolombiaMovementType(transactionType, signedValue),
+                Category = "",
+                Entry = signedValue > 0m ? signedValue : 0m,
+                Exit = signedValue < 0m ? Math.Abs(signedValue) : 0m,
+                Description = "",
+                Recipient = "",
+                DestinationBank = "Bancolombia",
+                DocumentType = transactionType,
+                Observations = bankDescription,
+                SiigoStatus = "",
+                BankAccountCode = account.BankAccountCode,
+                BankAccountName = account.BankAccountName,
+                PreserveExistingDescription = true
+            };
+
+            if (row.Date.HasValue
+                && (row.Date.Value < periodStart || row.Date.Value >= periodEndExclusive))
+            {
+                periodRowsSkipped++;
+                skippedRows.Add(BuildSkippedRow(row, $"Fecha fuera del mes seleccionado ({periodStart:yyyy-MM})"));
+                continue;
+            }
+
+            if (row.Entry == 0m && row.Exit == 0m)
+            {
+                skippedRows.Add(BuildSkippedRow(row, "Valor cero o no valido en extracto Bancolombia"));
+                continue;
+            }
+
+            var identity = BuildBancolombiaStatementIdentity(row, signedValue);
+            identityOccurrences.TryGetValue(identity, out var occurrence);
+            occurrence++;
+            identityOccurrences[identity] = occurrence;
+            row.ExternalKey = BuildBancolombiaStatementExternalKey(account, identity, occurrence);
+            row.SourceHash = BuildBancolombiaStatementSourceHash(identity, occurrence);
+            rows.Add(row);
+        }
+
+        return new CashFlowWorkbookReadResult(rows, blankRowsSkipped, 0, periodRowsSkipped, skippedRows);
     }
 
     private static int ReadTableRows(
@@ -330,6 +483,74 @@ public sealed class CashFlowImportService : ICashFlowImportService
         return map;
     }
 
+    private static BancolombiaStatementAccount ResolveBancolombiaStatementAccount(
+        CashFlowImportOptions options,
+        string accountKey)
+    {
+        var key = NormalizeHeader(accountKey);
+        if (key is "cloud" or "8100" or "11100504" or "bancolombiacloud")
+        {
+            return new BancolombiaStatementAccount(
+                "cloud",
+                "Cloud",
+                options.CloudBankAccountCode,
+                options.CloudBankAccountName);
+        }
+
+        if (key is "copiers" or "copier" or "7316" or "11100505" or "bancolombiacopiers")
+        {
+            return new BancolombiaStatementAccount(
+                "copiers",
+                "Copiers",
+                options.CopiersBankAccountCode,
+                options.CopiersBankAccountName);
+        }
+
+        throw new InvalidOperationException("Selecciona la cuenta Bancolombia que corresponde al archivo: Cloud o Copiers.");
+    }
+
+    private static IXLRangeRow? FindBancolombiaHeaderRow(IXLRange usedRange)
+    {
+        foreach (var row in usedRange.Rows())
+        {
+            var headers = BuildBancolombiaHeaderMap(row, validateRequired: false);
+            if (headers.ContainsKey("fecha")
+                && headers.ContainsKey("tipodetransaccion")
+                && headers.ContainsKey("descripcion")
+                && headers.ContainsKey("valor"))
+            {
+                return row;
+            }
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, int> BuildBancolombiaHeaderMap(
+        IXLRangeRow headerRow,
+        bool validateRequired = true)
+    {
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var index = 1;
+        foreach (var cell in headerRow.Cells())
+        {
+            var key = NormalizeHeader(ReadText(cell));
+            if (!string.IsNullOrWhiteSpace(key))
+                map[key] = index;
+            index++;
+        }
+
+        if (!validateRequired)
+            return map;
+
+        var required = new[] { "fecha", "tipodetransaccion", "descripcion", "valor" };
+        var missing = required.Where(header => !map.ContainsKey(header)).ToArray();
+        if (missing.Length > 0)
+            throw new InvalidOperationException($"El extracto Bancolombia no tiene estas columnas esperadas: {string.Join(", ", missing)}.");
+
+        return map;
+    }
+
     private static IXLCell GetCell(IXLRangeRow row, IReadOnlyDictionary<string, int> headers, string header)
     {
         return headers.TryGetValue(header, out var columnIndex)
@@ -367,7 +588,70 @@ public sealed class CashFlowImportService : ICashFlowImportService
         if (DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
             return date;
 
+        return TryParseSpanishTextDate(raw);
+    }
+
+    private static DateOnly? TryParseSpanishTextDate(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var normalized = raw.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            builder.Append(char.IsLetterOrDigit(character)
+                ? char.ToLowerInvariant(character)
+                : ' ');
+        }
+
+        var parts = builder.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (var index = 0; index + 2 < parts.Length; index++)
+        {
+            if (!int.TryParse(parts[index], NumberStyles.None, CultureInfo.InvariantCulture, out var day)
+                || !TryResolveSpanishMonth(parts[index + 1], out var month)
+                || !int.TryParse(parts[index + 2], NumberStyles.None, CultureInfo.InvariantCulture, out var year))
+            {
+                continue;
+            }
+
+            if (DateOnly.TryParseExact(
+                    $"{year:D4}-{month:D2}-{day:D2}",
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var date))
+            {
+                return date;
+            }
+        }
+
         return null;
+    }
+
+    private static bool TryResolveSpanishMonth(string value, out int month)
+    {
+        month = value switch
+        {
+            "ene" or "enero" => 1,
+            "feb" or "febrero" => 2,
+            "mar" or "marzo" => 3,
+            "abr" or "abril" => 4,
+            "may" or "mayo" => 5,
+            "jun" or "junio" => 6,
+            "jul" or "julio" => 7,
+            "ago" or "agosto" => 8,
+            "sep" or "sept" or "septiembre" or "set" or "setiembre" => 9,
+            "oct" or "octubre" => 10,
+            "nov" or "noviembre" => 11,
+            "dic" or "diciembre" => 12,
+            _ => 0
+        };
+
+        return month > 0;
     }
 
     private static decimal ReadDecimal(IXLCell cell)
@@ -445,6 +729,36 @@ public sealed class CashFlowImportService : ICashFlowImportService
             && row.Exit == 0m;
     }
 
+    private static bool IsEmptyBancolombiaStatementRow(
+        DateOnly? date,
+        string transactionType,
+        string bankDescription,
+        decimal signedValue)
+    {
+        return date is null
+            && string.IsNullOrWhiteSpace(transactionType)
+            && string.IsNullOrWhiteSpace(bankDescription)
+            && signedValue == 0m;
+    }
+
+    private static string ResolveBancolombiaMovementType(string transactionType, decimal signedValue)
+    {
+        if (signedValue > 0m)
+            return "Entrada";
+
+        if (signedValue < 0m)
+            return "Salida";
+
+        var normalized = NormalizeHeader(transactionType);
+        if (normalized.Contains("credito", StringComparison.OrdinalIgnoreCase))
+            return "Entrada";
+
+        if (normalized.Contains("debito", StringComparison.OrdinalIgnoreCase))
+            return "Salida";
+
+        return "Sin clasificar";
+    }
+
     private static string InferMovementType(CashFlowImportRowDto row)
     {
         if (row.Entry > 0 && row.Exit == 0)
@@ -454,6 +768,34 @@ public sealed class CashFlowImportService : ICashFlowImportService
             return "Salida";
 
         return "Sin clasificar";
+    }
+
+    private static string BuildBancolombiaStatementIdentity(CashFlowImportRowDto row, decimal signedValue)
+    {
+        return string.Join("|", new[]
+        {
+            NormalizeCashFlowImportText(row.SourceFlow),
+            NormalizeCashFlowImportText(row.BankAccountCode),
+            row.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+            signedValue.ToString("0.##", CultureInfo.InvariantCulture),
+            NormalizeCashFlowImportText(row.DocumentType),
+            NormalizeCashFlowImportText(row.Observations)
+        });
+    }
+
+    private static string BuildBancolombiaStatementExternalKey(
+        BancolombiaStatementAccount account,
+        string identity,
+        int occurrence)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+        return $"bancolombia:{NormalizeKeyPart(account.BankAccountCode)}:{hash[..20]}:{occurrence}";
+    }
+
+    private static string BuildBancolombiaStatementSourceHash(string identity, int occurrence)
+    {
+        var canonicalSource = $"{identity}|{occurrence.ToString(CultureInfo.InvariantCulture)}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalSource))).ToLowerInvariant();
     }
 
     private static bool IsTransfer(CashFlowImportRowDto row)
@@ -503,6 +845,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
         var raw = string.Join("|", new[]
         {
             row.SourceFileName,
+            row.SourceSystem,
             row.SourceFlow,
             row.TableName,
             row.RowNumber.ToString(CultureInfo.InvariantCulture),
@@ -519,6 +862,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
             row.SiigoStatus,
             row.BankAccountCode,
             row.BankAccountName,
+            row.PreserveExistingDescription ? "preserve-description" : "",
             row.IsTransfer ? "transfer" : "movement",
             row.TransferFrom,
             row.TransferTo
@@ -550,9 +894,10 @@ public sealed class CashFlowImportService : ICashFlowImportService
             RowsRead = rows.Count,
             MovementsRead = rows.Count(static row => !row.IsTransfer),
             TransfersRead = rows.Count(static row => row.IsTransfer),
-            Skipped = readResult.BlankRowsSkipped + readResult.FutureRowsSkipped + upsert.Skipped,
+            Skipped = readResult.BlankRowsSkipped + readResult.SkippedRows.Count + upsert.Skipped,
             BlankRowsSkipped = readResult.BlankRowsSkipped,
             FutureRowsSkipped = readResult.FutureRowsSkipped,
+            PeriodRowsSkipped = readResult.PeriodRowsSkipped,
             DataverseRowsSkipped = upsert.Skipped,
             Created = upsert.Created,
             Updated = upsert.Updated,
@@ -681,6 +1026,7 @@ public sealed class CashFlowImportService : ICashFlowImportService
         builder.AppendLine(BuildMetricRow("Omitidas totales", Number(result.Skipped)));
         builder.AppendLine(BuildMetricRow("Filas vacias omitidas", Number(result.BlankRowsSkipped)));
         builder.AppendLine(BuildMetricRow("Fechas futuras omitidas", Number(result.FutureRowsSkipped)));
+        builder.AppendLine(BuildMetricRow("Fuera del periodo omitidas", Number(result.PeriodRowsSkipped)));
         builder.AppendLine(BuildMetricRow("Omitidas por Dataverse", Number(result.DataverseRowsSkipped)));
         builder.AppendLine(BuildMetricRow("Total entradas", Money(result.TotalEntries)));
         builder.AppendLine(BuildMetricRow("Total salidas", Money(result.TotalExits)));
@@ -788,6 +1134,22 @@ public sealed class CashFlowImportService : ICashFlowImportService
         return string.IsNullOrWhiteSpace(normalized) ? "na" : normalized;
     }
 
+    private static string NormalizeCashFlowImportText(string? value)
+    {
+        var normalized = (value ?? "").Trim().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var ch in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+                continue;
+
+            if (char.IsLetterOrDigit(ch))
+                builder.Append(char.ToUpperInvariant(ch));
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
     private static string NormalizeAuthorityHost(string? value)
     {
         var authority = string.IsNullOrWhiteSpace(value)
@@ -823,9 +1185,16 @@ public sealed class CashFlowImportService : ICashFlowImportService
         return DateOnly.FromDateTime(localNow.DateTime);
     }
 
-    private sealed record CashFlowWorkbookReadResult(
+    private sealed record BancolombiaStatementAccount(
+        string Key,
+        string SourceFlow,
+        string BankAccountCode,
+        string BankAccountName);
+
+    internal sealed record CashFlowWorkbookReadResult(
         IReadOnlyList<CashFlowImportRowDto> Rows,
         int BlankRowsSkipped,
         int FutureRowsSkipped,
+        int PeriodRowsSkipped,
         IReadOnlyList<CashFlowImportSkippedRowDto> SkippedRows);
 }

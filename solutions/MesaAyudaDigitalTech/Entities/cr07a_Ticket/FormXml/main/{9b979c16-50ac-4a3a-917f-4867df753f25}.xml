@@ -1,0 +1,188 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<forms xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <systemform>
+    <formid>{9b979c16-50ac-4a3a-917f-4867df753f25}</formid>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <FormPresentation>1</FormPresentation>
+    <FormActivationState>1</FormActivationState>
+    <form headerdensity="HighWithControls">
+      <tabs>
+        <tab verticallayout="true" id="{75c73040-c0a9-4172-be5d-d73c7b82bf84}" IsUserDefined="1">
+          <labels>
+            <label description="General" languagecode="3082" />
+          </labels>
+          <columns>
+            <column width="100%">
+              <sections>
+                <section showlabel="false" showbar="false" IsUserDefined="0" id="{cd683ef8-d67c-4a9f-8c17-86cea2d8601d}">
+                  <labels>
+                    <label description="General" languagecode="3082" />
+                  </labels>
+                  <rows>
+                    <row>
+                      <cell id="{bffd4faa-56c9-48cb-a62b-331bcb826991}">
+                        <labels>
+                          <label description="Título Ticket" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_tituloticket" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="cr07a_tituloticket" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{751ec1ba-6cdf-4012-af7d-f7e2a93033a6}" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Fecha Creación" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_fechacreacion" classid="{5b773807-9fb2-42db-97c3-7a91eff8adff}" datafieldname="cr07a_fechacreacion" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{bb213320-1507-45f6-b357-70a6cc814771}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Cliente" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_cliente" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="cr07a_cliente" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{161a038d-8124-4672-a29b-5f225f3a6328}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Fecha de Cierre" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_fechadecierre" classid="{5B773807-9FB2-42DB-97C3-7A91EFF8ADFF}" datafieldname="cr07a_fechadecierre" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{8e1e98f5-4946-43e4-8899-458844009a8b}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Categoria" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_categoria" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_categoria" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{59a48f07-f9ad-4f86-997c-ab0fd63bd223}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Tipo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_tipo" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_tipo" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{807385b3-727f-4c1c-8ccc-5eaef2c915e1}">
+                        <labels>
+                          <label description="Propietario" languagecode="3082" />
+                        </labels>
+                        <control id="ownerid" classid="{270BD3DB-D9AF-4782-9025-509E298DEC0A}" datafieldname="ownerid" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{ce246ebf-f1c1-4928-811d-10b0eed9a704}">
+                        <labels>
+                          <label description="Descripción" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_descripcion" classid="{e0dece4b-6fc8-4a8f-a065-082708572369}" datafieldname="cr07a_descripcion" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{6df79815-9f6c-4ea3-b0a9-ed05e8a98e09}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Solucion" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_solucion" classid="{E0DECE4B-6FC8-4A8F-A065-082708572369}" datafieldname="cr07a_solucion" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{e9de020c-5c5f-49a5-8805-abcd9e457538}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Horas Tomadas" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_horastomadas" classid="{C3EFE0C3-0EC6-42BE-8349-CBD9079DFD8E}" datafieldname="cr07a_horastomadas" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{d445e63d-2dfb-4b7d-a500-8e654d54445d}">
+                        <labels>
+                          <label description="Estado" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_estado" classid="{3ef39988-22bb-4f0b-bbbe-64b5a3748aee}" datafieldname="cr07a_estado" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{bfc3fea0-2b08-45af-812b-e7ecba345a8b}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Criticidad" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_criticidad" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_criticidad" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{b8f95423-c5b5-4a85-8cff-7fdfefe98e2a}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Metodo" languagecode="3082" />
+                        </labels>
+                        <control id="cr07a_metodo" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="cr07a_metodo" disabled="false" />
+                      </cell>
+                    </row>
+                  </rows>
+                </section>
+              </sections>
+            </column>
+          </columns>
+        </tab>
+      </tabs>
+      <header id="{3a3dce11-f58f-457b-86e3-173cc821fef9}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{b40ae00a-6ca1-4e3c-8119-55f248c70968}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{2c7af2ae-f2cf-4909-9189-f85f4576d815}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{e5774475-0a18-4867-b242-9ca8f9e340a3}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </header>
+      <footer id="{a9a95e08-68b8-48f9-806d-1b389d25dcaa}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
+        <rows>
+          <row>
+            <cell id="{8f11d8a2-7e85-4cfa-8cb8-757300f88e59}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{208e23f3-646d-4da8-a482-7662bf488983}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+            <cell id="{09a8ff56-2615-496e-b313-b2dc548518c4}" showlabel="false">
+              <labels>
+                <label description="" languagecode="3082" />
+              </labels>
+            </cell>
+          </row>
+        </rows>
+      </footer>
+      <DisplayConditions Order="0" FallbackForm="true">
+        <Everyone />
+      </DisplayConditions>
+    </form>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>1</CanBeDeleted>
+    <LocalizedNames>
+      <LocalizedName description="Información" languagecode="3082" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Formulario para esta entidad." languagecode="3082" />
+    </Descriptions>
+  </systemform>
+</forms>

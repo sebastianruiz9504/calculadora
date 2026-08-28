@@ -29,11 +29,12 @@ public enum AppModule
     CruceLicenciamiento = 21,
     RegistroPagosClientes = 22,
     Conciliacion = 23,
-    AguasSdaBitacoras = 24,
-    AguasSdaAprobacion = 25,
-    AguasSdaTablaBase = 26,
-    AguasSdaMatrizInterna = 27,
-    AguasSdaPermisos = 28
+    PrimaLegal = 24,
+    ProposalChat = 25,
+    Contracts = 26,
+    Crm = 27,
+    MesaAyuda = 28,
+    CrmAdministrator = 29
 }
 
 public sealed class AppModuleDefinition
@@ -217,6 +218,16 @@ public static class AppModuleCatalog
         Controller = "Hardware"
     };
 
+    public static readonly AppModuleDefinition ProposalChat = new()
+    {
+        Key = AppModule.ProposalChat,
+        Label = "Propuestas",
+        Category = "Area comercial",
+        Description = "Arma y ajusta propuestas comerciales desde un chat dedicado.",
+        OptionValue = 0,
+        Controller = "ProposalChat"
+    };
+
     public static readonly AppModuleDefinition SoporteCloud = new()
     {
         Key = AppModule.SoporteCloud,
@@ -225,6 +236,16 @@ public static class AppModuleCatalog
         Description = "Gestiona tickets de soporte cloud, su clasificacion, cliente, horas y adjuntos.",
         OptionValue = 645250014,
         Controller = "SoporteCloud"
+    };
+
+    public static readonly AppModuleDefinition MesaAyuda = new()
+    {
+        Key = AppModule.MesaAyuda,
+        Label = "Mesa de ayuda",
+        Category = "Soporte",
+        Description = "Centraliza casos, auditorias asistidas, aprobaciones y respuestas verificadas.",
+        OptionValue = 0,
+        Controller = "MesaAyuda"
     };
 
     public static readonly AppModuleDefinition PlanRio = new()
@@ -287,62 +308,48 @@ public static class AppModuleCatalog
         Controller = "Conciliacion"
     };
 
-    public static readonly AppModuleDefinition AguasSdaBitacoras = new()
+    public static readonly AppModuleDefinition PrimaLegal = new()
     {
-        Key = AppModule.AguasSdaBitacoras,
-        Label = "Bitacora diaria",
-        Category = "Aguas SDA",
-        Description = "Registra bitacoras diarias, fotos antes/durante/despues y envio a aprobacion.",
+        Key = AppModule.PrimaLegal,
+        Label = "Prima legal",
+        Category = "Admin",
+        Description = "Calcula la prima semestral con base en los registros de nomina y resalta meses faltantes.",
         OptionValue = 645250023,
-        Controller = "AguasSda",
-        Action = "Bitacoras"
+        Controller = "PrimaLegal"
     };
 
-    public static readonly AppModuleDefinition AguasSdaAprobacion = new()
+    public static readonly AppModuleDefinition Contracts = new()
     {
-        Key = AppModule.AguasSdaAprobacion,
-        Label = "Aprobacion",
-        Category = "Aguas SDA",
-        Description = "Revisa bitacoras enviadas y consulta el registro fotografico asociado.",
+        Key = AppModule.Contracts,
+        Label = "Contratos",
+        Category = "Gerencia",
+        Description = "Genera contratos Copiers, administra consecutivos, órdenes de servicio, firmas y actas de entrega.",
         OptionValue = 645250024,
-        Controller = "AguasSda",
-        Action = "Aprobacion"
+        Controller = "Contracts"
     };
 
-    public static readonly AppModuleDefinition AguasSdaTablaBase = new()
+    public static readonly AppModuleDefinition Crm = new()
     {
-        Key = AppModule.AguasSdaTablaBase,
-        Label = "Tabla base",
-        Category = "Aguas SDA",
-        Description = "Consulta y administra la tabla base del proyecto SDA.",
+        Key = AppModule.Crm,
+        Label = "CRM",
+        Category = "Area comercial",
+        Description = "Centraliza clientes, contactos, negocios, actividades y seguimiento comercial.",
         OptionValue = 645250025,
-        Controller = "AguasSda",
-        Action = "TablaBase"
+        Controller = "Crm"
     };
 
-    public static readonly AppModuleDefinition AguasSdaMatrizInterna = new()
+    public static readonly AppModuleDefinition CrmAdministrator = new()
     {
-        Key = AppModule.AguasSdaMatrizInterna,
-        Label = "Matriz interna",
-        Category = "Aguas SDA",
-        Description = "Consulta la matriz interna del proyecto por rol y area de intervencion.",
-        OptionValue = 645250026,
-        Controller = "AguasSda",
-        Action = "MatrizInterna"
+        Key = AppModule.CrmAdministrator,
+        Label = "CRM Administrador",
+        Category = "Area comercial",
+        Description = "Administra todos los registros del CRM, reasigna propietarios y consulta la vista de cada usuario.",
+        OptionValue = CrmAccessPolicy.AdministratorOptionValue,
+        Controller = "Crm",
+        IsNavigable = false
     };
 
-    public static readonly AppModuleDefinition AguasSdaPermisos = new()
-    {
-        Key = AppModule.AguasSdaPermisos,
-        Label = "Permisos SDA",
-        Category = "Aguas SDA",
-        Description = "Administra usuarios, roles y areas de intervencion para Aguas de Bogota SDA.",
-        OptionValue = 645250027,
-        Controller = "AguasSda",
-        Action = "Permisos"
-    };
-
-    public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = new[]
+    public static IReadOnlyList<AppModuleDefinition> AllModules { get; } = new[]
     {
         Calculator,
         Renovaciones,
@@ -360,6 +367,7 @@ public static class AppModuleCatalog
         Licenciamiento,
         CruceLicenciamiento,
         SoporteCloud,
+        MesaAyuda,
         Hardware,
         PlanRio,
         Envios,
@@ -367,15 +375,19 @@ public static class AppModuleCatalog
         RebatesInversiones,
         RegistroPagosClientes,
         Conciliacion,
-        AguasSdaBitacoras,
-        AguasSdaAprobacion,
-        AguasSdaTablaBase,
-        AguasSdaMatrizInterna,
-        AguasSdaPermisos,
+        PrimaLegal,
+        Contracts,
+        Crm,
+        CrmAdministrator,
+        ProposalChat,
     };
 
+    public static IReadOnlyList<AppModuleDefinition> PermissionModules { get; } = AllModules
+        .Where(static module => module.Key is not AppModule.ProposalChat and not AppModule.MesaAyuda)
+        .ToList();
+
     public static IReadOnlyList<AppModuleDefinition> NavigationModules { get; } =
-        PermissionModules
+        AllModules
             .Where(static module => module.IsNavigable)
             .ToList();
 
@@ -384,19 +396,19 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Area comercial",
-            Modules = new[] { Calculator, Hardware },
+            Modules = new[] { Calculator, Crm, Hardware, ProposalChat },
             IsDropdown = true
         },
         new AppModuleNavigationGroup
         {
             Label = "Gerencia",
-            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas, Licenciamiento, CruceLicenciamiento },
+            Modules = new[] { Renovaciones, Puntajes, Nomina, Metricas, Licenciamiento, CruceLicenciamiento, Contracts },
             IsDropdown = true
         },
         new AppModuleNavigationGroup
         {
             Label = "Admin",
-            Modules = new[] { Rh, PortalProveedores, CuentasCobro, RegistroPagosClientes, Inventario, RebatesInversiones },
+            Modules = new[] { Rh, PortalProveedores, CuentasCobro, RegistroPagosClientes, Inventario, RebatesInversiones, PrimaLegal },
             IsDropdown = true
         },
         new AppModuleNavigationGroup
@@ -407,7 +419,7 @@ public static class AppModuleCatalog
         new AppModuleNavigationGroup
         {
             Label = "Soporte",
-            Modules = new[] { Copiers, SoporteCloud },
+            Modules = new[] { MesaAyuda, Copiers, SoporteCloud },
             IsDropdown = true
         },
         new AppModuleNavigationGroup
@@ -430,20 +442,14 @@ public static class AppModuleCatalog
         {
             Label = "Conciliacion",
             Modules = new[] { Conciliacion }
-        },
-        new AppModuleNavigationGroup
-        {
-            Label = "Aguas SDA",
-            Modules = new[] { AguasSdaBitacoras, AguasSdaAprobacion, AguasSdaTablaBase, AguasSdaMatrizInterna, AguasSdaPermisos },
-            IsDropdown = true
         }
     };
 
     public static AppModuleDefinition? Find(AppModule module) =>
-        PermissionModules.FirstOrDefault(item => item.Key == module);
+        AllModules.FirstOrDefault(item => item.Key == module);
 
     public static AppModuleDefinition? FindByController(string? controller) =>
-        PermissionModules.FirstOrDefault(item =>
+        AllModules.FirstOrDefault(item =>
             !string.IsNullOrWhiteSpace(item.Controller)
             && string.Equals(item.Controller, controller?.Trim(), StringComparison.OrdinalIgnoreCase));
 }
@@ -458,7 +464,10 @@ public static class AppModuleAccessPolicy
 
     public static bool CanAccess(AppModuleDefinition module, CurrentUserInfo? currentUser)
     {
-        return currentUser?.HasModule(module.OptionValue) == true
+        if (module.Key == AppModule.Crm)
+            return CrmAccessPolicy.CanAccess(currentUser);
+
+        return module.OptionValue > 0 && currentUser?.HasModule(module.OptionValue) == true
             || HasSpecificUserAccess(module.Key, currentUser);
     }
 
@@ -466,43 +475,25 @@ public static class AppModuleAccessPolicy
     {
         return module switch
         {
+            AppModule.ProposalChat => currentUser?.HasModule(AppModuleCatalog.Calculator.OptionValue) == true
+                || currentUser?.HasModule(AppModuleCatalog.Hardware.OptionValue) == true
+                || HardwareAccessPolicy.IsSupplierPaymentUser(currentUser)
+                || HardwareAccessPolicy.IsBillingUser(currentUser)
+                || HardwareAccessPolicy.IsImpersonationUser(currentUser),
             AppModule.Hardware => HardwareAccessPolicy.IsSupplierPaymentUser(currentUser)
                 || HardwareAccessPolicy.IsBillingUser(currentUser)
                 || HardwareAccessPolicy.IsImpersonationUser(currentUser),
-            AppModule.AguasSdaBitacoras => currentUser?.HasAnyAguasSdaRole(
-                AguasSdaRoleValues.Diligenciador,
-                AguasSdaRoleValues.ProfesionalApoyo,
-                AguasSdaRoleValues.Superadmin) == true,
-            AppModule.AguasSdaAprobacion => currentUser?.HasAnyAguasSdaRole(
-                AguasSdaRoleValues.Aprobador,
-                AguasSdaRoleValues.Superadmin) == true,
-            AppModule.AguasSdaTablaBase => currentUser?.HasAnyAguasSdaRole(
-                AguasSdaRoleValues.Aprobador,
-                AguasSdaRoleValues.ProfesionalApoyo,
-                AguasSdaRoleValues.Superadmin) == true,
-            AppModule.AguasSdaMatrizInterna => currentUser?.HasAnyAguasSdaRole(
-                AguasSdaRoleValues.Diligenciador,
-                AguasSdaRoleValues.Aprobador,
-                AguasSdaRoleValues.ProfesionalApoyo,
-                AguasSdaRoleValues.Superadmin) == true,
-            AppModule.AguasSdaPermisos => currentUser?.HasAguasSdaRole(AguasSdaRoleValues.Superadmin) == true
-                || currentUser?.HasModule(AppModule.Permissions) == true,
+            AppModule.MesaAyuda => MesaAyudaAccessPolicy.CanAccess(currentUser),
             _ => false
         };
     }
 }
 
-public static class AguasSdaRoleValues
-{
-    public const int Diligenciador = 645250000;
-    public const int Aprobador = 645250001;
-    public const int ProfesionalApoyo = 645250002;
-    public const int Superadmin = 645250003;
-}
-
 public sealed class EmployeeModulePermissionRowDto
 {
     public string EmployeeId { get; set; } = "";
+    public string SystemUserId { get; set; } = "";
+    public bool IsActive { get; set; }
     public string EmployeeName { get; set; } = "";
     public string UserDisplayName { get; set; } = "";
     public string UserEmail { get; set; } = "";

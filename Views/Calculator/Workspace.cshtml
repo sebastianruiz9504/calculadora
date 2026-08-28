@@ -1,0 +1,902 @@
+@using System.Globalization
+@using CotizadorInterno.Web.Models.Calculator
+@{
+    ViewData["Title"] = "Cotizador Interno";
+
+    var groups = (IReadOnlyList<ScenarioGroupStoredDto>?)ViewData["ScenarioGroups"]
+        ?? Array.Empty<ScenarioGroupStoredDto>();
+    var historyByGroup = ViewData["ProposalHistoryByGroup"]
+        as IReadOnlyDictionary<string, IReadOnlyList<ProposalExportHistoryItemDto>>
+        ?? ViewData["ProposalHistory"]
+            as IReadOnlyDictionary<string, IReadOnlyList<ProposalExportHistoryItemDto>>;
+    var requestedGroupId = Context.Request.Query["groupId"].ToString().Trim();
+    var requestedScenarioId = Context.Request.Query["scenarioId"].ToString().Trim();
+    var contextualCrmDealId = Context.Request.Query["crmDealId"].ToString().Trim();
+    var activeGroup = groups.FirstOrDefault(group =>
+            string.Equals(group.GroupId, requestedGroupId, StringComparison.OrdinalIgnoreCase))
+        ?? groups.FirstOrDefault(group => group.Possibilities.Any(possibility =>
+            string.Equals(possibility.ScenarioId, requestedScenarioId, StringComparison.OrdinalIgnoreCase)))
+        ?? groups.FirstOrDefault();
+
+    IReadOnlyList<ProposalExportHistoryItemDto> ResolveHistory(ScenarioGroupStoredDto group)
+    {
+        if (group.ProposalHistory.Count > 0)
+            return group.ProposalHistory;
+
+        if (historyByGroup is not null
+            && historyByGroup.TryGetValue(group.GroupId, out var groupHistory))
+            return groupHistory;
+
+        return Array.Empty<ProposalExportHistoryItemDto>();
+    }
+
+    string BuildEmbeddedUrl(ScenarioStoredDto possibility)
+    {
+        var parts = new List<string>
+        {
+            "embedded=true",
+            $"scenarioId={Uri.EscapeDataString(possibility.ScenarioId)}",
+            $"groupId={Uri.EscapeDataString(possibility.GroupId)}"
+        };
+        var resolvedCrmDealId = !string.IsNullOrWhiteSpace(possibility.CrmDealId)
+            ? possibility.CrmDealId
+            : string.Equals(requestedScenarioId, possibility.ScenarioId, StringComparison.OrdinalIgnoreCase)
+                ? contextualCrmDealId
+                : "";
+        if (!string.IsNullOrWhiteSpace(resolvedCrmDealId))
+            parts.Add($"crmDealId={Uri.EscapeDataString(resolvedCrmDealId)}");
+
+        if (string.Equals(requestedScenarioId, possibility.ScenarioId, StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var key in new[]
+                     {
+                         "crmCompanyId", "crmCompanyName", "crmContactId", "crmContactName",
+                         "crmDealKind", "crmDealName", "crmProbability", "crmEstimatedValue"
+                     })
+            {
+                var value = Context.Request.Query[key].ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                    parts.Add($"{key}={Uri.EscapeDataString(value)}");
+            }
+        }
+
+        return $"{Url.Action("Index", "Calculator")}?{string.Join("&", parts)}";
+    }
+
+    var activeHistory = activeGroup is null
+        ? Array.Empty<ProposalExportHistoryItemDto>()
+        : ResolveHistory(activeGroup);
+    var activePossibilities = activeGroup?.Possibilities
+        .OrderBy(item => item.PossibilityOrder)
+        .ToList()
+        ?? new List<ScenarioStoredDto>();
+    var primaryScenarioId = activeGroup?.PrimaryScenarioId;
+    if (string.IsNullOrWhiteSpace(primaryScenarioId))
+    {
+        primaryScenarioId = activePossibilities.FirstOrDefault(item => item.IsRecommended)?.ScenarioId
+            ?? activePossibilities.FirstOrDefault()?.ScenarioId
+            ?? "";
+    }
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/calculator-workspace.css" asp-append-version="true" />
+}
+
+<main class="calculator-workspace"
+      data-calculator-workspace
+      data-create-url="@Url.Action("CreatePossibility", "Calculator")"
+      data-rename-group-url="@Url.Action("RenameScenarioGroup", "Calculator")"
+      data-recommend-url="@Url.Action("RecommendPossibility", "Calculator")"
+      data-delete-url="@Url.Action("DeleteScenario", "Calculator")"
+      data-proposal-url="@Url.Action("Proposal", "Calculator")"
+      data-active-group-id="@(activeGroup?.GroupId ?? "")"
+      data-primary-scenario-id="@primaryScenarioId"
+      data-crm-deal-id="@contextualCrmDealId"
+      data-possibility-count="@activePossibilities.Count"
+      data-has-history="@(activeHistory.Count > 0 ? "true" : "false")">
+    @Html.AntiForgeryToken()
+
+    <section class="calculator-workspace__hero">
+        <div>
+            <div class="calculator-workspace__eyebrow">Módulo comercial</div>
+            <h1>Cotizador interno</h1>
+            <p>Crea hasta tres escenarios independientes por negocio, calcula cada puntaje y reúnelos en una sola propuesta.</p>
+        </div>
+        <div class="calculator-workspace__hero-actions">
+            <button class="btn btn-outline-primary" type="button" data-create-group>
+                Nuevo negocio
+            </button>
+            @if (activeGroup is not null)
+            {
+                <button class="btn btn-primary"
+                        type="button"
+                        data-open-proposal
+                        disabled="@(activePossibilities.Any(item => item.LastResult is null || string.IsNullOrWhiteSpace(item.LastResult.InputHash)) ? "disabled" : null)">
+                    @(activeHistory.Count > 0 ? "Editar propuesta" : "Generar propuesta")
+                </button>
+            }
+        </div>
+    </section>
+
+    <div class="calculator-workspace__status" data-workspace-status role="status" aria-live="polite"></div>
+
+    @if (groups.Count > 0)
+    {
+        <section class="calculator-workspace__business-picker" data-business-picker>
+            <label class="calculator-workspace__picker-label" for="business-search">Negocios guardados</label>
+            <button class="calculator-workspace__picker-toggle"
+                    type="button"
+                    data-business-picker-toggle
+                    aria-haspopup="listbox"
+                    aria-expanded="false">
+                <span>
+                    <strong data-active-business-label>@(string.IsNullOrWhiteSpace(activeGroup?.GroupName) ? "Negocio" : activeGroup.GroupName)</strong>
+                    <small>@(activeGroup?.Possibilities.Count ?? 0) escenario@((activeGroup?.Possibilities.Count ?? 0) == 1 ? "" : "s")</small>
+                </span>
+                <span class="calculator-workspace__picker-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div class="calculator-workspace__picker-popover" data-business-picker-popover hidden>
+                <div class="calculator-workspace__picker-search-wrap">
+                    <span aria-hidden="true">⌕</span>
+                    <input id="business-search"
+                           class="calculator-workspace__picker-search"
+                           type="search"
+                           autocomplete="off"
+                           placeholder="Buscar negocio por nombre…"
+                           data-business-search />
+                </div>
+                <div class="calculator-workspace__picker-options" role="listbox" aria-label="Negocios guardados">
+                    @foreach (var group in groups)
+                    {
+                        var selected = activeGroup is not null
+                            && string.Equals(group.GroupId, activeGroup.GroupId, StringComparison.OrdinalIgnoreCase);
+                        var displayName = string.IsNullOrWhiteSpace(group.GroupName) ? "Negocio" : group.GroupName;
+                        <button class="calculator-workspace__picker-option @(selected ? "is-active" : "")"
+                                type="button"
+                                role="option"
+                                aria-selected="@(selected ? "true" : "false")"
+                                data-business-option
+                                data-search-text="@displayName"
+                                data-group-select="@group.GroupId">
+                            <span>@displayName</span>
+                            <small>@group.Possibilities.Count escenario@(group.Possibilities.Count == 1 ? "" : "s")</small>
+                        </button>
+                    }
+                    <div class="calculator-workspace__picker-empty" data-business-picker-empty hidden>
+                        No hay negocios que coincidan con la búsqueda.
+                    </div>
+                </div>
+            </div>
+        </section>
+    }
+
+    @if (activeGroup is null)
+    {
+        <section class="calculator-workspace__empty">
+            <div class="calculator-workspace__empty-icon" aria-hidden="true">+</div>
+            <h2>Crea tu primer negocio</h2>
+            <p>Se abrirá su primer escenario en una calculadora completa y quedará guardado desde el primer momento.</p>
+            <button class="btn btn-primary" type="button" data-create-group>Crear negocio</button>
+        </section>
+    }
+    else
+    {
+        <section class="calculator-workspace__group-heading">
+            <div class="calculator-workspace__business-heading-main">
+                <div class="calculator-workspace__eyebrow">Negocio activo</div>
+                <label class="calculator-workspace__business-name-label" for="active-business-name">Nombre del negocio</label>
+                <div class="calculator-workspace__business-name-control">
+                    <input id="active-business-name"
+                           class="calculator-workspace__business-name-input"
+                           type="text"
+                           maxlength="200"
+                           value="@(string.IsNullOrWhiteSpace(activeGroup.GroupName) ? "Negocio" : activeGroup.GroupName)"
+                           autocomplete="off"
+                           data-business-name />
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-save-business-name>Guardar</button>
+                    <span class="calculator-workspace__business-name-status" data-business-name-status aria-live="polite">Guardado</span>
+                </div>
+                <p>Cada escenario conserva sus productos, valores, prorrateo y puntaje de forma independiente.</p>
+            </div>
+            <div class="calculator-workspace__group-actions">
+                <button class="btn btn-outline-primary"
+                        type="button"
+                        data-add-possibility
+                        disabled="@(activePossibilities.Count >= 3 ? "disabled" : null)">
+                    Agregar escenario
+                </button>
+                <span class="calculator-workspace__limit">@activePossibilities.Count de 3 escenarios</span>
+            </div>
+        </section>
+
+        <div class="calculator-workspace__layout">
+            <aside class="calculator-workspace__aside" data-insights>
+                <button class="calculator-workspace__insights-toggle"
+                        type="button"
+                        data-insights-toggle
+                        aria-expanded="false"
+                        aria-controls="proposal-insights-panel"
+                        title="Abrir estado e historial">
+                    <span class="calculator-workspace__insights-icon" aria-hidden="true">i</span>
+                    <span class="calculator-workspace__insights-label">Estado e historial</span>
+                    <span class="calculator-workspace__insights-count">@activeHistory.Count</span>
+                </button>
+
+                <div id="proposal-insights-panel"
+                     class="calculator-workspace__aside-panel"
+                     data-insights-panel
+                     aria-hidden="true"
+                     inert
+                     hidden>
+                    <div class="calculator-workspace__aside-panel-head">
+                        <strong>Estado e historial</strong>
+                        <button type="button" data-insights-close aria-label="Cerrar estado e historial">×</button>
+                    </div>
+
+                <section class="calculator-workspace__summary-card">
+                    <div class="calculator-workspace__eyebrow">Estado de la propuesta</div>
+                    <strong data-group-readiness>
+                        @(activePossibilities.All(item => item.LastResult is not null && !string.IsNullOrWhiteSpace(item.LastResult.InputHash))
+                            ? "Lista para configurar"
+                            : "Calcula todos los escenarios")
+                    </strong>
+                    <p data-group-readiness-detail>
+                        @activePossibilities.Count(item => item.LastResult is not null && !string.IsNullOrWhiteSpace(item.LastResult.InputHash)) de @activePossibilities.Count con cálculo vigente.
+                    </p>
+                </section>
+
+                <section class="calculator-workspace__history" aria-labelledby="proposal-history-title">
+                    <div class="calculator-workspace__history-head">
+                        <div>
+                            <div class="calculator-workspace__eyebrow">Persistencia</div>
+                            <h3 id="proposal-history-title">Historial de propuestas</h3>
+                        </div>
+                        <span>@activeHistory.Count</span>
+                    </div>
+
+                    @if (activeHistory.Count == 0)
+                    {
+                        <div class="calculator-workspace__history-empty">
+                            Aún no se ha exportado una propuesta para este negocio.
+                        </div>
+                    }
+                    else
+                    {
+                        <ol class="calculator-workspace__history-list">
+                            @foreach (var item in activeHistory.OrderByDescending(entry => entry.ExportedAtUtc))
+                            {
+                                <li>
+                                    <div>
+                                        <strong>Versión @item.Version</strong>
+                                        <span>@item.ExportedAtUtc.ToLocalTime().ToString("dd MMM yyyy, h:mm tt", CultureInfo.GetCultureInfo("es-CO"))</span>
+                                    </div>
+                                    <small>@item.PossibilityCount escenario@(item.PossibilityCount == 1 ? "" : "s") · @(string.IsNullOrWhiteSpace(item.ExportedByName) ? "Digital Tech" : item.ExportedByName)</small>
+                                    @if (!string.IsNullOrWhiteSpace(item.FileName))
+                                    {
+                                        <span class="calculator-workspace__history-file">@item.FileName</span>
+                                    }
+                                    <a class="calculator-workspace__history-download"
+                                       href="@Url.Action("ProposalExport", "Calculator", new
+                                             {
+                                                 groupId = activeGroup.GroupId,
+                                                 exportId = item.ExportId,
+                                                 scenarioId = primaryScenarioId,
+                                                 crmDealId = string.IsNullOrWhiteSpace(contextualCrmDealId) ? null : contextualCrmDealId
+                                             })">
+                                        Descargar PDF
+                                    </a>
+                                </li>
+                            }
+                        </ol>
+                    }
+                </section>
+                </div>
+            </aside>
+
+            <div class="calculator-workspace__possibilities" data-possibilities-host>
+                @foreach (var possibility in activePossibilities)
+                {
+                    var possibilityName = string.IsNullOrWhiteSpace(possibility.PossibilityName)
+                        ? $"Escenario {possibility.PossibilityOrder}"
+                        : possibility.PossibilityName;
+                    var possibilityPanelId = $"calculator-possibility-panel-{possibility.ScenarioId}";
+                    var isValid = possibility.LastResult is not null
+                        && !string.IsNullOrWhiteSpace(possibility.LastResult.InputHash);
+                    <article class="calculator-possibility"
+                             data-possibility-card
+                             data-group-id="@activeGroup.GroupId"
+                             data-scenario-id="@possibility.ScenarioId"
+                             data-valid="@(isValid ? "true" : "false")"
+                             data-saved="true"
+                             data-included="@(possibility.IncludeInProposal ? "true" : "false")">
+                        <header class="calculator-possibility__header">
+                            <div class="calculator-possibility__identity">
+                                <span class="calculator-possibility__number">@possibility.PossibilityOrder</span>
+                                <div>
+                                    <div class="calculator-possibility__title-line">
+                                        <h3 data-possibility-name>@possibilityName</h3>
+                                        <span class="calculator-possibility__recommended @(possibility.IsRecommended ? "" : "d-none")"
+                                              data-recommended-badge>
+                                            Recomendada
+                                        </span>
+                                    </div>
+                                    <div class="calculator-possibility__state" data-possibility-state>
+                                        @(isValid ? "Calculada y guardada" : "Pendiente de cálculo")
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="calculator-possibility__tools">
+                                <div class="calculator-possibility__score">
+                                    <span>Puntaje</span>
+                                    <strong data-possibility-score>
+                                        @(possibility.LastResult is null ? "—" : possibility.LastResult.Points.ToString("N2", CultureInfo.GetCultureInfo("es-CO")))
+                                    </strong>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary calculator-possibility__toggle"
+                                        type="button"
+                                        data-toggle-possibility
+                                        aria-expanded="true"
+                                        aria-controls="@possibilityPanelId"
+                                        aria-label="Compactar @possibilityName">
+                                    <span data-toggle-possibility-label>Compactar</span>
+                                    <span class="calculator-possibility__toggle-icon" data-toggle-possibility-icon aria-hidden="true">⌃</span>
+                                </button>
+                                @if (!possibility.IsRecommended)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary" type="button" data-recommend-possibility>
+                                        Marcar recomendado
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        type="button"
+                                        data-duplicate-possibility
+                                        disabled="@(activePossibilities.Count >= 3 ? "disabled" : null)">
+                                    Duplicar escenario
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger"
+                                        type="button"
+                                        data-delete-possibility
+                                        disabled="@(activePossibilities.Count <= 1 ? "disabled" : null)">
+                                    Eliminar escenario
+                                </button>
+                            </div>
+                        </header>
+
+                        <div id="@possibilityPanelId" data-possibility-panel>
+                            <iframe class="calculator-possibility__frame"
+                                    data-calculator-frame
+                                    src="@BuildEmbeddedUrl(possibility)"
+                                    title="Calculadora de @possibilityName"
+                                    loading="eager"
+                                    scrolling="no"></iframe>
+                        </div>
+                    </article>
+                }
+            </div>
+        </div>
+    }
+</main>
+
+@section Scripts {
+<script>
+(function () {
+    const workspace = document.querySelector("[data-calculator-workspace]");
+    if (!workspace) return;
+
+    const token = workspace.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+    const status = workspace.querySelector("[data-workspace-status]");
+    const proposalButton = workspace.querySelector("[data-open-proposal]");
+    const readiness = workspace.querySelector("[data-group-readiness]");
+    const readinessDetail = workspace.querySelector("[data-group-readiness-detail]");
+    const businessPicker = workspace.querySelector("[data-business-picker]");
+    const businessPickerToggle = workspace.querySelector("[data-business-picker-toggle]");
+    const businessPickerPopover = workspace.querySelector("[data-business-picker-popover]");
+    const businessSearch = workspace.querySelector("[data-business-search]");
+    const businessOptions = Array.from(workspace.querySelectorAll("[data-business-option]"));
+    const businessPickerEmpty = workspace.querySelector("[data-business-picker-empty]");
+    const businessName = workspace.querySelector("[data-business-name]");
+    const businessNameStatus = workspace.querySelector("[data-business-name-status]");
+    const saveBusinessNameButton = workspace.querySelector("[data-save-business-name]");
+    const activeBusinessLabel = workspace.querySelector("[data-active-business-label]");
+    const insights = workspace.querySelector("[data-insights]");
+    const insightsToggle = workspace.querySelector("[data-insights-toggle]");
+    const insightsPanel = workspace.querySelector("[data-insights-panel]");
+    const frameByWindow = new Map();
+    let mutationPending = false;
+    let businessNameSavePromise = null;
+    let lastSavedBusinessName = businessName?.value.trim() || "";
+
+    function setStatus(message, kind = "info") {
+        if (!status) return;
+        status.textContent = message || "";
+        status.dataset.kind = message ? kind : "";
+        status.classList.toggle("is-visible", Boolean(message));
+    }
+
+    async function readError(response, fallback) {
+        const raw = await response.text();
+        if (!raw.trim()) return fallback;
+        try {
+            const data = JSON.parse(raw);
+            return data.message || data.detail || fallback;
+        } catch {
+            return raw;
+        }
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "RequestVerificationToken": token
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(await readError(response, "No fue posible completar la operación."));
+        return await response.json().catch(() => ({}));
+    }
+
+    function normalizeSearchText(value) {
+        return String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLocaleLowerCase("es-CO")
+            .trim();
+    }
+
+    function setBusinessPickerOpen(open) {
+        if (!businessPickerToggle || !businessPickerPopover) return;
+        businessPickerToggle.setAttribute("aria-expanded", String(open));
+        businessPickerPopover.hidden = !open;
+        businessPicker?.classList.toggle("is-open", open);
+        if (open) {
+            businessSearch?.focus();
+            businessSearch?.select();
+        }
+    }
+
+    function filterBusinessOptions() {
+        const query = normalizeSearchText(businessSearch?.value);
+        let visible = 0;
+        businessOptions.forEach(option => {
+            const matches = !query || normalizeSearchText(option.dataset.searchText).includes(query);
+            option.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        if (businessPickerEmpty) businessPickerEmpty.hidden = visible > 0;
+    }
+
+    function setInsightsOpen(open) {
+        if (!insightsToggle || !insightsPanel) return;
+        insightsToggle.setAttribute("aria-expanded", String(open));
+        insightsToggle.title = open ? "Cerrar estado e historial" : "Abrir estado e historial";
+        insightsPanel.hidden = !open;
+        insightsPanel.inert = !open;
+        insightsPanel.setAttribute("aria-hidden", String(!open));
+        insights?.classList.toggle("is-open", open);
+    }
+
+    async function saveBusinessName() {
+        if (!businessName || !workspace.dataset.activeGroupId) return true;
+        if (businessNameSavePromise) return await businessNameSavePromise;
+        const name = businessName.value.trim();
+        if (!name) {
+            businessName.value = lastSavedBusinessName;
+            if (businessNameStatus) businessNameStatus.textContent = "El nombre es obligatorio";
+            return false;
+        }
+        if (name === lastSavedBusinessName) {
+            if (businessNameStatus) businessNameStatus.textContent = "Guardado";
+            if (saveBusinessNameButton) saveBusinessNameButton.disabled = true;
+            return true;
+        }
+        if (mutationPending || !ensurePossibilitiesSaved()) return false;
+
+        mutationPending = true;
+        businessName.disabled = true;
+        if (saveBusinessNameButton) saveBusinessNameButton.disabled = true;
+        if (businessNameStatus) businessNameStatus.textContent = "Guardando…";
+        setStatus("Guardando el nombre del negocio…");
+        businessNameSavePromise = (async () => {
+            try {
+                await postJson(workspace.dataset.renameGroupUrl, {
+                    groupId: workspace.dataset.activeGroupId,
+                    groupName: name
+                });
+                lastSavedBusinessName = name;
+                if (activeBusinessLabel) activeBusinessLabel.textContent = name;
+                const activeOption = businessOptions.find(option => option.classList.contains("is-active"));
+                if (activeOption) {
+                    activeOption.dataset.searchText = name;
+                    const optionName = activeOption.querySelector("span");
+                    if (optionName) optionName.textContent = name;
+                }
+                workspace.querySelectorAll("[data-calculator-frame]").forEach(frame => {
+                    frame.contentWindow?.postMessage({
+                        source: "digitaltech-calculator-workspace",
+                        type: "calculator:set-group-name",
+                        groupId: workspace.dataset.activeGroupId,
+                        groupName: name
+                    }, window.location.origin);
+                });
+                if (businessNameStatus) businessNameStatus.textContent = "Guardado";
+                setStatus("");
+                return true;
+            } catch (error) {
+                if (businessNameStatus) businessNameStatus.textContent = "No guardado";
+                setStatus(error?.message || "No fue posible renombrar el negocio.", "error");
+                return false;
+            } finally {
+                mutationPending = false;
+                businessName.disabled = false;
+                if (saveBusinessNameButton) {
+                    saveBusinessNameButton.disabled = businessName.value.trim() === lastSavedBusinessName;
+                }
+                businessNameSavePromise = null;
+            }
+        })();
+        return await businessNameSavePromise;
+    }
+
+    async function ensureBusinessNameSaved() {
+        if (!businessName) return true;
+        if (businessNameSavePromise) return await businessNameSavePromise;
+        if (businessName.value.trim() === lastSavedBusinessName) return true;
+        return await saveBusinessName();
+    }
+
+    function reloadForGroup(groupId, scenarioId) {
+        const url = new URL(window.location.href);
+        if (groupId) url.searchParams.set("groupId", groupId);
+        else url.searchParams.delete("groupId");
+        if (scenarioId) url.searchParams.set("scenarioId", scenarioId);
+        else url.searchParams.delete("scenarioId");
+        url.searchParams.delete("embedded");
+        url.searchParams.delete("newCrmOpportunity");
+        window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+    }
+
+    async function createPossibility(options) {
+        if (!await ensureBusinessNameSaved() || mutationPending) return;
+        if (!ensurePossibilitiesSaved()) return;
+        mutationPending = true;
+        setStatus(options.groupId ? "Creando el escenario…" : "Creando el negocio…");
+        try {
+            const created = await postJson(workspace.dataset.createUrl, {
+                groupId: options.groupId || "",
+                sourceScenarioId: options.sourceScenarioId || "",
+                duplicateSource: Boolean(options.duplicateSource),
+                name: options.name || ""
+            });
+            const groupId = created.groupId || options.groupId || created.scenarioId || "";
+            reloadForGroup(groupId, created.scenarioId || "");
+        } catch (error) {
+            mutationPending = false;
+            setStatus(error?.message || (options.groupId
+                ? "No fue posible crear el escenario."
+                : "No fue posible crear el negocio."), "error");
+        }
+    }
+
+    function cards() {
+        return Array.from(workspace.querySelectorAll("[data-possibility-card]"));
+    }
+
+    function hasUnsavedPossibilities() {
+        return cards().some(card => card.dataset.saved !== "true");
+    }
+
+    function ensurePossibilitiesSaved() {
+        if (!hasUnsavedPossibilities()) return true;
+        setStatus("Espera a que termine el guardado antes de cambiar de negocio.", "error");
+        return false;
+    }
+
+    function updateProposalReadiness() {
+        const included = cards().filter(card => card.dataset.included !== "false");
+        const calculated = included.filter(card => card.dataset.valid === "true");
+        const saved = included.filter(card => card.dataset.saved === "true");
+        const ready = included.length > 0
+            && calculated.length === included.length
+            && saved.length === included.length;
+
+        if (proposalButton) {
+            proposalButton.disabled = !ready;
+            proposalButton.title = ready
+                ? ""
+                : "Calcula y guarda todos los escenarios incluidos antes de continuar.";
+        }
+        if (readiness) {
+            readiness.textContent = ready
+                ? "Lista para configurar"
+                : "Calcula todos los escenarios";
+        }
+        if (readinessDetail) {
+            readinessDetail.textContent = `${calculated.length} de ${included.length} con cálculo vigente.`;
+        }
+    }
+
+    function setPossibilityExpanded(card, expanded) {
+        const button = card?.querySelector("[data-toggle-possibility]");
+        const panel = card?.querySelector("[data-possibility-panel]");
+        if (!button || !panel) return;
+
+        const label = button.querySelector("[data-toggle-possibility-label]");
+        const icon = button.querySelector("[data-toggle-possibility-icon]");
+        const name = card.querySelector("[data-possibility-name]")?.textContent?.trim() || "el escenario";
+        button.setAttribute("aria-expanded", String(expanded));
+        button.setAttribute("aria-label", `${expanded ? "Compactar" : "Ampliar"} ${name}`);
+        panel.hidden = !expanded;
+        card.classList.toggle("is-collapsed", !expanded);
+        if (label) label.textContent = expanded ? "Compactar" : "Ampliar";
+        if (icon) icon.textContent = expanded ? "⌃" : "⌄";
+        if (expanded) {
+            card.querySelector("[data-calculator-frame]")?.contentWindow?.postMessage({
+                source: "digitaltech-calculator-workspace",
+                type: "calculator:request-resize"
+            }, window.location.origin);
+        }
+    }
+
+    workspace.querySelectorAll("[data-calculator-frame]").forEach(frame => {
+        if (frame.contentWindow) frameByWindow.set(frame.contentWindow, frame);
+        frame.addEventListener("load", () => {
+            if (frame.contentWindow) frameByWindow.set(frame.contentWindow, frame);
+        });
+    });
+
+    businessPickerToggle?.addEventListener("click", () => {
+        setBusinessPickerOpen(businessPickerToggle.getAttribute("aria-expanded") !== "true");
+    });
+    businessSearch?.addEventListener("input", filterBusinessOptions);
+    businessSearch?.addEventListener("keydown", event => {
+        const visible = businessOptions.filter(option => !option.hidden);
+        if (event.key === "Escape") {
+            event.preventDefault();
+            setBusinessPickerOpen(false);
+            businessPickerToggle?.focus();
+            return;
+        }
+        if (event.key === "ArrowDown" && visible.length) {
+            event.preventDefault();
+            visible[0].focus();
+            return;
+        }
+        if (event.key === "Enter" && visible.length === 1) {
+            event.preventDefault();
+            visible[0].click();
+        }
+    });
+    businessOptions.forEach(option => {
+        option.addEventListener("keydown", event => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                setBusinessPickerOpen(false);
+                businessPickerToggle?.focus();
+                return;
+            }
+            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+            event.preventDefault();
+            const visible = businessOptions.filter(item => !item.hidden);
+            const current = visible.indexOf(option);
+            const next = event.key === "ArrowDown"
+                ? visible[(current + 1) % visible.length]
+                : visible[(current - 1 + visible.length) % visible.length];
+            next?.focus();
+        });
+    });
+
+    insightsToggle?.addEventListener("click", () => {
+        setInsightsOpen(insightsToggle.getAttribute("aria-expanded") !== "true");
+    });
+    workspace.querySelector("[data-insights-close]")?.addEventListener("click", () => {
+        setInsightsOpen(false);
+        insightsToggle?.focus();
+    });
+    let insightsCloseTimer = 0;
+    insights?.addEventListener("pointerenter", () => window.clearTimeout(insightsCloseTimer));
+    insights?.addEventListener("pointerleave", () => {
+        insightsCloseTimer = window.setTimeout(() => {
+            setInsightsOpen(false);
+        }, 140);
+    });
+    insights?.addEventListener("focusout", () => {
+        window.setTimeout(() => {
+            if (!insights?.contains(document.activeElement) && !insights?.matches(":hover")) {
+                setInsightsOpen(false);
+            }
+        }, 0);
+    });
+
+    document.addEventListener("pointerdown", event => {
+        if (businessPicker && !businessPicker.contains(event.target)) setBusinessPickerOpen(false);
+        if (insights && !insights.contains(event.target)) setInsightsOpen(false);
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key !== "Escape") return;
+        const focusWasInsideInsights = Boolean(insights?.contains(document.activeElement));
+        setBusinessPickerOpen(false);
+        setInsightsOpen(false);
+        if (focusWasInsideInsights) insightsToggle?.focus();
+    });
+
+    if (saveBusinessNameButton) saveBusinessNameButton.disabled = true;
+    businessName?.addEventListener("input", () => {
+        const changed = businessName.value.trim() !== lastSavedBusinessName;
+        if (saveBusinessNameButton) saveBusinessNameButton.disabled = !changed;
+        if (businessNameStatus) businessNameStatus.textContent = changed ? "Sin guardar" : "Guardado";
+    });
+    businessName?.addEventListener("change", () => { void saveBusinessName(); });
+    businessName?.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            void saveBusinessName();
+        } else if (event.key === "Escape") {
+            businessName.value = lastSavedBusinessName;
+            if (businessNameStatus) businessNameStatus.textContent = "Guardado";
+            if (saveBusinessNameButton) saveBusinessNameButton.disabled = true;
+            businessName.blur();
+        }
+    });
+    saveBusinessNameButton?.addEventListener("click", saveBusinessName);
+
+    window.addEventListener("message", event => {
+        if (event.origin !== window.location.origin || !event.data || typeof event.data !== "object") return;
+        const frame = frameByWindow.get(event.source);
+        if (!frame) return;
+        const data = event.data;
+        if (data.source !== "digitaltech-calculator") return;
+
+        const card = frame.closest("[data-possibility-card]");
+        if (!card || (data.scenarioId && data.scenarioId !== card.dataset.scenarioId)) return;
+
+        if (data.type === "calculator:resize") {
+            const requestedHeight = Number(data.height || 0);
+            if (Number.isFinite(requestedHeight) && requestedHeight > 0) {
+                frame.style.height = `${Math.max(1, Math.ceil(requestedHeight))}px`;
+            }
+            return;
+        }
+
+        if (data.type === "calculator:ready"
+            || data.type === "calculator:state"
+            || data.type === "calculator:saved"
+            || data.type === "calculator:calculated") {
+            if (typeof data.valid === "boolean") card.dataset.valid = String(data.valid);
+            if (typeof data.saved === "boolean") card.dataset.saved = String(data.saved);
+            const state = card.querySelector("[data-possibility-state]");
+            const score = card.querySelector("[data-possibility-score]");
+            const name = card.querySelector("[data-possibility-name]");
+            if (state) {
+                state.textContent = data.error
+                    ? data.error
+                    : data.saved === false
+                        ? "Guardando cambios…"
+                        : data.valid
+                            ? "Calculada y guardada"
+                            : "Guardada · pendiente de cálculo";
+                state.classList.toggle("is-error", Boolean(data.error));
+            }
+            if (score && Object.prototype.hasOwnProperty.call(data, "points")) {
+                const points = data.points === null || data.points === undefined
+                    ? Number.NaN
+                    : Number(data.points);
+                score.textContent = Number.isFinite(points)
+                    ? points.toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : "—";
+            }
+            if (name && data.possibilityName) name.textContent = data.possibilityName;
+            updateProposalReadiness();
+        }
+    });
+
+    workspace.addEventListener("click", async event => {
+        const groupTab = event.target.closest("[data-group-select]");
+        if (groupTab) {
+            if (!await ensureBusinessNameSaved()) return;
+            if (!ensurePossibilitiesSaved()) return;
+            setBusinessPickerOpen(false);
+            reloadForGroup(groupTab.dataset.groupSelect || "", "");
+            return;
+        }
+
+        if (event.target.closest("[data-create-group]")) {
+            await createPossibility({ duplicateSource: false, name: "" });
+            return;
+        }
+
+        if (event.target.closest("[data-add-possibility]")) {
+            if (Number(workspace.dataset.possibilityCount || 0) >= 3) return;
+            await createPossibility({
+                groupId: workspace.dataset.activeGroupId,
+                duplicateSource: false,
+                name: `Escenario ${Number(workspace.dataset.possibilityCount || 0) + 1}`
+            });
+            return;
+        }
+
+        const card = event.target.closest("[data-possibility-card]");
+        if (!card) return;
+        const scenarioId = card.dataset.scenarioId || "";
+        const groupId = card.dataset.groupId || workspace.dataset.activeGroupId || "";
+
+        if (event.target.closest("[data-toggle-possibility]")) {
+            const toggle = card.querySelector("[data-toggle-possibility]");
+            setPossibilityExpanded(card, toggle?.getAttribute("aria-expanded") !== "true");
+            return;
+        }
+
+        if (event.target.closest("[data-duplicate-possibility]")) {
+            if (Number(workspace.dataset.possibilityCount || 0) >= 3) return;
+            await createPossibility({ groupId, sourceScenarioId: scenarioId, duplicateSource: true });
+            return;
+        }
+
+        if (event.target.closest("[data-recommend-possibility]")) {
+            if (!await ensureBusinessNameSaved() || mutationPending || !ensurePossibilitiesSaved()) return;
+            mutationPending = true;
+            setStatus("Actualizando el escenario recomendado…");
+            try {
+                await postJson(workspace.dataset.recommendUrl, { groupId, scenarioId });
+                reloadForGroup(groupId, scenarioId);
+            } catch (error) {
+                mutationPending = false;
+                setStatus(error?.message || "No fue posible recomendar el escenario.", "error");
+            }
+            return;
+        }
+
+        if (event.target.closest("[data-delete-possibility]")) {
+            if (!await ensureBusinessNameSaved() || mutationPending || cards().length <= 1 || !ensurePossibilitiesSaved()) return;
+            if (!window.confirm("¿Eliminar este escenario? Los demás escenarios del negocio no se modificarán.")) return;
+            mutationPending = true;
+            setStatus("Eliminando el escenario…");
+            try {
+                const response = await fetch(
+                    `${workspace.dataset.deleteUrl}?scenarioId=${encodeURIComponent(scenarioId)}`,
+                    {
+                        method: "DELETE",
+                        headers: {
+                            "Accept": "application/json",
+                            "RequestVerificationToken": token
+                        }
+                    });
+                if (!response.ok) throw new Error(await readError(response, "No fue posible eliminar el escenario."));
+                reloadForGroup(groupId, "");
+            } catch (error) {
+                mutationPending = false;
+                setStatus(error?.message || "No fue posible eliminar el escenario.", "error");
+            }
+        }
+    });
+
+    proposalButton?.addEventListener("click", async () => {
+        if (proposalButton.disabled || !await ensureBusinessNameSaved() || mutationPending || !ensurePossibilitiesSaved()) return;
+        const query = new URLSearchParams({
+            groupId: workspace.dataset.activeGroupId || "",
+            scenarioId: workspace.dataset.primaryScenarioId || ""
+        });
+        if (workspace.dataset.crmDealId) query.set("crmDealId", workspace.dataset.crmDealId);
+        window.location.assign(`${workspace.dataset.proposalUrl}?${query.toString()}`);
+    });
+
+    updateProposalReadiness();
+
+    window.addEventListener("beforeunload", event => {
+        const businessNameChanged = businessName
+            && businessName.value.trim() !== lastSavedBusinessName;
+        if (!hasUnsavedPossibilities() && !businessNameChanged && !businessNameSavePromise) return;
+        event.preventDefault();
+        event.returnValue = "";
+    });
+
+    const query = new URLSearchParams(window.location.search);
+    if (query.get("newCrmOpportunity") === "1" && !mutationPending) {
+        createPossibility({ duplicateSource: false, name: query.get("crmDealName") || "Oportunidad" });
+    }
+})();
+</script>
+}

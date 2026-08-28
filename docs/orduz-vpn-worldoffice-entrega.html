@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>ORDUZ - Entrega técnica VPN y VM World Office</title>
+  <style>
+    @page {
+      size: Letter;
+      margin: 0.75in;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #1f2933;
+      font-family: Calibri, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.35;
+      background: #ffffff;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      color: #1f4d78;
+      font-size: 22pt;
+      line-height: 1.08;
+      margin-bottom: 8pt;
+    }
+
+    h2 {
+      color: #2e74b5;
+      font-size: 15pt;
+      margin: 18pt 0 8pt;
+      border-bottom: 1px solid #d7e3ef;
+      padding-bottom: 3pt;
+    }
+
+    h3 {
+      color: #1f4d78;
+      font-size: 12pt;
+      margin: 12pt 0 5pt;
+    }
+
+    p {
+      margin-bottom: 6pt;
+    }
+
+    a {
+      color: #1f4d78;
+      text-decoration: none;
+    }
+
+    .cover {
+      border-top: 7pt solid #2e74b5;
+      padding-top: 20pt;
+      margin-bottom: 16pt;
+    }
+
+    .subtitle {
+      color: #52616f;
+      font-size: 13pt;
+      margin-bottom: 14pt;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1.6in 1fr;
+      gap: 0;
+      width: 100%;
+      border: 1px solid #cbd6e2;
+      margin: 12pt 0 15pt;
+    }
+
+    .meta-grid div {
+      padding: 6pt 8pt;
+      border-bottom: 1px solid #e1e8f0;
+    }
+
+    .meta-grid div:nth-child(odd) {
+      background: #e8eef5;
+      color: #243b53;
+      font-weight: 700;
+    }
+
+    .meta-grid div:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .note {
+      background: #f6f8fb;
+      border-left: 5pt solid #2e74b5;
+      padding: 9pt 11pt;
+      margin: 10pt 0 12pt;
+    }
+
+    .warning {
+      background: #fff8e5;
+      border-left-color: #c18401;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin: 7pt 0 12pt;
+      page-break-inside: auto;
+    }
+
+    th,
+    td {
+      border: 1px solid #cbd6e2;
+      padding: 6pt 7pt;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      background: #e8eef5;
+      color: #243b53;
+      text-align: left;
+      font-weight: 700;
+    }
+
+    .label-col {
+      width: 34%;
+      font-weight: 700;
+      color: #243b53;
+      background: #f6f8fb;
+    }
+
+    .small {
+      color: #52616f;
+      font-size: 9.5pt;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 2pt 6pt;
+      border-radius: 3pt;
+      background: #e7f4ea;
+      color: #176c2f;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pending {
+      background: #fff8e5;
+      color: #8a5a00;
+    }
+
+    ul,
+    ol {
+      margin-top: 2pt;
+      margin-bottom: 8pt;
+      padding-left: 0.34in;
+    }
+
+    li {
+      margin-bottom: 3pt;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12pt;
+      margin-top: 4pt;
+    }
+
+    .box {
+      border: 1px solid #cbd6e2;
+      padding: 9pt 10pt;
+      background: #fbfcfe;
+      min-height: 1.15in;
+    }
+
+    .box h3 {
+      margin-top: 0;
+    }
+
+    .footer {
+      margin-top: 18pt;
+      padding-top: 8pt;
+      border-top: 1px solid #d7e3ef;
+      color: #52616f;
+      font-size: 9.5pt;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <h1>ORDUZ<br>Entrega técnica VPN Site-to-Site y VM World Office</h1>
+    <p class="subtitle">Resumen de recursos Azure, parámetros de conexión FortiGate y datos de validación.</p>
+    <div class="meta-grid">
+      <div>Cliente</div>
+      <div>ORDUZ</div>
+      <div>Fecha</div>
+      <div>27 de mayo de 2026</div>
+      <div>Suscripción Azure</div>
+      <div>7018b9b6-5dfc-4d91-bc4d-5f29f27553bd</div>
+      <div>Grupo de recursos</div>
+      <div>ORDUZ</div>
+      <div>Región</div>
+      <div>East US 2 <span class="small">(eastus2)</span></div>
+    </div>
+    <div class="note">
+      <strong>Estado general:</strong> recursos Azure creados y conexión VPN configurada del lado Azure. El túnel aparece
+      <strong>NotConnected</strong> hasta que el equipo FortiGate configure su extremo y use la PSK acordada.
+    </div>
+  </section>
+
+  <h2>1. Alcance de la entrega</h2>
+  <p>Se dejó aprovisionada la infraestructura base en Azure para alojar el aplicativo World Office y establecer una VPN Site-to-Site contra el FortiGate del cliente.</p>
+  <ul>
+    <li>Máquina virtual Windows Server para World Office, sin IP pública.</li>
+    <li>Red virtual y subredes requeridas para aplicación y VPN Gateway.</li>
+    <li>Azure VPN Gateway route-based compatible con IKEv2.</li>
+    <li>Conexión Site-to-Site hacia la IP pública FortiGate del cliente.</li>
+    <li>Backup habilitado para la VM mediante Recovery Services Vault.</li>
+  </ul>
+
+  <h2>2. Inventario Azure</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 35%;">Recurso</th>
+        <th>Nombre / valor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-col">Resource Group</td>
+        <td>ORDUZ</td>
+      </tr>
+      <tr>
+        <td class="label-col">Virtual Network</td>
+        <td>vnet-orduz-prod - 10.80.0.0/16</td>
+      </tr>
+      <tr>
+        <td class="label-col">Subred aplicación</td>
+        <td>snet-orduz-app - 10.80.1.0/24</td>
+      </tr>
+      <tr>
+        <td class="label-col">GatewaySubnet</td>
+        <td>GatewaySubnet - 10.80.255.0/27</td>
+      </tr>
+      <tr>
+        <td class="label-col">Network Security Group</td>
+        <td>nsg-orduz-app</td>
+      </tr>
+      <tr>
+        <td class="label-col">VPN Gateway</td>
+        <td>vgw-orduz-s2s-01 - SKU VpnGw1AZ - RouteBased - BGP deshabilitado</td>
+      </tr>
+      <tr>
+        <td class="label-col">IP pública VPN Gateway</td>
+        <td>172.193.77.244</td>
+      </tr>
+      <tr>
+        <td class="label-col">Local Network Gateway</td>
+        <td>lng-orduz-forti-01</td>
+      </tr>
+      <tr>
+        <td class="label-col">VPN Connection</td>
+        <td>con-orduz-forti-s2s-01 - <span class="status">Succeeded</span> / <span class="status pending">NotConnected hasta configurar Forti</span></td>
+      </tr>
+      <tr>
+        <td class="label-col">Key Vault</td>
+        <td>kv-orduz-7018b9b6</td>
+      </tr>
+      <tr>
+        <td class="label-col">Recovery Services Vault</td>
+        <td>rsv-orduz-prod</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Máquina virtual World Office</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 35%;">Elemento</th>
+        <th>Configuración</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-col">Nombre VM</td>
+        <td>vm-orduz-wo-01</td>
+      </tr>
+      <tr>
+        <td class="label-col">Sistema operativo</td>
+        <td>Windows Server 2022 Datacenter Gen2</td>
+      </tr>
+      <tr>
+        <td class="label-col">Tamaño</td>
+        <td>Standard_D2s_v3</td>
+      </tr>
+      <tr>
+        <td class="label-col">IP privada</td>
+        <td>10.80.1.10</td>
+      </tr>
+      <tr>
+        <td class="label-col">IP pública</td>
+        <td>No tiene IP pública. El acceso debe realizarse por la VPN.</td>
+      </tr>
+      <tr>
+        <td class="label-col">Disco del sistema</td>
+        <td>osdisk-orduz-wo-01 - Premium_LRS</td>
+      </tr>
+      <tr>
+        <td class="label-col">Disco de datos</td>
+        <td>datadisk-orduz-wo-01 - 256 GB Premium SSD - unidad F: - etiqueta ORDUZ-DATA</td>
+      </tr>
+      <tr>
+        <td class="label-col">Backup</td>
+        <td>Habilitado con DefaultPolicy en rsv-orduz-prod. Backup inicial iniciado.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-break"></div>
+
+  <h2>4. Datos para configuración FortiGate</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 35%;">Parámetro</th>
+        <th>Valor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-col">Tipo de VPN</td>
+        <td>Site-to-Site IPSec</td>
+      </tr>
+      <tr>
+        <td class="label-col">Modo</td>
+        <td>Route-based / IPsec interface / VTI</td>
+      </tr>
+      <tr>
+        <td class="label-col">IKE</td>
+        <td>IKEv2</td>
+      </tr>
+      <tr>
+        <td class="label-col">Peer público Azure</td>
+        <td>172.193.77.244</td>
+      </tr>
+      <tr>
+        <td class="label-col">Peer público FortiGate</td>
+        <td>186.31.24.223</td>
+      </tr>
+      <tr>
+        <td class="label-col">IP interna FortiGate informada</td>
+        <td>192.168.1.99</td>
+      </tr>
+      <tr>
+        <td class="label-col">Red Azure</td>
+        <td>10.80.0.0/16</td>
+      </tr>
+      <tr>
+        <td class="label-col">Servidor World Office</td>
+        <td>10.80.1.10</td>
+      </tr>
+      <tr>
+        <td class="label-col">Red local cliente configurada en Azure</td>
+        <td>192.168.1.0/24. Confirmar si la máscara real o las redes internas del cliente son diferentes.</td>
+      </tr>
+      <tr>
+        <td class="label-col">BGP</td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td class="label-col">NAT en Azure</td>
+        <td>No configurado</td>
+      </tr>
+      <tr>
+        <td class="label-col">PSK</td>
+        <td>No incluida en este PDF por seguridad. Debe entregarse por canal seguro. Referencia interna: Key Vault kv-orduz-7018b9b6, secreto vpn-psk-orduz-forti.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note warning">
+    <strong>Nota sobre la PSK:</strong> no se recomienda compartir claves precompartidas en documentos adjuntos o correos.
+    Entregar la PSK al administrador FortiGate mediante un canal seguro y confirmar recepción antes de la ventana de pruebas.
+  </div>
+
+  <h2>5. Parámetros IPSec/IKE</h2>
+  <div class="two-col">
+    <div class="box">
+      <h3>Phase 1 / IKE</h3>
+      <table>
+        <tbody>
+          <tr>
+            <td class="label-col">Encryption</td>
+            <td>AES256</td>
+          </tr>
+          <tr>
+            <td class="label-col">Integrity</td>
+            <td>SHA256</td>
+          </tr>
+          <tr>
+            <td class="label-col">DH Group</td>
+            <td>14</td>
+          </tr>
+          <tr>
+            <td class="label-col">Lifetime</td>
+            <td>28800 segundos</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="box">
+      <h3>Phase 2 / IPsec</h3>
+      <table>
+        <tbody>
+          <tr>
+            <td class="label-col">Encryption</td>
+            <td>AES256</td>
+          </tr>
+          <tr>
+            <td class="label-col">Integrity</td>
+            <td>SHA256</td>
+          </tr>
+          <tr>
+            <td class="label-col">PFS</td>
+            <td>Group 14</td>
+          </tr>
+          <tr>
+            <td class="label-col">Lifetime</td>
+            <td>27000 segundos</td>
+          </tr>
+          <tr>
+            <td class="label-col">SA max size</td>
+            <td>102400000 KB</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>6. Puertos y reglas requeridas</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Uso</th>
+        <th style="width: 25%;">Protocolo / puerto</th>
+        <th>Detalle</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-col">IKE</td>
+        <td>UDP 500</td>
+        <td>Negociación inicial del túnel IPSec.</td>
+      </tr>
+      <tr>
+        <td class="label-col">NAT-T</td>
+        <td>UDP 4500</td>
+        <td>Requerido si hay NAT entre los extremos o si el FortiGate usa NAT Traversal.</td>
+      </tr>
+      <tr>
+        <td class="label-col">ESP</td>
+        <td>Protocolo 50</td>
+        <td>Tráfico IPSec cuando no se encapsula por NAT-T.</td>
+      </tr>
+      <tr>
+        <td class="label-col">Administración VM</td>
+        <td>TCP 3389</td>
+        <td>RDP hacia 10.80.1.10 solo desde redes autorizadas por la VPN.</td>
+      </tr>
+      <tr>
+        <td class="label-col">Aplicativo World Office</td>
+        <td>Por confirmar</td>
+        <td>Validar puertos requeridos por la instalación de World Office, SQL Server y componentes usados por el cliente.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>7. Validación esperada</h2>
+  <ol>
+    <li>Configurar en FortiGate el túnel hacia el peer público Azure 172.193.77.244.</li>
+    <li>Aplicar la PSK entregada por canal seguro y los parámetros IPSec/IKE indicados en este documento.</li>
+    <li>Configurar rutas entre la red local 192.168.1.0/24 y la red Azure 10.80.0.0/16.</li>
+    <li>Verificar que el túnel pase a estado conectado del lado FortiGate y en Azure.</li>
+    <li>Probar conectividad desde la red cliente hacia 10.80.1.10.</li>
+    <li>Validar acceso RDP o los puertos requeridos por World Office según el alcance operativo definido.</li>
+  </ol>
+
+  <h2>8. Pendientes y confirmaciones</h2>
+  <ul>
+    <li>Confirmar si la LAN del cliente es exactamente 192.168.1.0/24 o si deben agregarse más redes.</li>
+    <li>Confirmar si el FortiGate quedará en route-based con IPsec interface/VTI.</li>
+    <li>Entregar PSK por canal seguro al administrador FortiGate.</li>
+    <li>Definir puertos finales de World Office, SQL Server y acceso administrativo.</li>
+    <li>Realizar prueba conjunta durante ventana de implementación.</li>
+  </ul>
+
+  <h2>9. Referencias</h2>
+  <p class="small">
+    Azure VPN Gateway - dispositivos VPN e IPSec/IKE:
+    <a href="https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpn-devices">https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpn-devices</a>
+  </p>
+  <p class="small">
+    Azure VPN Gateway - tipos de gateway y soporte IKE:
+    <a href="https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings">https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings</a>
+  </p>
+  <p class="small">
+    Azure VPN Gateway - políticas IPSec/IKE personalizadas:
+    <a href="https://learn.microsoft.com/en-us/azure/vpn-gateway/ipsec-ike-policy-howto">https://learn.microsoft.com/en-us/azure/vpn-gateway/ipsec-ike-policy-howto</a>
+  </p>
+
+  <div class="footer">
+    Documento generado para entrega técnica ORDUZ. Las credenciales, usuarios administrativos y claves precompartidas no se incluyen en este PDF por seguridad.
+  </div>
+</body>
+</html>

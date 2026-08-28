@@ -50,13 +50,17 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
 
         var clienteId = NormalizeGuid(request.ClienteId, nameof(request.ClienteId));
         var period = ResolvePeriod(request.Periodo);
+        var recomendacionMensual = NormalizeManualRecommendation(request.RecomendacionMensual);
+        if (string.IsNullOrWhiteSpace(recomendacionMensual))
+            throw new InvalidOperationException("Debes escribir la recomendacion mensual antes de generar el informe.");
+
         var input = await _repository.LoadMonthlyInputAsync(
             clienteId,
             period.Value,
             period.StartDate,
             period.EndExclusiveDate,
             ct);
-        var payload = BuildConsolidatedPayload(input);
+        var payload = BuildConsolidatedPayload(input, recomendacionMensual);
         var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
         var fechaGeneracion = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 
@@ -239,7 +243,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
         }
     }
 
-    private ReporteConsolidadoPayload BuildConsolidatedPayload(ReporteMonthlyInput input)
+    private ReporteConsolidadoPayload BuildConsolidatedPayload(ReporteMonthlyInput input, string recomendacionMensual)
     {
         var tickets = input.Tickets ?? Array.Empty<ReporteTicketData>();
         var totalTickets = tickets.Count;
@@ -256,6 +260,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
                 FechaInicio = input.FechaInicio.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 FechaFin = input.FechaFinExclusiva.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             },
+            RecomendacionMensual = recomendacionMensual,
             ResumenTickets = new ReporteTicketSummaryPayload
             {
                 TotalTickets = totalTickets,
@@ -305,7 +310,6 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
             AlertasLow = snapshot.AlertasLow,
             IncidentesActivos = snapshot.IncidentesActivos,
             IncidentesResueltos = snapshot.IncidentesResueltos,
-            Recomendaciones = ParseJsonArray(snapshot.RecomendacionesTopJson, maxSecurityItems),
             Alertas = ParseJsonArray(snapshot.AlertasJson, maxSecurityItems),
             Incidentes = ParseJsonArray(snapshot.IncidentesJson, maxSecurityItems)
         };
@@ -517,7 +521,7 @@ public sealed class AzureOpenAIReportService : IAzureOpenAIReportService
     private static string BuildSystemPrompt()
     {
         return """
-Eres un consultor senior de soporte cloud, seguridad Microsoft 365 e ISO/IEC 27001:2022.
+Eres un consultor senior de soporte cloud y seguridad Microsoft 365.
 
 Tu unica tarea es analizar el JSON consolidado recibido y devolver un JSON pequeno con textos ejecutivos para un informe mensual. No debes generar HTML, CSS, Markdown, tablas HTML ni explicaciones fuera del JSON.
 
@@ -527,25 +531,15 @@ Reglas criticas:
 - Usa exclusivamente los datos del JSON recibido.
 - No inventes tickets, metricas, porcentajes, alertas, incidentes, controles, fechas, nombres, telefonos ni certificaciones.
 - Si falta evidencia, declara la limitacion de forma ejecutiva.
-- Alinea ISO 27001:2022 como referencia operativa; no afirmes certificacion ni cumplimiento formal.
+- El campo recomendacionMensual contiene la recomendacion escrita manualmente por el usuario para este periodo. Debes reescribirla con redaccion mas profesional, clara y ejecutiva, sin cambiar su sentido.
 - Mantén textos concisos: cada parrafo maximo 55 palabras.
-- Devuelve arrays pequenos: resumenEjecutivo 2-4 items, iso 3-5 items, implementacion 3-6 items, hallazgos 2-5 items, conclusiones 2-4 items, recomendaciones 3-6 items.
+- Devuelve arrays pequenos: resumenEjecutivo 2-4 items, implementacion 3-6 items, hallazgos 2-5 items, conclusiones 2-4 items.
 - El JSON debe ser valido y parseable.
 
 Devuelve exactamente este objeto JSON:
 {
   "heroSubtitle": "string",
   "resumenEjecutivo": ["string"],
-  "alcanceMarco": "string",
-  "iso": [
-    {
-      "dominio": "string",
-      "evidencia": "string",
-      "riesgo": "string",
-      "madurez": "Alto|Medio|Bajo|Sin evidencia",
-      "recomendacion": "string"
-    }
-  ],
   "implementacion": ["string"],
   "seguridadNarrativa": "string",
   "hallazgos": [
@@ -558,15 +552,7 @@ Devuelve exactamente este objeto JSON:
     }
   ],
   "conclusiones": ["string"],
-  "recomendaciones": [
-    {
-      "prioridad": "Alta|Media|Baja",
-      "recomendacion": "string",
-      "evidencia": "string",
-      "responsable": "Equipo Cloud|Equipo Seguridad|Mesa de Servicio|Cliente|Digital Tech",
-      "plazo": "Corto plazo|Mediano plazo|Siguiente periodo"
-    }
-  ]
+  "recomendacionMensual": "string"
 }
 """;
     }
@@ -657,6 +643,13 @@ Devuelve exactamente este objeto JSON:
             throw new InvalidOperationException($"El valor de {paramName} no es valido.");
 
         return parsed.ToString("D");
+    }
+
+    private static string NormalizeManualRecommendation(string? value)
+    {
+        const int maxLength = 2000;
+        var normalized = (value ?? "").Trim();
+        return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
     }
 
     private static decimal RoundDecimal(decimal value) =>

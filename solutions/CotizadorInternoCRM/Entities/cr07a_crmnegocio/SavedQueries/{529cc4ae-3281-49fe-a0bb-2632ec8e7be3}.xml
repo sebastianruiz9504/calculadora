@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>1</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{529cc4ae-3281-49fe-a0bb-2632ec8e7be3}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_nombre" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_crmnegocioid">
+          <cell name="cr07a_nombre" width="300" />
+          <cell name="createdon" width="125" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>4</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_crmnegocio">
+          <attribute name="cr07a_crmnegocioid" />
+          <attribute name="cr07a_nombre" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_nombre" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <filter type="or" isquickfindfields="1">
+            <condition attribute="cr07a_nombre" operator="like" value="{0}" />
+          </filter>
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Búsqueda rápida de Negocios CRM activos" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>

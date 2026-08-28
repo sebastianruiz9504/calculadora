@@ -4,6 +4,8 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Dashboard;
+using CotizadorInterno.Web.Models.Licenciamiento;
+using CotizadorInterno.Web.Models.Reconciliation;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -25,6 +27,7 @@ public sealed partial class DataverseService
     private const string DashboardExpenseCloudField = "cr07a_cloud";
     private const string DashboardExpenseCopiersField = "cr07a_copiers";
     private const string DashboardCopiersAdditionalOperationField = "cr07a_operacionadicional";
+    private const string DashboardCreditNotesRequestCacheKey = "DataverseService.Dashboard.AcceptedCreditNotes";
     private static readonly CultureInfo DashboardCulture = CultureInfo.GetCultureInfo("es-CO");
     private static readonly string[] TaxLegalEntityTokens =
     {
@@ -43,7 +46,13 @@ public sealed partial class DataverseService
     private readonly ConcurrentDictionary<string, string> _dashboardAttributeTypeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string[]> _dashboardEntityAttributeNamesCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default)
+    public Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default) =>
+        GetPortfolioDashboardCoreAsync(includeDetails: true, ct);
+
+    public Task<PortfolioDashboardDto> GetPortfolioDashboardSummaryAsync(CancellationToken ct = default) =>
+        GetPortfolioDashboardCoreAsync(includeDetails: false, ct);
+
+    private async Task<PortfolioDashboardDto> GetPortfolioDashboardCoreAsync(bool includeDetails, CancellationToken ct)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -65,9 +74,8 @@ public sealed partial class DataverseService
             _dashboardBillingEmissionDateFieldKind,
             httpContext.User,
             ct);
-
         var unpaidInvoices = portfolioCandidates
-            .Where(static record => !record.HasPayment)
+            .Where(static record => record.IsPortfolioPending)
             .ToList();
 
         var overdueInvoices = unpaidInvoices
@@ -83,12 +91,84 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos facturas pendientes de pago.",
             EmptyStateMessage = "Cuando existan facturas sin pago o vencidas las veras aqui.",
             Kpis = BuildPortfolioKpis(unpaidInvoices, overdueInvoices),
-            OverdueInvoices = BuildUnpaidInvoices(overdueInvoices, today),
-            Invoices = BuildBillingInvoiceRows(portfolioCandidates, today)
+            OverdueInvoices = includeDetails
+                ? BuildUnpaidInvoices(overdueInvoices, today)
+                : Array.Empty<BillingUnpaidInvoiceDto>(),
+            Invoices = includeDetails
+                ? BuildBillingInvoiceRows(portfolioCandidates, today)
+                : Array.Empty<BillingInvoiceRowDto>()
+        };
+    }
+
+    public async Task<AccountStatementDto> GetAccountStatementAsync(
+        string clientId,
+        string? clientName = null,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var today = GetBogotaToday();
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var normalizedClientId = NormalizeOptionalGuid(clientId);
+        if (string.IsNullOrWhiteSpace(normalizedClientId) && !string.IsNullOrWhiteSpace(clientName))
+        {
+            normalizedClientId = await ResolveCopiersClientIdAsync(clientName.Trim(), ct);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedClientId))
+            throw new InvalidOperationException("Selecciona un cliente valido para generar el estado de cuenta.");
+
+        var invoices = await GetBillingRecordsByClientAsync(metadata, normalizedClientId, httpContext.User, ct, copiersOnly: false);
+        var pendingInvoices = invoices
+            .Where(static record => record.IsPortfolioPending)
+            .ToList();
+
+        var statementRows = BuildAccountStatementInvoices(pendingInvoices, today);
+        var resolvedClientName = FirstNonEmpty(
+            pendingInvoices.Select(static row => row.ClientName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+            invoices.Select(static row => row.ClientName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+            clientName?.Trim(),
+            "Cliente");
+
+        return new AccountStatementDto
+        {
+            ClientId = normalizedClientId,
+            ClientName = resolvedClientName,
+            AsOfDateLabel = today.ToString("dd MMM yyyy", DashboardCulture),
+            HasData = statementRows.Count > 0,
+            RecordsCount = statementRows.Count,
+            TotalAmount = RoundCurrency(statementRows.Sum(static row => row.NetTotalInvoice)),
+            EmptyStateTitle = "No encontramos facturas pendientes para este cliente.",
+            EmptyStateMessage = "El estado de cuenta solo incluye facturas sin pago y sin nota credito total.",
+            Invoices = statementRows
         };
     }
 
     public async Task<CopiersDashboardDto> GetCopiersDashboardAsync(CancellationToken ct = default)
+    {
+        var today = GetBogotaToday();
+        var counterPeriodEnd = today.AddDays(1);
+        var counterPeriodStart = counterPeriodEnd.AddDays(-35);
+        return await GetCopiersDashboardCoreAsync(
+            counterPeriodStart,
+            counterPeriodEnd,
+            "Ultimos 35 dias",
+            ct);
+    }
+
+    private async Task<CopiersDashboardDto> GetCopiersDashboardCoreAsync(
+        DateOnly counterPeriodStart,
+        DateOnly counterPeriodEnd,
+        string counterPeriodLabel,
+        CancellationToken ct = default)
     {
         var httpContext = _httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HttpContext available.");
@@ -103,9 +183,6 @@ public sealed partial class DataverseService
             ct);
 
         var rows = await GetCopiersRecordsAsync(metadata, httpContext.User, ct);
-        var counterPeriodEnd = today.AddDays(1);
-        var counterPeriodStart = counterPeriodEnd.AddDays(-35);
-        var counterPeriodLabel = "Ultimos 35 dias";
         var equipmentRows = await BuildCopiersBillingEquipmentRowsAsync(
             rows,
             httpContext.User,
@@ -187,6 +264,8 @@ public sealed partial class DataverseService
                         InvoiceNumber = row.InvoiceNumber,
                         PublicUrl = row.PublicUrl,
                         TotalInvoice = row.TotalInvoice,
+                        CreditNoteTotal = row.CreditNoteTotal,
+                        NetTotalInvoice = row.NetTotalInvoice,
                         EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                         EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",
                         PaymentDateValue = row.PaymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
@@ -269,6 +348,176 @@ public sealed partial class DataverseService
             VerticalOptions = BuildBillingVerticalOptions(),
             ContractTypeOptions = BuildBillingContractTypeOptions(),
             Invoices = BuildBillingInvoiceRows(rows, today)
+        };
+    }
+
+    public async Task<BillingInvoicesTableDto> GetBillingInvoicesPageAsync(
+        int year,
+        int month,
+        int page = 1,
+        int pageSize = 50,
+        bool duplicatesOnly = false,
+        CancellationToken ct = default)
+    {
+        if (year < 2000 || year > 2100)
+            throw new InvalidOperationException("El año de facturación no es válido.");
+        if (month < 1 || month > 12)
+            throw new InvalidOperationException("El mes de facturación no es válido.");
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 25, 100);
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        List<BillingRecordRow> rows;
+        if (duplicatesOnly)
+        {
+            rows = await GetAllBillingRecordsAsync(metadata, httpContext.User, ct);
+            var duplicateNumbers = rows
+                .Select(static row => NormalizeDocumentKey(row.InvoiceNumber))
+                .Where(static number => !string.IsNullOrWhiteSpace(number))
+                .GroupBy(static number => number, StringComparer.OrdinalIgnoreCase)
+                .Where(static group => group.Count() > 1)
+                .Select(static group => group.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            rows = rows
+                .Where(row => duplicateNumbers.Contains(NormalizeDocumentKey(row.InvoiceNumber)))
+                .ToList();
+        }
+        else
+        {
+            var start = new DateOnly(year, month, 1);
+            rows = await GetBillingRecordsAsync(
+                metadata,
+                start,
+                start.AddMonths(1),
+                _dashboardBillingEmissionDateField,
+                _dashboardBillingEmissionDateFieldKind,
+                httpContext.User,
+                ct);
+        }
+
+        rows = rows
+            .OrderByDescending(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var totalRecords = rows.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalRecords / (double)pageSize));
+        page = Math.Min(page, totalPages);
+        var pageRows = rows.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var today = GetBogotaToday();
+
+        return new BillingInvoicesTableDto
+        {
+            HasData = pageRows.Count > 0,
+            RecordsCount = pageRows.Count,
+            TotalRecordsCount = totalRecords,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalPages,
+            Year = year,
+            Month = month,
+            HasPreviousPage = page > 1,
+            HasNextPage = page < totalPages,
+            DuplicatesOnly = duplicatesOnly,
+            PeriodLabel = duplicatesOnly
+                ? "Duplicados de todo el histórico"
+                : new DateOnly(year, month, 1).ToString("MMMM yyyy", DashboardCulture),
+            EmptyStateTitle = duplicatesOnly
+                ? "No encontramos facturas duplicadas."
+                : "No encontramos facturas en el mes seleccionado.",
+            EmptyStateMessage = duplicatesOnly
+                ? "No hay números de factura repetidos en cr07a_facturacion."
+                : "Cambia el mes para consultar otro periodo.",
+            VerticalOptions = BuildBillingVerticalOptions(),
+            ContractTypeOptions = BuildBillingContractTypeOptions(),
+            Invoices = BuildBillingInvoiceRows(pageRows, today)
+        };
+    }
+
+    public async Task<BillingCreditNotesTableDto> GetBillingCreditNotesAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var billingRows = await GetAllBillingRecordsAsync(metadata, httpContext.User, ct);
+        var creditNotes = await GetDashboardAcceptedCreditNotesAsync(ct);
+        var matchIndex = BuildBillingCreditNoteMatchIndex(billingRows);
+        var rows = creditNotes
+            .OrderByDescending(static note => note.Date?.ToDateTime(TimeOnly.MinValue)
+                ?? note.CreatedAt?.DateTime
+                ?? DateTime.MinValue)
+            .ThenBy(static note => note.CreditNoteName, StringComparer.OrdinalIgnoreCase)
+            .Select(note =>
+            {
+                var matchedInvoice = FindBillingRowForCreditNote(note, matchIndex);
+                var noteDate = note.Date
+                    ?? (note.CreatedAt.HasValue
+                        ? DateOnly.FromDateTime(note.CreatedAt.Value.ToOffset(TimeSpan.FromHours(-5)).DateTime)
+                        : null);
+                var total = RoundCurrency(note.Total);
+                var vat = RoundCurrency(note.Vat);
+
+                return new BillingCreditNoteRowDto
+                {
+                    RecordId = note.RecordId,
+                    CreditNoteId = note.CreditNoteId,
+                    CreditNoteName = FirstNonEmpty(
+                        note.CreditNoteName,
+                        note.CreditNoteNumber?.ToString(CultureInfo.InvariantCulture) ?? "",
+                        note.CreditNoteId,
+                        note.RecordId,
+                        "Nota credito"),
+                    DateValue = noteDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    DateDisplay = noteDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    InvoiceReference = FirstNonEmpty(note.InvoiceName, BuildCreditNoteInvoiceReference(note), "Sin referencia"),
+                    MatchedInvoiceNumber = matchedInvoice?.InvoiceNumber ?? "",
+                    ClientName = matchedInvoice?.ClientName ?? "",
+                    CustomerIdentification = FirstNonEmpty(note.CustomerIdentification, matchedInvoice?.CompanyTaxId),
+                    BaseValue = RoundCurrency(Math.Max(total - vat, 0m)),
+                    Vat = vat,
+                    Total = total,
+                    IsMatched = matchedInvoice is not null,
+                    MatchBy = matchedInvoice is null
+                        ? ""
+                        : ResolveBillingCreditNoteMatchMethod(note, matchIndex, matchedInvoice)
+                };
+            })
+            .ToList();
+
+        var matchedRows = rows.Where(static row => row.IsMatched).ToList();
+        var unmatchedRows = rows.Where(static row => !row.IsMatched).ToList();
+
+        return new BillingCreditNotesTableDto
+        {
+            HasData = rows.Count > 0,
+            RecordsCount = rows.Count,
+            MatchedCount = matchedRows.Count,
+            UnmatchedCount = unmatchedRows.Count,
+            TotalAmount = RoundCurrency(rows.Sum(static row => row.Total)),
+            VatAmount = RoundCurrency(rows.Sum(static row => row.Vat)),
+            MatchedAmount = RoundCurrency(matchedRows.Sum(static row => row.Total)),
+            UnmatchedAmount = RoundCurrency(unmatchedRows.Sum(static row => row.Total)),
+            EmptyStateTitle = "No encontramos notas credito consideradas por el dashboard.",
+            EmptyStateMessage = "Cuando existan notas credito validas para el analisis de facturacion apareceran aqui.",
+            CreditNotes = rows
         };
     }
 
@@ -393,6 +642,169 @@ public sealed partial class DataverseService
         };
     }
 
+    public async Task<YtdRecordUpdateResultDto> UpdateYtdBillingRecordAsync(
+        YtdBillingRecordUpdateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var recordId = NormalizeOptionalGuid(request.RecordId);
+        if (string.IsNullOrWhiteSpace(recordId))
+            throw new InvalidOperationException("Debes indicar la factura que quieres actualizar.");
+
+        var payload = new Dictionary<string, object?>();
+        if (request.VerticalOptionValue.HasValue)
+        {
+            payload[_dashboardBillingVerticalField] = NormalizeRequiredBillingOptionValue(
+                request.VerticalOptionValue,
+                BuildBillingVerticalOptions(),
+                "vertical");
+        }
+
+        if (request.ContractTypeOptionValue.HasValue)
+        {
+            payload[_dashboardBillingContractTypeField] = NormalizeRequiredBillingOptionValue(
+                request.ContractTypeOptionValue,
+                BuildBillingContractTypeOptions(),
+                "tipo de contrato");
+        }
+
+        if (payload.Count == 0)
+            throw new InvalidOperationException("No encontramos cambios para guardar en esta factura.");
+
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}({recordId})";
+        await CallDataverseSendAsync(relativeUrl, "PATCH", payload, httpContext.User, ct);
+
+        return new YtdRecordUpdateResultDto
+        {
+            RecordId = recordId,
+            Message = "Factura YTD actualizada correctamente."
+        };
+    }
+
+    public async Task<YtdRecordsUpdateResultDto> UpdateYtdRecordsAsync(
+        YtdRecordsUpdateRequestDto request,
+        CancellationToken ct = default)
+    {
+        if (request is null)
+            throw new ArgumentNullException(nameof(request));
+
+        var records = (request.Records ?? Array.Empty<YtdRecordUpdateRequestDto>())
+            .Where(static record => !string.IsNullOrWhiteSpace(record.RecordId)
+                || (record.LicensingCostRecordIds?.Count ?? 0) > 0)
+            .ToList();
+        if (records.Count == 0)
+            throw new InvalidOperationException("No hay cambios para guardar.");
+
+        var billingUpdated = 0;
+        var expenseUpdated = 0;
+        var licensingUpdates = new Dictionary<int, HashSet<string>>();
+
+        foreach (var record in records)
+        {
+            var sourceType = (record.SourceType ?? "").Trim().ToLowerInvariant();
+            if (sourceType == "billing")
+            {
+                if (record.VerticalOptionValue.HasValue || record.ContractTypeOptionValue.HasValue)
+                {
+                    await UpdateYtdBillingRecordAsync(new YtdBillingRecordUpdateRequestDto
+                    {
+                        RecordId = record.RecordId,
+                        VerticalOptionValue = record.VerticalOptionValue,
+                        ContractTypeOptionValue = record.ContractTypeOptionValue
+                    }, ct);
+                    billingUpdated++;
+                }
+
+                continue;
+            }
+
+            if (sourceType == "expense")
+            {
+                if (record.CategoryOptionValue.HasValue
+                    || record.CloudValue.HasValue
+                    || record.CopiersValue.HasValue)
+                {
+                    await UpdatePnlDetailRecordAsync(new PnlDetailRecordUpdateRequestDto
+                    {
+                        SourceType = "expense",
+                        RecordId = record.RecordId,
+                        CategoryOptionValue = record.CategoryOptionValue,
+                        CloudValue = record.CloudValue,
+                        CopiersValue = record.CopiersValue
+                    }, ct);
+                    expenseUpdated++;
+                }
+
+                if (record.ContractTypeOptionValue.HasValue)
+                {
+                    var recordIds = (record.LicensingCostRecordIds ?? Array.Empty<string>())
+                        .Select(static value => NormalizeOptionalGuid(value))
+                        .Where(static value => !string.IsNullOrWhiteSpace(value))
+                        .ToList();
+                    if (recordIds.Count > 0)
+                    {
+                        if (!licensingUpdates.TryGetValue(record.ContractTypeOptionValue.Value, out var targetIds))
+                        {
+                            targetIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            licensingUpdates[record.ContractTypeOptionValue.Value] = targetIds;
+                        }
+
+                        foreach (var recordId in recordIds)
+                        {
+                            targetIds.Add(recordId);
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            throw new InvalidOperationException("Uno de los registros no tiene un origen compatible con YTD.");
+        }
+
+        var licensingUpdated = 0;
+        foreach (var item in licensingUpdates)
+        {
+            var result = await UpdateLicenciamientoContractTypeAsync(new LicenciamientoUpdateContractTypeRequestDto
+            {
+                RecordIds = item.Value.ToList(),
+                ContractTypeValue = item.Key
+            }, ct);
+            licensingUpdated += result.UpdatedCount;
+        }
+
+        var updatedRows = records.Count(record =>
+            record.VerticalOptionValue.HasValue
+            || record.ContractTypeOptionValue.HasValue
+            || record.CategoryOptionValue.HasValue
+            || record.CloudValue.HasValue
+            || record.CopiersValue.HasValue);
+
+        return new YtdRecordsUpdateResultDto
+        {
+            UpdatedCount = updatedRows,
+            BillingUpdatedCount = billingUpdated,
+            ExpenseUpdatedCount = expenseUpdated,
+            LicensingUpdatedCount = licensingUpdated,
+            Message = updatedRows == 1
+                ? "Se guardo 1 cambio YTD correctamente."
+                : $"Se guardaron {updatedRows:N0} cambios YTD correctamente."
+        };
+    }
+
     public async Task<CopiersRecordSaveResultDto> SaveCopiersRecordAsync(CopiersRecordSaveRequestDto request, CancellationToken ct = default)
     {
         if (request is null)
@@ -473,6 +885,14 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
+        var revenueRecords = await GetSiigoRevenueLedgerRowsAsync(
+            metadata,
+            billingFetchStart,
+            billingFetchEnd,
+            httpContext.User,
+            ct,
+            emissionRecords);
+
         var currentEmission = emissionRecords
             .Where(record => record.EmissionDate is not null
                 && record.EmissionDate.Value >= period.CurrentStartInclusive
@@ -480,6 +900,18 @@ public sealed partial class DataverseService
             .ToList();
 
         var compareEmission = emissionRecords
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value >= period.CompareStartInclusive
+                && record.EmissionDate.Value < period.CompareEndExclusive)
+            .ToList();
+
+        var currentRevenue = revenueRecords
+            .Where(record => record.EmissionDate is not null
+                && record.EmissionDate.Value >= period.CurrentStartInclusive
+                && record.EmissionDate.Value < period.CurrentEndExclusive)
+            .ToList();
+
+        var compareRevenue = revenueRecords
             .Where(record => record.EmissionDate is not null
                 && record.EmissionDate.Value >= period.CompareStartInclusive
                 && record.EmissionDate.Value < period.CompareEndExclusive)
@@ -497,22 +929,24 @@ public sealed partial class DataverseService
                 && record.PaymentDate.Value < period.CompareEndExclusive)
             .ToList();
 
-        var totalBilling = SumCurrency(currentEmission, static record => record.TotalInvoice);
-        var previousTotalBilling = SumCurrency(compareEmission, static record => record.TotalInvoice);
+        var totalBilling = SumCurrency(currentRevenue, static record => record.NetBeforeVatValue);
+        var previousTotalBilling = SumCurrency(compareRevenue, static record => record.NetBeforeVatValue);
         var totalCollections = SumCurrency(currentPayments, static record => record.PaymentValue);
         var previousTotalCollections = SumCurrency(comparePayments, static record => record.PaymentValue);
-        var totalVat = SumCurrency(currentEmission, static record => record.VatValue);
-        var previousTotalVat = SumCurrency(compareEmission, static record => record.VatValue);
+        var totalVat = SumCurrency(currentRevenue, static record => record.NetVatValue);
+        var previousTotalVat = SumCurrency(compareRevenue, static record => record.NetVatValue);
         var totalRetentions = SumCurrency(currentPayments, static record => record.RetentionsTotal);
         var previousTotalRetentions = SumCurrency(comparePayments, static record => record.RetentionsTotal);
         var unpaidInvoices = BuildUnpaidInvoices(currentEmission, today);
-        var previousUnpaidAmount = SumCurrency(compareEmission.Where(static record => !record.HasPayment), static record => record.TotalInvoice);
+        var previousUnpaidAmount = SumCurrency(compareEmission.Where(static record => record.IsPortfolioPending), static record => record.NetTotalInvoice);
         var differenceInvoices = BuildDifferenceInvoices(currentEmission);
         var previousDifferenceAmount = SumCurrency(
             compareEmission.Where(static record => record.HasPayment),
             static record => Math.Abs(record.DifferenceValue));
 
-        var hasData = currentEmission.Count > 0
+        var hasData = currentRevenue.Count > 0
+            || compareRevenue.Count > 0
+            || currentEmission.Count > 0
             || compareEmission.Count > 0
             || currentPayments.Count > 0
             || comparePayments.Count > 0;
@@ -531,11 +965,13 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos facturacion para este periodo.",
             EmptyStateMessage = "Cambia el rango y seguimos comparando contra el mismo periodo del año anterior.",
             HasData = hasData,
-            RecordsCount = currentEmission.Count,
-            CompareRecordsCount = compareEmission.Count,
+            RecordsCount = currentRevenue.Count(static row => !row.IsCreditNoteLedgerEntry),
+            CompareRecordsCount = compareRevenue.Count(static row => !row.IsCreditNoteLedgerEntry),
+            CreditNotesCount = currentRevenue.Count(static row => row.IsCreditNoteLedgerEntry),
+            CompareCreditNotesCount = compareRevenue.Count(static row => row.IsCreditNoteLedgerEntry),
             Kpis = BuildBillingKpis(
-                currentEmission,
-                compareEmission,
+                currentRevenue,
+                compareRevenue,
                 currentPayments,
                 comparePayments,
                 totalBilling,
@@ -550,9 +986,9 @@ public sealed partial class DataverseService
                 previousUnpaidAmount,
                 differenceInvoices,
                 previousDifferenceAmount),
-            Trend = BuildBillingYtdTrend(period.Year, period.CompareYear, ytdEndExclusive, emissionRecords, paymentRecords),
-            Verticals = BuildVerticalSummaries(currentEmission, compareEmission),
-            TopClients = BuildClientSummaries(currentEmission, compareEmission),
+            Trend = BuildBillingYtdTrend(period.Year, period.CompareYear, ytdEndExclusive, revenueRecords, paymentRecords),
+            Verticals = BuildVerticalSummaries(currentRevenue, compareRevenue, currentEmission),
+            TopClients = BuildClientSummaries(currentRevenue, compareRevenue),
             Retentions = BuildRetentionSummaries(currentPayments, comparePayments),
             UnpaidInvoices = unpaidInvoices,
             DifferenceInvoices = differenceInvoices
@@ -563,8 +999,7 @@ public sealed partial class DataverseService
         TaxesDashboardRequestDto request,
         CancellationToken ct = default)
     {
-        var httpContext = _httpContextAccessor.HttpContext
-            ?? throw new InvalidOperationException("No HttpContext available.");
+        var user = _httpContextAccessor.HttpContext?.User;
 
         var today = GetBogotaToday();
         request ??= new TaxesDashboardRequestDto();
@@ -602,22 +1037,37 @@ public sealed partial class DataverseService
             incomeTaxPeriod.CurrentEndExclusive,
             vatPeriod.CurrentEndExclusive
         }.Max();
-        var metadata = await ResolveRhEntityMetadataAsync(
-            _dashboardBillingTableLogicalName,
-            _dashboardBillingTableSetName,
-            _dashboardBillingIdField,
-            _dashboardBillingPrimaryNameField,
-            httpContext.User,
-            ct);
+        var metadata = user is null
+            ? await ResolveFinancialReconciliationEntityMetadataAppAsync(
+                _dashboardBillingTableLogicalName,
+                _dashboardBillingTableSetName,
+                _dashboardBillingIdField,
+                _dashboardBillingPrimaryNameField,
+                ct)
+            : await ResolveRhEntityMetadataAsync(
+                _dashboardBillingTableLogicalName,
+                _dashboardBillingTableSetName,
+                _dashboardBillingIdField,
+                _dashboardBillingPrimaryNameField,
+                user,
+                ct);
 
-        var emissionRecords = await GetBillingRecordsAsync(
+        var emissionDimensionRecords = await GetBillingRecordsAsync(
             metadata,
             queryStart,
             queryEnd,
             _dashboardBillingEmissionDateField,
             _dashboardBillingEmissionDateFieldKind,
-            httpContext.User,
+            user,
             ct);
+
+        var emissionRecords = await GetSiigoRevenueLedgerRowsAsync(
+            metadata,
+            queryStart,
+            queryEnd,
+            user,
+            ct,
+            emissionDimensionRecords);
 
         var paymentRecords = await GetBillingRecordsAsync(
             metadata,
@@ -625,18 +1075,25 @@ public sealed partial class DataverseService
             queryEnd,
             _dashboardBillingPaymentDateField,
             _dashboardBillingPaymentDateFieldKind,
-            httpContext.User,
+            user,
             ct);
 
         var expenseRecords = await GetTaxExpenseRowsAsync(
             queryStart,
             queryEnd,
-            httpContext.User,
+            user,
             ct);
+        var reteFuenteEmission = FilterBillingEmissionByPeriod(emissionRecords, reteFuentePeriod)
+            .Where(static row => Math.Abs(row.NetBeforeVatValue) >= 0.01m)
+            .ToList();
+        var reteFuenteCreditNotes = reteFuenteEmission
+            .Where(static row => row.IsCreditNoteLedgerEntry)
+            .ToList();
 
-        var reteFuenteEmission = FilterBillingEmissionByPeriod(emissionRecords, reteFuentePeriod);
         var reteFuenteExpenses = FilterTaxExpensesByPeriod(expenseRecords, reteFuentePeriod);
-        var reteIcaEmission = FilterBillingEmissionByPeriod(emissionRecords, reteIcaPeriod);
+        var reteIcaEmission = FilterBillingEmissionByPeriod(emissionRecords, reteIcaPeriod)
+            .Where(static row => Math.Abs(row.NetBeforeVatValue) >= 0.01m)
+            .ToList();
         var reteIcaPaymentRows = FilterBillingPaymentByPeriod(paymentRecords, reteIcaPeriod)
             .Where(static row => row.ReteIcaValue > 0m)
             .ToList();
@@ -644,7 +1101,7 @@ public sealed partial class DataverseService
         var vatEmission = FilterBillingEmissionByPeriod(emissionRecords, vatPeriod);
         var vatExpenses = FilterTaxExpensesByEmissionPeriod(expenseRecords, vatPeriod);
         var vatGeneratedRows = vatEmission
-            .Where(static row => row.VatValue > 0m)
+            .Where(static row => Math.Abs(row.NetVatValue) >= 0.01m)
             .ToList();
         var reteIvaFavorRows = FilterBillingPaymentByPeriod(paymentRecords, vatPeriod)
             .Where(static row => row.RteIvaValue > 0m)
@@ -655,6 +1112,7 @@ public sealed partial class DataverseService
 
         var hasData = reteFuenteEmission.Count > 0
             || reteFuenteExpenses.Count > 0
+            || reteFuenteCreditNotes.Count > 0
             || reteIcaEmission.Count > 0
             || reteIcaPaymentRows.Count > 0
             || incomeTaxPayments.Count > 0
@@ -683,10 +1141,10 @@ public sealed partial class DataverseService
         var reteFuentePayableVerticals = SumTaxVerticalAmounts(
             SumBillingCurrencyByVertical(reteFuenteEmission, static row => CalculateInvoiceTaxBase(row) * DashboardAutoFuenteRate),
             CalculateExpenseRetentionByVertical(reteFuenteExpenses));
-        var reteFuenteReportDetails = BuildReteFuenteReportDetails(reteFuenteEmission, reteFuenteExpenses);
+        var reteFuenteReportDetails = BuildReteFuenteReportDetails(reteFuenteEmission, reteFuenteExpenses, reteFuenteCreditNotes);
 
         var reteIcaBase = SumCurrency(reteIcaEmission, static row => CalculateInvoiceTaxBase(row));
-        var reteIcaInvoiceTotal = SumCurrency(reteIcaEmission, static row => row.TotalInvoice);
+        var reteIcaInvoiceTotal = SumCurrency(reteIcaEmission, static row => row.NetTotalInvoice);
         var reteIcaTotal = CalculateIcaGenerated(reteIcaEmission);
         var reteIcaFavor = SumCurrency(reteIcaPaymentRows, static row => row.ReteIcaValue);
         var reteIcaPayable = RoundCurrency(reteIcaTotal - reteIcaFavor);
@@ -699,20 +1157,20 @@ public sealed partial class DataverseService
             .Where(static row => row.RteFteValue > 0m)
             .ToList();
         var incomeTaxWithheld = SumCurrency(incomeTaxRetentionRows, static row => row.RteFteValue);
-        var incomeTaxInvoiceTotal = SumCurrency(incomeTaxRetentionRows, static row => row.TotalInvoice);
+        var incomeTaxInvoiceTotal = SumCurrency(incomeTaxRetentionRows, static row => row.NetTotalInvoice);
         var incomeTaxPaymentTotal = SumCurrency(incomeTaxRetentionRows, static row => row.PaymentValue);
         var incomeTaxVerticals = SumBillingCurrencyByVertical(incomeTaxRetentionRows, static row => row.RteFteValue);
 
         var vatBase = SumCurrency(vatEmission, static row => CalculateInvoiceTaxBase(row));
-        var vatGeneratedInvoiceTotal = SumCurrency(vatGeneratedRows, static row => row.TotalInvoice);
-        var generatedVat = SumCurrency(vatGeneratedRows, static row => row.VatValue);
+        var vatGeneratedInvoiceTotal = SumCurrency(vatGeneratedRows, static row => row.NetTotalInvoice);
+        var generatedVat = SumCurrency(vatGeneratedRows, static row => row.NetVatValue);
         var reteIvaFavor = SumCurrency(reteIvaFavorRows, static row => row.RteIvaValue);
         var vatExpensesTotal = SumExpenseCurrency(vatExpensesWithVat, static row => row.TotalValue);
         var vatExpenseVat = SumExpenseCurrency(vatExpensesWithVat, static row => row.VatValue);
         var vatPayable = RoundCurrency(generatedVat - (vatExpenseVat + reteIvaFavor));
         var vatPayableVerticals = SubtractTaxVerticalAmounts(
             SubtractTaxVerticalAmounts(
-                SumBillingCurrencyByVertical(vatGeneratedRows, static row => row.VatValue),
+                SumBillingCurrencyByVertical(vatGeneratedRows, static row => row.NetVatValue),
                 CalculateExpenseCurrencyByVertical(vatExpensesWithVat, static row => row.VatValue)),
             SumBillingCurrencyByVertical(reteIvaFavorRows, static row => row.RteIvaValue));
         var vatDetails = BuildVatDetails(vatGeneratedRows, vatExpensesWithVat, reteIvaFavorRows);
@@ -725,13 +1183,13 @@ public sealed partial class DataverseService
             BuildTaxCalculationDetail(
                 "reteica-total",
                 "Detalle Rete ICA bimensual",
-                "Base antes de IVA x 0,69% - ReteICA a favor",
+                "Base neta antes de IVA x 0,69% - ReteICA a favor",
                 reteIcaBase,
                 reteIcaInvoiceTotal,
                 reteIcaEmission.Count,
                 "Total ICA a pagar",
                 reteIcaPayable,
-                BuildTaxCalculationLine("Base antes de IVA", reteIcaBase),
+                BuildTaxCalculationLine("Base neta antes de IVA", reteIcaBase),
                 BuildTaxCalculationLine("ICA generado", reteIcaTotal),
                 BuildTaxCalculationLine("ReteICA a favor", reteIcaFavor),
                 BuildTaxCalculationLine("Tarifa", DashboardIcaRate * 100m, "percent"))
@@ -766,18 +1224,18 @@ public sealed partial class DataverseService
             EmptyStateTitle = "No encontramos movimientos de impuestos para este periodo.",
             EmptyStateMessage = "Cambia el filtro de cada tarjeta para recalcular los cortes fiscales.",
             HasData = hasData,
-            RecordsCount = reteFuenteEmission.Count + reteFuenteExpenses.Count + reteIcaEmission.Count + reteIcaPaymentRows.Count + incomeTaxRetentionRows.Count + vatGeneratedRows.Count + reteIvaFavorRows.Count + vatExpensesWithVat.Count,
+            RecordsCount = reteFuenteEmission.Count + reteFuenteExpenses.Count + reteFuenteCreditNotes.Count + reteIcaEmission.Count + reteIcaPaymentRows.Count + incomeTaxRetentionRows.Count + vatGeneratedRows.Count + reteIvaFavorRows.Count + vatExpensesWithVat.Count,
             ReteFuente = BuildTaxesSection(
                 "retefuente",
                 "Retefuente",
-                "Autofuente sobre base antes de IVA mas retefuente registrada en gastos pagados del mes.",
+                "Autofuente sobre base neta antes de IVA mas retefuente registrada en gastos pagados del mes.",
                 "Total retefuente a pagar",
                 reteFuentePayable,
                 BuildTaxesSectionFilter("month", reteFuenteYear, reteFuenteMonth, 2000, today.Year, incomeTaxYearOptions),
                 new[]
                 {
                     BuildTaxKpi("rtefte-payable", "Total retefuente a pagar", "Autofuente + retenciones practicadas a juridicas, naturales y pendientes de clasificacion.", reteFuentePayable),
-                    BuildTaxKpi("autofuente", "Autofuente", "Total facturado antes de IVA x 0.00414.", reteFuenteAutoFuente, "currency", "Base", FormatCurrencyValue(reteFuenteBase)),
+                    BuildTaxKpi("autofuente", "Autofuente", "Total neto facturado antes de IVA x 0.00414.", reteFuenteAutoFuente, "currency", "Base neta", FormatCurrencyValue(reteFuenteBase)),
                     BuildTaxKpi("legal-rtefte", "Personas juridicas", "Retenciones realizadas a personas juridicas durante el mes.", reteFuenteLegal, "currency", "Registros", reteFuenteLegalRows.Count.ToString("N0", DashboardCulture)),
                     BuildTaxKpi("natural-rtefte", "Personas naturales", "Retenciones realizadas a personas naturales durante el mes.", reteFuenteNatural, "currency", "Registros", reteFuenteNaturalRows.Count.ToString("N0", DashboardCulture)),
                     BuildTaxKpi("unknown-rtefte", "Sin clasificar", "Retenciones sin clasificacion automatica por NIT o nombre.", reteFuenteUnknown, "currency", "Registros", reteFuenteUnknownRows.Count.ToString("N0", DashboardCulture))
@@ -794,22 +1252,22 @@ public sealed partial class DataverseService
                 reteFuentePeriod.DateRangeLabel,
                 null,
                 reteFuenteReportDetails,
-                calculationBaseLabel: "Valor facturado antes de IVA",
+                calculationBaseLabel: "Valor neto facturado antes de IVA",
                 calculationBaseValue: reteFuenteBase),
             ReteIca = BuildTaxesSection(
                 "reteica",
                 "Rete ICA",
-                "ICA generado sobre base antes de IVA menos ReteICA practicada a favor en pagos del bimestre.",
+                "ICA generado sobre base neta antes de IVA menos ReteICA practicada a favor en pagos del bimestre.",
                 "Total ICA a pagar",
                 reteIcaPayable,
                 BuildTaxesSectionFilter("bimonthly", reteIcaYear, reteIcaValue, 2026, today.Year, incomeTaxYearOptions),
                 new[]
                 {
                     BuildTaxKpi("ica-payable", "Total ICA a pagar", "ICA generado - ReteICA a favor.", reteIcaPayable),
-                    BuildTaxKpi("ica-total", "ICA generado", "Base antes de IVA x 0.0069.", reteIcaTotal),
+                    BuildTaxKpi("ica-total", "ICA generado", "Base neta antes de IVA x 0.0069.", reteIcaTotal),
                     BuildTaxKpi("ica-favor", "ReteICA a favor", "ReteICA que clientes practicaron en pagos del bimestre.", reteIcaFavor),
-                    BuildTaxKpi("ica-base", "Total antes de IVA", "Base usada para el impuesto.", reteIcaBase),
-                    BuildTaxKpi("ica-invoices", "Total facturas", "Valor total de las facturas del bimestre.", reteIcaInvoiceTotal, "currency", "Facturas", reteIcaEmission.Count.ToString("N0", DashboardCulture))
+                    BuildTaxKpi("ica-base", "Total neto antes de IVA", "Base neta usada para el impuesto.", reteIcaBase),
+                    BuildTaxKpi("ica-invoices", "Total neto facturas", "Valor neto de las facturas del bimestre.", reteIcaInvoiceTotal, "currency", "Facturas", reteIcaEmission.Count.ToString("N0", DashboardCulture))
                 },
                 BuildTaxVerticalSummaries(
                     "Total ICA a pagar",
@@ -822,7 +1280,7 @@ public sealed partial class DataverseService
                 reteIcaPeriod.PeriodLabel,
                 reteIcaPeriod.DateRangeLabel,
                 reportDetails: reteIcaReportDetails,
-                calculationBaseLabel: "Valor facturado antes de IVA",
+                calculationBaseLabel: "Valor neto facturado antes de IVA",
                 calculationBaseValue: reteIcaBase),
             IncomeTax = BuildTaxesSection(
                 "income-tax",
@@ -834,7 +1292,7 @@ public sealed partial class DataverseService
                 new[]
                 {
                     BuildTaxKpi("income-tax-retentions", "Retenciones a favor", "ReteFuente que clientes nos practicaron en pagos del ano.", incomeTaxWithheld),
-                    BuildTaxKpi("income-tax-invoices", "Total facturas", "Facturas relacionadas con pagos que tuvieron retencion.", incomeTaxInvoiceTotal, "currency", "Facturas", incomeTaxRetentionRows.Count.ToString("N0", DashboardCulture)),
+                    BuildTaxKpi("income-tax-invoices", "Total neto facturas", "Valor neto de facturas relacionadas con pagos que tuvieron retencion.", incomeTaxInvoiceTotal, "currency", "Facturas", incomeTaxRetentionRows.Count.ToString("N0", DashboardCulture)),
                     BuildTaxKpi("income-tax-payments", "Total pagos", "Pagos relacionados con esas retenciones.", incomeTaxPaymentTotal)
                 },
                 BuildTaxVerticalSummaries(
@@ -856,7 +1314,7 @@ public sealed partial class DataverseService
                 new[]
                 {
                     BuildTaxKpi("vat-net", "IVA total a pagar", "IVA generado - (IVA gastado + ReteIVA a favor).", vatPayable),
-                    BuildTaxKpi("generated-vat", "IVA generado", "IVA generado por facturas emitidas en el cuatrimestre.", generatedVat, "currency", "Base", FormatCurrencyValue(vatBase)),
+                    BuildTaxKpi("generated-vat", "IVA generado", "IVA generado por facturas emitidas, neto de notas credito, en el cuatrimestre.", generatedVat, "currency", "Base neta", FormatCurrencyValue(vatBase)),
                     BuildTaxKpi("expense-vat", "IVA gastado", "IVA registrado en gastos de la empresa del cuatrimestre.", vatExpenseVat, "currency", "Gastos", FormatCurrencyValue(vatExpensesTotal)),
                     BuildTaxKpi("client-rteiva", "ReteIVA a favor", "ReteIVA que clientes nos practicaron en pagos del cuatrimestre.", reteIvaFavor)
                 },
@@ -864,7 +1322,7 @@ public sealed partial class DataverseService
                     "IVA total a pagar",
                     vatPayableVerticals,
                     (0m, 0m, 0m),
-                    new TaxVerticalComponentSet("generated-vat", "IVA generado", SumBillingCurrencyByVertical(vatGeneratedRows, static row => row.VatValue), (0m, 0m, 0m)),
+                    new TaxVerticalComponentSet("generated-vat", "IVA generado", SumBillingCurrencyByVertical(vatGeneratedRows, static row => row.NetVatValue), (0m, 0m, 0m)),
                     new TaxVerticalComponentSet("expense-vat", "IVA gastado", CalculateExpenseCurrencyByVertical(vatExpensesWithVat, static row => row.VatValue), (0m, 0m, 0m)),
                     new TaxVerticalComponentSet("client-rteiva", "ReteIVA a favor", SumBillingCurrencyByVertical(reteIvaFavorRows, static row => row.RteIvaValue), (0m, 0m, 0m))),
                 Array.Empty<TaxCalculationDetailDto>(),
@@ -1222,12 +1680,58 @@ public sealed partial class DataverseService
                 CompanyTaxId = row.CompanyTaxId,
                 VatPercent = row.VatPercent,
                 VatValue = row.VatValue,
+                CreditNoteVat = row.CreditNoteVat,
+                NetVatValue = row.NetVatValue,
                 TotalInvoice = row.TotalInvoice,
+                CreditNoteTotal = row.CreditNoteTotal,
+                NetTotalInvoice = row.NetTotalInvoice,
                 PublicUrl = row.PublicUrl,
                 EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                 EmissionDateDisplay = row.EmissionDate?.ToString("dd MMM yyyy", DashboardCulture) ?? "Sin fecha",
                 VerticalLabel = row.VerticalLabel,
                 ContractTypeLabel = row.ContractTypeLabel
+            })
+            .ToList();
+    }
+
+    private static IReadOnlyList<AccountStatementInvoiceDto> BuildAccountStatementInvoices(
+        IReadOnlyList<BillingRecordRow> rows,
+        DateOnly today)
+    {
+        return rows
+            .OrderBy(static row => row.DueDate ?? DateOnly.MaxValue)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row =>
+            {
+                var daysToDue = row.DueDate.HasValue
+                    ? row.DueDate.Value.DayNumber - today.DayNumber
+                    : (int?)null;
+                var isOverdue = daysToDue < 0;
+                var absoluteDays = Math.Abs(daysToDue ?? 0);
+
+                return new AccountStatementInvoiceDto
+                {
+                    RecordId = row.RecordId,
+                    InvoiceNumber = row.InvoiceNumber,
+                    TotalInvoice = row.TotalInvoice,
+                    CreditNoteTotal = row.CreditNoteTotal,
+                    NetTotalInvoice = row.NetTotalInvoice,
+                    EmissionDateValue = row.EmissionDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    EmissionDateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    DueDateValue = row.DueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
+                    DueDateDisplay = row.DueDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                    StateKey = isOverdue ? "overdue" : "due",
+                    StateLabel = isOverdue ? "Vencida" : "Por vencer",
+                    DaysValue = absoluteDays,
+                    DaysDisplay = daysToDue switch
+                    {
+                        null => "Sin fecha de vencimiento",
+                        < 0 => $"{absoluteDays:N0} dias vencida",
+                        0 => "Vence hoy",
+                        _ => $"{absoluteDays:N0} dias para vencer"
+                    },
+                    PublicUrl = row.PublicUrl
+                };
             })
             .ToList();
     }
@@ -1262,7 +1766,10 @@ public sealed partial class DataverseService
             {
                 var rows = await GetBillingRecordsByClientCoreAsync(metadata, normalizedClientId, lookupField, user, ct, copiersOnly);
                 if (rows.Count > 0)
+                {
+                    await ApplyCreditNoteStateToBillingRowsAsync(rows, ct);
                     return rows;
+                }
 
                 emptySuccessfulResult ??= rows;
             }
@@ -1278,7 +1785,10 @@ public sealed partial class DataverseService
         }
 
         if (emptySuccessfulResult is not null)
+        {
+            await ApplyCreditNoteStateToBillingRowsAsync(emptySuccessfulResult, ct);
             return emptySuccessfulResult;
+        }
 
         throw new InvalidOperationException(
             "No fue posible consultar las facturas emitidas del cliente seleccionado en cr07a_facturacion.",
@@ -1295,7 +1805,7 @@ public sealed partial class DataverseService
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={orderBy}";
         var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
-        return items
+        var rows = items
             .Select(item => ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
             .Where(static item => item is not null)
             .Cast<BillingRecordRow>()
@@ -1304,6 +1814,9 @@ public sealed partial class DataverseService
             .OrderByDescending(static item => item.EmissionDate)
             .ThenBy(static item => item.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        await ApplyCreditNoteStateToBillingRowsAsync(rows, ct);
+        return rows;
     }
 
     private async Task<BillingRecordRow?> GetBillingRecordByIdAsync(
@@ -1318,7 +1831,11 @@ public sealed partial class DataverseService
         var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
         using var doc = JsonDocument.Parse(json);
-        return ParseBillingRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
+        var row = ParseBillingRecord(doc.RootElement, metadata.PrimaryIdField, metadata.PrimaryNameField);
+        if (row is not null)
+            await ApplyCreditNoteStateToBillingRowsAsync(new[] { row }, ct);
+
+        return row;
     }
 
     private string BuildBillingSelectClause(RhEntityMetadata metadata)
@@ -1599,7 +2116,7 @@ public sealed partial class DataverseService
 
     private static bool IsCopiersClientInvoicePaymentOverdue(BillingRecordRow row, DateOnly today)
     {
-        if (row.DueDate is null || row.PaymentValue > 0m)
+        if (row.DueDate is null || !row.IsPortfolioPending)
             return false;
 
         return today.DayNumber - row.DueDate.Value.DayNumber > 30;
@@ -1897,22 +2414,30 @@ public sealed partial class DataverseService
         DateOnly endExclusive,
         string filterField,
         string filterFieldKind,
-        ClaimsPrincipal user,
-        CancellationToken ct)
+        ClaimsPrincipal? user,
+        CancellationToken ct,
+        bool applyCreditNotes = true)
     {
         var select = BuildBillingSelectClause(metadata);
 
         var filter = BuildBillingDateFilter(filterField, filterFieldKind, startInclusive, endExclusive);
         var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={filterField} asc";
-        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
+        var items = user is null
+            ? await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders)
+            : await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
 
-        return items
+        var rows = items
             .Select(item => ParseBillingRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField))
             .Where(static item => item is not null)
             .Cast<BillingRecordRow>()
             .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
+
+        if (applyCreditNotes)
+            await ApplyCreditNoteStateToBillingRowsAsync(rows, ct);
+
+        return rows;
     }
 
     private BillingRecordRow? ParseBillingRecord(JsonElement item, string primaryIdField, string primaryNameField)
@@ -2000,16 +2525,16 @@ public sealed partial class DataverseService
     {
         var currentCloudBilling = SumCurrency(
             currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption),
-            static record => record.TotalInvoice);
+            static record => record.NetTotalInvoice);
         var previousCloudBilling = SumCurrency(
             compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption),
-            static record => record.TotalInvoice);
+            static record => record.NetTotalInvoice);
         var currentCopiersBilling = SumCurrency(
             currentEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption),
-            static record => record.TotalInvoice);
+            static record => record.NetTotalInvoice);
         var previousCopiersBilling = SumCurrency(
             compareEmission.Where(static record => record.VerticalOptionValue == DashboardVerticalCopiersOption),
-            static record => record.TotalInvoice);
+            static record => record.NetTotalInvoice);
         var cloudRows = currentEmission
             .Where(static record => record.VerticalOptionValue == DashboardVerticalCloudOption)
             .ToList();
@@ -2019,7 +2544,15 @@ public sealed partial class DataverseService
 
         return new[]
         {
-            BuildBillingKpi("total-billing", "Facturacion total", "Emitida con fecha de emision dentro del periodo.", totalBilling, previousTotalBilling, "currency", "Facturas", currentEmission.Count.ToString("N0", DashboardCulture)),
+            BuildBillingKpi(
+                "total-billing",
+                "Facturacion total",
+                "Ingreso neto antes de IVA segun fecha propia de facturas y notas credito aceptadas en Siigo.",
+                totalBilling,
+                previousTotalBilling,
+                "currency",
+                "Documentos",
+                $"{currentEmission.Count(static row => !row.IsCreditNoteLedgerEntry):N0} FV · {currentEmission.Count(static row => row.IsCreditNoteLedgerEntry):N0} NC"),
             BuildBillingKpi(
                 "cloud-billing",
                 "Facturacion Vertical Cloud",
@@ -2066,14 +2599,14 @@ public sealed partial class DataverseService
                 "cloud-portfolio",
                 "Cartera Cloud",
                 "Total de facturas Cloud sin pago, incluyendo el monto ya vencido.",
-                SumCurrency(unpaidCloudRows, static record => record.TotalInvoice),
-                SumCurrency(overdueCloudRows, static record => record.TotalInvoice)),
+                SumCurrency(unpaidCloudRows, static record => record.NetTotalInvoice),
+                SumCurrency(overdueCloudRows, static record => record.NetTotalInvoice)),
             BuildPortfolioKpi(
                 "copiers-portfolio",
                 "Cartera Copiers",
                 "Total de facturas Copiers sin pago, incluyendo el monto ya vencido.",
-                SumCurrency(unpaidCopiersRows, static record => record.TotalInvoice),
-                SumCurrency(overdueCopiersRows, static record => record.TotalInvoice))
+                SumCurrency(unpaidCopiersRows, static record => record.NetTotalInvoice),
+                SumCurrency(overdueCopiersRows, static record => record.NetTotalInvoice))
         };
     }
 
@@ -2253,11 +2786,11 @@ public sealed partial class DataverseService
                     DateColumnLabel = "Fecha emision",
                     NameColumnLabel = "Cliente",
                     ValueLabel = "IVA",
-                    TotalValue = SumCurrency(generatedRows, static row => row.VatValue),
+                    TotalValue = SumCurrency(generatedRows, static row => row.NetVatValue),
                     Rows = BuildVatBillingRows(
                         generatedRows,
                         static row => row.EmissionDate,
-                        static row => row.VatValue)
+                        static row => row.NetVatValue)
                 },
                 new TaxVatTableDto
                 {
@@ -2298,7 +2831,7 @@ public sealed partial class DataverseService
             .Select(row =>
             {
                 var taxValue = RoundCurrency(taxSelector(row));
-                var totalValue = RoundCurrency(row.TotalInvoice);
+                var totalValue = row.NetTotalInvoice;
                 var verticalKey = ResolveTaxVerticalKey(row.VerticalOptionValue);
                 var rowDate = dateSelector(row);
 
@@ -2356,10 +2889,12 @@ public sealed partial class DataverseService
 
     private TaxReportDetailsDto BuildReteFuenteReportDetails(
         IReadOnlyList<BillingRecordRow> emissionRows,
-        IReadOnlyList<TaxExpenseRow> expenseRows)
+        IReadOnlyList<TaxExpenseRow> expenseRows,
+        IReadOnlyList<BillingRecordRow> creditNoteRows)
     {
         var autoRows = BuildReteFuenteAutoRows(emissionRows);
         var expenseReportRows = BuildReteFuenteExpenseRows(expenseRows);
+        var creditNoteReportRows = BuildReteFuenteCreditNoteRows(creditNoteRows);
 
         return new TaxReportDetailsDto
         {
@@ -2371,12 +2906,12 @@ public sealed partial class DataverseService
                     Label = "Autofuente",
                     DateColumnLabel = "Fecha emision",
                     NameColumnLabel = "Cliente",
-                    TotalColumnLabel = "Total factura",
-                    BaseColumnLabel = "Base antes de IVA",
+                    TotalColumnLabel = "Total neto",
+                    BaseColumnLabel = "Base neta antes de IVA",
                     AmountColumnLabel = "Autofuente",
                     ShowBaseColumn = true,
                     TotalBaseValue = SumCurrency(emissionRows, static row => CalculateInvoiceTaxBase(row)),
-                    TotalValue = SumCurrency(emissionRows, static row => row.TotalInvoice),
+                    TotalValue = SumCurrency(emissionRows, static row => row.NetTotalInvoice),
                     TotalAmountValue = CalculateAutoFuente(emissionRows),
                     Rows = autoRows
                 },
@@ -2398,6 +2933,21 @@ public sealed partial class DataverseService
                     TotalValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.TotalValue),
                     TotalAmountValue = SumExpenseCurrency(expenseRows.Where(static row => row.ReteFuenteValue > 0m), static row => row.ReteFuenteValue),
                     Rows = expenseReportRows
+                },
+                new TaxReportTableDto
+                {
+                    Key = "notas-credito",
+                    Label = "Notas credito",
+                    DateColumnLabel = "Fecha documento",
+                    DocumentColumnLabel = "Nota credito",
+                    NameColumnLabel = "Factura relacionada",
+                    CustomerIdentificationColumnLabel = "NIT cliente",
+                    TotalColumnLabel = "Total nota credito",
+                    AmountColumnLabel = "IVA nota credito",
+                    ShowCustomerIdentificationColumn = true,
+                    TotalValue = SumCurrency(creditNoteRows, static row => Math.Abs(row.TotalInvoice)),
+                    TotalAmountValue = SumCurrency(creditNoteRows, static row => Math.Abs(row.NetVatValue)),
+                    Rows = creditNoteReportRows
                 }
             }
         };
@@ -2420,8 +2970,8 @@ public sealed partial class DataverseService
                     Label = "Rete ICA generado",
                     DateColumnLabel = "Fecha emision",
                     NameColumnLabel = "Cliente",
-                    TotalColumnLabel = "Total factura",
-                    BaseColumnLabel = "Base antes de IVA",
+                    TotalColumnLabel = "Total neto",
+                    BaseColumnLabel = "Base neta antes de IVA",
                     AmountColumnLabel = "Rete ICA generado",
                     ShowBaseColumn = true,
                     ShowReteIcaPercentColumn = true,
@@ -2437,7 +2987,7 @@ public sealed partial class DataverseService
                     DateColumnLabel = "Fecha pago",
                     NameColumnLabel = "Cliente",
                     TotalColumnLabel = "Valor pago",
-                    BaseColumnLabel = "Total factura",
+                    BaseColumnLabel = "Total neto",
                     AmountColumnLabel = "Rete ICA a favor",
                     ShowBaseColumn = true,
                     ShowReteIcaPercentColumn = true,
@@ -2464,11 +3014,11 @@ public sealed partial class DataverseService
                     InvoiceNumber = row.InvoiceNumber,
                     Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
                     BaseValue = baseValue,
-                    TotalValue = RoundCurrency(row.TotalInvoice),
+                    TotalValue = row.NetTotalInvoice,
                     AmountValue = RoundCurrency(baseValue * DashboardAutoFuenteRate)
                 };
             })
-            .Where(static row => row.BaseValue > 0m)
+            .Where(static row => Math.Abs(row.BaseValue) >= 0.01m)
             .ToList();
     }
 
@@ -2493,6 +3043,33 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private IReadOnlyList<TaxReportRowDto> BuildReteFuenteCreditNoteRows(IEnumerable<BillingRecordRow> rows)
+    {
+        return rows
+            .OrderBy(static row => row.EmissionDate)
+            .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
+            .Select(row => new TaxReportRowDto
+            {
+                DateDisplay = row.EmissionDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
+                InvoiceNumber = FirstNonEmpty(row.InvoiceNumber, row.RecordId),
+                Name = FirstNonEmpty(row.SiigoInvoiceName, row.InvoicePrefix, "Sin factura relacionada"),
+                CustomerIdentification = row.CompanyTaxId,
+                TotalValue = RoundCurrency(Math.Abs(row.TotalInvoice)),
+                AmountValue = RoundCurrency(Math.Abs(row.NetVatValue))
+            })
+            .ToList();
+    }
+
+    private static string BuildCreditNoteInvoiceReference(ReconciliationDataverseCreditNoteRow row)
+    {
+        var invoiceNumber = row.InvoiceNumber?.ToString(CultureInfo.InvariantCulture) ?? "";
+        var prefixedNumber = string.IsNullOrWhiteSpace(invoiceNumber)
+            ? ""
+            : $"{row.InvoicePrefix}{invoiceNumber}".Trim();
+
+        return FirstNonEmpty(prefixedNumber, row.InvoiceId);
+    }
+
     private IReadOnlyList<TaxReportRowDto> BuildReteIcaGeneratedRows(IEnumerable<BillingRecordRow> rows)
     {
         return rows
@@ -2507,12 +3084,12 @@ public sealed partial class DataverseService
                     InvoiceNumber = row.InvoiceNumber,
                     Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
                     BaseValue = baseValue,
-                    TotalValue = RoundCurrency(row.TotalInvoice),
+                    TotalValue = row.NetTotalInvoice,
                     AmountValue = RoundCurrency(baseValue * DashboardIcaRate),
                     ReteIcaPercent = DashboardIcaRate * 100m
                 };
             })
-            .Where(static row => row.BaseValue > 0m)
+            .Where(static row => Math.Abs(row.BaseValue) >= 0.01m)
             .ToList();
     }
 
@@ -2527,7 +3104,7 @@ public sealed partial class DataverseService
                 DateDisplay = row.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
                 InvoiceNumber = row.InvoiceNumber,
                 Name = FirstNonEmpty(row.ClientName, row.CompanyTaxId, "Sin cliente"),
-                BaseValue = RoundCurrency(row.TotalInvoice),
+                BaseValue = row.NetTotalInvoice,
                 TotalValue = RoundCurrency(row.PaymentValue),
                 AmountValue = RoundCurrency(row.ReteIcaValue),
                 ReteIcaPercent = CalculateBillingRetentionPercent(row.ReteIcaValue, row)
@@ -2712,13 +3289,13 @@ public sealed partial class DataverseService
 
     private IReadOnlyList<BillingKpiBreakdownDto> BuildVerticalContractBreakdowns(IReadOnlyList<BillingRecordRow> rows)
     {
-        var total = SumCurrency(rows, static row => row.TotalInvoice);
+        var total = SumCurrency(rows, static row => row.NetTotalInvoice);
         var mensual = SumCurrency(
             rows.Where(static row => row.ContractTypeOptionValue == DashboardContractTypeMonthlyOption),
-            static row => row.TotalInvoice);
+            static row => row.NetTotalInvoice);
         var oneTime = SumCurrency(
             rows.Where(static row => row.ContractTypeOptionValue == DashboardContractTypeOneTimeOption),
-            static row => row.TotalInvoice);
+            static row => row.NetTotalInvoice);
 
         return new[]
         {
@@ -2742,16 +3319,23 @@ public sealed partial class DataverseService
     private async Task<List<TaxExpenseRow>> GetTaxExpenseRowsAsync(
         DateOnly startInclusive,
         DateOnly endExclusive,
-        ClaimsPrincipal user,
+        ClaimsPrincipal? user,
         CancellationToken ct)
     {
-        var metadata = await ResolveRhEntityMetadataAsync(
-            _supplierExpensesTableName,
-            _supplierExpensesTableSetName,
-            _supplierExpensesIdField,
-            "",
-            user,
-            ct);
+        var metadata = user is null
+            ? await ResolveFinancialReconciliationEntityMetadataAppAsync(
+                _supplierExpensesTableName,
+                _supplierExpensesTableSetName,
+                _supplierExpensesIdField,
+                "",
+                ct)
+            : await ResolveRhEntityMetadataAsync(
+                _supplierExpensesTableName,
+                _supplierExpensesTableSetName,
+                _supplierExpensesIdField,
+                "",
+                user,
+                ct);
         var attributes = await GetDashboardEntityAttributeNamesAsync(metadata.LogicalName, user, ct);
         var fields = ResolveTaxExpenseFieldMap(metadata, attributes);
 
@@ -2804,11 +3388,16 @@ public sealed partial class DataverseService
         List<JsonElement> items;
         try
         {
-            items = await GetDataverseEntitiesAsync(
-                BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
-                user,
-                ct,
-                AddFormattedValueHeaders);
+            items = user is null
+                ? await GetDataverseAppEntitiesAsync(
+                    BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
+                    ct,
+                    AddFormattedValueHeaders)
+                : await GetDataverseEntitiesAsync(
+                    BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
+                    user,
+                    ct,
+                    AddFormattedValueHeaders);
         }
         catch (InvalidOperationException ex) when (
             !ct.IsCancellationRequested
@@ -2819,11 +3408,16 @@ public sealed partial class DataverseService
                 "El campo configurado como numero de factura de gastos ({FieldName}) no existe en Dataverse. Se consulta sin ese campo.",
                 effectiveInvoiceNumberField);
             effectiveInvoiceNumberField = "";
-            items = await GetDataverseEntitiesAsync(
-                BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
-                user,
-                ct,
-                AddFormattedValueHeaders);
+            items = user is null
+                ? await GetDataverseAppEntitiesAsync(
+                    BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
+                    ct,
+                    AddFormattedValueHeaders)
+                : await GetDataverseEntitiesAsync(
+                    BuildRelativeUrl(BuildSelect(effectiveInvoiceNumberField)),
+                    user,
+                    ct,
+                    AddFormattedValueHeaders);
         }
 
         return items
@@ -2833,13 +3427,110 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private async Task<List<ReconciliationDataverseCreditNoteRow>> GetTaxCreditNoteRowsByCreatedDateAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        CancellationToken ct)
+    {
+        if (startInclusive >= endExclusive)
+            return new List<ReconciliationDataverseCreditNoteRow>();
+
+        try
+        {
+            var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+                ReconciliationCreditNoteLogicalName,
+                ReconciliationCreditNoteSetName,
+                ReconciliationCreditNoteIdField,
+                ReconciliationCreditNotePrimaryNameField,
+                ct);
+            var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+            var select = BuildCreditNoteSelectClause(metadata, attributes);
+            var useCreatedDate = attributes.Contains(ReconciliationCreditNoteCreatedField);
+
+            async Task<List<JsonElement>> QueryAsync(string dateField, string dateFieldKind)
+            {
+                var filter = string.Equals(dateFieldKind, "text", StringComparison.OrdinalIgnoreCase)
+                    ? BuildCreditNoteTextDateFilter(dateField, startInclusive, endExclusive)
+                    : BuildBillingDateFilter(dateField, dateFieldKind, startInclusive, endExclusive);
+                var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={dateField} asc";
+                return await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+            }
+
+            async Task<List<JsonElement>> QueryUnfilteredAsync()
+            {
+                var orderByField = FirstNonEmpty(
+                    useCreatedDate ? ReconciliationCreditNoteCreatedField : "",
+                    ReconciliationCreditNoteDateField,
+                    metadata.PrimaryIdField);
+                var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={orderByField} asc";
+                return await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+            }
+
+            List<JsonElement> items;
+            var preferCreatedDate = useCreatedDate;
+            try
+            {
+                items = useCreatedDate
+                    ? await QueryAsync(ReconciliationCreditNoteCreatedField, "text")
+                    : await QueryAsync(ReconciliationCreditNoteDateField, "date-only");
+            }
+            catch (InvalidOperationException ex) when (useCreatedDate && !ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible filtrar notas credito por fecha de creacion. Se usara fecha de nota credito como respaldo.");
+                useCreatedDate = false;
+                preferCreatedDate = false;
+                try
+                {
+                    items = await QueryAsync(ReconciliationCreditNoteDateField, "date-only");
+                }
+                catch (InvalidOperationException fallbackEx) when (!ct.IsCancellationRequested)
+                {
+                    _logger.LogWarning(
+                        fallbackEx,
+                        "No fue posible filtrar notas credito por fecha en Dataverse. Se consultaran sin filtro y se filtraran en memoria.");
+                    preferCreatedDate = attributes.Contains(ReconciliationCreditNoteCreatedField);
+                    items = await QueryUnfilteredAsync();
+                }
+            }
+            catch (InvalidOperationException ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible filtrar notas credito por fecha en Dataverse. Se consultaran sin filtro y se filtraran en memoria.");
+                items = await QueryUnfilteredAsync();
+            }
+
+            return items
+                .Select(item => ParseCreditNoteRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField, attributes))
+                .Where(row => row is not null && IsCreditNoteInTaxPeriod(row, startInclusive, endExclusive, preferCreatedDate))
+                .Cast<ReconciliationDataverseCreditNoteRow>()
+                .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.First())
+                .ToList();
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "No fue posible cargar notas credito para el reporte de retefuente.");
+            return new List<ReconciliationDataverseCreditNoteRow>();
+        }
+    }
+
+    private static string BuildCreditNoteTextDateFilter(string fieldName, DateOnly startInclusive, DateOnly endExclusive)
+    {
+        var startText = startInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var endText = endExclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return $"{fieldName} ge '{EscapeOdataLiteral(startText)}' and {fieldName} lt '{EscapeOdataLiteral(endText)}'";
+    }
+
     private static bool IsMissingDataversePropertyError(Exception ex, string fieldName) =>
         !string.IsNullOrWhiteSpace(fieldName)
         && ex.Message.Contains($"property named '{fieldName}'", StringComparison.OrdinalIgnoreCase);
 
     private async Task<HashSet<string>> GetDashboardEntityAttributeNamesAsync(
         string entityLogicalName,
-        ClaimsPrincipal user,
+        ClaimsPrincipal? user,
         CancellationToken ct)
     {
         var cacheKey = entityLogicalName?.Trim() ?? "";
@@ -2854,14 +3545,16 @@ public sealed partial class DataverseService
 
             try
             {
-                var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct);
+                var items = user is null
+                    ? await GetDataverseAppEntitiesAsync(relativeUrl, ct)
+                    : await GetDataverseEntitiesAsync(relativeUrl, user, ct);
                 cached = items
                     .Select(static item => ReadString(item, "LogicalName").Trim())
                     .Where(static field => !string.IsNullOrWhiteSpace(field))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
             }
-            catch (Exception userEx) when (!ct.IsCancellationRequested)
+            catch (Exception primaryEx) when (!ct.IsCancellationRequested)
             {
                 try
                 {
@@ -2878,7 +3571,7 @@ public sealed partial class DataverseService
                         appEx,
                         "No fue posible consultar la metadata de atributos de {EntityLogicalName}. Se usaran los campos configurados. Error usuario: {UserMetadataError}",
                         cacheKey,
-                        userEx.Message);
+                        primaryEx.Message);
                     cached = Array.Empty<string>();
                 }
             }
@@ -3075,11 +3768,11 @@ public sealed partial class DataverseService
                 BillingCurrent = SumCurrency(
                     currentEmission.Where(record => record.EmissionDate is not null
                         && string.Equals(GetBillingCategoryKey(record.EmissionDate.Value, period.CurrentStartInclusive, period.TrendGranularity), category.Key, StringComparison.OrdinalIgnoreCase)),
-                    static record => record.TotalInvoice),
+                    static record => record.NetTotalInvoice),
                 BillingPrevious = SumCurrency(
                     compareEmission.Where(record => record.EmissionDate is not null
                         && string.Equals(GetBillingCategoryKey(record.EmissionDate.Value, period.CompareStartInclusive, period.TrendGranularity), category.Key, StringComparison.OrdinalIgnoreCase)),
-                    static record => record.TotalInvoice),
+                    static record => record.NetTotalInvoice),
                 CollectionsCurrent = SumCurrency(
                     currentPayments.Where(record => record.PaymentDate is not null
                         && string.Equals(GetBillingCategoryKey(record.PaymentDate.Value, period.CurrentStartInclusive, period.TrendGranularity), category.Key, StringComparison.OrdinalIgnoreCase)),
@@ -3369,8 +4062,8 @@ public sealed partial class DataverseService
                         && record.PaymentDate.Value.Month == month)
                     .ToList();
 
-                var billingCurrent = SumCurrency(currentEmission, static record => record.TotalInvoice);
-                var billingPrevious = SumCurrency(compareEmission, static record => record.TotalInvoice);
+                var billingCurrent = SumCurrency(currentEmission, static record => record.NetTotalInvoice);
+                var billingPrevious = SumCurrency(compareEmission, static record => record.NetTotalInvoice);
                 var collectionsCurrent = SumCurrency(currentPayments, static record => record.PaymentValue);
                 var collectionsPrevious = SumCurrency(comparePayments, static record => record.PaymentValue);
                 var retentionsCurrent = SumCurrency(currentPayments, static record => record.RetentionsTotal);
@@ -3396,13 +4089,17 @@ public sealed partial class DataverseService
 
     private IReadOnlyList<BillingVerticalSummaryDto> BuildVerticalSummaries(
         IReadOnlyList<BillingRecordRow> currentEmission,
-        IReadOnlyList<BillingRecordRow> compareEmission)
+        IReadOnlyList<BillingRecordRow> compareEmission,
+        IReadOnlyList<BillingRecordRow>? portfolioRows = null)
     {
         var currentGroups = currentEmission
             .GroupBy(static record => NormalizeBillingGroupKey(record.VerticalLabel), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var compareGroups = compareEmission
+            .GroupBy(static record => NormalizeBillingGroupKey(record.VerticalLabel), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+        var portfolioGroups = (portfolioRows ?? Array.Empty<BillingRecordRow>())
             .GroupBy(static record => NormalizeBillingGroupKey(record.VerticalLabel), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
@@ -3415,11 +4112,16 @@ public sealed partial class DataverseService
                 compareGroups.TryGetValue(key, out var compareRows);
                 currentRows ??= new List<BillingRecordRow>();
                 compareRows ??= new List<BillingRecordRow>();
+                portfolioGroups.TryGetValue(key, out var verticalPortfolioRows);
+                verticalPortfolioRows ??= new List<BillingRecordRow>();
+                var unpaidRows = verticalPortfolioRows
+                    .Where(static row => row.IsPortfolioPending)
+                    .ToList();
 
-                var currentTotal = SumCurrency(currentRows, static row => row.TotalInvoice);
-                var compareTotal = SumCurrency(compareRows, static row => row.TotalInvoice);
-                var currentVat = SumCurrency(currentRows, static row => row.VatValue);
-                var compareVat = SumCurrency(compareRows, static row => row.VatValue);
+                var currentTotal = SumCurrency(currentRows, static row => row.NetTotalInvoice);
+                var compareTotal = SumCurrency(compareRows, static row => row.NetTotalInvoice);
+                var currentVat = SumCurrency(currentRows, static row => row.NetVatValue);
+                var compareVat = SumCurrency(compareRows, static row => row.NetVatValue);
 
                 return new BillingVerticalSummaryDto
                 {
@@ -3427,15 +4129,15 @@ public sealed partial class DataverseService
                     Label = currentRows.FirstOrDefault()?.VerticalLabel
                         ?? compareRows.FirstOrDefault()?.VerticalLabel
                         ?? "Sin vertical",
-                    InvoicesCount = currentRows.Count,
-                    UnpaidInvoicesCount = currentRows.Count(static row => !row.HasPayment),
+                    InvoicesCount = currentRows.Count(static row => !row.IsCreditNoteLedgerEntry),
+                    UnpaidInvoicesCount = unpaidRows.Count,
                     TotalBilling = currentTotal,
                     PreviousTotalBilling = compareTotal,
                     GrowthPercent = CalculateGrowthPercent(currentTotal, compareTotal),
                     TotalVat = currentVat,
                     PreviousTotalVat = compareVat,
                     VatGrowthPercent = CalculateGrowthPercent(currentVat, compareVat),
-                    UnpaidAmount = SumCurrency(currentRows.Where(static row => !row.HasPayment), static row => row.TotalInvoice),
+                    UnpaidAmount = SumCurrency(unpaidRows, static row => row.NetTotalInvoice),
                     ContractTypes = BuildContractTypeSummaries(currentRows, compareRows)
                 };
             })
@@ -3456,7 +4158,7 @@ public sealed partial class DataverseService
             .GroupBy(static row => NormalizeBillingGroupKey(row.ContractTypeLabel), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
-        var verticalTotal = SumCurrency(currentRows, static row => row.TotalInvoice);
+        var verticalTotal = SumCurrency(currentRows, static row => row.NetTotalInvoice);
 
         return currentGroups.Keys
             .Concat(compareGroups.Keys)
@@ -3468,8 +4170,8 @@ public sealed partial class DataverseService
                 currentItems ??= new List<BillingRecordRow>();
                 compareItems ??= new List<BillingRecordRow>();
 
-                var currentTotal = SumCurrency(currentItems, static row => row.TotalInvoice);
-                var compareTotal = SumCurrency(compareItems, static row => row.TotalInvoice);
+                var currentTotal = SumCurrency(currentItems, static row => row.NetTotalInvoice);
+                var compareTotal = SumCurrency(compareItems, static row => row.NetTotalInvoice);
 
                 return new BillingContractTypeSummaryDto
                 {
@@ -3500,7 +4202,7 @@ public sealed partial class DataverseService
             .GroupBy(static record => NormalizeBillingGroupKey(record.ClientName), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
-        var totalCurrent = SumCurrency(currentEmission, static record => record.TotalInvoice);
+        var totalCurrent = SumCurrency(currentEmission, static record => record.NetTotalInvoice);
 
         return currentGroups.Keys
             .Concat(compareGroups.Keys)
@@ -3512,8 +4214,8 @@ public sealed partial class DataverseService
                 currentRows ??= new List<BillingRecordRow>();
                 compareRows ??= new List<BillingRecordRow>();
 
-                var currentTotal = SumCurrency(currentRows, static row => row.TotalInvoice);
-                var compareTotal = SumCurrency(compareRows, static row => row.TotalInvoice);
+                var currentTotal = SumCurrency(currentRows, static row => row.NetTotalInvoice);
+                var compareTotal = SumCurrency(compareRows, static row => row.NetTotalInvoice);
 
                 return new BillingClientSummaryDto
                 {
@@ -3521,7 +4223,7 @@ public sealed partial class DataverseService
                     ClientName = currentRows.FirstOrDefault()?.ClientName
                         ?? compareRows.FirstOrDefault()?.ClientName
                         ?? "Cliente sin nombre",
-                    InvoicesCount = currentRows.Count,
+                    InvoicesCount = currentRows.Count(static row => !row.IsCreditNoteLedgerEntry),
                     TotalBilling = currentTotal,
                     PreviousTotalBilling = compareTotal,
                     GrowthPercent = CalculateGrowthPercent(currentTotal, compareTotal),
@@ -3773,8 +4475,7 @@ public sealed partial class DataverseService
     private static decimal CalculateIcaGenerated(IEnumerable<BillingRecordRow> rows) =>
         SumCurrency(rows, row => CalculateInvoiceTaxBase(row) * DashboardIcaRate);
 
-    private static decimal CalculateInvoiceTaxBase(BillingRecordRow row) =>
-        RoundCurrency(Math.Max(row.TotalInvoice - row.VatValue, 0m));
+    private static decimal CalculateInvoiceTaxBase(BillingRecordRow row) => row.NetBeforeVatValue;
 
     private static decimal CalculateExpenseTaxBase(TaxExpenseRow row) =>
         RoundCurrency(Math.Max(row.TotalValue - row.VatValue, 0m));
@@ -3839,6 +4540,24 @@ public sealed partial class DataverseService
             .ToList();
     }
 
+    private static bool IsCreditNoteInTaxPeriod(
+        ReconciliationDataverseCreditNoteRow? row,
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        bool preferCreatedDate)
+    {
+        if (row is null)
+            return false;
+
+        var date = preferCreatedDate && row.CreatedAt.HasValue
+            ? DateOnly.FromDateTime(row.CreatedAt.Value.ToOffset(TimeSpan.FromHours(-5)).DateTime)
+            : row.Date;
+
+        return date.HasValue
+            && date.Value >= startInclusive
+            && date.Value < endExclusive;
+    }
+
     private BillingRetentionItemDto BuildRetentionSummary(string key, string label, decimal current, decimal previous)
     {
         return new BillingRetentionItemDto
@@ -3864,7 +4583,7 @@ public sealed partial class DataverseService
                 VerticalLabel = record.VerticalLabel,
                 ContractTypeLabel = record.ContractTypeLabel,
                 DueDateDisplay = record.DueDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
-                TotalInvoice = record.TotalInvoice,
+                TotalInvoice = record.NetTotalInvoice,
                 AgeDays = record.GetOverdueDays(today)
             })
             .OrderByDescending(static record => record.AgeDays)
@@ -3880,6 +4599,7 @@ public sealed partial class DataverseService
             .Select(record =>
             {
                 var isOverdue = record.IsOverdue(today);
+                var paymentStatusLabel = ResolveBillingPaymentStatusLabel(record, isOverdue);
 
                 return new BillingInvoiceRowDto
                 {
@@ -3899,15 +4619,25 @@ public sealed partial class DataverseService
                     PaymentDateValue = record.PaymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
                     PaymentDateDisplay = record.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin pago",
                     TotalInvoice = record.TotalInvoice,
+                    NetTotalInvoice = record.NetTotalInvoice,
                     VatPercent = record.VatPercent,
                     VatValue = record.VatValue,
+                    CreditNoteVat = record.CreditNoteVat,
+                    NetVatValue = record.NetVatValue,
+                    NetBeforeVatValue = record.NetBeforeVatValue,
                     PaymentValue = record.PaymentValue,
                     ReteIcaValue = record.ReteIcaValue,
                     RteIvaValue = record.RteIvaValue,
                     RteFteValue = record.RteFteValue,
                     RetentionsTotal = record.RetentionsTotal,
                     DifferenceValue = record.DifferenceValue,
-                    PaymentStatusLabel = record.HasPayment ? "Con pago" : isOverdue ? "Vencida" : "Pendiente",
+                    CreditNoteTotal = record.CreditNoteTotal,
+                    CreditNoteCount = record.CreditNoteCount,
+                    IsFullyCredited = record.IsFullyCredited,
+                    IsPartiallyCredited = record.IsPartiallyCredited,
+                    IsPortfolioPending = record.IsPortfolioPending,
+                    IsOverdue = isOverdue,
+                    PaymentStatusLabel = paymentStatusLabel,
                     AgeDays = record.GetOverdueDays(today),
                     PublicUrl = record.PublicUrl
                 };
@@ -3915,6 +4645,330 @@ public sealed partial class DataverseService
             .OrderByDescending(static row => row.EmissionDateValue)
             .ThenBy(static row => row.InvoiceNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private async Task ApplyCreditNoteStateToBillingRowsAsync(
+        IReadOnlyList<BillingRecordRow> rows,
+        CancellationToken ct)
+    {
+        if (rows.Count == 0)
+            return;
+
+        foreach (var row in rows)
+        {
+            row.CreditNoteTotal = 0m;
+            row.CreditNoteVat = 0m;
+            row.CreditNoteCount = 0;
+        }
+
+        IReadOnlyList<ReconciliationDataverseCreditNoteRow> creditNotes;
+        try
+        {
+            creditNotes = await GetDashboardAcceptedCreditNotesAsync(ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "No fue posible aplicar las notas credito aceptadas sobre facturacion.");
+            return;
+        }
+
+        if (creditNotes.Count == 0)
+            return;
+
+        var index = BuildBillingCreditNoteMatchIndex(rows);
+        foreach (var creditNote in creditNotes)
+        {
+            var row = FindBillingRowForCreditNote(creditNote, index);
+            if (row is null)
+                continue;
+
+            row.CreditNoteTotal = RoundCurrency(row.CreditNoteTotal + creditNote.Total);
+            row.CreditNoteVat = RoundCurrency(row.CreditNoteVat + creditNote.Vat);
+            row.CreditNoteCount++;
+        }
+    }
+
+    private async Task<IReadOnlyList<ReconciliationDataverseCreditNoteRow>> GetDashboardAcceptedCreditNotesAsync(
+        CancellationToken ct)
+    {
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext is null)
+            return await LoadDashboardAcceptedCreditNotesAsync(ct);
+
+        Task<IReadOnlyList<ReconciliationDataverseCreditNoteRow>> loadTask;
+        lock (httpContext.Items)
+        {
+            if (httpContext.Items.TryGetValue(DashboardCreditNotesRequestCacheKey, out var cached)
+                && cached is Task<IReadOnlyList<ReconciliationDataverseCreditNoteRow>> cachedTask)
+            {
+                loadTask = cachedTask;
+            }
+            else
+            {
+                loadTask = LoadDashboardAcceptedCreditNotesAsync(ct);
+                httpContext.Items[DashboardCreditNotesRequestCacheKey] = loadTask;
+            }
+        }
+
+        try
+        {
+            return await loadTask;
+        }
+        catch
+        {
+            lock (httpContext.Items)
+            {
+                if (httpContext.Items.TryGetValue(DashboardCreditNotesRequestCacheKey, out var cached)
+                    && ReferenceEquals(cached, loadTask))
+                {
+                    httpContext.Items.Remove(DashboardCreditNotesRequestCacheKey);
+                }
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<IReadOnlyList<ReconciliationDataverseCreditNoteRow>> LoadDashboardAcceptedCreditNotesAsync(
+        CancellationToken ct)
+    {
+        var metadata = await ResolveFinancialReconciliationEntityMetadataAppAsync(
+            ReconciliationCreditNoteLogicalName,
+            ReconciliationCreditNoteSetName,
+            ReconciliationCreditNoteIdField,
+            ReconciliationCreditNotePrimaryNameField,
+            ct);
+        var attributes = await GetFinancialReconciliationAttributeNamesAppAsync(metadata.LogicalName, ct);
+        var hasStampStatusField = attributes.Contains(ReconciliationCreditNoteStampStatusField);
+        var selectFields = BuildCreditNoteSelectClause(metadata, attributes)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (hasStampStatusField)
+            selectFields.Add(ReconciliationCreditNoteStampStatusField);
+
+        var select = string.Join(",", selectFields.Distinct(StringComparer.OrdinalIgnoreCase));
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={metadata.PrimaryIdField} asc";
+        List<JsonElement> items;
+        try
+        {
+            items = await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+        }
+        catch (InvalidOperationException ex) when (
+            hasStampStatusField
+            && !ct.IsCancellationRequested
+            && IsMissingDataversePropertyError(ex, ReconciliationCreditNoteStampStatusField))
+        {
+            _logger.LogWarning(
+                ex,
+                "El campo de estado de timbrado de notas credito no esta disponible. Se usaran las filas ya validadas de la tabla.");
+            hasStampStatusField = false;
+            select = BuildCreditNoteSelectClause(metadata, attributes);
+            relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$orderby={metadata.PrimaryIdField} asc";
+            items = await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders);
+        }
+
+        var candidates = items
+            .Select(item => new
+            {
+                Row = ParseCreditNoteRecord(item, metadata.PrimaryIdField, metadata.PrimaryNameField, attributes),
+                StampStatus = FirstNonEmpty(
+                    ReadString(item, $"{ReconciliationCreditNoteStampStatusField}{FormattedValueAnnotationSuffix}"),
+                    ReadString(item, ReconciliationCreditNoteStampStatusField))
+            })
+            .Where(item => item.Row is not null
+                && item.Row.Total > 0m
+                && (!hasStampStatusField
+                    || string.Equals(item.StampStatus.Trim(), "Accepted", StringComparison.OrdinalIgnoreCase)))
+            .Select(static item => item.Row!)
+            .ToList();
+
+        return DeduplicateDashboardCreditNotes(candidates);
+    }
+
+    private static IReadOnlyList<ReconciliationDataverseCreditNoteRow> DeduplicateDashboardCreditNotes(
+        IEnumerable<ReconciliationDataverseCreditNoteRow> rows)
+    {
+        var result = new List<ReconciliationDataverseCreditNoteRow>();
+        var seenIdentities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var orderedRows = rows
+            .OrderByDescending(static row => !string.IsNullOrWhiteSpace(row.CreditNoteId))
+            .ThenByDescending(CalculateDashboardCreditNoteCompleteness)
+            .ThenBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in orderedRows)
+        {
+            var identities = EnumerateDashboardCreditNoteIdentityKeys(row)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (identities.Count == 0 || identities.Any(seenIdentities.Contains))
+                continue;
+
+            foreach (var identity in identities)
+                seenIdentities.Add(identity);
+
+            result.Add(row);
+        }
+
+        return result;
+    }
+
+    private static IEnumerable<string> EnumerateDashboardCreditNoteIdentityKeys(
+        ReconciliationDataverseCreditNoteRow row)
+    {
+        var siigoId = NormalizeBillingExternalMatchId(row.CreditNoteId);
+        if (!string.IsNullOrWhiteSpace(siigoId))
+            yield return $"siigo:{siigoId}";
+
+        var recordId = NormalizeBillingRecordMatchId(row.RecordId);
+        if (!string.IsNullOrWhiteSpace(recordId))
+            yield return $"record:{recordId}";
+
+        if (string.IsNullOrWhiteSpace(siigoId))
+        {
+            var name = NormalizeDocumentKey(row.CreditNoteName);
+            if (!string.IsNullOrWhiteSpace(name))
+                yield return $"name:{name}";
+        }
+    }
+
+    private static int CalculateDashboardCreditNoteCompleteness(ReconciliationDataverseCreditNoteRow row)
+    {
+        var score = row.Processed ? 1 : 0;
+        if (!string.IsNullOrWhiteSpace(row.FacturacionDataverseId)) score++;
+        if (!string.IsNullOrWhiteSpace(row.InvoiceId)) score++;
+        if (!string.IsNullOrWhiteSpace(row.InvoiceName)) score++;
+        if (!string.IsNullOrWhiteSpace(row.InvoicePrefix) && row.InvoiceNumber.HasValue) score++;
+        if (row.Vat > 0m) score++;
+        return score;
+    }
+
+    private static Dictionary<string, List<BillingRecordRow>> BuildBillingCreditNoteMatchIndex(
+        IEnumerable<BillingRecordRow> rows)
+    {
+        var index = new Dictionary<string, List<BillingRecordRow>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            AddBillingCreditNoteMatchKey(index, $"record:{NormalizeBillingRecordMatchId(row.RecordId)}", row);
+            AddBillingCreditNoteMatchKey(index, $"siigo:{NormalizeBillingExternalMatchId(row.SiigoInvoiceId)}", row);
+            AddBillingCreditNoteMatchKey(index, $"doc:{NormalizeDocumentKey(row.InvoiceNumber)}", row);
+            AddBillingCreditNoteMatchKey(index, $"doc:{NormalizeDocumentKey(row.SiigoInvoiceName)}", row);
+            AddBillingCreditNoteMatchKey(index, $"prefix:{BuildPrefixNumberKey(row.InvoicePrefix, row.InvoiceCode)}", row);
+        }
+
+        return index;
+    }
+
+    private static void AddBillingCreditNoteMatchKey(
+        IDictionary<string, List<BillingRecordRow>> index,
+        string key,
+        BillingRecordRow row)
+    {
+        if (string.IsNullOrWhiteSpace(key) || key.EndsWith(":", StringComparison.Ordinal))
+            return;
+
+        if (!index.TryGetValue(key, out var rows))
+        {
+            rows = new List<BillingRecordRow>();
+            index[key] = rows;
+        }
+
+        rows.Add(row);
+    }
+
+    private static BillingRecordRow? FindBillingRowForCreditNote(
+        ReconciliationDataverseCreditNoteRow creditNote,
+        IReadOnlyDictionary<string, List<BillingRecordRow>> index)
+    {
+        foreach (var key in EnumerateCreditNoteBillingMatchKeys(creditNote))
+        {
+            if (!index.TryGetValue(key, out var rows) || rows.Count == 0)
+                continue;
+
+            var matches = rows
+                .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.First())
+                .ToList();
+            return matches.Count == 1 ? matches[0] : null;
+        }
+
+        return null;
+    }
+
+    private static string ResolveBillingCreditNoteMatchMethod(
+        ReconciliationDataverseCreditNoteRow creditNote,
+        IReadOnlyDictionary<string, List<BillingRecordRow>> index,
+        BillingRecordRow matchedInvoice)
+    {
+        foreach (var key in EnumerateCreditNoteBillingMatchKeys(creditNote))
+        {
+            if (!index.TryGetValue(key, out var candidates) || candidates.Count == 0)
+                continue;
+
+            var matches = candidates
+                .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.First())
+                .ToList();
+            if (matches.Count != 1
+                || !string.Equals(matches[0].RecordId, matchedInvoice.RecordId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (key.StartsWith("record:", StringComparison.OrdinalIgnoreCase))
+                return "ID Dataverse";
+            if (key.StartsWith("siigo:", StringComparison.OrdinalIgnoreCase))
+                return "ID Siigo";
+            if (key.StartsWith("doc:", StringComparison.OrdinalIgnoreCase))
+                return "Documento";
+            if (key.StartsWith("prefix:", StringComparison.OrdinalIgnoreCase))
+                return "Prefijo + número";
+        }
+
+        return FirstNonEmpty(creditNote.MatchBy, "Cruce seguro");
+    }
+
+    private static IEnumerable<string> EnumerateCreditNoteBillingMatchKeys(ReconciliationDataverseCreditNoteRow creditNote)
+    {
+        if (!string.IsNullOrWhiteSpace(creditNote.FacturacionDataverseId))
+            yield return $"record:{NormalizeBillingRecordMatchId(creditNote.FacturacionDataverseId)}";
+
+        if (!string.IsNullOrWhiteSpace(creditNote.InvoiceId))
+            yield return $"siigo:{NormalizeBillingExternalMatchId(creditNote.InvoiceId)}";
+
+        var documentKey = NormalizeDocumentKey(creditNote.InvoiceName);
+        if (!string.IsNullOrWhiteSpace(documentKey))
+            yield return $"doc:{documentKey}";
+
+        var prefixKey = BuildPrefixNumberKey(
+            creditNote.InvoicePrefix,
+            creditNote.InvoiceNumber?.ToString(CultureInfo.InvariantCulture));
+        if (!string.IsNullOrWhiteSpace(prefixKey))
+            yield return $"prefix:{prefixKey}";
+    }
+
+    private static string NormalizeBillingRecordMatchId(string? value)
+    {
+        var normalizedGuid = NormalizeOptionalGuid(value);
+        return string.IsNullOrWhiteSpace(normalizedGuid)
+            ? value?.Trim() ?? ""
+            : normalizedGuid;
+    }
+
+    private static string NormalizeBillingExternalMatchId(string? value) =>
+        value?.Trim() ?? "";
+
+    private static string ResolveBillingPaymentStatusLabel(BillingRecordRow record, bool isOverdue)
+    {
+        if (record.HasPayment)
+            return "Con pago";
+
+        if (record.IsFullyCredited)
+            return "NC completa";
+
+        if (record.IsPartiallyCredited)
+            return isOverdue ? "Vencida con NC parcial" : "Pendiente con NC parcial";
+
+        return isOverdue ? "Vencida" : "Pendiente";
     }
 
     private IReadOnlyList<BillingDifferenceInvoiceDto> BuildDifferenceInvoices(IReadOnlyList<BillingRecordRow> currentEmission)
@@ -3927,7 +4981,7 @@ public sealed partial class DataverseService
                 ClientName = record.ClientName,
                 VerticalLabel = record.VerticalLabel,
                 PaymentDateDisplay = record.PaymentDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Sin fecha",
-                TotalInvoice = record.TotalInvoice,
+                TotalInvoice = record.NetTotalInvoice,
                 PaymentValue = record.PaymentValue,
                 RetentionsTotal = record.RetentionsTotal,
                 Difference = record.DifferenceValue,
@@ -4359,6 +5413,9 @@ public sealed partial class DataverseService
     private static decimal SumExpenseCurrency(IEnumerable<TaxExpenseRow> rows, Func<TaxExpenseRow, decimal> selector) =>
         RoundCurrency(rows.Sum(selector));
 
+    private static decimal SumCreditNoteCurrency(IEnumerable<ReconciliationDataverseCreditNoteRow> rows, Func<ReconciliationDataverseCreditNoteRow, decimal> selector) =>
+        RoundCurrency(rows.Sum(selector));
+
     private static decimal? CalculateGrowthPercent(decimal current, decimal previous)
     {
         if (previous == 0m)
@@ -4450,9 +5507,28 @@ public sealed partial class DataverseService
         public decimal RteIvaValue { get; set; }
         public decimal RteFteValue { get; set; }
         public decimal DifferenceValue { get; set; }
+        public decimal CreditNoteTotal { get; set; }
+        public decimal CreditNoteVat { get; set; }
+        public int CreditNoteCount { get; set; }
+        public bool UsesSiigoRevenueLedger { get; set; }
+        public bool IsCreditNoteLedgerEntry { get; set; }
+        public bool HasDataverseDimensionMatch { get; set; }
+        public decimal SuggestedWithholdingTotal { get; set; }
+        public decimal NetTotalInvoice => UsesSiigoRevenueLedger
+            ? RoundCurrency(TotalInvoice - VatValue)
+            : RoundCurrency(Math.Max(TotalInvoice - CreditNoteTotal, 0m));
+        public decimal NetVatValue => UsesSiigoRevenueLedger
+            ? RoundCurrency(VatValue)
+            : RoundCurrency(Math.Max(VatValue - CreditNoteVat, 0m));
+        public decimal NetBeforeVatValue => UsesSiigoRevenueLedger
+            ? NetTotalInvoice
+            : RoundCurrency(Math.Max(NetTotalInvoice - NetVatValue, 0m));
         public decimal RetentionsTotal => RoundCurrency(ReteIcaValue + RteIvaValue + RteFteValue);
         public bool HasPayment => PaymentDate.HasValue || PaymentValue > 0m;
-        public bool IsOverdue(DateOnly today) => !HasPayment && DueDate is not null && DueDate.Value < today;
+        public bool IsFullyCredited => CreditNoteCount > 0 && NetTotalInvoice <= 1m;
+        public bool IsPartiallyCredited => CreditNoteCount > 0 && !IsFullyCredited;
+        public bool IsPortfolioPending => !UsesSiigoRevenueLedger && !HasPayment && !IsFullyCredited && NetTotalInvoice > 0m;
+        public bool IsOverdue(DateOnly today) => IsPortfolioPending && DueDate is not null && DueDate.Value < today;
         public int GetOverdueDays(DateOnly today) => !IsOverdue(today) ? 0 : today.DayNumber - DueDate!.Value.DayNumber;
     }
 

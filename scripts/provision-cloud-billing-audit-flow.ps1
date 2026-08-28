@@ -9,7 +9,7 @@ param(
     [string]$SiigoUsername = "",
     [string]$SiigoAccessKey = "",
     [string]$SiigoPartnerId = "",
-    [string]$Recipients = "sruiz@digitaltechcolombia.com;adaza@digitaltechcolombia.com",
+    [string]$Recipients = "sruiz@digitaltechcolombia.com;msuarez@digitaltechcolombia.com",
     [int]$ReportHourBogota = 23,
     [int]$ReportMinuteBogota = 30,
     [switch]$SkipPacSolutionComponent
@@ -323,9 +323,7 @@ function New-CloudBillingAuditClientData {
 @{concat('<div style="font-family:Segoe UI,Arial,sans-serif;color:#17263c;"><h2 style="margin:0 0 8px;">Auditoria mensual de facturacion Cloud</h2><p style="margin:0 0 16px;color:#526173;">Periodo: ',outputs('Inicio_mes'),' a ',outputs('Fin_mes_inclusivo'),' | Corte Bogota: ',outputs('Hoy_Bogota'),'</p><table style="border-collapse:collapse;min-width:560px;margin:12px 0 18px;"><tr><th style="text-align:left;border:1px solid #d6dee6;padding:8px;background:#eef3f8;">Indicador</th><th style="text-align:right;border:1px solid #d6dee6;padding:8px;background:#eef3f8;">Cantidad</th></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Facturas Cloud emitidas en Dataverse</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(coalesce(body('Listar_facturas_dataverse')?['value'],json('[]')))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Productos Cloud con dia de facturacion revisados</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(coalesce(body('Listar_productos_cloud')?['value'],json('[]')))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Errores activos en productos Cloud</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(variables('varErrores'))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Productos Cloud sin emitir</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(variables('varSinEmitir'))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Facturas consultadas en Siigo</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(coalesce(body('Consultar_facturas_Siigo')?['results'],json('[]')))),' de ',string(coalesce(body('Consultar_facturas_Siigo')?['pagination']?['total_results'],length(coalesce(body('Consultar_facturas_Siigo')?['results'],json('[]'))))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Facturas Siigo en borrador</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(variables('varBorradorSiigo'))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Facturas Siigo rechazadas</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(variables('varRechazadasSiigo'))),'</td></tr><tr><td style="border:1px solid #d6dee6;padding:8px;">Facturas Siigo sin correo enviado</td><td style="border:1px solid #d6dee6;padding:8px;text-align:right;">',string(length(variables('varMailPendienteSiigo'))),'</td></tr></table>',if(greater(coalesce(body('Consultar_facturas_Siigo')?['pagination']?['total_results'],0),100),'<p style="color:#9a4d00;"><strong>Nota:</strong> Siigo devolvio mas de 100 facturas; este flujo reviso la primera pagina.</p>',''),'<h3>Productos sin emitir</h3><p>',if(equals(length(variables('varSinEmitir')),0),'Sin pendientes.',join(variables('varSinEmitir'),'<br>')),'</p><h3>Errores activos</h3><p>',if(equals(length(variables('varErrores')),0),'Sin errores activos.',join(variables('varErrores'),'<br>')),'</p><h3>Revision Siigo: borrador</h3><p>',if(equals(length(variables('varBorradorSiigo')),0),'Sin facturas en borrador.',join(variables('varBorradorSiigo'),'<br>')),'</p><h3>Revision Siigo: rechazadas</h3><p>',if(equals(length(variables('varRechazadasSiigo')),0),'Sin facturas rechazadas.',join(variables('varRechazadasSiigo'),'<br>')),'</p><h3>Revision Siigo: correo pendiente</h3><p>',if(equals(length(variables('varMailPendienteSiigo')),0),'Sin pendientes de correo segun Siigo.',join(variables('varMailPendienteSiigo'),'<br>')),'</p><p style="font-size:12px;color:#607080;margin-top:18px;">Criterio: productos Cloud facturables automaticos con dia de facturacion entre 1 y el dia de corte. Un producto se marca sin emitir cuando no tiene fecha ultima factura dentro del mes. La revision Siigo usa stamp.status y mail.status de /v1/invoices.</p><p style="font-size:12px;color:#607080;">Run: ',workflow()?['run']?['name'],'</p></div>')}
 '@
 
-    $emailSubject = @'
-@{concat('Auditoria facturacion Cloud - ',outputs('Inicio_mes'),' a ',outputs('Fin_mes_inclusivo'),if(or(greater(length(variables('varErrores')),0),greater(length(variables('varSinEmitir')),0),greater(length(variables('varBorradorSiigo')),0),greater(length(variables('varRechazadasSiigo')),0),greater(length(variables('varMailPendienteSiigo')),0)),' - REVISION',' - OK'))}
-'@
+    $emailSubject = "ERROR EN FACTURACION"
 
     $definition = [ordered]@{
         '$schema' = "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#"
@@ -543,15 +541,32 @@ function New-CloudBillingAuditClientData {
                 inputs = $emailBody
                 runAfter = @{ Por_factura_siigo = @("Succeeded") }
             }
-            Enviar_reporte = (New-SendEmailAction -Parameters ([ordered]@{
-                "emailMessage/To" = $ResolvedRecipients
-                "emailMessage/Subject" = $emailSubject
-                "emailMessage/Body" = "@outputs('Cuerpo_correo')"
-                "emailMessage/Importance" = "Normal"
-            }) -RunAfter @{ Cuerpo_correo = @("Succeeded") })
+            Enviar_reporte_si_hay_error_facturacion = [ordered]@{
+                type = "If"
+                expression = [ordered]@{
+                    or = @(
+                        [ordered]@{ greater = @("@length(variables('varErrores'))", 0) },
+                        [ordered]@{ greater = @("@length(variables('varSinEmitir'))", 0) },
+                        [ordered]@{ greater = @("@length(variables('varBorradorSiigo'))", 0) },
+                        [ordered]@{ greater = @("@length(variables('varRechazadasSiigo'))", 0) }
+                    )
+                }
+                actions = [ordered]@{
+                    Enviar_reporte = (New-SendEmailAction -Parameters ([ordered]@{
+                        "emailMessage/To" = $ResolvedRecipients
+                        "emailMessage/Subject" = $emailSubject
+                        "emailMessage/Body" = "@outputs('Cuerpo_correo')"
+                        "emailMessage/Importance" = "High"
+                    }))
+                }
+                else = [ordered]@{
+                    actions = [ordered]@{}
+                }
+                runAfter = @{ Cuerpo_correo = @("Succeeded") }
+            }
             Notificar_error_general = (New-SendEmailAction -Parameters ([ordered]@{
                 "emailMessage/To" = $ResolvedRecipients
-                "emailMessage/Subject" = "Auditoria facturacion Cloud - error de flujo"
+                "emailMessage/Subject" = $emailSubject
                 "emailMessage/Body" = "@concat('<p>No fue posible generar la auditoria mensual de facturacion Cloud.</p><p>Run: ',workflow()?['run']?['name'],'</p><p>Revisa el historial del flujo en Power Automate.</p>')"
                 "emailMessage/Importance" = "High"
             }) -RunAfter @{
@@ -695,7 +710,7 @@ $existing = Get-WorkflowByName $FlowName
 if ($null -eq $existing) {
     $body = @{
         name = $FlowName
-        description = "Envia el reporte mensual de auditoria de facturacion Cloud el dia 26 al final del dia."
+        description = "Envia el reporte mensual de auditoria de facturacion Cloud solo cuando hay errores de facturacion."
         category = 5
         type = 1
         mode = 0
@@ -721,7 +736,7 @@ if ($null -eq $existing) {
 
     Invoke-DataverseRaw -Method "PATCH" -Path "/api/data/v9.2/workflows($($existing.workflowid))" -Body @{
         name = $FlowName
-        description = "Envia el reporte mensual de auditoria de facturacion Cloud el dia 26 al final del dia."
+        description = "Envia el reporte mensual de auditoria de facturacion Cloud solo cuando hay errores de facturacion."
         modernflowtype = 0
         runas = 1
         scope = 4

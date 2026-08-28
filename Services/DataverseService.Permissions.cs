@@ -23,7 +23,8 @@ public sealed partial class DataverseService
             EmployeeFullNameField,
             EmployeeEmailField,
             _nominaEmployeeModulesField,
-            EmployeeUserLookupField
+            EmployeeUserLookupField,
+            "statecode"
         }.Distinct(StringComparer.OrdinalIgnoreCase));
 
         var orderBy = Uri.EscapeDataString($"{EmployeeFullNameField} asc");
@@ -62,6 +63,8 @@ public sealed partial class DataverseService
                 .Distinct()
                 .OrderBy(static value => value)
                 .ToList();
+            if (normalizedValues.Contains(CrmAccessPolicy.AdministratorOptionValue))
+                normalizedValues.Remove(CrmAccessPolicy.UserOptionValue);
 
             var payload = new Dictionary<string, object?>
             {
@@ -102,7 +105,8 @@ public sealed partial class DataverseService
             EmployeeFullNameField,
             EmployeeEmailField,
             _nominaEmployeeModulesField,
-            EmployeeUserLookupField
+            EmployeeUserLookupField,
+            "statecode"
         }.Distinct(StringComparer.OrdinalIgnoreCase));
 
         var filter = $"{EmployeeUserLookupField} eq {parsedSystemUserId:D}";
@@ -132,7 +136,8 @@ public sealed partial class DataverseService
             EmployeeFullNameField,
             EmployeeEmailField,
             _nominaEmployeeModulesField,
-            EmployeeUserLookupField
+            EmployeeUserLookupField,
+            "statecode"
         }.Distinct(StringComparer.OrdinalIgnoreCase));
 
         var filter = $"{EmployeeEmailField} eq '{EscapeOdataLiteral(email.Trim())}'";
@@ -160,6 +165,8 @@ public sealed partial class DataverseService
         return new EmployeeModulePermissionRowDto
         {
             EmployeeId = employeeId,
+            SystemUserId = NormalizeGuidOrEmpty(ReadString(employeeRecord, EmployeeUserLookupField)),
+            IsActive = ReadInt(employeeRecord, "statecode") == 0,
             EmployeeName = employeeName,
             UserDisplayName = lookupDisplayName,
             UserEmail = employeeEmail,

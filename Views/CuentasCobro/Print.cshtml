@@ -182,21 +182,55 @@
                     <td>@Model.Record.ValorTotal.ToString("N2")</td>
                 </tr>
                 <tr>
-                    <td>Rete fuente %</td>
-                    <td>@Model.Record.ReteFuentePorcentaje.ToString("N2")</td>
-                </tr>
-                <tr>
                     <td>Valor pago</td>
                     <td>@Model.Record.ValorPago.ToString("N2")</td>
                 </tr>
                 <tr>
-                    <td>Rete fuente valor</td>
-                    <td>@Model.Record.ReteFuenteValor.ToString("N2")</td>
+                    <td>Total retenciones</td>
+                    <td>@Model.Record.TotalRetentionsValue.ToString("N2")</td>
                 </tr>
                 <tr>
                     <td>Validacion</td>
                     <td>@(Model.Record.TotalesCuadran ? "Cuadra correctamente" : "No cuadra")</td>
                 </tr>
+            </tbody>
+        </table>
+
+        <table class="ccb-print__table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Retencion</th>
+                    <th>Base</th>
+                    <th>Tasa</th>
+                    <th>Valor</th>
+                    <th>Cuenta</th>
+                    <th>ID impuesto Siigo</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Record.Retentions.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7">Sin retenciones.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var retention in Model.Record.Retentions)
+                    {
+                        var rateUnit = string.Equals(retention.Kind, "ReteICA", StringComparison.OrdinalIgnoreCase) ? "‰" : "%";
+                        <tr>
+                            <td>@retention.Kind</td>
+                            <td>@retention.Label</td>
+                            <td>@retention.BaseValue.ToString("N2")</td>
+                            <td>@retention.Rate.ToString("N4") @rateUnit</td>
+                            <td>@retention.Value.ToString("N2")</td>
+                            <td>@(string.IsNullOrWhiteSpace(retention.AccountCode) ? "Sin cuenta" : retention.AccountCode)</td>
+                            <td>@(string.IsNullOrWhiteSpace(retention.TaxId) ? "Sin ID" : retention.TaxId)</td>
+                        </tr>
+                    }
+                }
             </tbody>
         </table>
 
@@ -217,7 +251,7 @@
         }
 
         <div class="ccb-print__footnote">
-            Este formato fue generado desde el modulo interno de cuentas de cobro. La validacion del total compara valor total contra valor pago + rete fuente valor.
+            Este formato fue generado desde el modulo interno de cuentas de cobro. La validacion compara el valor total contra valor pago + suma de retenciones.
         </div>
     </main>
 

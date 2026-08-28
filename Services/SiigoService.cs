@@ -23,7 +23,8 @@ public sealed class SiigoService : ISiigoService
     };
 
     private static readonly CultureInfo ColombianCulture = CultureInfo.GetCultureInfo("es-CO");
-    private const int RateLimitMaxRetries = 3;
+    private const int TransientReadMaxRetries = 3;
+    private const int TransientWriteMaxRetries = 3;
 
     private readonly HttpClient _httpClient;
     private readonly SiigoOptions _options;
@@ -84,66 +85,95 @@ public sealed class SiigoService : ISiigoService
             return Array.Empty<SiigoCustomerLookupItemDto>();
 
         var requestedTop = Math.Clamp(top, 1, 50);
+        var fetchTop = Math.Clamp(Math.Max(requestedTop, 10), 1, 50);
         var digits = ExtractDigits(search);
         var results = new Dictionary<string, SiigoCustomerLookupItemDto>(StringComparer.OrdinalIgnoreCase);
-        var customerTypes = new[] { "Customer", "Supplier", "Other" };
-        var activeStates = new[] { true, false };
 
         foreach (var identification in BuildIdentificationCandidates(digits))
         {
-            var unfilteredPage = await GetPagedAsync<SiigoCustomerApiDto>(
+            var page = await GetPagedAsync<SiigoCustomerApiDto>(
                 "v1/customers",
                 new[]
                 {
                     Pair("identification", identification),
                     Pair("page", "1"),
-                    Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
+                    Pair("page_size", fetchTop.ToString(CultureInfo.InvariantCulture))
                 },
                 ct);
 
-            AddCustomerResults(results, unfilteredPage.Results.Select(MapCustomer), requestedTop);
-            if (results.Count >= requestedTop)
-                return SortCustomers(results.Values).Take(requestedTop).ToList();
+            AddCustomerResults(results, page.Results.Select(MapCustomer), fetchTop);
+            if (results.Values.Any(customer => customer.Active && IsSameIdentificationCandidate(digits, ExtractDigits(customer.Identification))))
+                break;
+        }
 
-            var inactivePage = await GetPagedAsync<SiigoCustomerApiDto>(
-                "v1/customers",
-                new[]
+        if ((results.Count < requestedTop || digits.Length < 3) && search.Any(static value => char.IsLetter(value)))
+        {
+            var normalizedSearch = NormalizeSiigoLookupText(search);
+            var nameMatches = (await GetCustomersAsync(ct))
+                .Select(customer => new
                 {
-                    Pair("identification", identification),
-                    Pair("active", "false"),
-                    Pair("page", "1"),
-                    Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
-                },
-                ct);
+                    Customer = customer,
+                    Score = ScoreCustomerNameMatch(customer, normalizedSearch)
+                })
+                .Where(static item => item.Score > 0)
+                .OrderByDescending(static item => item.Score)
+                .ThenBy(static item => item.Customer.Active ? 0 : 1)
+                .ThenBy(static item => ResolveCustomerTypeOrder(item.Customer.Type))
+                .ThenBy(static item => item.Customer.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .Take(requestedTop)
+                .Select(static item => item.Customer);
 
-            AddCustomerResults(results, inactivePage.Results.Select(MapCustomer), requestedTop);
-            if (results.Count >= requestedTop)
-                return SortCustomers(results.Values).Take(requestedTop).ToList();
-
-            foreach (var customerType in customerTypes)
-            {
-                foreach (var active in activeStates)
-                {
-                    var exactPage = await GetPagedAsync<SiigoCustomerApiDto>(
-                        "v1/customers",
-                        new[]
-                        {
-                            Pair("identification", identification),
-                            Pair("active", active ? "true" : "false"),
-                            Pair("type", customerType),
-                            Pair("page", "1"),
-                            Pair("page_size", requestedTop.ToString(CultureInfo.InvariantCulture))
-                        },
-                        ct);
-
-                    AddCustomerResults(results, exactPage.Results.Select(MapCustomer), requestedTop);
-                    if (results.Count >= requestedTop)
-                        return SortCustomers(results.Values).Take(requestedTop).ToList();
-                }
-            }
+            AddCustomerResults(results, nameMatches, requestedTop);
         }
 
         return SortCustomers(results.Values).Take(requestedTop).ToList();
+    }
+
+    public async Task<ConciliacionSiigoOpenPurchaseSearchResultDto> GetOpenPurchasesAsync(
+        string? supplierId,
+        string? supplierQuery,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        if (startDate > endDate)
+            throw new InvalidOperationException("La fecha inicial no puede ser mayor que la fecha final.");
+
+        var supplier = await ResolveCustomerAsync(supplierId, supplierQuery, ct);
+        var supplierDigits = ExtractDigits(supplier.Identification);
+        if (supplierDigits.Length < 3)
+            throw new InvalidOperationException("El proveedor seleccionado no tiene identificacion valida para buscar compras en Siigo.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var purchases = await GetAllPagedAsync<SiigoPurchaseApiDto>(
+            "v1/purchases",
+            new[]
+            {
+                Pair("date_start", FormatSiigoDate(startDate)),
+                Pair("date_end", FormatSiigoDate(endDate.AddDays(1)))
+            },
+            pageSize,
+            maxPages,
+            ct);
+
+        var openPurchases = purchases
+            .Where(purchase => IsInsidePeriod(ParseSiigoDate(purchase.Date), startDate, endDate))
+            .Where(purchase => IsSameIdentificationCandidate(supplierDigits, ExtractDigits(purchase.Supplier?.Identification)))
+            .Where(static purchase => RoundCurrency(purchase.Balance) > 0m)
+            .Select(MapOpenPurchase)
+            .OrderBy(static purchase => purchase.DateValue, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static purchase => purchase.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new ConciliacionSiigoOpenPurchaseSearchResultDto
+        {
+            Message = openPurchases.Count == 0
+                ? $"No encontramos facturas de compra con saldo pendiente para {supplier.DisplayName}."
+                : $"Encontramos {openPurchases.Count:N0} factura{(openPurchases.Count == 1 ? "" : "s")} de compra con saldo pendiente.",
+            Supplier = MapConciliacionSupplier(supplier),
+            Purchases = openPurchases
+        };
     }
 
     public async Task<SiigoInvoiceSearchResultDto> GetInvoicesAsync(
@@ -170,7 +200,7 @@ public sealed class SiigoService : ISiigoService
                     Pair("customer_identification", customer.Identification),
                     Pair("customer_branch_office", customer.BranchOffice.ToString(CultureInfo.InvariantCulture)),
                     Pair("date_start", FormatSiigoDate(startDate)),
-                    Pair("date_end", FormatSiigoDate(endDate)),
+                    Pair("date_end", FormatSiigoDate(endDate.AddDays(1))),
                     Pair("page", page.ToString(CultureInfo.InvariantCulture)),
                     Pair("page_size", pageSize.ToString(CultureInfo.InvariantCulture))
                 },
@@ -183,6 +213,7 @@ public sealed class SiigoService : ISiigoService
         }
 
         var sortedInvoices = invoices
+            .Where(invoice => IsInsidePeriod(ParseSiigoDate(invoice.DateValue), startDate, endDate))
             .OrderByDescending(invoice => invoice.DateValue)
             .ThenBy(invoice => invoice.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -198,12 +229,55 @@ public sealed class SiigoService : ISiigoService
             PeriodLabel = $"{startDate:dd/MM/yyyy} - {endDate:dd/MM/yyyy}",
             HasData = sortedInvoices.Count > 0,
             RecordsCount = sortedInvoices.Count,
-            TotalAmount = sortedInvoices.Sum(static invoice => invoice.Total),
-            TotalBalance = sortedInvoices.Sum(static invoice => invoice.Balance),
+            TotalAmount = sortedInvoices.Sum(static invoice => invoice.GrossTotal),
+            TotalBalance = sortedInvoices.Sum(static invoice => invoice.GrossBalance),
             EmptyStateTitle = "Sin facturas en Siigo",
             EmptyStateMessage = $"No encontramos facturas de venta para {customer.DisplayName} entre {startDate:dd/MM/yyyy} y {endDate:dd/MM/yyyy}.",
             Invoices = sortedInvoices
         };
+    }
+
+    public async Task<IReadOnlyList<SiigoInvoiceRowDto>> GetInvoicesByDateRangeAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        if (startDate > endDate)
+            throw new InvalidOperationException("La fecha inicial no puede ser mayor que la fecha final.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxInvoicePages, 1, 100);
+        var invoices = await GetAllPagedAsync<SiigoInvoiceApiDto>(
+            "v1/invoices",
+            new[]
+            {
+                Pair("date_start", FormatSiigoDate(startDate)),
+                Pair("date_end", FormatSiigoDate(endDate.AddDays(1)))
+            },
+            pageSize,
+            maxPages,
+            ct);
+
+        return invoices
+            .Where(invoice => IsInsidePeriod(ParseSiigoDate(invoice.Date), startDate, endDate))
+            .Select(MapInvoice)
+            .OrderByDescending(invoice => invoice.DateValue)
+            .ThenBy(invoice => invoice.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public async Task<SiigoInvoiceRowDto?> GetInvoiceByIdAsync(
+        string invoiceId,
+        CancellationToken ct = default)
+    {
+        var normalizedId = (invoiceId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedId))
+            throw new InvalidOperationException("Debes indicar el id de la factura Siigo.");
+
+        var invoice = await GetAuthorizedJsonAsync<SiigoInvoiceApiDto>(
+            $"v1/invoices/{Uri.EscapeDataString(normalizedId)}",
+            ct);
+        return invoice is null ? null : MapInvoice(invoice);
     }
 
     public async Task<SiigoFinancialReconciliationData> GetFinancialReconciliationDocumentsAsync(
@@ -219,7 +293,7 @@ public sealed class SiigoService : ISiigoService
         var dateParameters = new[]
         {
             Pair("date_start", FormatSiigoDate(startDate)),
-            Pair("date_end", FormatSiigoDate(endDate))
+            Pair("date_end", FormatSiigoDate(endDate.AddDays(1)))
         };
 
         var invoicesTask = GetAllPagedAsync<SiigoInvoiceApiDto>("v1/invoices", dateParameters, pageSize, maxPages, ct);
@@ -245,6 +319,126 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    public async Task<SiigoFinancialReconciliationData> GetBillingDocumentsAsync(
+        DateOnly startInclusive,
+        DateOnly endExclusive,
+        CancellationToken ct = default)
+    {
+        if (startInclusive >= endExclusive)
+            throw new InvalidOperationException("La fecha inicial debe ser menor que la fecha final exclusiva.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var dateParameters = new[]
+        {
+            Pair("date_start", FormatSiigoDate(startInclusive)),
+            Pair("date_end", FormatSiigoDate(endExclusive))
+        };
+
+        var invoicesTask = GetAllPagedAsync<SiigoInvoiceApiDto>("v1/invoices", dateParameters, pageSize, maxPages, ct);
+        var creditNotesTask = GetAllPagedAsync<SiigoCreditNoteApiDto>("v1/credit-notes", dateParameters, pageSize, maxPages, ct);
+
+        await Task.WhenAll(invoicesTask, creditNotesTask);
+
+        return new SiigoFinancialReconciliationData
+        {
+            Invoices = invoicesTask.Result
+                .Select(MapReconciliationInvoice)
+                .Where(row => IsInsideHalfOpenPeriod(row.Date, startInclusive, endExclusive))
+                .ToList(),
+            CreditNotes = creditNotesTask.Result
+                .Select(MapReconciliationCreditNote)
+                .Where(row => IsInsideHalfOpenPeriod(row.Date, startInclusive, endExclusive))
+                .ToList()
+        };
+    }
+
+    public async Task<IReadOnlyList<SiigoReconciliationPurchase>> GetPurchasesByDateRangeAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        if (startDate > endDate)
+            throw new InvalidOperationException("La fecha inicial no puede ser mayor que la fecha final.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var purchases = await GetAllPagedAsync<SiigoPurchaseApiDto>(
+            "v1/purchases",
+            new[]
+            {
+                Pair("date_start", FormatSiigoDate(startDate)),
+                Pair("date_end", FormatSiigoDate(endDate.AddDays(1)))
+            },
+            pageSize,
+            maxPages,
+            ct,
+            failOnTruncation: true);
+
+        return purchases
+            .Select(MapReconciliationPurchase)
+            .Where(row => IsInsidePeriod(row.Date, startDate, endDate))
+            .OrderByDescending(static row => row.Date)
+            .ThenBy(static row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<SiigoReconciliationPurchase?> GetPurchaseByIdAsync(
+        string purchaseId,
+        CancellationToken ct = default)
+    {
+        var normalizedId = (purchaseId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(normalizedId))
+            throw new InvalidOperationException("Debes indicar el id de la compra Siigo.");
+
+        var purchase = await GetAuthorizedJsonAsync<SiigoPurchaseApiDto>(
+            $"v1/purchases/{Uri.EscapeDataString(normalizedId)}",
+            ct);
+        return purchase is null ? null : MapReconciliationPurchase(purchase);
+    }
+
+    public async Task<decimal?> GetAccountsPayableBalanceAsync(
+        string supplierIdentification,
+        string duePrefix,
+        int dueConsecutive,
+        int dueQuote = 1,
+        CancellationToken ct = default)
+    {
+        var identification = ExtractDigits(supplierIdentification);
+        var prefix = (duePrefix ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(identification)
+            || string.IsNullOrWhiteSpace(prefix)
+            || dueConsecutive <= 0
+            || dueQuote <= 0)
+        {
+            throw new InvalidOperationException("El vencimiento de cuenta por pagar no tiene una identidad valida.");
+        }
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var rows = await GetAllPagedAsync<SiigoAccountsPayableApiDto>(
+            "v1/accounts-payable",
+            new[] { Pair("provider_identification", identification) },
+            pageSize,
+            maxPages,
+            ct,
+            failOnTruncation: true);
+        var matches = rows
+            .Where(row => row.Due is not null
+                && row.Due.Prefix.Equals(prefix, StringComparison.OrdinalIgnoreCase)
+                && row.Due.Consecutive == dueConsecutive
+                && row.Due.Quote == dueQuote)
+            .ToArray();
+        if (matches.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"Siigo devolvio {matches.Length:N0} saldos para el vencimiento "
+                + $"{prefix}-{dueConsecutive}, cuota {dueQuote}.");
+        }
+
+        return matches.Length == 0 ? null : RoundCurrency(matches[0].Due!.Balance);
+    }
+
     public async Task<IReadOnlyList<SiigoObservedAccountDto>> GetObservedAccountCatalogAsync(
         DateOnly startDate,
         DateOnly endDate,
@@ -258,7 +452,7 @@ public sealed class SiigoService : ISiigoService
         var dateParameters = new[]
         {
             Pair("date_start", FormatSiigoDate(startDate)),
-            Pair("date_end", FormatSiigoDate(endDate))
+            Pair("date_end", FormatSiigoDate(endDate.AddDays(1)))
         };
 
         var journalsTask = GetAllPagedAsync<SiigoAccountingDocumentApiDto>("v1/journals", dateParameters, pageSize, maxPages, ct);
@@ -426,16 +620,43 @@ public sealed class SiigoService : ISiigoService
         if (payload is null)
             throw new ArgumentNullException(nameof(payload));
 
-        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/customers", payload, idempotencyKey, ct);
+        var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
+        var expectedIdentification = ReadPayloadString(payloadJson, "identification");
+        if (string.IsNullOrWhiteSpace(expectedIdentification))
+            throw new InvalidOperationException("El payload del tercero Siigo debe incluir una identificacion.");
+
+        var rawBody = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "v1/customers",
+            payload,
+            idempotencyKey,
+            ct,
+            allowEmptySuccessResponse: true);
         try
         {
             var customer = JsonSerializer.Deserialize<SiigoCustomerApiDto>(rawBody, JsonOptions)
                 ?? throw new InvalidOperationException("Siigo creo el tercero, pero no devolvio datos.");
-            return MapCustomer(customer);
+            var mapped = MapCustomer(customer);
+            if (string.IsNullOrWhiteSpace(mapped.Id))
+                throw new InvalidOperationException("La respuesta exitosa no incluyo el id del tercero.");
+            if (string.IsNullOrWhiteSpace(mapped.Identification))
+                throw new InvalidOperationException("La respuesta exitosa no incluyo la identificacion del tercero.");
+            if (!AreEquivalentIdentifications(mapped.Identification, expectedIdentification))
+            {
+                throw new InvalidOperationException(
+                    $"La respuesta exitosa devolvio la identificacion '{mapped.Identification}', distinta de la solicitada '{expectedIdentification}'.");
+            }
+
+            return mapped;
         }
-        catch (JsonException ex)
+        catch (Exception ex) when ((ex is JsonException or InvalidOperationException)
+                                   && ex is not SiigoSupplierCreateException)
         {
-            throw new InvalidOperationException("Siigo creo el tercero, pero no fue posible interpretar la respuesta.", ex);
+            throw new SiigoSupplierCreateException(
+                "Siigo creo el tercero, pero no devolvio una confirmacion durable y coherente. No se repetira el POST hasta verificar el proveedor.",
+                payloadJson,
+                ex,
+                isAmbiguous: true);
         }
     }
 
@@ -449,6 +670,130 @@ public sealed class SiigoService : ISiigoService
 
         var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/purchases", payload, idempotencyKey, ct);
         return ParseCreatedAccountingDocument(rawBody, "Siigo creo la factura de compra, pero no fue posible interpretar la respuesta.");
+    }
+
+    public async Task<SiigoVoucherCreateResultDto> CreatePurchaseSupportDocumentAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default)
+    {
+        if (payload is null)
+            throw new ArgumentNullException(nameof(payload));
+
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/purchase-support-documents", payload, idempotencyKey, ct);
+        return ParseCreatedAccountingDocument(rawBody, "Siigo creo el documento soporte, pero no fue posible interpretar la respuesta.");
+    }
+
+    public async Task<SiigoVoucherCreateResultDto> CreatePaymentReceiptAsync(
+        object payload,
+        string? idempotencyKey = null,
+        CancellationToken ct = default)
+    {
+        if (payload is null)
+            throw new ArgumentNullException(nameof(payload));
+
+        var rawBody = await SendAuthorizedJsonAsync(HttpMethod.Post, "v1/payment-receipts", payload, idempotencyKey, ct);
+        return ParseCreatedAccountingDocument(rawBody, "Siigo creo el recibo de pago/egreso, pero no fue posible interpretar la respuesta.");
+    }
+
+    public async Task<SiigoVoucherCreateResultDto?> FindPaymentReceiptByObservationAsync(
+        string uniqueObservation,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        var marker = (uniqueObservation ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(marker))
+            throw new InvalidOperationException("Debes indicar el identificador unico del recibo de pago/egreso.");
+        if (endDate < startDate)
+            throw new InvalidOperationException("El rango para buscar el recibo de pago/egreso no es valido.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var documents = await GetAllPagedAsync<SiigoAccountingDocumentApiDto>(
+            "v1/payment-receipts",
+            new[]
+            {
+                Pair("created_start", FormatSiigoDate(startDate)),
+                Pair("created_end", FormatSiigoDate(endDate.AddDays(1)))
+            },
+            pageSize,
+            maxPages,
+            ct,
+            failOnTruncation: true);
+        var matches = documents
+            .Where(document => document.Observations.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (matches.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"Siigo devolvio {matches.Length:N0} recibos de pago/egreso con el identificador unico {marker}; "
+                + "se detuvo la conciliacion para evitar asociar el documento incorrecto.");
+        }
+        if (matches.Length == 0)
+            return null;
+
+        var match = matches[0];
+        var detail = await GetAuthorizedJsonAsync<JsonElement>(
+            $"v1/payment-receipts/{Uri.EscapeDataString(match.Id)}",
+            ct);
+        return new SiigoVoucherCreateResultDto
+        {
+            Id = match.Id,
+            Name = match.Name,
+            Date = match.Date,
+            RawJson = JsonSerializer.Serialize(detail, new JsonSerializerOptions(JsonOptions) { WriteIndented = true })
+        };
+    }
+
+    public async Task<SiigoVoucherCreateResultDto?> FindJournalByObservationAsync(
+        string uniqueObservation,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken ct = default)
+    {
+        var marker = (uniqueObservation ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(marker))
+            throw new InvalidOperationException("Debes indicar el identificador unico del comprobante contable.");
+        if (endDate < startDate)
+            throw new InvalidOperationException("El rango para buscar el comprobante contable no es valido.");
+
+        var pageSize = Math.Clamp(_options.PageSize, 25, 100);
+        var maxPages = Math.Clamp(_options.MaxReconciliationPages, 1, 500);
+        var documents = await GetAllPagedAsync<SiigoAccountingDocumentApiDto>(
+            "v1/journals",
+            new[]
+            {
+                Pair("created_start", FormatSiigoDate(startDate)),
+                Pair("created_end", FormatSiigoDate(endDate.AddDays(1)))
+            },
+            pageSize,
+            maxPages,
+            ct,
+            failOnTruncation: true);
+        var matches = documents
+            .Where(document => document.Observations.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (matches.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"Siigo devolvio {matches.Length:N0} comprobantes contables con el identificador unico {marker}; "
+                + "se detuvo la conciliacion para evitar asociar el documento incorrecto.");
+        }
+        if (matches.Length == 0)
+            return null;
+
+        var match = matches[0];
+        var detail = await GetAuthorizedJsonAsync<JsonElement>(
+            $"v1/journals/{Uri.EscapeDataString(match.Id)}",
+            ct);
+        return new SiigoVoucherCreateResultDto
+        {
+            Id = match.Id,
+            Name = match.Name,
+            Date = match.Date,
+            RawJson = JsonSerializer.Serialize(detail, new JsonSerializerOptions(JsonOptions) { WriteIndented = true })
+        };
     }
 
     public async Task<SiigoVoucherCreateResultDto> CreateVoucherAsync(
@@ -481,7 +826,7 @@ public sealed class SiigoService : ISiigoService
         {
             using var document = JsonDocument.Parse(rawBody);
             var root = document.RootElement;
-            return new SiigoVoucherCreateResultDto
+            var result = new SiigoVoucherCreateResultDto
             {
                 Id = ReadJsonString(root, "id"),
                 Name = ReadJsonString(root, "name"),
@@ -489,6 +834,10 @@ public sealed class SiigoService : ISiigoService
                 Date = ReadJsonString(root, "date"),
                 RawJson = JsonSerializer.Serialize(root, new JsonSerializerOptions(JsonOptions) { WriteIndented = true })
             };
+            if (string.IsNullOrWhiteSpace(result.Id) && string.IsNullOrWhiteSpace(result.Name))
+                throw new InvalidOperationException($"{parseErrorMessage} La respuesta exitosa no incluyo id ni nombre del documento.");
+
+            return result;
         }
         catch (JsonException ex)
         {
@@ -554,10 +903,12 @@ public sealed class SiigoService : ISiigoService
         IEnumerable<KeyValuePair<string, string?>> parameters,
         int pageSize,
         int maxPages,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool failOnTruncation = false)
     {
         var results = new List<T>();
         var baseParameters = parameters.ToList();
+        var reachedKnownEnd = false;
 
         for (var page = 1; page <= maxPages; page++)
         {
@@ -571,7 +922,17 @@ public sealed class SiigoService : ISiigoService
             results.AddRange(response.Results);
 
             if (ShouldStopPaging(response.Pagination, page, pageSize, response.Results.Count))
+            {
+                reachedKnownEnd = true;
                 break;
+            }
+        }
+
+        if (failOnTruncation && !reachedKnownEnd)
+        {
+            throw new InvalidOperationException(
+                $"La consulta de {path} alcanzo el limite configurado de {maxPages:N0} pagina(s) sin confirmar el final. "
+                + "No es seguro crear documentos porque podria existir una compra fuera del resultado consultado.");
         }
 
         return results;
@@ -579,26 +940,47 @@ public sealed class SiigoService : ISiigoService
 
     private async Task<T> GetAuthorizedJsonAsync<T>(string relativeUrl, CancellationToken ct)
     {
-        for (var attempt = 0; attempt <= RateLimitMaxRetries; attempt++)
+        var transientAttempt = 0;
+        var authorizationRetried = false;
+        while (true)
         {
-            using var response = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            HttpResponseMessage response;
+            try
             {
-                InvalidateToken();
-                using var retryResponse = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
-                if (await DelayIfRateLimitedAsync(retryResponse, attempt, ct))
-                    continue;
-
-                return await ReadJsonResponseAsync<T>(retryResponse, ct);
+                response = await SendAuthorizedAsync(HttpMethod.Get, relativeUrl, ct);
+            }
+            catch (HttpRequestException ex) when (transientAttempt < TransientReadMaxRetries)
+            {
+                await DelayAfterTransientReadExceptionAsync(ex, transientAttempt, ct);
+                transientAttempt++;
+                continue;
+            }
+            catch (TaskCanceledException ex) when (!ct.IsCancellationRequested
+                                                   && transientAttempt < TransientReadMaxRetries)
+            {
+                await DelayAfterTransientReadExceptionAsync(ex, transientAttempt, ct);
+                transientAttempt++;
+                continue;
             }
 
-            if (await DelayIfRateLimitedAsync(response, attempt, ct))
-                continue;
+            using (response)
+            {
+                if (response.StatusCode == HttpStatusCode.Unauthorized && !authorizationRetried)
+                {
+                    authorizationRetried = true;
+                    InvalidateToken();
+                    continue;
+                }
 
-            return await ReadJsonResponseAsync<T>(response, ct);
+                if (await DelayIfTransientReadFailureAsync(response, transientAttempt, ct))
+                {
+                    transientAttempt++;
+                    continue;
+                }
+
+                return await ReadJsonResponseAsync<T>(response, ct);
+            }
         }
-
-        throw new InvalidOperationException("Siigo no permitio completar la consulta por limite de solicitudes.");
     }
 
     private async Task<string> SendAuthorizedJsonAsync(
@@ -606,17 +988,58 @@ public sealed class SiigoService : ISiigoService
         string relativeUrl,
         object payload,
         string? idempotencyKey,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool allowEmptySuccessResponse = false)
     {
-        using var response = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, idempotencyKey, ct);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        var effectiveIdempotencyKey = SupportsSiigoIdempotency(relativeUrl)
+            ? idempotencyKey
+            : null;
+        var transientAttempt = 0;
+        var authorizationRetried = false;
+        while (true)
         {
-            InvalidateToken();
-            using var retryResponse = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, idempotencyKey, ct);
-            return await ReadRawJsonResponseAsync(retryResponse, ct);
-        }
+            HttpResponseMessage response;
+            try
+            {
+                response = await SendAuthorizedWithJsonAsync(method, relativeUrl, payload, effectiveIdempotencyKey, ct);
+            }
+            catch (HttpRequestException ex) when (CanRetryTransientWrite(method, effectiveIdempotencyKey, transientAttempt))
+            {
+                await DelayAfterTransientWriteExceptionAsync(ex, transientAttempt, ct);
+                transientAttempt++;
+                continue;
+            }
+            catch (TaskCanceledException ex) when (!ct.IsCancellationRequested
+                                                   && CanRetryTransientWrite(method, effectiveIdempotencyKey, transientAttempt))
+            {
+                await DelayAfterTransientWriteExceptionAsync(ex, transientAttempt, ct);
+                transientAttempt++;
+                continue;
+            }
 
-        return await ReadRawJsonResponseAsync(response, ct);
+            using (response)
+            {
+                if (response.StatusCode == HttpStatusCode.Unauthorized && !authorizationRetried)
+                {
+                    authorizationRetried = true;
+                    InvalidateToken();
+                    continue;
+                }
+
+                if (await DelayIfTransientWriteFailureAsync(
+                        response,
+                        method,
+                        effectiveIdempotencyKey,
+                        transientAttempt,
+                        ct))
+                {
+                    transientAttempt++;
+                    continue;
+                }
+
+                return await ReadRawJsonResponseAsync(response, ct, allowEmptySuccessResponse);
+            }
+        }
     }
 
     private async Task<HttpResponseMessage> SendAuthorizedWithJsonAsync(
@@ -738,7 +1161,10 @@ public sealed class SiigoService : ISiigoService
         }
     }
 
-    private async Task<string> ReadRawJsonResponseAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task<string> ReadRawJsonResponseAsync(
+        HttpResponseMessage response,
+        CancellationToken ct,
+        bool allowEmptySuccessResponse = false)
     {
         var rawBody = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
@@ -748,27 +1174,143 @@ public sealed class SiigoService : ISiigoService
             throw new InvalidOperationException($"Siigo respondio {(int)response.StatusCode}: {message}");
         }
 
-        if (string.IsNullOrWhiteSpace(rawBody))
+        if (string.IsNullOrWhiteSpace(rawBody) && !allowEmptySuccessResponse)
             throw new InvalidOperationException("Siigo devolvio una respuesta vacia.");
 
         return rawBody;
     }
 
-    private async Task<bool> DelayIfRateLimitedAsync(HttpResponseMessage response, int attempt, CancellationToken ct)
+    private async Task<bool> DelayIfTransientReadFailureAsync(
+        HttpResponseMessage response,
+        int attempt,
+        CancellationToken ct)
     {
-        if (response.StatusCode != HttpStatusCode.TooManyRequests || attempt >= RateLimitMaxRetries)
+        if (!IsTransientReadStatus(response.StatusCode) || attempt >= TransientReadMaxRetries)
             return false;
 
         var rawBody = await response.Content.ReadAsStringAsync(ct);
-        var delay = ResolveRateLimitDelay(response, rawBody, attempt);
+        var delay = response.StatusCode == HttpStatusCode.TooManyRequests
+            ? ResolveRateLimitDelay(response, rawBody, attempt)
+            : ResolveTransientWriteDelay(response, attempt);
         _logger.LogWarning(
-            "Siigo API limitó la consulta ({StatusCode}). Esperando {DelaySeconds} segundos antes de reintentar. Intento {Attempt}/{MaxAttempts}.",
+            "Siigo no pudo completar temporalmente una consulta ({StatusCode}: {Message}). Reintentando en {DelaySeconds} segundos. Intento {Attempt}/{MaxAttempts}.",
             (int)response.StatusCode,
+            ResolveSiigoErrorMessage(rawBody),
             delay.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
             attempt + 1,
-            RateLimitMaxRetries + 1);
+            TransientReadMaxRetries + 1);
         await Task.Delay(delay, ct);
         return true;
+    }
+
+    private async Task DelayAfterTransientReadExceptionAsync(Exception ex, int attempt, CancellationToken ct)
+    {
+        var delay = ResolveTransientWriteDelay(null, attempt);
+        _logger.LogWarning(
+            ex,
+            "La consulta a Siigo fallo temporalmente antes de recibir respuesta. Reintentando en {DelaySeconds} segundos. Intento {Attempt}/{MaxAttempts}.",
+            delay.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
+            attempt + 1,
+            TransientReadMaxRetries + 1);
+        await Task.Delay(delay, ct);
+    }
+
+    private async Task<bool> DelayIfTransientWriteFailureAsync(
+        HttpResponseMessage response,
+        HttpMethod method,
+        string? idempotencyKey,
+        int attempt,
+        CancellationToken ct)
+    {
+        var canRetryWithIdempotency = CanRetryTransientWrite(method, idempotencyKey, attempt);
+        var canRetryRejectedRateLimit = CanRetryRateLimitedWrite(method, response.StatusCode, attempt);
+        if ((!canRetryWithIdempotency && !canRetryRejectedRateLimit)
+            || !IsTransientWriteStatus(response.StatusCode))
+        {
+            return false;
+        }
+
+        var rawBody = await response.Content.ReadAsStringAsync(ct);
+        var delay = response.StatusCode == HttpStatusCode.TooManyRequests
+            ? ResolveRateLimitDelay(response, rawBody, attempt)
+            : ResolveTransientWriteDelay(response, attempt);
+        _logger.LogWarning(
+            "Siigo no pudo procesar temporalmente una escritura ({StatusCode}: {Message}). Reintentando en {DelaySeconds} segundos. Intento {Attempt}/{MaxAttempts}.",
+            (int)response.StatusCode,
+            ResolveSiigoErrorMessage(rawBody),
+            delay.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
+            attempt + 1,
+            TransientWriteMaxRetries + 1);
+        await Task.Delay(delay, ct);
+        return true;
+    }
+
+    private async Task DelayAfterTransientWriteExceptionAsync(Exception ex, int attempt, CancellationToken ct)
+    {
+        var delay = ResolveTransientWriteDelay(null, attempt);
+        _logger.LogWarning(
+            ex,
+            "La escritura en Siigo fallo temporalmente antes de recibir respuesta. Reintentando con la misma clave de idempotencia en {DelaySeconds} segundos. Intento {Attempt}/{MaxAttempts}.",
+            delay.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
+            attempt + 1,
+            TransientWriteMaxRetries + 1);
+        await Task.Delay(delay, ct);
+    }
+
+    private static bool CanRetryTransientWrite(HttpMethod method, string? idempotencyKey, int attempt) =>
+        method == HttpMethod.Post
+        && !string.IsNullOrWhiteSpace(idempotencyKey)
+        && attempt < TransientWriteMaxRetries;
+
+    internal static bool CanRetryRateLimitedWrite(HttpMethod method, HttpStatusCode statusCode, int attempt) =>
+        method == HttpMethod.Post
+        && statusCode == HttpStatusCode.TooManyRequests
+        && attempt < TransientWriteMaxRetries;
+
+    internal static bool IsTransientReadStatus(HttpStatusCode statusCode) => statusCode is
+        HttpStatusCode.RequestTimeout
+        or HttpStatusCode.TooManyRequests
+        or HttpStatusCode.InternalServerError
+        or HttpStatusCode.BadGateway
+        or HttpStatusCode.ServiceUnavailable
+        or HttpStatusCode.GatewayTimeout;
+
+    private static bool SupportsSiigoIdempotency(string relativeUrl)
+    {
+        var path = (relativeUrl ?? "").Split('?', 2)[0].Trim('/');
+        return path.Equals("v1/invoices", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("v1/credit-notes", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("v1/journals", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("v1/vouchers", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTransientWriteStatus(HttpStatusCode statusCode) => statusCode is
+        HttpStatusCode.RequestTimeout
+        or HttpStatusCode.TooManyRequests
+        or HttpStatusCode.InternalServerError
+        or HttpStatusCode.BadGateway
+        or HttpStatusCode.ServiceUnavailable
+        or HttpStatusCode.GatewayTimeout;
+
+    private static TimeSpan ResolveTransientWriteDelay(HttpResponseMessage? response, int attempt)
+    {
+        if (response?.Headers.RetryAfter?.Delta is { } delta && delta > TimeSpan.Zero)
+            return ClampRateLimitDelay(delta);
+
+        if (response?.Headers.RetryAfter?.Date is { } date)
+        {
+            var until = date - DateTimeOffset.UtcNow;
+            if (until > TimeSpan.Zero)
+                return ClampRateLimitDelay(until);
+        }
+
+        var seconds = attempt switch
+        {
+            0 => 3,
+            1 => 8,
+            _ => 18
+        };
+        return TimeSpan.FromSeconds(seconds);
     }
 
     private static TimeSpan ResolveRateLimitDelay(HttpResponseMessage response, string rawBody, int attempt)
@@ -876,6 +1418,14 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    private static string ReadPayloadString(string payloadJson, string propertyName)
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        return document.RootElement.ValueKind == JsonValueKind.Object
+            ? ReadJsonString(document.RootElement, propertyName).Trim()
+            : "";
+    }
+
     private static SiigoCustomerLookupItemDto MapCustomer(SiigoCustomerApiDto customer)
     {
         var name = ResolveName(customer.Name);
@@ -922,6 +1472,15 @@ public sealed class SiigoService : ISiigoService
         if (DateOnly.TryParse(invoice.Date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             dateDisplay = date.ToString("dd/MM/yyyy", ColombianCulture);
 
+        var vat = SumVat(invoice.Items);
+        var suggestedWithholdingTotal = SumSuggestedWithholdings(invoice.Items, invoice.Retentions);
+        var grossTotal = RoundCurrency(invoice.Total + suggestedWithholdingTotal);
+        var grossBalance = RoundCurrency(invoice.Balance);
+        if (grossBalance > 0m)
+            grossBalance = RoundCurrency(grossBalance + suggestedWithholdingTotal);
+
+        var dueReference = ResolveInvoiceDueReference(invoice);
+
         return new SiigoInvoiceRowDto
         {
             Id = invoice.Id?.Trim() ?? "",
@@ -933,7 +1492,18 @@ public sealed class SiigoService : ISiigoService
             CustomerIdentification = invoice.Customer?.Identification?.Trim() ?? "",
             CustomerBranchOffice = invoice.Customer?.BranchOffice ?? 0,
             Total = invoice.Total,
+            GrossTotal = grossTotal,
+            SuggestedWithholdingTotal = suggestedWithholdingTotal,
+            Vat = vat,
             Balance = invoice.Balance,
+            GrossBalance = grossBalance,
+            DuePrefix = dueReference.Prefix,
+            DueConsecutive = dueReference.Consecutive,
+            DueQuote = dueReference.Quote,
+            DueDateValue = dueReference.DateValue,
+            DueDateDisplay = dueReference.DateDisplay,
+            HasExactDueReference = dueReference.IsExact,
+            DueReferenceIssue = dueReference.Issue,
             StampStatus = invoice.Stamp?.Status?.Trim() ?? "",
             StampObservations = invoice.Stamp?.Observations?.Trim() ?? "",
             StampErrors = invoice.Stamp?.Errors?.Trim() ?? "",
@@ -943,8 +1513,149 @@ public sealed class SiigoService : ISiigoService
         };
     }
 
+    private static SiigoInvoiceDueReference ResolveInvoiceDueReference(SiigoInvoiceApiDto invoice)
+    {
+        var dueDates = (invoice.Payments ?? Array.Empty<SiigoInvoicePaymentApiDto>())
+            .Select(static payment => payment.DueDate)
+            .ToArray();
+        if (!TryResolveInvoiceDueReference(
+                invoice.Name,
+                invoice.Number,
+                dueDates,
+                out var prefix,
+                out var number,
+                out var quote,
+                out var dateValue,
+                out var issue))
+        {
+            return new SiigoInvoiceDueReference(prefix, number, quote, dateValue, "", false, issue);
+        }
+
+        var dueDate = DateOnly.ParseExact(dateValue, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        return new SiigoInvoiceDueReference(
+            prefix,
+            number,
+            quote,
+            dateValue,
+            dueDate.ToString("dd/MM/yyyy", ColombianCulture),
+            true,
+            "");
+    }
+
+    internal static bool TryResolveInvoiceDueReference(
+        string? invoiceName,
+        long? invoiceNumber,
+        IReadOnlyList<string>? paymentDueDates,
+        out string prefix,
+        out int consecutive,
+        out int quote,
+        out string dateValue,
+        out string issue)
+    {
+        prefix = "";
+        consecutive = invoiceNumber is > 0 and <= int.MaxValue
+            ? (int)invoiceNumber.Value
+            : 0;
+        quote = 0;
+        dateValue = "";
+        issue = "";
+
+        if (!TryResolveInvoiceDuePrefix(invoiceName, consecutive, out prefix))
+        {
+            issue = $"Siigo no devolvio un nombre de cartera valido para {(invoiceName ?? "la factura").Trim()}.";
+            return false;
+        }
+
+        var dueDates = (paymentDueDates ?? Array.Empty<string>())
+            .Where(static dueDate => !string.IsNullOrWhiteSpace(dueDate))
+            .Select(static dueDate => dueDate.Trim())
+            .ToArray();
+        if (dueDates.Length != 1)
+        {
+            issue = dueDates.Length == 0
+                ? $"La factura {invoiceName} no devolvio la fecha de su vencimiento en Siigo."
+                : $"La factura {invoiceName} devolvio {dueDates.Length:N0} vencimientos; selecciona una factura con un unico vencimiento.";
+            return false;
+        }
+
+        quote = 1;
+        if (!DateOnly.TryParseExact(
+                dueDates[0],
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var dueDate))
+        {
+            issue = $"La fecha de vencimiento que Siigo devolvio para {invoiceName} no es valida.";
+            return false;
+        }
+
+        dateValue = dueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return true;
+    }
+
+    private static bool TryResolveInvoiceDuePrefix(string? invoiceName, int consecutive, out string prefix)
+    {
+        prefix = "";
+        if (consecutive <= 0)
+            return false;
+
+        var normalized = Regex.Replace((invoiceName ?? "").Trim().ToUpperInvariant(), @"\s+", "-", RegexOptions.CultureInvariant);
+        normalized = Regex.Replace(normalized, @"-+", "-", RegexOptions.CultureInvariant).Trim('-');
+        var match = Regex.Match(normalized, @"^(?<prefix>.+)-(?<consecutive>\d+)$", RegexOptions.CultureInvariant);
+        if (!match.Success
+            || !int.TryParse(match.Groups["consecutive"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedConsecutive)
+            || parsedConsecutive != consecutive)
+        {
+            return false;
+        }
+
+        prefix = match.Groups["prefix"].Value.Trim('-');
+        return !string.IsNullOrWhiteSpace(prefix);
+    }
+
+    private static ConciliacionSiigoOpenPurchaseDto MapOpenPurchase(SiigoPurchaseApiDto purchase)
+    {
+        var dateDisplay = "";
+        if (DateOnly.TryParse(purchase.Date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            dateDisplay = date.ToString("dd/MM/yyyy", ColombianCulture);
+
+        var providerPrefix = purchase.ProviderInvoice?.Prefix?.Trim() ?? "";
+        var providerNumber = purchase.ProviderInvoice?.Number?.Trim() ?? "";
+        return new ConciliacionSiigoOpenPurchaseDto
+        {
+            Id = purchase.Id?.Trim() ?? "",
+            Name = purchase.Name?.Trim() ?? "",
+            DateValue = purchase.Date?.Trim() ?? "",
+            DateDisplay = dateDisplay,
+            SupplierIdentification = purchase.Supplier?.Identification?.Trim() ?? "",
+            SupplierBranchOffice = purchase.Supplier?.BranchOffice ?? 0,
+            ProviderInvoicePrefix = providerPrefix,
+            ProviderInvoiceNumber = providerNumber,
+            ProviderInvoiceFullNumber = BuildProviderInvoiceFullNumber(providerPrefix, providerNumber),
+            Total = RoundCurrency(purchase.Total),
+            Balance = RoundCurrency(purchase.Balance)
+        };
+    }
+
+    private static ConciliacionSiigoSupplierLookupDto MapConciliacionSupplier(SiigoCustomerLookupItemDto customer) =>
+        new()
+        {
+            Id = customer.Id,
+            DisplayName = customer.DisplayName,
+            Name = customer.Name,
+            CommercialName = customer.CommercialName,
+            Identification = customer.Identification,
+            Type = customer.Type,
+            BranchOffice = customer.BranchOffice,
+            Active = customer.Active
+        };
+
     private static SiigoReconciliationInvoice MapReconciliationInvoice(SiigoInvoiceApiDto invoice)
     {
+        var suggestedWithholdingTotal = SumSuggestedWithholdings(invoice.Items, invoice.Retentions);
+
         return new SiigoReconciliationInvoice
         {
             Id = invoice.Id?.Trim() ?? "",
@@ -956,13 +1667,18 @@ public sealed class SiigoService : ISiigoService
             CustomerIdentification = invoice.Customer?.Identification?.Trim() ?? "",
             Total = RoundCurrency(invoice.Total),
             Vat = SumVat(invoice.Items),
+            SuggestedWithholdingTotal = suggestedWithholdingTotal,
+            GrossTotal = RoundCurrency(invoice.Total + suggestedWithholdingTotal),
             Annulled = invoice.Annulled,
+            StampStatus = invoice.Stamp?.Status?.Trim() ?? "",
             RawJson = JsonSerializer.Serialize(invoice, JsonOptions)
         };
     }
 
     private static SiigoReconciliationCreditNote MapReconciliationCreditNote(SiigoCreditNoteApiDto creditNote)
     {
+        var suggestedWithholdingTotal = SumSuggestedWithholdings(creditNote.Items, creditNote.Retentions);
+
         return new SiigoReconciliationCreditNote
         {
             Id = creditNote.Id?.Trim() ?? "",
@@ -980,6 +1696,8 @@ public sealed class SiigoService : ISiigoService
             Cude = creditNote.Stamp?.Cude?.Trim() ?? "",
             Total = RoundCurrency(creditNote.Total),
             Vat = SumVat(creditNote.Items),
+            SuggestedWithholdingTotal = suggestedWithholdingTotal,
+            GrossTotal = RoundCurrency(creditNote.Total + suggestedWithholdingTotal),
             RawJson = JsonSerializer.Serialize(creditNote, JsonOptions)
         };
     }
@@ -998,6 +1716,9 @@ public sealed class SiigoService : ISiigoService
             ProviderInvoicePrefix = providerPrefix,
             ProviderInvoiceNumber = providerNumber,
             ProviderInvoiceFullNumber = BuildProviderInvoiceFullNumber(providerPrefix, providerNumber),
+            PaymentDueDate = purchase.Payments
+                .Select(static payment => ParseSiigoDate(payment.DueDate))
+                .FirstOrDefault(static dueDate => dueDate.HasValue),
             Total = RoundCurrency(purchase.Total),
             Vat = SumVat(purchase.Items),
             Balance = RoundCurrency(purchase.Balance)
@@ -1025,7 +1746,6 @@ public sealed class SiigoService : ISiigoService
 
                 var name = NormalizeObservedAccountName(FirstNonEmpty(
                     item.Account?.Name,
-                    item.Description,
                     code));
 
                 if (!target.TryGetValue(code, out var existing))
@@ -1067,8 +1787,13 @@ public sealed class SiigoService : ISiigoService
         if (string.IsNullOrWhiteSpace(current) || string.Equals(current, code, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        return current.Contains(" Base:", StringComparison.OrdinalIgnoreCase)
-            && !candidate.Contains(" Base:", StringComparison.OrdinalIgnoreCase);
+        if (IsLikelyObservedAccountLineDescription(current)
+            && !IsLikelyObservedAccountLineDescription(candidate))
+        {
+            return true;
+        }
+
+        return ScoreObservedAccountName(candidate, code) > ScoreObservedAccountName(current, code);
     }
 
     private static string NormalizeObservedAccountName(string value)
@@ -1079,6 +1804,43 @@ public sealed class SiigoService : ISiigoService
             normalized = normalized[..baseIndex].Trim();
 
         return Truncate(normalized, 120);
+    }
+
+    private static int ScoreObservedAccountName(string name, string code)
+    {
+        var normalized = NormalizeObservedAccountName(name);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return 0;
+
+        if (string.Equals(normalized, code, StringComparison.OrdinalIgnoreCase))
+            return 10;
+
+        if (IsLikelyObservedAccountLineDescription(normalized))
+            return 20;
+
+        return 50;
+    }
+
+    private static bool IsLikelyObservedAccountLineDescription(string value)
+    {
+        var normalized = NormalizeSiigoLookupText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        if (normalized.Contains(" base:", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length < 3)
+            return false;
+
+        return normalized.StartsWith("nomina ", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("pago nomina ", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("pago banco ", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("proveedor ", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("cuenta de cobro ", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("clientes nacionales ", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("ajuste al peso ", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string MergeObservedAccountSources(string current, string source)
@@ -1169,6 +1931,58 @@ public sealed class SiigoService : ISiigoService
         }
     }
 
+    private static int ScoreCustomerNameMatch(SiigoCustomerLookupItemDto customer, string normalizedSearch)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedSearch))
+            return 0;
+
+        var display = NormalizeSiigoLookupText(customer.DisplayName);
+        var name = NormalizeSiigoLookupText(customer.Name);
+        var commercial = NormalizeSiigoLookupText(customer.CommercialName);
+        var identification = NormalizeSiigoLookupText(customer.Identification);
+        if (string.Equals(identification, normalizedSearch, StringComparison.OrdinalIgnoreCase))
+            return 100;
+        if (display.StartsWith(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+            || commercial.StartsWith(normalizedSearch, StringComparison.OrdinalIgnoreCase))
+        {
+            return 80;
+        }
+        if (display.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+            || name.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+            || commercial.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
+        {
+            return 60;
+        }
+
+        var tokens = normalizedSearch
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(static token => token.Length >= 2)
+            .ToArray();
+        if (tokens.Length > 1 && tokens.All(token => display.Contains(token, StringComparison.OrdinalIgnoreCase)
+            || name.Contains(token, StringComparison.OrdinalIgnoreCase)
+            || commercial.Contains(token, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 40;
+        }
+
+        return 0;
+    }
+
+    private static string NormalizeSiigoLookupText(string? value)
+    {
+        var text = (value ?? "").Trim().ToUpperInvariant();
+        text = text
+            .Replace("Á", "A", StringComparison.Ordinal)
+            .Replace("É", "E", StringComparison.Ordinal)
+            .Replace("Í", "I", StringComparison.Ordinal)
+            .Replace("Ó", "O", StringComparison.Ordinal)
+            .Replace("Ú", "U", StringComparison.Ordinal)
+            .Replace("Ü", "U", StringComparison.Ordinal)
+            .Replace("Ñ", "N", StringComparison.Ordinal);
+        return Regex.Replace(text, @"\s+", " ", RegexOptions.CultureInvariant).Trim();
+    }
+
     private static IReadOnlyList<string> BuildIdentificationCandidates(string digits)
     {
         if (digits.Length < 3)
@@ -1190,6 +2004,18 @@ public sealed class SiigoService : ISiigoService
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static bool IsSameIdentificationCandidate(string leftDigits, string rightDigits)
+    {
+        if (string.IsNullOrWhiteSpace(leftDigits) || string.IsNullOrWhiteSpace(rightDigits))
+            return false;
+
+        if (string.Equals(leftDigits, rightDigits, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return (leftDigits.Length >= 9 && leftDigits.Length == rightDigits.Length + 1 && leftDigits.StartsWith(rightDigits, StringComparison.OrdinalIgnoreCase))
+            || (rightDigits.Length >= 9 && rightDigits.Length == leftDigits.Length + 1 && rightDigits.StartsWith(leftDigits, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ShouldStopPaging(SiigoPaginationApiDto? pagination, int page, int pageSize, int returnedCount)
@@ -1241,6 +2067,9 @@ public sealed class SiigoService : ISiigoService
     private static bool IsInsidePeriod(DateOnly? date, DateOnly startDate, DateOnly endDate) =>
         date.HasValue && date.Value >= startDate && date.Value <= endDate;
 
+    private static bool IsInsideHalfOpenPeriod(DateOnly? date, DateOnly startInclusive, DateOnly endExclusive) =>
+        date.HasValue && date.Value >= startInclusive && date.Value < endExclusive;
+
     private static DateTimeOffset? ParseSiigoDateTimeOffset(string? value) =>
         DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
             ? parsed
@@ -1248,6 +2077,14 @@ public sealed class SiigoService : ISiigoService
 
     private static string ExtractDigits(string? value) =>
         new((value ?? "").Where(char.IsDigit).ToArray());
+
+    private static bool AreEquivalentIdentifications(string actual, string expected)
+    {
+        var actualDigits = ExtractDigits(actual);
+        var expectedDigits = ExtractDigits(expected);
+        return actualDigits.Length > 0
+            && string.Equals(actualDigits, expectedDigits, StringComparison.Ordinal);
+    }
 
     private static decimal SumVat(IReadOnlyList<SiigoDocumentItemApiDto>? items)
     {
@@ -1262,9 +2099,38 @@ public sealed class SiigoService : ISiigoService
         return RoundCurrency(total);
     }
 
+    private static decimal SumSuggestedWithholdings(
+        IReadOnlyList<SiigoDocumentItemApiDto>? items,
+        IReadOnlyList<SiigoDocumentTaxApiDto>? retentions)
+    {
+        var itemWithholdings = (items ?? Array.Empty<SiigoDocumentItemApiDto>())
+            .SelectMany(static item => item.Taxes ?? Array.Empty<SiigoDocumentTaxApiDto>());
+        var invoiceWithholdings = retentions ?? Array.Empty<SiigoDocumentTaxApiDto>();
+
+        return RoundCurrency(itemWithholdings
+            .Concat(invoiceWithholdings)
+            .Where(static tax => tax.Value > 0m
+                && (IsWithholdingTax(tax.Type) || IsWithholdingTax(tax.Name)))
+            .Sum(static tax => tax.Value));
+    }
+
+    private static bool IsWithholdingTax(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Trim();
+        return normalized.Contains("RETE", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("RETENCION", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("WITHHOLD", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsVatTax(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        if (IsWithholdingTax(value))
             return false;
 
         var normalized = value.Trim();
@@ -1436,6 +2302,9 @@ public sealed class SiigoService : ISiigoService
         [JsonPropertyName("balance")]
         public decimal Balance { get; set; }
 
+        [JsonPropertyName("retentions")]
+        public IReadOnlyList<SiigoDocumentTaxApiDto> Retentions { get; set; } = Array.Empty<SiigoDocumentTaxApiDto>();
+
         [JsonPropertyName("stamp")]
         public SiigoInvoiceStampApiDto? Stamp { get; set; }
 
@@ -1445,9 +2314,36 @@ public sealed class SiigoService : ISiigoService
         [JsonPropertyName("items")]
         public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
 
+        [JsonPropertyName("payments")]
+        public IReadOnlyList<SiigoInvoicePaymentApiDto> Payments { get; set; } = Array.Empty<SiigoInvoicePaymentApiDto>();
+
         [JsonPropertyName("annulled")]
         public bool Annulled { get; set; }
     }
+
+    private sealed class SiigoInvoicePaymentApiDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public decimal Value { get; set; }
+
+        [JsonPropertyName("due_date")]
+        public string DueDate { get; set; } = "";
+    }
+
+    private sealed record SiigoInvoiceDueReference(
+        string Prefix,
+        int Consecutive,
+        int Quote,
+        string DateValue,
+        string DateDisplay,
+        bool IsExact,
+        string Issue);
 
     private sealed class SiigoCreditNoteApiDto
     {
@@ -1481,8 +2377,27 @@ public sealed class SiigoService : ISiigoService
         [JsonPropertyName("total")]
         public decimal Total { get; set; }
 
+        [JsonPropertyName("retentions")]
+        public IReadOnlyList<SiigoDocumentTaxApiDto> Retentions { get; set; } = Array.Empty<SiigoDocumentTaxApiDto>();
+
         [JsonPropertyName("items")]
         public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+
+    }
+
+    private sealed class SiigoPurchasePaymentApiDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public decimal Value { get; set; }
+
+        [JsonPropertyName("due_date")]
+        public string DueDate { get; set; } = "";
     }
 
     private sealed class SiigoPurchaseApiDto
@@ -1510,6 +2425,9 @@ public sealed class SiigoService : ISiigoService
 
         [JsonPropertyName("items")]
         public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+
+        [JsonPropertyName("payments")]
+        public IReadOnlyList<SiigoPurchasePaymentApiDto> Payments { get; set; } = Array.Empty<SiigoPurchasePaymentApiDto>();
     }
 
     private sealed class SiigoAccountingDocumentApiDto
@@ -1523,8 +2441,38 @@ public sealed class SiigoService : ISiigoService
         [JsonPropertyName("date")]
         public string Date { get; set; } = "";
 
+        [JsonPropertyName("observations")]
+        public string Observations { get; set; } = "";
+
         [JsonPropertyName("items")]
         public IReadOnlyList<SiigoDocumentItemApiDto> Items { get; set; } = Array.Empty<SiigoDocumentItemApiDto>();
+    }
+
+    private sealed class SiigoAccountsPayableApiDto
+    {
+        [JsonPropertyName("due")]
+        public SiigoAccountsPayableDueApiDto? Due { get; set; }
+    }
+
+    private sealed class SiigoAccountsPayableDueApiDto
+    {
+        [JsonPropertyName("prefix")]
+        public string Prefix { get; set; } = "";
+
+        [JsonPropertyName("consecutive")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public int Consecutive { get; set; }
+
+        [JsonPropertyName("quote")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public int Quote { get; set; }
+
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = "";
+
+        [JsonPropertyName("balance")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public decimal Balance { get; set; }
     }
 
     private sealed class SiigoDocumentReferenceApiDto

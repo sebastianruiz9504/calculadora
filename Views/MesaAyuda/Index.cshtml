@@ -1,0 +1,284 @@
+@model CotizadorInterno.Web.Models.MesaAyuda.MesaAyudaPageViewModel
+@{
+    ViewData["Title"] = "Mesa de ayuda";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/mesa-ayuda.css" asp-append-version="true" />
+}
+
+<section class="help-desk"
+         id="helpDeskApp"
+         aria-labelledby="helpDeskTitle"
+         data-workspace-url="@Url.Action("Workspace", "MesaAyuda")"
+         data-analyze-url="@Url.Action("Analyze", "MesaAyuda")"
+         data-message-url="@Url.Action("Message", "MesaAyuda")"
+         data-ai-configured="@Model.AiConfigured.ToString().ToLowerInvariant()"
+         data-schema-provisioned="@Model.SchemaProvisioned.ToString().ToLowerInvariant()">
+    @Html.AntiForgeryToken()
+
+    <header class="help-desk__toolbar">
+        <div class="help-desk__heading">
+            <span class="help-desk__eyebrow">Operaciones de soporte</span>
+            <div class="help-desk__title-row">
+                <h1 id="helpDeskTitle">Mesa de ayuda</h1>
+                <span class="help-desk__mode">
+                    <span aria-hidden="true"></span>
+                    Acceso controlado
+                </span>
+            </div>
+            <p>Casos, auditoría, decisiones y evidencia en un mismo expediente.</p>
+        </div>
+
+        <div class="help-desk__toolbar-actions">
+            <label class="help-desk__search">
+                <span class="visually-hidden">Buscar tickets</span>
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="m21 21-4.5-4.5m2.5-5A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z" />
+                </svg>
+                <input type="search"
+                       inputmode="search"
+                       autocomplete="off"
+                       placeholder="Buscar caso o cliente"
+                       data-ticket-search />
+            </label>
+            <button class="help-desk__icon-button"
+                    type="button"
+                    title="Actualizar casos"
+                    aria-label="Actualizar casos"
+                    data-reload>
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="M20 6v5h-5M4 18v-5h5m9.3-3A7 7 0 0 0 6.1 7.1L4 11m16 2-2.1 3.9A7 7 0 0 1 5.7 14" />
+                </svg>
+            </button>
+            <button class="help-desk__quiet-button"
+                    type="button"
+                    data-open-governance>
+                Controles
+            </button>
+        </div>
+    </header>
+
+    <div class="help-desk__global-status"
+         role="status"
+         aria-live="polite"
+         data-global-status
+         hidden></div>
+
+    <section class="help-desk__workspace"
+             aria-label="Espacio de trabajo de soporte"
+             aria-busy="true"
+             data-workspace>
+        <aside class="help-desk__queues" aria-label="Colas de soporte">
+            <div class="help-desk__pane-heading">
+                <span>Colas</span>
+                <small data-queue-total>0</small>
+            </div>
+            <nav class="help-desk__queue-nav" data-queue-nav>
+                <div class="help-desk__skeleton help-desk__skeleton--queue"></div>
+                <div class="help-desk__skeleton help-desk__skeleton--queue"></div>
+                <div class="help-desk__skeleton help-desk__skeleton--queue"></div>
+            </nav>
+            <div class="help-desk__queue-foot">
+                <span class="help-desk__avatar" aria-hidden="true">SR</span>
+                <span>
+                    <strong>@Model.CurrentUserName</strong>
+                    <small>Agente autorizado</small>
+                </span>
+            </div>
+        </aside>
+
+        <section class="help-desk__ticket-pane" aria-label="Lista de tickets">
+            <div class="help-desk__pane-heading help-desk__pane-heading--tickets">
+                <span data-list-title>Todos los casos</span>
+                <small data-list-count>0</small>
+            </div>
+            <div class="help-desk__ticket-list" data-ticket-list>
+                <div class="help-desk__ticket-skeleton">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="help-desk__ticket-skeleton">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="help-desk__ticket-skeleton">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="help-desk__case-pane" aria-label="Expediente del ticket" data-case-pane>
+            <div class="help-desk__empty-case" data-empty-case>
+                <span class="help-desk__empty-symbol" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M5 4h10l4 4v12H5V4Zm10 0v5h4M8 13h8M8 17h5" />
+                    </svg>
+                </span>
+                <h2>Selecciona un caso</h2>
+                <p>Abre un expediente para revisar el contexto, la auditoría y las decisiones registradas.</p>
+            </div>
+
+            <div class="help-desk__case" data-case hidden>
+                <header class="help-desk__case-header">
+                    <button class="help-desk__back-button"
+                            type="button"
+                            aria-label="Volver a la lista de tickets"
+                            data-mobile-back>
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="m15 18-6-6 6-6" />
+                        </svg>
+                    </button>
+                    <div class="help-desk__case-title">
+                        <div class="help-desk__case-reference">
+                            <span data-case-reference></span>
+                            <span class="help-desk__status" data-case-status></span>
+                        </div>
+                        <h2 tabindex="-1" data-case-title></h2>
+                        <p data-case-client></p>
+                    </div>
+                    <div class="help-desk__case-actions">
+                        <button class="help-desk__quiet-button"
+                                type="button"
+                                data-copy-reference>
+                            Copiar ID
+                        </button>
+                    </div>
+                </header>
+
+                <div class="help-desk__tenant-guard" data-tenant-guard>
+                    <div class="help-desk__tenant-guard-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 3 5 6v5c0 4.6 2.9 8.5 7 10 4.1-1.5 7-5.4 7-10V6l-7-3Zm-3 9 2 2 4-4" />
+                        </svg>
+                    </div>
+                    <div>
+                        <strong>Tenant de destino</strong>
+                        <span data-tenant-summary>Sin confirmar</span>
+                    </div>
+                    <span class="help-desk__guard-state" data-tenant-state>Bloqueado para cambios</span>
+                </div>
+
+                <div class="help-desk__case-body">
+                    <section class="help-desk__timeline-pane" aria-label="Bitácora del caso">
+                        <div class="help-desk__section-heading">
+                            <div>
+                                <span>Expediente</span>
+                                <small>Bitácora cronológica y verificable</small>
+                            </div>
+                            <span class="help-desk__provisional-note"
+                                  data-provisional-reference
+                                  hidden>Referencia temporal</span>
+                        </div>
+                        <ol class="help-desk__timeline" data-timeline></ol>
+                    </section>
+
+                    <aside class="help-desk__inspector" aria-label="Contexto del caso">
+                        <section>
+                            <h3>Contexto</h3>
+                            <dl class="help-desk__facts">
+                                <div><dt>Cliente</dt><dd data-fact-client></dd></div>
+                                <div><dt>Responsable</dt><dd data-fact-agent></dd></div>
+                                <div><dt>Categoría</dt><dd data-fact-category></dd></div>
+                                <div><dt>Carga</dt><dd data-fact-workload></dd></div>
+                                <div><dt>Última actividad</dt><dd data-fact-activity></dd></div>
+                            </dl>
+                        </section>
+                        <section>
+                            <h3>Flujo previsto de control</h3>
+                            <ol class="help-desk__progress" aria-label="Flujo previsto de investigación y remediación">
+                                <li class="is-current" data-flow-step="audit">
+                                    <span></span><div><strong>Auditar</strong><small>Reunir evidencia</small></div>
+                                </li>
+                                <li data-flow-step="propose">
+                                    <span></span><div><strong>Proponer</strong><small>Fase futura · no habilitada</small></div>
+                                </li>
+                                <li data-flow-step="approve">
+                                    <span></span><div><strong>Aprobar</strong><small>Fase futura · no habilitada</small></div>
+                                </li>
+                                <li data-flow-step="execute">
+                                    <span></span><div><strong>Ejecutar</strong><small>Fase futura · no habilitada</small></div>
+                                </li>
+                                <li data-flow-step="verify">
+                                    <span></span><div><strong>Verificar</strong><small>Fase futura · no habilitada</small></div>
+                                </li>
+                            </ol>
+                        </section>
+                        <section class="help-desk__readiness" data-readiness>
+                            <h3>Estado técnico</h3>
+                            <p data-readiness-copy></p>
+                        </section>
+                    </aside>
+                </div>
+
+                <form class="help-desk__composer" data-audit-form>
+                    <div class="help-desk__composer-row">
+                        <div class="help-desk__composer-mode">
+                            <span>Auditor IA</span>
+                            <small>Analiza únicamente; la ejecución y remediación aún no están habilitadas.</small>
+                        </div>
+                        <span class="help-desk__composer-state" data-composer-state></span>
+                    </div>
+                    <label for="helpDeskInstruction" class="visually-hidden">Instrucción adicional para el auditor</label>
+                    <textarea id="helpDeskInstruction"
+                              rows="2"
+                              maxlength="4000"
+                              autocomplete="off"
+                              placeholder="Pide una comprobación, agrega contexto o solicita profundizar…"
+                              data-audit-instruction></textarea>
+                    <div class="help-desk__composer-actions">
+                        <span data-audit-status role="status" aria-live="polite"></span>
+                        <button class="help-desk__quiet-button"
+                                type="button"
+                                data-message-submit>
+                            Guardar nota
+                        </button>
+                        <button class="help-desk__primary-button"
+                                type="submit"
+                                data-audit-submit>
+                            Auditar caso
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </section>
+
+    <dialog class="help-desk__dialog" data-governance-dialog aria-labelledby="governanceTitle">
+        <form method="dialog">
+            <header>
+                <div>
+                    <span class="help-desk__eyebrow">Gobierno de acciones</span>
+                    <h2 id="governanceTitle">Controles previstos para cambios</h2>
+                </div>
+                <button class="help-desk__dialog-close"
+                        type="submit"
+                        value="cancel"
+                        aria-label="Cerrar controles">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="m6 6 12 12M18 6 6 18" />
+                    </svg>
+                </button>
+            </header>
+            <div class="help-desk__dialog-body">
+                <p>La versión actual audita y registra hallazgos. La ejecución, remediación y aprobación de cambios todavía no están habilitadas.</p>
+                <p>Antes de habilitarlas, la aplicación deberá congelar una versión exacta con tenant, recurso, antes/después, herramienta, riesgo, verificación, rollback, vencimiento y hash.</p>
+                <ol>
+                    <li>Ningún “sí” escrito en el chat autoriza una acción.</li>
+                    <li>Cualquier diferencia entre el plan aprobado y el estado actual invalida la aprobación.</li>
+                    <li>Un resultado HTTP exitoso no cierra el caso: se exige lectura posterior y evidencia.</li>
+                    <li>Se aplica una redacción local conservadora antes del modelo, pero el agente no debe incluir tokens, sesiones, MFA ni secretos.</li>
+                </ol>
+                <div class="help-desk__dialog-state">
+                    <strong>Entrega actual</strong>
+                    <span>Expediente durable y auditoría estructurada. No hay conectores de ejecución o remediación habilitados.</span>
+                </div>
+            </div>
+            <footer>
+                <button class="help-desk__primary-button" type="submit" value="ok">Entendido</button>
+            </footer>
+        </form>
+    </dialog>
+</section>
+
+@section Scripts {
+    <script src="~/js/mesa-ayuda.js" asp-append-version="true"></script>
+}

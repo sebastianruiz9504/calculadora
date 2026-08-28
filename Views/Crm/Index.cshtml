@@ -1,0 +1,1183 @@
+@model CotizadorInterno.Web.Models.Crm.CrmWorkspaceViewModel
+@using System.Globalization
+@using System.Linq
+@using CotizadorInterno.Web.Models.Crm
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    ViewData["Title"] = "CRM";
+    var culture = CultureInfo.GetCultureInfo("es-CO");
+    string Money(decimal value) => value.ToString("C0", culture);
+    string Initials(string firstName, string lastName)
+    {
+        var first = string.IsNullOrWhiteSpace(firstName) ? "" : firstName.Trim()[0].ToString();
+        var last = string.IsNullOrWhiteSpace(lastName) ? "" : lastName.Trim()[0].ToString();
+        return string.Concat(first, last).ToUpperInvariant();
+    }
+    string ActivityRelation(CrmActivitySummary activity) =>
+        !string.IsNullOrWhiteSpace(activity.DealName) ? activity.DealName :
+        !string.IsNullOrWhiteSpace(activity.ContactName) ? activity.ContactName :
+        !string.IsNullOrWhiteSpace(activity.CompanyName) ? activity.CompanyName :
+        "Sin asociación";
+    string LifecycleLabel(CrmContactSummary contact) => contact.LifecycleValue switch
+    {
+        (int)CrmContactLifecycle.Lead => "Lead",
+        (int)CrmContactLifecycle.MarketingQualified => "MQL",
+        (int)CrmContactLifecycle.SalesQualified => "SQL",
+        (int)CrmContactLifecycle.Customer => "Cliente",
+        (int)CrmContactLifecycle.Inactive => "Inactivo",
+        _ => string.IsNullOrWhiteSpace(contact.LifecycleLabel) ? "Sin etapa" : contact.LifecycleLabel
+    };
+    TimeZoneInfo BogotaTimeZone()
+    {
+        foreach (var id in new[] { "SA Pacific Standard Time", "America/Bogota" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(id);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+    var bogotaTimeZone = BogotaTimeZone();
+    DateTimeOffset InBogota(DateTimeOffset value) => TimeZoneInfo.ConvertTime(value, bogotaTimeZone);
+
+    var openStageValues = Model.DealStages.Where(stage => !stage.IsClosed).Select(stage => stage.Value).ToHashSet();
+    var openDeals = Model.Deals.Items.Where(deal => openStageValues.Contains(deal.StageValue)).ToList();
+    var openPipelineValue = openDeals.Sum(deal => deal.PipelineValue);
+    var plannedActivities = Model.Activities.Items.Count(activity => activity.StatusValue == (int)CrmActivityStatus.Planned);
+    var companyLifecycleById = Model.Companies.Items
+        .Where(company => !string.IsNullOrWhiteSpace(company.Id))
+        .GroupBy(company => company.Id, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.First().LifecycleLabel, StringComparer.OrdinalIgnoreCase);
+    var performancePeriod = Model.Performance.FromUtc == default || Model.Performance.ToUtc == default
+        ? "Periodo actual"
+        : $"{Model.Performance.FromUtc.ToString("dd MMM", culture)} – {Model.Performance.ToUtc.ToString("dd MMM", culture)}";
+    string CrmPageUrl(
+        int? companyPage = null,
+        int? contactPage = null,
+        int? dealPage = null,
+        int? activityPage = null) =>
+        Url.Action("Index", "Crm", new
+        {
+            Search = Model.Query.Search,
+            Stage = Model.Query.Stage,
+            CompanyPage = companyPage ?? Model.Query.CompanyPage,
+            ContactPage = contactPage ?? Model.Query.ContactPage,
+            DealPage = dealPage ?? Model.Query.DealPage,
+            ActivityPage = activityPage ?? Model.Query.ActivityPage,
+            Model.Query.PageSize,
+            Model.Query.PerformanceDays,
+            ViewAsOwnerId = Model.Access.ViewAsOwnerId
+        }) ?? "#";
+    string CrmDetailUrlTemplate(string action)
+    {
+        var sentinel = Guid.Empty.ToString("D");
+        return (Url.Action(
+                action,
+                "Crm",
+                new
+                {
+                    id = Guid.Empty,
+                    ViewAsOwnerId = Model.Access.ViewAsOwnerId
+                }) ?? "")
+            .Replace(sentinel, "__id__", StringComparison.Ordinal);
+    }
+    ViewData["CrmIsAdministrator"] = Model.Access.IsAdministrator;
+    ViewData["CrmViewAsOwnerId"] = Model.Access.ViewAsOwnerId;
+    ViewData["CrmScopeOptions"] = Model.Access.Owners
+        .Select(owner => new SelectListItem
+        {
+            Value = owner.Id,
+            Text = string.IsNullOrWhiteSpace(owner.Email)
+                ? owner.Name
+                : $"{owner.Name} · {owner.Email}",
+            Selected = string.Equals(owner.Id, Model.Access.ViewAsOwnerId, StringComparison.OrdinalIgnoreCase)
+        })
+        .ToList();
+    ViewData["CrmDealContactOptions"] = Model.Contacts.Items
+        .OrderBy(contact => contact.FullName)
+        .Select(contact => new SelectListItem
+        {
+            Value = contact.Id,
+            Text = string.IsNullOrWhiteSpace(contact.CompanyName)
+                ? contact.FullName
+                : $"{contact.FullName} · {contact.CompanyName}",
+            Group = new SelectListGroup { Name = contact.CompanyId }
+        })
+        .ToList();
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/crm.css" asp-append-version="true" />
+}
+
+<div class="crm-app"
+     id="crmApp"
+     data-create-company-url="@Url.Action("CreateCompany", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-create-contact-url="@Url.Action("CreateContact", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-create-activity-url="@Url.Action("CreateActivity", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-create-deal-url="@Url.Action("CreateDeal", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-search-companies-url="@Url.Action("SearchCompanies", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-calculator-url="@Url.Action("Index", "Calculator")"
+     data-update-stage-url="@Url.Action("UpdateDealStage", "Crm", new { ViewAsOwnerId = Model.Access.ViewAsOwnerId })"
+     data-company-detail-url-template="@CrmDetailUrlTemplate("Company")"
+     data-contact-detail-url-template="@CrmDetailUrlTemplate("Contact")"
+     data-deal-detail-url-template="@CrmDetailUrlTemplate("Deal")"
+     data-activity-detail-url-template="@CrmDetailUrlTemplate("Activity")"
+     data-view-as-owner-id="@Model.Access.ViewAsOwnerId"
+     data-lost-stage-value="@((int)CrmDealStage.Lost)"
+     data-won-stage-value="@((int)CrmDealStage.Won)"
+     data-quoted-deal-kind="@((int)CrmDealKind.QuotedBusiness)"
+     data-lead-company-lifecycle="@((int)CrmCompanyLifecycle.Lead)"
+     data-active-company-lifecycle="@((int)CrmCompanyLifecycle.ActiveCustomer)"
+     data-inactive-company-lifecycle="@((int)CrmCompanyLifecycle.Inactive)"
+     data-lead-contact-lifecycle="@((int)CrmContactLifecycle.Lead)"
+     data-customer-contact-lifecycle="@((int)CrmContactLifecycle.Customer)"
+     data-inactive-contact-lifecycle="@((int)CrmContactLifecycle.Inactive)"
+     data-planned-activity-status="@((int)CrmActivityStatus.Planned)"
+     data-completed-activity-status="@((int)CrmActivityStatus.Completed)"
+     data-meeting-activity-type="@((int)CrmActivityType.Meeting)">
+    @Html.AntiForgeryToken()
+
+    <div class="crm-workspace">
+        <aside class="crm-sidebar" data-crm-sidebar>
+            <a class="crm-sidebar__brand"
+               href="#crm-resumen"
+               data-crm-view-target="resumen"
+               aria-label="Ir al resumen del CRM">
+                <span class="crm-sidebar__brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M5 6.5h14M5 12h9M5 17.5h11"></path>
+                    </svg>
+                </span>
+                <span class="crm-sidebar__brand-label">CRM</span>
+            </a>
+
+            <nav class="crm-sidebar__nav" aria-label="Secciones del CRM">
+                <a class="crm-sidebar__item is-active"
+                   id="crmNavResumen"
+                   href="#crm-resumen"
+                   title="Resumen"
+                   data-crm-nav="resumen"
+                   aria-controls="crm-resumen"
+                   aria-current="page">
+                    <span class="crm-sidebar__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <rect x="4" y="4" width="6" height="6" rx="1"></rect>
+                            <rect x="14" y="4" width="6" height="6" rx="1"></rect>
+                            <rect x="4" y="14" width="6" height="6" rx="1"></rect>
+                            <rect x="14" y="14" width="6" height="6" rx="1"></rect>
+                        </svg>
+                    </span>
+                    <span class="crm-sidebar__label">Resumen</span>
+                </a>
+                <a class="crm-sidebar__item"
+                   id="crmNavContactos"
+                   href="#crm-contactos"
+                   title="Contactos"
+                   data-crm-nav="contactos"
+                   aria-controls="crm-contactos">
+                    <span class="crm-sidebar__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <circle cx="9" cy="8" r="3"></circle>
+                            <path d="M4 19c.4-3.2 2.1-5 5-5s4.6 1.8 5 5M16 6.5a2.6 2.6 0 0 1 0 5.1M17 14c1.9.5 2.9 2.1 3 4"></path>
+                        </svg>
+                    </span>
+                    <span class="crm-sidebar__label">Contactos</span>
+                </a>
+                <a class="crm-sidebar__item"
+                   id="crmNavEmpresas"
+                   href="#crm-empresas"
+                   title="Empresas"
+                   data-crm-nav="empresas"
+                   aria-controls="crm-empresas">
+                    <span class="crm-sidebar__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M5 20V6l7-3 7 3v14M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1M3 20h18"></path>
+                        </svg>
+                    </span>
+                    <span class="crm-sidebar__label">Empresas</span>
+                </a>
+                <a class="crm-sidebar__item"
+                   id="crmNavNegocios"
+                   href="#crm-negocios"
+                   title="Negocios"
+                   data-crm-nav="negocios"
+                   aria-controls="crm-negocios">
+                    <span class="crm-sidebar__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M4 8.5h16v10H4zM9 8.5V6h6v2.5M4 12.5h16M10 12.5v2h4v-2"></path>
+                        </svg>
+                    </span>
+                    <span class="crm-sidebar__label">Negocios</span>
+                </a>
+                <a class="crm-sidebar__item"
+                   id="crmNavActividades"
+                   href="#crm-actividades"
+                   title="Actividades"
+                   data-crm-nav="actividades"
+                   aria-controls="crm-actividades">
+                    <span class="crm-sidebar__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <rect x="4" y="5.5" width="16" height="15" rx="2"></rect>
+                            <path d="M8 3.5v4M16 3.5v4M4 10h16M8 14h3M8 17h6"></path>
+                        </svg>
+                    </span>
+                    <span class="crm-sidebar__label">Actividades</span>
+                </a>
+            </nav>
+
+            <span class="crm-sidebar__hint" aria-hidden="true">Pasa el cursor para expandir</span>
+        </aside>
+
+        <div class="crm-workspace__main">
+    <header class="crm-header">
+        <div class="crm-header__copy">
+            <span class="crm-eyebrow">Gestión comercial</span>
+            <h1>CRM</h1>
+            <p>Clientes, oportunidades y actividad comercial en un solo lugar.</p>
+        </div>
+        <div class="crm-header__actions">
+            @if (Model.Companies.Items.Count > 0)
+            {
+                <button class="crm-btn crm-btn--quiet" type="button" data-open-contact>Nuevo contacto</button>
+            }
+            else
+            {
+                <button class="crm-btn crm-btn--quiet"
+                        type="button"
+                        data-open-contact
+                        disabled
+                        title="Se requiere una empresa existente">Nuevo contacto</button>
+            }
+            <button class="crm-btn crm-btn--primary" type="button" data-open-deal>Nuevo negocio</button>
+            <button class="crm-btn crm-btn--quiet" type="button" data-open-activity>Registrar actividad</button>
+        </div>
+    </header>
+
+    <partial name="_CrmScopeSelector" />
+
+    <div class="crm-status" data-global-status role="status" aria-live="polite" hidden></div>
+
+    <form class="crm-toolbar"
+          method="get"
+          asp-action="Index"
+          asp-controller="Crm"
+          role="search"
+          data-crm-search-form>
+        <label class="crm-toolbar__search">
+            <span class="visually-hidden">Buscar en todo el CRM</span>
+            <input type="search"
+                   name="Search"
+                   value="@Model.Query.Search"
+                   maxlength="100"
+                   autocomplete="off"
+                   placeholder="Buscar en empresas, contactos, negocios y actividades" />
+        </label>
+        @if (Model.Query.Stage.HasValue)
+        {
+            <input type="hidden" name="Stage" value="@((int)Model.Query.Stage.Value)" />
+        }
+        <input type="hidden" name="PageSize" value="@Model.Query.PageSize" />
+        <input type="hidden" name="PerformanceDays" value="@Model.Query.PerformanceDays" />
+        @if (!string.IsNullOrWhiteSpace(Model.Access.ViewAsOwnerId))
+        {
+            <input type="hidden" name="ViewAsOwnerId" value="@Model.Access.ViewAsOwnerId" />
+        }
+        <button class="crm-btn crm-btn--soft" type="submit">Buscar</button>
+        @if (!string.IsNullOrWhiteSpace(Model.Query.Search))
+        {
+            <a class="crm-toolbar__clear"
+               data-crm-preserve-view
+               asp-action="Index"
+               asp-controller="Crm"
+               asp-route-stage="@Model.Query.Stage"
+               asp-route-pageSize="@Model.Query.PageSize"
+               asp-route-performanceDays="@Model.Query.PerformanceDays"
+               asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">Limpiar</a>
+        }
+    </form>
+
+    <section class="crm-view is-active"
+             id="crm-resumen"
+             data-crm-view="resumen"
+             aria-labelledby="crmNavResumen">
+        <div class="crm-view__head">
+            <div>
+                <span class="crm-eyebrow">Vista general</span>
+                <h2>Resumen comercial</h2>
+                <p>Consulta el rendimiento reciente y entra al submódulo que necesitas desde el menú lateral.</p>
+            </div>
+        </div>
+
+    <section class="crm-metrics" aria-label="Indicadores de rendimiento">
+        <article class="crm-metric">
+            <span>Llamadas completadas</span>
+            <strong data-performance-type="@((int)CrmActivityType.Call)">@Model.Performance.CompletedCalls</strong>
+            <small>@performancePeriod</small>
+        </article>
+        <article class="crm-metric">
+            <span>Reuniones realizadas</span>
+            <strong data-performance-type="@((int)CrmActivityType.Meeting)">@Model.Performance.CompletedMeetings</strong>
+            <small>@performancePeriod</small>
+        </article>
+        <article class="crm-metric crm-metric--accent">
+            <span>Ofertas presentadas</span>
+            <strong data-performance-type="@((int)CrmActivityType.Offer)">@Model.Performance.CompletedOffers</strong>
+            <small>@performancePeriod</small>
+        </article>
+    </section>
+    </section>
+
+    <section class="crm-view"
+             id="crm-negocios"
+             data-crm-view="negocios"
+             aria-labelledby="crmNavNegocios"
+             hidden>
+    <div class="crm-overview">
+        <section class="crm-panel crm-pipeline" aria-labelledby="crmPipelineTitle">
+            <div class="crm-section-head">
+                <div>
+                    <span class="crm-eyebrow">Oportunidades</span>
+                    <h2 id="crmPipelineTitle">Pipeline comercial</h2>
+                </div>
+                <div class="crm-section-head__actions crm-section-head__actions--pipeline">
+                    <label class="crm-search">
+                        <span class="visually-hidden">Buscar negocios</span>
+                        <input type="search" autocomplete="off" placeholder="Buscar negocio o empresa" data-pipeline-search />
+                    </label>
+                    <div class="crm-deal-filter" role="group" aria-label="Filtrar negocios por origen">
+                        <button class="is-active" type="button" data-deal-kind-filter="all" aria-pressed="true">Todos</button>
+                        <button type="button" data-deal-kind-filter="opportunity" aria-pressed="false">Oportunidades</button>
+                        <button type="button" data-deal-kind-filter="quoted" aria-pressed="false">Cotizados</button>
+                    </div>
+                    <button class="crm-btn crm-btn--soft" type="button" data-open-deal>Nuevo negocio</button>
+                </div>
+            </div>
+
+            @if (Model.DealStages.Count == 0)
+            {
+                <div class="crm-empty">
+                    <strong>No hay etapas configuradas</strong>
+                    <span>El pipeline estará disponible cuando se complete la configuración inicial.</span>
+                </div>
+            }
+            else
+            {
+                <div class="crm-pipeline__board" data-pipeline-board>
+                    @foreach (var stage in Model.DealStages)
+                    {
+                        var stageDeals = Model.Deals.Items.Where(deal => deal.StageValue == stage.Value).ToList();
+                        <section class="crm-stage"
+                                 data-pipeline-stage
+                                 data-stage-value="@stage.Value"
+                                 data-stage-closed="@stage.IsClosed.ToString().ToLowerInvariant()"
+                                 aria-labelledby="crmStage-@stage.Value">
+                            <header class="crm-stage__head">
+                                <div>
+                                    <h3 id="crmStage-@stage.Value">@stage.Label</h3>
+                                    <span data-stage-count>@stageDeals.Count negocios</span>
+                                </div>
+                                <strong data-stage-total>@Money(stageDeals.Sum(deal => deal.PipelineValue))</strong>
+                            </header>
+
+                            <div class="crm-stage__deals" data-stage-deals>
+                                @foreach (var deal in stageDeals)
+                                {
+                                    var isQuoted = deal.KindValue == (int)CrmDealKind.QuotedBusiness;
+                                    var kindText = isQuoted ? "Negocio cotizado" : "Oportunidad estimada";
+                                    var scoreText = isQuoted
+                                        ? (deal.Score.HasValue ? $"{deal.Score.Value.ToString("0", culture)} pts" : "Sin puntaje")
+                                        : (deal.Score.HasValue ? $"{deal.Score.Value.ToString("0", culture)} pts estimados" : "Sin estimado");
+                                    var valueLabel = isQuoted ? "Valor del contrato" : "Contrato estimado";
+                                    var valueText = isQuoted
+                                        ? (deal.ContractValue.HasValue ? Money(deal.ContractValue.Value) : "Pendiente")
+                                        : Money(deal.EstimatedValue);
+                                    var hasCalculatorScenario = !string.IsNullOrWhiteSpace(deal.ScenarioId);
+                                    var calculatorUrl = hasCalculatorScenario
+                                        ? Url.Action(
+                                            "Index",
+                                            "Calculator",
+                                            new
+                                            {
+                                                scenarioId = deal.ScenarioId,
+                                                crmDealId = deal.Id,
+                                                crmCompanyId = deal.CompanyId,
+                                                crmCompanyName = deal.CompanyName,
+                                                crmContactId = deal.PrimaryContactId,
+                                                crmContactName = deal.PrimaryContactName,
+                                                crmDealKind = deal.KindValue,
+                                                crmDealName = deal.Name,
+                                                crmProbability = deal.Probability.ToString(CultureInfo.InvariantCulture),
+                                                crmEstimatedValue = deal.EstimatedValue.ToString(CultureInfo.InvariantCulture),
+                                                viewAsOwnerId = Model.Access.ViewAsOwnerId
+                                            })
+                                        : "";
+                                    var wonHelpId = $"crmWonHelp-{deal.Id}";
+                                    <article class="crm-deal"
+                                             data-deal-card
+                                             data-deal-id="@deal.Id"
+                                             data-deal-kind="@(isQuoted ? "quoted" : "opportunity")"
+                                             data-amount="@deal.PipelineValue.ToString(CultureInfo.InvariantCulture)"
+                                             data-search-text="@($"{deal.Name} {deal.CompanyName} {kindText}".ToLowerInvariant())">
+                                        <div class="crm-deal__identity">
+                                            <span class="crm-deal__type">@kindText</span>
+                                            <h4>
+                                                <a class="crm-record-link"
+                                                   asp-action="Deal"
+                                                   asp-controller="Crm"
+                                                   asp-route-id="@deal.Id"
+                                                   asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@deal.Name</a>
+                                            </h4>
+                                            <p>@deal.CompanyName</p>
+                                        </div>
+                                        <div class="crm-deal__meters" aria-label="@kindText">
+                                            <div class="crm-deal__meter">
+                                                <span>Puntaje</span>
+                                                <strong>@scoreText</strong>
+                                            </div>
+                                            <div class="crm-deal__meter">
+                                                <span>@valueLabel</span>
+                                                <strong>@valueText</strong>
+                                            </div>
+                                        </div>
+                                        <div class="crm-deal__facts">
+                                            <span>@deal.Probability.ToString("0", culture)% probabilidad</span>
+                                            <span>@(deal.ExpectedCloseDate?.ToString("dd MMM", culture) ?? "Sin fecha de cierre")</span>
+                                        </div>
+                                        @if (!isQuoted
+                                            && (!string.IsNullOrWhiteSpace(deal.BusinessLine)
+                                                || !string.IsNullOrWhiteSpace(deal.Description)))
+                                        {
+                                            <div class="crm-deal__estimate">
+                                                @if (!string.IsNullOrWhiteSpace(deal.BusinessLine))
+                                                {
+                                                    <strong>@deal.BusinessLine</strong>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(deal.Description))
+                                                {
+                                                    <p>@deal.Description</p>
+                                                }
+                                            </div>
+                                        }
+                                        @if (hasCalculatorScenario)
+                                        {
+                                            <a class="crm-deal__calculator" href="@calculatorUrl">
+                                                Editar en calculadora
+                                                <span aria-hidden="true">→</span>
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="crm-deal__calculator crm-deal__calculator--disabled">
+                                                Sin escenario de calculadora
+                                            </span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(deal.NextAction))
+                                        {
+                                            <p class="crm-deal__next">
+                                                <span>Siguiente paso</span>
+                                                @deal.NextAction
+                                                @if (deal.NextActionAtUtc.HasValue)
+                                                {
+                                                    var nextActionAt = InBogota(deal.NextActionAtUtc.Value);
+                                                    <time datetime="@deal.NextActionAtUtc.Value.ToString("O")"> · @nextActionAt.ToString("dd MMM · HH:mm", culture)</time>
+                                                }
+                                            </p>
+                                        }
+                                        <label class="crm-stage-select">
+                                            <span class="visually-hidden">Mover @deal.Name a otra etapa</span>
+                                            <select data-deal-stage
+                                                    data-deal-id="@deal.Id"
+                                                    data-current-stage="@stage.Value"
+                                                    aria-describedby="@(!deal.CanMarkWon ? wonHelpId : null)">
+                                                @foreach (var option in Model.DealStages)
+                                                {
+                                                    var isSelected = option.Value == stage.Value;
+                                                    var disableWon = option.Value == (int)CrmDealStage.Won && !deal.CanMarkWon;
+                                                    if (isSelected && disableWon)
+                                                    {
+                                                        <option value="@option.Value" selected disabled>@option.Label</option>
+                                                    }
+                                                    else if (isSelected)
+                                                    {
+                                                        <option value="@option.Value" selected>@option.Label</option>
+                                                    }
+                                                    else if (disableWon)
+                                                    {
+                                                        <option value="@option.Value" disabled>@option.Label</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="@option.Value">@option.Label</option>
+                                                    }
+                                                }
+                                            </select>
+                                        </label>
+                                        @if (!deal.CanMarkWon)
+                                        {
+                                            <small class="crm-stage-select__help" id="@wonHelpId">Solicita el aprovisionamiento desde la calculadora</small>
+                                        }
+                                    </article>
+                                }
+                                <div class="crm-stage__empty" data-stage-empty hidden>Sin negocios en esta etapa.</div>
+                            </div>
+                        </section>
+                    }
+                </div>
+                <div class="crm-empty crm-empty--search" data-pipeline-empty hidden>
+                    <strong>No encontramos negocios</strong>
+                    <span>Prueba con otro nombre o empresa.</span>
+                </div>
+                @if (Model.Deals.HasPrevious || Model.Deals.HasNext)
+                {
+                    <nav class="crm-pagination" aria-label="Paginación de negocios">
+                        @if (Model.Deals.HasPrevious)
+                        {
+                            <a href="@CrmPageUrl(dealPage: Model.Deals.Page - 1)">Anterior</a>
+                        }
+                        else
+                        {
+                            <span aria-disabled="true">Anterior</span>
+                        }
+                        <strong>Página @Model.Deals.Page · @Model.Deals.TotalCount negocios</strong>
+                        @if (Model.Deals.HasNext)
+                        {
+                            <a href="@CrmPageUrl(dealPage: Model.Deals.Page + 1)">Siguiente</a>
+                        }
+                        else
+                        {
+                            <span aria-disabled="true">Siguiente</span>
+                        }
+                    </nav>
+                }
+            }
+        </section>
+
+        <aside class="crm-panel crm-focus" aria-labelledby="crmFocusTitle">
+            <div class="crm-focus__period">@performancePeriod</div>
+            <h2 id="crmFocusTitle">Prioridades del pipeline</h2>
+            <p>Una vista breve de los negocios abiertos y los seguimientos pendientes.</p>
+            <dl class="crm-focus__list">
+                <div>
+                    <dt>Negocios abiertos en esta página</dt>
+                    <dd data-open-deals-count>@openDeals.Count</dd>
+                </div>
+                <div>
+                    <dt>Valor en esta página</dt>
+                    <dd data-open-pipeline-total data-value="@openPipelineValue.ToString(CultureInfo.InvariantCulture)">@Money(openPipelineValue)</dd>
+                </div>
+                <div>
+                    <dt>Actividades planeadas en esta página</dt>
+                    <dd data-planned-activities-count>@plannedActivities</dd>
+                </div>
+            </dl>
+            <button class="crm-btn crm-btn--soft crm-focus__action" type="button" data-open-activity>Agregar seguimiento</button>
+        </aside>
+    </div>
+    </section>
+
+    <section class="crm-view"
+             id="crm-empresas"
+             data-crm-view="empresas"
+             aria-labelledby="crmNavEmpresas"
+             hidden>
+    <div class="crm-directory crm-directory--single" id="crmEmpresas">
+        <section class="crm-panel crm-directory-card" aria-labelledby="crmCompaniesTitle">
+            <div class="crm-section-head crm-section-head--compact">
+                <div>
+                    <span class="crm-eyebrow">Base comercial</span>
+                    <h2 id="crmCompaniesTitle">Empresas</h2>
+                </div>
+                <div class="crm-section-head__actions crm-section-head__actions--companies">
+                    <label class="crm-company-filter">
+                        <span class="visually-hidden">Filtrar empresas por tipo</span>
+                        <select data-company-lifecycle-filter>
+                            <option value="">Todas las empresas</option>
+                            <option value="@((int)CrmCompanyLifecycle.Lead)">Leads</option>
+                            <option value="@((int)CrmCompanyLifecycle.ActiveCustomer)">Clientes activos</option>
+                            <option value="@((int)CrmCompanyLifecycle.Inactive)">Inactivas</option>
+                        </select>
+                    </label>
+                    <label class="crm-search crm-search--small">
+                        <span class="visually-hidden">Buscar empresas</span>
+                        <input type="search" autocomplete="off" placeholder="Buscar empresa" data-company-search />
+                    </label>
+                    <button class="crm-btn crm-btn--soft" type="button" data-open-company>Nueva empresa</button>
+                </div>
+            </div>
+
+            <div class="crm-table"
+                 role="table"
+                 aria-label="Empresas"
+                 data-company-table
+                 @(Model.Companies.Items.Count == 0 ? "hidden" : null)>
+                <div class="crm-table__head crm-table__row--companies" role="row">
+                    <span role="columnheader">Empresa</span>
+                    <span role="columnheader">Datos de contacto</span>
+                    <span role="columnheader">Ubicación</span>
+                </div>
+                <div data-company-list>
+                    @foreach (var company in Model.Companies.Items)
+                    {
+                        <article class="crm-table__row crm-table__row--companies"
+                                 role="row"
+                                 data-company-row
+                                 data-company-id="@company.Id"
+                                 data-company-lifecycle="@company.LifecycleValue"
+                                 data-search-text="@($"{company.Name} {company.TaxId} {company.City} {company.Email} {company.Phone} {company.LifecycleLabel}".ToLowerInvariant())">
+                            <div role="cell">
+                                <div class="crm-company__identity">
+                                    <strong>
+                                        <a class="crm-record-link"
+                                           asp-action="Company"
+                                           asp-controller="Crm"
+                                           asp-route-id="@company.Id"
+                                           asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@company.Name</a>
+                                    </strong>
+                                    <span class="crm-record-badge" data-company-lifecycle-label>@company.LifecycleLabel</span>
+                                </div>
+                                <span>@(string.IsNullOrWhiteSpace(company.TaxId) ? "Sin NIT registrado" : $"NIT {company.TaxId}")</span>
+                            </div>
+                            <div role="cell">
+                                <strong>@(string.IsNullOrWhiteSpace(company.Email) ? "Sin correo registrado" : company.Email)</strong>
+                                <span>@(string.IsNullOrWhiteSpace(company.Phone) ? "Sin teléfono registrado" : company.Phone)</span>
+                            </div>
+                            <div role="cell">
+                                <strong>@(string.IsNullOrWhiteSpace(company.City) ? "Sin ciudad registrada" : company.City)</strong>
+                                <span>Ubicación comercial</span>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </div>
+            <div class="crm-empty crm-empty--small"
+                 data-company-empty
+                 @(Model.Companies.Items.Count > 0 ? "hidden" : null)>
+                <strong>@(Model.Companies.Items.Count == 0 ? "Aún no hay empresas" : "No encontramos empresas")</strong>
+                <span>@(Model.Companies.Items.Count == 0 ? "Crea una empresa lead para iniciar su seguimiento comercial." : "Ajusta la búsqueda o el tipo de empresa.")</span>
+            </div>
+            @if (Model.Companies.HasPrevious || Model.Companies.HasNext)
+            {
+                <nav class="crm-pagination" aria-label="Paginación de empresas">
+                    @if (Model.Companies.HasPrevious)
+                    {
+                        <a href="@CrmPageUrl(companyPage: Model.Companies.Page - 1)">Anterior</a>
+                    }
+                    else
+                    {
+                        <span aria-disabled="true">Anterior</span>
+                    }
+                    <strong>Página @Model.Companies.Page · @Model.Companies.TotalCount empresas</strong>
+                    @if (Model.Companies.HasNext)
+                    {
+                        <a href="@CrmPageUrl(companyPage: Model.Companies.Page + 1)">Siguiente</a>
+                    }
+                    else
+                    {
+                        <span aria-disabled="true">Siguiente</span>
+                    }
+                </nav>
+            }
+        </section>
+    </div>
+    </section>
+
+    <section class="crm-view"
+             id="crm-contactos"
+             data-crm-view="contactos"
+             aria-labelledby="crmNavContactos"
+             hidden>
+    <div class="crm-directory crm-directory--single">
+        <section class="crm-panel crm-directory-card" aria-labelledby="crmContactsTitle">
+            <div class="crm-section-head crm-section-head--compact">
+                <div>
+                    <span class="crm-eyebrow">Personas</span>
+                    <h2 id="crmContactsTitle">Contactos</h2>
+                </div>
+                <div class="crm-section-head__actions">
+                    <label class="crm-search crm-search--small">
+                        <span class="visually-hidden">Buscar contactos</span>
+                        <input type="search" autocomplete="off" placeholder="Buscar contacto" data-contact-search />
+                    </label>
+                    <button class="crm-btn crm-btn--soft"
+                            type="button"
+                            data-open-contact
+                            @(Model.Companies.Items.Count == 0 ? "disabled" : null)
+                            title="@(Model.Companies.Items.Count == 0 ? "Se requiere una empresa existente" : null)">Nuevo contacto</button>
+                </div>
+            </div>
+
+            <div class="crm-contact-list" data-contact-list>
+                @foreach (var contact in Model.Contacts.Items)
+                {
+                    var companyLifecycleLabel = companyLifecycleById.TryGetValue(contact.CompanyId, out var associatedLifecycle)
+                        ? associatedLifecycle
+                        : "";
+                    <article class="crm-contact"
+                             data-contact-row
+                             data-contact-id="@contact.Id"
+                             data-company-id="@contact.CompanyId"
+                             data-search-text="@($"{contact.FullName} {contact.CompanyName} {contact.Email} {contact.JobTitle} {LifecycleLabel(contact)} {companyLifecycleLabel}".ToLowerInvariant())">
+                        <div class="crm-contact__avatar" aria-hidden="true">@Initials(contact.FirstName, contact.LastName)</div>
+                        <div class="crm-contact__identity">
+                            <div class="crm-contact__name">
+                                <strong>
+                                    <a class="crm-record-link"
+                                       asp-action="Contact"
+                                       asp-controller="Crm"
+                                       asp-route-id="@contact.Id"
+                                       asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@contact.FullName</a>
+                                </strong>
+                                <span class="crm-record-badge crm-record-badge--lifecycle">@LifecycleLabel(contact)</span>
+                            </div>
+                            <span>
+                                @contact.JobTitle@if (!string.IsNullOrWhiteSpace(contact.CompanyName)){<text> · @contact.CompanyName</text>}@if (!string.IsNullOrWhiteSpace(companyLifecycleLabel)){<text> · @companyLifecycleLabel</text>}
+                            </span>
+                        </div>
+                        <div class="crm-contact__details">
+                            @if (!string.IsNullOrWhiteSpace(contact.Email))
+                            {
+                                <a href="mailto:@contact.Email">@contact.Email</a>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(contact.Phone))
+                            {
+                                <a href="tel:@contact.Phone">@contact.Phone</a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+            <div class="crm-empty crm-empty--small" data-contact-empty @(Model.Contacts.Items.Count > 0 ? "hidden" : null)>
+                <strong>@(Model.Contacts.Items.Count == 0 ? "Aún no hay contactos" : "No encontramos contactos")</strong>
+                <span>@(Model.Contacts.Items.Count == 0 ? "Crea el primer contacto para iniciar el seguimiento comercial." : "Ajusta la búsqueda e inténtalo de nuevo.")</span>
+            </div>
+            @if (Model.Contacts.HasPrevious || Model.Contacts.HasNext)
+            {
+                <nav class="crm-pagination" aria-label="Paginación de contactos">
+                    @if (Model.Contacts.HasPrevious)
+                    {
+                        <a href="@CrmPageUrl(contactPage: Model.Contacts.Page - 1)">Anterior</a>
+                    }
+                    else
+                    {
+                        <span aria-disabled="true">Anterior</span>
+                    }
+                    <strong>Página @Model.Contacts.Page · @Model.Contacts.TotalCount contactos</strong>
+                    @if (Model.Contacts.HasNext)
+                    {
+                        <a href="@CrmPageUrl(contactPage: Model.Contacts.Page + 1)">Siguiente</a>
+                    }
+                    else
+                    {
+                        <span aria-disabled="true">Siguiente</span>
+                    }
+                </nav>
+            }
+        </section>
+    </div>
+    </section>
+
+    <section class="crm-view"
+             id="crm-actividades"
+             data-crm-view="actividades"
+             aria-labelledby="crmNavActividades"
+             hidden>
+    <section class="crm-panel crm-activity" aria-labelledby="crmActivityTitle">
+        <div class="crm-section-head crm-section-head--compact">
+            <div>
+                <span class="crm-eyebrow">Seguimiento</span>
+                <h2 id="crmActivityTitle">Actividad reciente</h2>
+            </div>
+            <div class="crm-section-head__actions">
+                <label class="crm-search crm-search--small">
+                    <span class="visually-hidden">Buscar actividades</span>
+                    <input type="search" autocomplete="off" placeholder="Buscar actividad" data-activity-search />
+                </label>
+                <button class="crm-btn crm-btn--soft" type="button" data-open-activity>Nueva actividad</button>
+            </div>
+        </div>
+
+        <div class="crm-activity-list" data-activity-list>
+            @foreach (var activity in Model.Activities.Items)
+            {
+                var relation = ActivityRelation(activity);
+                <article class="crm-activity-row"
+                         data-activity-row
+                         data-search-text="@($"{activity.TypeDisplayLabel} {activity.Subject} {relation}".ToLowerInvariant())">
+                    <div class="crm-activity-row__marker" aria-hidden="true"></div>
+                    <div class="crm-activity-row__main">
+                        <strong>
+                            <a class="crm-record-link"
+                               asp-action="Activity"
+                               asp-controller="Crm"
+                               asp-route-id="@activity.Id"
+                               asp-route-viewAsOwnerId="@Model.Access.ViewAsOwnerId">@activity.Subject</a>
+                        </strong>
+                        <span>@activity.TypeDisplayLabel</span>
+                    </div>
+                    <div class="crm-activity-row__owner">
+                        <span>Asociado a</span>
+                        <strong>@relation</strong>
+                    </div>
+                    <div class="crm-activity-row__date">
+                        <span>@activity.StatusLabel</span>
+                        @if (activity.CompletedAtUtc.HasValue || activity.PlannedAtUtc.HasValue)
+                        {
+                            var activityDate = activity.CompletedAtUtc ?? activity.PlannedAtUtc!.Value;
+                            var localActivityDate = InBogota(activityDate);
+                            <time datetime="@activityDate.ToString("O")">@localActivityDate.ToString("dd MMM · HH:mm", culture)</time>
+                        }
+                        else
+                        {
+                            <time>Sin fecha</time>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+        <div class="crm-empty crm-empty--small" data-activity-empty hidden>
+            <strong>No hay actividades para mostrar</strong>
+            <span>Registra una llamada, reunión o tarea de seguimiento.</span>
+        </div>
+        @if (Model.Activities.HasPrevious || Model.Activities.HasNext)
+        {
+            <nav class="crm-pagination" aria-label="Paginación de actividades">
+                @if (Model.Activities.HasPrevious)
+                {
+                    <a href="@CrmPageUrl(activityPage: Model.Activities.Page - 1)">Anterior</a>
+                }
+                else
+                {
+                    <span aria-disabled="true">Anterior</span>
+                }
+                <strong>Página @Model.Activities.Page · @Model.Activities.TotalCount actividades</strong>
+                @if (Model.Activities.HasNext)
+                {
+                    <a href="@CrmPageUrl(activityPage: Model.Activities.Page + 1)">Siguiente</a>
+                }
+                else
+                {
+                    <span aria-disabled="true">Siguiente</span>
+                }
+            </nav>
+        }
+    </section>
+    </section>
+
+        </div>
+    </div>
+
+    <div class="crm-drawer" data-company-drawer hidden>
+        <button class="crm-drawer__backdrop" type="button" aria-label="Cerrar panel" data-close-company></button>
+        <aside class="crm-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="crmCompanyPanelTitle">
+            <header class="crm-drawer__head">
+                <div>
+                    <span class="crm-eyebrow">Base comercial</span>
+                    <h2 id="crmCompanyPanelTitle">Nueva empresa</h2>
+                    <p>Registra una organización para iniciar su gestión comercial.</p>
+                </div>
+                <button class="crm-drawer__close" type="button" aria-label="Cerrar" data-close-company>×</button>
+            </header>
+
+            <div class="crm-status" data-company-status role="status" aria-live="polite" hidden></div>
+
+            <form class="crm-form" data-company-form>
+                <div class="crm-form__grid">
+                    <label class="crm-field crm-field--wide">
+                        <span>Nombre de la empresa *</span>
+                        <input type="text"
+                               name="Name"
+                               maxlength="200"
+                               minlength="2"
+                               autocomplete="organization"
+                               required
+                               data-company-first-focus />
+                    </label>
+                    <label class="crm-field">
+                        <span>NIT</span>
+                        <input type="text" name="TaxId" maxlength="50" autocomplete="off" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Ciudad</span>
+                        <input type="text" name="City" maxlength="100" autocomplete="address-level2" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Correo</span>
+                        <input type="email" name="Email" maxlength="254" autocomplete="email" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Teléfono</span>
+                        <input type="tel" name="Phone" maxlength="50" autocomplete="tel" />
+                    </label>
+                    <p class="crm-form-note crm-field--wide">La empresa se registrará como Lead. Podrá convertirse en cliente activo cuando exista una relación comercial vigente.</p>
+                </div>
+
+                <footer class="crm-drawer__footer">
+                    <button class="crm-btn crm-btn--quiet" type="button" data-close-company>Cancelar</button>
+                    <button class="crm-btn crm-btn--primary" type="submit" data-save-company>Crear empresa</button>
+                </footer>
+            </form>
+        </aside>
+    </div>
+
+    <div class="crm-drawer" data-contact-drawer hidden>
+        <button class="crm-drawer__backdrop" type="button" aria-label="Cerrar panel" data-close-contact></button>
+        <aside class="crm-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="crmContactPanelTitle">
+            <header class="crm-drawer__head">
+                <div>
+                    <span class="crm-eyebrow">Base de clientes</span>
+                    <h2 id="crmContactPanelTitle">Nuevo contacto</h2>
+                    <p>Vincula una persona con una empresa existente.</p>
+                </div>
+                <button class="crm-drawer__close" type="button" aria-label="Cerrar" data-close-contact>×</button>
+            </header>
+
+            <div class="crm-status" data-contact-status role="status" aria-live="polite" hidden></div>
+
+            <form class="crm-form" data-contact-form>
+                <div class="crm-form__grid">
+                    <label class="crm-field crm-field--wide">
+                        <span>Empresa *</span>
+                        <select name="CompanyId" required data-contact-first-focus data-contact-company>
+                            <option value="">Selecciona una empresa</option>
+                            @foreach (var company in Model.Companies.Items.OrderBy(company => company.Name))
+                            {
+                                <option value="@company.Id"
+                                        data-company-lifecycle="@company.LifecycleValue"
+                                        data-company-lifecycle-label="@company.LifecycleLabel">@company.Name · @company.LifecycleLabel</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field">
+                        <span>Nombre *</span>
+                        <input type="text" name="FirstName" maxlength="150" minlength="2" autocomplete="given-name" required />
+                    </label>
+                    <label class="crm-field">
+                        <span>Apellidos</span>
+                        <input type="text" name="LastName" maxlength="150" autocomplete="family-name" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Correo</span>
+                        <input type="email" name="Email" maxlength="254" autocomplete="email" data-contact-email />
+                    </label>
+                    <label class="crm-field">
+                        <span>Teléfono</span>
+                        <input type="tel" name="Phone" maxlength="50" autocomplete="tel" data-contact-phone />
+                    </label>
+                    <label class="crm-field">
+                        <span>Cargo</span>
+                        <input type="text" name="JobTitle" maxlength="150" autocomplete="organization-title" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Ciclo de vida *</span>
+                        <select name="Lifecycle" required data-contact-lifecycle>
+                            @foreach (var lifecycle in Model.ContactLifecycles)
+                            {
+                                if (lifecycle.Value == (int)CrmContactLifecycle.Customer)
+                                {
+                                    <option value="@lifecycle.Value" selected>@lifecycle.Label</option>
+                                }
+                                else
+                                {
+                                    <option value="@lifecycle.Value">@lifecycle.Label</option>
+                                }
+                            }
+                        </select>
+                        <small class="crm-field__help" data-contact-lifecycle-help>El ciclo se ajusta al tipo de empresa seleccionada.</small>
+                    </label>
+                    <div class="crm-field crm-field--wide">
+                        <span>Preferencias</span>
+                        <div class="crm-check-grid">
+                            <label class="crm-check">
+                                <input type="checkbox" name="IsPrimary" />
+                                <span>Contacto principal</span>
+                            </label>
+                            <label class="crm-check">
+                                <input type="checkbox" name="DoNotEmail" />
+                                <span>No enviar correos</span>
+                            </label>
+                            <label class="crm-check">
+                                <input type="checkbox" name="DoNotCall" />
+                                <span>No llamar</span>
+                            </label>
+                        </div>
+                        <small class="crm-field__help">Registra al menos un correo o un teléfono.</small>
+                    </div>
+                </div>
+
+                <footer class="crm-drawer__footer">
+                    <button class="crm-btn crm-btn--quiet" type="button" data-close-contact>Cancelar</button>
+                    <button class="crm-btn crm-btn--primary" type="submit" data-save-contact>Crear contacto</button>
+                </footer>
+            </form>
+        </aside>
+    </div>
+
+    <partial name="_CrmDealDrawer" />
+
+    <dialog class="crm-loss-dialog"
+            data-loss-dialog
+            aria-labelledby="crmLossDialogTitle"
+            aria-describedby="crmLossDialogDescription">
+        <form class="crm-loss-dialog__card" data-loss-form>
+            <header class="crm-loss-dialog__head">
+                <div>
+                    <span class="crm-eyebrow">Cerrar oportunidad</span>
+                    <h2 id="crmLossDialogTitle">Registrar negocio perdido</h2>
+                </div>
+                <button class="crm-drawer__close" type="button" aria-label="Cancelar cambio de etapa" data-cancel-loss>×</button>
+            </header>
+
+            <div class="crm-loss-dialog__body">
+                <p id="crmLossDialogDescription">
+                    Indica por qué se perdió <strong data-loss-deal-name>este negocio</strong>. Esta información quedará en su historial.
+                </p>
+                <div class="crm-status" data-loss-status role="status" aria-live="polite" hidden></div>
+                <label class="crm-field">
+                    <span>Motivo de pérdida *</span>
+                    <textarea name="Reason"
+                              rows="4"
+                              maxlength="1000"
+                              required
+                              data-loss-reason
+                              aria-describedby="crmLossReasonHelp"
+                              placeholder="Ej. El cliente eligió otra propuesta por precio"></textarea>
+                </label>
+                <small id="crmLossReasonHelp" class="crm-field__help">Sé concreto para facilitar el análisis comercial posterior.</small>
+            </div>
+
+            <footer class="crm-loss-dialog__footer">
+                <button class="crm-btn crm-btn--quiet" type="button" data-cancel-loss>Cancelar</button>
+                <button class="crm-btn crm-btn--primary" type="submit" data-confirm-loss>Guardar y cerrar negocio</button>
+            </footer>
+        </form>
+    </dialog>
+
+    <div class="crm-drawer" data-activity-drawer hidden>
+        <button class="crm-drawer__backdrop" type="button" aria-label="Cerrar panel" data-close-activity></button>
+        <aside class="crm-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="crmActivityPanelTitle">
+            <header class="crm-drawer__head">
+                <div>
+                    <span class="crm-eyebrow">Seguimiento comercial</span>
+                    <h2 id="crmActivityPanelTitle">Nueva actividad</h2>
+                    <p>Registra el próximo contacto con el cliente.</p>
+                </div>
+                <button class="crm-drawer__close" type="button" aria-label="Cerrar" data-close-activity>×</button>
+            </header>
+
+            <div class="crm-status" data-activity-status role="status" aria-live="polite" hidden></div>
+
+            <form class="crm-form" data-activity-form>
+                <div class="crm-form__grid">
+                    <label class="crm-field">
+                        <span>Tipo *</span>
+                        <select name="Type" required data-activity-first-focus data-activity-type-select>
+                            @foreach (var activityType in Model.ActivityTypes)
+                            {
+                                <option value="@activityType.Value">@activityType.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field" data-activity-meeting-type-field hidden>
+                        <span>Tipo de reunión *</span>
+                        <select name="MeetingType" data-activity-meeting-type-select disabled>
+                            <option value="">Selecciona una opción</option>
+                            @foreach (var meetingType in Model.MeetingTypes)
+                            {
+                                <option value="@meetingType.Value">@meetingType.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field">
+                        <span>Estado *</span>
+                        <select name="Status" required data-activity-status-select>
+                            @foreach (var status in Model.ActivityStatuses)
+                            {
+                                <option value="@status.Value">@status.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field crm-field--wide">
+                        <span>Asunto *</span>
+                        <input type="text" name="Subject" maxlength="200" required placeholder="Ej. Revisar propuesta comercial" />
+                    </label>
+                    <label class="crm-field">
+                        <span>Fecha planeada</span>
+                        <input type="datetime-local" name="PlannedAtUtc" required data-activity-planned-input />
+                    </label>
+                    <label class="crm-field" data-activity-completed-field hidden>
+                        <span>Fecha completada *</span>
+                        <input type="datetime-local" name="CompletedAtUtc" data-activity-completed-input />
+                    </label>
+                    <label class="crm-field">
+                        <span>Empresa</span>
+                        <select name="CompanyId">
+                            <option value="">Sin empresa</option>
+                            @foreach (var company in Model.Companies.Items)
+                            {
+                                <option value="@company.Id">@company.Name</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field">
+                        <span>Contacto</span>
+                        <select name="ContactId">
+                            <option value="">Sin contacto</option>
+                            @foreach (var contact in Model.Contacts.Items)
+                            {
+                                <option value="@contact.Id" data-company-id="@contact.CompanyId">@contact.FullName · @contact.CompanyName</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field crm-field--wide">
+                        <span>Negocio</span>
+                        <select name="DealId">
+                            <option value="">Sin negocio asociado</option>
+                            @foreach (var stage in Model.DealStages)
+                            {
+                                @foreach (var deal in Model.Deals.Items.Where(deal => deal.StageValue == stage.Value))
+                                {
+                                    <option value="@deal.Id" data-company-id="@deal.CompanyId">@deal.Name · @deal.CompanyName</option>
+                                }
+                            }
+                        </select>
+                    </label>
+                    <label class="crm-field">
+                        <span>Duración estimada</span>
+                        <select name="DurationMinutes">
+                            <option value="15">15 minutos</option>
+                            <option value="30" selected>30 minutos</option>
+                            <option value="45">45 minutos</option>
+                            <option value="60">1 hora</option>
+                        </select>
+                    </label>
+                    <label class="crm-field crm-field--wide" data-activity-result-field hidden>
+                        <span>Resultado *</span>
+                        <input type="text" name="Result" maxlength="500" data-activity-result-input placeholder="Ej. Cliente aprobó avanzar a propuesta" />
+                    </label>
+                    <label class="crm-field crm-field--wide">
+                        <span>Notas</span>
+                        <textarea name="Notes" rows="5" maxlength="4000" placeholder="Contexto, acuerdos o información para preparar el seguimiento"></textarea>
+                    </label>
+                </div>
+
+                <footer class="crm-drawer__footer">
+                    <button class="crm-btn crm-btn--quiet" type="button" data-close-activity>Cancelar</button>
+                    <button class="crm-btn crm-btn--primary" type="submit" data-save-activity>Guardar actividad</button>
+                </footer>
+            </form>
+        </aside>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/crm.js" asp-append-version="true"></script>
+}

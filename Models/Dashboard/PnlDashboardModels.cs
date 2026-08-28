@@ -16,6 +16,7 @@ public sealed class PnlDashboardDto
     public int RecordsCount { get; set; }
     public string EmptyStateTitle { get; set; } = "";
     public string EmptyStateMessage { get; set; } = "";
+    public string SourceWarning { get; set; } = "";
     public string OrphanDescription { get; set; } = "";
     public IReadOnlyList<PnlMonthColumnDto> Months { get; set; } = Array.Empty<PnlMonthColumnDto>();
     public IReadOnlyList<PnlKpiDto> Kpis { get; set; } = Array.Empty<PnlKpiDto>();

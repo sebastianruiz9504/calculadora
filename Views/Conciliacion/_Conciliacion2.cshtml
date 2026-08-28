@@ -1,0 +1,389 @@
+@model ConciliacionPageViewModel
+@using System.Globalization
+@{
+    var culture = CultureInfo.GetCultureInfo("es-CO");
+    var board = Model.Board;
+    var rows = board.CashFlow.Rows
+        .OrderByDescending(row => row.MovementDateValue, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    var bankBalances = board.CashFlow.BankBalances
+        .OrderBy(balance => balance.SourceFlow, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(balance => balance.BankAccountCode, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    var selectedBankBalance = bankBalances.FirstOrDefault();
+
+    string Money(decimal value) => value.ToString("C0", culture);
+    string Number(int value) => value.ToString("N0", culture);
+    string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
+    string ExcelRowLabel(int rowNumber) => rowNumber > 0 ? $"Fila Excel {Number(rowNumber)}" : "Fila Excel s/d";
+    string SearchBaseText(ConciliacionCashFlowRowDto row) =>
+        $"{row.SourceRowNumber} {row.MovementDateDisplay} {row.SourceFlow} {row.BankAccountName} {row.Recipient} {row.DestinationBank} {row.DocumentType} {row.Observations} {row.DetectedTypeLabel} {row.ValidationStatus} {row.RegistrationStatus} {row.ReviewReason} {row.AccountCode} {row.AccountName}".ToLowerInvariant();
+    string SearchText(ConciliacionCashFlowRowDto row) =>
+        $"{SearchBaseText(row)} {row.Description}".ToLowerInvariant();
+    string VerticalFilter(ConciliacionCashFlowRowDto row)
+    {
+        if (string.Equals(row.SourceFlow?.Trim(), "Cloud", StringComparison.OrdinalIgnoreCase))
+            return "cloud";
+        if (string.Equals(row.SourceFlow?.Trim(), "Copiers", StringComparison.OrdinalIgnoreCase))
+            return "copiers";
+        return "";
+    }
+    string DirectionFilter(ConciliacionCashFlowRowDto row)
+    {
+        if (row.EntryValue > 0m && row.ExitValue <= 0m)
+            return "entrada";
+        if (row.ExitValue > 0m && row.EntryValue <= 0m)
+            return "salida";
+        return string.Equals(row.Direction, "Entrada", StringComparison.OrdinalIgnoreCase) ? "entrada" : "salida";
+    }
+    var defaultVisibleRows = rows.Count(row =>
+        VerticalFilter(row) == "cloud" && DirectionFilter(row) == "entrada");
+
+    bool CashFlowFinalConciliated(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, "Conciliado", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(row.SiigoStatus, "Conciliado", StringComparison.OrdinalIgnoreCase);
+
+    bool CashFlowClosedWithoutSiigo(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DetectedTypeKey, "no-incluida-conciliacion", StringComparison.OrdinalIgnoreCase);
+
+    bool CashFlowPendingReview(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, "PendienteRevision", StringComparison.OrdinalIgnoreCase);
+
+    bool CashFlowOmitted(ConciliacionCashFlowRowDto row) =>
+        string.Equals(row.DataverseStatus, "Omitido", StringComparison.OrdinalIgnoreCase);
+
+    string ConciliatedDescription(ConciliacionCashFlowRowDto row, bool conciliated)
+    {
+        var description = row.Description.Trim();
+        var siigoDocumentName = row.SiigoDocumentName.Trim();
+        if (!conciliated
+            || string.IsNullOrWhiteSpace(siigoDocumentName)
+            || string.Equals(siigoDocumentName, "Subida manualmente en Siigo", StringComparison.OrdinalIgnoreCase)
+            || description.Contains(siigoDocumentName, StringComparison.OrdinalIgnoreCase))
+        {
+            return description;
+        }
+
+        return string.IsNullOrWhiteSpace(description)
+            ? siigoDocumentName
+            : $"{description} - {siigoDocumentName}";
+    }
+
+    string ConciliatedFilterValue(bool conciliated, bool omitted) =>
+        omitted ? "omitido" : conciliated ? "conciliado" : "pendiente";
+}
+
+<section class="cnc-phase-panel cnc-phase-panel--v2 is-active"
+         data-cnc-panel="conciliacion-2"
+         role="tabpanel">
+    <div class="cnc-panel-header">
+        <div>
+            <div class="cnc-kicker">Vista paralela</div>
+            <h2>Conciliacion 2</h2>
+        </div>
+        <span class="cnc-badge cnc-badge--info">@board.PeriodLabel</span>
+    </div>
+
+    <section class="cnc-payment-panel cnc-v2-panel">
+        <div class="cnc-v2-controls cnc-v2-controls--minimal" aria-label="Filtros de flujo de caja">
+            <div class="cnc-v2-filtersets">
+                <div class="cnc-v2-switch">
+                    <span>Vertical</span>
+                    <div class="cnc-v2-segment" role="group" aria-label="Filtrar por vertical">
+                        <button type="button" class="is-active" data-cnc-v2-filter="vertical" data-cnc-v2-filter-value="cloud" aria-pressed="true">Cloud</button>
+                        <button type="button" data-cnc-v2-filter="vertical" data-cnc-v2-filter-value="copiers" aria-pressed="false">Copiers</button>
+                    </div>
+                </div>
+                <div class="cnc-v2-switch">
+                    <span>Movimiento</span>
+                    <div class="cnc-v2-segment" role="group" aria-label="Filtrar por entrada o salida">
+                        <button type="button" class="is-active" data-cnc-v2-filter="direction" data-cnc-v2-filter-value="entrada" aria-pressed="true">Entradas</button>
+                        <button type="button" data-cnc-v2-filter="direction" data-cnc-v2-filter-value="salida" aria-pressed="false">Salidas</button>
+                    </div>
+                </div>
+            </div>
+            <article class="cnc-bank-balance-card"
+                     data-cnc-bank-balance-card
+                     aria-label="Saldo del banco seleccionado">
+                <div class="cnc-bank-balance-card__header">
+                    <span>Saldo</span>
+                    <select class="form-select"
+                            data-cnc-bank-balance-select
+                            aria-label="Banco para consultar el saldo">
+                        @foreach (var balance in bankBalances)
+                        {
+                            <option value="@balance.BankKey"
+                                    selected="@(ReferenceEquals(balance, selectedBankBalance) ? "selected" : null)"
+                                    data-bank-label="@balance.BankLabel"
+                                    data-source-flow="@balance.SourceFlow"
+                                    data-bank-code="@balance.BankAccountCode"
+                                    data-bank-name="@balance.BankAccountName"
+                                    data-has-opening-balance="@(balance.HasOpeningBalance ? "true" : "false")"
+                                    data-opening-balance="@balance.OpeningBalance.ToString(CultureInfo.InvariantCulture)"
+                                    data-total-entries="@balance.TotalEntries.ToString(CultureInfo.InvariantCulture)"
+                                    data-total-exits="@balance.TotalExits.ToString(CultureInfo.InvariantCulture)"
+                                    data-current-balance="@balance.CurrentBalance.ToString(CultureInfo.InvariantCulture)">
+                                @balance.BankLabel
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="cnc-bank-balance-card__main">
+                    <strong data-cnc-bank-balance-current
+                            aria-live="polite">
+                        @(selectedBankBalance is null ? Money(0m) : Money(selectedBankBalance.CurrentBalance))
+                    </strong>
+                    <button type="button"
+                            class="btn btn-outline-primary"
+                            data-cnc-bank-balance-open-opening
+                            @(selectedBankBalance is null ? "disabled" : null)>
+                        Poner saldo inicial
+                    </button>
+                </div>
+                <div class="cnc-bank-balance-card__breakdown" aria-label="Calculo del saldo">
+                    <span>
+                        Inicial
+                        <strong data-cnc-bank-balance-opening>
+                            @(selectedBankBalance?.HasOpeningBalance == true
+                                ? Money(selectedBankBalance.OpeningBalance)
+                                : "Sin definir")
+                        </strong>
+                    </span>
+                    <span>
+                        Entradas
+                        <strong data-cnc-bank-balance-entries>
+                            @(selectedBankBalance is null ? Money(0m) : Money(selectedBankBalance.TotalEntries))
+                        </strong>
+                    </span>
+                    <span>
+                        Salidas
+                        <strong data-cnc-bank-balance-exits>
+                            @(selectedBankBalance is null ? Money(0m) : Money(selectedBankBalance.TotalExits))
+                        </strong>
+                    </span>
+                </div>
+            </article>
+            <span class="cnc-counter" data-cnc-table-count="conciliacion-2">@Number(defaultVisibleRows) filas</span>
+        </div>
+
+        <form class="cnc-v2-import" data-cnc-bank-import-form>
+            <div class="cnc-v2-import__title">
+                <strong>Importar Bancolombia</strong>
+                <span data-cnc-bank-import-result></span>
+            </div>
+            <label>
+                <span>Cuenta</span>
+                <select class="form-select" name="accountKey" data-cnc-bank-import-account>
+                    <option value="cloud">Cloud - Bancolombia 8100</option>
+                    <option value="copiers">Copiers - Bancolombia 7316</option>
+                </select>
+            </label>
+            <label class="cnc-v2-import__file">
+                <span>Excel</span>
+                <input class="form-control" type="file" name="file" accept=".xlsx,.xlsm,.xls" data-cnc-bank-import-file />
+            </label>
+            <button type="submit" class="btn btn-primary" data-cnc-bank-import-submit>Importar</button>
+        </form>
+
+        <div class="cnc-table-wrap cnc-v2-table-wrap">
+            <table class="table align-middle cnc-table cnc-table--v2">
+                <colgroup>
+                    <col class="cnc-v2-col-status" />
+                    <col class="cnc-v2-col-date" />
+                    <col class="cnc-v2-col-imported-description" />
+                    <col class="cnc-v2-col-description" />
+                    <col class="cnc-v2-col-amount" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Conc.</th>
+                        <th>Fecha</th>
+                        <th>Descripcion importacion</th>
+                        <th>Descripcion usuario</th>
+                        <th class="text-end">Valor</th>
+                    </tr>
+                    <tr class="cnc-v2-filter-row">
+                        <th>
+                            <select class="form-select" data-cnc-column-filter="conciliacion-2" data-cnc-filter-field="conciliated" aria-label="Filtrar conciliado">
+                                <option value="">Todo</option>
+                                <option value="conciliado">OK</option>
+                                <option value="pendiente">Pend.</option>
+                                <option value="omitido">Omitido</option>
+                            </select>
+                        </th>
+                        <th>
+                            <input class="form-control" type="search" placeholder="Fecha" data-cnc-column-filter="conciliacion-2" data-cnc-filter-field="date" aria-label="Filtrar fecha" />
+                        </th>
+                        <th>
+                            <input class="form-control" type="search" placeholder="Importacion" data-cnc-column-filter="conciliacion-2" data-cnc-filter-field="importedDescription" aria-label="Filtrar descripcion importada" />
+                        </th>
+                        <th>
+                            <input class="form-control" type="search" placeholder="Usuario" data-cnc-column-filter="conciliacion-2" data-cnc-filter-field="description" aria-label="Filtrar descripcion de usuario" />
+                        </th>
+                        <th>
+                            <input class="form-control text-end" type="search" placeholder="Valor" data-cnc-column-filter="conciliacion-2" data-cnc-filter-field="amount" aria-label="Filtrar valor" />
+                        </th>
+                    </tr>
+                </thead>
+                <tbody data-cnc-table-body="conciliacion-2">
+                    @foreach (var row in rows)
+                    {
+                        var omitted = CashFlowOmitted(row);
+                        var pendingReview = CashFlowPendingReview(row);
+                        var conciliated = !omitted && (CashFlowFinalConciliated(row) || CashFlowClosedWithoutSiigo(row));
+                        var pending = !omitted && !conciliated;
+                        var userDescription = ConciliatedDescription(row, conciliated);
+                        var importedDescription = row.Observations.Trim();
+                        var importedDescriptionLabel = FirstNonEmpty(importedDescription, "Sin descripcion importada");
+                        var bankLabel = FirstNonEmpty(row.BankAccountCode, row.BankAccountName, row.SourceFlow, "Banco s/d");
+                        var detail = FirstNonEmpty(row.DocumentType, row.Recipient);
+                        var selectedType = FirstNonEmpty(row.DetectedTypeKey, row.Direction == "Entrada" ? "entrada-fe" : "salida-fe");
+                        var amountLabel = Money(row.Amount);
+                        var verticalFilter = VerticalFilter(row);
+                        var directionFilter = DirectionFilter(row);
+                        <tr class="cnc-click-row cnc-v2-row @(omitted ? "is-omitted" : conciliated ? "is-manual-conciliated" : pending ? "is-review-pending" : "")"
+                            hidden="@(verticalFilter == "cloud" && directionFilter == "entrada" ? null : "hidden")"
+                            data-cnc-v2-row
+                            data-record-id="@row.RecordId"
+                            data-cashflow-record-id="@row.RecordId"
+                            data-source-kind="@row.SourceKind"
+                            data-movement-external-key="@row.ExternalKey"
+                            data-flow="@row.SourceFlow"
+                            data-cnc-ignore-vertical="true"
+                            data-cnc-cashflow-pending="@(pending ? "true" : "false")"
+                            data-search="@SearchText(row)"
+                            data-search-base="@SearchBaseText(row)"
+                            data-filter-conciliated="@ConciliatedFilterValue(conciliated, omitted)"
+                            data-filter-date="@row.MovementDateDisplay @row.MovementDateValue"
+                            data-filter-imported-description="@importedDescription"
+                            data-filter-description="@userDescription"
+                            data-filter-amount="@amountLabel @row.Amount.ToString(CultureInfo.InvariantCulture) @row.Direction"
+                            data-filter-vertical="@verticalFilter"
+                            data-filter-direction="@directionFilter"
+                            data-direction="@row.Direction"
+                            data-current-type="@selectedType"
+                            data-type-label="@row.DetectedTypeLabel"
+                            data-type-tone="@row.DetectedTypeTone"
+                            data-action-target="@row.ActionTargetKey"
+                            data-date-display="@row.MovementDateDisplay"
+                            data-bank-label="@bankLabel"
+                            data-bank-detail="@importedDescription"
+                            data-amount-label="@amountLabel"
+                            data-entry-value="@row.EntryValue.ToString(CultureInfo.InvariantCulture)"
+                            data-exit-value="@row.ExitValue.ToString(CultureInfo.InvariantCulture)"
+                            data-supplier-query="@FirstNonEmpty(row.Recipient, row.Description, row.Observations)"
+                            data-dataverse-supplier="@row.Recipient"
+                            data-siigo-document-id="@row.SiigoDocumentId"
+                            data-siigo-document-name="@row.SiigoDocumentName"
+                            data-validation-status="@row.ValidationStatus"
+                            data-registration-status="@row.RegistrationStatus"
+                            data-dataverse-status="@row.DataverseStatus"
+                            data-review-reason="@row.ReviewReason"
+                            data-match-record-id="@row.MatchRecordId"
+                            data-account-code="@row.AccountCode"
+                            data-account-name="@row.AccountName"
+                            data-description="@userDescription">
+                            <td class="cnc-v2-conciliated-cell">
+                                @if (omitted)
+                                {
+                                    <span class="cnc-v2-state cnc-v2-state--omitted" data-cnc-v2-conciliated-label aria-label="Omitido">Omitido</span>
+                                }
+                                else if (pendingReview)
+                                {
+                                    <span class="cnc-v2-state cnc-v2-state--review" data-cnc-v2-conciliated-label aria-label="Pendiente por verificar">Revisar</span>
+                                }
+                                else if (conciliated)
+                                {
+                                    <span class="cnc-v2-state cnc-v2-state--ok" data-cnc-v2-conciliated-label aria-label="Conciliado">&#10003;</span>
+                                }
+                                else
+                                {
+                                    <span class="cnc-v2-state cnc-v2-state--pending" data-cnc-v2-conciliated-label>Pend.</span>
+                                }
+                            </td>
+                            <td>
+                                <strong>@row.MovementDateDisplay</strong>
+                                <small>@ExcelRowLabel(row.SourceRowNumber) · @row.SourceFlow</small>
+                            </td>
+                            <td>
+                                <strong class="cnc-v2-imported-description-main">@importedDescriptionLabel</strong>
+                                <small class="cnc-v2-description-meta">@bankLabel@if (!string.IsNullOrWhiteSpace(detail)) { <text> | @detail</text> }</small>
+                            </td>
+                            <td>
+                                <div class="cnc-v2-description-editor">
+                                    <input class="form-control"
+                                           type="text"
+                                           value="@userDescription"
+                                           placeholder="Digitar descripcion"
+                                           maxlength="4000"
+                                           data-cnc-v2-description-input />
+                                    <button type="button"
+                                            class="btn btn-outline-primary"
+                                            data-cnc-v2-description-save>
+                                        Guardar
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-end">
+                                <strong>@amountLabel</strong>
+                                <small>@row.Direction</small>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</section>
+
+<div class="cnc-modal cnc-bank-balance-modal"
+     data-cnc-bank-balance-modal
+     hidden>
+    <div class="cnc-modal__panel cnc-bank-balance-modal__panel"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="cncBankBalanceModalTitle">
+        <div class="cnc-modal__header">
+            <div>
+                <div class="cnc-kicker">Saldo bancario</div>
+                <h2 id="cncBankBalanceModalTitle">Poner saldo inicial</h2>
+            </div>
+            <button type="button"
+                    class="cnc-cashflow-wizard__close"
+                    data-cnc-bank-balance-close
+                    aria-label="Cerrar">
+                &times;
+            </button>
+        </div>
+        <p class="cnc-bank-balance-modal__description" data-cnc-bank-balance-description>
+            Define el saldo al inicio del periodo para el banco seleccionado.
+        </p>
+        <label class="cnc-modal__field">
+            <span>Saldo inicial</span>
+            <input class="form-control"
+                   type="number"
+                   step="0.01"
+                   min="-100000000000"
+                   max="100000000000"
+                   inputmode="decimal"
+                   data-cnc-bank-balance-input />
+        </label>
+        <p class="cnc-bank-balance-modal__status"
+           data-cnc-bank-balance-status
+           role="status"
+           aria-live="polite"></p>
+        <div class="cnc-modal__actions">
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-cnc-bank-balance-cancel>
+                Cancelar
+            </button>
+            <button type="button"
+                    class="btn btn-primary"
+                    data-cnc-bank-balance-save>
+                Guardar saldo inicial
+            </button>
+        </div>
+    </div>
+</div>

@@ -73,12 +73,10 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
-        var billingRecords = await GetBillingRecordsAsync(
+        var billingRecords = await GetSiigoRevenueLedgerRowsAsync(
             metadata,
             yearStart,
             yearEnd,
-            _dashboardBillingEmissionDateField,
-            _dashboardBillingEmissionDateFieldKind,
             httpContext.User,
             ct);
 
@@ -94,13 +92,16 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
+        var rebatesSnapshot = await _sharePointRebatesProvider.GetSnapshotAsync(ct);
+
         var latestMonthAvailable = ResolveLatestPnlMonthAvailable(
             resolvedYear,
             today,
             verticalKey,
             billingRecords,
             expenseRecords,
-            manualRecords);
+            manualRecords,
+            rebatesSnapshot.Records);
 
         var resolvedMonthCutoff = ResolvePnlMonthCutoff(latestMonthAvailable, monthCutoff);
         var periodEndExclusive = new DateOnly(resolvedYear, resolvedMonthCutoff, 1).AddMonths(1);
@@ -123,6 +124,11 @@ public sealed partial class DataverseService
                 && record.Date.Value.Month <= resolvedMonthCutoff)
             .ToList();
 
+        var scopedRebateRecords = rebatesSnapshot.Records
+            .Where(record => record.Date.Year == resolvedYear
+                && record.Date.Month <= resolvedMonthCutoff)
+            .ToList();
+
         var months = BuildPnlMonthColumns(resolvedYear, resolvedMonthCutoff);
         var orphanRows = BuildPnlOrphanRows(
             resolvedMonthCutoff,
@@ -142,7 +148,7 @@ public sealed partial class DataverseService
         var operatingRevenue = SumPnlSeries(copiersRevenue, cloudRevenue);
 
         var licensing = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "licensing");
-        var rebates = BuildPnlManualSeries(resolvedMonthCutoff, scopedManualRecords, PnlManualItemRebateKey);
+        var rebates = BuildPnlRebateSeries(resolvedMonthCutoff, scopedRebateRecords);
         var supplies = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "supplies");
         var machines = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "machines");
         var technicalService = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "technical-service");
@@ -184,7 +190,8 @@ public sealed partial class DataverseService
 
         var recordsCount = CountPnlRelevantBillingRecords(scopedBillingRecords, verticalKey)
             + CountPnlRelevantExpenseRecords(scopedExpenseRecords, verticalKey)
-            + CountPnlRelevantManualRecords(scopedManualRecords);
+            + CountPnlRelevantManualRecords(scopedManualRecords)
+            + scopedRebateRecords.Count(static record => Math.Abs(record.Value) >= 0.01m);
 
         var operatingRevenueTotal = SumPnlSeriesTotal(operatingRevenue);
         var grossProfitTotal = SumPnlSeriesTotal(grossProfit);
@@ -209,11 +216,12 @@ public sealed partial class DataverseService
             FocusLabel = verticalKey == DashboardPnlVerticalAll
                 ? "P&L mensual consolidado"
                 : $"P&L mensual {verticalLabel}",
-            Description = "P&L mensual sin IVA, asignado por Fecha de Emision. Rebates e ingresos financieros se alimentan desde el modulo Admin Rebates/Inversiones.",
+            Description = "P&L mensual sin IVA, asignado por Fecha de Emision. Rebates se lee en tiempo real desde la tabla Rebates de Facturacion DIGITAL TECH.xlsx; ingresos financieros continua desde Admin Rebates/Inversiones.",
             HasData = recordsCount > 0,
             RecordsCount = recordsCount,
             EmptyStateTitle = "No encontramos movimientos para construir el P&L.",
             EmptyStateMessage = "Cuando existan ingresos o costos cargados en el año seleccionado veras la matriz mensual aqui.",
+            SourceWarning = rebatesSnapshot.Warning,
             OrphanDescription = "Estos conteos muestran facturas sin vertical y gastos pendientes de clasificacion o reparto. Haz clic sobre cualquier numero para abrir el detalle y corregir el registro.",
             Months = months,
             Kpis = BuildPnlKpis(
@@ -294,12 +302,10 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
-        var billingRecords = await GetBillingRecordsAsync(
+        var billingRecords = await GetSiigoRevenueLedgerRowsAsync(
             metadata,
             yearStart,
             yearEnd,
-            _dashboardBillingEmissionDateField,
-            _dashboardBillingEmissionDateFieldKind,
             httpContext.User,
             ct);
 
@@ -315,13 +321,16 @@ public sealed partial class DataverseService
             httpContext.User,
             ct);
 
+        var rebatesSnapshot = await _sharePointRebatesProvider.GetSnapshotAsync(ct);
+
         var latestMonthAvailable = ResolveLatestPnlMonthAvailable(
             resolvedYear,
             today,
             verticalKey,
             billingRecords,
             expenseRecords,
-            manualRecords);
+            manualRecords,
+            rebatesSnapshot.Records);
 
         var resolvedMonthCutoff = ResolvePnlMonthCutoff(latestMonthAvailable, monthCutoff);
         var resolvedCellMonth = ResolvePnlCellMonth(cellMonth, resolvedMonthCutoff);
@@ -358,12 +367,23 @@ public sealed partial class DataverseService
                 && (!resolvedCellMonth.HasValue || record.Date.Value.Month == resolvedCellMonth.Value))
             .ToList();
 
+        var scopedRebateRecords = rebatesSnapshot.Records
+            .Where(record => record.Date.Year == resolvedYear
+                && record.Date.Month <= resolvedMonthCutoff
+                && (!resolvedCellMonth.HasValue || record.Date.Month == resolvedCellMonth.Value))
+            .ToList();
+
         var records = new List<PnlCellDetailRecordDto>();
 
         foreach (var record in scopedBillingRecords)
         {
             var contribution = GetPnlBillingContributionForRow(record, verticalKey, rowMetadata.Key);
-            if (Math.Abs(contribution) < 0.01m)
+            var legalContribution = GetPnlBillingContributionForRow(
+                record,
+                verticalKey,
+                rowMetadata.Key,
+                useLegalInvoiceValue: true);
+            if (Math.Abs(contribution) < 0.01m && Math.Abs(legalContribution) < 0.01m)
                 continue;
 
             records.Add(BuildPnlBillingDetailRecord(record, contribution));
@@ -380,11 +400,23 @@ public sealed partial class DataverseService
 
         foreach (var record in scopedManualRecords)
         {
+            if (string.Equals(record.TypeKey, PnlManualItemRebateKey, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             var contribution = GetPnlManualContributionForRow(record, rowMetadata.Key);
             if (Math.Abs(contribution) < 0.01m)
                 continue;
 
             records.Add(BuildPnlManualDetailRecord(record, contribution));
+        }
+
+        foreach (var record in scopedRebateRecords)
+        {
+            var contribution = GetPnlRebateContributionForRow(record, rowMetadata.Key);
+            if (Math.Abs(contribution) < 0.01m)
+                continue;
+
+            records.Add(BuildPnlRebateDetailRecord(record, contribution));
         }
 
         var orderedRecords = records
@@ -555,6 +587,7 @@ public sealed partial class DataverseService
                 DashboardExpenseCopiersField,
                 DashboardExpenseCategoryField,
                 DashboardExpenseIssuerNameField,
+                DashboardExpenseRecipientNameField,
                 DashboardExpenseTotalField,
                 DashboardExpenseVatField,
                 DashboardExpenseTotalBeforeVatField
@@ -606,6 +639,7 @@ public sealed partial class DataverseService
                 DashboardExpenseCopiersField,
                 DashboardExpenseCategoryField,
                 DashboardExpenseIssuerNameField,
+                DashboardExpenseRecipientNameField,
                 DashboardExpenseTotalField,
                 DashboardExpenseVatField,
                 DashboardExpenseTotalBeforeVatField
@@ -695,6 +729,7 @@ public sealed partial class DataverseService
             EmissionDate = ReadDateOnly(item, emissionDateField),
             PaymentValue = RoundCurrency(ReadDecimal(item, DashboardExpensePaymentValueField) ?? 0m),
             IssuerName = ReadString(item, DashboardExpenseIssuerNameField).Trim(),
+            RecipientName = ReadString(item, DashboardExpenseRecipientNameField).Trim(),
             CategoryOptionValue = categoryOptionValue,
             CategoryLabel = FirstNonEmpty(
                 ReadString(item, $"{DashboardExpenseCategoryField}{FormattedValueAnnotationSuffix}"),
@@ -1079,10 +1114,18 @@ public sealed partial class DataverseService
         };
     }
 
-    private static decimal GetPnlBillingContributionForRow(BillingRecordRow row, string verticalKey, string rowKey)
+    private static decimal GetPnlBillingContributionForRow(
+        BillingRecordRow row,
+        string verticalKey,
+        string rowKey,
+        bool useLegalInvoiceValue = false)
     {
-        var cloudAmount = GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCloudOption);
-        var copiersAmount = GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption);
+        var cloudAmount = useLegalInvoiceValue
+            ? GetPnlLegalRevenueAmount(row, verticalKey, DashboardVerticalCloudOption)
+            : GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCloudOption);
+        var copiersAmount = useLegalInvoiceValue
+            ? GetPnlLegalRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption)
+            : GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption);
 
         return rowKey switch
         {
@@ -1182,6 +1225,20 @@ public sealed partial class DataverseService
         };
     }
 
+    private static decimal GetPnlRebateContributionForRow(SharePointRebateRecord record, string rowKey)
+    {
+        var amount = record.Value;
+        if (Math.Abs(amount) < 0.01m)
+            return 0m;
+
+        return rowKey switch
+        {
+            "cogs-rebates" or "cogs-total" => amount,
+            "gross-profit" or "ebitda" or "income-before-taxes" or "net-income" => RoundCurrency(-amount),
+            _ => 0m
+        };
+    }
+
     private static decimal GetPnlOtherIncomeExpenseSignedAmount(PnlExpenseRow row, decimal amount, string bucketKey)
     {
         return bucketKey switch
@@ -1224,7 +1281,7 @@ public sealed partial class DataverseService
             CategoryLabel = "No aplica",
             TotalInvoice = row.TotalInvoice,
             VatValue = row.VatValue,
-            TotalBeforeVatValue = GetPnlBillingBaseValue(row),
+            TotalBeforeVatValue = GetPnlBillingLegalBaseValue(row),
             PaymentValue = row.PaymentValue,
             CloudValue = 0m,
             CopiersValue = 0m,
@@ -1278,6 +1335,33 @@ public sealed partial class DataverseService
             VerticalKey = "none",
             VerticalLabel = "Consolidado",
             CategoryLabel = record.TypeLabel,
+            TotalInvoice = record.Value,
+            VatValue = 0m,
+            TotalBeforeVatValue = record.Value,
+            PaymentValue = record.Value,
+            CloudValue = 0m,
+            CopiersValue = 0m,
+            CellValue = RoundCurrency(cellValue),
+            CanEditVertical = false,
+            CanEditCategory = false,
+            CanEditAllocation = false
+        };
+    }
+
+    private static PnlCellDetailRecordDto BuildPnlRebateDetailRecord(SharePointRebateRecord record, decimal cellValue)
+    {
+        return new PnlCellDetailRecordDto
+        {
+            SourceType = "sharepoint-rebate",
+            SourceLabel = "SharePoint / Rebates",
+            RecordId = record.RecordId,
+            DocumentNumber = $"Fila {record.SourceRow}",
+            Description = "Rebate desde Facturacion DIGITAL TECH.xlsx",
+            DateDisplay = record.Date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
+            AssignedMonthDisplay = ResolvePnlAssignedMonthDisplay(record.Date),
+            VerticalKey = "none",
+            VerticalLabel = "Consolidado",
+            CategoryLabel = "Rebates",
             TotalInvoice = record.Value,
             VatValue = 0m,
             TotalBeforeVatValue = record.Value,
@@ -1355,7 +1439,7 @@ public sealed partial class DataverseService
 
     private static string BuildPnlDetailEmptyMessage(string rowKey) => rowKey switch
     {
-        "cogs-rebates" => "No encontramos registros manuales de rebates para esta celda.",
+        "cogs-rebates" => "No encontramos rebates en la tabla Rebates de Facturacion DIGITAL TECH.xlsx para esta celda.",
         "other-financial-income" => "No encontramos ingresos financieros manuales para esta celda.",
         "orphan-billing-no-vertical" => "No encontramos facturas sin vertical para este corte.",
         "orphan-expense-no-category" => "No encontramos gastos sin categoria para este corte.",
@@ -1563,6 +1647,22 @@ public sealed partial class DataverseService
         return values;
     }
 
+    internal static IReadOnlyList<decimal> BuildPnlRebateSeries(
+        int monthCutoff,
+        IReadOnlyList<SharePointRebateRecord> records)
+    {
+        var values = new decimal[Math.Clamp(monthCutoff, 1, 12)];
+        foreach (var record in records)
+        {
+            var month = record.Date.Month;
+            if (month > values.Length)
+                continue;
+
+            values[month - 1] = RoundCurrency(values[month - 1] + record.Value);
+        }
+        return values;
+    }
+
     private static IReadOnlyList<decimal> BuildPnlOtherNonOperatingSeries(
         int monthCutoff,
         IReadOnlyList<PnlExpenseRow> rows,
@@ -1635,8 +1735,8 @@ public sealed partial class DataverseService
     private static int CountPnlRelevantBillingRecords(IEnumerable<BillingRecordRow> rows, string verticalKey)
     {
         return rows.Count(row =>
-            Math.Abs(GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCloudOption)) >= 0.01m
-            || Math.Abs(GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption)) >= 0.01m);
+            Math.Abs(GetPnlLegalRevenueAmount(row, verticalKey, DashboardVerticalCloudOption)) >= 0.01m
+            || Math.Abs(GetPnlLegalRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption)) >= 0.01m);
     }
 
     private static int CountPnlRelevantExpenseRecords(IEnumerable<PnlExpenseRow> rows, string verticalKey)
@@ -1646,10 +1746,15 @@ public sealed partial class DataverseService
 
     private static int CountPnlRelevantManualRecords(IEnumerable<PnlManualRecord> records)
     {
-        return records.Count(record => Math.Abs(record.Value) >= 0.01m);
+        return records.Count(record =>
+            !string.Equals(record.TypeKey, PnlManualItemRebateKey, StringComparison.OrdinalIgnoreCase)
+            && Math.Abs(record.Value) >= 0.01m);
     }
 
     private static decimal GetPnlBillingBaseValue(BillingRecordRow row)
+        => RoundCurrency(row.NetBeforeVatValue);
+
+    private static decimal GetPnlBillingLegalBaseValue(BillingRecordRow row)
     {
         if (Math.Abs(row.TotalInvoice) < 0.01m && Math.Abs(row.VatValue) < 0.01m)
             return 0m;
@@ -1658,6 +1763,24 @@ public sealed partial class DataverseService
     }
 
     private static decimal GetPnlRevenueAmount(BillingRecordRow row, string verticalKey, int targetVerticalOption)
+        => GetPnlRevenueAmountForBase(
+            row,
+            verticalKey,
+            targetVerticalOption,
+            GetPnlBillingBaseValue(row));
+
+    private static decimal GetPnlLegalRevenueAmount(BillingRecordRow row, string verticalKey, int targetVerticalOption)
+        => GetPnlRevenueAmountForBase(
+            row,
+            verticalKey,
+            targetVerticalOption,
+            GetPnlBillingLegalBaseValue(row));
+
+    private static decimal GetPnlRevenueAmountForBase(
+        BillingRecordRow row,
+        string verticalKey,
+        int targetVerticalOption,
+        decimal baseValue)
     {
         if (row.VerticalOptionValue != targetVerticalOption)
             return 0m;
@@ -1665,7 +1788,7 @@ public sealed partial class DataverseService
         if (!MatchesPnlVerticalSelection(targetVerticalOption, verticalKey))
             return 0m;
 
-        return GetPnlBillingBaseValue(row);
+        return baseValue;
     }
 
     private static decimal GetPnlExpenseViewAmount(PnlExpenseRow row, string verticalKey)
@@ -1824,7 +1947,8 @@ public sealed partial class DataverseService
         string verticalKey,
         IReadOnlyList<BillingRecordRow> billingRecords,
         IReadOnlyList<PnlExpenseRow> expenseRecords,
-        IReadOnlyList<PnlManualRecord> manualRecords)
+        IReadOnlyList<PnlManualRecord> manualRecords,
+        IReadOnlyList<SharePointRebateRecord> rebateRecords)
     {
         var months = new List<int>();
 
@@ -1832,8 +1956,8 @@ public sealed partial class DataverseService
             billingRecords
                 .Where(row => row.EmissionDate is not null
                     && row.EmissionDate.Value.Year == year
-                    && (Math.Abs(GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCloudOption)) >= 0.01m
-                        || Math.Abs(GetPnlRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption)) >= 0.01m))
+                    && (Math.Abs(GetPnlLegalRevenueAmount(row, verticalKey, DashboardVerticalCloudOption)) >= 0.01m
+                        || Math.Abs(GetPnlLegalRevenueAmount(row, verticalKey, DashboardVerticalCopiersOption)) >= 0.01m))
                 .Select(row => row.EmissionDate!.Value.Month));
 
         months.AddRange(
@@ -1847,8 +1971,14 @@ public sealed partial class DataverseService
             manualRecords
                 .Where(record => record.Date is not null
                     && record.Date.Value.Year == year
+                    && !string.Equals(record.TypeKey, PnlManualItemRebateKey, StringComparison.OrdinalIgnoreCase)
                     && Math.Abs(record.Value) >= 0.01m)
                 .Select(record => record.Date!.Value.Month));
+
+        months.AddRange(
+            rebateRecords
+                .Where(record => record.Date.Year == year && Math.Abs(record.Value) >= 0.01m)
+                .Select(record => record.Date.Month));
 
         if (months.Count > 0)
             return Math.Clamp(months.Max(), 1, 12);
@@ -1976,6 +2106,7 @@ public sealed partial class DataverseService
         public DateOnly? EmissionDate { get; set; }
         public decimal PaymentValue { get; set; }
         public string IssuerName { get; set; } = "";
+        public string RecipientName { get; set; } = "";
         public int CategoryOptionValue { get; set; }
         public string CategoryLabel { get; set; } = "";
         public decimal TotalValue { get; set; }

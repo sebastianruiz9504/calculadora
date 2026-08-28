@@ -38,6 +38,81 @@ public sealed class CopiersController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BillingDays(CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.GetCopiersDashboardAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar los dias de facturacion copiers.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> EquipmentMovements(CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.GetCopiersEquipmentMovementsDashboardAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar los movimientos de equipos.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> LineEquipmentAssignment([FromQuery] string lineId, [FromQuery] string? clientId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _dataverse.GetCopiersLineEquipmentAssignmentAsync(lineId, clientId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar la asignacion de equipos de la linea.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> LineEquipmentAssignment([FromBody] CopiersLineEquipmentAssignmentSaveRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar la linea y los equipos a asignar."));
+
+        try
+        {
+            return Ok(await _dataverse.SaveCopiersLineEquipmentAssignmentAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible guardar la asignacion de equipos de la linea.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> Maintenance(CancellationToken ct)
     {
         try
@@ -135,11 +210,11 @@ public sealed class CopiersController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> PreventiveMaintenance(CancellationToken ct)
+    public async Task<IActionResult> PreventiveMaintenance([FromQuery] string? period, CancellationToken ct)
     {
         try
         {
-            return Ok(await _dataverse.GetCopiersPreventiveMaintenanceBoardAsync(ct));
+            return Ok(await _dataverse.GetCopiersPreventiveMaintenanceBoardAsync(period, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -148,6 +223,31 @@ public sealed class CopiersController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar los mantenimientos preventivos.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> PreventiveMaintenanceFrequency([FromBody] CopiersPreventiveMaintenanceFrequencyUpdateRequestDto? request, CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes enviar el cliente y la periodicidad."));
+
+        try
+        {
+            return Ok(await _dataverse.UpdateCopiersPreventiveMaintenanceFrequencyAsync(request, ct));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateErrorPayload(ex.Message, ex));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible actualizar la periodicidad del mantenimiento preventivo.", ex));
         }
     }
 
@@ -382,6 +482,60 @@ public sealed class CopiersController : Controller
         catch (Exception ex)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar el movimiento del equipo.", ex));
+        }
+    }
+
+    [HttpPost]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [RequestSizeLimit(134217728)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 134217728)]
+    public async Task<IActionResult> UploadEquipmentMovementAttachment(string movementId, IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length <= 0)
+            return BadRequest(CreateErrorPayload("Debes seleccionar un acta de entrega valida."));
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ct);
+
+            return Ok(await _dataverse.UploadCopiersEquipmentMovementAttachmentAsync(
+                movementId,
+                file.FileName,
+                file.ContentType,
+                buffer.ToArray(),
+                ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible adjuntar el acta de entrega.", ex));
+        }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> DownloadEquipmentMovementAttachment([FromQuery] string movementId, CancellationToken ct)
+    {
+        try
+        {
+            var file = await _dataverse.DownloadCopiersEquipmentMovementAttachmentAsync(movementId, ct);
+            if (file is null || file.Content.Length == 0)
+                return NotFound();
+
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible descargar el acta de entrega.", ex));
         }
     }
 

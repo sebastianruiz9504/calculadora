@@ -4,25 +4,47 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UseSystemDrawing>true</UseSystemDrawing>
     <UserSecretsId>a3ba7dab-4c2e-4c55-afdc-bd56661e9ee4</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.25.0" />
     <PackageReference Include="Microsoft.Identity.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Identity.Web" Version="4.2.0" />
     <PackageReference Include="Microsoft.Identity.Web.DownstreamApi" Version="4.2.0" />
     <PackageReference Include="Microsoft.Identity.Web.UI" Version="4.2.0" />
+    <!-- Security pins for vulnerable transitive 10.0.0 dependencies. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" NoWarn="NU1510" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" NoWarn="NU1510" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="ClosedXML" Version="0.104.2" />
+    <PackageReference Include="OpenAI" Version="2.12.0" />
+    <PackageReference Include="PdfPig" Version="0.1.15" />
     <PackageReference Include="QRCoder" Version="1.8.0" />
 
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="artifacts\**" />
-    <Content Remove="artifacts\**" />
-    <EmbeddedResource Remove="artifacts\**" />
-    <None Remove="artifacts\**" />
+    <Compile Remove="a\**;artifacts\**;tmp\**;output\**;outputs\**;logs\**;tests\**" />
+    <Content Remove="a\**;artifacts\**;tmp\**;output\**;outputs\**;logs\**;tests\**" />
+    <EmbeddedResource Remove="a\**;artifacts\**;tmp\**;output\**;outputs\**;logs\**;tests\**" />
+    <None Remove="a\**;artifacts\**;tmp\**;output\**;outputs\**;logs\**;tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- OneDrive conflict copies are recovery artifacts, never application sources. -->
+    <Compile Remove="**\*-CPC-*.cs" />
+    <Content Remove="**\*-CPC-*.*" />
+    <EmbeddedResource Remove="**\*-CPC-*.*" />
+    <None Remove="**\*-CPC-*.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CotizadorInterno.Web.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="App_Data\nomina-preliquidacion-drafts.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
 </Project>

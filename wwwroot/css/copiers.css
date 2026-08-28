@@ -139,6 +139,134 @@
     line-height: 1.2;
 }
 
+.copiers-preventive-client-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-width: 0;
+}
+
+.copiers-preventive-client-main .copiers-preventive-toggle {
+    flex: 1 1 auto;
+    min-width: 220px;
+}
+
+.copiers-preventive-client-meta {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.copiers-frequency-switch {
+    --switch-offset: 3px;
+    appearance: none;
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    width: 184px;
+    min-height: 34px;
+    padding: var(--switch-offset);
+    border: 1px solid var(--copiers-line);
+    border-radius: 999px;
+    background: #eef4fa;
+    color: var(--copiers-muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    isolation: isolate;
+    cursor: default;
+    transition: border-color .18s ease, background-color .18s ease, opacity .18s ease, box-shadow .18s ease;
+}
+
+.copiers-frequency-switch::before {
+    content: "";
+    position: absolute;
+    inset: var(--switch-offset) calc(50% + var(--switch-offset)) var(--switch-offset) var(--switch-offset);
+    z-index: 0;
+    border-radius: 999px;
+    background: #ffffff;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, .12);
+    transition: inset .18s ease, background-color .18s ease;
+}
+
+.copiers-frequency-switch.is-editable {
+    cursor: pointer;
+}
+
+.copiers-frequency-switch.is-editable:hover {
+    border-color: #8fb7dd;
+    box-shadow: 0 6px 16px rgba(28, 99, 159, .12);
+}
+
+.copiers-frequency-switch.is-readonly {
+    opacity: .72;
+}
+
+.copiers-frequency-switch.is-saving {
+    cursor: progress;
+    opacity: .82;
+}
+
+.copiers-frequency-switch:disabled {
+    pointer-events: none;
+}
+
+.copiers-frequency-switch.is-bimonthly {
+    border-color: #6ee7b7;
+    background: #ecfdf5;
+}
+
+.copiers-frequency-switch.is-bimonthly::before {
+    inset: var(--switch-offset) var(--switch-offset) var(--switch-offset) calc(50% + var(--switch-offset));
+    background: #059669;
+}
+
+.copiers-frequency-switch span {
+    position: relative;
+    z-index: 1;
+    display: inline-grid;
+    place-items: center;
+    min-width: 0;
+    padding: 6px 8px;
+    line-height: 1;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.copiers-frequency-switch.is-monthly span:first-child,
+.copiers-frequency-switch.is-bimonthly span:last-child {
+    color: var(--copiers-brand);
+}
+
+.copiers-frequency-switch.is-bimonthly span:last-child {
+    color: #ffffff;
+}
+
+.copiers-client-city {
+    display: inline-flex;
+    align-items: center;
+    max-width: 180px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid #dbe7f2;
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--copiers-ink);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .copiers-preventive-toggle__icon {
     flex: 0 0 auto;
     display: inline-grid;
@@ -316,6 +444,35 @@
     min-height: 44px;
 }
 
+.copiers-segmented {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    padding: 4px;
+    border: 1px solid var(--copiers-line);
+    border-radius: 16px;
+    background: #f6f9fc;
+}
+
+.copiers-segmented button {
+    min-height: 34px;
+    border: 0;
+    border-radius: 12px;
+    padding: 7px 12px;
+    background: transparent;
+    color: var(--copiers-muted);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.copiers-segmented button.is-active {
+    background: #ffffff;
+    color: var(--copiers-brand);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, .08);
+}
+
 .copiers-section-title,
 .copiers-subpanel h3,
 .copiers-modal__title,
@@ -385,6 +542,10 @@
     min-width: 260px;
 }
 
+.copiers-search--compact {
+    min-width: 220px;
+}
+
 .copiers-search .form-control,
 .copiers-field .form-control,
 .copiers-field .form-select {
@@ -428,12 +589,15 @@
 .copiers-table--maintenance,
 .copiers-table--equipment,
 .copiers-table--deliveries,
+.copiers-table--billing-days,
+.copiers-table--movements,
 .copiers-table--equipment-maintenance {
     min-width: 1040px;
 }
 
-.copiers-table--equipment-movements {
-    min-width: 720px;
+.copiers-table--equipment-movements,
+.copiers-table--assignment {
+    min-width: 860px;
 }
 
 .copiers-table--equipment-inventory {
@@ -465,6 +629,46 @@
     white-space: nowrap;
 }
 
+.copiers-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-transform: inherit;
+    letter-spacing: inherit;
+}
+
+.copiers-sort::after {
+    content: "";
+    color: var(--copiers-brand);
+    font-size: 11px;
+}
+
+.copiers-sort[data-sort-direction="asc"]::after {
+    content: "^";
+}
+
+.copiers-sort[data-sort-direction="desc"]::after {
+    content: "v";
+}
+
+.copiers-sort:hover,
+.copiers-sort:focus-visible,
+.copiers-sort.is-active {
+    color: var(--copiers-brand);
+}
+
+.copiers-sort:focus-visible {
+    outline: 2px solid rgba(15, 108, 189, .28);
+    outline-offset: 3px;
+}
+
 .copiers-table tbody tr {
     transition: background-color .16s ease;
 }
@@ -485,6 +689,162 @@
     color: var(--copiers-ink);
     vertical-align: middle;
     overflow-wrap: anywhere;
+}
+
+.copiers-billing-group-row.is-expanded td {
+    background: #f8fbff;
+}
+
+.copiers-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--copiers-ink);
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+}
+
+.copiers-group-toggle span {
+    flex: 0 0 auto;
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--copiers-brand-soft);
+    color: var(--copiers-brand);
+    font-weight: 700;
+}
+
+.copiers-billing-detail-row td {
+    padding: 0;
+    background: #fbfdff;
+}
+
+.copiers-billing-detail {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+}
+
+.copiers-billing-detail__header {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.copiers-billing-detail__header strong {
+    color: var(--copiers-ink);
+    font-weight: 700;
+}
+
+.copiers-billing-detail__header span {
+    color: var(--copiers-muted);
+    font-size: 13px;
+}
+
+.copiers-billing-lines {
+    display: grid;
+    gap: 8px;
+}
+
+.copiers-billing-line {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) minmax(80px, .45fr) minmax(170px, .8fr) minmax(120px, .55fr) minmax(120px, .55fr);
+    gap: 10px;
+    align-items: stretch;
+    padding: 10px 12px;
+    border: 1px solid #edf2f7;
+    border-radius: 14px;
+    background: #ffffff;
+}
+
+.copiers-billing-line > span,
+.copiers-billing-line > button {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.copiers-billing-line--header {
+    background: #f5f9fd;
+    color: var(--copiers-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.copiers-assignment-inline {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.copiers-assignment-inline strong,
+.copiers-assignment-btn strong,
+.copiers-assignment-btn small {
+    display: block;
+}
+
+.copiers-assignment-inline strong,
+.copiers-assignment-btn strong {
+    color: var(--copiers-ink);
+    font-weight: 700;
+}
+
+.copiers-assignment-inline small,
+.copiers-assignment-btn small {
+    color: var(--copiers-muted);
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.copiers-assignment-btn {
+    display: grid;
+    gap: 2px;
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid var(--copiers-line);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: #f8fbff;
+    color: var(--copiers-ink);
+    text-align: left;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.copiers-assignment-btn:hover,
+.copiers-assignment-btn:focus-visible {
+    border-color: rgba(15, 108, 189, .45);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+    transform: translateY(-1px);
+}
+
+.copiers-assignment-btn.is-warning,
+.copiers-detail-card.is-warning {
+    border-color: #f4d27a;
+    background: #fff8e5;
+}
+
+.copiers-assignment-summary,
+.copiers-assignment-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.copiers-assignment-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.copiers-assignment-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .copiers-muted {
@@ -861,6 +1221,8 @@
     .copiers-kpis,
     .copiers-location-grid,
     .copiers-location-card--client,
+    .copiers-assignment-summary,
+    .copiers-assignment-grid,
     .copiers-modal__dialog--wide .copiers-form__grid,
     .copiers-form__grid,
     .copiers-inline-control,
@@ -946,6 +1308,36 @@
         width: 100%;
     }
 
+    .copiers-segmented {
+        width: 100%;
+    }
+
+    .copiers-segmented button {
+        flex: 1 1 0;
+    }
+
+    .copiers-preventive-client-main {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .copiers-preventive-client-main .copiers-preventive-toggle {
+        min-width: 0;
+    }
+
+    .copiers-preventive-client-meta {
+        justify-content: flex-start;
+    }
+
+    .copiers-frequency-switch {
+        width: 100%;
+        max-width: 220px;
+    }
+
+    .copiers-client-city {
+        max-width: 100%;
+    }
+
     .copiers-counter {
         width: 100%;
     }
@@ -963,6 +1355,14 @@
 
     .copiers-line-row {
         grid-template-columns: 1fr;
+    }
+
+    .copiers-billing-line {
+        grid-template-columns: 1fr;
+    }
+
+    .copiers-billing-line--header {
+        display: none;
     }
 
     .copiers-search {
@@ -1053,6 +1453,10 @@
 
     .copiers-table td[colspan]::before {
         content: none;
+    }
+
+    .copiers-table .copiers-billing-detail-row td {
+        padding: 0;
     }
 }
 

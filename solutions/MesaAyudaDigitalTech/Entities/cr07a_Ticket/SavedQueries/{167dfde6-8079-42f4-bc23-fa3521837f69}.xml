@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<savedqueries xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <savedquery>
+    <IsCustomizable>1</IsCustomizable>
+    <CanBeDeleted>0</CanBeDeleted>
+    <isquickfindquery>0</isquickfindquery>
+    <isprivate>0</isprivate>
+    <isdefault>1</isdefault>
+    <savedqueryid>{167dfde6-8079-42f4-bc23-fa3521837f69}</savedqueryid>
+    <layoutxml>
+      <grid name="resultset" jump="cr07a_tituloticket" select="1" icon="1" preview="1">
+        <row name="result" id="cr07a_ticketid">
+          <cell name="cr07a_tituloticket" width="177" />
+          <cell name="cr07a_descripcion" width="150" />
+          <cell name="cr07a_fechacreacion" width="150" />
+          <cell name="cr07a_estado" width="150" />
+          <cell name="cr07a_fechadecierre" width="129" />
+          <cell name="cr07a_tipo" width="100" />
+          <cell name="cr07a_cliente" width="100" />
+        </row>
+      </grid>
+    </layoutxml>
+    <querytype>0</querytype>
+    <fetchxml>
+      <fetch version="1.0" mapping="logical">
+        <entity name="cr07a_ticket">
+          <attribute name="cr07a_ticketid" />
+          <attribute name="cr07a_tituloticket" />
+          <attribute name="createdon" />
+          <order attribute="cr07a_tituloticket" descending="false" />
+          <filter type="and">
+            <condition attribute="statecode" operator="eq" value="0" />
+          </filter>
+          <attribute name="cr07a_descripcion" />
+          <attribute name="cr07a_fechacreacion" />
+          <attribute name="cr07a_estado" />
+          <attribute name="cr07a_fechadecierre" />
+          <attribute name="cr07a_tipo" />
+          <attribute name="cr07a_cliente" />
+        </entity>
+      </fetch>
+    </fetchxml>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <LocalizedNames>
+      <LocalizedName description="Tickets activo" languagecode="3082" />
+    </LocalizedNames>
+  </savedquery>
+</savedqueries>
