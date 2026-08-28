@@ -2645,7 +2645,7 @@ public sealed partial class DataverseService
             .Select(item => ParseConciliacionDianSupplierInvoiceRow(item, metadata, fields, cufeField, baseAmountField))
             .Where(row => row is not null
                 && (IsConciliacionDianSupplierImportableDocument(row)
-                    || (includeDataverseOnlyDocuments && IsConciliacionDianPayroll(row))))
+                    || (includeDataverseOnlyDocuments && IsConciliacionDianDataverseOnlyDocument(row))))
             .Cast<ConciliacionDianSupplierInvoiceRowDto>()
             .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.First())
@@ -2657,7 +2657,7 @@ public sealed partial class DataverseService
         var incomplete = rows
             .Where(static row => string.IsNullOrWhiteSpace(row.Cufe)
                 || string.IsNullOrWhiteSpace(row.ExcelKey)
-                || (!IsConciliacionDianPayroll(row) && string.IsNullOrWhiteSpace(row.ReceptionDateValue))
+                || (!IsConciliacionDianDataverseOnlyDocument(row) && string.IsNullOrWhiteSpace(row.ReceptionDateValue))
                 || string.IsNullOrWhiteSpace(row.AutomationSource)
                 || string.IsNullOrWhiteSpace(row.ConcurrencyToken))
             .Select(static row => FirstNonEmpty(row.RecordId, row.InvoiceNumber, "sin identificador"))
@@ -2845,6 +2845,25 @@ public sealed partial class DataverseService
             && group.Contains("EMITID", StringComparison.OrdinalIgnoreCase)
             && !group.Contains("RECIBID", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsConciliacionDianSupportDocument(ConciliacionDianSupplierInvoiceRowDto? row)
+    {
+        if (row is null)
+            return false;
+
+        var type = NormalizeConciliacionLookupText(row.DocumentType);
+        var group = NormalizeConciliacionLookupText(row.DianGroup);
+        var isSupportDocument = type.Contains("DOCUMENTO SOPORTE", StringComparison.OrdinalIgnoreCase)
+            || type.Contains("DOC SOPORTE", StringComparison.OrdinalIgnoreCase)
+            || type.Contains("SOPORTE CON NO OBLIGADOS", StringComparison.OrdinalIgnoreCase);
+        return isSupportDocument
+            && !type.Contains("NOTA", StringComparison.OrdinalIgnoreCase)
+            && group.Contains("EMITID", StringComparison.OrdinalIgnoreCase)
+            && !group.Contains("RECIBID", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsConciliacionDianDataverseOnlyDocument(ConciliacionDianSupplierInvoiceRowDto? row) =>
+        IsConciliacionDianPayroll(row) || IsConciliacionDianSupportDocument(row);
 
     private static bool IsConciliacionDianSupplierInvoice(ConciliacionDianSupplierInvoiceRowDto? row)
     {

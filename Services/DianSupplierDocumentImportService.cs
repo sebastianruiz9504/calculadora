@@ -594,8 +594,7 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
                 continue;
             }
 
-            var isPayroll = string.Equals(kind, "NominaIndividual", StringComparison.OrdinalIgnoreCase);
-            if (!isPayroll && !raw.ReceptionDate.HasValue)
+            if (!IsDataverseOnlyDocument(kind) && !raw.ReceptionDate.HasValue)
             {
                 skipped.Add(BuildSkipped(raw, "Documento electronico sin fecha de recepcion; no pertenece a un mes recibido verificable."));
                 continue;
@@ -820,9 +819,17 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
             || type.Contains("DOC SOPORTE", StringComparison.OrdinalIgnoreCase)
             || type.Contains("SOPORTE CON NO OBLIGADOS", StringComparison.OrdinalIgnoreCase))
         {
-            kind = "";
-            reason = "Documento soporte; no se importa.";
-            return false;
+            if (!group.Contains("EMITID", StringComparison.OrdinalIgnoreCase)
+                || group.Contains("RECIBID", StringComparison.OrdinalIgnoreCase))
+            {
+                kind = "";
+                reason = "Documento soporte que no pertenece al grupo Emitidos; no se importa.";
+                return false;
+            }
+
+            kind = "DocumentoSoporte";
+            reason = "";
+            return true;
         }
 
         if (type.Contains("NOMINA INDIVIDUAL", StringComparison.OrdinalIgnoreCase))
@@ -884,13 +891,17 @@ public sealed class DianSupplierDocumentImportService : IDianSupplierDocumentImp
         return new DateOnly(resolved.Year, resolved.Month, 1);
     }
 
-    private static bool IsSiigoEligibleDocument(DianSupplierDocumentImportRowDto row) =>
+    internal static bool IsSiigoEligibleDocument(DianSupplierDocumentImportRowDto row) =>
         row.DocumentKind.Equals("FacturaElectronica", StringComparison.OrdinalIgnoreCase)
         || row.DocumentKind.Equals("NotaCreditoProveedor", StringComparison.OrdinalIgnoreCase);
 
+    internal static bool IsDataverseOnlyDocument(string documentKind) =>
+        documentKind.Equals("NominaIndividual", StringComparison.OrdinalIgnoreCase)
+        || documentKind.Equals("DocumentoSoporte", StringComparison.OrdinalIgnoreCase);
+
     internal static DateOnly? ResolveDocumentPeriod(DianSupplierDocumentImportRowDto row)
     {
-        if (row.DocumentKind.Equals("NominaIndividual", StringComparison.OrdinalIgnoreCase)
+        if (IsDataverseOnlyDocument(row.DocumentKind)
             && row.EmissionDate.HasValue)
         {
             return new DateOnly(row.EmissionDate.Value.Year, row.EmissionDate.Value.Month, 1);

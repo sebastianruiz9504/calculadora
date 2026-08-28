@@ -56,6 +56,7 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
             RowsRead = import.RowsRead,
             ImportableRows = import.ImportableRows,
             SupplierCreditNoteRows = import.SupplierCreditNoteRows,
+            SupportDocumentRows = import.SupportDocumentRows,
             PayrollRows = import.PayrollRows,
             Created = import.Created,
             Updated = import.Updated,
@@ -155,13 +156,14 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
 
         var periods = NormalizePeriods(result.Periods, new DateOnly(manifest.Year, manifest.Month, 1));
         var primaryPeriod = ParsePeriod(periods[0]) ?? new DateOnly(manifest.Year, manifest.Month, 1);
-        manifest.Version = Math.Max(3, manifest.Version);
+        manifest.Version = Math.Max(4, manifest.Version);
         manifest.Year = primaryPeriod.Year;
         manifest.Month = primaryPeriod.Month;
         manifest.Periods = periods.ToList();
         manifest.RowsRead = result.RowsRead;
         manifest.ImportableRows = existingKeys.Count;
         manifest.SupplierCreditNoteRows = result.SupplierCreditNoteRows;
+        manifest.SupportDocumentRows = result.SupportDocumentRows;
         manifest.PayrollRows = result.PayrollRows;
         manifest.Created += newlyAdded.Count(static row =>
             row.Outcome.Equals("Created", StringComparison.OrdinalIgnoreCase));
@@ -197,7 +199,10 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
             .ToArray();
 
         var payrollRows = rows.Where(IsPayroll).ToArray();
-        var siigoRows = rows.Where(static row => !IsPayroll(row)).ToArray();
+        var supportDocumentRows = rows.Where(IsSupportDocument).ToArray();
+        var siigoRows = rows.Where(static row => !IsDataverseOnly(row)).ToArray();
+        var effectivePayrollRows = Math.Max(payrollRows.Length, manifest.PayrollRows);
+        var effectiveSupportDocumentRows = Math.Max(supportDocumentRows.Length, manifest.SupportDocumentRows);
         var sent = siigoRows.Count(static row => !string.IsNullOrWhiteSpace(row.SiigoDocumentId));
         var supplierCreditNotes = siigoRows.Count(IsSupplierCreditNote);
         var supplierCreditNotesApplied = siigoRows.Count(static row =>
@@ -220,7 +225,7 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
         var (statusLabel, statusTone) = ResolveStatus(
             manifest.DryRun,
             siigoRows.Length,
-            Math.Max(payrollRows.Length, manifest.PayrollRows),
+            effectivePayrollRows + effectiveSupportDocumentRows,
             sent,
             pendingRut,
             pendingClassification,
@@ -255,7 +260,8 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
             SentToSiigo = sent,
             SupplierCreditNotes = supplierCreditNotes,
             SupplierCreditNotesApplied = supplierCreditNotesApplied,
-            PayrollRows = payrollRows.Length > 0 ? payrollRows.Length : manifest.PayrollRows,
+            SupportDocumentRows = effectiveSupportDocumentRows,
+            PayrollRows = effectivePayrollRows,
             SupplierCreditNoteValue = supplierCreditNoteValue,
             PendingRut = pendingRut,
             PendingRutSuppliers = pendingRutSuppliers,
@@ -273,13 +279,16 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
         ConciliacionDianSupplierInvoiceRowDto row)
     {
         var isPayroll = IsPayroll(row);
-        var needsRut = row.Stage.Equals("proveedor", StringComparison.OrdinalIgnoreCase);
+        var isSupportDocument = IsSupportDocument(row);
+        var isDataverseOnly = isPayroll || isSupportDocument;
+        var needsRut = !isDataverseOnly && row.Stage.Equals("proveedor", StringComparison.OrdinalIgnoreCase);
         return new DeduccionesIvaImportHistoryDocumentDto
         {
             RecordId = row.RecordId,
             InvoiceNumber = row.InvoiceNumber,
             DocumentType = row.DocumentType,
             IsSupplierCreditNote = IsSupplierCreditNote(row),
+            IsSupportDocument = isSupportDocument,
             IsPayroll = isPayroll,
             SupplierNit = row.SupplierNit,
             SupplierName = row.SupplierName,
@@ -287,10 +296,14 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
             TotalValue = row.TotalValue,
             AccountCode = row.AccountCode,
             SiigoDocumentName = row.SiigoDocumentName,
-            StatusLabel = isPayroll ? "Guardada en Dataverse" : needsRut ? "RUT pendiente" : row.StageLabel,
-            StatusTone = isPayroll ? "success" : needsRut ? "warning" : row.StageTone,
-            Detail = isPayroll ? "Nomina importada unicamente a Dataverse; no se envia a Siigo." : row.ReviewReason,
-            NeedsRut = !isPayroll && needsRut
+            StatusLabel = isDataverseOnly ? "Guardada en Dataverse" : needsRut ? "RUT pendiente" : row.StageLabel,
+            StatusTone = isDataverseOnly ? "success" : needsRut ? "warning" : row.StageTone,
+            Detail = isPayroll
+                ? "Nomina importada unicamente a Dataverse; no se envia a Siigo."
+                : isSupportDocument
+                    ? "Documento soporte importado unicamente a Dataverse; no se envia a Siigo."
+                    : row.ReviewReason,
+            NeedsRut = needsRut
         };
     }
 
@@ -303,6 +316,18 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
 
     private static bool IsPayroll(ConciliacionDianSupplierInvoiceRowDto row) =>
         NormalizeDocumentType(row.DocumentType).Contains("NOMINA INDIVIDUAL", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportDocument(ConciliacionDianSupplierInvoiceRowDto row)
+    {
+        var type = NormalizeDocumentType(row.DocumentType);
+        return !type.Contains("NOTA", StringComparison.OrdinalIgnoreCase)
+            && (type.Contains("DOCUMENTO SOPORTE", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("DOC SOPORTE", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("SOPORTE CON NO OBLIGADOS", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsDataverseOnly(ConciliacionDianSupplierInvoiceRowDto row) =>
+        IsPayroll(row) || IsSupportDocument(row);
 
     private static string NormalizeDocumentType(string value)
     {
@@ -328,7 +353,7 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
     private static (string Label, string Tone) ResolveStatus(
         bool dryRun,
         int siigoRows,
-        int payrollRows,
+        int dataverseOnlyRows,
         int sent,
         int pendingRut,
         int pendingClassification,
@@ -347,7 +372,7 @@ public sealed class DeduccionesIvaImportHistoryService : IDeduccionesIvaImportHi
             return ("Pendiente de Siigo", "info");
         if (siigoRows > 0 && sent == siigoRows)
             return ("Completada", "success");
-        if (siigoRows == 0 && payrollRows > 0)
+        if (siigoRows == 0 && dataverseOnlyRows > 0)
             return ("Guardada en Dataverse", "success");
         return ("Sin detalle actual", "neutral");
     }

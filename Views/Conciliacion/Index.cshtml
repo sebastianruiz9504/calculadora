@@ -626,7 +626,7 @@
                         <div>
                             <div class="cnc-kicker">Trazabilidad</div>
                             <h3>Histórico de importaciones</h3>
-                            <p>Abre una importación para revisar periodos detectados, facturas, notas crédito, nóminas en Dataverse, filas omitidas y RUT pendientes.</p>
+                            <p>Abre una importación para revisar periodos detectados, facturas, notas crédito, documentos soporte y nóminas en Dataverse, filas omitidas y RUT pendientes.</p>
                         </div>
                         <span class="cnc-badge cnc-badge--neutral">@Number(board.DeduccionesIvaImports.Count) importaciones</span>
                     </header>
@@ -682,6 +682,7 @@
                                                 <strong>@Number(history.SentToSiigo) de @Number(history.SiigoRows)</strong>
                                                 <small>
                                                     @Number(history.SupplierCreditNotesApplied) de @Number(history.SupplierCreditNotes) notas aplicadas
+                                                    · @Number(history.SupportDocumentRows) documentos soporte solo Dataverse
                                                     · @Number(history.PayrollRows) nóminas solo Dataverse
                                                     · @(otherPending > 0 ? $"{Number(otherPending)} pendientes adicionales" : "sin otros pendientes")
                                                 </small>

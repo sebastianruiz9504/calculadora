@@ -1412,7 +1412,7 @@ public sealed class ConciliacionController : Controller
             var changed = import.Created + import.Updated;
             var message = import.DryRun
                 ? $"Simulacion de deducciones IVA finalizada para {import.PeriodLabel}: {import.ImportableRows:N0} fila(s) importables."
-                : $"Deducciones IVA importadas para {import.PeriodLabel}: {import.Created:N0} nueva(s), {import.Updated:N0} actualizada(s), {import.Unchanged:N0} sin cambios. Nominas guardadas solo en Dataverse: {import.PayrollRows:N0}. {import.SiigoAutomation?.Message}".Trim();
+                : $"Deducciones IVA importadas para {import.PeriodLabel}: {import.Created:N0} nueva(s), {import.Updated:N0} actualizada(s), {import.Unchanged:N0} sin cambios. Documentos soporte guardados solo en Dataverse: {import.SupportDocumentRows:N0}. Nominas guardadas solo en Dataverse: {import.PayrollRows:N0}. {import.SiigoAutomation?.Message}".Trim();
             message += historyWarning;
 
             return Ok(new

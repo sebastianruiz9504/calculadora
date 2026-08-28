@@ -4,7 +4,7 @@ namespace CotizadorInterno.Web.Models.Conciliacion;
 
 public sealed class DeduccionesIvaImportHistoryManifestDto
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
     public string ImportId { get; set; } = "";
     public string OriginalFileName { get; set; } = "";
     public string StoredFileName { get; set; } = "";
@@ -18,6 +18,7 @@ public sealed class DeduccionesIvaImportHistoryManifestDto
     public int RowsRead { get; set; }
     public int ImportableRows { get; set; }
     public int SupplierCreditNoteRows { get; set; }
+    public int SupportDocumentRows { get; set; }
     public int PayrollRows { get; set; }
     public int Created { get; set; }
     public int Updated { get; set; }
@@ -57,6 +58,7 @@ public sealed class DeduccionesIvaImportHistoryEntryDto
     public int SentToSiigo { get; set; }
     public int SupplierCreditNotes { get; set; }
     public int SupplierCreditNotesApplied { get; set; }
+    public int SupportDocumentRows { get; set; }
     public int PayrollRows { get; set; }
     public decimal SupplierCreditNoteValue { get; set; }
     public int PendingRut { get; set; }
@@ -78,6 +80,7 @@ public sealed class DeduccionesIvaImportHistoryDocumentDto
     public string InvoiceNumber { get; set; } = "";
     public string DocumentType { get; set; } = "";
     public bool IsSupplierCreditNote { get; set; }
+    public bool IsSupportDocument { get; set; }
     public bool IsPayroll { get; set; }
     public string SupplierNit { get; set; } = "";
     public string SupplierName { get; set; } = "";

@@ -1615,6 +1615,7 @@
         const pendingRutSuppliers = Number(history?.pendingRutSuppliers || 0);
         const sentToSiigo = Number(history?.sentToSiigo || 0);
         const siigoRows = Number(history?.siigoRows || 0);
+        const supportDocumentRows = Number(history?.supportDocumentRows || 0);
         const payrollRows = Number(history?.payrollRows || 0);
         const creditNotes = Number(history?.supplierCreditNotes || 0);
         const creditNotesApplied = Number(history?.supplierCreditNotesApplied || 0);
@@ -1622,7 +1623,7 @@
             `Importación ${history?.periodLabel || ""}`.trim(),
             detailRows,
             [
-                { label: "Tipo", value: (row) => row?.historyRowKind === "skipped" ? "Omitida" : row?.isPayroll ? "Nómina" : row?.isSupplierCreditNote ? "Nota crédito proveedor" : "Factura de compra" },
+                { label: "Tipo", value: (row) => row?.historyRowKind === "skipped" ? "Omitida" : row?.isPayroll ? "Nómina" : row?.isSupportDocument ? "Documento soporte" : row?.isSupplierCreditNote ? "Nota crédito proveedor" : "Factura de compra" },
                 { label: "Documento", value: (row) => row?.invoiceNumber || [row?.prefix, row?.folio].filter(Boolean).join("-") },
                 { label: "Proveedor", value: (row) => row?.supplierName || "" },
                 { label: "NIT", value: (row) => row?.supplierNit || "" },
@@ -1634,7 +1635,7 @@
                 { label: "Detalle", value: (row) => row?.detail || row?.reason || "" }
             ],
             {
-                description: `${history?.importedAtDisplay || ""} · ${sentToSiigo} de ${siigoRows} documentos Siigo · ${payrollRows} nómina(s) solo en Dataverse · ${creditNotesApplied} de ${creditNotes} notas aplicadas · ${pendingRutSuppliers} proveedor(es) pendientes de RUT · ${skipped.length} fila(s) omitidas.`,
+                description: `${history?.importedAtDisplay || ""} · ${sentToSiigo} de ${siigoRows} documentos Siigo · ${supportDocumentRows} documento(s) soporte solo en Dataverse · ${payrollRows} nómina(s) solo en Dataverse · ${creditNotesApplied} de ${creditNotes} notas aplicadas · ${pendingRutSuppliers} proveedor(es) pendientes de RUT · ${skipped.length} fila(s) omitidas.`,
                 emptyMessage: "Esta importación no tiene documentos vigentes para mostrar.",
                 actions: [
                     {
@@ -1890,6 +1891,13 @@
                 () => openDeduccionesDetail(
                     "Nóminas guardadas únicamente en Dataverse",
                     importedRows.filter((row) => String(row?.documentKind || "").toLowerCase() === "nominaindividual"),
+                    importColumns)),
+            renderDeduccionesMetric(
+                "Documentos soporte solo Dataverse",
+                numberLabel(importResult.supportDocumentRows || 0),
+                () => openDeduccionesDetail(
+                    "Documentos soporte guardados únicamente en Dataverse",
+                    importedRows.filter((row) => String(row?.documentKind || "").toLowerCase() === "documentosoporte"),
                     importColumns)),
             renderDeduccionesMetric(
                 "Total",

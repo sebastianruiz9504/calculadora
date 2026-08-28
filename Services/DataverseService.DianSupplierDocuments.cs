@@ -628,7 +628,7 @@ public sealed partial class DataverseService
             && !group.Contains("EMITID", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsDianSupplierDocumentSiigoEligible(DianSupplierDocumentImportRowDto row)
+    internal static bool IsDianSupplierDocumentSiigoEligible(DianSupplierDocumentImportRowDto row)
     {
         var type = NormalizeConciliacionLookupText(row.DocumentType);
         var group = NormalizeConciliacionLookupText(row.DianGroup);
