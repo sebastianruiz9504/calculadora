@@ -147,7 +147,7 @@ public sealed partial class DataverseService
             ? null
             : await GetScenarioByBusinessIdAsync(context.Record.BusinessId, httpContext.User, ct);
         var detail = BuildScoreVerificationDetail(context, scenario);
-        await ResolveHardwareProductLookupsAsync(detail, createMissing: false, ct);
+        await ResolveMissingProductLookupsAsync(detail, createMissingHardware: false, ct);
         return detail;
     }
 
@@ -177,7 +177,7 @@ public sealed partial class DataverseService
         var verifiedFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresVerifiedField);
         var firstContractFieldKind = DetectPrimitiveFieldKind(existingItem, _scoresFirstContractField);
 
-        await ResolveHardwareProductLookupsAsync(normalizedRequest, createMissing: true, ct);
+        await ResolveMissingProductLookupsAsync(normalizedRequest, createMissingHardware: true, ct);
         var computation = BuildScoreComputationContext(normalizedRequest, requireProductLookup: true);
         if (!existingContext.Record.IsVerified
             && TryBuildSubmittedVerificationResult(existingContext.Description, computation, out var submittedResult))
@@ -395,7 +395,7 @@ public sealed partial class DataverseService
             var recordSucceeded = true;
             foreach (var line in detail.Lines)
             {
-                await ResolveHardwareProductLookupAsync(line, createMissing: true, cache: null, ct: ct);
+                await ResolveMissingProductLookupAsync(line, createMissingHardware: true, cache: null, ct: ct);
 
                 if (string.IsNullOrWhiteSpace(line.ProductId))
                 {
@@ -600,7 +600,7 @@ public sealed partial class DataverseService
                     if (string.IsNullOrWhiteSpace(linePlan.Record.ClientId))
                         throw new InvalidOperationException("El registro no tiene cliente lookup valido.");
 
-                    await ResolveHardwareProductLookupAsync(linePlan.Line, createMissing: true, cache: null, ct: ct);
+                    await ResolveMissingProductLookupAsync(linePlan.Line, createMissingHardware: true, cache: null, ct: ct);
 
                     if (string.IsNullOrWhiteSpace(linePlan.Line.ProductId))
                         throw new InvalidOperationException("Debes seleccionar un producto valido desde el buscador antes de cerrar el mes.");
@@ -942,7 +942,7 @@ public sealed partial class DataverseService
             }
 
             var detail = BuildScoreVerificationDetail(context, scenario);
-            await ResolveHardwareProductLookupsAsync(detail, createMissing: false, ct);
+            await ResolveMissingProductLookupsAsync(detail, createMissingHardware: false, ct);
             var linePlans = new List<ScoreMonthCloseLinePlan>();
 
             foreach (var (line, index) in detail.Lines.Select((value, index) => (value, index)))
@@ -1842,25 +1842,25 @@ public sealed partial class DataverseService
         return -1;
     }
 
-    private async Task ResolveHardwareProductLookupsAsync(
+    private async Task ResolveMissingProductLookupsAsync(
         ScoreVerificationRequest request,
-        bool createMissing,
+        bool createMissingHardware,
         CancellationToken ct)
     {
         var cache = new Dictionary<string, ProductLookupItem?>(StringComparer.OrdinalIgnoreCase);
         foreach (var line in request.Lines ?? new List<ScoreVerificationLineInput>())
         {
-            await ResolveHardwareProductLookupAsync(line, createMissing, cache, ct);
+            await ResolveMissingProductLookupAsync(line, createMissingHardware, cache, ct);
         }
     }
 
-    private async Task ResolveHardwareProductLookupAsync(
+    private async Task ResolveMissingProductLookupAsync(
         ScoreVerificationLineInput line,
-        bool createMissing,
+        bool createMissingHardware,
         IDictionary<string, ProductLookupItem?>? cache,
         CancellationToken ct)
     {
-        if (!ShouldResolveHardwareProductLookup(line))
+        if (!ShouldResolveProductLookup(line))
             return;
 
         var productName = line.ProductName.Trim();
@@ -1869,7 +1869,7 @@ public sealed partial class DataverseService
 
         if (!cache.TryGetValue(cacheKey, out var product))
         {
-            if (createMissing)
+            if (createMissingHardware && IsHardwareVerificationLine(line))
             {
                 product = await EnsureCalculatorProductAsync(new ProductCreateInput
                 {
@@ -1883,7 +1883,7 @@ public sealed partial class DataverseService
             {
                 var httpContext = _httpContextAccessor.HttpContext
                     ?? throw new InvalidOperationException("No HttpContext available.");
-                product = await FindProductByExactDescriptionAsync(productName, httpContext.User, ct);
+                product = await FindUniqueProductByExactDescriptionAsync(productName, httpContext.User, ct);
             }
 
             cache[cacheKey] = product;
@@ -1899,10 +1899,31 @@ public sealed partial class DataverseService
             line.LineId = product.Id.Trim();
     }
 
-    private static bool ShouldResolveHardwareProductLookup(ScoreVerificationLineInput line) =>
+    internal static bool ShouldResolveProductLookup(ScoreVerificationLineInput line) =>
         string.IsNullOrWhiteSpace(line.ProductId)
-        && IsHardwareVerificationLine(line)
         && !string.IsNullOrWhiteSpace(line.ProductName);
+
+    private static bool ShouldResolveHardwareProductLookup(ScoreVerificationLineInput line) =>
+        ShouldResolveProductLookup(line)
+        && IsHardwareVerificationLine(line);
+
+    private async Task<ProductLookupItem?> FindUniqueProductByExactDescriptionAsync(
+        string description,
+        System.Security.Claims.ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var filter = $"{ProductsDescriptionField} eq '{EscapeOdataLiteral(description)}'";
+        var relativeUrl = $"/api/data/v9.2/{ProductsEntitySetName}?$select={BuildProductSelectClause()}&$filter={Uri.EscapeDataString(filter)}&$top=2";
+        var json = await CallDataverseGetJsonAsync(relativeUrl, user, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var value = doc.RootElement.GetProperty("value");
+        if (value.GetArrayLength() != 1)
+            return null;
+
+        var item = ToProductLookupItem(value[0]);
+        return string.IsNullOrWhiteSpace(item.Id) ? null : item;
+    }
 
     private static bool IsHardwareVerificationLine(ScoreVerificationLineInput line) =>
         string.Equals(NormalizeLookupToken(line.LineType), "hardware", StringComparison.OrdinalIgnoreCase);

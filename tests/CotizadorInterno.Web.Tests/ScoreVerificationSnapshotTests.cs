@@ -218,6 +218,32 @@ public sealed class ScoreVerificationSnapshotTests
         Assert.NotEqual(firstResult.Commission, secondResult.Commission);
     }
 
+    [Fact]
+    public void MissingProductLookupCanBeRecoveredForAnyLineTypeButNeverOverridesASelection()
+    {
+        Assert.True(DataverseService.ShouldResolveProductLookup(new ScoreVerificationLineInput
+        {
+            ProductName = "M365 Business Basic",
+            LineType = "ModernWork"
+        }));
+        Assert.True(DataverseService.ShouldResolveProductLookup(new ScoreVerificationLineInput
+        {
+            ProductName = "Equipo de demostracion",
+            LineType = "Hardware"
+        }));
+        Assert.False(DataverseService.ShouldResolveProductLookup(new ScoreVerificationLineInput
+        {
+            ProductId = "11111111-1111-1111-1111-111111111111",
+            ProductName = "M365 Business Basic",
+            LineType = "ModernWork"
+        }));
+        Assert.False(DataverseService.ShouldResolveProductLookup(new ScoreVerificationLineInput
+        {
+            ProductName = " ",
+            LineType = "ModernWork"
+        }));
+    }
+
     private static QuoteScenarioResult Calculate(IReadOnlyList<ScoreVerificationLineInput> lines) =>
         new QuoteCalculator().Calculate(new QuoteScenarioInput
         {
