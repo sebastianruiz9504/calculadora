@@ -105,6 +105,8 @@ input[readonly] { color: #43566a; background: #f2f6f9; }
 .locked-banner > span { font-size: 22px; }
 .locked-banner strong, .locked-banner small { display: block; }
 .locked-banner small { margin-top: 3px; color: #557286; }
+.locked-banner.is-editable { border-color: #b7e9ce; color: #13663d; background: #effbf4; }
+.locked-banner.is-editable small { color: #397157; }
 .table-wrap { padding: 20px 22px 22px; overflow-x: auto; }
 table { width: 100%; min-width: 940px; border-spacing: 0; border-collapse: separate; overflow: hidden; border: 1px solid #e8eef5; border-radius: 16px; }
 th { padding: 13px 12px; color: #fff; background: linear-gradient(180deg, #0d5c94, #041527); font-size: 11px; text-align: left; text-transform: uppercase; letter-spacing: .4px; }
@@ -112,6 +114,8 @@ td { padding: 12px; border-bottom: 1px solid #edf2f7; background: #fff; vertical
 tr:nth-child(even) td { background: #f9fcff; }
 tbody tr:last-child td { border-bottom: 0; }
 .numeric { text-align: right; white-space: nowrap; }
+.economic-input { min-width: 132px; padding: 9px 10px; border-color: #9edcbf; border-radius: 10px; background: #f6fff9; font-weight: 800; text-align: right; }
+.economic-input:focus { border-color: #168451; box-shadow: 0 0 0 4px rgba(22,132,81,.13); }
 .center { text-align: center; }
 .totals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 22px 22px; }
 .totals-card { padding: 19px; border: 1px solid #ddeaf2; border-radius: 19px; background: linear-gradient(180deg, #fff, #f8fcff); }

@@ -19,22 +19,40 @@ public sealed class CalculatorProposalUiContractTests
     }
 
     [Fact]
-    public void EconomicOfferIsLockedAndContainsMonthlyAndContractTotals()
+    public void EconomicOfferDefaultsToUsdAndOnlyCopEnablesProposalAmountOverrides()
     {
         var view = Read("Views", "Calculator", "Proposal.cshtml");
         var script = Read("wwwroot", "js", "calculator-proposal.js");
+        var pdf = Read("wwwroot", "js", "proposal-pdf-v17.js");
 
-        Assert.Contains("data-economic-locked=\"true\"", view, StringComparison.Ordinal);
-        Assert.Contains("Información recalculada en el servidor", view, StringComparison.Ordinal);
-        Assert.Contains("Venta mensual", view, StringComparison.Ordinal);
-        Assert.Contains("Total contrato", view, StringComparison.Ordinal);
+        Assert.Contains("<option selected>USD</option>", view, StringComparison.Ordinal);
+        Assert.Contains("<option>COP</option>", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"currency\" disabled", view, StringComparison.Ordinal);
+        Assert.Contains("data-economic-source=\"calculator\"", view, StringComparison.Ordinal);
+        Assert.Contains("Valores en USD bloqueados", view, StringComparison.Ordinal);
+        Assert.Contains("Conversión manual en COP", script, StringComparison.Ordinal);
+        Assert.Contains("dataset.economicMode", script, StringComparison.Ordinal);
+        Assert.Contains("economicOverrides", script, StringComparison.Ordinal);
+        Assert.Contains("schemaVersion: 2", script, StringComparison.Ordinal);
+        Assert.Contains("effectiveLineAmounts", script, StringComparison.Ordinal);
+        Assert.Contains("unitSale", script, StringComparison.Ordinal);
+        Assert.Contains("monthlyTotalWithVat", script, StringComparison.Ordinal);
+        Assert.Contains("contractTotalWithVat", script, StringComparison.Ordinal);
+        Assert.Contains("Venta mensual", script, StringComparison.Ordinal);
+        Assert.Contains("Venta anual / contrato", script, StringComparison.Ordinal);
+        Assert.Contains("isHardwareProposal", script, StringComparison.Ordinal);
+        Assert.Contains("economicHeaders.push(\"Duración\")", script, StringComparison.Ordinal);
+        Assert.Contains("hideDuration: isHardwareProposal()", script, StringComparison.Ordinal);
+        Assert.Contains("if(!hideDuration)", pdf, StringComparison.Ordinal);
+        Assert.Contains("indexOf('hardware')", pdf, StringComparison.Ordinal);
         Assert.DoesNotContain("addEconomic", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("removeEconomic", script, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("saveScenarioToDataverse", script, StringComparison.Ordinal);
         Assert.DoesNotContain("contenteditable", view, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void ProposalConfigurationKeepsLockedEconomicsAndUsesV20VisualPdfWithoutAi()
+    public void ProposalConfigurationKeepsCalculatorEconomicsSeparateAndUsesV20VisualPdfWithoutAi()
     {
         var view = Read("Views", "Calculator", "Proposal.cshtml");
         var script = Read("wwwroot", "js", "calculator-proposal.js");
@@ -62,8 +80,57 @@ public sealed class CalculatorProposalUiContractTests
         Assert.DoesNotContain("AzureOpenAI", view + script + pdf, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/GenerateProposal", view + script + pdf, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("AzureOpenAIQuoteProposal", view + script + pdf, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pendingExportConfigurationJson", script, StringComparison.Ordinal);
+        Assert.Contains("pendingExportConfigurationJson !== configurationJson", script, StringComparison.Ordinal);
         Assert.DoesNotContain("nvalencia@digitaltechcolombia.com", pdf, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("321) 256 5005", pdf, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ValueAddedAndHistoryRemainBoundedAndPdfPaginatesLongContent()
+    {
+        var view = Read("Views", "Calculator", "Proposal.cshtml");
+        var script = Read("wwwroot", "js", "calculator-proposal.js");
+        var pdf = Read("wwwroot", "js", "proposal-pdf-v17.js");
+        var workspaceCss = Read("wwwroot", "css", "calculator-workspace.css");
+
+        Assert.Contains("maxRows: 24", script, StringComparison.Ordinal);
+        Assert.Contains("front: 80", script, StringComparison.Ordinal);
+        Assert.Contains("name: 160", script, StringComparison.Ordinal);
+        Assert.Contains("detail: 600", script, StringComparison.Ordinal);
+        Assert.Contains("input.maxLength = maxLength", script, StringComparison.Ordinal);
+        Assert.Contains("storedValues.slice(0, valueLimits.maxRows)", script, StringComparison.Ordinal);
+        Assert.Contains("hasta 24 valores agregados", view, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("DTPDF.prototype._splitToken", pdf, StringComparison.Ordinal);
+        Assert.Contains("(d.valoresAgregados||[]).slice(0,24)", pdf, StringComparison.Ordinal);
+        Assert.Contains("needSpace(15)", pdf, StringComparison.Ordinal);
+        Assert.Contains("needSpace(14)", pdf, StringComparison.Ordinal);
+        Assert.Contains("No se agregaron valores adicionales a esta propuesta.", pdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("var defGen=", pdf, StringComparison.Ordinal);
+
+        Assert.Contains("max-height: 340px", workspaceCss, StringComparison.Ordinal);
+        Assert.Contains("overflow-y: auto", workspaceCss, StringComparison.Ordinal);
+        Assert.Contains("overscroll-behavior: contain", workspaceCss, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LongCommercialFieldsUseMeasuredWrappingAndSafePageFlow()
+    {
+        var pdf = Read("wwwroot", "js", "proposal-pdf-v17.js");
+
+        Assert.Contains("fitWrappedText", pdf, StringComparison.Ordinal);
+        Assert.Contains("drawWrappedText", pdf, StringComparison.Ordinal);
+        Assert.Contains("drawBackContactRow", pdf, StringComparison.Ordinal);
+        Assert.Contains("organizerW", pdf, StringComparison.Ordinal);
+        Assert.Contains("conditionRows", pdf, StringComparison.Ordinal);
+        Assert.Contains("conditionsH", pdf, StringComparison.Ordinal);
+        Assert.Contains("proposalNoteOffset", pdf, StringComparison.Ordinal);
+        Assert.Contains("needSpace(110+18+conditionsH+8)", pdf, StringComparison.Ordinal);
+        Assert.Contains("this._wrap(String(txt).toUpperCase()", pdf, StringComparison.Ordinal);
+        Assert.DoesNotContain(".slice(0,2)", pdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("p._textAbs(ox,by-42,d.comercial", pdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("p._tw(d.comercial||'Digital Tech'", pdf, StringComparison.Ordinal);
     }
 
     [Fact]

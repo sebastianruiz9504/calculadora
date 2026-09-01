@@ -33,7 +33,7 @@
                 <img class="proposal-logo" src="~/img/proposals/v17/coverLogo.jpg" alt="Digital Tech" />
                 <span class="proposal-kicker">Configurador de propuesta comercial</span>
                 <h1>De la cotización a una oferta lista para el cliente.</h1>
-                <p>Completa los datos comerciales, selecciona el alcance y genera el PDF. La oferta económica proviene de la calculadora y está bloqueada.</p>
+                <p>Completa los datos comerciales, selecciona el alcance y genera el PDF. En USD la oferta conserva exactamente los valores de la calculadora; en COP puedes ajustar únicamente sus importes comerciales.</p>
                 <div class="hero-actions">
                     <a class="button button--primary" href="#section-client">Configurar propuesta</a>
                     <button class="button button--ghost" id="heroGeneratePdf" type="button">Generar oferta PDF</button>
@@ -45,7 +45,7 @@
                 <div class="metric-grid">
                     <div class="metric"><small>Negocio</small><b>@Model.ScenarioName</b></div>
                     <div class="metric"><small>Escenarios</small><b id="heroPossibilityCount">—</b></div>
-                    <div class="metric"><small>Moneda</small><b id="heroCurrency">COP</b></div>
+                    <div class="metric"><small>Moneda</small><b id="heroCurrency">USD</b></div>
                     <div class="metric"><small>Oferta económica</small><b>Por escenario</b></div>
                 </div>
             </aside>
@@ -100,8 +100,11 @@
                 </div>
                 <div class="field">
                     <label for="currency">Moneda</label>
-                    <select id="currency" disabled aria-disabled="true"><option selected>COP</option></select>
-                    <small>La moneda proviene de la calculadora y no se puede modificar.</small>
+                    <select id="currency">
+                        <option selected>USD</option>
+                        <option>COP</option>
+                    </select>
+                    <small>USD conserva los valores originales. COP permite una conversión manual exclusiva de esta propuesta.</small>
                 </div>
                 <div class="field">
                     <label for="validity">Vigencia</label>
@@ -136,7 +139,7 @@
                 <p>Selecciona los frentes que aparecerán como alcance narrativo de la propuesta.</p>
             </div>
             <div class="panel">
-                <div class="module-helper">Los módulos describen la solución. No cambian los productos ni los valores bloqueados de la calculadora.</div>
+                <div class="module-helper">Los módulos describen la solución. No cambian los productos ni los valores originales de la calculadora.</div>
                 <div class="module-grid" id="moduleGrid"></div>
             </div>
         </section>
@@ -147,8 +150,8 @@
                 <p>Cada escenario fue recalculado en el servidor y se presenta por separado. No se suman entre sí.</p>
             </div>
             <div class="panel economic-panel">
-                <div class="locked-banner"><span aria-hidden="true">🔒</span><div><strong>Ofertas bloqueadas</strong><small>Información recalculada en el servidor. Cada escenario muestra su Venta mensual y su Total contrato; para cambiar productos, cantidades, duración o valores, regresa a la calculadora.</small></div></div>
-                <div id="economicPossibilities" data-economic-locked="true" aria-live="polite"></div>
+                <div class="locked-banner" id="economicModeBanner"><span id="economicModeIcon" aria-hidden="true">🔒</span><div><strong id="economicModeTitle">Valores en USD bloqueados</strong><small id="economicModeHelp">La información proviene de la calculadora. Para cambiar productos, cantidades, duración o IVA, regresa a la calculadora.</small></div></div>
+                <div id="economicPossibilities" data-economic-source="calculator" aria-live="polite"></div>
             </div>
         </section>
 

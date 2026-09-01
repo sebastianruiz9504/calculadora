@@ -1,5 +1,7 @@
 using CotizadorInterno.Web.Models.Calculator;
+using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
+using System.Reflection;
 using Xunit;
 
 namespace CotizadorInterno.Web.Tests;
@@ -54,6 +56,7 @@ public sealed class CalculatorPersistenceContractTests
             "cr07a_exporteconomichash",
             "cr07a_exportconfigurationhash",
             "cr07a_exportpdfhash",
+            "cr07a_exportleasetoken",
             "cr07a_exportconfigurationfile",
             "cr07a_exportpdffile",
             "cr07a_lineshash"
@@ -73,12 +76,17 @@ public sealed class CalculatorPersistenceContractTests
     }
 
     [Fact]
-    public void ProposalCurrencyIsLockedToCalculatorCurrency()
+    public void ProposalCurrencyDefaultsToUsdAndCopOverridesRemainProposalOnly()
     {
         var view = ReadProjectFile("Views", "Calculator", "Proposal.cshtml");
+        var script = ReadProjectFile("wwwroot", "js", "calculator-proposal.js");
 
-        Assert.Contains("id=\"currency\" disabled", view, StringComparison.Ordinal);
-        Assert.DoesNotContain("<option>USD</option>", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<option selected>USD</option>", view, StringComparison.Ordinal);
+        Assert.Contains("<option>COP</option>", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"currency\" disabled", view, StringComparison.Ordinal);
+        Assert.Contains("economicOverrides", script, StringComparison.Ordinal);
+        Assert.Contains("currentEconomicHash()", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("saveScenarioToDataverse", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,6 +99,8 @@ public sealed class CalculatorPersistenceContractTests
         Assert.Contains("/api/data/v9.2/$batch", service, StringComparison.Ordinal);
         Assert.Contains("request.IsRecommended = record.Scenario.IsRecommended", service, StringComparison.Ordinal);
         Assert.Contains("CalculatorStructuredLinesHashField] = ScenarioInputHasher.ComputeLines", service, StringComparison.Ordinal);
+        Assert.Contains("CalculatorLegacyMemoCompatibilityMaxLength", service, StringComparison.Ordinal);
+        Assert.Contains("CalculatorMaxChangeSetOperations", service, StringComparison.Ordinal);
         Assert.DoesNotContain("ReplaceCalculatorLinesAsync", service, StringComparison.Ordinal);
     }
 
@@ -103,6 +113,24 @@ public sealed class CalculatorPersistenceContractTests
         Assert.Contains("record.PdfHash", service, StringComparison.Ordinal);
         Assert.Contains("SHA256.HashData", service, StringComparison.Ordinal);
         Assert.Contains("GetDataverseEntitiesAsync(url", service, StringComparison.Ordinal);
+        Assert.Contains("ParseCalculatorTimestamp(item, \"modifiedon\")", service, StringComparison.Ordinal);
+        Assert.Contains("NormalizationForm.FormD", service, StringComparison.Ordinal);
+        Assert.Contains("RetireCalculatorProposalExportAttemptAsync", service, StringComparison.Ordinal);
+        Assert.Contains("retired-export", service, StringComparison.Ordinal);
+        Assert.Contains("overwrite: false", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LongProposalFileNamesKeepThePdfExtension()
+    {
+        var sanitizer = typeof(DataverseService).GetMethod(
+            "SanitizeCalculatorExportFileName",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        var result = Assert.IsType<string>(sanitizer?.Invoke(null, [new string('a', 240)]));
+
+        Assert.True(result.Length <= 180);
+        Assert.EndsWith(".pdf", result);
     }
 
     private static ScenarioLineInput Line(string id, int order, string description) => new()

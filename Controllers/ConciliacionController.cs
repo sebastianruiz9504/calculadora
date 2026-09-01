@@ -366,6 +366,59 @@ public sealed class ConciliacionController : Controller
         }
     }
 
+    [HttpGet]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> BankBalances(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        CancellationToken ct)
+    {
+        try
+        {
+            var (resolvedYear, resolvedMonth) = ResolvePeriod(year, month);
+            return Ok(await _dataverse.GetConciliacionBankBalancesAsync(
+                resolvedYear,
+                resolvedMonth,
+                ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible consultar los saldos bancarios.", ex));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> SetBankOpeningBalance(
+        [FromBody] ConciliacionBankOpeningBalanceRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null)
+            return BadRequest(CreateErrorPayload("Debes indicar el banco y el saldo inicial."));
+
+        try
+        {
+            return Ok(await _dataverse.SetConciliacionBankOpeningBalanceAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(CreateErrorPayload(ex.Message, ex));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                CreateErrorPayload("No fue posible guardar el saldo inicial del banco.", ex));
+        }
+    }
+
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     [RequestSizeLimit(30 * 1024 * 1024)]
@@ -2072,6 +2125,27 @@ public sealed class ConciliacionController : Controller
 
         try
         {
+            var supplierIssues = new List<string>();
+            var selectedSupplier = await ResolveCuentaCobroSelectedSiigoSupplierAsync(request, supplierIssues, ct);
+            if (selectedSupplier is null)
+            {
+                return BadRequest(new ConciliacionCuentaCobroActionResultDto
+                {
+                    Message = "No se guardo el gasto porque el proveedor seleccionado no es valido en Siigo.",
+                    IsSuccess = false,
+                    Issues = supplierIssues.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                });
+            }
+
+            request.SiigoSupplierId = selectedSupplier.Id;
+            request.SiigoSupplierIdentification = selectedSupplier.Identification;
+            request.SiigoSupplierBranchOffice = selectedSupplier.BranchOffice;
+            request.SiigoSupplierName = FirstNonEmpty(
+                selectedSupplier.CommercialName,
+                selectedSupplier.Name,
+                selectedSupplier.DisplayName);
+            request.Receptor = request.SiigoSupplierName;
+            request.NitOCedula = selectedSupplier.Identification;
             var taxes = await _siigo.GetTaxesAsync(ct);
             var issues = new List<string>();
             request.Retentions = ResolveCuentaCobroExpenseRetentions(request, taxes, issues);
@@ -5205,6 +5279,75 @@ public sealed class ConciliacionController : Controller
             Active = supplier.Active
         };
 
+    private async Task<ConciliacionSiigoSupplierLookupDto?> ResolveCuentaCobroSelectedSiigoSupplierAsync(
+        ConciliacionCuentaCobroExpenseSaveRequest request,
+        ICollection<string> issues,
+        CancellationToken ct) =>
+        await ResolveCuentaCobroSelectedSiigoSupplierAsync(
+            request.SiigoSupplierId,
+            request.SiigoSupplierIdentification,
+            request.SiigoSupplierName,
+            request.SiigoSupplierBranchOffice,
+            issues,
+            ct);
+
+    private async Task<ConciliacionSiigoSupplierLookupDto?> ResolveCuentaCobroSelectedSiigoSupplierAsync(
+        ConciliacionCuentaCobroRowDto row,
+        ICollection<string> issues,
+        CancellationToken ct) =>
+        await ResolveCuentaCobroSelectedSiigoSupplierAsync(
+            row.SiigoSupplierId,
+            row.NitOCedula,
+            row.SiigoSupplierName,
+            branchOffice: null,
+            issues,
+            ct);
+
+    private async Task<ConciliacionSiigoSupplierLookupDto?> ResolveCuentaCobroSelectedSiigoSupplierAsync(
+        string? supplierId,
+        string? supplierIdentification,
+        string? supplierName,
+        int? branchOffice,
+        ICollection<string> issues,
+        CancellationToken ct)
+    {
+        var selectedId = (supplierId ?? "").Trim();
+        var selectedIdentification = ExtractDigits(supplierIdentification ?? "");
+        if (string.IsNullOrWhiteSpace(selectedId)
+            || selectedIdentification.Length < 3
+            || string.IsNullOrWhiteSpace(supplierName))
+        {
+            issues.Add("Selecciona un proveedor activo de Siigo; escribir el nombre no es suficiente.");
+            return null;
+        }
+
+        try
+        {
+            var candidates = await _siigo.SearchCustomersAsync(selectedIdentification, top: 50, ct);
+            var exact = candidates.FirstOrDefault(candidate =>
+                candidate.Active
+                && string.Equals(candidate.Id?.Trim(), selectedId, StringComparison.OrdinalIgnoreCase)
+                && IsSameSupplierIdentificationDigits(
+                    ExtractDigits(candidate.Identification),
+                    selectedIdentification)
+                && (!branchOffice.HasValue || candidate.BranchOffice == Math.Max(0, branchOffice.Value)));
+            if (exact is null)
+            {
+                issues.Add(
+                    "El proveedor seleccionado ya no esta activo en Siigo o no coincide con su ID, NIT y sucursal. "
+                    + "Buscalo de nuevo; si no existe, crealo primero en Siigo y vuelve a seleccionarlo.");
+                return null;
+            }
+
+            return MapSupplierLookup(exact);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            issues.Add("No fue posible revalidar el proveedor seleccionado en Siigo. " + BuildExceptionDetail(ex));
+            return null;
+        }
+    }
+
     private async Task<PreparedDianSupplierPurchase> PrepareDianSupplierPurchaseForSiigoAsync(
         string recordId,
         bool createMissingSupplier,
@@ -5269,16 +5412,11 @@ public sealed class ConciliacionController : Controller
         var row = await _dataverse.GetConciliacionCuentaCobroDocumentAsync(request, ct);
         var issues = ValidateCuentaCobroSupportDocumentBase(row).ToList();
         var targetEndpoint = "/v1/purchase-support-documents";
-        object? supplierPayload = null;
+        ConciliacionSiigoSupplierLookupDto? supplier = null;
 
         if (issues.Count == 0 || issues.All(static issue => !issue.Contains("proveedor", StringComparison.OrdinalIgnoreCase)))
         {
-            var supplierRow = BuildDianSupplierRowFromCuentaCobro(row);
-            var supplierResult = await EnsureDianSupplierInSiigoAsync(supplierRow, createMissingSupplier, ct);
-            if (supplierResult.Created || supplierResult.WouldCreate)
-                supplierPayload = supplierResult.Payload;
-            if (!supplierResult.ExistsInSiigo && !createMissingSupplier)
-                issues.Add("El proveedor/persona no existe aun en Siigo. Crealo o activalo en Siigo y vuelve a validar; este flujo no lo creara automaticamente para evitar duplicados ambiguos.");
+            supplier = await ResolveCuentaCobroSelectedSiigoSupplierAsync(row, issues, ct);
         }
 
         var payloadIssues = new List<string>();
@@ -5290,7 +5428,9 @@ public sealed class ConciliacionController : Controller
             var paymentTypes = await GetSupportDocumentPaymentTypesAsync(ct);
             var document = ResolveSupportDocumentType(documentTypes);
             var paymentType = ResolveSupportDocumentPaymentType(paymentTypes);
-            payload = BuildCuentaCobroSupportDocumentPayload(row, document, paymentType, payloadIssues);
+            payload = supplier is null
+                ? null
+                : BuildCuentaCobroSupportDocumentPayload(row, supplier, document, paymentType, payloadIssues);
         }
         catch (InvalidOperationException ex)
         {
@@ -5298,11 +5438,8 @@ public sealed class ConciliacionController : Controller
         }
 
         issues.AddRange(payloadIssues);
-        var wrapperPayload = supplierPayload is null
-            ? payload
-            : new { supplier = supplierPayload, supportDocument = payload };
-        if (wrapperPayload is not null)
-            payloadJson = JsonSerializer.Serialize(wrapperPayload, new JsonSerializerOptions { WriteIndented = true });
+        if (payload is not null)
+            payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
 
         return new PreparedCuentaCobroSupportDocument(
             Row: row,
@@ -5335,6 +5472,8 @@ public sealed class ConciliacionController : Controller
             issues.Add("Falta la salida bancaria del flujo de caja.");
         if (string.IsNullOrWhiteSpace(row.Receptor) || string.IsNullOrWhiteSpace(row.NitOCedula))
             issues.Add("Falta nombre o NIT/cedula del proveedor/persona.");
+        if (string.IsNullOrWhiteSpace(row.SiigoSupplierId) || string.IsNullOrWhiteSpace(row.SiigoSupplierName))
+            issues.Add("Selecciona el proveedor real de Siigo antes de crear el documento soporte.");
         DateOnly? emissionDate = null;
         DateOnly? paymentDate = null;
         if (string.IsNullOrWhiteSpace(row.FechaEmisionValue))
@@ -5399,6 +5538,7 @@ public sealed class ConciliacionController : Controller
 
     private static object BuildCuentaCobroSupportDocumentPayload(
         ConciliacionCuentaCobroRowDto row,
+        ConciliacionSiigoSupplierLookupDto supplier,
         SiigoDocumentTypeLookupDto document,
         SiigoPaymentTypeLookupDto paymentType,
         List<string> issues)
@@ -5414,7 +5554,7 @@ public sealed class ConciliacionController : Controller
             : emissionDate;
         if (!string.IsNullOrWhiteSpace(row.FechaPagoValue) && dueDate == emissionDate && row.FechaPagoValue != row.FechaEmisionValue)
             issues.Add("La fecha de pago de la cuenta de cobro no tiene formato valido para Siigo (yyyy-MM-dd).");
-        var identification = ExtractDigits(row.NitOCedula);
+        var identification = ExtractDigits(supplier.Identification);
         var retentions = GetCuentaCobroPaymentRetentions(row)
             .Where(static retention => retention.Value > 0m)
             .ToArray();
@@ -5438,7 +5578,7 @@ public sealed class ConciliacionController : Controller
             ["supplier"] = new
             {
                 identification,
-                branch_office = 0
+                branch_office = supplier.BranchOffice
             },
             ["supplier_receipt_number"] = new
             {

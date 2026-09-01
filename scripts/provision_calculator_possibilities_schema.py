@@ -25,6 +25,7 @@ TABLE = "cr07a_negocioscomerciales"
 SET = "cr07a_negocioscomercialeses"
 LANGUAGE = 3082
 RELATIONSHIP_SCHEMA = "cr07a_NegociosComerciales_ParentRecord"
+LEGACY_MEMO_MAX_LENGTH = 1048576
 
 RECORD_TYPES = (
     (645250000, "Grupo"),
@@ -51,7 +52,7 @@ COLUMNS = (
     ("cr07a_InputHash", "Huella de insumos", "String", 64),
     ("cr07a_LinesHash", "Huella de lineas confirmadas", "String", 64),
     ("cr07a_LineId", "Id de la linea", "String", 100),
-    ("cr07a_LineOrder", "Orden de la linea", "Integer", (1, 1000)),
+    ("cr07a_LineOrder", "Orden de la linea", "Integer", (1, 900)),
     ("cr07a_PossibilityId", "Id de posibilidad de la linea", "String", 100),
     ("cr07a_LineBusinessType", "Tipo de negocio de la linea", "Integer", (0, 20)),
     ("cr07a_LineProductId", "Id del producto de la linea", "String", 100),
@@ -74,6 +75,7 @@ COLUMNS = (
     ("cr07a_ExportVersion", "Version de exportacion", "Integer", (1, 1000000)),
     ("cr07a_ExportStatus", "Estado de exportacion", "Choice", EXPORT_STATUSES),
     ("cr07a_ExportIdempotency", "Llave de idempotencia", "String", 100),
+    ("cr07a_ExportLeaseToken", "Token de control de exportacion", "String", 100),
     ("cr07a_ExportEconomicHash", "Huella economica exportada", "String", 64),
     ("cr07a_ExportConfigurationHash", "Huella de configuracion", "String", 64),
     ("cr07a_ExportPdfHash", "Huella del PDF exportado", "String", 64),
@@ -188,7 +190,15 @@ class Api:
         self.base = os.environ["DATAVERSE_URL"].rstrip("/")
         self.token = get_token()
 
-    def request(self, method: str, path: str, body=None, solution=False, allow_404=False):
+    def request(
+        self,
+        method: str,
+        path: str,
+        body=None,
+        solution=False,
+        allow_404=False,
+        extra_headers: dict[str, str] | None = None,
+    ):
         headers = get_plugin_headers("dv-metadata", self.token)
         headers.update({
             "Accept": "application/json",
@@ -197,6 +207,8 @@ class Api:
         })
         if solution:
             headers["MSCRM.SolutionUniqueName"] = SOLUTION
+        if extra_headers:
+            headers.update(extra_headers)
         data = None
         if body is not None:
             data = json.dumps(body, ensure_ascii=True).encode("utf-8")
@@ -486,6 +498,37 @@ def memo_max_length(api: Api, logical_name: str) -> int:
     return int(row.get("MaxLength", 0))
 
 
+def update_memo_max_length(api: Api, logical_name: str, max_length: int) -> None:
+    """Update Memo metadata using Dataverse's full-definition PUT contract."""
+    path = (
+        f"EntityDefinitions(LogicalName='{TABLE}')/Attributes(LogicalName='{logical_name}')"
+    )
+    metadata = api.request(
+        "GET",
+        f"{path}/Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+    )
+    if not isinstance(metadata, dict) or not metadata.get("MetadataId"):
+        raise RuntimeError(f"Memo {logical_name} did not return complete metadata")
+
+    # Protocol annotations returned by OData are response-only. All actual
+    # metadata properties are preserved because Dataverse requires the complete
+    # current definition for PUT updates.
+    payload = {
+        key: value
+        for key, value in metadata.items()
+        if not key.startswith("@odata.")
+    }
+    payload["@odata.type"] = "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
+    payload["MaxLength"] = max_length
+    api.request(
+        "PUT",
+        path,
+        payload,
+        solution=True,
+        extra_headers={"MSCRM.MergeLabels": "true"},
+    )
+
+
 def describe(api: Api) -> dict:
     attributes = api.attributes()
     keys = {row.get("SchemaName"): row for row in api.keys()}
@@ -533,19 +576,28 @@ def apply_schema(api: Api) -> None:
     else:
         print(f"Reusing relationship: {RELATIONSHIP_SCHEMA}", flush=True)
 
+    expanded_memos: list[str] = []
     for memo in ("cr07a_linesjson", "cr07a_lastresultjson"):
         current = memo_max_length(api, memo)
-        if current < 1048576:
-            api.request(
-                "PATCH",
-                f"EntityDefinitions(LogicalName='{TABLE}')/Attributes(LogicalName='{memo}')/"
-                "Microsoft.Dynamics.CRM.MemoAttributeMetadata",
-                {"MaxLength": 1048576},
-                solution=True,
+        if current < LEGACY_MEMO_MAX_LENGTH:
+            update_memo_max_length(api, memo, LEGACY_MEMO_MAX_LENGTH)
+            expanded_memos.append(memo)
+            print(
+                f"Expanded memo: {memo} {current} -> {LEGACY_MEMO_MAX_LENGTH}",
+                flush=True,
             )
-            print(f"Expanded memo: {memo} {current} -> 1048576", flush=True)
         else:
             print(f"Reusing memo length: {memo}={current}", flush=True)
+
+    if expanded_memos:
+        api.request("POST", "PublishAllXml", {})
+        for memo in expanded_memos:
+            actual = memo_max_length(api, memo)
+            if actual < LEGACY_MEMO_MAX_LENGTH:
+                raise RuntimeError(
+                    f"Memo {memo} read-back failed: expected "
+                    f"{LEGACY_MEMO_MAX_LENGTH}, found {actual}"
+                )
 
     existing_keys = {row.get("SchemaName"): row for row in api.keys()}
     for schema, attributes_for_key in KEYS:
@@ -625,7 +677,7 @@ def main() -> None:
     ]
     if len(after["keyStatuses"]) != len(KEYS) or inactive_keys:
         raise RuntimeError(f"Alternate-key read-back failed: {after['keyStatuses']}")
-    if any(value < 1048576 for value in after["legacyMemoMaxLength"].values()):
+    if any(value < LEGACY_MEMO_MAX_LENGTH for value in after["legacyMemoMaxLength"].values()):
         raise RuntimeError(f"Legacy memo read-back failed: {after}")
     print(json.dumps({"mode": "applied", "after": after}, indent=2))
 

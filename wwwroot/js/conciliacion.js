@@ -8,6 +8,8 @@
     const manualPaymentUrl = app.dataset.manualPaymentUrl || "";
     const cashFlowCategoryUrl = app.dataset.cashflowCategoryUrl || "";
     const cashFlowStatementImportUrl = app.dataset.cashflowStatementImportUrl || "";
+    const bankBalancesUrl = app.dataset.bankBalancesUrl || "";
+    const bankOpeningBalanceUrl = app.dataset.bankOpeningBalanceUrl || "";
     const cashFlowDescriptionUrl = app.dataset.cashflowDescriptionUrl || "";
     const cashFlowPendingUrl = app.dataset.cashflowPendingUrl || "";
     const cashFlowOmittedUrl = app.dataset.cashflowOmittedUrl || "";
@@ -49,6 +51,7 @@
     const cashFlowMonthValidateUrl = app.dataset.cashflowMonthValidateUrl || "";
     const periodYear = Number(app.dataset.periodYear || 0);
     const periodMonth = Number(app.dataset.periodMonth || 0);
+    const antiforgeryToken = app.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
     const clientPaymentDifferenceTolerance = 2000;
     const transientSiigoUserMessage = "Siigo no está disponible temporalmente. La conciliación no pudo finalizar. Espera unos minutos y vuelve a intentarlo.";
     const isTransientSiigoFailure = (...values) => values.some((value) => {
@@ -101,6 +104,16 @@
     const dianSupplierModal = document.getElementById("cncDianSupplierModal");
     const dianSupplierTitle = document.getElementById("cncDianSupplierTitle");
     const dianSupplierDescription = document.getElementById("cncDianSupplierDescription");
+    let dianSupplierFeedback = document.getElementById("cncDianSupplierFeedback");
+    if (!dianSupplierFeedback && dianSupplierDescription) {
+        dianSupplierFeedback = document.createElement("div");
+        dianSupplierFeedback.id = "cncDianSupplierFeedback";
+        dianSupplierFeedback.className = "cnc-modal__feedback";
+        dianSupplierFeedback.setAttribute("role", "alert");
+        dianSupplierFeedback.setAttribute("aria-live", "assertive");
+        dianSupplierFeedback.hidden = true;
+        dianSupplierDescription.insertAdjacentElement("afterend", dianSupplierFeedback);
+    }
     const dianSupplierName = document.getElementById("cncDianSupplierName");
     const dianSupplierNit = document.getElementById("cncDianSupplierNit");
     const dianSupplierPersonType = document.getElementById("cncDianSupplierPersonType");
@@ -171,6 +184,17 @@
     const deduccionesHistoryOpeners = Array.from(app.querySelectorAll("[data-cnc-deducciones-history-open]"));
     const bankImportForm = app.querySelector("[data-cnc-bank-import-form]");
     const bankImportResult = app.querySelector("[data-cnc-bank-import-result]");
+    const bankBalanceSelect = app.querySelector("[data-cnc-bank-balance-select]");
+    const bankBalanceCurrent = app.querySelector("[data-cnc-bank-balance-current]");
+    const bankBalanceOpening = app.querySelector("[data-cnc-bank-balance-opening]");
+    const bankBalanceEntries = app.querySelector("[data-cnc-bank-balance-entries]");
+    const bankBalanceExits = app.querySelector("[data-cnc-bank-balance-exits]");
+    const bankBalanceOpenButton = app.querySelector("[data-cnc-bank-balance-open-opening]");
+    const bankBalanceModal = app.querySelector("[data-cnc-bank-balance-modal]");
+    const bankBalanceInput = app.querySelector("[data-cnc-bank-balance-input]");
+    const bankBalanceDescription = app.querySelector("[data-cnc-bank-balance-description]");
+    const bankBalanceStatus = app.querySelector("[data-cnc-bank-balance-status]");
+    const bankBalanceSave = app.querySelector("[data-cnc-bank-balance-save]");
     let activeReassignRow = null;
     let activeDianRow = null;
     let dianAccountBatchRows = [];
@@ -513,6 +537,9 @@
                 item.setAttribute("aria-pressed", active ? "true" : "false");
             });
         applyGenericTableFilter("conciliacion-2");
+        if (kind === "vertical") {
+            selectBankBalanceForSource(button.dataset.cncV2FilterValue || "");
+        }
     };
 
     const verticalMatches = (flow) => {
@@ -841,6 +868,238 @@
         currency: "COP",
         maximumFractionDigits: 2
     });
+
+    const selectedBankBalanceOption = () =>
+        bankBalanceSelect?.selectedOptions?.[0] || null;
+
+    const readBankBalanceOption = (option = selectedBankBalanceOption()) => {
+        if (!option) {
+            return null;
+        }
+
+        return {
+            bankKey: option.value || "",
+            bankLabel: option.dataset.bankLabel || option.textContent || "",
+            sourceFlow: option.dataset.sourceFlow || "",
+            bankAccountCode: option.dataset.bankCode || "",
+            bankAccountName: option.dataset.bankName || "",
+            hasOpeningBalance: option.dataset.hasOpeningBalance === "true",
+            openingBalance: Number(option.dataset.openingBalance || 0),
+            totalEntries: Number(option.dataset.totalEntries || 0),
+            totalExits: Number(option.dataset.totalExits || 0),
+            currentBalance: Number(option.dataset.currentBalance || 0)
+        };
+    };
+
+    const writeBankBalanceOption = (option, balance) => {
+        if (!option || !balance) {
+            return;
+        }
+
+        option.value = balance.bankKey || "";
+        option.textContent = balance.bankLabel || balance.bankKey || "Banco";
+        option.dataset.bankLabel = balance.bankLabel || "";
+        option.dataset.sourceFlow = balance.sourceFlow || "";
+        option.dataset.bankCode = balance.bankAccountCode || "";
+        option.dataset.bankName = balance.bankAccountName || "";
+        option.dataset.hasOpeningBalance = balance.hasOpeningBalance ? "true" : "false";
+        option.dataset.openingBalance = String(Number(balance.openingBalance || 0));
+        option.dataset.totalEntries = String(Number(balance.totalEntries || 0));
+        option.dataset.totalExits = String(Number(balance.totalExits || 0));
+        option.dataset.currentBalance = String(Number(balance.currentBalance || 0));
+    };
+
+    const renderBankBalance = () => {
+        const balance = readBankBalanceOption();
+        const hasBalance = Boolean(balance?.bankKey);
+        if (bankBalanceCurrent) {
+            bankBalanceCurrent.textContent = moneyPrecise(balance?.currentBalance || 0);
+            bankBalanceCurrent.dataset.tone = Number(balance?.currentBalance || 0) < 0
+                ? "negative"
+                : "neutral";
+        }
+        if (bankBalanceOpening) {
+            bankBalanceOpening.textContent = balance?.hasOpeningBalance
+                ? moneyPrecise(balance.openingBalance)
+                : "Sin definir";
+        }
+        if (bankBalanceEntries) {
+            bankBalanceEntries.textContent = moneyPrecise(balance?.totalEntries || 0);
+        }
+        if (bankBalanceExits) {
+            bankBalanceExits.textContent = moneyPrecise(balance?.totalExits || 0);
+        }
+        if (bankBalanceOpenButton) {
+            bankBalanceOpenButton.disabled = !hasBalance;
+        }
+    };
+
+    const replaceBankBalanceOptions = (balances) => {
+        if (!bankBalanceSelect || !Array.isArray(balances)) {
+            return;
+        }
+
+        const selectedKey = bankBalanceSelect.value;
+        const fragment = document.createDocumentFragment();
+        balances.forEach((balance) => {
+            const option = document.createElement("option");
+            writeBankBalanceOption(option, balance);
+            fragment.appendChild(option);
+        });
+        bankBalanceSelect.replaceChildren(fragment);
+        const canPreserveSelection = Array.from(bankBalanceSelect.options)
+            .some((option) => option.value === selectedKey);
+        if (canPreserveSelection) {
+            bankBalanceSelect.value = selectedKey;
+        }
+        renderBankBalance();
+    };
+
+    const selectBankBalanceForSource = (sourceFlow) => {
+        if (!bankBalanceSelect) {
+            return;
+        }
+
+        const normalizedSource = normalizeText(sourceFlow);
+        const match = Array.from(bankBalanceSelect.options)
+            .find((option) => normalizeText(option.dataset.sourceFlow) === normalizedSource);
+        if (match) {
+            bankBalanceSelect.value = match.value;
+            renderBankBalance();
+        }
+    };
+
+    const refreshBankBalances = async () => {
+        if (!bankBalancesUrl || !periodYear || !periodMonth) {
+            return;
+        }
+
+        const url = new URL(bankBalancesUrl, window.location.origin);
+        url.searchParams.set("year", String(periodYear));
+        url.searchParams.set("month", String(periodMonth));
+        const response = await fetch(url, {
+            headers: { "Accept": "application/json" }
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(payload)) {
+            throw new Error(payload?.detail || payload?.message || "No fue posible actualizar el saldo bancario.");
+        }
+        replaceBankBalanceOptions(payload);
+    };
+
+    const setBankBalanceModalStatus = (message = "", tone = "neutral") => {
+        if (!bankBalanceStatus) {
+            return;
+        }
+
+        bankBalanceStatus.textContent = message;
+        bankBalanceStatus.dataset.tone = tone;
+    };
+
+    const closeBankBalanceModal = () => {
+        if (bankBalanceModal) {
+            bankBalanceModal.hidden = true;
+        }
+        setBankBalanceModalStatus();
+    };
+
+    const openBankBalanceModal = () => {
+        const balance = readBankBalanceOption();
+        if (!bankBalanceModal || !bankBalanceInput || !balance?.bankKey) {
+            setStatus("Selecciona un banco antes de poner el saldo inicial.", "info");
+            return;
+        }
+
+        if (bankBalanceDescription) {
+            bankBalanceDescription.textContent =
+                `Define el saldo al inicio de ${periodYear}-${String(periodMonth).padStart(2, "0")} para ${balance.bankLabel}.`;
+        }
+        bankBalanceInput.value = balance.hasOpeningBalance
+            ? String(balance.openingBalance)
+            : "";
+        setBankBalanceModalStatus();
+        bankBalanceModal.hidden = false;
+        window.setTimeout(() => {
+            bankBalanceInput.focus();
+            bankBalanceInput.select();
+        }, 0);
+    };
+
+    const saveBankOpeningBalance = async () => {
+        const balance = readBankBalanceOption();
+        const rawValue = String(bankBalanceInput?.value || "").trim();
+        const openingBalance = Number(rawValue);
+        if (!balance?.bankKey) {
+            setBankBalanceModalStatus("Selecciona el banco del saldo inicial.", "error");
+            return;
+        }
+        if (!rawValue || !Number.isFinite(openingBalance)) {
+            setBankBalanceModalStatus("Digita un saldo inicial valido.", "error");
+            bankBalanceInput?.focus();
+            return;
+        }
+        if (!bankOpeningBalanceUrl) {
+            setBankBalanceModalStatus("No se encontro la ruta para guardar el saldo inicial.", "error");
+            return;
+        }
+        if (!antiforgeryToken) {
+            setBankBalanceModalStatus("No se pudo validar la sesion para guardar el saldo.", "error");
+            return;
+        }
+
+        const previousText = bankBalanceSave?.textContent || "";
+        if (bankBalanceSave) {
+            bankBalanceSave.disabled = true;
+            bankBalanceSave.textContent = "Guardando...";
+        }
+        if (bankBalanceInput) {
+            bankBalanceInput.disabled = true;
+        }
+        setBankBalanceModalStatus("Guardando y verificando en Dataverse...", "neutral");
+
+        try {
+            const response = await fetch(bankOpeningBalanceUrl, {
+                method: "POST",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "RequestVerificationToken": antiforgeryToken
+                },
+                body: JSON.stringify({
+                    year: periodYear,
+                    month: periodMonth,
+                    bankKey: balance.bankKey,
+                    openingBalance
+                })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.balance) {
+                throw new Error(payload.detail || payload.message || "No fue posible guardar el saldo inicial.");
+            }
+
+            const option = Array.from(bankBalanceSelect?.options || [])
+                .find((item) => item.value === payload.balance.bankKey);
+            writeBankBalanceOption(option, payload.balance);
+            if (option && bankBalanceSelect) {
+                bankBalanceSelect.value = option.value;
+            }
+            renderBankBalance();
+            setStatus(payload.message || "Saldo inicial guardado.", "success");
+            closeBankBalanceModal();
+        } catch (error) {
+            setBankBalanceModalStatus(
+                error instanceof Error ? error.message : "No fue posible guardar el saldo inicial.",
+                "error");
+        } finally {
+            if (bankBalanceSave) {
+                bankBalanceSave.disabled = false;
+                bankBalanceSave.textContent = previousText;
+            }
+            if (bankBalanceInput) {
+                bankBalanceInput.disabled = false;
+            }
+        }
+    };
 
     const numberLabel = (value) => Number(value || 0).toLocaleString("es-CO");
 
@@ -2184,7 +2443,13 @@
 
             const summary = buildBankImportSummary(payload);
             setBankImportResult(summary, "success");
-            setStatus(`${summary}. Recargando bandeja...`, "success");
+            selectBankBalanceForSource(account);
+            try {
+                await refreshBankBalances();
+            } catch {
+                // La recarga inmediata siguiente vuelve a consultar los valores persistidos.
+            }
+            setStatus(`${summary}. Saldo actualizado; recargando bandeja...`, "success");
             window.setTimeout(reloadPreservingView, 900);
         } catch (error) {
             const message = error instanceof Error ? error.message : "Ocurrio un error inesperado.";
@@ -6002,7 +6267,7 @@
             ReteICA: String(reteIca?.accountCode || ""),
             RteIVA: String(rteIva?.accountCode || "")
         };
-        state.form = {
+         state.form = {
             receptor: String(row.receptor || row.cashFlowRecipient || ""),
             nitOCedula: String(row.nitOCedula || ""),
             observaciones: String(row.observaciones || row.cashFlowObservations || row.cashFlowDescription || ""),
@@ -6010,11 +6275,29 @@
             fechaPagoValue: String(row.fechaPagoValue || movementDateValue),
             valorTotal: Number(row.valorTotal) > 0 ? Number(row.valorTotal) : cashFlowExitValue,
             valorIva: Math.max(0, Number(row.valorIva || 0)),
+            cloudValue: Math.max(0, Number(row.cloudValue || 0)),
+            copiersValue: Math.max(0, Number(row.copiersValue || 0)),
+            categoryValue: String(row.categoryValue || ""),
             accountCode: String(row.accountCode || state.accountCode || ""),
             reteFuenteTaxId: Number(reteFuente?.taxId || 0),
             reteIcaTaxId: Number(reteIca?.taxId || 0),
             rteIvaTaxId: Number(rteIva?.taxId || 0)
         };
+        state.supplier = row.siigoSupplierId && row.siigoSupplierName && row.nitOCedula
+            ? {
+                id: String(row.siigoSupplierId),
+                name: String(row.siigoSupplierName),
+                commercialName: String(row.siigoSupplierName),
+                identification: String(row.nitOCedula),
+                branchOffice: 0,
+                active: true
+            }
+            : null;
+        state.supplierQuery = state.supplier ? supplierPaymentLabel(state.supplier) : String(row.receptor || "");
+        state.supplierCandidates = [];
+        state.supplierSearchMessage = state.supplier
+            ? "Proveedor de Siigo asociado al gasto."
+            : "Escribe al menos dos caracteres y selecciona un proveedor activo de Siigo.";
         state.loaded = true;
         state.loadFailed = false;
         state.dirty = !String(row.recordId || "").trim();
@@ -6138,6 +6421,9 @@
         if (!String(form.nitOCedula || "").trim()) {
             issues.push("Indica el NIT o la cedula.");
         }
+        if (!state?.supplier?.id || !state?.supplier?.identification) {
+            issues.push("Busca y selecciona el proveedor activo en Siigo.");
+        }
         if (!String(form.fechaEmisionValue || "").trim()) {
             issues.push("Indica la fecha de emision.");
         }
@@ -6157,6 +6443,14 @@
         }
         if (calculation.vatValue < 0 || calculation.vatValue > calculation.totalValue) {
             issues.push("El valor IVA debe estar entre cero y el total.");
+        }
+        const allocationBase = roundClientPaymentMoney(calculation.totalValue - calculation.vatValue);
+        const allocatedValue = roundClientPaymentMoney(Number(form.cloudValue || 0) + Number(form.copiersValue || 0));
+        if (Math.abs(allocatedValue - allocationBase) > 0.01) {
+            issues.push(`Cloud y Copiers deben sumar la base sin IVA (${clientPaymentMoney(allocationBase)}).`);
+        }
+        if (!String(form.categoryValue || "").trim()) {
+            issues.push("Selecciona la categoria del gasto.");
         }
         if (Number(form.rteIvaTaxId || 0) > 0 && calculation.vatValue <= 0) {
             issues.push("Indica el valor IVA para calcular RteIVA.");
@@ -6223,6 +6517,19 @@
             saveButton.hidden = !state.loaded || (!state.dirty && hasRecord);
             saveButton.disabled = !canSave;
         }
+        const completeButton = modal.querySelector("[data-cnc-wizard-cuenta-complete]");
+        const canComplete = state.loaded
+            && !state.isLegacy
+            && !hasDocument
+            && !hasDocumentWriteHold
+            && validateCuentaCobroWizardExpense(calculation).length === 0
+            && !state.loading
+            && !state.saving
+            && !state.processing;
+        if (completeButton) {
+            completeButton.hidden = !canComplete;
+            completeButton.disabled = !canComplete;
+        }
 
          const canUseSavedRecord = hasRecord
              && hasSavedAccount
@@ -6230,20 +6537,6 @@
              && !state.saving
              && !state.processing;
         const actions = [
-            [
-                 "[data-cnc-wizard-cuenta-preflight]",
-                 canUseSavedRecord
-                     && !state.isLegacy
-                     && !hasDocumentWriteHold
-                     && (hasHistoricalAction ? historicalPreflight : !hasDocument && !isReadyForSiigo)
-             ],
-            [
-                 "[data-cnc-wizard-cuenta-send]",
-                 canUseSavedRecord
-                     && !state.isLegacy
-                     && !hasDocumentWriteHold
-                     && (hasHistoricalAction ? historicalSend : !hasDocument && isReadyForSiigo)
-             ],
             [
                  "[data-cnc-wizard-cuenta-payment]",
                  canUseSavedRecord
@@ -6338,6 +6631,161 @@
         updateCuentaCobroWizardSummary();
     };
 
+    const cuentaCobroHasSiigoSupplier = (supplier) => Boolean(
+        supplier
+        && String(supplier.id || "").trim()
+        && String(supplier.identification || "").trim()
+        && (String(supplier.commercialName || "").trim()
+            || String(supplier.name || "").trim()
+            || String(supplier.displayName || "").trim()));
+
+    const renderCuentaCobroWizardSupplier = () => {
+        const modal = ensureCashFlowWizardModal();
+        const state = cashFlowWizardCuentaCobro;
+        const results = modal.querySelector("[data-cnc-wizard-cuenta-supplier-results]");
+        const selected = modal.querySelector("[data-cnc-wizard-cuenta-supplier-selected]");
+        const feedback = modal.querySelector("[data-cnc-wizard-cuenta-supplier-feedback]");
+        if (!state || !results || !selected) {
+            return;
+        }
+
+        const supplier = state.supplier;
+        selected.innerHTML = "";
+        selected.hidden = !supplier;
+        if (supplier) {
+            const label = document.createElement("strong");
+            const change = document.createElement("button");
+            label.textContent = supplierPaymentLabel(supplier);
+            change.type = "button";
+            change.className = "btn btn-sm btn-outline-secondary";
+            change.textContent = "Cambiar";
+            change.disabled = Boolean(state.isLocked);
+            change.addEventListener("click", () => {
+                state.supplier = null;
+                state.supplierCandidates = [];
+                state.supplierSearchMessage = "Busca el proveedor por nombre o NIT en Siigo.";
+                state.form.receptor = "";
+                state.form.nitOCedula = "";
+                const query = modal.querySelector("[data-cnc-wizard-cuenta-supplier-query]");
+                const receptor = modal.querySelector("[data-cnc-wizard-cuenta-receptor]");
+                const nit = modal.querySelector("[data-cnc-wizard-cuenta-nit]");
+                if (receptor) {
+                    receptor.value = "";
+                }
+                if (nit) {
+                    nit.value = "";
+                }
+                if (query) {
+                    query.value = state.supplierQuery || state.form.receptor || "";
+                    query.focus();
+                }
+                renderCuentaCobroWizardSupplier();
+                markCuentaCobroWizardDirty();
+            });
+            selected.append(label, change);
+        }
+
+        results.innerHTML = "";
+        const candidates = supplier
+            ? []
+            : (state.supplierCandidates || []).filter(cuentaCobroHasSiigoSupplier);
+        results.hidden = candidates.length === 0;
+        candidates.forEach((candidate) => {
+            const button = document.createElement("button");
+            const title = document.createElement("strong");
+            const detail = document.createElement("small");
+            button.type = "button";
+            button.className = "cnc-party-picker__option";
+            title.textContent = candidate.commercialName || candidate.name || candidate.displayName || "Proveedor Siigo";
+            detail.textContent = [
+                candidate.identification,
+                Number(candidate.branchOffice || 0) > 0 ? `Sucursal ${candidate.branchOffice}` : ""
+            ].filter(Boolean).join(" - ");
+            button.append(title, detail);
+            button.addEventListener("click", () => {
+                state.supplierSearchSequence = Number(state.supplierSearchSequence || 0) + 1;
+                state.supplier = candidate;
+                state.supplierCandidates = [];
+                state.supplierQuery = supplierPaymentLabel(candidate);
+                state.supplierSearchMessage = "Proveedor seleccionado desde Siigo.";
+                state.form.receptor = candidate.commercialName || candidate.name || candidate.displayName || "";
+                state.form.nitOCedula = String(candidate.identification || "");
+                const query = modal.querySelector("[data-cnc-wizard-cuenta-supplier-query]");
+                const receptor = modal.querySelector("[data-cnc-wizard-cuenta-receptor]");
+                const nit = modal.querySelector("[data-cnc-wizard-cuenta-nit]");
+                if (query) {
+                    query.value = state.supplierQuery;
+                }
+                if (receptor) {
+                    receptor.value = state.form.receptor;
+                }
+                if (nit) {
+                    nit.value = state.form.nitOCedula;
+                }
+                renderCuentaCobroWizardSupplier();
+                markCuentaCobroWizardDirty();
+            });
+            results.appendChild(button);
+        });
+        if (feedback) {
+            feedback.textContent = state.supplierSearchMessage || "";
+        }
+    };
+
+    const searchCuentaCobroWizardSuppliers = async (query) => {
+        const state = cashFlowWizardCuentaCobro;
+        if (!state || !siigoSupplierSearchUrl || query.length < 2 || state.isLocked) {
+            return;
+        }
+        const sequence = Number(state.supplierSearchSequence || 0) + 1;
+        state.supplierSearchSequence = sequence;
+        state.supplierSearchMessage = "Buscando proveedores en Siigo...";
+        renderCuentaCobroWizardSupplier();
+        try {
+            const response = await fetch(siigoSupplierSearchUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, top: 10 })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.message || "No fue posible buscar proveedores en Siigo.");
+            }
+            if (cashFlowWizardCuentaCobro !== state || state.supplierSearchSequence !== sequence) {
+                return;
+            }
+            state.supplierCandidates = (payload.items || [])
+                .filter((candidate) => candidate?.active !== false && cuentaCobroHasSiigoSupplier(candidate));
+            state.supplierSearchMessage = state.supplierCandidates.length === 0
+                ? "No se encontro el proveedor. Crealo o activalo primero en Siigo y vuelve a buscarlo aqui."
+                : "Selecciona el proveedor correcto de la lista de Siigo.";
+            renderCuentaCobroWizardSupplier();
+        } catch (error) {
+            if (cashFlowWizardCuentaCobro === state && state.supplierSearchSequence === sequence) {
+                state.supplierCandidates = [];
+                state.supplierSearchMessage = error instanceof Error ? error.message : "No fue posible buscar proveedores en Siigo.";
+                renderCuentaCobroWizardSupplier();
+            }
+        }
+    };
+
+    const scheduleCuentaCobroWizardSupplierSearch = (query) => {
+        const state = cashFlowWizardCuentaCobro;
+        if (!state) {
+            return;
+        }
+        window.clearTimeout(state.supplierSearchTimer || 0);
+        if (query.length < 2) {
+            state.supplierCandidates = [];
+            state.supplierSearchMessage = "Escribe al menos dos caracteres para buscar en Siigo.";
+            renderCuentaCobroWizardSupplier();
+            return;
+        }
+        state.supplierSearchTimer = window.setTimeout(
+            () => searchCuentaCobroWizardSuppliers(query),
+            280);
+    };
+
     const bindCuentaCobroWizardEditor = () => {
         const modal = ensureCashFlowWizardModal();
         const state = cashFlowWizardCuentaCobro;
@@ -6352,8 +6800,14 @@
             });
         };
         if (!state.isLegacy && !state.isLocked) {
-            bindText("[data-cnc-wizard-cuenta-receptor]", "receptor");
-            bindText("[data-cnc-wizard-cuenta-nit]", "nitOCedula");
+            const supplierQuery = modal.querySelector("[data-cnc-wizard-cuenta-supplier-query]");
+            supplierQuery?.addEventListener("input", (event) => {
+                state.supplierQuery = String(event.currentTarget.value || "");
+                state.supplier = null;
+                state.supplierCandidates = [];
+                scheduleCuentaCobroWizardSupplierSearch(state.supplierQuery.trim());
+                markCuentaCobroWizardDirty();
+            });
             bindText("[data-cnc-wizard-cuenta-observaciones]", "observaciones");
             bindText("[data-cnc-wizard-cuenta-fecha-emision]", "fechaEmisionValue");
             const totalInput = modal.querySelector("[data-cnc-wizard-cuenta-total]");
@@ -6366,6 +6820,22 @@
             vatInput?.addEventListener("input", () => {
                 const value = Number(vatInput.value || 0);
                 state.form.valorIva = Number.isFinite(value) ? Math.max(0, value) : 0;
+                markCuentaCobroWizardDirty();
+            });
+            [
+                ["[data-cnc-wizard-cuenta-cloud]", "cloudValue"],
+                ["[data-cnc-wizard-cuenta-copiers]", "copiersValue"]
+            ].forEach(([selector, key]) => {
+                const input = modal.querySelector(selector);
+                input?.addEventListener("input", () => {
+                    const value = Number(input.value || 0);
+                    state.form[key] = Number.isFinite(value) ? Math.max(0, value) : 0;
+                    markCuentaCobroWizardDirty();
+                });
+            });
+            const categorySelect = modal.querySelector("[data-cnc-wizard-cuenta-category]");
+            categorySelect?.addEventListener("change", () => {
+                state.form.categoryValue = String(categorySelect.value || "");
                 markCuentaCobroWizardDirty();
             });
         }
@@ -6388,6 +6858,7 @@
                 });
             });
         }
+        renderCuentaCobroWizardSupplier();
     };
 
     const renderCashFlowWizardCuentaCobro = (row, message = "", tone = "info") => {
@@ -6459,13 +6930,22 @@
                          </div>`
                          : ""}
                     <div class="cnc-cuenta-expense-editor__grid">
+                        <div class="cnc-modal__field cnc-cuenta-expense-editor__field--wide">
+                            <span>Proveedor en Siigo</span>
+                            <div class="cnc-party-picker">
+                                <input class="form-control" type="search" autocomplete="off" placeholder="Escribe nombre o NIT para buscar en Siigo" value="${escapeHtml(state.supplierQuery || "")}"${legacyReadonly} data-cnc-wizard-cuenta-supplier-query />
+                                <div class="cnc-party-picker__results" data-cnc-wizard-cuenta-supplier-results hidden></div>
+                            </div>
+                            <div class="cnc-party-picker__selected" data-cnc-wizard-cuenta-supplier-selected hidden></div>
+                            <small data-cnc-wizard-cuenta-supplier-feedback></small>
+                        </div>
                         <label class="cnc-modal__field">
                             <span>Nombre del receptor</span>
-                            <input class="form-control" type="text" value="${escapeHtml(form.receptor || "")}"${legacyReadonly} data-cnc-wizard-cuenta-receptor />
+                            <input class="form-control" type="text" value="${escapeHtml(form.receptor || "")}" readonly data-cnc-wizard-cuenta-receptor />
                         </label>
                         <label class="cnc-modal__field">
                             <span>NIT o cedula</span>
-                            <input class="form-control" type="text" value="${escapeHtml(form.nitOCedula || "")}"${legacyReadonly} data-cnc-wizard-cuenta-nit />
+                            <input class="form-control" type="text" value="${escapeHtml(form.nitOCedula || "")}" readonly data-cnc-wizard-cuenta-nit />
                         </label>
                         <label class="cnc-modal__field">
                             <span>Fecha de emision</span>
@@ -6491,6 +6971,18 @@
                         <label class="cnc-modal__field cnc-cuenta-expense-editor__field--wide">
                             <span>Cuenta contable del gasto</span>
                             <select class="form-select"${state.isLocked ? " disabled" : ""} data-cnc-wizard-cuenta-account>${accountHtml}</select>
+                        </label>
+                        <label class="cnc-modal__field">
+                            <span>Cloud <small>(base sin IVA)</small></span>
+                            <input class="form-control" type="number" min="0" step="0.01" value="${escapeHtml(String(form.cloudValue || 0))}"${legacyReadonly} data-cnc-wizard-cuenta-cloud />
+                        </label>
+                        <label class="cnc-modal__field">
+                            <span>Copiers <small>(base sin IVA)</small></span>
+                            <input class="form-control" type="number" min="0" step="0.01" value="${escapeHtml(String(form.copiersValue || 0))}"${legacyReadonly} data-cnc-wizard-cuenta-copiers />
+                        </label>
+                        <label class="cnc-modal__field cnc-cuenta-expense-editor__field--wide">
+                            <span>Categoria del gasto</span>
+                            <select class="form-select"${legacyDisabled} data-cnc-wizard-cuenta-category>${supplierExpenseCategoryOptionsHtml()}</select>
                         </label>
                         <label class="cnc-modal__field">
                             <span>ReteFuente <small>(base <span data-cnc-wizard-cuenta-tax-base></span>)</small></span>
@@ -6576,8 +7068,7 @@
                     <div class="cnc-wizard-process__actions">
                         <button type="button" class="btn btn-outline-secondary" data-cnc-wizard-cuenta-back>Volver</button>
                         <button type="button" class="btn btn-primary" data-cnc-wizard-cuenta-save hidden>${state.isLegacy ? "Guardar cuenta historica" : "Guardar en Dataverse"}</button>
-                        <button type="button" class="btn btn-primary" data-cnc-wizard-cuenta-preflight hidden>Validar</button>
-                        <button type="button" class="btn btn-primary" data-cnc-wizard-cuenta-send hidden>Enviar a Siigo</button>
+                        <button type="button" class="btn btn-danger" data-cnc-wizard-cuenta-complete hidden>Registrar documento soporte y pago</button>
                         <button type="button" class="btn btn-primary" data-cnc-wizard-cuenta-payment hidden>Reintentar pago</button>
                     </div>
                 </div>`;
@@ -6586,6 +7077,10 @@
         const accountSelect = modal.querySelector("[data-cnc-wizard-cuenta-account]");
         if (accountSelect) {
             accountSelect.value = form.accountCode || "";
+        }
+        const categorySelect = modal.querySelector("[data-cnc-wizard-cuenta-category]");
+        if (categorySelect) {
+            categorySelect.value = form.categoryValue || "";
         }
         bindCuentaCobroWizardEditor();
         modal.querySelector("[data-cnc-wizard-cuenta-retry]")?.addEventListener("click", () => {
@@ -6600,15 +7095,7 @@
         modal.querySelector("[data-cnc-wizard-cuenta-save]")?.addEventListener(
             "click",
             state.isLegacy ? saveCashFlowWizardLegacyCuentaCobroAccount : saveCashFlowWizardCuentaCobroExpense);
-        modal.querySelector("[data-cnc-wizard-cuenta-preflight]")?.addEventListener("click", () => runCashFlowWizardCuentaCobroAction(cuentaCobroPreflightUrl, {
-            loadingMessage: "Validando documento soporte pre-Siigo...",
-            successMessage: "Prevalidacion finalizada."
-        }));
-        modal.querySelector("[data-cnc-wizard-cuenta-send]")?.addEventListener("click", () => runCashFlowWizardCuentaCobroAction(cuentaCobroSendUrl, {
-            loadingMessage: "Enviando documento soporte y pago a Siigo...",
-            successMessage: "Cuenta de cobro enviada a Siigo.",
-            completeOnSuccess: true
-        }));
+        modal.querySelector("[data-cnc-wizard-cuenta-complete]")?.addEventListener("click", registerCashFlowWizardCuentaCobroInSiigo);
         modal.querySelector("[data-cnc-wizard-cuenta-payment]")?.addEventListener("click", () => runCashFlowWizardCuentaCobroAction(cuentaCobroPaymentUrl, {
             loadingMessage: "Reintentando pago del documento soporte...",
             successMessage: "Pago del documento soporte enviado.",
@@ -6761,7 +7248,14 @@
             valorTotal: calculation.totalValue,
             valorIva: calculation.vatValue,
             valorPago: calculation.paymentValue,
+            cloudValue: Number(form.cloudValue || 0),
+            copiersValue: Number(form.copiersValue || 0),
+            categoryValue: String(form.categoryValue || ""),
             accountCode: String(form.accountCode || ""),
+            siigoSupplierId: String(state.supplier?.id || ""),
+            siigoSupplierName: String(state.supplier?.commercialName || state.supplier?.name || state.supplier?.displayName || ""),
+            siigoSupplierIdentification: String(state.supplier?.identification || ""),
+            siigoSupplierBranchOffice: Number(state.supplier?.branchOffice || 0),
             retentions: calculation.retentions
         };
 
@@ -6769,7 +7263,7 @@
         state.issues = [];
         renderCuentaCobroWizardPayload();
         updateCuentaCobroWizardActions();
-        setCashFlowWizardMessage("Guardando gasto, retenciones y pago en Dataverse...", "info");
+        setCashFlowWizardMessage("Guardando gasto, distribucion y retenciones en Dataverse...", "info");
         try {
             const response = await fetch(cuentaCobroExpenseSaveUrl, {
                 method: "POST",
@@ -6800,13 +7294,15 @@
             }
             renderCashFlowWizardCuentaCobro(
                 state.row,
-                payload.message || "Gasto, retenciones y pago guardados en Dataverse.",
+                payload.message || "Gasto, distribucion y retenciones guardados en Dataverse.",
                 "success");
+            return true;
         } catch (error) {
             state.saving = false;
             setCashFlowWizardMessage(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
             renderCuentaCobroWizardPayload();
             updateCuentaCobroWizardActions();
+            return false;
         }
     };
 
@@ -6847,7 +7343,7 @@
         const state = cashFlowWizardCuentaCobro;
         if (!state?.row || !cuentaCobroWizardRequest().recordId || !url) {
             setCashFlowWizardMessage("No se encontro el gasto guardado o la ruta de proceso.", "error");
-            return;
+            return false;
         }
 
         state.processing = true;
@@ -6883,16 +7379,47 @@
             state.processing = false;
             if (success && options.completeOnSuccess) {
                 completeCashFlowWizardRow(state.row, payload.row, displayMessage);
-                return;
+                return true;
             }
 
             setCashFlowWizardMessage(displayMessage, success ? "success" : "info");
             updateCuentaCobroWizardActions();
+            return success;
         } catch (error) {
             state.processing = false;
             setCashFlowWizardMessage(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "error");
             updateCuentaCobroWizardActions();
+            return false;
         }
+    };
+
+    const registerCashFlowWizardCuentaCobroInSiigo = async () => {
+        const state = cashFlowWizardCuentaCobro;
+        if (!state || state.isLegacy || state.isLocked) {
+            setCashFlowWizardMessage("Esta cuenta de cobro no esta disponible para registrar en Siigo.", "error");
+            return;
+        }
+
+        if (state.dirty || !cuentaCobroWizardRequest().recordId) {
+            const saved = await saveCashFlowWizardCuentaCobroExpense();
+            if (!saved) {
+                return;
+            }
+        }
+
+        const preflightOk = await runCashFlowWizardCuentaCobroAction(cuentaCobroPreflightUrl, {
+            loadingMessage: "Validando documento soporte, distribucion, retenciones y pago...",
+            successMessage: "Validacion correcta. Registrando los documentos en Siigo..."
+        });
+        if (!preflightOk) {
+            return;
+        }
+
+        await runCashFlowWizardCuentaCobroAction(cuentaCobroSendUrl, {
+            loadingMessage: "Paso 1 de 2: creando documento soporte; despues se registrara el pago...",
+            successMessage: "Documento soporte y comprobante de pago registrados en Siigo.",
+            completeOnSuccess: true
+        });
     };
 
     const accountingVoucherRowHost = (row) => row?.closest?.("tr[data-record-id]") || row || null;
@@ -9565,6 +10092,38 @@
 
     const syncDianSupplierFiscalFields = () => {};
 
+    const setDianSupplierFeedback = (message = "", tone = "info") => {
+        if (!dianSupplierFeedback) {
+            return;
+        }
+
+        dianSupplierFeedback.textContent = message;
+        dianSupplierFeedback.dataset.tone = tone;
+        dianSupplierFeedback.hidden = !message;
+    };
+
+    const setDianSupplierFieldValidity = (field, isValid) => {
+        if (!field) {
+            return;
+        }
+
+        field.classList.toggle("is-invalid", !isValid);
+        if (isValid) {
+            field.removeAttribute("aria-invalid");
+        } else {
+            field.setAttribute("aria-invalid", "true");
+        }
+    };
+
+    const clearDianSupplierFieldValidation = () => {
+        [
+            dianSupplierName,
+            dianSupplierNit,
+            dianSupplierAddress,
+            dianSupplierCity
+        ].forEach((field) => setDianSupplierFieldValidity(field, true));
+    };
+
     const openDianSupplierModal = (row, options = {}) => {
         activeDianSupplierRow = row;
         const supplierName = row.dataset.supplierName || "";
@@ -9627,6 +10186,11 @@
                 ? "Crear/asociar manualmente"
                 : "Crear/asociar proveedor";
         }
+        clearDianSupplierFieldValidation();
+        setDianSupplierFeedback(
+            isManualEntry
+                ? "Dirección y Ciudad Siigo son obligatorias. Al continuar verás el proceso de creación directa en Siigo."
+                : "");
         setDianSupplierTypeDefaults();
         syncDianSupplierFiscalFields();
 
@@ -9742,7 +10306,9 @@
 
     const saveDianSupplier = async () => {
         if (!activeDianSupplierRow || !dianCreateSupplierUrl) {
-            setStatus("No se encontro la ruta o el proveedor DIAN.", "error");
+            const message = "No se encontró la ruta o el proveedor DIAN.";
+            setDianSupplierFeedback(message, "error");
+            setStatus(message, "error");
             return;
         }
 
@@ -9753,16 +10319,53 @@
         const supplierAddress = (dianSupplierAddress?.value || "").trim();
         const cityParts = (dianSupplierCity?.value || "").split("|").filter(Boolean);
         if (dianSupplierEntryMode === "rut" && !dianSupplierRutAnalyzed) {
-            setStatus("Adjunta y analiza el RUT antes de crear el proveedor en Siigo.", "info");
+            const message = "Adjunta y analiza el RUT antes de crear el proveedor en Siigo.";
+            setDianSupplierFeedback(message, "error");
+            setStatus(message, "info");
+            dianSupplierRutFile?.focus();
             return;
         }
-        if (!recordId
-            || !supplierName
-            || extractDigits(supplierNit).length < 5
-            || !supplierAddress
-            || normalizeText(supplierAddress) === "sin direccion"
-            || cityParts.length !== 3) {
-            setStatus("Completa nombre, NIT, direccion y ciudad Siigo antes de crear el proveedor.", "info");
+
+        if (!recordId) {
+            const message = "No fue posible identificar la factura DIAN. Cierra el popup, recarga la bandeja y vuelve a intentarlo.";
+            setDianSupplierFeedback(message, "error");
+            setStatus(message, "error");
+            return;
+        }
+
+        const fieldChecks = [
+            {
+                field: dianSupplierName,
+                label: "Nombre proveedor",
+                isValid: Boolean(supplierName)
+            },
+            {
+                field: dianSupplierNit,
+                label: "NIT / identificación",
+                isValid: extractDigits(supplierNit).length >= 5
+            },
+            {
+                field: dianSupplierAddress,
+                label: "Dirección",
+                isValid: Boolean(supplierAddress) && normalizeText(supplierAddress) !== "sin direccion"
+            },
+            {
+                field: dianSupplierCity,
+                label: "Ciudad Siigo",
+                isValid: cityParts.length === 3
+            }
+        ];
+        fieldChecks.forEach(({ field, isValid }) => setDianSupplierFieldValidity(field, isValid));
+        const invalidFields = fieldChecks.filter(({ isValid }) => !isValid);
+        if (invalidFields.length > 0) {
+            const labels = invalidFields.map(({ label }) => label);
+            const fieldsLabel = labels.length === 1
+                ? labels[0]
+                : `${labels.slice(0, -1).join(", ")} y ${labels.at(-1)}`;
+            const message = `Falta completar: ${fieldsLabel}. Estos datos son obligatorios para crear el proveedor directamente en Siigo.`;
+            setDianSupplierFeedback(message, "error");
+            setStatus(message, "info");
+            invalidFields[0].field?.focus();
             return;
         }
 
@@ -9783,24 +10386,45 @@
             cityCode: cityParts[2]
         };
 
+        const previousSaveText = dianSupplierSave?.textContent || "Crear/asociar proveedor";
         if (dianSupplierSave) {
             dianSupplierSave.disabled = true;
+            dianSupplierSave.textContent = "Creando en Siigo...";
         }
+        setDianSupplierFeedback("Creando o asociando el proveedor directamente en Siigo. No cierres esta ventana.", "info");
         const progressModal = ensureBulkProgressModal();
         const progressList = progressModal.querySelector("[data-cnc-bulk-list]");
         const progressReload = progressModal.querySelector("[data-cnc-bulk-reload]");
         const progressClose = progressModal.querySelectorAll("[data-cnc-bulk-close]");
+        const progressKicker = progressModal.querySelector("[data-cnc-bulk-kicker]");
+        if (progressKicker) {
+            progressKicker.textContent = "Proveedor Siigo";
+        }
+        progressModal._cncOnClose = () => {
+            if (dianSupplierModal) {
+                dianSupplierModal.hidden = false;
+            }
+            dianSupplierSave?.focus();
+        };
         if (progressList) {
             progressList.innerHTML = "";
         }
         if (progressReload) {
             progressReload.hidden = true;
+            progressReload.textContent = "Aceptar y actualizar";
         }
-        progressClose.forEach((item) => { item.disabled = true; });
+        progressClose.forEach((item) => {
+            item.disabled = true;
+            item.hidden = false;
+        });
         const progressItem = createBulkProgressItem(progressModal, row, 0);
-        setBulkProgress(progressModal, "Verificando proveedor", 0, 1, "Validando datos y consultando Siigo.");
-        updateBulkProgressItem(progressItem, "running", "Verificando datos antes de crear/asociar...");
+        setBulkProgress(progressModal, "Creando proveedor en Siigo", 0, 1, "Validando datos y consultando Siigo.");
+        updateBulkProgressItem(progressItem, "running", "Creando o asociando el proveedor directamente en Siigo...");
+        if (dianSupplierModal) {
+            dianSupplierModal.hidden = true;
+        }
         progressModal.hidden = false;
+        progressModal.querySelector("[data-cnc-bulk-panel]")?.focus();
         setDianRowLoading(row, true);
         setStatus("Creando o asociando proveedor en Siigo...", "info");
 
@@ -9822,23 +10446,39 @@
             const displayMessage = issues.length
                 ? `${payload.message || "Proveedor procesado."} Detalle: ${issues[0]}`
                 : (payload.message || "Proveedor Siigo asociado.");
+            const succeeded = payload.isSuccess !== false && issues.length === 0;
             if (message) {
                 message.textContent = displayMessage;
             }
 
             updateBulkProgressItem(
                 progressItem,
-                payload.isSuccess === false || issues.length ? "error" : "success",
+                succeeded ? "success" : "error",
                 displayMessage);
-            setBulkProgress(progressModal, "Verificando proveedor", 1, 1, displayMessage);
-            progressClose.forEach((item) => { item.disabled = false; });
-            if (progressReload) {
-                progressReload.hidden = false;
-            }
-            setStatus(displayMessage, payload.isSuccess === false || issues.length ? "info" : "success");
-            if (payload.isSuccess !== false && issues.length === 0) {
+            setBulkProgress(
+                progressModal,
+                succeeded ? "Proveedor listo en Siigo" : "No fue posible completar el proveedor",
+                1,
+                1,
+                displayMessage);
+            setStatus(displayMessage, succeeded ? "success" : "info");
+            if (succeeded) {
+                progressModal._cncOnClose = null;
+                progressModal.dataset.cncCloseAction = "reload";
                 closeDianSupplierModal();
-                window.setTimeout(reloadPreservingView, 800);
+                progressClose.forEach((item) => {
+                    item.disabled = false;
+                    item.hidden = false;
+                });
+                if (progressReload) {
+                    progressReload.hidden = false;
+                }
+            } else {
+                setDianSupplierFeedback(displayMessage, "error");
+                progressClose.forEach((item) => {
+                    item.disabled = false;
+                    item.hidden = false;
+                });
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : "Ocurrio un error inesperado.";
@@ -9846,13 +10486,15 @@
             setBulkProgress(progressModal, "Verificando proveedor", 1, 1, message);
             progressClose.forEach((item) => { item.disabled = false; });
             if (progressReload) {
-                progressReload.hidden = false;
+                progressReload.hidden = true;
             }
+            setDianSupplierFeedback(message, "error");
             setStatus(message, "error");
         } finally {
             setDianRowLoading(row, false);
             if (dianSupplierSave) {
                 dianSupplierSave.disabled = false;
+                dianSupplierSave.textContent = previousSaveText;
             }
         }
     };
@@ -10366,9 +11008,23 @@
         return strong || recordId || "Registro";
     };
 
+    const resetBulkProgressModalChrome = (modal) => {
+        delete modal.dataset.cncCloseAction;
+        modal._cncOnClose = null;
+        const reload = modal.querySelector("[data-cnc-bulk-reload]");
+        const kicker = modal.querySelector("[data-cnc-bulk-kicker]");
+        if (reload) {
+            reload.textContent = "Recargar vista";
+        }
+        if (kicker) {
+            kicker.textContent = "Accion masiva";
+        }
+    };
+
     const ensureBulkProgressModal = () => {
         let modal = document.getElementById("cncBulkProgressModal");
         if (modal) {
+            resetBulkProgressModalChrome(modal);
             return modal;
         }
 
@@ -10377,17 +11033,19 @@
         modal.id = "cncBulkProgressModal";
         modal.setAttribute("role", "dialog");
         modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("aria-labelledby", "cncBulkProgressTitle");
+        modal.setAttribute("aria-describedby", "cncBulkProgressSummary");
         modal.hidden = true;
         modal.innerHTML = `
-            <div class="cnc-modal__panel cnc-modal__panel--wide">
+            <div class="cnc-modal__panel cnc-modal__panel--wide" data-cnc-bulk-panel tabindex="-1">
                 <div class="cnc-modal__header">
                     <div>
-                        <div class="cnc-kicker">Accion masiva</div>
-                        <h2 data-cnc-bulk-title>Procesando registros</h2>
+                        <div class="cnc-kicker" data-cnc-bulk-kicker>Accion masiva</div>
+                        <h2 id="cncBulkProgressTitle" data-cnc-bulk-title>Procesando registros</h2>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-bulk-close disabled>Cerrar</button>
                 </div>
-                <p class="cnc-modal__description" data-cnc-bulk-summary></p>
+                <p class="cnc-modal__description" id="cncBulkProgressSummary" data-cnc-bulk-summary></p>
                 <div class="cnc-progress" aria-hidden="true">
                     <div class="cnc-progress__bar" data-cnc-bulk-bar></div>
                 </div>
@@ -10400,7 +11058,17 @@
         document.body.appendChild(modal);
         modal.querySelectorAll("[data-cnc-bulk-close]").forEach((button) => {
             button.addEventListener("click", () => {
+                if (modal.dataset.cncCloseAction === "reload") {
+                    reloadPreservingView();
+                    return;
+                }
+
+                const onClose = modal._cncOnClose;
                 modal.hidden = true;
+                resetBulkProgressModalChrome(modal);
+                if (typeof onClose === "function") {
+                    onClose();
+                }
             });
         });
         modal.querySelector("[data-cnc-bulk-reload]")?.addEventListener("click", reloadPreservingView);
@@ -12050,6 +12718,24 @@
             setBankImportResult(`Listo: ${file.name}`, "info");
         }
     });
+    bankBalanceSelect?.addEventListener("change", renderBankBalance);
+    bankBalanceOpenButton?.addEventListener("click", openBankBalanceModal);
+    bankBalanceSave?.addEventListener("click", saveBankOpeningBalance);
+    app.querySelectorAll("[data-cnc-bank-balance-close], [data-cnc-bank-balance-cancel]")
+        .forEach((button) => button.addEventListener("click", closeBankBalanceModal));
+    bankBalanceModal?.addEventListener("click", (event) => {
+        if (event.target === bankBalanceModal) {
+            closeBankBalanceModal();
+        }
+    });
+    bankBalanceInput?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            saveBankOpeningBalance();
+        } else if (event.key === "Escape") {
+            closeBankBalanceModal();
+        }
+    });
 
     app.querySelectorAll("[data-cnc-tab-target]").forEach((button) => {
         button.addEventListener("click", (event) => {
@@ -12508,6 +13194,18 @@
             dianSupplierCheckDigit.value = calculateColombianCheckDigit(dianSupplierNit.value);
         }
     });
+    [
+        dianSupplierName,
+        dianSupplierNit,
+        dianSupplierAddress,
+        dianSupplierCity
+    ].forEach((field) => {
+        const eventName = field instanceof HTMLSelectElement ? "change" : "input";
+        field?.addEventListener(eventName, () => {
+            setDianSupplierFieldValidity(field, true);
+            setDianSupplierFeedback();
+        });
+    });
     dianSupplierRutAnalyze?.addEventListener("click", analyzeDianSupplierRut);
     dianSupplierRutFile?.addEventListener("change", () => {
         dianSupplierRutAnalyzed = false;
@@ -12576,4 +13274,5 @@
     setActiveTab(initialTab, false);
     persistViewState(initialTab, activeVertical);
     refreshAllFilters();
+    renderBankBalance();
 })();

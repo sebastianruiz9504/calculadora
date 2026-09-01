@@ -298,7 +298,7 @@
     </div>
 
     <div class="d-flex gap-2 flex-wrap calc-hero__actions">
-        <button id="btnNewScenario" class="btn btn-primary" type="button">Nuevo negocio</button>
+        <button id="btnNewScenario" class="btn btn-primary" type="button">Nuevo escenario</button>
         <button id="btnDuplicateScenario" class="btn btn-outline-secondary" type="button">Duplicar</button>
         <button id="btnDeleteScenario" class="btn btn-outline-danger" type="button">Eliminar</button>
     </div>
@@ -702,9 +702,7 @@
 
     let scenarios = [];
     let activeScenarioId = null;
-    const scenarioSaveRuntime = new Map();
     let lineEventsAbortController = null;
-    const AUTOSAVE_DELAY_MS = 750;
     const provisioningState = { date: "", contractType: "", client: null, loading: false };
     let prorationSearchTimer = null;
     let prorationClientResults = [];
@@ -1112,24 +1110,8 @@ const showDebugCalcModal = false;
         resultTotal.innerText = "—";
     }
 
-    function getScenarioSaveRuntime(scenarioId) {
-        const key = String(scenarioId || "");
-        if (!scenarioSaveRuntime.has(key)) {
-            scenarioSaveRuntime.set(key, {
-                revision: 0,
-                savedRevision: 0,
-                timer: null,
-                inFlight: null,
-                queued: false,
-                lastError: ""
-            });
-        }
-        return scenarioSaveRuntime.get(key);
-    }
-
     function notifyParentState(scenario, type = "calculator:state", overrides = {}) {
         if (!embeddedCalculator || window.parent === window || !scenario) return;
-        const runtime = getScenarioSaveRuntime(scenario.id);
         const valid = Boolean(scenario.lastResult?.inputHash);
         window.parent.postMessage({
             source: "digitaltech-calculator",
@@ -1140,11 +1122,10 @@ const showDebugCalcModal = false;
             possibilityOrder: Number(scenario.possibilityOrder || 1),
             rowVersion: scenario.rowVersion || "",
             valid,
-            saved: runtime.savedRevision >= runtime.revision && !runtime.inFlight && !runtime.timer,
+            saved: !scenario.hasUnsavedChanges,
             points: valid ? Number(scenario.lastResult.points || 0) : null,
             totalMonthlySale: valid ? Number(scenario.lastResult.totalMonthlySale || 0) : null,
             totalSale: valid ? Number(scenario.lastResult.totalSale || 0) : null,
-            error: runtime.lastError || "",
             ...overrides
         }, window.location.origin);
     }
@@ -1171,134 +1152,25 @@ const showDebugCalcModal = false;
         embeddedResizeFrame = requestAnimationFrame(postEmbeddedHeight);
     }
 
-    if (embeddedCalculator) {
-        window.addEventListener("message", event => {
-            if (event.origin !== window.location.origin
-                || event.source !== window.parent
-                || event.data?.source !== "digitaltech-calculator-workspace") {
-                return;
-            }
-
-            if (event.data?.type === "calculator:request-resize") {
-                scheduleEmbeddedResize();
-                return;
-            }
-
-            if (event.data?.type !== "calculator:set-group-name") return;
-            const scenario = getActiveScenario();
-            const groupId = String(event.data.groupId || "").trim();
-            const groupName = String(event.data.groupName || "").trim();
-            const scenarioGroupId = scenario?.groupId || scenario?.id || "";
-            if (!scenario || !groupName || (groupId && scenarioGroupId !== groupId)) return;
-            scenario.groupName = groupName;
-        });
-    }
-
-    function normalizeScenarioLinesForSave(scenario) {
-        const lines = Array.isArray(scenario?.lines) ? scenario.lines : [];
-        return lines.map((line, index) => {
-            if (!line.lineId) {
-                line.lineId = globalThis.crypto?.randomUUID?.() || uid();
-            }
-            line.lineOrder = index + 1;
-            return line;
-        });
-    }
-
-    function scheduleScenarioAutosave(scenario, delay = AUTOSAVE_DELAY_MS) {
-        if (!scenario?.id) return;
-        const runtime = getScenarioSaveRuntime(scenario.id);
-        clearTimeout(runtime.timer);
-        runtime.timer = setTimeout(() => {
-            runtime.timer = null;
-            void flushScenarioAutosave(scenario.id);
-        }, Math.max(0, delay));
-        notifyParentState(scenario, "calculator:state", { saved: false });
-    }
-
-    async function flushScenarioAutosave(scenarioId, throwOnError = false, keepalive = false) {
-        const runtime = getScenarioSaveRuntime(scenarioId);
-        clearTimeout(runtime.timer);
-        runtime.timer = null;
-
-        if (runtime.inFlight) {
-            runtime.queued = true;
-            try {
-                await runtime.inFlight;
-            } catch (error) {
-                if (throwOnError) throw error;
-            }
-            if (runtime.savedRevision < runtime.revision) {
-                return await flushScenarioAutosave(scenarioId, throwOnError, keepalive);
-            }
-            return;
-        }
-
-        const scenario = scenarios.find(item => item.id === scenarioId);
-        if (!scenario || runtime.savedRevision >= runtime.revision) {
-            if (scenario) notifyParentState(scenario);
-            return;
-        }
-
-        const savingRevision = runtime.revision;
-        runtime.queued = false;
-        runtime.lastError = "";
-        notifyParentState(scenario, "calculator:state", { saved: false });
-        runtime.inFlight = saveScenarioToDataverse(
-            scenario,
-            normalizeScenarioLinesForSave(scenario),
-            { keepalive });
-        let saveSucceeded = false;
-
-        try {
-            await runtime.inFlight;
-            saveSucceeded = true;
-            runtime.savedRevision = Math.max(runtime.savedRevision, savingRevision);
-            runtime.lastError = "";
-            notifyParentState(scenario, "calculator:saved", {
-                saved: runtime.savedRevision >= runtime.revision
-            });
-        } catch (error) {
-            runtime.lastError = error?.message || "No se pudieron guardar los cambios.";
-            notifyParentState(scenario, "calculator:state", { saved: false, error: runtime.lastError });
-            if (throwOnError) throw error;
-        } finally {
-            runtime.inFlight = null;
-            scheduleEmbeddedResize();
-        }
-
-        if (saveSucceeded && (runtime.queued || runtime.savedRevision < runtime.revision)) {
-            runtime.queued = false;
-            if (throwOnError) return await flushScenarioAutosave(scenarioId, true, keepalive);
-            scheduleScenarioAutosave(scenario, 0);
-        }
-    }
-
-    function hasPendingScenarioAutosave() {
-        return Array.from(scenarioSaveRuntime.values()).some(runtime =>
-            runtime.savedRevision < runtime.revision || Boolean(runtime.inFlight) || Boolean(runtime.timer));
-    }
-
-    function flushPendingScenarioAutosavesForNavigation() {
-        scenarios.forEach(scenario => {
-            const runtime = getScenarioSaveRuntime(scenario.id);
-            if (runtime.savedRevision < runtime.revision || runtime.timer) {
-                void flushScenarioAutosave(scenario.id, false, true);
-            }
-        });
-    }
-
     function markScenarioChanged(scenario = getActiveScenario(), invalidateResult = true) {
         if (!scenario) return;
         if (invalidateResult) {
             scenario.lastResult = null;
-            if (scenario.id === activeScenarioId) resetResults(false);
+            if (scenario.id === activeScenarioId) {
+                resetResults(false);
+            }
         }
-        const runtime = getScenarioSaveRuntime(scenario.id);
-        runtime.revision += 1;
-        runtime.lastError = "";
-        scheduleScenarioAutosave(scenario);
+        scenario.changeRevision = Number(scenario.changeRevision || 0) + 1;
+        scenario.hasUnsavedChanges = true;
         syncScenarioActionButtons();
+        notifyParentState(scenario, "calculator:state", { saved: false });
+        scheduleEmbeddedResize();
+    }
+
+    function markScenarioSaved(scenario) {
+        if (!scenario) return;
+        scenario.hasUnsavedChanges = false;
+        notifyParentState(scenario, "calculator:saved", { saved: true });
         scheduleEmbeddedResize();
     }
 
@@ -1541,7 +1413,9 @@ const showDebugCalcModal = false;
             crmEstimatedValue: null,
             crmCompany: null,
             crmPrimaryContact: null,
-            provisioningRequestId: ""
+            provisioningRequestId: "",
+            changeRevision: 0,
+            hasUnsavedChanges: false
         };
     }
 function toDateInputValue(value) {
@@ -1720,7 +1594,9 @@ function toDateInputValue(value) {
             crmEstimatedValue: null,
             crmCompany: null,
             crmPrimaryContact: null,
-            provisioningRequestId: ""
+            provisioningRequestId: "",
+            changeRevision: 0,
+            hasUnsavedChanges: false
         };
     }
 
@@ -1801,6 +1677,9 @@ function toDateInputValue(value) {
 
         const copy = JSON.parse(JSON.stringify(current));
         copy.id = uid();
+        copy.rowVersion = "";
+        copy.changeRevision = 0;
+        copy.hasUnsavedChanges = true;
         copy.name = `${current.name} (copia)`;
         copy.crmDealId = "";
         copy.isCrmSharedAccess = false;
@@ -2227,7 +2106,7 @@ function toDateInputValue(value) {
             lines
         };
     }
-async function saveScenarioToDataverse(scenario, lines, options = {}) {
+async function saveScenarioToDataverse(scenario, lines) {
         if (!scenario) return;
 
         const normalizedLines = (Array.isArray(lines) ? lines : []).map((line, index) => ({
@@ -2247,7 +2126,11 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
         normalizedLines.forEach((normalizedLine, index) => {
             const currentLine = scenario.lines[index];
             if (currentLine) Object.assign(currentLine, normalizedLine);
+            else scenario.lines.push(normalizedLine);
         });
+        if (scenario.lines.length > normalizedLines.length) {
+            scenario.lines.splice(normalizedLines.length);
+        }
 
         const payload = {
             scenarioId: scenario.id,
@@ -2257,7 +2140,6 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
             possibilityOrder: Number(scenario.possibilityOrder || 1),
             includeInProposal: scenario.includeInProposal !== false,
             isRecommended: Boolean(scenario.isRecommended),
-            expectedRowVersion: scenario.rowVersion || "",
             crmDealId: scenario.crmDealId || "",
             scenarioName: scenario.name,
             dealType: Number(scenario.dealType || 0),
@@ -2275,8 +2157,7 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
                 "Accept": "application/json",
                 "RequestVerificationToken": antiforgeryToken
             },
-            body: JSON.stringify(payload),
-            keepalive: Boolean(options.keepalive)
+            body: JSON.stringify(payload)
         });
 
         if (!res.ok) {
@@ -2295,6 +2176,7 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
         if (savedScenario?.groupId) {
             scenario.groupId = savedScenario.groupId;
         }
+        markScenarioSaved(scenario);
     }
 
     async function deleteScenarioFromDataverse(scenarioId) {
@@ -2332,24 +2214,9 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
         const payload = buildPayload({ scenario: targetScenario });
         if (!payload) return;
         const targetScenarioId = targetScenario.id;
-        const calculationRevision = getScenarioSaveRuntime(targetScenarioId).revision;
-
-        try {
-            await flushScenarioAutosave(targetScenarioId, true);
-        } catch (error) {
-            alert("No se pudo guardar antes de calcular: " + (error?.message || error));
-            return;
-        }
-
-        if (getScenarioSaveRuntime(targetScenarioId).revision !== calculationRevision) {
-            notifyParentState(targetScenario, "calculator:state", {
-                valid: false,
-                saved: false,
-                error: "Los datos cambiaron antes de calcular. Calcula nuevamente."
-            });
-            alert("Los datos cambiaron mientras se guardaba. Calcula nuevamente para usar la versión actual.");
-            return;
-        }
+        const calculationRevision = Number(targetScenario.changeRevision || 0);
+        targetScenario.hasUnsavedChanges = true;
+        notifyParentState(targetScenario, "calculator:state", { valid: false, saved: false });
 
         btnCalculate.disabled = true;
         btnCalculate.innerText = "Calculando...";
@@ -2369,8 +2236,7 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
             const data = await res.json();
 
             const s = scenarios.find(item => item.id === targetScenarioId);
-            const runtime = getScenarioSaveRuntime(targetScenarioId);
-            if (!s || runtime.revision !== calculationRevision) {
+            if (!s || Number(s.changeRevision || 0) !== calculationRevision) {
                 if (s) {
                     notifyParentState(s, "calculator:state", {
                         valid: false,
@@ -2397,8 +2263,8 @@ async function saveScenarioToDataverse(scenario, lines, options = {}) {
 
             renderResultsFromScenario();
             if (s) {
-                markScenarioChanged(s, false);
-                await flushScenarioAutosave(s.id, true);
+                s.hasUnsavedChanges = true;
+                await saveScenarioToDataverse(s, payload.lines);
                 syncScenarioActionButtons();
                 notifyParentState(s, "calculator:calculated", { valid: true, saved: true });
             }
@@ -3695,6 +3561,17 @@ if (attachmentInput) {
     }
 
     if (embeddedCalculator) {
+        window.addEventListener("message", event => {
+            if (event.origin !== window.location.origin
+                || event.source !== window.parent
+                || event.data?.source !== "digitaltech-calculator-workspace"
+                || event.data?.type !== "calculator:request-resize") {
+                return;
+            }
+
+            scheduleEmbeddedResize();
+        });
+
         const embeddedScenario = getActiveScenario();
         if (embeddedScenario) {
             notifyParentState(embeddedScenario, "calculator:ready");
@@ -3706,18 +3583,6 @@ if (attachmentInput) {
         window.addEventListener("load", scheduleEmbeddedResize, { once: true });
     }
 
-    document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") {
-            flushPendingScenarioAutosavesForNavigation();
-        }
-    });
-    window.addEventListener("pagehide", flushPendingScenarioAutosavesForNavigation);
-    window.addEventListener("beforeunload", event => {
-        if (!hasPendingScenarioAutosave()) return;
-        flushPendingScenarioAutosavesForNavigation();
-        event.preventDefault();
-        event.returnValue = "";
-    });
 })();
 </script>
 }

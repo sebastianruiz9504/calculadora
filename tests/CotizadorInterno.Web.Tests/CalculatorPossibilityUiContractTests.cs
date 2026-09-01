@@ -25,13 +25,15 @@ public sealed class CalculatorPossibilityUiContractTests
     }
 
     [Fact]
-    public void EachPossibilityUsesAnIsolatedEmbeddedCalculatorWithDurableAutosaveFields()
+    public void EachPossibilityUsesAnIsolatedEmbeddedCalculatorWithExplicitCalculationSave()
     {
         var workspace = Read("Views", "Calculator", "Workspace.cshtml");
         var calculator = Read("Views", "Calculator", "Index.cshtml");
 
         Assert.Contains("data-calculator-frame", workspace, StringComparison.Ordinal);
         Assert.Contains("embedded=true", workspace, StringComparison.Ordinal);
+        Assert.Contains("tab.dataset.sid = String(s.id || \"\")", calculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-sid=\"${s.id}\"", calculator, StringComparison.Ordinal);
         Assert.Contains("Math.max(1, Math.ceil(requestedHeight))", workspace, StringComparison.Ordinal);
         Assert.DoesNotContain("Math.max(620, Math.ceil(requestedHeight))", workspace, StringComparison.Ordinal);
         Assert.DoesNotContain("Math.min(3200", workspace, StringComparison.Ordinal);
@@ -39,14 +41,29 @@ public sealed class CalculatorPossibilityUiContractTests
         Assert.Contains("resizeObserver.observe(calculatorInstance || document.body)", calculator, StringComparison.Ordinal);
         Assert.DoesNotContain("document.documentElement.scrollHeight", calculator, StringComparison.Ordinal);
         Assert.Contains("_CalculatorEmbeddedLayout", calculator, StringComparison.Ordinal);
-        Assert.Contains("const AUTOSAVE_DELAY_MS", calculator, StringComparison.Ordinal);
-        Assert.Contains("expectedRowVersion: scenario.rowVersion", calculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("const AUTOSAVE_DELAY_MS", calculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("expectedRowVersion: scenario.rowVersion", calculator, StringComparison.Ordinal);
         Assert.Contains("lineId: line.lineId", calculator, StringComparison.Ordinal);
         Assert.Contains("lineOrder: Number(line.lineOrder", calculator, StringComparison.Ordinal);
         Assert.Contains("possibilityName: scenario.possibilityName", calculator, StringComparison.Ordinal);
         Assert.Contains("possibilityOrder: Number(scenario.possibilityOrder", calculator, StringComparison.Ordinal);
         Assert.Contains("source: \"digitaltech-calculator\"", calculator, StringComparison.Ordinal);
         Assert.Contains("if (!embeddedCalculator)", calculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("keepalive: Boolean(options.keepalive)", calculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("flushPendingScenarioAutosavesForNavigation", calculator, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.addEventListener(\"beforeunload\"", calculator, StringComparison.Ordinal);
+        Assert.Contains("lineEventsAbortController?.abort()", calculator, StringComparison.Ordinal);
+        Assert.Contains("signal: lineEventSignal", calculator, StringComparison.Ordinal);
+        Assert.Contains("costInput.addEventListener(\"input\", captureFocusedNumericInput", calculator, StringComparison.Ordinal);
+        Assert.Contains("marginInput.addEventListener(\"input\", captureFocusedNumericInput", calculator, StringComparison.Ordinal);
+        Assert.Contains("monthsInput.addEventListener(\"input\", captureFocusedNumericInput", calculator, StringComparison.Ordinal);
+        Assert.Contains("qtyInput.addEventListener(\"input\", captureFocusedNumericInput", calculator, StringComparison.Ordinal);
+        Assert.Contains("const captureFocusedNumericInput = () => syncLineInputs(false)", calculator, StringComparison.Ordinal);
+        Assert.Contains("raw.split(thousandsSeparator).join(\"\")", calculator, StringComparison.Ordinal);
+        Assert.Contains("Number.isFinite(n)", calculator, StringComparison.Ordinal);
+        Assert.Contains("ensurePossibilitiesSaved", workspace, StringComparison.Ordinal);
+        Assert.Contains("hasUnsavedPossibilities", workspace, StringComparison.Ordinal);
+        Assert.Contains("Calcula y guarda todos los escenarios incluidos", workspace, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -74,7 +91,7 @@ public sealed class CalculatorPossibilityUiContractTests
     }
 
     [Fact]
-    public void AutosavePreservesLineIdentityWhileAProductSelectionIsInFlight()
+    public void ExplicitSavePreservesLineIdentityWhileAProductSelectionIsInFlight()
     {
         var calculator = Read("Views", "Calculator", "Index.cshtml");
 
@@ -161,20 +178,22 @@ public sealed class CalculatorPossibilityUiContractTests
     }
 
     [Fact]
-    public void CalculationKeepsTheCapturedScenarioAcrossAsyncSaves()
+    public void CalculationKeepsTheCapturedScenarioAcrossUserEdits()
     {
         var calculator = Read("Views", "Calculator", "Index.cshtml");
 
         var capture = calculator.IndexOf("const targetScenario = getActiveScenario();", StringComparison.Ordinal);
         var payload = calculator.IndexOf("const payload = buildPayload({ scenario: targetScenario });", capture, StringComparison.Ordinal);
-        var flush = calculator.IndexOf("await flushScenarioAutosave(targetScenarioId, true);", payload, StringComparison.Ordinal);
-        var fetch = calculator.IndexOf("fetch(\"/Calculator/Calculate\"", flush, StringComparison.Ordinal);
+        var revision = calculator.IndexOf("const calculationRevision = Number(targetScenario.changeRevision || 0);", payload, StringComparison.Ordinal);
+        var fetch = calculator.IndexOf("fetch(\"/Calculator/Calculate\"", revision, StringComparison.Ordinal);
+        var save = calculator.IndexOf("await saveScenarioToDataverse(s, payload.lines);", fetch, StringComparison.Ordinal);
 
         Assert.True(capture >= 0);
         Assert.True(payload > capture);
-        Assert.True(flush > payload);
-        Assert.True(fetch > flush);
-        Assert.Contains("runtime.revision !== calculationRevision", calculator, StringComparison.Ordinal);
+        Assert.True(revision > payload);
+        Assert.True(fetch > revision);
+        Assert.True(save > fetch);
+        Assert.Contains("Number(s.changeRevision || 0) !== calculationRevision", calculator, StringComparison.Ordinal);
     }
 
     private static string Read(params string[] parts) =>

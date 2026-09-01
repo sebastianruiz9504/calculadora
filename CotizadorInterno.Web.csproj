@@ -45,6 +45,7 @@
 
   <ItemGroup>
     <Content Update="App_Data\nomina-preliquidacion-drafts.json" CopyToPublishDirectory="Never" />
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
 </Project>

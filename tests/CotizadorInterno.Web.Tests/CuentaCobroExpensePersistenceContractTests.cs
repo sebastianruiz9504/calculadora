@@ -336,7 +336,7 @@ public sealed class CuentaCobroExpensePersistenceContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "fields.PaymentValueField,\n                null,",
-            persistence,
+            persistence.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains("data-cnc-wizard-cuenta-complete", javascript, StringComparison.Ordinal);
         Assert.Contains("cloudValue: Number(form.cloudValue || 0)", javascript, StringComparison.Ordinal);

@@ -429,7 +429,11 @@ function buildProposalPDF(d, IMG){
     contractIva:d.contractIva,
     contractTotal:d.contractTotal
   }];
-  var cols=[['FRENTE',0.13],['DESCRIPCION',0.22],['CANT.',0.06,'c'],['VALOR UNIT.',0.13,'r'],['DUR.',0.08,'c'],['IVA',0.06,'c'],['MENSUAL',0.15,'r'],['CONTRATO',0.17,'r']];
+  var hideDuration=Boolean(d.hideDuration)||String(d.tipo||'').toLowerCase().indexOf('hardware')>=0;
+  var cols=hideDuration
+    ? [['FRENTE',0.13,null,'front'],['DESCRIPCION',0.25,null,'description'],['CANT.',0.06,'c','quantity'],['VALOR UNIT.',0.14,'r','unit'],['IVA',0.07,'c','iva'],['MENSUAL',0.17,'r','monthly'],['CONTRATO',0.18,'r','contract']]
+    : [['FRENTE',0.13,null,'front'],['DESCRIPCION',0.22,null,'description'],['CANT.',0.06,'c','quantity'],['VALOR UNIT.',0.13,'r','unit'],['DUR.',0.08,'c','duration'],['IVA',0.06,'c','iva'],['MENSUAL',0.15,'r','monthly'],['CONTRATO',0.17,'r','contract']];
+  var colIndex={}; for(var ci0=0;ci0<cols.length;ci0++) colIndex[cols[ci0][3]]=ci0;
   var tW=p.W-p.mL-p.mR, xc=p.mL, colX=[]; for(var i=0;i<cols.length;i++){ colX.push(xc); xc+=cols[i][1]*tW; } colX.push(p.W-p.mR);
   function drawEconHeader(){ var hH=26; p.rect(p.mL,p.y-hH,tW,hH,[8,26,50]); for(var i=0;i<cols.length;i++){ var a=cols[i][2]||'l'; var tx=colX[i]+5; if(a==='r') tx=colX[i+1]-5-p._tw(cols[i][0],7.4,true,.25); if(a==='c') tx=colX[i]+ (cols[i][1]*tW)/2 - p._tw(cols[i][0],7.4,true,.25)/2; p._textAbs(tx,p.y-17,cols[i][0],7.4,true,[255,255,255],.25); } p.y-=hH; }
   for(var pidx=0;pidx<props.length;pidx++){
@@ -450,20 +454,20 @@ function buildProposalPDF(d, IMG){
     var items=PR.items||[];
     for(var r=0;r<items.length;r++){
       var it=items[r]||{};
-      var fLines=p._wrap(it.front||'',8.2,true,(colX[1]-colX[0])-9);
-      var dLines=p._wrap(it.desc||'',8.4,false,(colX[2]-colX[1])-9);
+      var fLines=p._wrap(it.front||'',8.2,true,(colX[colIndex.front+1]-colX[colIndex.front])-9);
+      var dLines=p._wrap(it.desc||'',8.4,false,(colX[colIndex.description+1]-colX[colIndex.description])-9);
       var nLines=Math.max(fLines.length,dLines.length);
       var rh=Math.max(30,12+nLines*13);
       if(p.y-rh<footLimit){ contentPage(false); drawEconHeader(); }
       if(r%2===1) p.rect(p.mL,p.y-rh,tW,rh,SOFT);
-      for(var j=0;j<fLines.length;j++) p._textAbs(colX[0]+5,p.y-18-j*12,fLines[j],8.2,true,NAVY);
-      for(var j=0;j<dLines.length;j++) p._textAbs(colX[1]+5,p.y-18-j*12,dLines[j],8.4,false,INK);
-      var cxt=String(it.qty||0); p._textAbs(colX[2]+(cols[2][1]*tW)/2-p._tw(cxt,8.2,false)/2,p.y-18,cxt,8.2,false,INK);
-      var unitPrice=String(it.unitPrice||'$0'); p._textAbs(colX[4]-5-p._tw(unitPrice,8.2,false),p.y-18,unitPrice,8.2,false,INK);
-      var pxt=String(it.months||0)+' m'; p._textAbs(colX[4]+(cols[4][1]*tW)/2-p._tw(pxt,8.2,false)/2,p.y-18,pxt,8.2,false,INK);
-      var ivt=it.iva?'Si':'No'; p._textAbs(colX[5]+(cols[5][1]*tW)/2-p._tw(ivt,8.2,true)/2,p.y-18,ivt,8.2,true,it.iva?[22,150,90]:[150,100,100]);
-      var monthlyTotal=String(it.monthlyTotal||'$0'); p._textAbs(colX[7]-5-p._tw(monthlyTotal,8.2,true),p.y-18,monthlyTotal,8.2,true,NAVY);
-      var contractTotal=String(it.contractTotal||'$0'); p._textAbs(colX[8]-5-p._tw(contractTotal,8.2,true),p.y-18,contractTotal,8.2,true,NAVY);
+      for(var j=0;j<fLines.length;j++) p._textAbs(colX[colIndex.front]+5,p.y-18-j*12,fLines[j],8.2,true,NAVY);
+      for(var j=0;j<dLines.length;j++) p._textAbs(colX[colIndex.description]+5,p.y-18-j*12,dLines[j],8.4,false,INK);
+      var cxt=String(it.qty||0); p._textAbs(colX[colIndex.quantity]+(cols[colIndex.quantity][1]*tW)/2-p._tw(cxt,8.2,false)/2,p.y-18,cxt,8.2,false,INK);
+      var unitPrice=String(it.unitPrice||'$0'); p._textAbs(colX[colIndex.unit+1]-5-p._tw(unitPrice,8.2,false),p.y-18,unitPrice,8.2,false,INK);
+      if(!hideDuration){ var pxt=String(it.months||0)+' m'; p._textAbs(colX[colIndex.duration]+(cols[colIndex.duration][1]*tW)/2-p._tw(pxt,8.2,false)/2,p.y-18,pxt,8.2,false,INK); }
+      var ivt=it.iva?'Si':'No'; p._textAbs(colX[colIndex.iva]+(cols[colIndex.iva][1]*tW)/2-p._tw(ivt,8.2,true)/2,p.y-18,ivt,8.2,true,it.iva?[22,150,90]:[150,100,100]);
+      var monthlyTotal=String(it.monthlyTotal||'$0'); p._textAbs(colX[colIndex.monthly+1]-5-p._tw(monthlyTotal,8.2,true),p.y-18,monthlyTotal,8.2,true,NAVY);
+      var contractTotal=String(it.contractTotal||'$0'); p._textAbs(colX[colIndex.contract+1]-5-p._tw(contractTotal,8.2,true),p.y-18,contractTotal,8.2,true,NAVY);
       p.line(p.mL,p.y-rh,p.W-p.mR,p.y-rh,LINE,.7);
       p.y-=rh;
     }

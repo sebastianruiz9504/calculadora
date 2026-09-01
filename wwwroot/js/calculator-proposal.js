@@ -57,6 +57,7 @@
         null);
     let pendingExportIdempotencyKey = "";
     let pendingExportConfigurationJson = "";
+    const economicOverrides = new Map();
 
     const presets = {
         "Seguridad": [
@@ -193,7 +194,7 @@
     const fieldValue = id => (byId(id)?.value || "").trim();
     const roundMoney = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
-    function possibilityTotals(possibility) {
+    function calculatorPossibilityTotals(possibility) {
         const monthlySubtotal = roundMoney(possibility.totalMonthlySale);
         const monthlyVat = roundMoney(possibility.totalMonthlyVat);
         const contractSubtotal = roundMoney(possibility.totalContractSale);
@@ -206,6 +207,94 @@
             contractVat,
             contractTotal: roundMoney(contractSubtotal + contractVat)
         };
+    }
+
+    function possibilityIdentity(possibility, possibilityIndex) {
+        return possibility.possibilityId || `order:${possibility.order || possibilityIndex + 1}`;
+    }
+
+    function economicLineSignature(possibility, possibilityIndex, line, lineIndex) {
+        const source = JSON.stringify([
+            possibilityIdentity(possibility, possibilityIndex),
+            lineIndex,
+            line.front || "",
+            line.description || "",
+            Number(line.quantity || 0),
+            Number(line.contractMonths || 0),
+            Boolean(line.hasVat),
+            Number(line.unitSale || 0),
+            Number(line.monthlyTotalWithVat || 0),
+            Number(line.contractTotalWithVat || 0)
+        ]);
+        let hash = 2166136261;
+        for (let index = 0; index < source.length; index += 1) {
+            hash ^= source.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(16).padStart(8, "0");
+    }
+
+    function economicOverrideKey(possibility, possibilityIndex, lineIndex) {
+        return `${possibilityIdentity(possibility, possibilityIndex)}:${lineIndex}`;
+    }
+
+    function calculatorLineAmounts(line) {
+        return {
+            unitSale: roundMoney(line.unitSale),
+            monthlyTotalWithVat: roundMoney(line.monthlyTotalWithVat),
+            contractTotalWithVat: roundMoney(line.contractTotalWithVat)
+        };
+    }
+
+    function isCopCurrency() {
+        return currency() === "COP";
+    }
+
+    function isHardwareProposal() {
+        return fieldValue("proposalType").toLocaleLowerCase("es").includes("hardware");
+    }
+
+    function effectiveLineAmounts(possibility, possibilityIndex, line, lineIndex) {
+        const original = calculatorLineAmounts(line);
+        if (!isCopCurrency()) return original;
+        const override = economicOverrides.get(economicOverrideKey(possibility, possibilityIndex, lineIndex));
+        return override
+            ? {
+                unitSale: override.unitSale,
+                monthlyTotalWithVat: override.monthlyTotalWithVat,
+                contractTotalWithVat: override.contractTotalWithVat
+            }
+            : original;
+    }
+
+    function possibilityTotals(possibility, possibilityIndex) {
+        if (!isCopCurrency()) return calculatorPossibilityTotals(possibility);
+
+        const result = {
+            monthlySubtotal: 0,
+            monthlyVat: 0,
+            monthlyTotal: 0,
+            contractSubtotal: 0,
+            contractVat: 0,
+            contractTotal: 0
+        };
+        possibility.lines.forEach((line, lineIndex) => {
+            const amounts = effectiveLineAmounts(possibility, possibilityIndex, line, lineIndex);
+            const monthlySubtotal = line.hasVat
+                ? roundMoney(amounts.monthlyTotalWithVat / 1.19)
+                : amounts.monthlyTotalWithVat;
+            const contractSubtotal = line.hasVat
+                ? roundMoney(amounts.contractTotalWithVat / 1.19)
+                : amounts.contractTotalWithVat;
+            result.monthlySubtotal += monthlySubtotal;
+            result.monthlyVat += roundMoney(amounts.monthlyTotalWithVat - monthlySubtotal);
+            result.monthlyTotal += amounts.monthlyTotalWithVat;
+            result.contractSubtotal += contractSubtotal;
+            result.contractVat += roundMoney(amounts.contractTotalWithVat - contractSubtotal);
+            result.contractTotal += amounts.contractTotalWithVat;
+        });
+        Object.keys(result).forEach(key => { result[key] = roundMoney(result[key]); });
+        return result;
     }
 
     function newIdempotencyKey() {
@@ -223,7 +312,7 @@
     }
 
     function currency() {
-        return fieldValue("currency") || "COP";
+        return fieldValue("currency") || "USD";
     }
 
     function money(value) {
@@ -329,9 +418,74 @@
         });
     }
 
+    function updateEconomicModeBanner() {
+        const editable = isCopCurrency();
+        const banner = byId("economicModeBanner");
+        banner?.classList.toggle("is-editable", editable);
+        if (banner) banner.dataset.economicMode = editable ? "cop-manual" : "usd-calculator";
+        setText("economicModeIcon", editable ? "✎" : "🔒");
+        setText("economicModeTitle", editable ? "Conversión manual en COP" : "Valores en USD bloqueados");
+        setText(
+            "economicModeHelp",
+            editable
+                ? "Edita únicamente Venta unitaria, Venta mensual y Venta anual / contrato. No se aplica una tasa automática y estos cambios no modifican el negocio guardado en la calculadora."
+                : "La información proviene de la calculadora. Para cambiar productos, cantidades, duración o IVA, regresa a la calculadora.");
+    }
+
+    function createEconomicAmountCell(possibility, possibilityIndex, line, lineIndex, field, label) {
+        const cell = document.createElement("td");
+        cell.className = "numeric";
+        const amounts = effectiveLineAmounts(possibility, possibilityIndex, line, lineIndex);
+        if (!isCopCurrency()) {
+            cell.textContent = money(amounts[field]);
+            return cell;
+        }
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "0";
+        input.step = "0.01";
+        input.inputMode = "decimal";
+        input.className = "economic-input";
+        input.value = String(amounts[field]);
+        input.dataset.economicField = field;
+        input.setAttribute("aria-label", `${label} en COP para ${line.description || "la línea cotizada"}`);
+        input.addEventListener("input", () => {
+            const value = Number(input.value);
+            if (!Number.isFinite(value) || value < 0) return;
+            const key = economicOverrideKey(possibility, possibilityIndex, lineIndex);
+            economicOverrides.set(key, {
+                possibilityId: possibilityIdentity(possibility, possibilityIndex),
+                lineIndex,
+                lineSignature: economicLineSignature(possibility, possibilityIndex, line, lineIndex),
+                ...effectiveLineAmounts(possibility, possibilityIndex, line, lineIndex),
+                [field]: roundMoney(value)
+            });
+            markConfigurationDirty();
+            refreshEconomicTotals(possibility, possibilityIndex);
+        });
+        input.addEventListener("change", () => {
+            input.value = String(effectiveLineAmounts(possibility, possibilityIndex, line, lineIndex)[field]);
+        });
+        cell.appendChild(input);
+        return cell;
+    }
+
+    function refreshEconomicTotals(possibility, possibilityIndex) {
+        const totalsGrid = byId("economicPossibilities")
+            ?.querySelector(`.totals-grid[data-possibility-index="${possibilityIndex}"]`);
+        if (!totalsGrid) return;
+        const totals = possibilityTotals(possibility, possibilityIndex);
+        Object.entries(totals).forEach(([field, value]) => {
+            const amount = totalsGrid.querySelector(`[data-total-field="${field}"]`);
+            if (amount) amount.textContent = money(value);
+        });
+    }
+
     function renderEconomicTable() {
         const container = byId("economicPossibilities");
         container.replaceChildren();
+        updateEconomicModeBanner();
 
         possibilities.forEach((possibility, possibilityIndex) => {
             const section = document.createElement("section");
@@ -362,10 +516,14 @@
             const tableWrap = document.createElement("div");
             tableWrap.className = "table-wrap";
             const table = document.createElement("table");
-            table.dataset.economicLocked = "true";
+            table.dataset.economicMode = isCopCurrency() ? "cop-manual" : "usd-calculator";
+            table.dataset.durationVisible = isHardwareProposal() ? "false" : "true";
             const head = document.createElement("thead");
             const headerRow = document.createElement("tr");
-            ["Frente", "Descripción", "Cant.", "Valor unitario", "Duración", "IVA", "Venta mensual", "Total contrato"]
+            const economicHeaders = ["Frente", "Descripción", "Cant.", "Venta unitaria"];
+            if (!isHardwareProposal()) economicHeaders.push("Duración");
+            economicHeaders.push("IVA", "Venta mensual", "Venta anual / contrato");
+            economicHeaders
                 .forEach(label => {
                     const cell = document.createElement("th");
                     cell.textContent = label;
@@ -375,34 +533,37 @@
             table.appendChild(head);
 
             const body = document.createElement("tbody");
-            possibility.lines.forEach(line => {
+            possibility.lines.forEach((line, lineIndex) => {
                 const row = document.createElement("tr");
-                const values = [
-                    [line.front || "", ""],
-                    [line.description || "", ""],
-                    [String(line.quantity || 0), "center"],
-                    [money(line.unitSale), "numeric"],
-                    [`${line.contractMonths || 0} ${Number(line.contractMonths) === 1 ? "mes" : "meses"}`, "center"],
-                    [line.hasVat ? "Sí" : "No", "center"],
-                    [money(line.monthlyTotalWithVat), "numeric"],
-                    [money(line.contractTotalWithVat), "numeric"]
-                ];
-                values.forEach(([value, className]) => {
+                const appendTextCell = (value, className = "") => {
                     const cell = document.createElement("td");
                     cell.textContent = value;
                     if (className) cell.className = className;
                     row.appendChild(cell);
-                });
+                };
+                appendTextCell(line.front || "");
+                appendTextCell(line.description || "");
+                appendTextCell(String(line.quantity || 0), "center");
+                row.appendChild(createEconomicAmountCell(possibility, possibilityIndex, line, lineIndex, "unitSale", "Venta unitaria"));
+                if (!isHardwareProposal()) {
+                    appendTextCell(
+                        `${line.contractMonths || 0} ${Number(line.contractMonths) === 1 ? "mes" : "meses"}`,
+                        "center");
+                }
+                appendTextCell(line.hasVat ? "Sí" : "No", "center");
+                row.appendChild(createEconomicAmountCell(possibility, possibilityIndex, line, lineIndex, "monthlyTotalWithVat", "Venta mensual"));
+                row.appendChild(createEconomicAmountCell(possibility, possibilityIndex, line, lineIndex, "contractTotalWithVat", "Venta anual o del contrato"));
                 body.appendChild(row);
             });
             table.appendChild(body);
             tableWrap.appendChild(table);
             section.appendChild(tableWrap);
 
-            const totals = possibilityTotals(possibility);
+            const totals = possibilityTotals(possibility, possibilityIndex);
             const totalsGrid = document.createElement("div");
             totalsGrid.className = "totals-grid";
-            const buildTotalsCard = (titleText, subtotal, vat, total) => {
+            totalsGrid.dataset.possibilityIndex = String(possibilityIndex);
+            const buildTotalsCard = (titleText, fieldPrefix, subtotal, vat, total) => {
                 const card = document.createElement("article");
                 card.className = "totals-card";
                 const cardTitle = document.createElement("h3");
@@ -415,14 +576,15 @@
                     caption.textContent = label;
                     const amount = document.createElement("b");
                     amount.textContent = money(value);
+                    amount.dataset.totalField = `${fieldPrefix}${index === 0 ? "Subtotal" : index === 1 ? "Vat" : "Total"}`;
                     row.append(caption, amount);
                     card.appendChild(row);
                 });
                 return card;
             };
             totalsGrid.append(
-                buildTotalsCard("Venta mensual", totals.monthlySubtotal, totals.monthlyVat, totals.monthlyTotal),
-                buildTotalsCard("Valor del contrato", totals.contractSubtotal, totals.contractVat, totals.contractTotal));
+                buildTotalsCard("Venta mensual", "monthly", totals.monthlySubtotal, totals.monthlyVat, totals.monthlyTotal),
+                buildTotalsCard("Venta anual / contrato", "contract", totals.contractSubtotal, totals.contractVat, totals.contractTotal));
             section.appendChild(totalsGrid);
             container.appendChild(section);
         });
@@ -603,23 +765,26 @@
             .filter(name => !selectedNames.has(name))
             .map(name => ({ name, desc: moduleKnowledge[name]?.desc || "Solución disponible en el portafolio Digital Tech." }));
         const year = new Date().getFullYear();
-        const mapItems = possibility => possibility.lines.map(line => ({
-            front: line.front || "",
-            desc: line.description || "",
-            qty: Number(line.quantity || 0),
-            unitPrice: money(line.unitSale),
-            months: Number(line.contractMonths || 0),
-            iva: Boolean(line.hasVat),
-            monthlyTotal: money(line.monthlyTotalWithVat),
-            contractTotal: money(line.contractTotalWithVat)
-        }));
-        const proposalModels = possibilities.map(possibility => {
-            const totals = possibilityTotals(possibility);
+        const mapItems = (possibility, possibilityIndex) => possibility.lines.map((line, lineIndex) => {
+            const amounts = effectiveLineAmounts(possibility, possibilityIndex, line, lineIndex);
+            return {
+                front: line.front || "",
+                desc: line.description || "",
+                qty: Number(line.quantity || 0),
+                unitPrice: money(amounts.unitSale),
+                months: Number(line.contractMonths || 0),
+                iva: Boolean(line.hasVat),
+                monthlyTotal: money(amounts.monthlyTotalWithVat),
+                contractTotal: money(amounts.contractTotalWithVat)
+            };
+        });
+        const proposalModels = possibilities.map((possibility, possibilityIndex) => {
+            const totals = possibilityTotals(possibility, possibilityIndex);
             return {
                 possibilityId: possibility.possibilityId,
                 title: possibility.title,
                 isRecommended: possibility.isRecommended,
-                items: mapItems(possibility),
+                items: mapItems(possibility, possibilityIndex),
                 monthlySubtotal: money(totals.monthlySubtotal),
                 monthlyIva: money(totals.monthlyVat),
                 monthlyTotal: money(totals.monthlyTotal),
@@ -647,6 +812,7 @@
             comercial_mail: fieldValue("sellerEmail"),
             comercial_tel: "",
             tipo: fieldValue("proposalType") || "Mixta",
+            hideDuration: isHardwareProposal(),
             moneda: currency(),
             vigencia: fieldValue("validity") || "15 días calendario",
             formaPago: fieldValue("paymentTerms") || "A definir",
@@ -675,7 +841,7 @@
 
     function gatherConfiguration() {
         return {
-            schemaVersion: 1,
+            schemaVersion: 2,
             clientName: fieldValue("clientName"),
             clientNit: fieldValue("clientNit"),
             clientContact: fieldValue("clientContact"),
@@ -687,6 +853,16 @@
             summary: fieldValue("summary"),
             notes: fieldValue("notes"),
             selectedModules: [...selectedModules],
+            economicOverrides: [...economicOverrides.values()]
+                .sort((left, right) => left.possibilityId.localeCompare(right.possibilityId) || left.lineIndex - right.lineIndex)
+                .map(item => ({
+                    possibilityId: item.possibilityId,
+                    lineIndex: item.lineIndex,
+                    lineSignature: item.lineSignature,
+                    unitSale: item.unitSale,
+                    monthlyTotalWithVat: item.monthlyTotalWithVat,
+                    contractTotalWithVat: item.contractTotalWithVat
+                })),
             valueAdded: valueRows.slice(0, valueLimits.maxRows).map(normalizeValueRow).map(row => ({
                 front: row.front,
                 name: row.name,
@@ -706,6 +882,39 @@
             }
         }
         return persistedConfiguration;
+    }
+
+    function hydrateEconomicOverrides(stored) {
+        const overrides = firstDefined(stored, ["economicOverrides"], []);
+        if (!Array.isArray(overrides)) return;
+        overrides.forEach(item => {
+            const possibilityId = String(firstDefined(item, ["possibilityId"], ""));
+            const lineIndex = Number(firstDefined(item, ["lineIndex"], -1));
+            if (!possibilityId || !Number.isInteger(lineIndex) || lineIndex < 0) return;
+            const possibilityIndex = possibilities.findIndex((possibility, index) =>
+                possibilityIdentity(possibility, index) === possibilityId);
+            if (possibilityIndex < 0) return;
+            const possibility = possibilities[possibilityIndex];
+            const line = possibility.lines[lineIndex];
+            if (!line) return;
+            const signature = String(firstDefined(item, ["lineSignature"], ""));
+            if (signature !== economicLineSignature(possibility, possibilityIndex, line, lineIndex)) return;
+
+            const amounts = {
+                unitSale: Number(item.unitSale),
+                monthlyTotalWithVat: Number(item.monthlyTotalWithVat),
+                contractTotalWithVat: Number(item.contractTotalWithVat)
+            };
+            if (Object.values(amounts).some(value => !Number.isFinite(value) || value < 0)) return;
+            economicOverrides.set(economicOverrideKey(possibility, possibilityIndex, lineIndex), {
+                possibilityId,
+                lineIndex,
+                lineSignature: signature,
+                unitSale: roundMoney(amounts.unitSale),
+                monthlyTotalWithVat: roundMoney(amounts.monthlyTotalWithVat),
+                contractTotalWithVat: roundMoney(amounts.contractTotalWithVat)
+            });
+        });
     }
 
     function hydratePersistedConfiguration() {
@@ -735,6 +944,8 @@
                 element.value = maxLength > 0 ? limitedText(value, maxLength) : String(value);
             }
         });
+
+        hydrateEconomicOverrides(stored);
 
         const modules = firstDefined(stored, ["selectedModules", "modules"], []);
         if (Array.isArray(modules)) {
@@ -835,7 +1046,7 @@
                 throw new Error("El generador de PDF no está disponible.");
             }
             if (!currentGroupId()) {
-                throw new Error("La propuesta no está asociada a un grupo de escenario válido.");
+                throw new Error("La propuesta no está asociada a un negocio válido.");
             }
             const proposalData = gatherProposalData();
             const configuration = gatherConfiguration();
@@ -883,6 +1094,7 @@
             selectedModules.clear();
             markConfigurationDirty();
             renderModules();
+            renderEconomicTable();
             renderPreview();
         });
         byId("currency").addEventListener("change", () => {
