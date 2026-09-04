@@ -600,6 +600,71 @@ public sealed class CalculatorScenarioAccessTests
     }
 
     [Fact]
+    public async Task DuplicatePossibilityCopiesInputsWithNewLineIdsAndClearsTheStoredResult()
+    {
+        var (dataverse, data) = CreateDataverse();
+        data.CurrentUser = User("scenario-owner", hasCrm: false);
+        var source = Scenario("scenario-source", data.CurrentUser.SystemUserId);
+        source.GroupId = "group-duplicate";
+        source.GroupName = "Negocio duplicado";
+        source.PossibilityOrder = 1;
+        source.Lines[0].LineId = "source-line";
+        source.LastResult!.InputHash = new string('A', 64);
+        data.UserScenarios = [source];
+        var (crm, _) = CreateCrm();
+        var controller = CreateController(dataverse, crm);
+
+        var action = await controller.CreatePossibility(
+            new ScenarioPossibilityCreateRequest
+            {
+                GroupId = source.GroupId,
+                SourceScenarioId = source.ScenarioId,
+                DuplicateSource = true,
+                Name = "Escenario 2"
+            },
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(action);
+        var saved = Assert.IsType<ScenarioSaveRequest>(data.LastOwnerUpsert);
+        Assert.Equal(source.GroupId, saved.GroupId);
+        Assert.Equal(2, saved.PossibilityOrder);
+        Assert.Null(saved.LastResult);
+        var duplicatedLine = Assert.Single(saved.Lines);
+        Assert.NotEqual(source.Lines[0].LineId, duplicatedLine.LineId);
+        Assert.Equal(source.Lines[0].ProductId, duplicatedLine.ProductId);
+        Assert.Equal(source.Lines[0].Quantity, duplicatedLine.Quantity);
+        Assert.Equal(source.Lines[0].SuggestedRetailPrice, duplicatedLine.SuggestedRetailPrice);
+    }
+
+    [Fact]
+    public async Task DuplicatePossibilityReturnsJsonInsteadOfAnHtmlErrorPage()
+    {
+        var (dataverse, data) = CreateDataverse();
+        data.CurrentUser = User("scenario-owner", hasCrm: false);
+        var source = Scenario("scenario-source", data.CurrentUser.SystemUserId);
+        source.GroupId = "group-error";
+        data.UserScenarios = [source];
+        data.OwnerUpsertException = new InvalidOperationException("Dataverse batch failure");
+        var (crm, _) = CreateCrm();
+        var controller = CreateController(dataverse, crm);
+
+        var action = await controller.CreatePossibility(
+            new ScenarioPossibilityCreateRequest
+            {
+                GroupId = source.GroupId,
+                SourceScenarioId = source.ScenarioId,
+                DuplicateSource = true
+            },
+            CancellationToken.None);
+
+        var result = Assert.IsType<ObjectResult>(action);
+        Assert.Equal(StatusCodes.Status500InternalServerError, result.StatusCode);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result.Value));
+        Assert.Contains("duplicar el escenario", json.RootElement.GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("traceId").GetString()));
+    }
+
+    [Fact]
     public async Task RenameScenarioGroupDoesNotRevealAnUnavailableBusiness()
     {
         var (dataverse, data) = CreateDataverse();

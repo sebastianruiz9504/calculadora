@@ -72,12 +72,14 @@ public sealed class DashboardController : Controller
             var copiersEquipmentTask = _dataverse.GetCopiersEquipmentDashboardAsync(ct);
             var portfolioTask = _dataverse.GetPortfolioDashboardSummaryAsync(ct);
             var currentYtdTask = _dataverse.GetYtdDashboardAsync(today.Year, ct);
+            var cloudProductsTotalBusinessTask = _dataverse.GetCloudProductsTotalBusinessUsdAsync(ct);
             await Task.WhenAll(
                 currentSupportTask,
                 previousSupportTask,
                 copiersEquipmentTask,
                 portfolioTask,
-                currentYtdTask);
+                currentYtdTask,
+                cloudProductsTotalBusinessTask);
 
             YtdDashboardDto? previousYtd = null;
             if (previousStart.Year != today.Year)
@@ -92,7 +94,8 @@ public sealed class DashboardController : Controller
                 previousYtd,
                 await currentSupportTask,
                 await previousSupportTask,
-                await copiersEquipmentTask));
+                await copiersEquipmentTask,
+                await cloudProductsTotalBusinessTask));
         }
         catch (InvalidOperationException ex)
         {

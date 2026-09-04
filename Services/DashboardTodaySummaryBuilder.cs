@@ -18,7 +18,8 @@ internal static class DashboardTodaySummaryBuilder
         YtdDashboardDto? previousYearYtd,
         SoporteCloudBoardDto currentSupport,
         SoporteCloudBoardDto previousSupport,
-        CopiersEquipmentDashboardDto copiersEquipment)
+        CopiersEquipmentDashboardDto copiersEquipment,
+        decimal cloudProductsTotalBusinessUsd)
     {
         var currentStart = new DateOnly(today.Year, today.Month, 1);
         var previousStart = currentStart.AddMonths(-1);
@@ -56,6 +57,16 @@ internal static class DashboardTodaySummaryBuilder
             ComparisonPeriodLabel = BuildRangeLabel(previousStart, previousEnd),
             Cards = new[]
             {
+                BuildCurrentCard(
+                    "total-businesses",
+                    "Productos Cloud",
+                    "Total negocios",
+                    "Cantidad por valor de venta unitario de todas las filas. El valor se actualiza una vez por mes.",
+                    "usd",
+                    cloudProductsTotalBusinessUsd,
+                    "billing",
+                    "current-month",
+                    Array.Empty<TodayDashboardItemDto>()),
                 BuildComparativeCard(
                     "billing",
                     "Facturación",

@@ -53,11 +53,20 @@ public sealed class DashboardTodaySummaryTests
             null,
             currentSupport,
             previousSupport,
-            equipment);
+            equipment,
+            2500.75m);
 
         Assert.Equal("1-17 de agosto 2026", result.CurrentPeriodLabel);
         Assert.Equal("1-17 de julio 2026", result.ComparisonPeriodLabel);
-        Assert.Equal(7, result.Cards.Count);
+        Assert.Equal(8, result.Cards.Count);
+
+        var totalBusinesses = Card(result, "total-businesses");
+        Assert.Equal("Total negocios", totalBusinesses.Title);
+        Assert.Equal(2500.75m, totalBusinesses.Value);
+        Assert.Equal("usd", totalBusinesses.ValueFormat);
+        Assert.False(totalBusinesses.ShowsGrowth);
+        Assert.Equal("billing", totalBusinesses.DestinationTab);
+        Assert.Equal("current-month", totalBusinesses.DestinationSubtab);
 
         var billing = Card(result, "billing");
         Assert.Equal(300m, billing.Value);
@@ -104,7 +113,8 @@ public sealed class DashboardTodaySummaryTests
             Ytd(2026, ExpensePoint("2026-12", Expense("2026-12-31", "cloud", "Cloud", 100m))),
             Support(),
             Support(),
-            new CopiersEquipmentDashboardDto());
+            new CopiersEquipmentDashboardDto(),
+            0m);
 
         Assert.Equal(50m, Card(january, "expenses").GrowthPercent);
         Assert.Equal("1-31 de diciembre 2026", january.ComparisonPeriodLabel);
@@ -116,7 +126,8 @@ public sealed class DashboardTodaySummaryTests
             null,
             Support(),
             Support(),
-            new CopiersEquipmentDashboardDto());
+            new CopiersEquipmentDashboardDto(),
+            0m);
 
         Assert.Equal("1-28 de febrero 2027", march.ComparisonPeriodLabel);
     }
@@ -127,6 +138,7 @@ public sealed class DashboardTodaySummaryTests
         var view = File.ReadAllText(Path.Combine(ProjectRoot, "Views", "Dashboard", "Index.cshtml"));
         var script = File.ReadAllText(Path.Combine(ProjectRoot, "wwwroot", "js", "dashboard.js"));
         var styles = File.ReadAllText(Path.Combine(ProjectRoot, "wwwroot", "css", "dashboard.css"));
+        var cloudService = File.ReadAllText(Path.Combine(ProjectRoot, "Services", "DataverseService.Dashboard.CloudBilling.cs"));
 
         var todayPosition = view.IndexOf("data-dashboard-tab=\"today\"", StringComparison.Ordinal);
         var agentPosition = view.IndexOf("data-dashboard-tab=\"agent\"", StringComparison.Ordinal);
@@ -139,8 +151,27 @@ public sealed class DashboardTodaySummaryTests
         Assert.Contains("setBillingSubtab(subtab || \"overview\")", script, StringComparison.Ordinal);
         Assert.Contains("setPortfolioSubtab(subtab || \"detail\")", script, StringComparison.Ordinal);
         Assert.Contains("setCopiersSubtab(subtab || \"maintenance\")", script, StringComparison.Ordinal);
+        Assert.Contains("format === \"usd\"", script, StringComparison.Ordinal);
+        Assert.Contains("return usdUnitFormatter.format", script, StringComparison.Ordinal);
+        Assert.Contains("dashboard-today-card--total-businesses", styles, StringComparison.Ordinal);
+        Assert.Contains("CloudProductsTotalBusinessCacheKeyPrefix", cloudService, StringComparison.Ordinal);
+        Assert.Contains("GetBogotaToday().ToString(\"yyyy-MM\"", cloudService, StringComparison.Ordinal);
+        Assert.Contains("_memoryCache.TryGetValue(cacheKey", cloudService, StringComparison.Ordinal);
         Assert.Contains("grid-template-columns: repeat(3, minmax(0, 1fr))", styles, StringComparison.Ordinal);
         Assert.Contains("@media (max-width: 680px)", styles, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TotalBusiness_UsesQuantityTimesUnitSaleForEveryCloudProductRow()
+    {
+        var result = DataverseService.CalculateCloudProductsTotalBusinessUsd(
+        [
+            (2, 10.25m),
+            (3, 4.10m),
+            (0, 999m)
+        ]);
+
+        Assert.Equal(32.80m, result);
     }
 
     private static TodayDashboardCardDto Card(TodayDashboardDto dashboard, string key) =>

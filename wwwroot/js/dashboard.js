@@ -46,7 +46,7 @@
                     </header>
                     <div class="dashboard-status" id="dashboardTodayStatus" role="status" aria-live="polite"></div>
                     <div class="dashboard-today-grid" id="dashboardTodayCards" aria-live="polite" aria-busy="true">
-                        ${Array.from({ length: 7 }, () => '<article class="dashboard-today-card dashboard-today-card--skeleton" aria-hidden="true"><span></span><strong></strong><small></small></article>').join("")}
+                        ${Array.from({ length: 8 }, () => '<article class="dashboard-today-card dashboard-today-card--skeleton" aria-hidden="true"><span></span><strong></strong><small></small></article>').join("")}
                     </div>
                 </section>`;
 
@@ -1585,9 +1585,13 @@
     }
 
     function formatTodayValue(value, format) {
-        return format === "currency"
-            ? currencyFormatter.format(Number(value || 0))
-            : numberFormatter.format(Number(value || 0));
+        if (format === "currency") {
+            return currencyFormatter.format(Number(value || 0));
+        }
+        if (format === "usd") {
+            return usdUnitFormatter.format(Number(value || 0));
+        }
+        return numberFormatter.format(Number(value || 0));
     }
 
     function resolveTodayGrowth(value, previousValue, growthPercent, showsGrowth) {

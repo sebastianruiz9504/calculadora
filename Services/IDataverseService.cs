@@ -237,6 +237,7 @@ public interface IDataverseService
     Task<BusinessDashboardDto> GetBusinessDashboardAsync(CancellationToken ct = default);
     Task<BusinessBillingDashboardDto> GetBusinessBillingDashboardAsync(DateOnly? startDate, DateOnly? endDate, string? granularity, CancellationToken ct = default);
     Task<CloudBillingCurrentMonthDashboardDto> GetCloudBillingCurrentMonthDashboardAsync(CancellationToken ct = default);
+    Task<decimal> GetCloudProductsTotalBusinessUsdAsync(CancellationToken ct = default);
     Task<YtdDashboardDto> GetYtdDashboardAsync(int year, CancellationToken ct = default);
     Task<YtdRecordUpdateResultDto> UpdateYtdBillingRecordAsync(YtdBillingRecordUpdateRequestDto request, CancellationToken ct = default);
     Task<YtdRecordsUpdateResultDto> UpdateYtdRecordsAsync(YtdRecordsUpdateRequestDto request, CancellationToken ct = default);

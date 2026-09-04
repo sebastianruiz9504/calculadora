@@ -5333,6 +5333,7 @@ button.dashboard-today-card:focus-visible {
 }
 
 .dashboard-today-card--billing { --today-accent: #0f6cbd; }
+.dashboard-today-card--total-businesses { --today-accent: #0369a1; }
 .dashboard-today-card--invoice-count { --today-accent: #2563eb; }
 .dashboard-today-card--expenses { --today-accent: #d97706; }
 .dashboard-today-card--support-cloud { --today-accent: #7c3aed; }

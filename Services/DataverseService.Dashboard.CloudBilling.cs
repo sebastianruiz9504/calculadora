@@ -2,17 +2,85 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.Dashboard;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CotizadorInterno.Web.Services;
 
 public sealed partial class DataverseService
 {
+    private const string CloudProductsTotalBusinessCacheKeyPrefix = "dashboard:cloud-products:total-business";
+    private static readonly SemaphoreSlim CloudProductsTotalBusinessCacheGate = new(1, 1);
     private const string CloudBillingBilledField = "cr07a_facturado";
     private const string CloudBillingLastInvoiceDateField = "cr07a_fechaultimafactura";
     private const string CloudBillingErrorField = "cr07a_error_facturacion";
     private const string CloudBillingSiigoInvoiceIdField = "cr07a_siigo_invoice_id";
     private const string CloudBillingProductNameField = "cr07a_productname";
     private const string CloudBillingMonthlyTotalField = "cr07a_valorventatotalmensual";
+
+    public async Task<decimal> GetCloudProductsTotalBusinessUsdAsync(CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var monthKey = GetBogotaToday().ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        var cacheKey = $"{CloudProductsTotalBusinessCacheKeyPrefix}:{_dataverseBaseUrl}:{_salesPerformanceTableSetName}:{monthKey}";
+
+        if (_memoryCache.TryGetValue(cacheKey, out decimal cachedTotal))
+            return cachedTotal;
+
+        await CloudProductsTotalBusinessCacheGate.WaitAsync(ct);
+        try
+        {
+            if (_memoryCache.TryGetValue(cacheKey, out cachedTotal))
+                return cachedTotal;
+
+            var products = await GetCloudProductsBusinessValuesAsync(httpContext.User, ct);
+            var total = CalculateCloudProductsTotalBusinessUsd(
+                products);
+
+            // La clave cambia con el mes; la expiración solo retira del proceso la entrada anterior.
+            _memoryCache.Set(
+                cacheKey,
+                total,
+                new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(40),
+                    Size = null
+                });
+
+            return total;
+        }
+        finally
+        {
+            CloudProductsTotalBusinessCacheGate.Release();
+        }
+    }
+
+    internal static decimal CalculateCloudProductsTotalBusinessUsd(
+        IEnumerable<(int Quantity, decimal UnitSaleUsd)> products) =>
+        RoundCurrency(products.Sum(static product => product.Quantity * product.UnitSaleUsd));
+
+    private async Task<IReadOnlyList<(int Quantity, decimal UnitSaleUsd)>> GetCloudProductsBusinessValuesAsync(
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var select = string.Join(",", new[]
+        {
+            _salesPerformanceIdField,
+            DefaultSalesPerformanceQuantityField,
+            DefaultSalesPerformanceUnitSaleUsdField
+        });
+        var relativeUrl = $"/api/data/v9.2/{_salesPerformanceTableSetName}?$select={select}";
+        var items = await GetDataverseEntitiesAsync(relativeUrl, user, ct);
+
+        return items
+            .Where(item => !string.IsNullOrWhiteSpace(ReadString(item, _salesPerformanceIdField)))
+            .GroupBy(item => ReadString(item, _salesPerformanceIdField), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .Select(item => (
+                ReadIntFlexible(item, DefaultSalesPerformanceQuantityField),
+                ReadDecimal(item, DefaultSalesPerformanceUnitSaleUsdField) ?? 0m))
+            .ToList();
+    }
 
     public async Task<CloudBillingCurrentMonthDashboardDto> GetCloudBillingCurrentMonthDashboardAsync(CancellationToken ct = default)
     {

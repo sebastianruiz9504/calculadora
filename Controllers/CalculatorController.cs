@@ -651,19 +651,10 @@ public sealed class CalculatorController : Controller
                         Acelerador = line.Acelerador,
                         HasVat = line.HasVat
                     }).ToList(),
-                LastResult = source is null || !request.DuplicateSource || source.LastResult is null
-                    ? null
-                    : new ScenarioResultSnapshot
-                    {
-                        InputHash = source.LastResult.InputHash,
-                        Points = source.LastResult.Points,
-                        Commission = source.LastResult.Commission,
-                        ProrationDays = source.LastResult.ProrationDays,
-                        ProrationFactor = source.LastResult.ProrationFactor,
-                        ProrationText = source.LastResult.ProrationText,
-                        TotalMonthlySale = source.LastResult.TotalMonthlySale,
-                        TotalSale = source.LastResult.TotalSale
-                    }
+                // El duplicado conserva los insumos, pero nace pendiente de cálculo. Reutilizar
+                // el snapshot persistido del origen mezcla el resultado con una nueva jerarquía
+                // de líneas y puede hacer que Dataverse rechace el cambio atómico.
+                LastResult = null
             };
 
             var saved = await _dataverse.SaveScenarioV2Async(save, updateOnly: false, ct)
@@ -673,6 +664,26 @@ public sealed class CalculatorController : Controller
         catch (Exception ex) when (IsScenarioAccessException(ex))
         {
             return BuildScenarioAccessError(ex);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "No fue posible crear el escenario {SourceScenarioId} en el negocio {GroupId}. TraceId: {TraceId}",
+                request.SourceScenarioId,
+                request.GroupId,
+                HttpContext.TraceIdentifier);
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "No fue posible duplicar el escenario. Intenta nuevamente.",
+                    traceId = HttpContext.TraceIdentifier
+                });
         }
     }
 
