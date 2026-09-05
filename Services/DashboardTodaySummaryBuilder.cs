@@ -13,7 +13,7 @@ internal static class DashboardTodaySummaryBuilder
 
     public static TodayDashboardDto Build(
         DateOnly today,
-        PortfolioDashboardDto portfolio,
+        TodayFinancialDashboardDto financial,
         YtdDashboardDto currentYearYtd,
         YtdDashboardDto? previousYearYtd,
         SoporteCloudBoardDto currentSupport,
@@ -26,9 +26,9 @@ internal static class DashboardTodaySummaryBuilder
         var previousDay = Math.Min(today.Day, DateTime.DaysInMonth(previousStart.Year, previousStart.Month));
         var previousEnd = previousStart.AddDays(previousDay - 1);
 
-        var invoices = portfolio.Invoices ?? Array.Empty<BillingInvoiceRowDto>();
-        var currentInvoices = invoices.Where(row => IsDateInRange(row.EmissionDateValue, currentStart, today)).ToList();
-        var previousInvoices = invoices.Where(row => IsDateInRange(row.EmissionDateValue, previousStart, previousEnd)).ToList();
+        var recentInvoices = financial.RecentInvoices ?? Array.Empty<BillingInvoiceRowDto>();
+        var currentInvoices = recentInvoices.Where(row => IsDateInRange(row.EmissionDateValue, currentStart, today)).ToList();
+        var previousInvoices = recentInvoices.Where(row => IsDateInRange(row.EmissionDateValue, previousStart, previousEnd)).ToList();
         var currentExpenses = GetExpenseRecords(currentYearYtd, currentStart, today);
         var previousExpenseSource = previousStart.Year == currentYearYtd.Year
             ? currentYearYtd
@@ -37,7 +37,9 @@ internal static class DashboardTodaySummaryBuilder
         var currentMaintenance = (copiersEquipment.MaintenanceRows ?? Array.Empty<CopiersMaintenanceRowDto>())
             .Where(row => IsDateInRange(row.DateValue, currentStart, today))
             .ToList();
-        var pendingInvoices = invoices.Where(static row => row.IsPortfolioPending).ToList();
+        var pendingInvoices = (financial.PendingInvoices ?? Array.Empty<BillingInvoiceRowDto>())
+            .Where(static row => row.IsPortfolioPending)
+            .ToList();
         var overdueInvoices = pendingInvoices.Where(static row => row.IsOverdue).ToList();
 
         var currentBillingTotal = RoundCurrency(currentInvoices.Sum(static row => row.NetTotalInvoice));

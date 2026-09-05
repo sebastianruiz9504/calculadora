@@ -9,6 +9,12 @@ public sealed class TodayDashboardDto
     public IReadOnlyList<TodayDashboardCardDto> Cards { get; set; } = Array.Empty<TodayDashboardCardDto>();
 }
 
+public sealed class TodayFinancialDashboardDto
+{
+    public IReadOnlyList<BillingInvoiceRowDto> RecentInvoices { get; set; } = Array.Empty<BillingInvoiceRowDto>();
+    public IReadOnlyList<BillingInvoiceRowDto> PendingInvoices { get; set; } = Array.Empty<BillingInvoiceRowDto>();
+}
+
 public sealed class TodayDashboardCardDto
 {
     public string Key { get; set; } = "";

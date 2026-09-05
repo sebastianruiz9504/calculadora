@@ -52,6 +52,64 @@ public sealed partial class DataverseService
     public Task<PortfolioDashboardDto> GetPortfolioDashboardSummaryAsync(CancellationToken ct = default) =>
         GetPortfolioDashboardCoreAsync(includeDetails: false, ct);
 
+    public async Task<TodayFinancialDashboardDto> GetTodayFinancialDashboardAsync(
+        DateOnly today,
+        CancellationToken ct = default)
+    {
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("No HttpContext available.");
+        var currentStart = new DateOnly(today.Year, today.Month, 1);
+        var recentStart = currentStart.AddMonths(-1);
+
+        var metadata = await ResolveRhEntityMetadataAsync(
+            _dashboardBillingTableLogicalName,
+            _dashboardBillingTableSetName,
+            _dashboardBillingIdField,
+            _dashboardBillingPrimaryNameField,
+            httpContext.User,
+            ct);
+
+        var recentRowsTask = GetBillingRecordsAsync(
+            metadata,
+            recentStart,
+            today.AddDays(1),
+            _dashboardBillingEmissionDateField,
+            _dashboardBillingEmissionDateFieldKind,
+            httpContext.User,
+            ct,
+            applyCreditNotes: false);
+        var pendingRowsTask = GetOutstandingBillingRecordsAsync(
+            metadata,
+            httpContext.User,
+            ct);
+        await Task.WhenAll(recentRowsTask, pendingRowsTask);
+
+        var recentRows = await recentRowsTask;
+        var pendingCandidates = await pendingRowsTask;
+        var combinedRows = recentRows
+            .Concat(pendingCandidates)
+            .GroupBy(static row => row.RecordId, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .ToList();
+        await ApplyCreditNoteStateToBillingRowsAsync(combinedRows, ct);
+
+        var rowsById = combinedRows.ToDictionary(
+            static row => row.RecordId,
+            StringComparer.OrdinalIgnoreCase);
+        var pendingRows = pendingCandidates
+            .Select(row => rowsById[row.RecordId])
+            .Where(static row => row.IsPortfolioPending)
+            .ToList();
+
+        return new TodayFinancialDashboardDto
+        {
+            RecentInvoices = BuildBillingInvoiceRows(
+                recentRows.Select(row => rowsById[row.RecordId]).ToList(),
+                today),
+            PendingInvoices = BuildBillingInvoiceRows(pendingRows, today)
+        };
+    }
+
     private async Task<PortfolioDashboardDto> GetPortfolioDashboardCoreAsync(bool includeDetails, CancellationToken ct)
     {
         var httpContext = _httpContextAccessor.HttpContext
@@ -2418,10 +2476,41 @@ public sealed partial class DataverseService
         CancellationToken ct,
         bool applyCreditNotes = true)
     {
-        var select = BuildBillingSelectClause(metadata);
-
         var filter = BuildBillingDateFilter(filterField, filterFieldKind, startInclusive, endExclusive);
-        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={filterField} asc";
+        var rows = await QueryBillingRecordsAsync(metadata, filter, filterField, user, ct);
+
+        if (applyCreditNotes)
+            await ApplyCreditNoteStateToBillingRowsAsync(rows, ct);
+
+        return rows;
+    }
+
+    private Task<List<BillingRecordRow>> GetOutstandingBillingRecordsAsync(
+        RhEntityMetadata metadata,
+        ClaimsPrincipal user,
+        CancellationToken ct)
+    {
+        var filter =
+            $"{_dashboardBillingPaymentDateField} eq null " +
+            $"and ({_dashboardBillingPaymentValueField} eq null or {_dashboardBillingPaymentValueField} le 0) " +
+            $"and {_dashboardBillingTotalField} gt 0";
+        return QueryBillingRecordsAsync(
+            metadata,
+            filter,
+            _dashboardBillingEmissionDateField,
+            user,
+            ct);
+    }
+
+    private async Task<List<BillingRecordRow>> QueryBillingRecordsAsync(
+        RhEntityMetadata metadata,
+        string filter,
+        string orderByField,
+        ClaimsPrincipal? user,
+        CancellationToken ct)
+    {
+        var select = BuildBillingSelectClause(metadata);
+        var relativeUrl = $"/api/data/v9.2/{metadata.EntitySetName}?$select={select}&$filter={Uri.EscapeDataString(filter)}&$orderby={orderByField} asc";
         var items = user is null
             ? await GetDataverseAppEntitiesAsync(relativeUrl, ct, AddFormattedValueHeaders)
             : await GetDataverseEntitiesAsync(relativeUrl, user, ct, AddFormattedValueHeaders);
@@ -2433,10 +2522,6 @@ public sealed partial class DataverseService
             .GroupBy(item => item.RecordId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-
-        if (applyCreditNotes)
-            await ApplyCreditNoteStateToBillingRowsAsync(rows, ct);
-
         return rows;
     }
 

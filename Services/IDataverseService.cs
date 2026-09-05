@@ -249,6 +249,7 @@ public interface IDataverseService
     Task<UtilityAssignmentResultDto> AssignUtilityRowAsync(UtilityAssignmentRequestDto request, CancellationToken ct = default);
     Task<PortfolioDashboardDto> GetPortfolioDashboardAsync(CancellationToken ct = default);
     Task<PortfolioDashboardDto> GetPortfolioDashboardSummaryAsync(CancellationToken ct = default);
+    Task<TodayFinancialDashboardDto> GetTodayFinancialDashboardAsync(DateOnly today, CancellationToken ct = default);
     Task<AccountStatementDto> GetAccountStatementAsync(string clientId, string? clientName = null, CancellationToken ct = default);
     Task<CopiersDashboardDto> GetCopiersDashboardAsync(CancellationToken ct = default);
     Task<CopiersClientInvoicesDetailDto> GetCopiersClientInvoicesAsync(string clientId, string? clientName = null, CancellationToken ct = default);

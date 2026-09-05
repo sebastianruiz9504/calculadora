@@ -14,9 +14,9 @@ public sealed class DashboardTodaySummaryTests
     public void Build_UsesSameDayCutoffAndReusesEveryRequestedBreakdown()
     {
         var today = new DateOnly(2026, 8, 17);
-        var portfolio = new PortfolioDashboardDto
+        var financial = new TodayFinancialDashboardDto
         {
-            Invoices = new[]
+            RecentInvoices = new[]
             {
                 Invoice("current-cloud", "2026-08-05", "Cloud", 645250000, 100m, pending: true, overdue: true),
                 Invoice("current-copiers", "2026-08-17", "Copiers", 645250001, 200m),
@@ -24,6 +24,11 @@ public sealed class DashboardTodaySummaryTests
                 Invoice("previous-cloud", "2026-07-01", "Cloud", 645250000, 80m),
                 Invoice("previous-copiers", "2026-07-17", "Copiers", 645250001, 120m, pending: true),
                 Invoice("late-previous", "2026-07-18", "Cloud", 645250000, 700m)
+            },
+            PendingInvoices = new[]
+            {
+                Invoice("current-cloud", "2026-08-05", "Cloud", 645250000, 100m, pending: true, overdue: true),
+                Invoice("previous-copiers", "2026-07-17", "Copiers", 645250001, 120m, pending: true)
             }
         };
         var ytd = Ytd(
@@ -48,7 +53,7 @@ public sealed class DashboardTodaySummaryTests
 
         var result = DashboardTodaySummaryBuilder.Build(
             today,
-            portfolio,
+            financial,
             ytd,
             null,
             currentSupport,
@@ -108,7 +113,7 @@ public sealed class DashboardTodaySummaryTests
     {
         var january = DashboardTodaySummaryBuilder.Build(
             new DateOnly(2027, 1, 31),
-            new PortfolioDashboardDto(),
+            new TodayFinancialDashboardDto(),
             Ytd(2027, ExpensePoint("2027-01", Expense("2027-01-31", "cloud", "Cloud", 150m))),
             Ytd(2026, ExpensePoint("2026-12", Expense("2026-12-31", "cloud", "Cloud", 100m))),
             Support(),
@@ -121,7 +126,7 @@ public sealed class DashboardTodaySummaryTests
 
         var march = DashboardTodaySummaryBuilder.Build(
             new DateOnly(2027, 3, 31),
-            new PortfolioDashboardDto(),
+            new TodayFinancialDashboardDto(),
             Ytd(2027),
             null,
             Support(),
@@ -139,6 +144,8 @@ public sealed class DashboardTodaySummaryTests
         var script = File.ReadAllText(Path.Combine(ProjectRoot, "wwwroot", "js", "dashboard.js"));
         var styles = File.ReadAllText(Path.Combine(ProjectRoot, "wwwroot", "css", "dashboard.css"));
         var cloudService = File.ReadAllText(Path.Combine(ProjectRoot, "Services", "DataverseService.Dashboard.CloudBilling.cs"));
+        var dashboardService = File.ReadAllText(Path.Combine(ProjectRoot, "Services", "DataverseService.Dashboard.cs"));
+        var controller = File.ReadAllText(Path.Combine(ProjectRoot, "Controllers", "DashboardController.cs"));
 
         var todayPosition = view.IndexOf("data-dashboard-tab=\"today\"", StringComparison.Ordinal);
         var agentPosition = view.IndexOf("data-dashboard-tab=\"agent\"", StringComparison.Ordinal);
@@ -157,6 +164,10 @@ public sealed class DashboardTodaySummaryTests
         Assert.Contains("CloudProductsTotalBusinessCacheKeyPrefix", cloudService, StringComparison.Ordinal);
         Assert.Contains("GetBogotaToday().ToString(\"yyyy-MM\"", cloudService, StringComparison.Ordinal);
         Assert.Contains("_memoryCache.TryGetValue(cacheKey", cloudService, StringComparison.Ordinal);
+        Assert.Contains("GetTodayFinancialDashboardAsync(today, ct)", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetPortfolioDashboardSummaryAsync(ct)", controller, StringComparison.Ordinal);
+        Assert.Contains("GetOutstandingBillingRecordsAsync", dashboardService, StringComparison.Ordinal);
+        Assert.Contains("_dashboardBillingPaymentDateField} eq null", dashboardService, StringComparison.Ordinal);
         Assert.Contains("grid-template-columns: repeat(3, minmax(0, 1fr))", styles, StringComparison.Ordinal);
         Assert.Contains("@media (max-width: 680px)", styles, StringComparison.Ordinal);
     }

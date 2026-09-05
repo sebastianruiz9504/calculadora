@@ -70,14 +70,14 @@ public sealed class DashboardController : Controller
             var currentSupportTask = _dataverse.GetSoporteCloudBoardAsync(currentStart, today, ct);
             var previousSupportTask = _dataverse.GetSoporteCloudBoardAsync(previousStart, previousEnd, ct);
             var copiersEquipmentTask = _dataverse.GetCopiersEquipmentDashboardAsync(ct);
-            var portfolioTask = _dataverse.GetPortfolioDashboardSummaryAsync(ct);
+            var financialTask = _dataverse.GetTodayFinancialDashboardAsync(today, ct);
             var currentYtdTask = _dataverse.GetYtdDashboardAsync(today.Year, ct);
             var cloudProductsTotalBusinessTask = _dataverse.GetCloudProductsTotalBusinessUsdAsync(ct);
             await Task.WhenAll(
                 currentSupportTask,
                 previousSupportTask,
                 copiersEquipmentTask,
-                portfolioTask,
+                financialTask,
                 currentYtdTask,
                 cloudProductsTotalBusinessTask);
 
@@ -89,7 +89,7 @@ public sealed class DashboardController : Controller
 
             return Json(DashboardTodaySummaryBuilder.Build(
                 today,
-                await portfolioTask,
+                await financialTask,
                 await currentYtdTask,
                 previousYtd,
                 await currentSupportTask,
