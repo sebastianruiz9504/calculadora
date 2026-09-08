@@ -1,5 +1,7 @@
 # Plan de despliegue paralelo y rollback
 
+> Plan histórico del 27 de agosto. Para el estado operativo del 8 de septiembre de 2026 consulte [README](README.md), [captura](05-captura-septiembre-2026.md) y [entrega Outlook](05-envio-operativo-outlook.md). El flujo V2 ya fue creado y activado; la identidad, rol, perfil y persistencia fueron verificados. No se realizó una prueba de entrega al cliente. Para rollback se conserva el flujo antiguo: deshabilitar nuevas finalizaciones V2 y detener únicamente su flujo independiente, sin borrar filas ni evidencias.
+
 ## Estado y principios
 
 Este archivo es un plan. **Dataverse ya fue aprovisionado y verificado en el ambiente confirmado; Power Automate/Graph aún no se han creado ni configurado y no se ha ejecutado un despliegue de la aplicación.** La identidad administrada y el Application User V2 existen, pero el Application User permanece sin roles hasta aprobar y verificar el rol mínimo.

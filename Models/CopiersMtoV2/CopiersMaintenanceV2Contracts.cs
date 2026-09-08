@@ -108,6 +108,7 @@ public sealed class CopiersMaintenanceV2FormAnswerSnapshot
 
 public sealed class CopiersMaintenanceV2DraftResultDto
 {
+    public string ServiceReference { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string SubmissionKey { get; set; } = "";
     public string Version { get; set; } = "";
@@ -119,6 +120,7 @@ public sealed class CopiersMaintenanceV2DraftResultDto
 
 public sealed class CopiersMaintenanceV2FinalizeResultDto
 {
+    public string ServiceReference { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string SubmissionKey { get; set; } = "";
     public string Version { get; set; } = "";
@@ -138,6 +140,7 @@ public sealed class CopiersMaintenanceV2FinalizeResultDto
 /// </summary>
 public sealed class CopiersMaintenanceV2PdfModel
 {
+    public string ServiceReference { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string CustomerContactName { get; set; } = "";

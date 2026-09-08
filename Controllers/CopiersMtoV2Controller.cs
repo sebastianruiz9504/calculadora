@@ -45,30 +45,22 @@ public sealed class CopiersMtoV2Controller : Controller
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
     public async Task<IActionResult> Bootstrap(CancellationToken ct)
     {
-        if (!_options.PilotEnabled)
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, Error("El piloto de MTO Firmado V2 aún no está habilitado.", code: "pilot_disabled"));
         try
         {
             var currentUserTask = _dataverse.GetCurrentUserAsync(ct);
             var equipmentTask = _dataverse.GetCopiersEquipmentDashboardAsync(ct);
-            await Task.WhenAll(currentUserTask, equipmentTask);
+            var clientsTask = _dataverse.GetCopiersMtoV2ClientsAsync(ct);
+            await Task.WhenAll(currentUserTask, equipmentTask, clientsTask);
             var currentUser = await currentUserTask ?? new CurrentUserInfo();
             var dashboard = await equipmentTask;
             EnsureTechnicianPilotAccess(currentUser);
 
-            var clients = dashboard.ClientSummaries
-                .Where(item => Guid.TryParse(item.ClientId, out _) && !string.IsNullOrWhiteSpace(item.ClientName))
-                .Where(item => IsClientAllowed(item.ClientId))
-                .GroupBy(item => NormalizeGuidForComparison(item.ClientId), StringComparer.OrdinalIgnoreCase)
+            var clients = (await clientsTask)
+                .Where(item => Guid.TryParse(item.Id, out _) && !string.IsNullOrWhiteSpace(item.Name))
+                .Where(item => IsClientAllowed(item.Id))
+                .GroupBy(item => NormalizeGuidForComparison(item.Id), StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
-                .OrderBy(item => item.ClientName, StringComparer.OrdinalIgnoreCase)
-                .Select(item => new CopiersMtoV2ClientOptionDto
-                {
-                    Id = item.ClientId,
-                    Name = item.ClientName,
-                    ContactName = item.ContactName,
-                    Email = item.Email
-                })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var equipment = dashboard.EquipmentRows
                 .Where(item => !item.InStock
@@ -124,6 +116,31 @@ public sealed class CopiersMtoV2Controller : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
+    public async Task<IActionResult> SaveClientEmail([FromBody] CopiersMtoV2ClientEmailRequestDto? request, CancellationToken ct)
+    {
+        try
+        {
+            if (request is null || !Guid.TryParse(request.ClientId, out var id) || id == Guid.Empty)
+                return BadRequest(Error("Selecciona un cliente válido."));
+            EnsureTechnicianPilotAccess(await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo());
+            if (!IsClientAllowed(request.ClientId)) return Forbid();
+            CopiersMaintenanceV2Validation.ValidateCustomerEmail(request.Email);
+            var saved = await _dataverse.SaveCopiersMtoV2ClientEmailAsync(request.ClientId, request.Email, ct);
+            return Ok(new { clientId = saved.Id, email = saved.Email });
+        }
+        catch (CopiersMaintenanceV2ValidationException ex) { return BadRequest(Error(ex.Message, code: ex.Code)); }
+        catch (CopiersMaintenanceV2ConcurrencyException ex) { return Conflict(Error(ex.Message)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "No fue posible actualizar el correo del encargado de Copiers.");
+            return StatusCode(502, Error("No fue posible guardar el correo en Clientes. Verifica tus permisos e inténtalo nuevamente."));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
     [RequestSizeLimit(26214400)]
     [RequestFormLimits(MultipartBodyLengthLimit = 26214400)]
     public async Task<IActionResult> Finalize(
@@ -142,7 +159,8 @@ public sealed class CopiersMtoV2Controller : Controller
                 ?? throw new InvalidOperationException("No fue posible identificar al técnico autenticado.");
             EnsureTechnicianPilotAccess(currentUser);
             var dashboard = await _dataverse.GetCopiersEquipmentDashboardAsync(ct);
-            var draftInput = BuildAuthoritativeDraftRequest(request, dashboard);
+            var clients = await _dataverse.GetCopiersMtoV2ClientsAsync(ct);
+            var draftInput = BuildAuthoritativeDraftRequest(request, dashboard, clients);
             var actor = new CopiersMaintenanceV2ActorContext
             {
                 SystemUserId = currentUser.SystemUserId,
@@ -224,15 +242,16 @@ public sealed class CopiersMtoV2Controller : Controller
 
     private CopiersMaintenanceV2DraftRequestDto BuildAuthoritativeDraftRequest(
         CopiersMaintenanceV2FinalizeMultipartRequestDto request,
-        CopiersEquipmentDashboardDto dashboard)
+        CopiersEquipmentDashboardDto dashboard,
+        IReadOnlyList<CopiersMtoV2ClientOptionDto> clients)
     {
         var clientId = RequiredFormGuid("ClientId", "El cliente");
-        var client = dashboard.ClientSummaries.FirstOrDefault(item => SameGuid(item.ClientId, clientId))
+        var client = clients.FirstOrDefault(item => SameGuid(item.Id, clientId))
             ?? throw new CopiersMaintenanceV2ValidationException("client_not_found", "El cliente ya no está disponible en Copiers.");
-        if (!IsClientAllowed(client.ClientId))
+        if (!IsClientAllowed(client.Id))
             throw new UnauthorizedAccessException("El cliente no pertenece al alcance autorizado del piloto MTO V2.");
         if (string.IsNullOrWhiteSpace(client.Email))
-            throw new CopiersMaintenanceV2ValidationException("client_email_missing", "El cliente no tiene correo en Copiers. Actualízalo antes de enviar el reporte.");
+            throw new CopiersMaintenanceV2ValidationException("client_email_missing", "Agrega el correo de la persona encargada de Copiers con el botón + antes de enviar.");
 
         var submittedEquipmentId = FormValue("EquipmentId");
         var submittedSerial = FormValue("EquipmentSerial");
@@ -251,27 +270,7 @@ public sealed class CopiersMtoV2Controller : Controller
         }
         else
         {
-            var externalOrTypedSerial = RequiredFormText("EquipmentSerial", "el serial del equipo", 200);
-            var knownMatches = dashboard.EquipmentRows
-                .Where(item => string.Equals(item.Serial?.Trim(), externalOrTypedSerial, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            if (knownMatches.Count > 1)
-                throw new CopiersMaintenanceV2ValidationException("equipment_serial_ambiguous", "El serial coincide con más de un equipo; selecciónalo desde el catálogo.");
-            if (knownMatches.Count == 1)
-            {
-                var knownEquipment = knownMatches[0];
-                if (knownEquipment.InStock || string.IsNullOrWhiteSpace(knownEquipment.Serial))
-                    throw new CopiersMaintenanceV2ValidationException("equipment_not_serviceable", "El serial corresponde a un equipo en inventario y no puede tratarse como externo.");
-                if (!SameGuid(knownEquipment.ClientId, clientId))
-                    throw new CopiersMaintenanceV2ValidationException("equipment_client_mismatch", "El equipo indicado pertenece a otro cliente.");
-                equipmentId = knownEquipment.RecordId;
-                equipmentSerial = knownEquipment.Serial;
-            }
-            else
-            {
-                equipmentId = "";
-                equipmentSerial = externalOrTypedSerial;
-            }
+            throw new CopiersMaintenanceV2ValidationException("equipment_required", "Selecciona un serial de la tabla Equipos del cliente.");
         }
 
         var serviceDateRaw = RequiredFormText("ServiceDate", "la fecha del servicio", 10);
@@ -284,13 +283,13 @@ public sealed class CopiersMtoV2Controller : Controller
         return new CopiersMaintenanceV2DraftRequestDto
         {
             SubmissionKey = request.SubmissionKey,
-            ClientId = client.ClientId,
-            ClientName = client.ClientName,
+            ClientId = client.Id,
+            ClientName = client.Name,
             CustomerContactName = RequiredFormText("CustomerContactName", "la persona que atiende", 160),
             CustomerEmail = client.Email.Trim(),
             EquipmentId = equipmentId,
             EquipmentSerial = equipmentSerial,
-            Title = RequiredFormText("Title", "el título del reporte", 250),
+            Title = $"Mantenimiento {serviceDate:yyyy-MM-dd} · {equipmentSerial}",
             ServiceDate = serviceDate,
             MaintenanceTypeValue = maintenanceType
         };
@@ -340,6 +339,9 @@ public sealed class CopiersMtoV2Controller : Controller
 
     private void EnsureTechnicianPilotAccess(CurrentUserInfo currentUser)
     {
+        // ModuleAuthorize already enforces Copiers access. An empty optional allowlist
+        // means all authorized technicians, not a disabled form.
+        if (!_options.AllowedTechnicianEmails.Any(value => !string.IsNullOrWhiteSpace(value))) return;
         var email = FirstNonEmpty(currentUser.EmployeeUserEmail, currentUser.Email, User.Identity?.Name);
         var allowed = _options.AllowedTechnicianEmails
             .Where(value => !string.IsNullOrWhiteSpace(value))

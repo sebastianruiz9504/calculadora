@@ -943,6 +943,7 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
 
     private string BuildMainSelect() => string.Join(",", new[]
     {
+        _options.ServiceReferenceField,
         _options.MainIdField,
         _options.OperationKeyField,
         _options.WorkflowStateField,
@@ -975,6 +976,7 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
         var emailValue = ReadInt(item, _options.EmailStateField);
         return new CopiersMaintenanceV2DraftRecord
         {
+            ServiceReference = ReadString(item, _options.ServiceReferenceField),
             RecordId = ReadString(item, _options.MainIdField),
             SubmissionKey = ReadString(item, _options.OperationKeyField),
             Version = ReadString(item, "@odata.etag"),

@@ -162,7 +162,7 @@
           <IsRetrievable>0</IsRetrievable>
           <IsLocalizable>0</IsLocalizable>
           <MinValue>0</MinValue>
-          <MaxValue>250</MaxValue>
+          <MaxValue>20000000</MaxValue>
           <Accuracy>7</Accuracy>
           <displaynames>
             <displayname description="Precisión de ubicación" languagecode="3082" />
@@ -1591,6 +1591,46 @@
           </displaynames>
           <Descriptions>
             <Description description="Hora autoritativa de publicación." languagecode="3082" />
+          </Descriptions>
+        </attribute>
+        <attribute PhysicalName="dtc_Reference">
+          <Type>nvarchar</Type>
+          <Name>dtc_reference</Name>
+          <LogicalName>dtc_reference</LogicalName>
+          <RequiredLevel>none</RequiredLevel>
+          <DisplayMask>ReadOnlyInUI|ValidForAdvancedFind|ValidForForm|ValidForGrid</DisplayMask>
+          <ImeMode>auto</ImeMode>
+          <ValidForUpdateApi>1</ValidForUpdateApi>
+          <ValidForReadApi>1</ValidForReadApi>
+          <ValidForCreateApi>1</ValidForCreateApi>
+          <IsCustomField>1</IsCustomField>
+          <IsAuditEnabled>1</IsAuditEnabled>
+          <IsSecured>0</IsSecured>
+          <IntroducedVersion>1.0</IntroducedVersion>
+          <IsCustomizable>1</IsCustomizable>
+          <IsRenameable>1</IsRenameable>
+          <CanModifySearchSettings>1</CanModifySearchSettings>
+          <CanModifyRequirementLevelSettings>1</CanModifyRequirementLevelSettings>
+          <CanModifyAdditionalSettings>1</CanModifyAdditionalSettings>
+          <SourceType>0</SourceType>
+          <IsGlobalFilterEnabled>0</IsGlobalFilterEnabled>
+          <IsSortableEnabled>0</IsSortableEnabled>
+          <CanModifyGlobalFilterSettings>1</CanModifyGlobalFilterSettings>
+          <CanModifyIsSortableSettings>1</CanModifyIsSortableSettings>
+          <IsDataSourceSecret>0</IsDataSourceSecret>
+          <AutoNumberFormat>MTO-{SEQNUM:6}</AutoNumberFormat>
+          <IsSearchable>0</IsSearchable>
+          <IsFilterable>0</IsFilterable>
+          <IsRetrievable>0</IsRetrievable>
+          <IsLocalizable>0</IsLocalizable>
+          <Format>text</Format>
+          <MaxLength>100</MaxLength>
+          <Length>200</Length>
+          <displaynames>
+            <displayname description="Consecutivo MTO" languagecode="3082" />
+          </displaynames>
+          <Descriptions>
+            <Description description="Referencia automatica asignada al crear un MTO Firmado V2. No editar manualmente." languagecode="3082" />
           </Descriptions>
         </attribute>
         <attribute PhysicalName="dtc_ReportEvidenceKey">

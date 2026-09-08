@@ -214,6 +214,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             var finalizedAtUtc = _timeProvider.GetUtcNow();
             var pdfModel = new CopiersMaintenanceV2PdfModel
             {
+                ServiceReference = begin.Record.ServiceReference,
                 RecordId = begin.Record.RecordId,
                 ClientName = begin.Record.ClientName,
                 CustomerContactName = begin.Record.CustomerContactName,
@@ -371,6 +372,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 "onsite_contact" => record.CustomerContactName,
                 "onsite_email" => record.CustomerEmail,
                 "maintenance_type" => CopiersMaintenanceV2Validation.MaintenanceTypeLabel(record.MaintenanceTypeValue, _dataverseOptions),
+                "service_reference" => record.ServiceReference,
                 _ => answer.Value
             }
         }).ToList();
@@ -471,6 +473,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
     private static CopiersMaintenanceV2DraftResultDto ToDraftResult(CopiersMaintenanceV2DraftRecord record, bool reusedExisting) =>
         new()
         {
+            ServiceReference = record.ServiceReference,
             RecordId = record.RecordId,
             SubmissionKey = record.SubmissionKey,
             Version = record.Version,
@@ -486,6 +489,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         string message) =>
         new()
         {
+            ServiceReference = record.ServiceReference,
             RecordId = record.RecordId,
             SubmissionKey = record.SubmissionKey,
             Version = record.Version,

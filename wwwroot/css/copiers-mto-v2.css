@@ -238,6 +238,10 @@
     animation: mto-v2-step-in .22s ease-out;
 }
 
+.mto-v2-step[hidden] {
+    display: none;
+}
+
 .mto-v2-step legend {
     display: flex;
     gap: 10px;
@@ -293,10 +297,57 @@
     grid-column: 1 / -1;
 }
 
-.mto-v2-field > span {
+.mto-v2-field > span,
+.mto-v2-field > label {
     color: #25364d;
     font-size: 13px;
     font-weight: 750;
+}
+
+.mto-v2-client-picker {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 46px;
+    gap: 8px;
+}
+
+.mto-v2-client-email-button {
+    min-width: 46px;
+    min-height: 46px;
+    border-radius: 11px;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.mto-v2-email-dialog {
+    width: min(520px, calc(100% - 32px));
+    max-height: calc(100dvh - 32px);
+    padding: 28px;
+    overflow-y: auto;
+    border: 1px solid var(--mto-line);
+    border-radius: 20px;
+    color: var(--mto-ink);
+    box-shadow: 0 24px 80px #17263c40;
+}
+
+.mto-v2-email-dialog::backdrop {
+    background: #17263c80;
+}
+
+.mto-v2-email-dialog h2 {
+    margin: 8px 0;
+    font-size: 1.45rem;
+    font-weight: 800;
+}
+
+.mto-v2-email-dialog p {
+    margin-bottom: 24px;
+    overflow-wrap: anywhere;
+    color: var(--mto-muted);
+}
+
+.mto-v2-email-dialog .mto-v2-status:not(:empty) {
+    margin-top: 16px;
 }
 
 .mto-v2-field__privacy {

@@ -150,6 +150,8 @@ internal static class CopiersMaintenanceV2Validation
         var normalized = (value ?? "").Trim();
         if (string.IsNullOrWhiteSpace(normalized))
             throw new CopiersMaintenanceV2ValidationException("customer_email_required", "El cliente no tiene un correo valido para recibir el reporte.");
+        if (normalized.Length > 320)
+            throw new CopiersMaintenanceV2ValidationException("customer_email_invalid", "El correo no puede superar 320 caracteres.");
 
         ValidateEmailAddress(normalized, "customer_email_invalid", "El correo del cliente no es válido.");
     }
@@ -274,7 +276,7 @@ internal static class CopiersMaintenanceV2Validation
             throw new CopiersMaintenanceV2ValidationException("latitude_invalid", "La latitud capturada no es valida.");
         if (!double.IsFinite(longitude) || longitude is < -180d or > 180d)
             throw new CopiersMaintenanceV2ValidationException("longitude_invalid", "La longitud capturada no es valida.");
-        if (!double.IsFinite(accuracy) || accuracy < 0d || accuracy > options.MaxLocationAccuracyMeters)
+        if (!double.IsFinite(accuracy) || accuracy < 0d || accuracy > 20_000_000d || (options.RequireLocation && accuracy > options.MaxLocationAccuracyMeters))
         {
             throw new CopiersMaintenanceV2ValidationException(
                 "location_accuracy_invalid",

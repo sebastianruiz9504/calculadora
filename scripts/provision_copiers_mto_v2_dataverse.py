@@ -517,7 +517,7 @@ MAIN_COLUMNS: tuple[ColumnSpec, ...] = (
     datetime_column("dtc_serverfinalizedatutc", "dtc_ServerFinalizedAtUtc", "Finalización del servidor", "Hora autoritativa de finalización."),
     decimal_column("dtc_latitude", "dtc_Latitude", "Latitud interna", -90.0, 90.0, "Coordenada interna con siete decimales.", secured=True),
     decimal_column("dtc_longitude", "dtc_Longitude", "Longitud interna", -180.0, 180.0, "Coordenada interna con siete decimales.", secured=True),
-    decimal_column("dtc_accuracymeters", "dtc_AccuracyMeters", "Precisión de ubicación", 0.0, 250.0, "Precisión interna del GPS en metros.", secured=True),
+    decimal_column("dtc_accuracymeters", "dtc_AccuracyMeters", "Precisión de ubicación", 0.0, 20000000.0, "Precisión interna del GPS en metros.", secured=True),
     datetime_column("dtc_locationcapturedatutc", "dtc_LocationCapturedAtUtc", "Captura de ubicación", "Hora interna de captura de ubicación.", secured=True),
     string_column("dtc_locationsource", "dtc_LocationSource", "Fuente de ubicación", 80, "Fuente interna de la ubicación.", secured=True),
     string_column("dtc_signaturesha256", "dtc_SignatureSha256", "SHA-256 de firma", 64, "Huella de la evidencia de firma.", secured=True),

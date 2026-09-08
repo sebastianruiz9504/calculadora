@@ -630,6 +630,36 @@ function Invoke-PacRoleAssignment {
     }
 }
 
+function Ensure-SecuritySolutionComponents {
+    param([Parameter(Mandatory)][pscustomobject]$State)
+    $solution = Get-OneOrNone -Rows @(
+        Get-DataverseRows -Path ("solutions?%24select=solutionid&%24filter=" +
+            [uri]::EscapeDataString("uniquename eq '$SolutionName'"))
+    ) -Description "approved solution $SolutionName"
+    if ($null -eq $solution -or $null -eq $State.Role -or $null -eq $State.Profile) {
+        throw "Cannot package missing approved security components."
+    }
+    foreach ($component in @(
+        [pscustomobject]@{ Id = [string]$State.Role.roleid; Type = 20 },
+        [pscustomobject]@{ Id = [string]$State.Profile.fieldsecurityprofileid; Type = 70 }
+    )) {
+        $path = "solutioncomponents?%24select=solutioncomponentid&%24filter=" +
+            [uri]::EscapeDataString("_solutionid_value eq $($solution.solutionid) and " +
+                "objectid eq $($component.Id) and componenttype eq $($component.Type)")
+        if (@(Get-DataverseRows -Path $path).Count -eq 0) {
+            [void](Invoke-DataverseApi -Method POST -Path "AddSolutionComponent" -Body @{
+                ComponentId = $component.Id
+                ComponentType = $component.Type
+                SolutionUniqueName = $SolutionName
+                AddRequiredComponents = $false
+            })
+        }
+        if (@(Get-DataverseRows -Path $path).Count -ne 1) {
+            throw "Approved security component membership was not verified: $($component.Id)."
+        }
+    }
+}
+
 function Apply-SecurityPolicy {
     param(
         [Parameter(Mandatory)][pscustomobject]$InitialState,
@@ -858,4 +888,5 @@ $result | ConvertTo-Json -Depth 20
 if (-not $finalState.Ready) {
     throw "Read-back did not prove the exact minimum security policy."
 }
+Ensure-SecuritySolutionComponents -State $finalState
 Write-Host "Applied and independently read back the exact Copiers MTO V2 security policy."

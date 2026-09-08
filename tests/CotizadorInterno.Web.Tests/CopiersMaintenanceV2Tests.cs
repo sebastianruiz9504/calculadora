@@ -20,6 +20,34 @@ public sealed class CopiersMaintenanceV2Tests
     private const string SubmissionKey = "copiers-v2-test-0001";
 
     [Fact]
+    public async Task ProfessionalPdf_UsesPersistedConsecutive_WithoutInternalLocation()
+    {
+        var model = CreateProfessionalPdfModel();
+        model.ServiceReference = "MTO-000123";
+        var rendered = await new CopiersMtoV2ProfessionalPdfBuilder().BuildAsync(model);
+        Assert.Equal("MTO-000123-Reporte-Servicio-Firmado.pdf", rendered.FileName);
+        using var pdf = PdfDocument.Open(rendered.Content);
+        var text = string.Join("\n", pdf.GetPages().Select(page => ContentOrderTextExtractor.GetText(page)));
+        Assert.Contains(model.ServiceReference, text);
+        Assert.DoesNotContain("navigator.geolocation", text);
+        var samplePath = Environment.GetEnvironmentVariable("COPIERS_V2_PDF_SAMPLE_PATH");
+        if (!string.IsNullOrWhiteSpace(samplePath))
+            await File.WriteAllBytesAsync(samplePath, rendered.Content);
+    }
+
+    [Fact]
+    public void OptionalLocation_UnavailableDoesNotBlock_AndActualAccuracyIsPreserved()
+    {
+        var options = new CopiersMaintenanceV2Options { RequireLocation = false };
+        Assert.Null(CopiersMaintenanceV2Validation.Location(new(), NowUtc, options));
+        var request = CreateFinalizeRequest();
+        request.AccuracyMeters = 1800;
+        var location = CopiersMaintenanceV2Validation.Location(request, NowUtc, options);
+        Assert.NotNull(location);
+        Assert.Equal(1800, location.AccuracyMeters);
+    }
+
+    [Fact]
     public async Task SignatureValidation_ReencodesJpegAndCalculatesSha256FromSanitizedBytes()
     {
         var content = ValidJpeg();

@@ -111,6 +111,13 @@ public sealed class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
 
     private static string BuildReportNumber(CopiersMaintenanceV2PdfModel model)
     {
+        if (!string.IsNullOrWhiteSpace(model.ServiceReference))
+        {
+            var reference = model.ServiceReference.Trim();
+            if (reference.Length <= 80 && reference.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))
+                return reference;
+            throw new InvalidOperationException("El consecutivo persistido del reporte no es válido.");
+        }
         var compactId = Guid.TryParse(model.RecordId, out var parsed)
             ? parsed.ToString("N")[..8].ToUpperInvariant()
             : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(model.RecordId ?? "")))[..8];

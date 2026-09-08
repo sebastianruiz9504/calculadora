@@ -11,14 +11,11 @@
     const maxFiles = Number(root.dataset.maxFiles || 8);
     const maxFileBytes = Number(root.dataset.maxFileBytes || 8 * 1024 * 1024);
     const maxTotalBytes = Number(root.dataset.maxTotalBytes || 20 * 1024 * 1024);
-    const maxLocationAccuracyMeters = Number(root.dataset.maxLocationAccuracyMeters || 250);
-    const maxLocationAgeMs = Number(root.dataset.maxLocationAgeMs || 15 * 60 * 1000);
     const allowedExtensions = new Set(["jpg", "jpeg", "png"]);
     const submissionStorageKey = "copiers-mto-v2:submission-id";
     const signatureBoundFieldIds = new Set([
         "mtoV2ClientName",
         "mtoV2EquipmentSerial",
-        "mtoV2ServiceReference",
         "mtoV2ServiceStartedAtLocal",
         "mtoV2OnsiteContactName",
         "mtoV2OnsiteContactEmail",
@@ -64,8 +61,6 @@
         accuracy: document.getElementById("mtoV2Accuracy"),
         geoCapturedAtUtc: document.getElementById("mtoV2GeoCapturedAtUtc"),
         geoStatus: document.getElementById("mtoV2GeoStatus"),
-        captureLocation: document.getElementById("mtoV2CaptureLocation"),
-        geoFeedback: document.getElementById("mtoV2GeoFeedback"),
         clientName: document.getElementById("mtoV2ClientName"),
         clientId: document.getElementById("mtoV2ClientId"),
         clientOptions: document.getElementById("mtoV2ClientOptions"),
@@ -80,6 +75,14 @@
         maintenanceType: document.getElementById("mtoV2MaintenanceType"),
         contactFeedback: document.getElementById("mtoV2ContactFeedback"),
         customerEmailFeedback: document.getElementById("mtoV2CustomerEmailFeedback"),
+        editClientEmail: document.getElementById("mtoV2EditClientEmail"),
+        clientEmailDialog: document.getElementById("mtoV2ClientEmailDialog"),
+        clientEmailForm: document.getElementById("mtoV2ClientEmailForm"),
+        emailClientName: document.getElementById("mtoV2EmailClientName"),
+        clientEmailEditor: document.getElementById("mtoV2ClientEmailEditor"),
+        emailSaveStatus: document.getElementById("mtoV2EmailSaveStatus"),
+        saveClientEmail: document.getElementById("mtoV2SaveClientEmail"),
+        cancelClientEmail: document.getElementById("mtoV2CancelClientEmail"),
         evidenceInput: document.getElementById("mtoV2EvidenceInput"),
         fileSummary: document.getElementById("mtoV2FileSummary"),
         fileList: document.getElementById("mtoV2FileList"),
@@ -104,7 +107,9 @@
         maxUnlockedStep: 1,
         files: [],
         submitting: false,
-        locating: false,
+        locationAttempted: false,
+        savingClientEmail: false,
+        editingClientId: "",
         catalog: {
             loaded: false,
             loading: false,
@@ -234,7 +239,7 @@
         const id = textProperty(item, "id", "Id");
         const serial = textProperty(item, "serial", "Serial");
         const clientId = textProperty(item, "clientId", "ClientId");
-        if (!serial || !clientId) {
+        if (!id || !serial || !clientId) {
             return null;
         }
         return {
@@ -286,6 +291,7 @@
 
         state.catalog.selectedClient = selected;
         elements.clientId.value = selected?.id || "";
+        elements.editClientEmail.disabled = !selected || state.submitting;
         elements.clientName?.setCustomValidity("");
 
         if (selected) {
@@ -320,9 +326,6 @@
             if (catalogKey(elements.equipmentSerial?.value) === catalogKey(previousEquipment.serial)) {
                 elements.equipmentSerial.value = "";
             }
-            if (previousEquipment.reference && elements.serviceReference?.value === previousEquipment.reference) {
-                elements.serviceReference.value = "";
-            }
             state.catalog.selectedEquipment = null;
             elements.equipmentId.value = "";
         }
@@ -349,8 +352,8 @@
         setCatalogFeedback(
             elements.customerEmailFeedback,
             client.email
-                ? "Correo autorizado en Copiers para el envío del reporte."
-                : "El cliente no tiene correo en Copiers. Debe actualizarse antes de enviar.",
+                ? "Correo del encargado de Copiers. Puedes editarlo con el botón + junto al cliente."
+                : "Agrega el correo del encargado de Copiers con el botón + junto al cliente para continuar.",
             client.email ? "success" : "error");
 
         replaceCatalogPrefill(elements.signerName, previousClient?.contactName, client.contactName);
@@ -402,15 +405,14 @@
         } else if (filtered.length) {
             setCatalogFeedback(
                 elements.equipmentFeedback,
-                `${filtered.length} equipos del cliente. También puedes registrar un serial externo.`,
+                `${filtered.length} equipos del cliente. Selecciona un serial de la lista.`,
                 "success");
         } else {
-            setCatalogFeedback(elements.equipmentFeedback, "Sin equipos asociados; puedes registrar un serial externo.", "");
+            setCatalogFeedback(elements.equipmentFeedback, "Este cliente no tiene equipos asociados en Dataverse.", "error");
         }
     }
 
     function syncEquipmentSelection() {
-        const previousEquipment = state.catalog.selectedEquipment;
         const clientId = state.catalog.selectedClient?.id || "";
         const value = catalogKey(elements.equipmentSerial?.value);
         const selected = state.catalog.equipment.find(item =>
@@ -421,10 +423,9 @@
         elements.equipmentSerial?.setCustomValidity("");
 
         if (selected) {
-            replaceCatalogPrefill(elements.serviceReference, previousEquipment?.reference, selected.reference);
             setCatalogFeedback(elements.equipmentFeedback, `Equipo seleccionado: ${selected.serial}.`, "success");
         } else if (state.catalog.loaded && clientId && value) {
-            setCatalogFeedback(elements.equipmentFeedback, "Serial externo: se enviará sin identificador de equipo.", "");
+            setCatalogFeedback(elements.equipmentFeedback, "Selecciona un equipo de la lista de este cliente.", "error");
         }
     }
 
@@ -436,6 +437,76 @@
         element.classList.remove("is-error", "is-success");
         if (tone) {
             element.classList.add(`is-${tone}`);
+        }
+    }
+
+    function openClientEmailEditor() {
+        const client = state.catalog.selectedClient;
+        if (!client || state.submitting || state.savingClientEmail) return;
+        state.editingClientId = client.id;
+        elements.emailClientName.textContent = client.name;
+        elements.clientEmailEditor.value = client.email || "";
+        elements.clientEmailEditor.setCustomValidity("");
+        clearStatus(elements.emailSaveStatus);
+        elements.clientEmailDialog.showModal();
+        elements.clientEmailEditor.focus();
+    }
+
+    async function saveClientEmail(event) {
+        event.preventDefault();
+        if (state.savingClientEmail || state.submitting || !state.editingClientId) return;
+        const email = elements.clientEmailEditor.value.trim();
+        elements.clientEmailEditor.value = email;
+        if (!elements.clientEmailEditor.reportValidity()) return;
+        const clientId = state.editingClientId;
+        state.savingClientEmail = true;
+        elements.saveClientEmail.disabled = true;
+        elements.cancelClientEmail.disabled = true;
+        elements.clientEmailEditor.readOnly = true;
+        elements.saveClientEmail.textContent = "Guardando…";
+        clearStatus(elements.emailSaveStatus);
+        try {
+            const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+            const response = await fetch(root.dataset.saveClientEmailUrl || "/CopiersMtoV2/SaveClientEmail", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    RequestVerificationToken: token
+                },
+                body: JSON.stringify({ clientId, email })
+            });
+            const result = await readResponse(response);
+            if (!response.ok) {
+                throw new Error(result?.message || result?.Message || result?.detail || result?.Detail || "No fue posible guardar el correo del cliente.");
+            }
+            const savedClientId = textProperty(result, "clientId", "ClientId");
+            const savedEmail = textProperty(result, "email", "Email");
+            if (!sameCatalogId(savedClientId, clientId) || !savedEmail) {
+                throw new Error("No se confirmó el correo guardado. Vuelve a intentar.");
+            }
+            const client = state.catalog.clients.find(item => sameCatalogId(item.id, clientId));
+            if (client) client.email = savedEmail;
+            if (sameCatalogId(state.catalog.selectedClient?.id, clientId)) {
+                const changed = elements.onsiteContactEmail.value !== savedEmail;
+                state.catalog.selectedClient.email = savedEmail;
+                elements.onsiteContactEmail.value = savedEmail;
+                elements.clientName.setCustomValidity("");
+                elements.clientName.classList.remove("is-invalid");
+                elements.onsiteContactEmail.classList.remove("is-invalid");
+                setCatalogFeedback(elements.customerEmailFeedback, "Correo del encargado de Copiers guardado en el cliente. Usa + para editarlo.", "success");
+                if (changed) invalidateSignatureForChange();
+            }
+            elements.clientEmailDialog.close();
+        } catch (error) {
+            setStatus(elements.emailSaveStatus, "error", error instanceof Error ? error.message : "No fue posible guardar el correo. Inténtalo de nuevo.");
+        } finally {
+            state.savingClientEmail = false;
+            elements.saveClientEmail.disabled = false;
+            elements.cancelClientEmail.disabled = false;
+            elements.clientEmailEditor.readOnly = false;
+            elements.saveClientEmail.textContent = "Guardar correo";
         }
     }
 
@@ -474,7 +545,18 @@
             });
         });
 
-        elements.captureLocation?.addEventListener("click", captureGeolocation);
+        elements.editClientEmail.addEventListener("click", openClientEmailEditor);
+        elements.clientEmailForm.addEventListener("submit", saveClientEmail);
+        elements.cancelClientEmail.addEventListener("click", () => {
+            if (!state.savingClientEmail) elements.clientEmailDialog.close();
+        });
+        elements.clientEmailDialog.addEventListener("cancel", event => {
+            if (state.savingClientEmail) event.preventDefault();
+        });
+        elements.clientEmailEditor.addEventListener("input", () => {
+            elements.clientEmailEditor.setCustomValidity("");
+            clearStatus(elements.emailSaveStatus);
+        });
         elements.retryBootstrap?.addEventListener("click", () => {
             state.catalog.loaded = false;
             void loadBootstrap();
@@ -530,6 +612,8 @@
 
         if (normalizedStep === 4) {
             renderReview();
+        } else if (normalizedStep === 3) {
+            resizeSignatureCanvas();
         }
 
         clearStatus(elements.status);
@@ -555,26 +639,13 @@
         }
 
         const controls = Array.from(panel.querySelectorAll("input, select, textarea"))
-            .filter(control => !control.disabled && control.type !== "hidden");
+            .filter(control => !control.disabled && control.type !== "hidden" && !control.closest("[hidden]"));
         const firstInvalid = controls.find(control => !control.checkValidity());
         if (firstInvalid) {
             firstInvalid.classList.add("is-invalid");
             firstInvalid.reportValidity();
             firstInvalid.focus({ preventScroll: false });
             setStatus(elements.status, "error", "Revisa los campos obligatorios antes de continuar.");
-            return false;
-        }
-
-        if (step === 1 && elements.geoStatus.value !== "captured") {
-            elements.geoFeedback.classList.add("is-error");
-            setStatus(elements.status, "error", "Captura la ubicación de la visita antes de continuar.");
-            elements.captureLocation?.focus();
-            return false;
-        }
-
-        if (step === 1 && !isLocationFresh()) {
-            setGeoFailure("La ubicación tiene más de 15 minutos. Captúrala nuevamente antes de enviar.", "stale");
-            elements.captureLocation?.focus();
             return false;
         }
 
@@ -601,7 +672,7 @@
         } else if (!elements.clientId?.value) {
             elements.clientName?.setCustomValidity("Selecciona un cliente válido de la lista.");
         } else if (!state.catalog.selectedClient?.email) {
-            elements.clientName?.setCustomValidity("El cliente no tiene correo registrado en Copiers. Debe actualizarse antes de enviar.");
+            elements.clientName?.setCustomValidity("Agrega el correo del encargado de Copiers con el botón + junto al cliente.");
         } else {
             elements.clientName?.setCustomValidity("");
         }
@@ -611,16 +682,11 @@
         const belongsToSelectedClient = catalogMatches.some(item => sameCatalogId(item.clientId, elements.clientId?.value));
         if (catalogMatches.length && !belongsToSelectedClient) {
             elements.equipmentSerial?.setCustomValidity("Ese serial está asociado a otro cliente.");
+        } else if (!state.catalog.selectedEquipment?.id) {
+            elements.equipmentSerial?.setCustomValidity("Selecciona un equipo registrado de la lista de este cliente.");
         } else {
             elements.equipmentSerial?.setCustomValidity("");
         }
-    }
-
-    function isLocationFresh() {
-        const capturedAt = Date.parse(elements.geoCapturedAtUtc?.value || "");
-        return Number.isFinite(capturedAt)
-            && Date.now() - capturedAt >= 0
-            && Date.now() - capturedAt <= maxLocationAgeMs;
     }
 
     function validateAllSteps() {
@@ -675,80 +741,51 @@
     }
 
     function captureGeolocation() {
-        if (state.locating) {
-            return;
-        }
-        if (!window.isSecureContext || !navigator.geolocation) {
-            setGeoFailure("Este navegador no permite capturar la ubicación de forma segura.", "unsupported");
-            return;
-        }
-
-        state.locating = true;
-        elements.captureLocation.disabled = true;
-        elements.geoFeedback.textContent = "Solicitando permiso y ubicación…";
-        elements.geoFeedback.classList.remove("is-error", "is-success");
-
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                const latitude = Number(position.coords.latitude);
-                const longitude = Number(position.coords.longitude);
-                const accuracy = Number(position.coords.accuracy);
-                if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || accuracy < 0) {
-                    setGeoFailure("El dispositivo no devolvió coordenadas válidas.", "invalid");
-                    return;
-                }
-                if (Number.isFinite(accuracy) && accuracy > maxLocationAccuracyMeters) {
-                    setGeoFailure(
-                        `La precisión obtenida fue de ${Math.round(accuracy)} m y debe ser de ${maxLocationAccuracyMeters} m o menos. Vuelve a intentar.`,
-                        "imprecise");
-                    return;
-                }
-
-                elements.latitude.value = latitude.toFixed(7);
-                elements.longitude.value = longitude.toFixed(7);
-                elements.accuracy.value = Number.isFinite(accuracy) ? accuracy.toFixed(1) : "";
-                elements.geoCapturedAtUtc.value = new Date().toISOString();
-                elements.geoStatus.value = "captured";
-                elements.geoFeedback.textContent = Number.isFinite(accuracy)
-                    ? `Ubicación capturada internamente · precisión aproximada ${Math.round(accuracy)} m`
-                    : "Ubicación capturada internamente";
-                elements.geoFeedback.classList.remove("is-error");
-                elements.geoFeedback.classList.add("is-success");
-                clearStatus(elements.status);
-                finishGeolocationRequest();
-            },
-            error => {
-                const messages = {
-                    1: "El permiso de ubicación fue rechazado. Actívalo en el navegador y vuelve a intentar.",
-                    2: "El dispositivo no pudo determinar la ubicación. Revisa GPS o conectividad.",
-                    3: "La captura de ubicación agotó el tiempo. Vuelve a intentar."
-                };
-                const statuses = { 1: "denied", 2: "unavailable", 3: "timeout" };
-                setGeoFailure(messages[error.code] || "No fue posible capturar la ubicación.", statuses[error.code] || "error");
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 20000,
-                maximumAge: 0
-            });
-    }
-
-    function setGeoFailure(message, status) {
         elements.latitude.value = "";
         elements.longitude.value = "";
         elements.accuracy.value = "";
         elements.geoCapturedAtUtc.value = "";
-        elements.geoStatus.value = status;
-        elements.geoFeedback.textContent = message;
-        elements.geoFeedback.classList.remove("is-success");
-        elements.geoFeedback.classList.add("is-error");
-        setStatus(elements.status, "error", message);
-        finishGeolocationRequest();
-    }
-
-    function finishGeolocationRequest() {
-        state.locating = false;
-        elements.captureLocation.disabled = false;
+        if (!window.isSecureContext || !navigator.geolocation) {
+            elements.geoStatus.value = "unsupported";
+            return Promise.resolve();
+        }
+        elements.geoStatus.value = "pending";
+        return new Promise(resolve => {
+            let settled = false;
+            const finish = status => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(deadline);
+                elements.geoStatus.value = status;
+                resolve();
+            };
+            // Some devices never settle the browser permission prompt. Submission remains bounded.
+            const deadline = window.setTimeout(() => finish("timeout"), 10000);
+            try {
+                navigator.geolocation.getCurrentPosition(position => {
+                    if (settled) return;
+                    const latitude = Number(position.coords.latitude);
+                    const longitude = Number(position.coords.longitude);
+                    const accuracy = Number(position.coords.accuracy);
+                    if (!Number.isFinite(latitude) || Math.abs(latitude) > 90
+                        || !Number.isFinite(longitude) || Math.abs(longitude) > 180
+                        || !Number.isFinite(accuracy) || accuracy < 0) {
+                        finish("invalid");
+                        return;
+                    }
+                    elements.latitude.value = latitude.toFixed(7);
+                    elements.longitude.value = longitude.toFixed(7);
+                    elements.accuracy.value = accuracy.toFixed(1);
+                    elements.geoCapturedAtUtc.value = new Date().toISOString();
+                    finish("captured");
+                }, error => {
+                    const statuses = { 1: "denied", 2: "unavailable", 3: "timeout" };
+                    finish(statuses[error.code] || "error");
+                }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+            } catch {
+                finish("unavailable");
+            }
+        });
     }
 
     function handleEvidenceSelection() {
@@ -1086,7 +1123,7 @@
                 reviewItem("Cliente", valueOf("mtoV2ClientName")),
                 reviewItem("Equipo", valueOf("mtoV2EquipmentSerial")),
                 reviewItem("Referencia del equipo", state.catalog.selectedEquipment?.reference || ""),
-                reviewItem("Orden o referencia", valueOf("mtoV2ServiceReference")),
+                reviewItem("Orden o referencia", valueOf("mtoV2ServiceReference") || "Se asigna al enviar"),
                 reviewItem("Inicio de visita", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtLocal"))),
                 reviewItem("Persona que atiende", valueOf("mtoV2OnsiteContactName")),
                 reviewItem("Correo de contacto", valueOf("mtoV2OnsiteContactEmail"))
@@ -1192,7 +1229,6 @@
 
     function buildStructuredAnswers() {
         const definitions = [
-            ["service_reference", "Orden o referencia", valueOf("mtoV2ServiceReference")],
             ["equipment_reference", "Referencia del equipo", state.catalog.selectedEquipment?.reference || ""],
             ["service_started_at", "Inicio de visita", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtLocal"))],
             ["onsite_contact", "Persona que atendió", valueOf("mtoV2OnsiteContactName")],
@@ -1225,12 +1261,16 @@
 
         state.submitting = true;
         elements.signedAtUtc.value ||= new Date().toISOString();
-        elements.submittedAtUtc.value = new Date().toISOString();
+        elements.submittedAtUtc.value ||= new Date().toISOString();
         prepareContractFields();
         setSubmitState("pending");
         setStatus(elements.submitStatus, "info", "Guardando reporte, creando ticket y preparando el correo…");
 
         try {
+            if (!state.locationAttempted) {
+                state.locationAttempted = true;
+                await captureGeolocation();
+            }
             const signatureBlob = await signatureToJpegBlob();
             const payload = new FormData(form);
             payload.delete("Attachments");
@@ -1278,6 +1318,11 @@
             }
 
             removeStoredSubmissionId();
+            const serviceReference = textProperty(result, "serviceReference", "ServiceReference");
+            if (serviceReference) {
+                elements.serviceReference.value = serviceReference;
+                renderReview();
+            }
             const emailState = result?.emailState ?? result?.EmailState;
             const emailSent = matchesState(emailState, 3, "Sent");
             const emailProcessing = matchesState(emailState, 2, "Processing");
@@ -1322,7 +1367,8 @@
         elements.nextButtons.concat(elements.previousButtons).forEach(button => {
             button.disabled = pending || completed;
         });
-        elements.captureLocation.disabled = pending || completed || state.locating;
+        elements.editClientEmail.disabled = pending || completed || !state.catalog.selectedClient;
+        elements.panels.forEach(panel => { panel.inert = pending || completed; });
         elements.evidenceInput.disabled = pending || completed;
         elements.clearSignature.disabled = pending || completed;
         updateProgressAvailability();

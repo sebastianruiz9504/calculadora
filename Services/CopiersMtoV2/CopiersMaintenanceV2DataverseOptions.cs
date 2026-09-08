@@ -13,12 +13,15 @@ public sealed class CopiersMaintenanceV2DataverseOptions
     public bool OptimisticConcurrencyVerified { get; set; }
     public bool AlternateKeysActiveVerified { get; set; }
     public bool ApplicationUserWriteIsolationVerified { get; set; }
-    public bool PowerAutomateDraftReconciliationVerified { get; set; }
+    // A configured, isolated Ready/Pending delivery flow. This does not claim
+    // that a customer email or Graph draft reconciliation was tested.
+    public bool PowerAutomateDeliveryConfigured { get; set; }
     public bool CustomerAttachmentSecurityVerified { get; set; }
 
     public string MainEntitySetName { get; set; } = "";
     public string MainIdField { get; set; } = "";
     public string MainNameField { get; set; } = "";
+    public string ServiceReferenceField { get; set; } = "dtc_reference";
     public string OperationKeyField { get; set; } = "";
     public string WorkflowStateField { get; set; } = "";
     public string EmailStateField { get; set; } = "";
@@ -122,6 +125,7 @@ public sealed class CopiersMaintenanceV2DataverseOptions
             [nameof(MainEntitySetName)] = MainEntitySetName,
             [nameof(MainIdField)] = MainIdField,
             [nameof(MainNameField)] = MainNameField,
+            [nameof(ServiceReferenceField)] = ServiceReferenceField,
             [nameof(OperationKeyField)] = OperationKeyField,
             [nameof(WorkflowStateField)] = WorkflowStateField,
             [nameof(EmailStateField)] = EmailStateField,
@@ -202,7 +206,7 @@ public sealed class CopiersMaintenanceV2DataverseOptions
         if (!OptimisticConcurrencyVerified) missing.Add(nameof(OptimisticConcurrencyVerified));
         if (!AlternateKeysActiveVerified) missing.Add(nameof(AlternateKeysActiveVerified));
         if (!ApplicationUserWriteIsolationVerified) missing.Add(nameof(ApplicationUserWriteIsolationVerified));
-        if (!PowerAutomateDraftReconciliationVerified) missing.Add(nameof(PowerAutomateDraftReconciliationVerified));
+        if (!PowerAutomateDeliveryConfigured) missing.Add(nameof(PowerAutomateDeliveryConfigured));
         if (!CustomerAttachmentSecurityVerified) missing.Add(nameof(CustomerAttachmentSecurityVerified));
         var choiceValues = new Dictionary<string, int>(StringComparer.Ordinal)
         {

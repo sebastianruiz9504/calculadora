@@ -10,12 +10,11 @@
 <div class="mto-v2-shell"
      id="copiersMtoV2App"
      data-bootstrap-url="/CopiersMtoV2/Bootstrap"
+     data-save-client-email-url="/CopiersMtoV2/SaveClientEmail"
      data-finalize-url="/CopiersMtoV2/Finalize"
      data-max-files="8"
      data-max-file-bytes="8388608"
-     data-max-total-bytes="20971520"
-     data-max-location-accuracy-meters="250"
-     data-max-location-age-ms="900000">
+     data-max-total-bytes="20971520">
     <header class="mto-v2-hero">
         <div class="mto-v2-hero__copy">
             <span class="mto-v2-eyebrow">Copiers · Servicio en sitio</span>
@@ -103,8 +102,9 @@
             <p class="mto-v2-step__intro">Selecciona el cliente y el equipo antes de registrar el trabajo técnico.</p>
 
             <div class="mto-v2-grid">
-                <label class="mto-v2-field mto-v2-field--wide">
-                    <span>Cliente <b aria-hidden="true">*</b></span>
+                <div class="mto-v2-field mto-v2-field--wide">
+                    <label for="mtoV2ClientName">Cliente <b aria-hidden="true">*</b></label>
+                    <div class="mto-v2-client-picker">
                     <input class="form-control"
                            type="text"
                            name="ClientName"
@@ -113,10 +113,13 @@
                            aria-describedby="mtoV2CatalogFeedback"
                            autocomplete="organization"
                            required />
+                        <button class="btn btn-outline-primary mto-v2-client-email-button" type="button" id="mtoV2EditClientEmail"
+                                aria-label="Agregar o editar el correo de la persona encargada de Copiers" title="Agregar o editar correo del encargado de Copiers" disabled>+</button>
+                    </div>
                     <input type="hidden" name="ClientId" id="mtoV2ClientId" />
                     <datalist id="mtoV2ClientOptions"></datalist>
                     <small id="mtoV2CatalogFeedback">Cargando clientes de Copiers…</small>
-                </label>
+                </div>
 
                 <label class="mto-v2-field">
                     <span>Serial del equipo <b aria-hidden="true">*</b></span>
@@ -135,7 +138,8 @@
 
                 <label class="mto-v2-field">
                     <span>Orden o referencia</span>
-                    <input class="form-control" type="text" name="ServiceReference" id="mtoV2ServiceReference" autocomplete="off" maxlength="120" />
+                    <input class="form-control" type="text" name="ServiceReference" id="mtoV2ServiceReference" placeholder="Se asigna al enviar" readonly />
+                    <small>Consecutivo automático del mantenimiento.</small>
                 </label>
 
                 <label class="mto-v2-field">
@@ -150,9 +154,9 @@
                 </label>
 
                 <label class="mto-v2-field">
-                    <span>Correo de envío registrado en Copiers <b aria-hidden="true">*</b></span>
+                    <span>Persona encargada de copiers · correo de envío <b aria-hidden="true">*</b></span>
                     <input class="form-control" type="email" name="CustomerEmail" id="mtoV2OnsiteContactEmail" autocomplete="email" required readonly maxlength="250" />
-                    <small id="mtoV2CustomerEmailFeedback">El reporte se enviará a este correo. Debe actualizarse en Copiers si está vacío o incorrecto.</small>
+                    <small id="mtoV2CustomerEmailFeedback">Selecciona el cliente. Usa el botón + para agregar o editar su correo de envío.</small>
                 </label>
 
                 <label class="mto-v2-field mto-v2-field--wide" data-pdf-exclude="true" data-client-preview-exclude="true">
@@ -161,18 +165,6 @@
                     <small>No se muestra en la vista previa ni debe incluirse en el PDF enviado al cliente.</small>
                 </label>
             </div>
-
-            <section class="mto-v2-private-card" data-pdf-exclude="true" aria-labelledby="mtoV2GeoTitle">
-                <div>
-                    <span class="mto-v2-private-card__badge">Uso interno</span>
-                    <h2 id="mtoV2GeoTitle">Ubicación de la visita</h2>
-                    <p>Se guardará como dato interno de auditoría. Las coordenadas no aparecerán en la vista previa ni en el PDF enviado al cliente.</p>
-                </div>
-                <div class="mto-v2-private-card__action">
-                    <button class="btn btn-outline-primary" type="button" id="mtoV2CaptureLocation">Capturar ubicación</button>
-                    <span id="mtoV2GeoFeedback">Pendiente de captura</span>
-                </div>
-            </section>
 
             <div class="mto-v2-step__actions">
                 <span class="mto-v2-required-note"><b>*</b> Campos obligatorios</span>
@@ -285,7 +277,7 @@
                 <div class="mto-v2-upload-card__copy">
                     <span class="mto-v2-eyebrow">Evidencias</span>
                     <h2 id="mtoV2EvidenceTitle">Evidencia fotográfica</h2>
-                    <p>Hasta 8 imágenes · máximo 8 MB por archivo · máximo 20 MB en total. Formatos: JPG, JPEG y PNG. La copia para el cliente se reconstruye sin metadatos GPS.</p>
+                    <p>Hasta 8 imágenes · máximo 8 MB por archivo · máximo 20 MB en total. Formatos: JPG, JPEG y PNG.</p>
                 </div>
                 <label class="mto-v2-file-picker">
                     <span>Seleccionar archivos</span>
@@ -374,6 +366,23 @@
             </div>
         </fieldset>
     </form>
+    <dialog class="mto-v2-email-dialog" id="mtoV2ClientEmailDialog" aria-labelledby="mtoV2ClientEmailTitle">
+        <form id="mtoV2ClientEmailForm" novalidate>
+            <span class="mto-v2-eyebrow">Datos del cliente</span>
+            <h2 id="mtoV2ClientEmailTitle">Persona encargada de copiers</h2>
+            <p id="mtoV2EmailClientName"></p>
+            <label class="mto-v2-field" for="mtoV2ClientEmailEditor">
+                <span>Correo de envío <b aria-hidden="true">*</b></span>
+                <input class="form-control" id="mtoV2ClientEmailEditor" type="email" autocomplete="email" maxlength="250" required />
+                <small>Se guardará en el cliente y se usará para enviar sus reportes de mantenimiento.</small>
+            </label>
+            <div class="mto-v2-status" id="mtoV2EmailSaveStatus" role="status" aria-live="polite"></div>
+            <div class="mto-v2-step__actions">
+                <button class="btn btn-outline-secondary" id="mtoV2CancelClientEmail" type="button">Cancelar</button>
+                <button class="btn btn-primary" id="mtoV2SaveClientEmail" type="submit">Guardar correo</button>
+            </div>
+        </form>
+    </dialog>
 </div>
 
 @section Scripts {

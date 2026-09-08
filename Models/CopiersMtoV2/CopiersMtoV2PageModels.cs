@@ -1,5 +1,11 @@
 namespace CotizadorInterno.Web.Models.CopiersMtoV2;
 
+public sealed class CopiersMtoV2ClientEmailRequestDto
+{
+    public string ClientId { get; set; } = "";
+    public string Email { get; set; } = "";
+}
+
 public sealed class CopiersMtoV2BootstrapDto
 {
     public bool SchemaReady { get; set; }

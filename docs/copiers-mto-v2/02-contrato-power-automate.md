@@ -1,5 +1,8 @@
 # Contrato Power Automate — envío MTO Firmado V2
 
+> **Contrato Graph histórico, sustituido para la entrega operativa del 8 de septiembre de 2026.**
+> La implementación actual usa un flujo independiente con las conexiones Dataverse/Outlook que ya utiliza Copiers, envío `SendEmailV2` sin reintento automático y revisión manual ante un resultado ambiguo. Véase [05-envio-operativo-outlook.md](05-envio-operativo-outlook.md), el script `scripts/Provision-CopiersMtoV2MailFlow.ps1` y su definición exportada. La configuración `PowerAutomateDeliveryConfigured` acredita instalación/verificación de ese flujo, **no** reconciliación de borradores Graph ni entrega comprobada. El contenido que sigue conserva el diseño anterior como referencia, no como requisito vigente de activación.
+
 ## 1. Estado, identidad y alcance
 
 - Estado: `Propuesto / flow no creado ni configurado`.

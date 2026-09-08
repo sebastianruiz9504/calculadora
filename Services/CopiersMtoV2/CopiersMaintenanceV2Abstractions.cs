@@ -77,6 +77,7 @@ public interface ICopiersMtoV2ApplicationDataverseClient
 
 public sealed class CopiersMaintenanceV2DraftRecord
 {
+    public string ServiceReference { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string SubmissionKey { get; set; } = "";
     public string Version { get; set; } = "";

@@ -1,0 +1,773 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      },
+      "$authentication": {
+        "defaultValue": {},
+        "type": "SecureObject"
+      }
+    },
+    "triggers": {
+      "When_signed_report_is_ready": {
+        "type": "OpenApiConnectionWebhook",
+        "inputs": {
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+            "connectionName": "shared_commondataserviceforapps",
+            "operationId": "SubscribeWebhookTrigger"
+          },
+          "parameters": {
+            "subscriptionRequest/filterexpression": "dtc_workflowstate eq 827270002 and dtc_emailstate eq 827270001",
+            "subscriptionRequest/scope": 4,
+            "subscriptionRequest/message": 3,
+            "subscriptionRequest/filteringattributes": "dtc_workflowstate,dtc_emailstate,dtc_readyatutc",
+            "subscriptionRequest/entityname": "dtc_copiersmtov2"
+          },
+          "authentication": "@parameters('$authentication')"
+        },
+        "conditions": [
+          {
+            "expression": "@and(equals(triggerOutputs()?['body/dtc_workflowstate'],827270002),equals(triggerOutputs()?['body/dtc_emailstate'],827270001))"
+          }
+        ],
+        "runtimeConfiguration": {
+          "concurrency": {
+            "runs": 1
+          },
+          "secureData": {
+            "properties": [
+              "outputs"
+            ]
+          }
+        }
+      }
+    },
+    "actions": {
+      "Initialize_delivery_state": {
+        "runAfter": {},
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "MailAttachments",
+              "type": "array",
+              "value": []
+            },
+            {
+              "name": "EvidenceKeys",
+              "type": "array",
+              "value": []
+            },
+            {
+              "name": "AttachmentSequences",
+              "type": "array",
+              "value": []
+            },
+            {
+              "name": "EvidenceValid",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "name": "EncodedBytes",
+              "type": "integer",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "Read_pending_row": {
+        "runAfter": {
+          "Initialize_delivery_state": [
+            "Succeeded"
+          ]
+        },
+        "type": "OpenApiConnection",
+        "inputs": {
+          "parameters": {
+            "$select": "dtc_copiersmtov2id,dtc_workflowstate,dtc_emailstate,dtc_emailtosnapshot,dtc_emailsubjectsnapshot,dtc_emailhtmlbodysnapshot,dtc_reportevidencekey,dtc_reportfilename,dtc_reportsha256,dtc_attachmentcount,dtc_attachmentmanifestjson,dtc_emailoutboxkey",
+            "$top": 1,
+            "$filter": "dtc_copiersmtov2id eq @{triggerOutputs()?['body/dtc_copiersmtov2id']} and dtc_workflowstate eq 827270002 and dtc_emailstate eq 827270001",
+            "entityName": "dtc_copiersmtov2s"
+          },
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+            "connectionName": "shared_commondataserviceforapps",
+            "operationId": "ListRecords"
+          },
+          "authentication": "@parameters('$authentication')"
+        },
+        "runtimeConfiguration": {
+          "secureData": {
+            "properties": [
+              "inputs",
+              "outputs"
+            ]
+          }
+        }
+      },
+      "Claim_only_pending_report": {
+        "actions": {
+          "Mark_processing": {
+            "runAfter": {},
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "entityName": "dtc_copiersmtov2s",
+                "recordId": "@triggerOutputs()?['body/dtc_copiersmtov2id']",
+                "item/dtc_emailstate": 827270002,
+                "item/dtc_lasterrorcode": "",
+                "item/dtc_lasterrorsafemessage": ""
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                "connectionName": "shared_commondataserviceforapps",
+                "operationId": "UpdateRecord"
+              },
+              "authentication": "@parameters('$authentication')"
+            },
+            "runtimeConfiguration": {
+              "secureData": {
+                "properties": [
+                  "inputs",
+                  "outputs"
+                ]
+              }
+            }
+          },
+          "Prepare_verified_attachments": {
+            "actions": {
+              "Parse_customer_manifest": {
+                "runAfter": {},
+                "type": "ParseJson",
+                "inputs": {
+                  "content": "@first(body('Read_pending_row')?['value'])?['dtc_attachmentmanifestjson']",
+                  "schema": {
+                    "items": {
+                      "required": [
+                        "sequence",
+                        "evidenceKey",
+                        "fileName",
+                        "contentType",
+                        "size",
+                        "sha256",
+                        "purpose",
+                        "securityState"
+                      ],
+                      "properties": {
+                        "contentType": {
+                          "type": "string",
+                          "enum": [
+                            "image/jpeg",
+                            "image/png"
+                          ]
+                        },
+                        "sequence": {
+                          "maximum": 8,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "sha256": {
+                          "maxLength": 64,
+                          "minLength": 64,
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string",
+                          "maxLength": 260
+                        },
+                        "purpose": {
+                          "type": "string",
+                          "enum": [
+                            "CustomerAttachment"
+                          ]
+                        },
+                        "size": {
+                          "maximum": 8388608,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "securityState": {
+                          "type": "string",
+                          "enum": [
+                            "ScanPassed"
+                          ]
+                        },
+                        "evidenceKey": {
+                          "maxLength": 64,
+                          "minLength": 64,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 8,
+                    "type": "array"
+                  }
+                },
+                "runtimeConfiguration": {
+                  "secureData": {
+                    "properties": [
+                      "inputs"
+                    ]
+                  }
+                }
+              },
+              "Set_email_size_baseline": {
+                "runAfter": {
+                  "Parse_customer_manifest": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "SetVariable",
+                "inputs": {
+                  "value": "@add(66560,mul(4,add(add(length(coalesce(first(body('Read_pending_row')?['value'])?['dtc_emailtosnapshot'],'')),length(coalesce(first(body('Read_pending_row')?['value'])?['dtc_emailsubjectsnapshot'],''))),length(coalesce(first(body('Read_pending_row')?['value'])?['dtc_emailhtmlbodysnapshot'],'')))))",
+                  "name": "EncodedBytes"
+                }
+              },
+              "Read_signed_report": {
+                "runAfter": {
+                  "Set_email_size_baseline": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "$select": "dtc_copiersmtoevidenciav2id,dtc_evidencekey,_dtc_signedmto_value,dtc_purpose,dtc_sequence,dtc_originalfilename,dtc_contenttype,dtc_bytelength,dtc_sha256,dtc_securitystate",
+                    "$top": 2,
+                    "$filter": "dtc_evidencekey eq '@{replace(first(body('Read_pending_row')?['value'])?['dtc_reportevidencekey'],decodeUriComponent('%27'),concat(decodeUriComponent('%27'),decodeUriComponent('%27')))}' and _dtc_signedmto_value eq @{triggerOutputs()?['body/dtc_copiersmtov2id']} and dtc_purpose eq 827270001",
+                    "entityName": "dtc_copiersmtoevidenciav2s"
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "ListRecords"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "runtimeConfiguration": {
+                  "secureData": {
+                    "properties": [
+                      "inputs",
+                      "outputs"
+                    ]
+                  }
+                }
+              },
+              "Validate_signed_report": {
+                "actions": {
+                  "Download_signed_report": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "fileImageFieldName": "dtc_filecontent",
+                        "entityName": "dtc_copiersmtoevidenciav2s",
+                        "recordId": "@first(body('Read_signed_report')?['value'])?['dtc_copiersmtoevidenciav2id']",
+                        "organization": "https://orgc79ca19c.crm2.dynamics.com"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "GetEntityFileImageFieldContentWithOrganization"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "runtimeConfiguration": {
+                      "secureData": {
+                        "properties": [
+                          "inputs",
+                          "outputs"
+                        ]
+                      }
+                    }
+                  },
+                  "Reread_signed_report": {
+                    "runAfter": {
+                      "Download_signed_report": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "$select": "dtc_copiersmtoevidenciav2id,dtc_evidencekey,_dtc_signedmto_value,dtc_purpose,dtc_sequence,dtc_originalfilename,dtc_contenttype,dtc_bytelength,dtc_sha256,dtc_securitystate",
+                        "$top": 2,
+                        "$filter": "dtc_evidencekey eq '@{replace(first(body('Read_pending_row')?['value'])?['dtc_reportevidencekey'],decodeUriComponent('%27'),concat(decodeUriComponent('%27'),decodeUriComponent('%27')))}' and _dtc_signedmto_value eq @{triggerOutputs()?['body/dtc_copiersmtov2id']} and dtc_purpose eq 827270001",
+                        "entityName": "dtc_copiersmtoevidenciav2s"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "ListRecords"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "runtimeConfiguration": {
+                      "secureData": {
+                        "properties": [
+                          "inputs",
+                          "outputs"
+                        ]
+                      }
+                    }
+                  },
+                  "Validate_stable_signed_report": {
+                    "actions": {
+                      "Append_signed_report": {
+                        "runAfter": {},
+                        "type": "AppendToArrayVariable",
+                        "inputs": {
+                          "value": {
+                            "ContentBytes": "@body('Download_signed_report')",
+                            "Name": "@first(body('Read_pending_row')?['value'])?['dtc_reportfilename']"
+                          },
+                          "name": "MailAttachments"
+                        }
+                      },
+                      "Add_signed_report_size": {
+                        "runAfter": {
+                          "Append_signed_report": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "IncrementVariable",
+                        "inputs": {
+                          "value": "@add(mul(4,div(add(int(first(body('Read_signed_report')?['value'])?['dtc_bytelength']),2),3)),2048)",
+                          "name": "EncodedBytes"
+                        }
+                      },
+                      "For_each_customer_attachment": {
+                        "foreach": "@body('Parse_customer_manifest')",
+                        "actions": {
+                          "Read_customer_attachment": {
+                            "runAfter": {},
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "parameters": {
+                                "$select": "dtc_copiersmtoevidenciav2id,dtc_evidencekey,_dtc_signedmto_value,dtc_purpose,dtc_sequence,dtc_originalfilename,dtc_contenttype,dtc_bytelength,dtc_sha256,dtc_securitystate",
+                                "$top": 2,
+                                "$filter": "dtc_evidencekey eq '@{replace(items('For_each_customer_attachment')?['evidenceKey'],decodeUriComponent('%27'),concat(decodeUriComponent('%27'),decodeUriComponent('%27')))}' and _dtc_signedmto_value eq @{triggerOutputs()?['body/dtc_copiersmtov2id']} and dtc_purpose eq 827270003 and dtc_securitystate eq 827270002",
+                                "entityName": "dtc_copiersmtoevidenciav2s"
+                              },
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                "connectionName": "shared_commondataserviceforapps",
+                                "operationId": "ListRecords"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            },
+                            "runtimeConfiguration": {
+                              "secureData": {
+                                "properties": [
+                                  "inputs",
+                                  "outputs"
+                                ]
+                              }
+                            }
+                          },
+                          "Validate_customer_attachment": {
+                            "actions": {
+                              "Download_customer_attachment": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "parameters": {
+                                    "fileImageFieldName": "dtc_filecontent",
+                                    "entityName": "dtc_copiersmtoevidenciav2s",
+                                    "recordId": "@first(body('Read_customer_attachment')?['value'])?['dtc_copiersmtoevidenciav2id']",
+                                    "organization": "https://orgc79ca19c.crm2.dynamics.com"
+                                  },
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "operationId": "GetEntityFileImageFieldContentWithOrganization"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                },
+                                "runtimeConfiguration": {
+                                  "secureData": {
+                                    "properties": [
+                                      "inputs",
+                                      "outputs"
+                                    ]
+                                  }
+                                }
+                              },
+                              "Reread_customer_attachment": {
+                                "runAfter": {
+                                  "Download_customer_attachment": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "parameters": {
+                                    "$select": "dtc_copiersmtoevidenciav2id,dtc_evidencekey,_dtc_signedmto_value,dtc_purpose,dtc_sequence,dtc_originalfilename,dtc_contenttype,dtc_bytelength,dtc_sha256,dtc_securitystate",
+                                    "$top": 2,
+                                    "$filter": "dtc_evidencekey eq '@{replace(items('For_each_customer_attachment')?['evidenceKey'],decodeUriComponent('%27'),concat(decodeUriComponent('%27'),decodeUriComponent('%27')))}' and _dtc_signedmto_value eq @{triggerOutputs()?['body/dtc_copiersmtov2id']} and dtc_purpose eq 827270003 and dtc_securitystate eq 827270002",
+                                    "entityName": "dtc_copiersmtoevidenciav2s"
+                                  },
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                                    "connectionName": "shared_commondataserviceforapps",
+                                    "operationId": "ListRecords"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                },
+                                "runtimeConfiguration": {
+                                  "secureData": {
+                                    "properties": [
+                                      "inputs",
+                                      "outputs"
+                                    ]
+                                  }
+                                }
+                              },
+                              "Validate_stable_customer_attachment": {
+                                "actions": {
+                                  "Append_customer_attachment": {
+                                    "runAfter": {},
+                                    "type": "AppendToArrayVariable",
+                                    "inputs": {
+                                      "value": {
+                                        "ContentBytes": "@body('Download_customer_attachment')",
+                                        "Name": "@items('For_each_customer_attachment')?['fileName']"
+                                      },
+                                      "name": "MailAttachments"
+                                    }
+                                  },
+                                  "Remember_evidence_key": {
+                                    "runAfter": {
+                                      "Append_customer_attachment": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "AppendToArrayVariable",
+                                    "inputs": {
+                                      "value": "@items('For_each_customer_attachment')?['evidenceKey']",
+                                      "name": "EvidenceKeys"
+                                    }
+                                  },
+                                  "Remember_sequence": {
+                                    "runAfter": {
+                                      "Remember_evidence_key": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "AppendToArrayVariable",
+                                    "inputs": {
+                                      "value": "@string(items('For_each_customer_attachment')?['sequence'])",
+                                      "name": "AttachmentSequences"
+                                    }
+                                  },
+                                  "Add_customer_attachment_size": {
+                                    "runAfter": {
+                                      "Remember_sequence": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "IncrementVariable",
+                                    "inputs": {
+                                      "value": "@add(mul(4,div(add(int(items('For_each_customer_attachment')?['size']),2),3)),2048)",
+                                      "name": "EncodedBytes"
+                                    }
+                                  }
+                                },
+                                "runAfter": {
+                                  "Reread_customer_attachment": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "else": {
+                                  "actions": {
+                                    "Reject_changed_attachment": {
+                                      "runAfter": {},
+                                      "type": "SetVariable",
+                                      "inputs": {
+                                        "value": false,
+                                        "name": "EvidenceValid"
+                                      }
+                                    }
+                                  }
+                                },
+                                "expression": "@and(equals(length(body('Reread_customer_attachment')?['value']),1),equals(first(body('Read_customer_attachment')?['value'])?['@odata.etag'],first(body('Reread_customer_attachment')?['value'])?['@odata.etag']))",
+                                "type": "If"
+                              }
+                            },
+                            "runAfter": {
+                              "Read_customer_attachment": [
+                                "Succeeded"
+                              ]
+                            },
+                            "else": {
+                              "actions": {
+                                "Reject_customer_attachment": {
+                                  "runAfter": {},
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "value": false,
+                                    "name": "EvidenceValid"
+                                  }
+                                }
+                              }
+                            },
+                            "expression": "@and(equals(length(body('Read_customer_attachment')?['value']),1),equals(first(body('Read_customer_attachment')?['value'])?['dtc_evidencekey'],items('For_each_customer_attachment')?['evidenceKey']),equals(first(body('Read_customer_attachment')?['value'])?['dtc_sequence'],items('For_each_customer_attachment')?['sequence']),equals(first(body('Read_customer_attachment')?['value'])?['dtc_originalfilename'],items('For_each_customer_attachment')?['fileName']),equals(items('For_each_customer_attachment')?['fileName'],concat('adjunto-',formatNumber(items('For_each_customer_attachment')?['sequence'],'000'),if(equals(items('For_each_customer_attachment')?['contentType'],'image/png'),'.png','.jpg'))),equals(first(body('Read_customer_attachment')?['value'])?['dtc_contenttype'],items('For_each_customer_attachment')?['contentType']),equals(first(body('Read_customer_attachment')?['value'])?['dtc_bytelength'],items('For_each_customer_attachment')?['size']),equals(first(body('Read_customer_attachment')?['value'])?['dtc_sha256'],items('For_each_customer_attachment')?['sha256']),equals(items('For_each_customer_attachment')?['purpose'],'CustomerAttachment'),equals(items('For_each_customer_attachment')?['securityState'],'ScanPassed'),not(contains(variables('EvidenceKeys'),items('For_each_customer_attachment')?['evidenceKey'])),not(contains(variables('AttachmentSequences'),string(items('For_each_customer_attachment')?['sequence']))))",
+                            "type": "If"
+                          }
+                        },
+                        "runAfter": {
+                          "Add_signed_report_size": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Foreach",
+                        "runtimeConfiguration": {
+                          "concurrency": {
+                            "repetitions": 1
+                          }
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "Reread_signed_report": [
+                        "Succeeded"
+                      ]
+                    },
+                    "else": {
+                      "actions": {
+                        "Reject_changed_report": {
+                          "runAfter": {},
+                          "type": "SetVariable",
+                          "inputs": {
+                            "value": false,
+                            "name": "EvidenceValid"
+                          }
+                        }
+                      }
+                    },
+                    "expression": "@and(equals(length(body('Reread_signed_report')?['value']),1),equals(first(body('Read_signed_report')?['value'])?['@odata.etag'],first(body('Reread_signed_report')?['value'])?['@odata.etag']))",
+                    "type": "If"
+                  }
+                },
+                "runAfter": {
+                  "Read_signed_report": [
+                    "Succeeded"
+                  ]
+                },
+                "else": {
+                  "actions": {
+                    "Reject_signed_report": {
+                      "runAfter": {},
+                      "type": "SetVariable",
+                      "inputs": {
+                        "value": false,
+                        "name": "EvidenceValid"
+                      }
+                    }
+                  }
+                },
+                "expression": "@and(equals(length(body('Read_signed_report')?['value']),1),equals(first(body('Read_signed_report')?['value'])?['dtc_contenttype'],'application/pdf'),equals(first(body('Read_signed_report')?['value'])?['dtc_originalfilename'],first(body('Read_pending_row')?['value'])?['dtc_reportfilename']),equals(first(body('Read_signed_report')?['value'])?['dtc_sha256'],first(body('Read_pending_row')?['value'])?['dtc_reportsha256']),greater(int(coalesce(first(body('Read_signed_report')?['value'])?['dtc_bytelength'],0)),0),lessOrEquals(int(coalesce(first(body('Read_signed_report')?['value'])?['dtc_bytelength'],0)),12582912),equals(length(body('Parse_customer_manifest')),int(coalesce(first(body('Read_pending_row')?['value'])?['dtc_attachmentcount'],-1))),not(empty(first(body('Read_pending_row')?['value'])?['dtc_emailtosnapshot'])),not(empty(first(body('Read_pending_row')?['value'])?['dtc_emailsubjectsnapshot'])))",
+                "type": "If"
+              }
+            },
+            "runAfter": {
+              "Mark_processing": [
+                "Succeeded"
+              ]
+            },
+            "type": "Scope"
+          },
+          "Send_only_complete_report": {
+            "actions": {
+              "Send_complete_report_once": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "emailMessage/Body": "@first(body('Read_pending_row')?['value'])?['dtc_emailhtmlbodysnapshot']",
+                    "emailMessage/To": "@first(body('Read_pending_row')?['value'])?['dtc_emailtosnapshot']",
+                    "emailMessage/Importance": "Normal",
+                    "emailMessage/Subject": "@first(body('Read_pending_row')?['value'])?['dtc_emailsubjectsnapshot']",
+                    "emailMessage/Attachments": "@variables('MailAttachments')"
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "connectionName": "shared_office365",
+                    "operationId": "SendEmailV2"
+                  },
+                  "retryPolicy": {
+                    "type": "none"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "runtimeConfiguration": {
+                  "secureData": {
+                    "properties": [
+                      "inputs",
+                      "outputs"
+                    ]
+                  }
+                }
+              },
+              "Mark_sent": {
+                "runAfter": {
+                  "Send_complete_report_once": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "entityName": "dtc_copiersmtov2s",
+                    "recordId": "@triggerOutputs()?['body/dtc_copiersmtov2id']",
+                    "item/dtc_emailstate": 827270003,
+                    "item/dtc_lasterrorcode": "",
+                    "item/dtc_lasterrorsafemessage": ""
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "UpdateRecord"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "runtimeConfiguration": {
+                  "secureData": {
+                    "properties": [
+                      "inputs",
+                      "outputs"
+                    ]
+                  }
+                }
+              },
+              "Mark_send_needs_review": {
+                "runAfter": {
+                  "Send_complete_report_once": [
+                    "Failed",
+                    "TimedOut"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "entityName": "dtc_copiersmtov2s",
+                    "recordId": "@triggerOutputs()?['body/dtc_copiersmtov2id']",
+                    "item/dtc_emailstate": 827270002,
+                    "item/dtc_lasterrorcode": "EMAIL_REVIEW_REQUIRED",
+                    "item/dtc_lasterrorsafemessage": "El proveedor no confirmo el envio. Revisar enviados antes de cualquier reintento; no se reenvia automaticamente."
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "UpdateRecord"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "runtimeConfiguration": {
+                  "secureData": {
+                    "properties": [
+                      "inputs",
+                      "outputs"
+                    ]
+                  }
+                }
+              }
+            },
+            "runAfter": {
+              "Prepare_verified_attachments": [
+                "Succeeded"
+              ]
+            },
+            "else": {
+              "actions": {
+                "Mark_invalid_report_failed": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "entityName": "dtc_copiersmtov2s",
+                      "recordId": "@triggerOutputs()?['body/dtc_copiersmtov2id']",
+                      "item/dtc_emailstate": 827270004,
+                      "item/dtc_lasterrorcode": "EMAIL_EVIDENCE_INVALID",
+                      "item/dtc_lasterrorsafemessage": "No se envio: PDF, adjuntos, manifiesto o tamano no coinciden con el reporte finalizado."
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "UpdateRecord"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs",
+                        "outputs"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "expression": "@and(variables('EvidenceValid'),equals(length(variables('MailAttachments')),add(1,int(first(body('Read_pending_row')?['value'])?['dtc_attachmentcount']))),lessOrEquals(variables('EncodedBytes'),26214400))",
+            "type": "If"
+          },
+          "Mark_preparation_failed": {
+            "runAfter": {
+              "Prepare_verified_attachments": [
+                "Failed",
+                "TimedOut"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "entityName": "dtc_copiersmtov2s",
+                "recordId": "@triggerOutputs()?['body/dtc_copiersmtov2id']",
+                "item/dtc_emailstate": 827270004,
+                "item/dtc_lasterrorcode": "EMAIL_PREPARATION_FAILED",
+                "item/dtc_lasterrorsafemessage": "No se envio: fallo la preparacion de los archivos. El reporte firmado permanece guardado."
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                "connectionName": "shared_commondataserviceforapps",
+                "operationId": "UpdateRecord"
+              },
+              "authentication": "@parameters('$authentication')"
+            },
+            "runtimeConfiguration": {
+              "secureData": {
+                "properties": [
+                  "inputs",
+                  "outputs"
+                ]
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "Read_pending_row": [
+            "Succeeded"
+          ]
+        },
+        "else": {
+          "actions": {}
+        },
+        "expression": "@equals(length(body('Read_pending_row')?['value']),1)",
+        "type": "If"
+      }
+    },
+    "outputs": {}
+  },
+  "state": "Started",
+  "flowId": "66e7671c-17d4-4f82-b0f3-59070c0a00b8",
+  "displayName": "Copiers MTO V2 - Enviar reporte firmado",
+  "contract": "outlook-send-once-v1"
+}
