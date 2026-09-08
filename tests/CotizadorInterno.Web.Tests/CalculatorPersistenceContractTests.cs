@@ -2,12 +2,77 @@ using CotizadorInterno.Web.Models.Calculator;
 using CotizadorInterno.Web.Services;
 using CotizadorInterno.Web.Services.Calculator;
 using System.Reflection;
+using System.Globalization;
+using System.Text.Json;
 using Xunit;
 
 namespace CotizadorInterno.Web.Tests;
 
 public sealed class CalculatorPersistenceContractTests
 {
+    [Fact]
+    public void StoredDataverseDecimalsCanBeSavedAgainWithoutChangingEconomicValues()
+    {
+        // Dataverse emits Decimal columns with ten places, including trailing zeros.
+        using var row = JsonDocument.Parse("""
+            {
+              "cr07a_lineid": "stored-line",
+              "cr07a_lineorder": 1,
+              "cr07a_linebusinesstype": 1,
+              "cr07a_lineproductid": "product-1",
+              "cr07a_lineproductdescription": "Microsoft 365",
+              "cr07a_linecostunit": 7.7600000000,
+              "cr07a_linemarginpercent": 0.0000000000,
+              "cr07a_linecontractmonths": 12,
+              "cr07a_linequantity": 1,
+              "cr07a_linesuggestedprice": 9.6000000000,
+              "cr07a_lineaccelerator": 0.0400000000
+            }
+            """);
+        var parser = typeof(DataverseService).GetMethod("ParseCalculatorLine", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var parsed = parser.Invoke(null, [row.RootElement])!;
+        var line = Assert.IsType<ScenarioLineInput>(parsed.GetType().GetProperty("Line")!.GetValue(parsed));
+        var request = new ScenarioSaveRequest
+        {
+            ScenarioId = "duplicate",
+            DealType = 1,
+            Lines = [line]
+        };
+        var originalHash = ScenarioInputHasher.Compute(request);
+        var normalizer = typeof(DataverseService).GetMethod(
+            "NormalizeCalculatorPossibilityRequest", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        normalizer.Invoke(null, [request]);
+
+        Assert.Equal(7.76m, line.CostUnit);
+        Assert.Equal(0m, line.MarginPercent);
+        Assert.Equal(9.6m, line.SuggestedRetailPrice);
+        Assert.Equal(0.04m, line.Acelerador);
+        Assert.Equal(originalHash, ScenarioInputHasher.Compute(request));
+    }
+
+    [Theory]
+    [InlineData("7.7600000000", 4, true)]
+    [InlineData("0.0000000000", 4, true)]
+    [InlineData("-12.3400000000", 4, true)]
+    [InlineData("0.1234560000", 6, true)]
+    [InlineData("7.7600100000", 4, false)]
+    [InlineData("0.0000000001", 4, false)]
+    [InlineData("-0.0000100000", 4, false)]
+    [InlineData("0.1234567000", 6, false)]
+    public void DecimalValidationChecksSignificantPlaces(string text, int places, bool accepted)
+    {
+        var validator = typeof(DataverseService).GetMethod(
+            "ValidateCalculatorDecimal", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var value = decimal.Parse(text, CultureInfo.InvariantCulture);
+        var error = Record.Exception(() => validator.Invoke(null, [value, places, "valor", -100_000_000_000m, 100_000_000_000m]));
+
+        if (accepted)
+            Assert.Null(error);
+        else
+            Assert.Contains("decimales", Assert.IsType<InvalidOperationException>(Assert.IsType<TargetInvocationException>(error).InnerException).Message);
+    }
+
     [Fact]
     public void InputHashIsStableAcrossStoredAndSaveModels()
     {

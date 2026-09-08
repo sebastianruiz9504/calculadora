@@ -1007,8 +1007,9 @@ public sealed partial class DataverseService
     {
         if (value < minimum || value > maximum)
             throw new InvalidOperationException($"El {label} está fuera del rango permitido.");
-        var scale = (decimal.GetBits(value)[3] >> 16) & 0x7F;
-        if (scale > maxScale)
+        // Dataverse devuelve decimales con ceros finales (7.7600000000).
+        // Valida la precisión del valor, no la escala de su representación.
+        if (decimal.Round(value, maxScale) != value)
             throw new InvalidOperationException($"El {label} supera {maxScale} decimales.");
     }
 
