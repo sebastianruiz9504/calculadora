@@ -33,6 +33,7 @@ public interface IDataverseService
     Task<ProductLookupItem> EnsureCalculatorProductAsync(ProductCreateInput input, CancellationToken ct = default);
     Task<IReadOnlyList<ClientLookupItem>> SearchClientsAsync(string query, int top = 12, CancellationToken ct = default);
     Task<IReadOnlyList<CotizadorInterno.Web.Models.CopiersMtoV2.CopiersMtoV2ClientOptionDto>> GetCopiersMtoV2ClientsAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<CopiersEquipmentRowDto>> GetCopiersMtoV2EquipmentAsync(CancellationToken ct = default);
     Task<CotizadorInterno.Web.Models.CopiersMtoV2.CopiersMtoV2ClientOptionDto> SaveCopiersMtoV2ClientEmailAsync(string clientId, string email, CancellationToken ct = default);
     Task<IReadOnlyList<SystemUserLookupItem>> SearchSystemUsersAsync(string query, int top = 12, CancellationToken ct = default, bool includeAllWhenEmpty = false);
     Task<SystemUserLookupItem?> GetSystemUserAsync(string systemUserId, CancellationToken ct = default);

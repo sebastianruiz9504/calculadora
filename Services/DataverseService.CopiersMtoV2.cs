@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.CopiersMtoV2;
+using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Services.CopiersMtoV2;
 
 namespace CotizadorInterno.Web.Services;
@@ -8,6 +9,23 @@ namespace CotizadorInterno.Web.Services;
 public sealed partial class DataverseService
 {
     internal const string CopiersContactEmailField = "dtc_personaencargadacopiers";
+
+    // The capture catalog needs equipment assignments, not the historical dashboard.
+    // Reuse its equipment reader so serial, lookup and stock semantics stay identical.
+    public async Task<IReadOnlyList<CopiersEquipmentRowDto>> GetCopiersMtoV2EquipmentAsync(CancellationToken ct = default)
+    {
+        var user = _httpContextAccessor.HttpContext?.User
+            ?? throw new InvalidOperationException("No hay un usuario autenticado.");
+        var metadata = await ResolveRhEntityMetadataAsync(
+            DashboardEquipmentTableLogicalName,
+            DashboardEquipmentTableSetName,
+            DashboardEquipmentIdField,
+            DashboardEquipmentPrimaryNameField,
+            user,
+            ct);
+        var equipment = await GetEquipmentRecordsAsync(metadata, user, ct);
+        return BuildEquipmentRows(equipment, []);
+    }
 
     // Use the signed-in technician's Dataverse permissions, not the PDF worker identity.
     public async Task<IReadOnlyList<CopiersMtoV2ClientOptionDto>> GetCopiersMtoV2ClientsAsync(CancellationToken ct = default)

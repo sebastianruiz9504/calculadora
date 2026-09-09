@@ -14,6 +14,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Web;
 using Xunit;
 
 namespace CotizadorInterno.Web.Tests;
@@ -31,6 +33,42 @@ public sealed class CopiersMtoV2ControllerTests
         var authorization = Assert.Single(typeof(CopiersMtoV2Controller)
             .GetCustomAttributes<ModuleAuthorizeAttribute>());
         Assert.Equal(AppModule.Copiers, Assert.IsType<AppModule>(Assert.Single(authorization.Arguments!)));
+    }
+
+    [Fact]
+    public void BootstrapDisablesCachingOfAuthenticatedClientCatalog()
+    {
+        var cache = typeof(CopiersMtoV2Controller).GetMethod(nameof(CopiersMtoV2Controller.Bootstrap))!
+            .GetCustomAttribute<ResponseCacheAttribute>();
+        Assert.NotNull(cache);
+        Assert.True(cache.NoStore);
+        Assert.Equal(ResponseCacheLocation.None, cache.Location);
+    }
+
+    [Fact]
+    public async Task BootstrapPropagatesExpiredSessionToScopeChallengeBeforeCatalogReads()
+    {
+        var fixture = new Fixture();
+        var challenge = new MicrosoftIdentityWebChallengeUserException(
+            new MsalUiRequiredException("interaction_required", "Sign in again."), ["scope"], "");
+        fixture.Dataverse.CurrentUserException = challenge;
+
+        Assert.Same(challenge, await Assert.ThrowsAsync<MicrosoftIdentityWebChallengeUserException>(
+            () => fixture.Controller.Bootstrap(default)));
+        Assert.Equal(0, fixture.Dataverse.ClientCatalogReadCount);
+        Assert.Equal(0, fixture.Dataverse.EquipmentCatalogReadCount);
+    }
+
+    [Fact]
+    public async Task BootstrapPreservesClientCancellationInsteadOfReturningServerError()
+    {
+        var fixture = new Fixture();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        fixture.Dataverse.CurrentUserException = new OperationCanceledException(cancellation.Token);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => fixture.Controller.Bootstrap(cancellation.Token));
+        Assert.Equal(0, fixture.Dataverse.ClientCatalogReadCount);
     }
 
     [Fact]
@@ -55,6 +93,9 @@ public sealed class CopiersMtoV2ControllerTests
         Assert.Contains(bootstrap.Clients, item => item.Id == ClientId && item.Email == "copiers@example.com");
         Assert.DoesNotContain(bootstrap.Clients, item => item.Name == "Resumen ajeno");
         Assert.Equal(1, fixture.Dataverse.ClientCatalogReadCount);
+        Assert.Equal(1, fixture.Dataverse.EquipmentCatalogReadCount);
+        Assert.Equal(0, fixture.Dataverse.EquipmentDashboardReadCount);
+        Assert.Equal(nameof(IDataverseService.GetCurrentUserAsync), fixture.Dataverse.ReadCalls[0]);
         Assert.Equal(EquipmentId, Assert.Single(bootstrap.Equipment).Id);
         Assert.Equal("Técnico autorizado", bootstrap.TechnicianName);
         Assert.Equal(0, fixture.Service.CreateCount);
@@ -67,6 +108,9 @@ public sealed class CopiersMtoV2ControllerTests
         fixture.Options.AllowedTechnicianEmails = ["otro.tecnico@example.com"];
 
         Assert.IsType<ForbidResult>(await fixture.Controller.Bootstrap(default));
+        Assert.Equal(0, fixture.Dataverse.ClientCatalogReadCount);
+        Assert.Equal(0, fixture.Dataverse.EquipmentCatalogReadCount);
+        Assert.Equal(0, fixture.Dataverse.EquipmentDashboardReadCount);
     }
 
     [Fact]
@@ -75,11 +119,14 @@ public sealed class CopiersMtoV2ControllerTests
         var fixture = new Fixture(pilotEnabled: false);
         fixture.Options.AllowedClientIds = [ClientId.ToUpperInvariant()];
         fixture.Dataverse.Clients = [Client(), new() { Id = OtherClientId, Name = "Otro cliente" }];
-        fixture.Dataverse.Dashboard.EquipmentRows =
+        fixture.Dataverse.EquipmentCatalog =
         [
             Equipment(),
             new() { RecordId = Guid.NewGuid().ToString("D"), ClientId = ClientId, Serial = "STOCK", InStock = true },
-            new() { RecordId = Guid.NewGuid().ToString("D"), ClientId = OtherClientId, Serial = "OTRO" }
+            new() { RecordId = Guid.NewGuid().ToString("D"), ClientId = OtherClientId, Serial = "OTRO" },
+            new() { RecordId = "invalid-equipment", ClientId = ClientId, Serial = "INVALID-ID" },
+            new() { RecordId = Guid.NewGuid().ToString("D"), ClientId = "", Serial = "UNASSIGNED" },
+            new() { RecordId = Guid.NewGuid().ToString("D"), ClientId = ClientId, Serial = " " }
         ];
 
         var result = Assert.IsType<OkObjectResult>(await fixture.Controller.Bootstrap(default));
@@ -87,6 +134,19 @@ public sealed class CopiersMtoV2ControllerTests
 
         Assert.Equal(ClientId, Assert.Single(bootstrap.Clients).Id);
         Assert.Equal(EquipmentId, Assert.Single(bootstrap.Equipment).Id);
+    }
+
+    [Fact]
+    public async Task BootstrapUsesLightweightEquipmentEvenWhenLegacyDashboardFails()
+    {
+        var fixture = new Fixture(pilotEnabled: false);
+        fixture.Dataverse.DashboardException = new InvalidOperationException("Historical maintenance is unavailable.");
+
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.Bootstrap(default));
+        var bootstrap = Assert.IsType<CopiersMtoV2BootstrapDto>(result.Value);
+
+        Assert.Equal(EquipmentId, Assert.Single(bootstrap.Equipment).Id);
+        Assert.Equal(0, fixture.Dataverse.EquipmentDashboardReadCount);
     }
 
     [Theory]
@@ -311,6 +371,7 @@ public sealed class CopiersMtoV2ControllerTests
             Dataverse = (CopiersDataverseProxy)dataverseService;
             Dataverse.Clients = [Client()];
             Dataverse.Dashboard.EquipmentRows = [Equipment()];
+            Dataverse.EquipmentCatalog = [Equipment()];
             Options = new CopiersMaintenanceV2Options { PilotEnabled = pilotEnabled };
             Controller = new CopiersMtoV2Controller(dataverseService, Service,
                 Microsoft.Extensions.Options.Options.Create(Options),
@@ -355,9 +416,15 @@ public sealed class CopiersMtoV2ControllerTests
         };
         public IReadOnlyList<CopiersMtoV2ClientOptionDto> Clients { get; set; } = [];
         public CopiersEquipmentDashboardDto Dashboard { get; set; } = new();
+        public IReadOnlyList<CopiersEquipmentRowDto> EquipmentCatalog { get; set; } = [];
+        public Exception? DashboardException { get; set; }
+        public Exception? CurrentUserException { get; set; }
         public CopiersMtoV2ClientOptionDto SavedClient { get; set; } = new();
         public Exception? SaveException { get; set; }
         public int ClientCatalogReadCount { get; private set; }
+        public int EquipmentCatalogReadCount { get; private set; }
+        public int EquipmentDashboardReadCount { get; private set; }
+        public List<string> ReadCalls { get; } = [];
         public int EmailSaveCount { get; private set; }
         public string? LastSavedClientId { get; private set; }
         public string? LastSavedEmail { get; private set; }
@@ -367,10 +434,21 @@ public sealed class CopiersMtoV2ControllerTests
             switch (targetMethod?.Name)
             {
                 case nameof(IDataverseService.GetCurrentUserAsync):
-                    return Task.FromResult<CurrentUserInfo?>(CurrentUser);
+                    ReadCalls.Add(targetMethod.Name);
+                    return CurrentUserException is null
+                        ? Task.FromResult<CurrentUserInfo?>(CurrentUser)
+                        : Task.FromException<CurrentUserInfo?>(CurrentUserException);
                 case nameof(IDataverseService.GetCopiersEquipmentDashboardAsync):
-                    return Task.FromResult(Dashboard);
+                    EquipmentDashboardReadCount++;
+                    return DashboardException is null
+                        ? Task.FromResult(Dashboard)
+                        : Task.FromException<CopiersEquipmentDashboardDto>(DashboardException);
+                case nameof(IDataverseService.GetCopiersMtoV2EquipmentAsync):
+                    ReadCalls.Add(targetMethod.Name);
+                    EquipmentCatalogReadCount++;
+                    return Task.FromResult(EquipmentCatalog);
                 case nameof(IDataverseService.GetCopiersMtoV2ClientsAsync):
+                    ReadCalls.Add(targetMethod.Name);
                     ClientCatalogReadCount++;
                     return Task.FromResult(Clients);
                 case nameof(IDataverseService.SaveCopiersMtoV2ClientEmailAsync):

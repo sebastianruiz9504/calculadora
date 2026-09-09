@@ -278,3 +278,170 @@ test("empty email cannot be submitted", async () => {
     await h.save({ preventDefault() {} });
     assert.equal(h.result().request, undefined);
 });
+
+test("mobile catalogs use app-owned lists, not native datalist", () => {
+    assert.doesNotMatch(view, /<datalist|\blist="mtoV2/);
+    assert.match(view, /id="mtoV2ClientOptions"[^>]*hidden/);
+    assert.ok(view.indexOf("copiers-mto-v2-picker.js") < view.indexOf('src="~/js/copiers-mto-v2.js"'));
+    assert.ok(functionSource("initialize").indexOf("void loadBootstrap()") < functionSource("initialize").indexOf("renderFiles()"));
+});
+
+test("child replacement supports older mobile DOM implementations", () => {
+    const children = ["old"];
+    const parent = {
+        get firstChild() { return children[0]; },
+        removeChild() { children.shift(); }, appendChild(value) { children.push(value); }
+    };
+    bind("replaceContents")(parent, "new", "second");
+    assert.deepEqual(children, ["new", "second"]);
+    assert.doesNotMatch(script, /elements\.[\w]+\??\.replaceChildren/);
+});
+
+function responseHarness(response) {
+    const requests = [];
+    const read = bind("readCatalogResponse", {
+        root: { dataset: {} },
+        fetch: async (url, options) => { requests.push({ url, options }); if (response instanceof Error) throw response; return response; },
+        readResponse: bind("readResponse")
+    });
+    return { read, requests };
+}
+
+for (const variant of [
+    { status: 401, ok: false }, { status: 403, ok: false },
+    { status: 200, ok: true, redirected: true },
+    { status: 200, ok: true, headers: { get: () => "text/html" } }
+]) test(`bootstrap rejects expired or redirected session ${JSON.stringify(variant)}`, async () => {
+    await assert.rejects(responseHarness(variant).read(), /sesión/);
+});
+
+test("bootstrap distinguishes network failure and remains a read-only no-store request", async () => {
+    const h = responseHarness(new TypeError("network failed"));
+    await assert.rejects(h.read(), /Revisa internet/);
+    assert.equal(h.requests[0].options.method, "GET");
+    assert.equal(h.requests[0].options.cache, "no-store");
+    assert.equal(h.requests[0].options.credentials, "same-origin");
+});
+
+test("bootstrap keeps explicit server error instead of treating it as an empty catalog", async () => {
+    await assert.rejects(responseHarness({ ok: false, status: 502, headers: { get: () => "application/json" }, json: async () => ({ message: "Error controlado" }) }).read(), /Error controlado/);
+});
+
+test("bootstrap reads a complete successful JSON catalog", async () => {
+    const result = { clients: [{ id: "C-1", name: "Cliente" }], equipment: [], schemaReady: true };
+    assert.deepEqual(await responseHarness({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => result }).read(), result);
+});
+
+function deadlineHarness(reader, withAbort = true) {
+    const timers = [], cleared = [];
+    let aborted = false;
+    const run = bind("fetchCatalog", {
+        AbortController: withAbort ? class { signal = {}; abort() { aborted = true; } } : undefined,
+        window: { setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; }, clearTimeout(id) { cleared.push(id); } },
+        readCatalogResponse: reader
+    });
+    return { run, timers, cleared, aborted: () => aborted };
+}
+
+for (const withAbort of [true, false]) test(`bootstrap timeout is bounded and retryable with AbortController=${withAbort}`, async () => {
+    let finish;
+    const h = deadlineHarness(() => new Promise(resolve => { finish = resolve; }), withAbort);
+    const pending = h.run();
+    const rejected = assert.rejects(pending, /tardó demasiado.*Reintentar/);
+    assert.equal(h.timers[0].delay, 25000);
+    h.timers[0].callback();
+    await rejected;
+    finish({ clients: ["late response"] });
+    assert.deepEqual(h.cleared, [1]);
+    assert.equal(h.aborted(), withAbort);
+});
+
+test("successful bootstrap clears deadline without aborting", async () => {
+    const h = deadlineHarness(async () => ({ clients: ["ok"] }));
+    assert.deepEqual(await h.run(), { clients: ["ok"] });
+    assert.deepEqual(h.cleared, [1]);
+    assert.equal(h.aborted(), false);
+});
+
+function loadHarness(reader) {
+    const elements = { retryBootstrap: {}, catalogFeedback: {}, equipmentFeedback: {}, technicianName: {} };
+    const picker = () => ({ status: "", setStatus(value) { this.status = value; } });
+    const state = { catalog: { loaded: false, loading: false }, clientPicker: picker(), equipmentPicker: picker() };
+    const textProperty = bind("textProperty");
+    const load = bind("loadBootstrap", {
+        state, elements, fetchCatalog: reader,
+        normalizeClient: bind("normalizeClient", { textProperty }),
+        normalizeEquipment: bind("normalizeEquipment", { textProperty }),
+        normalizeMaintenanceType: bind("normalizeMaintenanceType", { textProperty }), textProperty,
+        setCatalogFeedback(element, message) { element.textContent = message; },
+        renderClientOptions() {}, renderMaintenanceTypeOptions() {}, syncClientSelection() {}
+    });
+    return { elements, state, load };
+}
+
+test("failed load restores retry; a later retry loads the catalog", async () => {
+    let calls = 0;
+    const h = loadHarness(async () => {
+        if (++calls === 1) throw new Error("Sin conexión");
+        return { clients: [{ id: "C-1", name: "Cliente" }], equipment: [], schemaReady: true };
+    });
+    await h.load();
+    assert.equal(h.state.catalog.loading, false);
+    assert.equal(h.elements.retryBootstrap.hidden, false);
+    assert.equal(h.elements.retryBootstrap.disabled, false);
+    assert.equal(h.state.clientPicker.status, "Sin conexión");
+    await h.load();
+    assert.equal(h.state.catalog.loaded, true);
+    assert.equal(h.elements.retryBootstrap.hidden, true);
+});
+
+function selectionHarness() {
+    const clients = [{ id: "C-1", name: "Duplicado" }, { id: "C-2", name: "Duplicado" }];
+    const state = { catalog: { loaded: true, schemaReady: true, clients, equipment: [], selectedClient: null, selectedEquipment: null } };
+    const elements = { clientName: control("Duplicado"), clientId: control(), editClientEmail: {}, catalogFeedback: {}, equipmentId: control(), equipmentSerial: control() };
+    const sync = bind("syncClientSelection", {
+        state, elements, catalogKey, sameCatalogId, prefillClientContact() {}, clearClientPrefill() {},
+        setCatalogFeedback() {}, renderEquipmentOptions() {}, syncEquipmentSelection() {}
+    });
+    return { state, elements, sync };
+}
+
+test("duplicate client names require a concrete ID and preserve the selected match", () => {
+    const h = selectionHarness();
+    h.sync();
+    assert.equal(h.state.catalog.selectedClient, null);
+    h.sync("C-2");
+    assert.equal(h.elements.clientId.value, "C-2");
+    h.sync();
+    assert.equal(h.elements.clientId.value, "C-2");
+});
+
+test("changing client via picker clears the previous equipment selection", () => {
+    const h = selectionHarness();
+    h.sync("C-1");
+    h.state.catalog.selectedEquipment = { id: "E-1", clientId: "C-1", serial: "OLD-1" };
+    h.elements.equipmentSerial.value = "OLD-1";
+    h.elements.equipmentId.value = "E-1";
+    h.sync("C-2");
+    assert.equal(h.state.catalog.selectedEquipment, null);
+    assert.equal(h.elements.equipmentSerial.value, "");
+    assert.equal(h.elements.equipmentId.value, "");
+});
+
+test("picker selection invokes authoritative ID synchronization and invalidates signature", () => {
+    const callbacks = [];
+    const state = {};
+    const elements = { clientName: control(), clientOptions: {}, equipmentSerial: control(), equipmentOptions: {} };
+    let signatureInvalidations = 0;
+    const selected = [];
+    bind("initializeCatalogPickers", {
+        state, elements, window: { CopiersMtoV2Picker: { create(input, list, options) { callbacks.push(options.onSelect); return {}; } } },
+        syncClientSelection(id) { selected.push(["client", id]); },
+        syncEquipmentSelection(id) { selected.push(["equipment", id]); },
+        invalidateSignatureForChange() { signatureInvalidations++; }
+    })();
+    callbacks[0]({ id: "C-2", label: "Duplicado" });
+    callbacks[1]({ id: "E-2", label: "SERIAL-2" });
+    assert.deepEqual(selected, [["client", "C-2"], ["equipment", "E-2"]]);
+    assert.equal(signatureInvalidations, 2);
+});

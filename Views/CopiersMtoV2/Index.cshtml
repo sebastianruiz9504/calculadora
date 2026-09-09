@@ -111,36 +111,42 @@
                 <div class="mto-v2-field mto-v2-field--wide">
                     <label for="mtoV2ClientName">Cliente <b aria-hidden="true">*</b></label>
                     <div class="mto-v2-client-picker">
+                    <div class="mto-v2-picker">
                     <input class="form-control"
                            type="text"
                            name="ClientName"
                            id="mtoV2ClientName"
-                           list="mtoV2ClientOptions"
                            aria-describedby="mtoV2CatalogFeedback"
-                           autocomplete="organization"
+                           autocomplete="off"
+                           autocapitalize="none"
+                           spellcheck="false"
                            required />
+                        <div id="mtoV2ClientOptions" class="mto-v2-picker__list" hidden></div>
+                    </div>
                         <button class="btn btn-outline-primary mto-v2-client-email-button" type="button" id="mtoV2EditClientEmail"
                                 aria-label="Agregar o editar el correo de la persona encargada de Copiers" title="Agregar o editar correo del encargado de Copiers" disabled>+</button>
                     </div>
                     <input type="hidden" name="ClientId" id="mtoV2ClientId" />
-                    <datalist id="mtoV2ClientOptions"></datalist>
-                    <small id="mtoV2CatalogFeedback">Cargando clientes de Copiers…</small>
+                    <small id="mtoV2CatalogFeedback" role="status" aria-live="polite">Cargando clientes de Copiers…</small>
                 </div>
 
-                <label class="mto-v2-field">
-                    <span>Serial del equipo <b aria-hidden="true">*</b></span>
+                <div class="mto-v2-field">
+                    <label for="mtoV2EquipmentSerial">Serial del equipo <b aria-hidden="true">*</b></label>
+                    <div class="mto-v2-picker">
                     <input class="form-control"
                            type="text"
                            name="EquipmentSerial"
                            id="mtoV2EquipmentSerial"
-                           list="mtoV2EquipmentOptions"
                            aria-describedby="mtoV2EquipmentFeedback"
                            autocomplete="off"
+                           autocapitalize="none"
+                           spellcheck="false"
                            required />
+                    <div id="mtoV2EquipmentOptions" class="mto-v2-picker__list" hidden></div>
+                    </div>
                     <input type="hidden" name="EquipmentId" id="mtoV2EquipmentId" />
-                    <datalist id="mtoV2EquipmentOptions"></datalist>
                     <small id="mtoV2EquipmentFeedback">Selecciona primero un cliente.</small>
-                </label>
+                </div>
 
                 <label class="mto-v2-field">
                     <span>Orden o referencia</span>
@@ -388,6 +394,7 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/copiers-mto-v2-picker.js" asp-append-version="true"></script>
     <script src="~/js/copiers-mto-v2.js" asp-append-version="true"></script>
 }
 

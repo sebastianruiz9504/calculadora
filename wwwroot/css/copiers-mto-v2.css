@@ -957,3 +957,88 @@
     }
 }
 
+/* App-owned choices also work on touch browsers that do not present datalist. */
+.mto-v2-picker {
+    position: relative;
+    min-width: 0;
+}
+
+.mto-v2-client-picker > .mto-v2-picker {
+    flex: 1;
+    min-width: 0;
+}
+
+.mto-v2-picker-list {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 5px);
+    right: 0;
+    left: 0;
+    max-height: 320px;
+    max-height: min(320px, 42dvh);
+    margin: 0;
+    padding: 5px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--mto-line, #d9e2ec);
+    border-radius: 12px;
+    color: var(--mto-ink, #17263c);
+    background: #ffffff;
+    box-shadow: 0 12px 26px rgba(18, 52, 77, .18);
+    text-align: left;
+    touch-action: pan-y;
+}
+
+.mto-v2-picker-list[hidden] {
+    display: none;
+}
+
+.mto-v2-picker-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    touch-action: pan-y;
+    -webkit-tap-highlight-color: rgba(15, 108, 189, .14);
+}
+
+.mto-v2-picker-item[aria-selected="true"] {
+    border-color: var(--mto-brand, #0f6cbd);
+    color: var(--mto-brand-dark, #0a4f8a);
+    background: var(--mto-brand-soft, #eaf4ff);
+}
+
+.mto-v2-picker-item__label {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.mto-v2-picker-item__description {
+    color: var(--mto-muted, #5d6b7d);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
+.mto-v2-picker-status {
+    padding: 12px;
+    color: var(--mto-muted, #5d6b7d);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+@media (hover: hover) {
+    .mto-v2-picker-item:hover {
+        background: var(--mto-brand-soft, #eaf4ff);
+    }
+}
+

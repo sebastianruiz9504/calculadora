@@ -112,6 +112,8 @@
         locationAttempted: false,
         savingClientEmail: false,
         editingClientId: "",
+        clientPicker: null,
+        equipmentPicker: null,
         catalog: {
             loaded: false,
             loading: false,
@@ -136,11 +138,41 @@
     function initialize() {
         initializeSubmission();
         initializeDefaults();
-        initializeSignaturePad();
+        initializeCatalogPickers();
         wireEvents();
+        void loadBootstrap();
+        initializeSignaturePad();
         renderFiles();
         showStep(1, { scroll: false });
-        void loadBootstrap();
+    }
+
+    function initializeCatalogPickers() {
+        state.clientPicker = window.CopiersMtoV2Picker.create(elements.clientName, elements.clientOptions, {
+            onSelect(item) {
+                elements.clientName.value = item.label;
+                syncClientSelection(item.id);
+                invalidateSignatureForChange();
+                elements.clientName.classList.remove("is-invalid");
+            }
+        });
+        state.equipmentPicker = window.CopiersMtoV2Picker.create(elements.equipmentSerial, elements.equipmentOptions, {
+            onSelect(item) {
+                elements.equipmentSerial.value = item.label;
+                syncEquipmentSelection(item.id);
+                invalidateSignatureForChange();
+                elements.equipmentSerial.classList.remove("is-invalid");
+            }
+        });
+    }
+
+    // Older mobile engines may not provide Element.replaceChildren.
+    function replaceContents(parent, ...children) {
+        if (!parent) return;
+        if (typeof parent.replaceChildren === "function") parent.replaceChildren(...children);
+        else {
+            while (parent.firstChild) parent.removeChild(parent.firstChild);
+            children.forEach(child => parent.appendChild(child));
+        }
     }
 
     function initializeSubmission() {
@@ -188,17 +220,11 @@
         elements.retryBootstrap.disabled = true;
         setCatalogFeedback(elements.catalogFeedback, "Cargando clientes de Copiers…", "");
         setCatalogFeedback(elements.equipmentFeedback, "Selecciona primero un cliente.", "");
+        state.clientPicker.setStatus("Cargando clientes de Copiers…");
+        state.equipmentPicker.setStatus("Selecciona primero un cliente.");
 
         try {
-            const response = await fetch(root.dataset.bootstrapUrl || "/CopiersMtoV2/Bootstrap", {
-                method: "GET",
-                credentials: "same-origin",
-                headers: { Accept: "application/json" }
-            });
-            const result = await readResponse(response);
-            if (!response.ok) {
-                throw new Error(result?.message || result?.Message || result?.detail || result?.Detail || `No fue posible cargar el catálogo (${response.status}).`);
-            }
+            const result = await fetchCatalog();
 
             const clients = Array.isArray(result?.clients) ? result.clients : Array.isArray(result?.Clients) ? result.Clients : [];
             const equipment = Array.isArray(result?.equipment) ? result.equipment : Array.isArray(result?.Equipment) ? result.Equipment : [];
@@ -229,6 +255,9 @@
         } catch (error) {
             state.catalog.loaded = false;
             state.catalog.schemaReady = false;
+            const message = error instanceof Error ? error.message : "No fue posible cargar los clientes.";
+            state.clientPicker.setStatus(message);
+            state.equipmentPicker.setStatus("Catálogo no disponible. Reintenta la carga.");
             setCatalogFeedback(
                 elements.catalogFeedback,
                 error instanceof Error ? error.message : "No fue posible cargar los clientes.",
@@ -239,6 +268,42 @@
             state.catalog.loading = false;
             elements.retryBootstrap.disabled = false;
         }
+    }
+
+    async function fetchCatalog() {
+        const controller = typeof AbortController === "function" ? new AbortController() : null;
+        let timer;
+        const deadline = new Promise((_, reject) => {
+            timer = window.setTimeout(() => {
+                reject(new Error("La consulta tardó demasiado. Revisa tu conexión y pulsa Reintentar carga del catálogo."));
+                controller?.abort();
+            }, 25000);
+        });
+        try {
+            return await Promise.race([readCatalogResponse(controller?.signal), deadline]);
+        } finally {
+            window.clearTimeout(timer);
+        }
+    }
+
+    async function readCatalogResponse(signal) {
+        let response;
+        try {
+            response = await fetch(root.dataset.bootstrapUrl || "/CopiersMtoV2/Bootstrap", {
+                method: "GET", credentials: "same-origin", cache: "no-store",
+                headers: { Accept: "application/json" }, signal
+            });
+        } catch (error) {
+            if (error?.name === "AbortError") throw error;
+            throw new Error("No se pudo conectar con Copiers. Revisa internet y pulsa Reintentar carga del catálogo.");
+        }
+        if (response.status === 401 || response.status === 403 || response.redirected
+            || (response.ok && !(response.headers.get("content-type") || "").includes("application/json"))) {
+            throw new Error("Tu sesión expiró o no tiene acceso a Copiers. Actualiza la página e inicia sesión nuevamente.");
+        }
+        const result = await readResponse(response);
+        if (!response.ok) throw new Error(result?.message || result?.Message || `No fue posible cargar el catálogo (${response.status}). Pulsa Reintentar carga del catálogo.`);
+        return result;
     }
 
     function normalizeClient(item) {
@@ -288,26 +353,26 @@
             option.textContent = item.label;
             return option;
         });
-        elements.maintenanceType?.replaceChildren(placeholder, ...options);
+        replaceContents(elements.maintenanceType, placeholder, ...options);
     }
 
     function renderClientOptions() {
-        const options = state.catalog.clients.map(client => {
-            const option = document.createElement("option");
-            option.value = client.name;
-            return option;
-        });
-        elements.clientOptions?.replaceChildren(...options);
+        state.clientPicker.setItems(state.catalog.clients.map(client => ({
+            id: client.id, label: client.name, description: client.contactName || ""
+        })));
         setCatalogFeedback(
             elements.catalogFeedback,
             `${state.catalog.clients.length} clientes disponibles. Selecciona una coincidencia de la lista.`,
             "success");
     }
 
-    function syncClientSelection() {
+    function syncClientSelection(preferredId) {
         const previousClient = state.catalog.selectedClient;
         const value = catalogKey(elements.clientName?.value);
-        const selected = state.catalog.clients.find(client => catalogKey(client.name) === value) || null;
+        const matches = state.catalog.clients.filter(client => catalogKey(client.name) === value);
+        const selected = matches.find(client => sameCatalogId(client.id, preferredId))
+            || matches.find(client => sameCatalogId(client.id, previousClient?.id))
+            || (matches.length === 1 ? matches[0] : null);
 
         state.catalog.selectedClient = selected;
         elements.clientId.value = selected?.id || "";
@@ -409,13 +474,10 @@
         const filtered = clientId
             ? state.catalog.equipment.filter(item => sameCatalogId(item.clientId, clientId))
             : [];
-        const options = filtered.map(item => {
-            const option = document.createElement("option");
-            option.value = item.serial;
-            option.label = [item.reference, item.clientName].filter(Boolean).join(" · ");
-            return option;
-        });
-        elements.equipmentOptions?.replaceChildren(...options);
+        state.equipmentPicker.setItems(filtered.map(item => ({
+            id: item.id, label: item.serial, description: item.reference || ""
+        })));
+        if (!clientId) state.equipmentPicker.setStatus("Selecciona primero un cliente.");
 
         if (!state.catalog.loaded) {
             return;
@@ -432,11 +494,14 @@
         }
     }
 
-    function syncEquipmentSelection() {
+    function syncEquipmentSelection(preferredId) {
         const clientId = state.catalog.selectedClient?.id || "";
         const value = catalogKey(elements.equipmentSerial?.value);
-        const selected = state.catalog.equipment.find(item =>
-            sameCatalogId(item.clientId, clientId) && catalogKey(item.serial) === value) || null;
+        const matches = state.catalog.equipment.filter(item =>
+            sameCatalogId(item.clientId, clientId) && catalogKey(item.serial) === value);
+        const selected = matches.find(item => sameCatalogId(item.id, preferredId))
+            || matches.find(item => sameCatalogId(item.id, state.catalog.selectedEquipment?.id))
+            || (matches.length === 1 ? matches[0] : null);
 
         state.catalog.selectedEquipment = selected;
         elements.equipmentId.value = selected?.id || "";
@@ -581,8 +646,8 @@
             state.catalog.loaded = false;
             void loadBootstrap();
         });
-        elements.clientName?.addEventListener("input", syncClientSelection);
-        elements.equipmentSerial?.addEventListener("input", syncEquipmentSelection);
+        elements.clientName?.addEventListener("input", () => syncClientSelection());
+        elements.equipmentSerial?.addEventListener("input", () => syncEquipmentSelection());
         elements.evidenceInput?.addEventListener("change", handleEvidenceSelection);
         elements.fileList?.addEventListener("click", handleFileListClick);
         elements.clearSignature?.addEventListener("click", clearSignature);
@@ -884,7 +949,7 @@
     function renderFiles() {
         const totalBytes = state.files.reduce((sum, file) => sum + file.size, 0);
         elements.fileSummary.textContent = `${state.files.length} de ${maxFiles} archivos · ${formatBytes(totalBytes)} de ${formatBytes(maxTotalBytes)}`;
-        elements.fileList.replaceChildren(...state.files.map((file, index) => {
+        replaceContents(elements.fileList, ...state.files.map((file, index) => {
             const item = document.createElement("li");
             const copy = document.createElement("div");
             const name = document.createElement("strong");
@@ -1138,7 +1203,7 @@
             return;
         }
 
-        elements.review.replaceChildren(
+        replaceContents(elements.review,
             buildReviewSection("Servicio", [
                 reviewItem("Cliente", valueOf("mtoV2ClientName")),
                 reviewItem("Equipo", valueOf("mtoV2EquipmentSerial")),

@@ -43,17 +43,16 @@ public sealed class CopiersMtoV2Controller : Controller
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Bootstrap(CancellationToken ct)
     {
         try
         {
-            var currentUserTask = _dataverse.GetCurrentUserAsync(ct);
-            var equipmentTask = _dataverse.GetCopiersEquipmentDashboardAsync(ct);
-            var clientsTask = _dataverse.GetCopiersMtoV2ClientsAsync(ct);
-            await Task.WhenAll(currentUserTask, equipmentTask, clientsTask);
-            var currentUser = await currentUserTask ?? new CurrentUserInfo();
-            var dashboard = await equipmentTask;
+            var currentUser = await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo();
             EnsureTechnicianPilotAccess(currentUser);
+            var equipmentTask = _dataverse.GetCopiersMtoV2EquipmentAsync(ct);
+            var clientsTask = _dataverse.GetCopiersMtoV2ClientsAsync(ct);
+            await Task.WhenAll(equipmentTask, clientsTask);
 
             var clients = (await clientsTask)
                 .Where(item => Guid.TryParse(item.Id, out _) && !string.IsNullOrWhiteSpace(item.Name))
@@ -62,7 +61,7 @@ public sealed class CopiersMtoV2Controller : Controller
                 .Select(group => group.First())
                 .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            var equipment = dashboard.EquipmentRows
+            var equipment = (await equipmentTask)
                 .Where(item => !item.InStock
                     && Guid.TryParse(item.RecordId, out _)
                     && Guid.TryParse(item.ClientId, out _)
@@ -95,6 +94,14 @@ public sealed class CopiersMtoV2Controller : Controller
                 Clients = clients,
                 Equipment = equipment
             });
+        }
+        catch (MicrosoftIdentityWebChallengeUserException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (UnauthorizedAccessException ex)
         {
