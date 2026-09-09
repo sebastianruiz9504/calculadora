@@ -41,6 +41,26 @@ test("automatic order is read-only and never copied from equipment", () => {
     assert.match(functionSource("submitForm"), /textProperty\(result, "serviceReference", "ServiceReference"\)/);
 });
 
+test("signer identification is absent from the form, review and new submissions", () => {
+    assert.doesNotMatch(view + script, /SignerDocument|signer_document|Sin identificación|Identificación de quien firma/);
+    assert.match(view, /name="SignerName"[^>]*required/);
+    assert.match(view, /name="SignerRole"[^>]*required/);
+});
+
+test("structured answers never request or submit signer identification", () => {
+    const requestedFields = [];
+    const answers = bind("buildStructuredAnswers", {
+        state: { catalog: { selectedEquipment: { reference: "Equipo de prueba" } } },
+        valueOf(id) { requestedFields.push(id); return "Dato de prueba"; },
+        selectedText() { return "Preventivo"; },
+        formatLocalDateTime(value) { return value; },
+        buildCountersSummary() { return "No aplica"; }
+    })();
+    assert.ok(answers.length > 0);
+    assert.ok(answers.every(answer => answer.key !== "signer_document"));
+    assert.ok(requestedFields.every(id => id !== "mtoV2SignerDocument"));
+});
+
 test("no visible location controls, GPS messages, or step-one location prerequisite", () => {
     const visibleCopy = view.replace(/<[^>]*>/g, "");
     assert.doesNotMatch(visibleCopy, /ubicaci[oó]n|coordenada|\bGPS\b/i);

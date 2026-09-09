@@ -32,8 +32,7 @@
         "mtoV2Recommendations",
         "mtoV2CustomerObservations",
         "mtoV2SignerName",
-        "mtoV2SignerRole",
-        "mtoV2SignerDocument"
+        "mtoV2SignerRole"
     ]);
 
     const elements = {
@@ -1199,11 +1198,9 @@
         const image = document.createElement("img");
         section.className = "mto-v2-review-section";
         heading.textContent = "Conformidad del cliente";
-        const signerDocument = valueOf("mtoV2SignerDocument");
         signer.textContent = [
             valueOf("mtoV2SignerName") || "Sin nombre",
-            valueOf("mtoV2SignerRole") || "Sin cargo",
-            signerDocument ? `Identificación ${signerDocument}` : "Sin identificación"
+            valueOf("mtoV2SignerRole") || "Sin cargo"
         ].join(" · ");
         image.className = "mto-v2-review-signature";
         image.alt = "Firma capturada del cliente";
@@ -1239,8 +1236,7 @@
             ["technical_diagnosis", "Diagnóstico técnico", valueOf("mtoV2TechnicalDiagnosis")],
             ["parts_used", "Repuestos o materiales", valueOf("mtoV2PartsUsed")],
             ["counters", "Contadores", buildCountersSummary()],
-            ["recommendations", "Recomendaciones", valueOf("mtoV2Recommendations")],
-            ["signer_document", "Identificación de quien firma", valueOf("mtoV2SignerDocument")]
+            ["recommendations", "Recomendaciones", valueOf("mtoV2Recommendations")]
         ];
 
         return definitions

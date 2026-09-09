@@ -324,12 +324,12 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
             [_options.SignerRoleField] = command.SignerRole,
             [_options.CustomerAcceptedField] = command.CustomerAccepted,
             [_options.SignaturePointCountField] = command.SignaturePointCount,
-            [_options.DeviceSignedAtUtcField] = command.DeviceSignedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-            [_options.ServerFinalizedAtUtcField] = command.ServerFinalizedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            [_options.DeviceSignedAtUtcField] = SerializeDataverseInstant(command.DeviceSignedAtUtc),
+            [_options.ServerFinalizedAtUtcField] = SerializeDataverseInstant(command.ServerFinalizedAtUtc),
             [_options.LatitudeField] = location?.Latitude,
             [_options.LongitudeField] = location?.Longitude,
             [_options.AccuracyMetersField] = location?.AccuracyMeters,
-            [_options.LocationCapturedAtUtcField] = location?.CapturedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            [_options.LocationCapturedAtUtcField] = location is null ? null : SerializeDataverseInstant(location.CapturedAtUtc),
             [_options.LocationSourceField] = location?.Source ?? "not-captured",
             [_options.SignatureSha256Field] = command.Signature.Sha256.ToLowerInvariant(),
             [_options.SignatureEvidenceKeyField] = signatureEvidenceKey,
@@ -367,7 +367,7 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
         var readyAtUtc = _timeProvider.GetUtcNow();
         await PatchWithVersionAsync(current.RecordId, staged.Version, new Dictionary<string, object?>
         {
-            [_options.ReadyAtUtcField] = readyAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            [_options.ReadyAtUtcField] = SerializeDataverseInstant(readyAtUtc),
             [_options.EmailStateField] = _options.EmailPendingStateValue,
             [_options.WorkflowStateField] = _options.ReadyToSendStateValue
         }, user, ct);
@@ -683,9 +683,19 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
             failures.Add(field);
     }
 
+    // Dataverse persists these DateTime columns at whole-second precision. Keep
+    // the original command/PDF/fingerprint untouched, and canonicalize only at
+    // this persistence boundary. Exact equality to the expected stored instant
+    // still rejects changed seconds instead of hiding drift with a tolerance.
+    private static DateTimeOffset ToDataverseInstant(DateTimeOffset value) =>
+        new(value.UtcTicks - value.UtcTicks % TimeSpan.TicksPerSecond, TimeSpan.Zero);
+
+    private static string SerializeDataverseInstant(DateTimeOffset value) =>
+        ToDataverseInstant(value).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
     private static bool SameInstant(DateTimeOffset? actual, DateTimeOffset? expected) =>
         actual.HasValue == expected.HasValue
-        && (!actual.HasValue || Math.Abs((actual.Value - expected!.Value).TotalMilliseconds) <= 10d);
+        && (!actual.HasValue || actual.Value == ToDataverseInstant(expected!.Value));
 
     private static bool SameDouble(double? actual, double? expected) =>
         actual.HasValue == expected.HasValue
@@ -748,7 +758,7 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
                 [_options.EvidenceSha256Field] = file.Sha256.ToLowerInvariant(),
                 [_options.EvidenceDerivedFromKeyField] = string.IsNullOrWhiteSpace(derivedFromEvidenceKey) ? null : derivedFromEvidenceKey,
                 [_options.EvidenceSecurityStateField] = securityStateValue,
-                [_options.EvidenceSecurityCheckedAtUtcField] = securityCheckedAtUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                [_options.EvidenceSecurityCheckedAtUtcField] = securityCheckedAtUtc.HasValue ? SerializeDataverseInstant(securityCheckedAtUtc.Value) : null,
                 [_options.EvidenceSecurityProviderField] = securityProvider,
                 [$"{_options.EvidenceParentNavigationProperty}@odata.bind"] =
                     $"/{_options.MainEntitySetName}({NormalizeGuid(parentRecordId, nameof(parentRecordId))})"

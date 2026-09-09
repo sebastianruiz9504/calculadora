@@ -176,8 +176,11 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             if (!request.CustomerAccepted)
                 throw new CopiersMaintenanceV2ValidationException("customer_acceptance_required", "El cliente debe aceptar el reporte antes de firmar.");
 
-            var signedAtUtc = CopiersMaintenanceV2Validation.DeviceSignedAt(request.DeviceSignedAtUtc, nowUtc, _options);
-            var internalLocation = CopiersMaintenanceV2Validation.Location(request, nowUtc, _options);
+            // Validate the original capture without aging it out before checking an
+            // already persisted fingerprint. A retry must not recapture or alter
+            // the signed facts merely because persistence took time to recover.
+            var signedAtUtc = CopiersMaintenanceV2Validation.DeviceSignedAt(request.DeviceSignedAtUtc, nowUtc, _options, enforceFreshness: false);
+            var internalLocation = CopiersMaintenanceV2Validation.Location(request, nowUtc, _options, enforceFreshness: false);
             if (request.SignaturePointCount < _options.MinSignaturePointCount)
                 throw new CopiersMaintenanceV2ValidationException("signature_ink_required", "La firma no contiene suficientes trazos; solicita al cliente firmar nuevamente.");
             var signature = await CopiersMaintenanceV2Validation.ReadSignatureAsync(request.Signature, _options, ct);
@@ -200,10 +203,20 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 signature,
                 originalAttachments);
 
+            var matchesPersistedFingerprint = !string.IsNullOrWhiteSpace(begin.Record.FinalizationFingerprint)
+                && string.Equals(begin.Record.FinalizationFingerprint, finalizationFingerprint, StringComparison.OrdinalIgnoreCase);
+            if (!matchesPersistedFingerprint)
+            {
+                // New or changed content still requires a fresh capture. Only an
+                // exact persisted submission can bypass the age limit; ranges,
+                // required values and future-clock validation always run above.
+                _ = CopiersMaintenanceV2Validation.DeviceSignedAt(request.DeviceSignedAtUtc, nowUtc, _options);
+                _ = CopiersMaintenanceV2Validation.Location(request, nowUtc, _options);
+            }
+
             if (isReadyReplay)
             {
-                if (string.IsNullOrWhiteSpace(begin.Record.FinalizationFingerprint)
-                    || !string.Equals(begin.Record.FinalizationFingerprint, finalizationFingerprint, StringComparison.OrdinalIgnoreCase))
+                if (!matchesPersistedFingerprint)
                 {
                     throw new CopiersMaintenanceV2ConcurrencyException(
                         "La clave idempotente ya finalizó un reporte con contenido diferente.");

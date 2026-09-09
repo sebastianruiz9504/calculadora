@@ -53,6 +53,8 @@ internal static class CopiersMaintenanceV2Validation
         ["partsused"] = new("parts_used", "Repuestos o materiales", 10, false),
         ["counters"] = new("counters", "Contadores", 11, false),
         ["recommendations"] = new("recommendations", "Recomendaciones", 12, false),
+        // Older already-open forms can retry their original signed payload.
+        // The current interface no longer collects this optional legacy answer.
         ["signerdocument"] = new("signer_document", "Identificación de quien firma", 13, false)
     };
 
@@ -258,7 +260,8 @@ internal static class CopiersMaintenanceV2Validation
     public static CopiersMaintenanceV2InternalLocationData? Location(
         CopiersMaintenanceV2FinalizeMultipartRequestDto request,
         DateTimeOffset nowUtc,
-        CopiersMaintenanceV2Options options)
+        CopiersMaintenanceV2Options options,
+        bool enforceFreshness = true)
     {
         var hasAny = request.Latitude.HasValue
             || request.Longitude.HasValue
@@ -286,7 +289,7 @@ internal static class CopiersMaintenanceV2Validation
         var capturedAtUtc = request.LocationCapturedAtUtc.Value.ToUniversalTime();
         if (capturedAtUtc > nowUtc + options.MaxDeviceClockFutureSkew)
             throw new CopiersMaintenanceV2ValidationException("location_time_future", "La hora de ubicacion esta demasiado adelantada.");
-        if (capturedAtUtc < nowUtc - options.MaxLocationAge)
+        if (enforceFreshness && capturedAtUtc < nowUtc - options.MaxLocationAge)
             throw new CopiersMaintenanceV2ValidationException("location_stale", "La ubicacion expiro; vuelve a capturarla antes de enviar.");
 
         return new CopiersMaintenanceV2InternalLocationData
@@ -308,14 +311,15 @@ internal static class CopiersMaintenanceV2Validation
     public static DateTimeOffset DeviceSignedAt(
         DateTimeOffset? value,
         DateTimeOffset nowUtc,
-        CopiersMaintenanceV2Options options)
+        CopiersMaintenanceV2Options options,
+        bool enforceFreshness = true)
     {
         if (!value.HasValue)
             throw new CopiersMaintenanceV2ValidationException("signed_at_required", "No se recibio la hora de la firma.");
         var utc = value.Value.ToUniversalTime();
         if (utc > nowUtc + options.MaxDeviceClockFutureSkew)
             throw new CopiersMaintenanceV2ValidationException("signed_at_future", "La hora de la firma esta demasiado adelantada.");
-        if (utc < nowUtc - TimeSpan.FromDays(1))
+        if (enforceFreshness && utc < nowUtc - TimeSpan.FromDays(1))
             throw new CopiersMaintenanceV2ValidationException("signed_at_stale", "La firma expiro; solicita al cliente firmar nuevamente.");
         return utc;
     }

@@ -546,6 +546,103 @@ public sealed class CopiersMaintenanceV2Tests
         Assert.Equal(0, repository.MarkFailedCalls);
     }
 
+    [Theory]
+    [InlineData(20)]
+    [InlineData(1500)]
+    public async Task Finalize_FailedAfterStaging_ExactDelayedRetryPreservesOriginalCapture(int delayMinutes)
+    {
+        var repository = new FakeRepository(CreateDraftRecord()) { FailNextCompletionAfterStaging = true };
+        var pdfBuilder = new CapturingPdfBuilder();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(repository, pdfBuilder).FinalizeMultipartAsync(CreateFinalizeRequest(), CreateActor()));
+        var staged = Assert.IsType<CopiersMaintenanceV2CompleteFinalizationCommand>(repository.LastCompletion);
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.Failed, repository.Record.State);
+        Assert.False(string.IsNullOrWhiteSpace(repository.Record.FinalizationFingerprint));
+
+        var retry = await CreateService(repository, pdfBuilder, nowUtc: NowUtc.AddMinutes(delayMinutes))
+            .FinalizeMultipartAsync(CreateFinalizeRequest(), CreateActor());
+
+        Assert.Equal(RecordId.ToString("D"), retry.RecordId);
+        Assert.Equal(SubmissionKey, retry.SubmissionKey);
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, retry.State);
+        Assert.Equal(CopiersMaintenanceV2EmailState.Pending, retry.EmailState);
+        Assert.Equal(2, repository.CompleteCalls);
+        Assert.Equal(1, repository.MarkFailedCalls);
+        Assert.Equal(staged.FinalizationFingerprint, repository.LastCompletion!.FinalizationFingerprint);
+        Assert.Equal(staged.DeviceSignedAtUtc, repository.LastCompletion.DeviceSignedAtUtc);
+        Assert.Equal(staged.InternalLocation!.CapturedAtUtc, repository.LastCompletion.InternalLocation!.CapturedAtUtc);
+        Assert.Equal(staged.InternalLocation.Latitude, repository.LastCompletion.InternalLocation.Latitude);
+        Assert.Equal(staged.InternalLocation.Longitude, repository.LastCompletion.InternalLocation.Longitude);
+        Assert.Equal(staged.Signature.Sha256, repository.LastCompletion.Signature.Sha256);
+    }
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(1500)]
+    public async Task Finalize_AlreadyReady_ExactDelayedReplayDoesNotRebuildOrRepublish(int delayMinutes)
+    {
+        var repository = new FakeRepository(CreateDraftRecord());
+        var pdfBuilder = new CapturingPdfBuilder();
+        await CreateService(repository, pdfBuilder).FinalizeMultipartAsync(CreateFinalizeRequest(), CreateActor());
+        var staged = repository.LastCompletion;
+
+        var replay = await CreateService(repository, pdfBuilder, nowUtc: NowUtc.AddMinutes(delayMinutes))
+            .FinalizeMultipartAsync(CreateFinalizeRequest(), CreateActor());
+
+        Assert.True(replay.IdempotentReplay);
+        Assert.Equal(RecordId.ToString("D"), replay.RecordId);
+        Assert.Equal(1, repository.CompleteCalls);
+        Assert.Equal(1, pdfBuilder.BuildCalls);
+        Assert.Equal(0, repository.MarkFailedCalls);
+        Assert.Same(staged, repository.LastCompletion);
+    }
+
+    [Theory]
+    [InlineData(false, 20, "location_stale")]
+    [InlineData(true, 20, "location_stale")]
+    [InlineData(false, 1500, "signed_at_stale")]
+    [InlineData(true, 1500, "signed_at_stale")]
+    public async Task Finalize_DelayedChangedPayloadCannotBypassFreshness(bool alreadyReady, int delayMinutes, string expectedCode)
+    {
+        var repository = new FakeRepository(CreateDraftRecord()) { FailNextCompletionAfterStaging = !alreadyReady };
+        var pdfBuilder = new CapturingPdfBuilder();
+        var firstAttempt = CreateService(repository, pdfBuilder).FinalizeMultipartAsync(CreateFinalizeRequest(), CreateActor());
+        if (alreadyReady)
+            await firstAttempt;
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => firstAttempt);
+        var persistedFingerprint = repository.Record.FinalizationFingerprint;
+        var changed = CreateFinalizeRequest();
+        changed.WorkPerformed = "Trabajo modificado despues del primer intento.";
+
+        var exception = await Assert.ThrowsAsync<CopiersMaintenanceV2ValidationException>(() =>
+            CreateService(repository, pdfBuilder, nowUtc: NowUtc.AddMinutes(delayMinutes))
+                .FinalizeMultipartAsync(changed, CreateActor()));
+
+        Assert.Equal(expectedCode, exception.Code);
+        Assert.Equal(1, repository.CompleteCalls);
+        Assert.Equal(1, pdfBuilder.BuildCalls);
+        Assert.Equal(persistedFingerprint, repository.Record.FinalizationFingerprint);
+    }
+
+    [Fact]
+    public void CaptureValidation_WithoutFreshnessStillRejectsInvalidRangesAndFutureClocks()
+    {
+        var options = new CopiersMaintenanceV2Options();
+        var request = CreateFinalizeRequest();
+        request.Latitude = 91;
+        Assert.Equal("latitude_invalid", Assert.Throws<CopiersMaintenanceV2ValidationException>(() =>
+            CopiersMaintenanceV2Validation.Location(request, NowUtc, options, enforceFreshness: false)).Code);
+        request.Latitude = 4.711;
+        request.LocationCapturedAtUtc = NowUtc.AddHours(1);
+        Assert.Equal("location_time_future", Assert.Throws<CopiersMaintenanceV2ValidationException>(() =>
+            CopiersMaintenanceV2Validation.Location(request, NowUtc, options, enforceFreshness: false)).Code);
+        Assert.Equal("signed_at_future", Assert.Throws<CopiersMaintenanceV2ValidationException>(() =>
+            CopiersMaintenanceV2Validation.DeviceSignedAt(NowUtc.AddHours(1), NowUtc, options, enforceFreshness: false)).Code);
+        Assert.Equal("signed_at_required", Assert.Throws<CopiersMaintenanceV2ValidationException>(() =>
+            CopiersMaintenanceV2Validation.DeviceSignedAt(null, NowUtc, options, enforceFreshness: false)).Code);
+    }
+
     [Fact]
     public void PdfModelContract_HasNoLocationOrCoordinateProperty()
     {
@@ -731,7 +828,8 @@ public sealed class CopiersMaintenanceV2Tests
     private static CopiersMaintenanceV2Service CreateService(
         ICopiersMaintenanceV2DataverseRepository repository,
         ICopiersMtoV2PdfBuilder pdfBuilder,
-        CopiersMaintenanceV2Options? options = null) =>
+        CopiersMaintenanceV2Options? options = null,
+        DateTimeOffset? nowUtc = null) =>
         new(
             repository,
             pdfBuilder,
@@ -741,7 +839,7 @@ public sealed class CopiersMaintenanceV2Tests
                 MaintenanceTypeCorrectiveValue = 645250000,
                 MaintenanceTypePreventiveValue = 645250001
             }),
-            new FixedTimeProvider(NowUtc),
+            new FixedTimeProvider(nowUtc ?? NowUtc),
             NullLogger<CopiersMaintenanceV2Service>.Instance);
 
     private static CopiersMaintenanceV2ActorContext CreateActor() =>
@@ -1012,6 +1110,7 @@ public sealed class CopiersMaintenanceV2Tests
         public int BeginCalls { get; private set; }
         public int CompleteCalls { get; private set; }
         public int MarkFailedCalls { get; private set; }
+        public bool FailNextCompletionAfterStaging { get; set; }
         public CopiersMaintenanceV2CompleteFinalizationCommand? LastCompletion { get; private set; }
         public CopiersMaintenanceV2FinalizationFailedCommand? LastFailure { get; private set; }
 
@@ -1055,6 +1154,13 @@ public sealed class CopiersMaintenanceV2Tests
             Record.AttachmentCount = command.CustomerAttachments.Count;
             Record.ServerFinalizedAtUtc = command.ServerFinalizedAtUtc;
             Record.UpdatedAtUtc = command.ServerFinalizedAtUtc;
+            if (FailNextCompletionAfterStaging)
+            {
+                FailNextCompletionAfterStaging = false;
+                Record.State = CopiersMaintenanceV2WorkflowState.Finalizing;
+                Record.EmailState = CopiersMaintenanceV2EmailState.NotReady;
+                throw new InvalidOperationException("Simulated staging read-back failure before publication.");
+            }
             return Task.FromResult(Record);
         }
 
