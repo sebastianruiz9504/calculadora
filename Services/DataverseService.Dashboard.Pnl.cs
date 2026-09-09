@@ -145,14 +145,14 @@ public sealed partial class DataverseService
             scopedBillingRecords,
             record => GetPnlRevenueAmount(record, verticalKey, DashboardVerticalCloudOption));
 
-        var operatingRevenue = SumPnlSeries(copiersRevenue, cloudRevenue);
+        var rebates = BuildPnlRebateSeries(resolvedMonthCutoff, scopedRebateRecords);
+        var operatingRevenue = SumPnlSeries(copiersRevenue, cloudRevenue, rebates);
 
         var licensing = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "licensing");
-        var rebates = BuildPnlRebateSeries(resolvedMonthCutoff, scopedRebateRecords);
         var supplies = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "supplies");
         var machines = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "machines");
         var technicalService = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "technical-service");
-        var cogs = SumPnlSeries(licensing, rebates, supplies, machines, technicalService);
+        var cogs = SumPnlSeries(licensing, supplies, machines, technicalService);
         var grossProfit = SubtractPnlSeries(operatingRevenue, cogs);
 
         var personalAdministrative = BuildPnlExpenseSeries(resolvedMonthCutoff, scopedExpenseRecords, verticalKey, "personal-administrative");
@@ -830,11 +830,11 @@ public sealed partial class DataverseService
             BuildPnlSection("section-income", "1. Ingresos Operacionales", 0),
             BuildPnlValueRow("income-copiers", "Copiers", "detail", 1, copiersRevenue),
             BuildPnlValueRow("income-cloud", "Cloud", "detail", 1, cloudRevenue),
+            BuildPnlValueRow("income-rebates", "Rebates", "detail", 1, rebates),
             BuildPnlValueRow("income-total", "INGRESOS OPERACIONALES (total)", "subtotal", 1, operatingRevenue),
 
             BuildPnlSection("section-cogs", "2. Costo de Ventas (COGS)", 0),
             BuildPnlValueRow("cogs-licensing", "Licenciamiento (gross)", "detail", 1, licensing),
-            BuildPnlValueRow("cogs-rebates", "Rebates", "detail", 1, rebates),
             BuildPnlValueRow("cogs-supplies", "Suministros", "detail", 1, supplies),
             BuildPnlValueRow("cogs-machines", "Maquinas", "detail", 1, machines),
             BuildPnlValueRow("cogs-technical-service", "Servicio Tecnico", "detail", 1, technicalService),
@@ -1153,7 +1153,6 @@ public sealed partial class DataverseService
         return rowKey switch
         {
             "cogs-licensing" => bucketKey == "licensing" ? pnlAmount : 0m,
-            "cogs-rebates" => 0m,
             "cogs-supplies" => bucketKey == "supplies" ? pnlAmount : 0m,
             "cogs-machines" => bucketKey == "machines" ? pnlAmount : 0m,
             "cogs-technical-service" => bucketKey == "technical-service" ? pnlAmount : 0m,
@@ -1210,12 +1209,8 @@ public sealed partial class DataverseService
 
         return record.TypeKey switch
         {
-            PnlManualItemRebateKey => rowKey switch
-            {
-                "cogs-rebates" or "cogs-total" => amount,
-                "gross-profit" or "ebitda" or "income-before-taxes" or "net-income" => RoundCurrency(-amount),
-                _ => 0m
-            },
+            // Rebates come exclusively from SharePoint; legacy manual rows must not duplicate them.
+            PnlManualItemRebateKey => 0m,
             PnlManualItemFinancialIncomeKey => rowKey switch
             {
                 "other-financial-income" or "other-total" or "income-before-taxes" or "net-income" => amount,
@@ -1233,8 +1228,7 @@ public sealed partial class DataverseService
 
         return rowKey switch
         {
-            "cogs-rebates" or "cogs-total" => amount,
-            "gross-profit" or "ebitda" or "income-before-taxes" or "net-income" => RoundCurrency(-amount),
+            "income-rebates" or "income-total" or "gross-profit" or "ebitda" or "income-before-taxes" or "net-income" => RoundCurrency(amount),
             _ => 0m
         };
     }
@@ -1382,9 +1376,11 @@ public sealed partial class DataverseService
         {
             "income-copiers" => new PnlRowMetadata(normalizedKey, "Copiers"),
             "income-cloud" => new PnlRowMetadata(normalizedKey, "Cloud"),
+            "income-rebates" => new PnlRowMetadata(normalizedKey, "Rebates"),
             "income-total" => new PnlRowMetadata(normalizedKey, "INGRESOS OPERACIONALES (total)"),
             "cogs-licensing" => new PnlRowMetadata(normalizedKey, "Licenciamiento (gross)"),
-            "cogs-rebates" => new PnlRowMetadata(normalizedKey, "Rebates"),
+            // Keep detail links from already-open dashboards working across the deployment.
+            "cogs-rebates" => new PnlRowMetadata("income-rebates", "Rebates"),
             "cogs-supplies" => new PnlRowMetadata(normalizedKey, "Suministros"),
             "cogs-machines" => new PnlRowMetadata(normalizedKey, "Maquinas"),
             "cogs-technical-service" => new PnlRowMetadata(normalizedKey, "Servicio Tecnico"),
@@ -1439,7 +1435,7 @@ public sealed partial class DataverseService
 
     private static string BuildPnlDetailEmptyMessage(string rowKey) => rowKey switch
     {
-        "cogs-rebates" => "No encontramos rebates en la tabla Rebates de Facturacion DIGITAL TECH.xlsx para esta celda.",
+        "income-rebates" => "No encontramos rebates en la tabla Rebates de Facturacion DIGITAL TECH.xlsx para esta celda.",
         "other-financial-income" => "No encontramos ingresos financieros manuales para esta celda.",
         "orphan-billing-no-vertical" => "No encontramos facturas sin vertical para este corte.",
         "orphan-expense-no-category" => "No encontramos gastos sin categoria para este corte.",

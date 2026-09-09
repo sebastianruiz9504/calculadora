@@ -25,7 +25,7 @@ public sealed class SharePointRebatesTests
     }
 
     [Fact]
-    public void PnlSeriesKeepsRebatesInsideMonthlyCogsInput()
+    public void PnlSeriesPreservesMonthlyRebateAmounts()
     {
         using var stream = BuildWorkbook();
         var records = SharePointRebatesProvider.ReadWorkbookRows(stream)
