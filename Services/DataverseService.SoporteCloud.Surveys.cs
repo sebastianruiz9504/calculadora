@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using CotizadorInterno.Web.Models.SoporteCloud;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CotizadorInterno.Web.Services;
 
@@ -92,6 +93,8 @@ public sealed partial class DataverseService
     private const string SurveyMatchingSeparator = "|||";
     private const string SurveySatisfactionTopicName = "Satisfaccion";
     private const string SurveySatisfactionTopicDescription = "Tema fijo para todas las sesiones de capacitacion.";
+    private static readonly SemaphoreSlim SurveyMetadataLoadGate = new(1, 1);
+    private bool _surveyMetadataUsedFallback;
 
     private static readonly IReadOnlyDictionary<int, string> SurveyComponentLabels = new Dictionary<int, string>
     {
@@ -489,14 +492,14 @@ public sealed partial class DataverseService
     public async Task<SoporteCloudPublicSurveyViewModel> GetSoporteCloudPublicSurveyAsync(string code, CancellationToken ct = default, bool trackScan = true)
     {
         var metadata = await ResolveSoporteCloudSurveyAppMetadataAsync(ct);
-        var context = await LoadPublicSurveyContextAsync(metadata, code, ct);
+        var context = await LoadPublicSurveyContextAsync(metadata, code, ct, includeOpenSessionResults: false);
         var session = context.Sessions.FirstOrDefault()
             ?? throw new InvalidOperationException("No encontramos una encuesta activa para el codigo indicado.");
         var isClosed = session.StateValue == SurveySessionStateClosed;
         if (!isClosed && trackScan)
             await TrackSurveyScanAsync(metadata, session, ct);
 
-        var detail = BuildSessionDetail(session, context, codeValue => BuildSurveyPublicUrl(codeValue));
+        var detail = isClosed ? BuildSessionDetail(session, context, codeValue => BuildSurveyPublicUrl(codeValue)) : null;
 
         return new SoporteCloudPublicSurveyViewModel
         {
@@ -520,8 +523,8 @@ public sealed partial class DataverseService
                 .OrderBy(question => question.SortOrder)
                 .ThenBy(question => question.Text, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
-            Leaderboard = isClosed ? detail.Leaderboard : Array.Empty<SoporteCloudSurveyParticipantDto>(),
-            QuestionStats = isClosed ? detail.KnowledgeQuestionStats : Array.Empty<SoporteCloudSurveyQuestionStatsDto>()
+            Leaderboard = detail?.Leaderboard ?? Array.Empty<SoporteCloudSurveyParticipantDto>(),
+            QuestionStats = detail?.KnowledgeQuestionStats ?? Array.Empty<SoporteCloudSurveyQuestionStatsDto>()
         };
     }
 
@@ -1205,6 +1208,31 @@ public sealed partial class DataverseService
         }
     }
 
+    private async Task<SoporteCloudSurveyMetadata> ResolveSurveyMetadataCachedAsync(
+        string identity, Func<Task<SoporteCloudSurveyMetadata>> load, CancellationToken ct)
+    {
+        var key = $"soporte-cloud-survey-schema:v1:{_dataverseBaseUrl}:{identity}";
+        if (_memoryCache.TryGetValue(key, out SoporteCloudSurveyMetadata? cached) && cached is not null)
+            return cached;
+
+        await SurveyMetadataLoadGate.WaitAsync(ct);
+        try
+        {
+            if (_memoryCache.TryGetValue(key, out cached) && cached is not null)
+                return cached;
+            _surveyMetadataUsedFallback = false;
+            var metadata = await load();
+            // A temporary metadata error must not become a cached missing column or lookup.
+            if (!_surveyMetadataUsedFallback)
+                _memoryCache.Set(key, metadata, TimeSpan.FromMinutes(5));
+            return metadata;
+        }
+        finally
+        {
+            SurveyMetadataLoadGate.Release();
+        }
+    }
+
     private async Task<SoporteCloudSurveyMetadata> ResolveSoporteCloudSurveyMetadataAsync(ClaimsPrincipal user, CancellationToken ct)
     {
         var topic = await ResolveRhEntityMetadataAsync(SurveyTopicLogicalName, SurveyTopicFallbackEntitySetName, SurveyTopicFallbackIdField, SurveyTopicPrimaryNameField, user, ct);
@@ -1235,7 +1263,10 @@ public sealed partial class DataverseService
         };
     }
 
-    private async Task<SoporteCloudSurveyMetadata> ResolveSoporteCloudSurveyAppMetadataAsync(CancellationToken ct)
+    private Task<SoporteCloudSurveyMetadata> ResolveSoporteCloudSurveyAppMetadataAsync(CancellationToken ct) =>
+        ResolveSurveyMetadataCachedAsync("application", () => ResolveSoporteCloudSurveyAppMetadataCoreAsync(ct), ct);
+
+    private async Task<SoporteCloudSurveyMetadata> ResolveSoporteCloudSurveyAppMetadataCoreAsync(CancellationToken ct)
     {
         var topic = await ResolveSurveyAppEntityMetadataAsync(SurveyTopicLogicalName, SurveyTopicFallbackEntitySetName, SurveyTopicFallbackIdField, SurveyTopicPrimaryNameField, ct);
         var question = await ResolveSurveyAppEntityMetadataAsync(SurveyQuestionLogicalName, SurveyQuestionFallbackEntitySetName, SurveyQuestionFallbackIdField, SurveyQuestionPrimaryNameField, ct);
@@ -1281,6 +1312,7 @@ public sealed partial class DataverseService
         }
         catch (InvalidOperationException ex)
         {
+            _surveyMetadataUsedFallback = true;
             _logger.LogDebug(ex, "No se encontro la columna opcional {AttributeLogicalName} en {EntityLogicalName}.", attributeLogicalName, entityLogicalName);
             return false;
         }
@@ -1301,6 +1333,7 @@ public sealed partial class DataverseService
         }
         catch (InvalidOperationException ex)
         {
+            _surveyMetadataUsedFallback = true;
             _logger.LogDebug(ex, "No se encontro la columna opcional app-only {AttributeLogicalName} en {EntityLogicalName}.", attributeLogicalName, entityLogicalName);
             return false;
         }
@@ -1318,6 +1351,7 @@ public sealed partial class DataverseService
         }
         catch (InvalidOperationException)
         {
+            _surveyMetadataUsedFallback = true;
             return lookupField;
         }
     }
@@ -1351,6 +1385,7 @@ public sealed partial class DataverseService
         }
         catch (Exception ex) when (ex is InvalidOperationException or JsonException)
         {
+            _surveyMetadataUsedFallback = true;
             _logger.LogWarning(ex, "No fue posible resolver metadata app-only para {LogicalName}. Se usara fallback.", logicalName);
             var fallback = new RhEntityMetadata
             {
@@ -1359,7 +1394,6 @@ public sealed partial class DataverseService
                 PrimaryIdField = fallbackPrimaryIdField,
                 PrimaryNameField = fallbackPrimaryNameField
             };
-            _rhEntityMetadataCache[logicalName] = fallback;
             return fallback;
         }
     }
@@ -1404,7 +1438,7 @@ public sealed partial class DataverseService
             _logger.LogWarning(ex, "No fue posible resolver lookup app-only {LookupField} para {EntityLogicalName}.", lookupField, entityLogicalName);
         }
 
-        _rhLookupNavigationPropertyCache[cacheKey] = lookupField;
+        _surveyMetadataUsedFallback = true;
         return lookupField;
     }
 
@@ -1433,7 +1467,8 @@ public sealed partial class DataverseService
     private async Task<SurveyContext> LoadPublicSurveyContextAsync(
         SoporteCloudSurveyMetadata metadata,
         string code,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includeOpenSessionResults = true)
     {
         var normalizedCode = NormalizeSurveyCode(code);
         if (string.IsNullOrWhiteSpace(normalizedCode))
@@ -1452,13 +1487,19 @@ public sealed partial class DataverseService
         if (sessions.Count == 0)
             return new SurveyContext();
 
-        var questions = await LoadSurveyQuestionsAppAsync(metadata, ct);
-        var options = await LoadSurveyOptionsAppAsync(metadata, ct);
-        var sessionId = sessions[0].SessionId;
+        var session = sessions[0];
+        var sessionId = session.SessionId;
+        var includeResults = includeOpenSessionResults || session.StateValue == SurveySessionStateClosed;
         var participantFilter = Uri.EscapeDataString($"{BuildDashboardLookupValuePropertyName(SurveyParticipantSessionField)} eq {sessionId}");
         var answerFilter = Uri.EscapeDataString($"{BuildDashboardLookupValuePropertyName(SurveyAnswerSessionField)} eq {sessionId}");
-        var participantsTask = LoadSurveyParticipantsAppAsync(metadata, participantFilter, ct);
-        var answersTask = LoadSurveyAnswersAppAsync(metadata, answerFilter, ct);
+        var participantsTask = includeResults
+            ? LoadSurveyParticipantsAppAsync(metadata, participantFilter, ct)
+            : Task.FromResult<IReadOnlyList<SoporteCloudSurveyParticipantDto>>(Array.Empty<SoporteCloudSurveyParticipantDto>());
+        var answersTask = includeResults
+            ? LoadSurveyAnswersAppAsync(metadata, answerFilter, ct)
+            : Task.FromResult<IReadOnlyList<SurveyAnswerRaw>>(Array.Empty<SurveyAnswerRaw>());
+        var questions = await LoadSurveyQuestionsAppAsync(metadata, session.TopicId, ct);
+        var options = await LoadSurveyOptionsAppAsync(metadata, questions.Select(question => question.QuestionId), ct);
         await Task.WhenAll(participantsTask, answersTask);
 
         return HydrateSurveyContext(
@@ -1518,22 +1559,50 @@ public sealed partial class DataverseService
         return items.Select(item => BuildSurveyAnswerRaw(metadata, item)).Where(item => item is not null).Select(item => item!).ToList();
     }
 
-    private async Task<IReadOnlyList<SurveyQuestionRaw>> LoadSurveyQuestionsAppAsync(SoporteCloudSurveyMetadata metadata, CancellationToken ct)
+    internal static string BuildPublicSurveyQuestionFilter(string topicId)
     {
+        // Keep older sessions with a deleted topic readable without loading other topics.
+        if (string.IsNullOrWhiteSpace(topicId))
+            return $"({SurveyQuestionComponentField} eq {SurveyComponentSatisfaction} or {BuildDashboardLookupValuePropertyName(SurveyQuestionTopicField)} eq null)";
+        if (!Guid.TryParse(topicId, out var id) || id == Guid.Empty)
+            throw new InvalidOperationException("La sesion no tiene un tema valido.");
+        return $"({SurveyQuestionComponentField} eq {SurveyComponentSatisfaction} or {BuildDashboardLookupValuePropertyName(SurveyQuestionTopicField)} eq {id:D})";
+    }
+
+    internal static IReadOnlyList<string> BuildPublicSurveyOptionFilters(IEnumerable<string> questionIds)
+    {
+        var ids = questionIds.Select(value => Guid.TryParse(value, out var id) && id != Guid.Empty
+                ? id : throw new InvalidOperationException("La encuesta contiene una pregunta sin identificador valido."))
+            .Distinct().ToArray();
+        return ids.Chunk(50)
+            .Select(batch => string.Join(" or ", batch.Select(id => $"{BuildDashboardLookupValuePropertyName(SurveyOptionQuestionField)} eq {id:D}")))
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<SurveyQuestionRaw>> LoadSurveyQuestionsAppAsync(SoporteCloudSurveyMetadata metadata, string topicId, CancellationToken ct)
+    {
+        var filter = Uri.EscapeDataString(BuildPublicSurveyQuestionFilter(topicId));
         var items = await GetDataverseAppEntitiesAsync(
-            $"/api/data/v9.2/{metadata.Question.EntitySetName}?$select={BuildSurveyQuestionSelectClause(metadata)}&$orderby={SurveyQuestionComponentField} asc,{SurveyQuestionSortOrderField} asc",
+            $"/api/data/v9.2/{metadata.Question.EntitySetName}?$select={BuildSurveyQuestionSelectClause(metadata)}&$filter={filter}&$orderby={SurveyQuestionComponentField} asc,{SurveyQuestionSortOrderField} asc",
             ct,
             AddFormattedValueHeaders);
         return items.Select(item => BuildSurveyQuestionRaw(metadata, item)).Where(item => item is not null).Select(item => item!).ToList();
     }
 
-    private async Task<IReadOnlyList<SurveyOptionRaw>> LoadSurveyOptionsAppAsync(SoporteCloudSurveyMetadata metadata, CancellationToken ct)
+    private async Task<IReadOnlyList<SurveyOptionRaw>> LoadSurveyOptionsAppAsync(SoporteCloudSurveyMetadata metadata, IEnumerable<string> questionIds, CancellationToken ct)
     {
-        var items = await GetDataverseAppEntitiesAsync(
-            $"/api/data/v9.2/{metadata.Option.EntitySetName}?$select={BuildSurveyOptionSelectClause(metadata)}&$orderby={SurveyOptionSortOrderField} asc",
-            ct,
-            AddFormattedValueHeaders);
-        return items.Select(item => BuildSurveyOptionRaw(metadata, item)).Where(item => item is not null).Select(item => item!).ToList();
+        var result = new List<SurveyOptionRaw>();
+        // An empty question list must issue no option query; never fall back to the whole catalog.
+        foreach (var clause in BuildPublicSurveyOptionFilters(questionIds))
+        {
+            var filter = Uri.EscapeDataString(clause);
+            var items = await GetDataverseAppEntitiesAsync(
+                $"/api/data/v9.2/{metadata.Option.EntitySetName}?$select={BuildSurveyOptionSelectClause(metadata)}&$filter={filter}&$orderby={SurveyOptionSortOrderField} asc",
+                ct,
+                AddFormattedValueHeaders);
+            result.AddRange(items.Select(item => BuildSurveyOptionRaw(metadata, item)).Where(item => item is not null).Select(item => item!));
+        }
+        return result;
     }
 
     private async Task<IReadOnlyList<SoporteCloudSurveyParticipantDto>> LoadSurveyParticipantsAppAsync(SoporteCloudSurveyMetadata metadata, string filter, CancellationToken ct)

@@ -83,6 +83,7 @@ builder.Services.AddResponseCompression(options =>
     options.Providers.Add<GzipCompressionProvider>();
 });
 builder.Services.AddScoped<IDataverseService, DataverseService>();
+builder.Services.AddSingleton<CotizadorInterno.Web.Services.SoporteCloud.SharedLiveSurveyStore>();
 builder.Services.AddSingleton<ICopiersMtoV2ApplicationDataverseClient, CopiersMtoV2ApplicationDataverseClient>();
 builder.Services.AddScoped<ICopiersMaintenanceV2DataverseRepository, CopiersMaintenanceV2DataverseRepository>();
 builder.Services.AddScoped<ICopiersMtoV2PdfBuilder, CopiersMtoV2ProfessionalPdfBuilder>();

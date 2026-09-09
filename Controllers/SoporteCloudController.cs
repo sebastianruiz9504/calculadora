@@ -2,6 +2,7 @@ using CotizadorInterno.Web.Filters;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Permissions;
 using CotizadorInterno.Web.Models.SoporteCloud;
+using CotizadorInterno.Web.Services.SoporteCloud;
 using CotizadorInterno.Web.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
@@ -41,12 +42,15 @@ public sealed class SoporteCloudController : Controller
     private const decimal LiveQuestionMaxPoints = 10m;
     private const decimal LiveQuestionSubmitGraceSeconds = 1.5m;
     private static readonly TimeSpan LiveQuestionDuration = TimeSpan.FromSeconds(20);
-    private static readonly ConcurrentDictionary<string, LiveSurveySessionState> LiveSurveySessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly IDataverseService _dataverse;
+    private readonly SharedLiveSurveyStore _liveStore;
+    private readonly ILogger<SoporteCloudController>? _logger;
 
-    public SoporteCloudController(IDataverseService dataverse)
+    public SoporteCloudController(IDataverseService dataverse, SharedLiveSurveyStore liveStore, ILogger<SoporteCloudController>? logger = null)
     {
         _dataverse = dataverse;
+        _liveStore = liveStore;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -392,10 +396,11 @@ public sealed class SoporteCloudController : Controller
             var saveResult = await _dataverse.SaveSoporteCloudSurveySessionAsync(request, ct);
             var session = FindSavedSurveySession(saveResult.Board, request)
                 ?? throw new InvalidOperationException("La sesion fue guardada, pero no pudimos resolver el codigo publico.");
-            var liveState = EnsureLiveSurveyState(session);
             var topicQuestions = ResolveSessionKnowledgeQuestions(saveResult.Board, session);
-            RememberLiveSurveyQuestions(liveState, topicQuestions);
+            var liveState = await InitializeLiveStateAsync(session, topicQuestions,
+                saveResult.Board.Questions.Where(question => question.ComponentValue != SurveyComponentKnowledge && question.IsActive).ToList(), ct);
 
+            LogLiveLifecycle("started", liveState);
             return Ok(new SoporteCloudLiveSurveyStartResultDto
             {
                 Message = "Sesion live iniciada. Muestra el QR para registrar participantes.",
@@ -403,6 +408,10 @@ public sealed class SoporteCloudController : Controller
                 Session = session,
                 State = BuildLiveSurveyStateDto(liveState, session, topicQuestions)
             });
+        }
+        catch (SharedLiveSurveyStoreUnavailableException ex)
+        {
+            return StoreUnavailable(ex);
         }
         catch (InvalidOperationException ex)
         {
@@ -423,6 +432,10 @@ public sealed class SoporteCloudController : Controller
             var (liveState, session, questions) = await ResolveLiveSurveySessionStateAsync(sessionId, ct);
             return Ok(BuildLiveSurveyStateDto(liveState, session, questions));
         }
+        catch (SharedLiveSurveyStoreUnavailableException ex)
+        {
+            return StoreUnavailable(ex);
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(CreateErrorPayload(ex.Message, ex));
@@ -441,10 +454,14 @@ public sealed class SoporteCloudController : Controller
         {
             var (liveState, session, questions) = await ResolveLiveSurveySessionStateAsync(sessionId, ct);
 
-            lock (liveState.SyncRoot)
+            liveState = await MutateLiveStateAsync(liveState.Code, current =>
             {
+                EnsureLiveNotClosing(current);
+                liveState = current;
+                questions = current.KnowledgeQuestions;
+
                 AdvanceLiveTimedPhaseIfDue(liveState);
-                if (session.StateValue == SurveySessionStateClosed || liveState.Phase == LivePhaseClosed)
+                if (liveState.Phase == LivePhaseClosed)
                 {
                     liveState.Phase = LivePhaseClosed;
                     TouchLiveState(liveState);
@@ -507,9 +524,14 @@ public sealed class SoporteCloudController : Controller
                     liveState.QuestionStartedOnUtc = null;
                     TouchLiveState(liveState);
                 }
-            }
+            }, ct);
 
+            LogLiveLifecycle("advanced", liveState);
             return Ok(BuildLiveSurveyStateDto(liveState, session, questions));
+        }
+        catch (SharedLiveSurveyStoreUnavailableException ex)
+        {
+            return StoreUnavailable(ex);
         }
         catch (InvalidOperationException ex)
         {
@@ -525,36 +547,57 @@ public sealed class SoporteCloudController : Controller
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
     public async Task<IActionResult> CloseLiveSurvey([FromQuery] string sessionId, [FromBody] SoporteCloudSurveyCloseSessionRequest? request, CancellationToken ct)
     {
+        LiveSurveySessionState? closingState = null;
+        var operationId = Guid.NewGuid().ToString("N");
         try
         {
-            var hasRememberedState = TryGetRememberedLiveSurveyBySessionId(sessionId, out var rememberedState, out _);
-            if (hasRememberedState)
-                await PersistLiveKnowledgeResultsAsync(rememberedState, ct);
-
-            var result = await _dataverse.CloseSoporteCloudSurveySessionAsync(sessionId, request?.DurationMinutes, ct);
-            var session = FindSurveySession(result.Board, sessionId);
-            var liveStateToClose = session is not null
-                ? EnsureLiveSurveyState(session)
-                : hasRememberedState ? rememberedState : null;
-            if (liveStateToClose is not null)
+            var (state, _, _) = await ResolveLiveSurveySessionStateAsync(sessionId, ct);
+            closingState = await MutateLiveStateAsync(state.Code, current =>
             {
-                lock (liveStateToClose.SyncRoot)
-                {
-                    liveStateToClose.Phase = LivePhaseClosed;
-                    liveStateToClose.Sequence++;
-                    liveStateToClose.UpdatedAt = DateTimeOffset.UtcNow;
-                }
-            }
-
+                if (!string.IsNullOrWhiteSpace(current.ClosingOperationId)
+                    && current.ClosingStartedUtc > DateTimeOffset.UtcNow.AddMinutes(-5))
+                    throw new InvalidOperationException("La sesion se esta cerrando. Espera unos segundos e intenta de nuevo.");
+                current.ClosingOperationId = operationId;
+                current.ClosingStartedUtc = DateTimeOffset.UtcNow;
+                TouchLiveState(current);
+            }, ct);
+            // Capture the final answers under the store transaction, but never hold its
+            // cross-process file lock while calling Dataverse.
+            await PersistLiveKnowledgeResultsAsync(closingState, ct);
+            var result = await _dataverse.CloseSoporteCloudSurveySessionAsync(sessionId, request?.DurationMinutes, ct);
+            var closedState = await MutateLiveStateAsync(state.Code, current =>
+            {
+                if (current.ClosingOperationId != operationId)
+                    throw new InvalidOperationException("El cierre de la sesion fue retomado. Actualiza el estado.");
+                current.Phase = LivePhaseClosed;
+                current.ClosingOperationId = "";
+                current.ClosingStartedUtc = null;
+                TouchLiveState(current);
+            }, ct);
+            LogLiveLifecycle("closed", closedState);
+            closingState = null;
             return Ok(result);
         }
-        catch (InvalidOperationException ex)
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible cerrar la encuesta live.", ex)); }
+        finally
         {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cerrar la encuesta live.", ex));
+            if (closingState is not null)
+            {
+                try
+                {
+                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    await MutateLiveStateAsync(closingState.Code, current =>
+                    {
+                        if (current.ClosingOperationId != operationId) return;
+                        current.ClosingOperationId = "";
+                        current.ClosingStartedUtc = null;
+                        TouchLiveState(current);
+                    }, cleanup.Token);
+                }
+                catch (Exception) { /* Persisted lease permits a later close retry after a recycle. */ }
+            }
         }
     }
 
@@ -565,47 +608,27 @@ public sealed class SoporteCloudController : Controller
         var normalizedKey = NormalizeLiveKey(participantKey);
         if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(normalizedKey))
             return BadRequest(CreateErrorPayload("Debes indicar la sesion y el participante a retirar."));
-
         try
         {
-            var (liveState, session, questions) = await ResolveLiveSurveySessionStateAsync(sessionId, ct);
-
-            lock (liveState.SyncRoot)
+            var (state, _, _) = await ResolveLiveSurveySessionStateAsync(sessionId, ct);
+            state = await MutateLiveStateAsync(state.Code, current =>
             {
-                liveState.Participants.TryRemove(normalizedKey, out _);
-                liveState.RemovedParticipants[normalizedKey] = DateTimeOffset.UtcNow;
-                TouchLiveState(liveState);
-            }
-
-            return Ok(BuildLiveSurveyStateDto(liveState, session, questions));
+                EnsureLiveNotClosing(current);
+                current.Participants.TryRemove(normalizedKey, out _);
+                current.RemovedParticipants[normalizedKey] = DateTimeOffset.UtcNow;
+                TouchLiveState(current);
+            }, ct);
+            return Ok(BuildLiveSurveyStateDto(state, CreateLiveSurveySessionSnapshot(state), state.KnowledgeQuestions));
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible retirar el participante.", ex));
-        }
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible retirar el participante.", ex)); }
     }
 
     [HttpPost]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
-    public async Task<IActionResult> CloseSurveySession([FromQuery] string sessionId, [FromBody] SoporteCloudSurveyCloseSessionRequest? request, CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _dataverse.CloseSoporteCloudSurveySessionAsync(sessionId, request?.DurationMinutes, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cerrar la sesion.", ex));
-        }
-    }
+    public Task<IActionResult> CloseSurveySession([FromQuery] string sessionId, [FromBody] SoporteCloudSurveyCloseSessionRequest? request, CancellationToken ct) =>
+        CloseLiveSurvey(sessionId, request, ct);
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
@@ -667,6 +690,10 @@ public sealed class SoporteCloudController : Controller
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 fileName);
         }
+        catch (SharedLiveSurveyStoreUnavailableException ex)
+        {
+            return StoreUnavailable(ex);
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(CreateErrorPayload(ex.Message, ex));
@@ -707,8 +734,12 @@ public sealed class SoporteCloudController : Controller
         request.Code = code;
         try
         {
-            ApplyLiveScoreOverrides(code, request);
+            await ApplyLiveScoreOverridesAsync(code, request, ct);
             return Ok(await _dataverse.SubmitSoporteCloudPublicSurveyAsync(request, ct));
+        }
+        catch (SharedLiveSurveyStoreUnavailableException ex)
+        {
+            return StoreUnavailable(ex);
         }
         catch (InvalidOperationException ex)
         {
@@ -728,6 +759,10 @@ public sealed class SoporteCloudController : Controller
         {
             return Ok(await _dataverse.GetSoporteCloudPublicSurveyResultsAsync(code, ct));
         }
+        catch (SharedLiveSurveyStoreUnavailableException ex)
+        {
+            return StoreUnavailable(ex);
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(CreateErrorPayload(ex.Message, ex));
@@ -744,154 +779,75 @@ public sealed class SoporteCloudController : Controller
     {
         try
         {
-            if (TryGetRememberedLiveSurvey(code, out var rememberedState, out var rememberedQuestions)
-                && rememberedQuestions.Count > 0)
-            {
-                var snapshot = CreateLiveSurveySnapshot(rememberedState, rememberedQuestions);
-                return Ok(BuildLiveSurveyStateDto(rememberedState, snapshot, rememberedQuestions, participantKey));
-            }
-
-            var survey = await _dataverse.GetSoporteCloudPublicSurveyAsync(code, ct, trackScan: false);
-            var liveState = EnsureLiveSurveyState(survey);
-            return Ok(BuildLiveSurveyStateDto(liveState, survey, survey.KnowledgeQuestions, participantKey));
+            var state = await ResolveLiveStateByCodeAsync(code, ct);
+            return Ok(BuildLiveSurveyStateDto(state, CreateLiveSurveySnapshot(state, state.KnowledgeQuestions), state.KnowledgeQuestions, participantKey));
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible cargar el estado live.", ex));
-        }
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible cargar el estado live.", ex)); }
     }
 
     [AllowAnonymous]
     [HttpPost("SoporteCloud/Encuesta/{code}/LiveRegister")]
     public async Task<IActionResult> PublicLiveSurveyRegister([FromRoute] string code, [FromBody] SoporteCloudLiveSurveyRegisterRequest? request, CancellationToken ct)
     {
-        if (request is null)
-            return BadRequest(CreateErrorPayload("Debes enviar tus datos de registro."));
-
+        if (request is null) return BadRequest(CreateErrorPayload("Debes enviar tus datos de registro."));
         var fullName = (request.FullName ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(fullName))
-            return BadRequest(CreateErrorPayload("Debes indicar tu nombre."));
+        if (string.IsNullOrWhiteSpace(fullName)) return BadRequest(CreateErrorPayload("Debes indicar tu nombre."));
         var email = (request.Email ?? "").Trim();
-        if (!IsCorporateEmail(email))
-            return BadRequest(CreateErrorPayload("Ingresa un correo corporativo valido. No se permiten correos personales."));
-
+        if (!IsCorporateEmail(email)) return BadRequest(CreateErrorPayload("Ingresa un correo corporativo valido. No se permiten correos personales."));
         try
         {
-            SoporteCloudPublicSurveyViewModel survey;
-            LiveSurveySessionState liveState;
-            IReadOnlyList<SoporteCloudSurveyQuestionDto> questions;
-            if (TryGetRememberedLiveSurvey(code, out var rememberedState, out var rememberedQuestions))
-            {
-                liveState = rememberedState;
-                questions = rememberedQuestions;
-                survey = CreateLiveSurveySnapshot(liveState, questions);
-            }
-            else
-            {
-                survey = await _dataverse.GetSoporteCloudPublicSurveyAsync(code, ct, trackScan: false);
-                liveState = EnsureLiveSurveyState(survey);
-                questions = survey.KnowledgeQuestions;
-            }
-
-            if (survey.IsClosed || liveState.Phase == LivePhaseClosed)
-                return BadRequest(CreateErrorPayload("La encuesta ya fue cerrada."));
-
+            await ResolveLiveStateByCodeAsync(code, ct);
             var participantKey = BuildParticipantKey(request);
-            if (liveState.RemovedParticipants.ContainsKey(participantKey))
-                return BadRequest(CreateErrorPayload("Tu registro fue retirado por el organizador de la sesion."));
-
-            liveState.Participants.AddOrUpdate(
-                participantKey,
-                _ => new LiveSurveyParticipantState
+            var state = await MutateLiveStateAsync(code, current =>
+            {
+                EnsureLiveOpen(current);
+                if (current.RemovedParticipants.ContainsKey(participantKey))
+                    throw new InvalidOperationException("Tu registro fue retirado por el organizador de la sesion.");
+                var participant = current.Participants.GetOrAdd(participantKey, _ => new LiveSurveyParticipantState
                 {
                     ParticipantKey = participantKey,
-                    FullName = fullName,
-                    Email = email,
-                    Company = (request.Company ?? "").Trim(),
-                    Identification = (request.Identification ?? "").Trim(),
-                    Role = (request.Role ?? "").Trim(),
                     RegisteredAt = DateTimeOffset.UtcNow
-                },
-                (_, existing) =>
-                {
-                    existing.FullName = fullName;
-                    existing.Email = email;
-                    existing.Company = (request.Company ?? "").Trim();
-                    existing.Identification = (request.Identification ?? "").Trim();
-                    existing.Role = (request.Role ?? "").Trim();
-                    return existing;
                 });
-
-            lock (liveState.SyncRoot)
-            {
-                liveState.Sequence++;
-                liveState.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-
+                participant.FullName = fullName;
+                participant.Email = email;
+                participant.Company = (request.Company ?? "").Trim();
+                participant.Identification = (request.Identification ?? "").Trim();
+                participant.Role = (request.Role ?? "").Trim();
+                TouchLiveState(current);
+            }, ct);
             return Ok(new SoporteCloudLiveSurveyRegisterResultDto
             {
                 ParticipantKey = participantKey,
                 Message = "Registro recibido. Espera a que el presentador inicie.",
-                State = BuildLiveSurveyStateDto(liveState, survey, questions, participantKey)
+                State = BuildLiveSurveyStateDto(state, CreateLiveSurveySnapshot(state, state.KnowledgeQuestions), state.KnowledgeQuestions, participantKey)
             });
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar el participante.", ex));
-        }
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible registrar el participante.", ex)); }
     }
 
     [AllowAnonymous]
     [HttpPost("SoporteCloud/Encuesta/{code}/LiveAnswer")]
     public async Task<IActionResult> PublicLiveSurveyAnswer([FromRoute] string code, [FromBody] SoporteCloudLiveSurveyAnswerRequest? request, CancellationToken ct)
     {
-        if (request is null)
-            return BadRequest(CreateErrorPayload("Debes enviar la respuesta."));
-
+        if (request is null) return BadRequest(CreateErrorPayload("Debes enviar la respuesta."));
         var receivedAt = DateTimeOffset.UtcNow;
         try
         {
-            SoporteCloudPublicSurveyViewModel survey;
-            LiveSurveySessionState liveState;
-            IReadOnlyList<SoporteCloudSurveyQuestionDto> questions;
-            if (TryGetRememberedLiveSurvey(code, out var rememberedState, out var rememberedQuestions)
-                && rememberedQuestions.Count > 0)
-            {
-                liveState = rememberedState;
-                questions = rememberedQuestions;
-                survey = CreateLiveSurveySnapshot(liveState, questions);
-            }
-            else
-            {
-                survey = await _dataverse.GetSoporteCloudPublicSurveyAsync(code, ct, trackScan: false);
-                liveState = EnsureLiveSurveyState(survey);
-                questions = survey.KnowledgeQuestions;
-            }
-
-            if (survey.IsClosed || liveState.Phase == LivePhaseClosed)
-                return BadRequest(CreateErrorPayload("La encuesta ya fue cerrada."));
-
+            await ResolveLiveStateByCodeAsync(code, ct, normalizeTimedPhase: false);
             var participantKey = BuildParticipantKey(request);
-            if (string.IsNullOrWhiteSpace(participantKey)
-                || !liveState.Participants.TryGetValue(participantKey, out var participant))
-                return BadRequest(CreateErrorPayload("Debes registrarte antes de responder."));
-
-            var questionId = NormalizeOptionalGuidLocal(request.QuestionId);
-            var question = questions.FirstOrDefault(item =>
-                string.Equals(item.QuestionId, questionId, StringComparison.OrdinalIgnoreCase))
-                ?? throw new InvalidOperationException("No encontramos la pregunta enviada.");
-
-            LiveSurveyAnswerState answer;
-            lock (liveState.SyncRoot)
+            var state = await MutateLiveStateAsync(code, liveState =>
             {
+                EnsureLiveOpen(liveState);
+                if (string.IsNullOrWhiteSpace(participantKey) || !liveState.Participants.TryGetValue(participantKey, out var participant))
+                    throw new InvalidOperationException("Debes registrarte antes de responder.");
+                var questions = liveState.KnowledgeQuestions;
+                var questionId = NormalizeOptionalGuidLocal(request.QuestionId);
+                var question = questions.FirstOrDefault(item => string.Equals(item.QuestionId, questionId, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException("No encontramos la pregunta enviada.");
                 AdvanceLiveTimedPhaseIfDue(liveState, receivedAt);
                 var activeQuestionId = liveState.Phase == LivePhaseQuestion
                     ? liveState.CurrentQuestionId
@@ -913,7 +869,7 @@ public sealed class SoporteCloudController : Controller
                     throw new InvalidOperationException("El tiempo de respuesta finalizo.");
                 }
 
-                answer = BuildLiveAnswerState(question, request, responseSeconds);
+                var answer = BuildLiveAnswerState(question, request, responseSeconds);
                 lock (participant.SyncRoot)
                 {
                     if (participant.Answers.TryGetValue(question.QuestionId, out var previous))
@@ -929,18 +885,12 @@ public sealed class SoporteCloudController : Controller
 
                 liveState.Sequence++;
                 liveState.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-
-            return Ok(BuildLiveSurveyStateDto(liveState, survey, questions, participantKey));
+            }, ct);
+            return Ok(BuildLiveSurveyStateDto(state, CreateLiveSurveySnapshot(state, state.KnowledgeQuestions), state.KnowledgeQuestions, participantKey));
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar la respuesta live.", ex));
-        }
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible registrar la respuesta live.", ex)); }
     }
 
     [AllowAnonymous]
@@ -949,62 +899,30 @@ public sealed class SoporteCloudController : Controller
     {
         try
         {
-            SoporteCloudPublicSurveyViewModel survey;
-            LiveSurveySessionState liveState;
-            IReadOnlyList<SoporteCloudSurveyQuestionDto> questions;
-            if (TryGetRememberedLiveSurvey(code, out var rememberedState, out var rememberedQuestions))
-            {
-                liveState = rememberedState;
-                questions = rememberedQuestions;
-                survey = CreateLiveSurveySnapshot(liveState, questions);
-            }
-            else
-            {
-                survey = await _dataverse.GetSoporteCloudPublicSurveyAsync(code, ct, trackScan: false);
-                liveState = EnsureLiveSurveyState(survey);
-                questions = survey.KnowledgeQuestions;
-            }
-
+            await ResolveLiveStateByCodeAsync(code, ct);
             var participantKey = BuildParticipantKey(request);
-            if (!string.IsNullOrWhiteSpace(participantKey))
+            var state = await MutateLiveStateAsync(code, current =>
             {
-                var totalKnowledgePoints = questions.Count * LiveQuestionMaxPoints;
-                liveState.Participants.AddOrUpdate(
-                    participantKey,
-                    _ => new LiveSurveyParticipantState
+                EnsureLiveNotClosing(current);
+                if (!string.IsNullOrWhiteSpace(participantKey))
+                {
+                    var participant = current.Participants.GetOrAdd(participantKey, _ => new LiveSurveyParticipantState
                     {
                         ParticipantKey = participantKey,
                         FullName = (request?.FullName ?? "").Trim(),
-                        Email = (request?.Email ?? "").Trim(),
-                        MaxScore = totalKnowledgePoints,
-                        Completed = true,
-                        CompletedAt = DateTimeOffset.UtcNow
-                    },
-                    (_, existing) =>
-                    {
-                        existing.Completed = true;
-                        existing.CompletedAt = DateTimeOffset.UtcNow;
-                        existing.MaxScore = Math.Max(existing.MaxScore, totalKnowledgePoints);
-                        return existing;
+                        Email = (request?.Email ?? "").Trim()
                     });
-            }
-
-            lock (liveState.SyncRoot)
-            {
-                liveState.Sequence++;
-                liveState.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-
-            return Ok(BuildLiveSurveyStateDto(liveState, survey, questions, participantKey));
+                    participant.Completed = true;
+                    participant.CompletedAt = DateTimeOffset.UtcNow;
+                    participant.MaxScore = Math.Max(participant.MaxScore, current.KnowledgeQuestions.Count * LiveQuestionMaxPoints);
+                }
+                TouchLiveState(current);
+            }, ct);
+            return Ok(BuildLiveSurveyStateDto(state, CreateLiveSurveySnapshot(state, state.KnowledgeQuestions), state.KnowledgeQuestions, participantKey));
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible actualizar el estado del participante.", ex));
-        }
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible actualizar el estado del participante.", ex)); }
     }
 
     [AllowAnonymous]
@@ -1013,67 +931,37 @@ public sealed class SoporteCloudController : Controller
     {
         try
         {
-            SoporteCloudPublicSurveyViewModel survey;
-            LiveSurveySessionState liveState;
-            IReadOnlyList<SoporteCloudSurveyQuestionDto> questions;
-            if (TryGetRememberedLiveSurvey(code, out var rememberedState, out var rememberedQuestions))
-            {
-                liveState = rememberedState;
-                questions = rememberedQuestions;
-                survey = CreateLiveSurveySnapshot(liveState, questions);
-            }
-            else
-            {
-                survey = await _dataverse.GetSoporteCloudPublicSurveyAsync(code, ct, trackScan: false);
-                liveState = EnsureLiveSurveyState(survey);
-                questions = survey.KnowledgeQuestions;
-            }
-
+            await ResolveLiveStateByCodeAsync(code, ct);
             var participantKey = NormalizeLiveKey(request?.ParticipantKey);
-            if (string.IsNullOrWhiteSpace(participantKey))
-                return BadRequest(CreateErrorPayload("Debes registrarte antes de girar la ruleta."));
-
+            if (string.IsNullOrWhiteSpace(participantKey)) return BadRequest(CreateErrorPayload("Debes registrarte antes de girar la ruleta."));
             var number = 0;
-            lock (liveState.SyncRoot)
+            var state = await MutateLiveStateAsync(code, current =>
             {
-                var participant = liveState.Participants.GetOrAdd(
-                    participantKey,
-                    _ => new LiveSurveyParticipantState
-                    {
-                        ParticipantKey = participantKey,
-                        FullName = (request?.FullName ?? "").Trim(),
-                        Email = (request?.Email ?? "").Trim(),
-                        RegisteredAt = DateTimeOffset.UtcNow
-                    });
-
-                lock (participant.SyncRoot)
+                EnsureLiveNotClosing(current);
+                var participant = current.Participants.GetOrAdd(participantKey, _ => new LiveSurveyParticipantState
                 {
-                    if (participant.WheelNumber is null)
-                    {
-                        participant.WheelNumber = RandomNumberGenerator.GetInt32(1, 101);
-                        participant.WheelSpunAt = DateTimeOffset.UtcNow;
-                    }
-
-                    number = participant.WheelNumber.Value;
+                    ParticipantKey = participantKey,
+                    FullName = (request?.FullName ?? "").Trim(),
+                    Email = (request?.Email ?? "").Trim(),
+                    RegisteredAt = DateTimeOffset.UtcNow
+                });
+                if (participant.WheelNumber is null)
+                {
+                    participant.WheelNumber = RandomNumberGenerator.GetInt32(1, 101);
+                    participant.WheelSpunAt = DateTimeOffset.UtcNow;
                 }
-
-                TouchLiveState(liveState);
-            }
-
+                number = participant.WheelNumber.Value;
+                TouchLiveState(current);
+            }, ct);
             return Ok(new SoporteCloudLiveWheelSpinResultDto
             {
                 Number = number,
-                State = BuildLiveSurveyStateDto(liveState, survey, questions, participantKey)
+                State = BuildLiveSurveyStateDto(state, CreateLiveSurveySnapshot(state, state.KnowledgeQuestions), state.KnowledgeQuestions, participantKey)
             });
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(CreateErrorPayload(ex.Message, ex));
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, CreateErrorPayload("No fue posible registrar la ruleta.", ex));
-        }
+        catch (SharedLiveSurveyStoreUnavailableException ex) { return StoreUnavailable(ex); }
+        catch (InvalidOperationException ex) { return BadRequest(CreateErrorPayload(ex.Message, ex)); }
+        catch (Exception ex) { return StatusCode(500, CreateErrorPayload("No fue posible girar la ruleta.", ex)); }
     }
 
     [AllowAnonymous]
@@ -1127,145 +1015,106 @@ public sealed class SoporteCloudController : Controller
             .ToList();
     }
 
-    private async Task<(LiveSurveySessionState LiveState, SoporteCloudSurveySessionDto Session, IReadOnlyList<SoporteCloudSurveyQuestionDto> Questions)> ResolveLiveSurveySessionStateAsync(
-        string sessionId,
-        CancellationToken ct)
+    private async Task<(LiveSurveySessionState LiveState, SoporteCloudSurveySessionDto Session, IReadOnlyList<SoporteCloudSurveyQuestionDto> Questions)> ResolveLiveSurveySessionStateAsync(string sessionId, CancellationToken ct)
     {
-        if (TryGetRememberedLiveSurveyBySessionId(sessionId, out var rememberedState, out var rememberedQuestions))
+        if (!Guid.TryParse(sessionId, out var id)) throw new InvalidOperationException("La sesion live no es valida.");
+        var index = await _liveStore.ReadAsync<LiveSurveySessionIndex>($"session-{id:D}", ct);
+        LiveSurveySessionState state;
+        if (index is not null && !string.IsNullOrWhiteSpace(index.Code))
+            state = await ResolveLiveStateByCodeAsync(index.Code, ct);
+        else
         {
-            return (
-                rememberedState,
-                CreateLiveSurveySessionSnapshot(rememberedState),
-                rememberedQuestions);
+            var board = await _dataverse.GetSoporteCloudSurveyBoardAsync(ct);
+            var session = FindSurveySession(board, sessionId) ?? throw new InvalidOperationException("No encontramos la sesion live solicitada.");
+            state = await InitializeLiveStateAsync(session, ResolveSessionKnowledgeQuestions(board, session),
+                board.Questions.Where(question => question.ComponentValue != SurveyComponentKnowledge && question.IsActive).ToList(), ct);
+            state = await NormalizeTimedPhaseAsync(state, ct);
         }
-
-        var board = await _dataverse.GetSoporteCloudSurveyBoardAsync(ct);
-        var session = FindSurveySession(board, sessionId)
-            ?? throw new InvalidOperationException("No encontramos la sesion live solicitada.");
-        var liveState = EnsureLiveSurveyState(session);
-        var questions = ResolveSessionKnowledgeQuestions(board, session);
-        RememberLiveSurveyQuestions(liveState, questions);
-        return (liveState, session, questions);
+        return (state, CreateLiveSurveySessionSnapshot(state), state.KnowledgeQuestions);
     }
 
-    private static LiveSurveySessionState EnsureLiveSurveyState(SoporteCloudSurveySessionDto session)
+    private async Task<LiveSurveySessionState> InitializeLiveStateAsync(SoporteCloudSurveySessionDto session,
+        IReadOnlyList<SoporteCloudSurveyQuestionDto> questions, IReadOnlyList<SoporteCloudSurveyQuestionDto> satisfaction, CancellationToken ct)
     {
         var code = NormalizeLiveCode(session.Code);
-        if (string.IsNullOrWhiteSpace(code))
-            throw new InvalidOperationException("La sesion no tiene codigo publico.");
-
-        var state = LiveSurveySessions.GetOrAdd(code, _ => new LiveSurveySessionState
+        if (string.IsNullOrWhiteSpace(code)) throw new InvalidOperationException("La sesion no tiene codigo publico.");
+        var state = await _liveStore.MutateAsync<LiveSurveySessionState, LiveSurveySessionState>($"code-{code}", existing =>
         {
-            Code = code,
-            SessionId = session.SessionId,
-            SessionName = session.Name,
-            TopicName = session.TopicName,
-            PublicUrl = session.PublicUrl,
-            Phase = session.StateValue == SurveySessionStateClosed ? LivePhaseClosed : LivePhaseRegistration,
-            UpdatedAt = DateTimeOffset.UtcNow
-        });
-
-        lock (state.SyncRoot)
-        {
-            state.SessionId = session.SessionId;
-            state.SessionName = session.Name;
-            state.TopicName = session.TopicName;
-            state.PublicUrl = session.PublicUrl;
-            if (session.StateValue == SurveySessionStateClosed)
-                state.Phase = LivePhaseClosed;
-        }
-
-        return state;
-    }
-
-    private static LiveSurveySessionState EnsureLiveSurveyState(SoporteCloudPublicSurveyViewModel survey)
-    {
-        var code = NormalizeLiveCode(survey.Code);
-        if (string.IsNullOrWhiteSpace(code))
-            throw new InvalidOperationException("La encuesta no tiene codigo publico.");
-
-        var state = LiveSurveySessions.GetOrAdd(code, _ => new LiveSurveySessionState
-        {
-            Code = code,
-            SessionId = survey.SessionId,
-            SessionName = survey.SessionName,
-            TopicName = survey.TopicName,
-            PublicUrl = $"/SoporteCloud/Encuesta/{Uri.EscapeDataString(code)}",
-            Phase = survey.IsClosed ? LivePhaseClosed : LivePhaseRegistration,
-            UpdatedAt = DateTimeOffset.UtcNow
-        });
-
-        lock (state.SyncRoot)
-        {
-            state.SessionId = survey.SessionId;
-            state.SessionName = survey.SessionName;
-            state.TopicName = survey.TopicName;
-            state.PublicUrl = $"/SoporteCloud/Encuesta/{Uri.EscapeDataString(code)}";
-            state.KnowledgeQuestions = survey.KnowledgeQuestions;
-            if (survey.IsClosed)
-                state.Phase = LivePhaseClosed;
-        }
-
-        return state;
-    }
-
-    private static void RememberLiveSurveyQuestions(
-        LiveSurveySessionState liveState,
-        IReadOnlyList<SoporteCloudSurveyQuestionDto> questions)
-    {
-        lock (liveState.SyncRoot)
-        {
-            liveState.KnowledgeQuestions = questions.Count == 0
-                ? Array.Empty<SoporteCloudSurveyQuestionDto>()
-                : questions.ToList();
-        }
-    }
-
-    private static bool TryGetRememberedLiveSurvey(
-        string code,
-        out LiveSurveySessionState liveState,
-        out IReadOnlyList<SoporteCloudSurveyQuestionDto> questions)
-    {
-        liveState = null!;
-        questions = Array.Empty<SoporteCloudSurveyQuestionDto>();
-        var normalizedCode = NormalizeLiveCode(code);
-        if (string.IsNullOrWhiteSpace(normalizedCode)
-            || !LiveSurveySessions.TryGetValue(normalizedCode, out var state))
-            return false;
-
-        lock (state.SyncRoot)
-        {
-            liveState = state;
-            questions = state.KnowledgeQuestions;
-            return true;
-        }
-    }
-
-    private static bool TryGetRememberedLiveSurveyBySessionId(
-        string sessionId,
-        out LiveSurveySessionState liveState,
-        out IReadOnlyList<SoporteCloudSurveyQuestionDto> questions)
-    {
-        liveState = null!;
-        questions = Array.Empty<SoporteCloudSurveyQuestionDto>();
-        var normalizedSessionId = NormalizeOptionalGuidLocal(sessionId);
-        if (string.IsNullOrWhiteSpace(normalizedSessionId))
-            return false;
-
-        foreach (var state in LiveSurveySessions.Values)
-        {
-            lock (state.SyncRoot)
+            if (existing is not null) return new(existing, existing, Persist: false);
+            var created = new LiveSurveySessionState
             {
-                if (!string.Equals(state.SessionId, normalizedSessionId, StringComparison.OrdinalIgnoreCase))
-                    continue;
+                Code = code, SessionId = session.SessionId, SessionName = session.Name, TopicName = session.TopicName,
+                PublicUrl = session.PublicUrl, Phase = session.StateValue == SurveySessionStateClosed ? LivePhaseClosed : LivePhaseRegistration,
+                KnowledgeQuestions = questions, SatisfactionQuestions = satisfaction, UpdatedAt = DateTimeOffset.UtcNow
+            };
+            return new(created, created);
+        }, ct);
+        if (Guid.TryParse(session.SessionId, out var id))
+            await _liveStore.MutateAsync<LiveSurveySessionIndex, bool>($"session-{id:D}", existing =>
+                existing is not null ? new(existing, true, Persist: false) : new(new LiveSurveySessionIndex { Code = code }, true), ct);
+        return state;
+    }
 
-                liveState = state;
-                questions = state.KnowledgeQuestions;
-                return true;
-            }
+    private async Task<LiveSurveySessionState> ResolveLiveStateByCodeAsync(string code, CancellationToken ct, bool normalizeTimedPhase = true)
+    {
+        var normalizedCode = NormalizeLiveCode(code);
+        var state = await _liveStore.ReadAsync<LiveSurveySessionState>($"code-{normalizedCode}", ct);
+        if (state is null)
+        {
+            var survey = await _dataverse.GetSoporteCloudPublicSurveyAsync(normalizedCode, ct, trackScan: false);
+            state = await InitializeLiveStateAsync(new SoporteCloudSurveySessionDto
+            {
+                Code = survey.Code, SessionId = survey.SessionId, Name = survey.SessionName, TopicName = survey.TopicName,
+                PublicUrl = $"/SoporteCloud/Encuesta/{Uri.EscapeDataString(survey.Code)}",
+                StateValue = survey.IsClosed ? SurveySessionStateClosed : SurveySessionStateOpen
+            }, survey.KnowledgeQuestions, survey.SatisfactionQuestions, ct);
         }
+        return normalizeTimedPhase ? await NormalizeTimedPhaseAsync(state, ct) : state;
+    }
 
-        return false;
+    private async Task<LiveSurveySessionState> NormalizeTimedPhaseAsync(LiveSurveySessionState state, CancellationToken ct)
+    {
+        if (state.Phase != LivePhaseQuestion || state.QuestionStartedOnUtc is null || state.QuestionStartedOnUtc.Value.Add(LiveQuestionDuration) > DateTimeOffset.UtcNow)
+            return state;
+        return await _liveStore.MutateAsync<LiveSurveySessionState, LiveSurveySessionState>($"code-{NormalizeLiveCode(state.Code)}", current =>
+        {
+            if (current is null) throw new InvalidOperationException("No encontramos el estado de la sesion live.");
+            var sequence = current.Sequence;
+            AdvanceLiveTimedPhaseIfDue(current);
+            return new(current, current, Persist: current.Sequence != sequence);
+        }, ct);
+    }
+
+    private Task<LiveSurveySessionState> MutateLiveStateAsync(string code, Action<LiveSurveySessionState> mutation, CancellationToken ct) =>
+        _liveStore.MutateAsync<LiveSurveySessionState, LiveSurveySessionState>($"code-{NormalizeLiveCode(code)}", current =>
+        {
+            if (current is null) throw new InvalidOperationException("No encontramos el estado de la sesion live.");
+            mutation(current);
+            return new(current, current);
+        }, ct);
+
+    private void LogLiveLifecycle(string action, LiveSurveySessionState state) =>
+        _logger?.LogInformation("SoporteCloud live {Action} session {SessionId} code {Code} phase {Phase} sequence {Sequence} instance {Instance}",
+            action, state.SessionId, state.Code, state.Phase, state.Sequence,
+            Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID") ?? $"local-{Environment.ProcessId}");
+
+    private ObjectResult StoreUnavailable(SharedLiveSurveyStoreUnavailableException exception)
+    {
+        _logger?.LogWarning(exception, "SoporteCloud shared live store unavailable on instance {Instance}; trace {TraceId}",
+            Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID") ?? $"local-{Environment.ProcessId}", HttpContext.TraceIdentifier);
+        return StatusCode(503, CreateErrorPayload(exception.Message));
+    }
+
+    private static void EnsureLiveNotClosing(LiveSurveySessionState state)
+    {
+        if (!string.IsNullOrWhiteSpace(state.ClosingOperationId))
+            throw new InvalidOperationException("La sesion se esta cerrando. Espera unos segundos e intenta de nuevo.");
+    }
+
+    private static void EnsureLiveOpen(LiveSurveySessionState state)
+    {
+        EnsureLiveNotClosing(state);
+        if (state.Phase == LivePhaseClosed) throw new InvalidOperationException("La encuesta ya fue cerrada.");
     }
 
     private static SoporteCloudPublicSurveyViewModel CreateLiveSurveySnapshot(
@@ -1279,7 +1128,8 @@ public sealed class SoporteCloudController : Controller
             SessionName = liveState.SessionName,
             TopicName = liveState.TopicName,
             IsClosed = liveState.Phase == LivePhaseClosed,
-            KnowledgeQuestions = questions
+            KnowledgeQuestions = questions,
+            SatisfactionQuestions = liveState.SatisfactionQuestions
         };
     }
 
@@ -1307,7 +1157,6 @@ public sealed class SoporteCloudController : Controller
         lock (liveState.SyncRoot)
         {
             liveState.KnowledgeQuestions = questions;
-            AdvanceLiveTimedPhaseIfDue(liveState);
             var isClosed = session.StateValue == SurveySessionStateClosed || liveState.Phase == LivePhaseClosed;
             var normalizedParticipantKey = NormalizeLiveKey(participantKey);
             var wasRemoved = !string.IsNullOrWhiteSpace(normalizedParticipantKey)
@@ -1337,7 +1186,7 @@ public sealed class SoporteCloudController : Controller
                 CurrentQuestionAnsweredCount = currentQuestionAnsweredCount,
                 TotalQuestions = questions.Count,
                 IsClosed = isClosed,
-                CanAdvance = !isClosed && (phase is LivePhaseRegistration or LivePhaseIntro or LivePhaseRanking or LivePhaseWinners or LivePhaseSurvey),
+                CanAdvance = !isClosed && string.IsNullOrWhiteSpace(liveState.ClosingOperationId) && (phase is LivePhaseRegistration or LivePhaseIntro or LivePhaseRanking or LivePhaseWinners or LivePhaseSurvey),
                 ServerNowUtc = DateTimeOffset.UtcNow,
                 QuestionStartedOnUtc = phase == LivePhaseQuestion ? liveState.QuestionStartedOnUtc : null,
                 QuestionEndsOnUtc = phase == LivePhaseQuestion && liveState.QuestionStartedOnUtc is not null
@@ -1364,7 +1213,6 @@ public sealed class SoporteCloudController : Controller
         lock (liveState.SyncRoot)
         {
             liveState.KnowledgeQuestions = questions;
-            AdvanceLiveTimedPhaseIfDue(liveState);
             var normalizedParticipantKey = NormalizeLiveKey(participantKey);
             var wasRemoved = !string.IsNullOrWhiteSpace(normalizedParticipantKey)
                 && liveState.RemovedParticipants.ContainsKey(normalizedParticipantKey);
@@ -1958,14 +1806,15 @@ public sealed class SoporteCloudController : Controller
         return await _dataverse.SaveSoporteCloudLiveKnowledgeResultsAsync(liveState.Code, submissions, ct);
     }
 
-    private static void ApplyLiveScoreOverrides(string code, SoporteCloudSurveySubmitRequest request)
+    private async Task ApplyLiveScoreOverridesAsync(string code, SoporteCloudSurveySubmitRequest request, CancellationToken ct)
     {
         var participantKey = FirstNonEmptyLocal(
             NormalizeLiveKey(request.ParticipantKey),
             NormalizeLiveKey(request.Email),
             NormalizeLiveKey($"{request.FullName}|{request.Company}"));
+        var liveState = await _liveStore.ReadAsync<LiveSurveySessionState>($"code-{NormalizeLiveCode(code)}", ct);
         if (string.IsNullOrWhiteSpace(participantKey)
-            || !LiveSurveySessions.TryGetValue(NormalizeLiveCode(code), out var liveState)
+            || liveState is null
             || !liveState.Participants.TryGetValue(participantKey, out var participant)
             || request.Answers.Count == 0)
             return;
@@ -2096,57 +1945,4 @@ public sealed class SoporteCloudController : Controller
         return DateOnly.FromDateTime(utcNow.UtcDateTime);
     }
 
-    private sealed class LiveSurveySessionState
-    {
-        public object SyncRoot { get; } = new();
-        public string SessionId { get; set; } = "";
-        public string Code { get; init; } = "";
-        public string SessionName { get; set; } = "";
-        public string TopicName { get; set; } = "";
-        public string PublicUrl { get; set; } = "";
-        public string Phase { get; set; } = LivePhaseRegistration;
-        public int CurrentQuestionIndex { get; set; } = -1;
-        public string CurrentQuestionId { get; set; } = "";
-        public string PendingPhase { get; set; } = "";
-        public int PendingQuestionIndex { get; set; } = -1;
-        public DateTimeOffset? QuestionStartedOnUtc { get; set; }
-        public DateTimeOffset? RankingEndsOnUtc { get; set; }
-        public int Sequence { get; set; }
-        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
-        public IReadOnlyList<SoporteCloudSurveyQuestionDto> KnowledgeQuestions { get; set; } = Array.Empty<SoporteCloudSurveyQuestionDto>();
-        public ConcurrentDictionary<string, LiveSurveyParticipantState> Participants { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public ConcurrentDictionary<string, DateTimeOffset> RemovedParticipants { get; } = new(StringComparer.OrdinalIgnoreCase);
-    }
-
-    private sealed class LiveSurveyParticipantState
-    {
-        public object SyncRoot { get; } = new();
-        public string ParticipantKey { get; init; } = "";
-        public string FullName { get; set; } = "";
-        public string Identification { get; set; } = "";
-        public string Company { get; set; } = "";
-        public string Role { get; set; } = "";
-        public string Email { get; set; } = "";
-        public decimal Score { get; set; }
-        public decimal MaxScore { get; set; }
-        public DateTimeOffset RegisteredAt { get; init; } = DateTimeOffset.UtcNow;
-        public bool Completed { get; set; }
-        public DateTimeOffset? CompletedAt { get; set; }
-        public int? WheelNumber { get; set; }
-        public DateTimeOffset? WheelSpunAt { get; set; }
-        public ConcurrentDictionary<string, LiveSurveyAnswerState> Answers { get; } = new(StringComparer.OrdinalIgnoreCase);
-    }
-
-    private sealed class LiveSurveyAnswerState
-    {
-        public string QuestionId { get; init; } = "";
-        public string OptionId { get; set; } = "";
-        public decimal? NumericValue { get; set; }
-        public string TextValue { get; set; } = "";
-        public decimal Points { get; set; }
-        public decimal MaxPoints { get; set; }
-        public bool IsCorrect { get; set; }
-        public decimal ResponseSeconds { get; set; }
-        public DateTimeOffset AnsweredAt { get; init; } = DateTimeOffset.UtcNow;
-    }
 }

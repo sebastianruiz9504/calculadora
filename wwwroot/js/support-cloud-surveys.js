@@ -246,7 +246,9 @@
             liveClientTimer: 0,
             livePollTimer: 0,
             livePollInFlight: false,
-            livePollPending: false,
+            livePollEnabled: false,
+            livePollGeneration: 0,
+            livePollController: null,
             liveStateRequestId: 0,
             liveStateAppliedRequestId: 0,
             liveAdvanceBusy: false,
@@ -1025,14 +1027,25 @@
                 return;
             }
             if (state.livePollInFlight) {
-                state.livePollPending = true;
                 return;
             }
 
+            window.clearTimeout(state.livePollTimer);
+            state.livePollTimer = 0;
+            const generation = state.livePollGeneration;
+            const controller = new AbortController();
             const requestId = ++state.liveStateRequestId;
             state.livePollInFlight = true;
+            state.livePollController = controller;
             try {
-                const result = await fetchJson(buildUrl(urls.liveState, { sessionId }));
+                const result = await fetchJson(buildUrl(urls.liveState, { sessionId }), {
+                    timeoutMs: 5000,
+                    signal: controller.signal,
+                    cache: "no-store"
+                });
+                if (generation !== state.livePollGeneration || controller.signal.aborted) {
+                    return;
+                }
                 if (requestId >= state.liveStateAppliedRequestId) {
                     state.liveStateAppliedRequestId = requestId;
                     renderLiveState(result);
@@ -1041,14 +1054,14 @@
                     setStatus("success", "Estado live actualizado.");
                 }
             } catch (error) {
-                if (!options.silent) {
+                if (generation === state.livePollGeneration && !controller.signal.aborted && !options.silent) {
                     setStatus("error", buildErrorMessage(error));
                 }
             } finally {
                 state.livePollInFlight = false;
-                if (state.livePollPending) {
-                    state.livePollPending = false;
-                    window.setTimeout(() => loadLiveState({ silent: true }), 0);
+                state.livePollController = null;
+                if (state.livePollEnabled) {
+                    state.livePollTimer = window.setTimeout(() => loadLiveState({ silent: true }), 1000);
                 }
             }
         }
@@ -1105,6 +1118,10 @@
 
         function renderLiveState(liveState) {
             if (!liveState) {
+                return;
+            }
+            if (state.liveState && liveState.sessionId === state.liveState.sessionId
+                && Number(liveState.sequence) < Number(state.liveState.sequence)) {
                 return;
             }
 
@@ -1451,13 +1468,16 @@
 
         function startLivePolling() {
             stopLivePolling();
-            state.livePollTimer = window.setInterval(() => loadLiveState({ silent: true }), 1000);
+            state.livePollEnabled = true;
+            loadLiveState({ silent: true });
         }
 
         function stopLivePolling() {
-            window.clearInterval(state.livePollTimer);
+            window.clearTimeout(state.livePollTimer);
             state.livePollTimer = 0;
-            state.livePollPending = false;
+            state.livePollEnabled = false;
+            state.livePollGeneration++;
+            state.livePollController?.abort();
         }
 
         async function saveAndRefresh(url, payload, reset) {
@@ -2063,8 +2083,12 @@
             mode: "consent",
             pollTimer: 0,
             pollInFlight: false,
-            pollPending: false,
+            pollEnabled: false,
+            pollGeneration: 0,
+            pollController: null,
+            registrationBusy: false,
             lastSequence: -1,
+            lastPhase: "",
             shownIntro: false,
             shownSurvey: canRestoreSnapshot && Boolean(savedSnapshot.shownSurvey),
             shownRankingSequence: -1,
@@ -2073,7 +2097,7 @@
             savingFinalSurvey: false,
             activeInputPrompt: "",
             currentTextQuestion: null,
-            shownQuestionIds: new Set(),
+            visibleQuestionId: "",
             answeredQuestionIds: new Set(savedAnsweredIds),
             answers: new Map(savedAnswers),
             score: canRestoreSnapshot ? Number(savedSnapshot.score || 0) : 0,
@@ -2315,11 +2339,21 @@ La informacion suministrada sera usada para registrar asistencia, evaluar la cap
         }
 
         async function registerParticipant() {
-            showPanel("none");
+            if (state.registrationBusy) {
+                return;
+            }
+
+            const recovering = state.pollEnabled || state.restoreRegisterAttempted;
+            state.registrationBusy = true;
+            stopLivePolling({ preserveQuestion: true });
+            if (!state.visibleQuestionId) {
+                showPanel("none");
+            }
             addBot("Registrando tu asistencia...");
             try {
                 const result = await fetchJson(payload.liveRegisterUrl || "", {
                     method: "POST",
+                    timeoutMs: 15000,
                     body: JSON.stringify({
                         participantKey: state.participantKey,
                         fullName: state.participant.fullName || "",
@@ -2335,59 +2369,96 @@ La informacion suministrada sera usada para registrar asistencia, evaluar la cap
                 } else {
                     persistLiveSnapshot();
                 }
-                setLiveScreen("waiting", true);
-                addBot(result?.message || "Registro recibido. Espera al presentador.");
-                showLiveTopbar(result?.state || null);
-                startLivePolling();
+                if (!result?.state || result.state.phase === "registration") {
+                    setLiveScreen("waiting", true);
+                    addBot(result?.message || "Registro recibido. Espera al presentador.");
+                }
+                state.registrationBusy = false;
+                if (result?.state) {
+                    handleLiveParticipantState(result.state);
+                }
+                if (result?.state?.phase !== "closed" && result?.state?.phase !== "removed") {
+                    startLivePolling();
+                }
             } catch (error) {
-                addFeedback(false, buildErrorMessage(error));
-                state.registrationStep = Math.max(0, registrationFields.length - 1);
-                askRegistration();
+                if (recovering) {
+                    setLivePhase("Reconectando", buildErrorMessage(error));
+                    state.restoreRegisterAttempted = false;
+                    state.pollEnabled = true;
+                    state.pollTimer = window.setTimeout(loadLiveParticipantState, 1000);
+                } else {
+                    addFeedback(false, buildErrorMessage(error));
+                    state.mode = "registration";
+                    state.registrationStep = Math.max(0, registrationFields.length - 1);
+                    askRegistration();
+                }
+            } finally {
+                state.registrationBusy = false;
             }
         }
 
         function startLivePolling() {
-            stopLivePolling();
+            stopLivePolling({ preserveQuestion: true });
+            state.pollEnabled = true;
             loadLiveParticipantState();
-            state.pollTimer = window.setInterval(loadLiveParticipantState, 1000);
         }
 
-        function stopLivePolling() {
-            window.clearInterval(state.pollTimer);
+        function stopLivePolling(options = {}) {
+            window.clearTimeout(state.pollTimer);
             state.pollTimer = 0;
-            state.pollPending = false;
-            stopLiveQuestionTimer();
+            state.pollEnabled = false;
+            state.pollGeneration++;
+            state.pollController?.abort();
+            if (!options.preserveQuestion) {
+                stopLiveQuestionTimer();
+            }
         }
 
         async function loadLiveParticipantState() {
-            if (!payload.liveStateUrl) {
+            if (!payload.liveStateUrl || state.registrationBusy) {
                 return;
             }
             if (state.pollInFlight) {
-                state.pollPending = true;
                 return;
             }
 
+            window.clearTimeout(state.pollTimer);
+            state.pollTimer = 0;
+            const generation = state.pollGeneration;
+            const controller = new AbortController();
             state.pollInFlight = true;
+            state.pollController = controller;
             try {
                 const liveStateUrl = state.participantKey
                     ? buildUrl(payload.liveStateUrl, { participantKey: state.participantKey })
                     : payload.liveStateUrl;
-                const liveState = await fetchJson(liveStateUrl);
+                const liveState = await fetchJson(liveStateUrl, {
+                    timeoutMs: 5000,
+                    signal: controller.signal,
+                    cache: "no-store"
+                });
+                if (generation !== state.pollGeneration || controller.signal.aborted) {
+                    return;
+                }
                 handleLiveParticipantState(liveState);
             } catch (error) {
-                setLivePhase("Sin conexion", buildErrorMessage(error));
+                if (generation === state.pollGeneration && !controller.signal.aborted) {
+                    setLivePhase("Reconectando", buildErrorMessage(error));
+                }
             } finally {
                 state.pollInFlight = false;
-                if (state.pollPending) {
-                    state.pollPending = false;
-                    window.setTimeout(loadLiveParticipantState, 0);
+                state.pollController = null;
+                if (state.pollEnabled && !state.registrationBusy) {
+                    state.pollTimer = window.setTimeout(loadLiveParticipantState, 1000);
                 }
             }
         }
 
         function handleLiveParticipantState(liveState) {
             if (!liveState) {
+                return;
+            }
+            if (Number(liveState.sequence) < Number(state.lastSequence)) {
                 return;
             }
 
@@ -2419,10 +2490,11 @@ La informacion suministrada sera usada para registrar asistencia, evaluar la cap
                 return;
             }
             showLiveTopbar(liveState);
-            if (liveState.sequence === state.lastSequence && liveState.phase !== "question") {
+            if (liveState.sequence === state.lastSequence && liveState.phase === state.lastPhase && liveState.phase !== "question") {
                 return;
             }
             state.lastSequence = liveState.sequence;
+            state.lastPhase = liveState.phase;
 
             if (liveState.phase === "registration") {
                 return;
@@ -2435,8 +2507,7 @@ La informacion suministrada sera usada para registrar asistencia, evaluar la cap
             }
             if (liveState.phase === "question" && liveState.currentQuestion) {
                 const questionId = liveState.currentQuestion.questionId || "";
-                if (!state.shownQuestionIds.has(questionId) && !state.answeredQuestionIds.has(questionId)) {
-                    state.shownQuestionIds.add(questionId);
+                if (state.visibleQuestionId !== questionId && !state.answeredQuestionIds.has(questionId)) {
                     showLiveQuestion(liveState.currentQuestion, liveState.currentQuestionIndex, liveState.totalQuestions, liveState);
                 }
                 return;
@@ -2526,6 +2597,7 @@ La informacion suministrada sera usada para registrar asistencia, evaluar la cap
         function showLiveQuestion(question, index, total, liveState) {
             state.mode = "question";
             setLiveScreen("question", true);
+            state.visibleQuestionId = question.questionId || "";
             showPanel("none");
             state.currentQuestionIndex = Number(index ?? 0);
             state.totalQuestions = Number(total || state.totalQuestions || 0);
@@ -3460,8 +3532,11 @@ ${leaders.map((item, index) => `${index + 1}. ${item.fullName || "Participante"}
 
         function setLiveScreen(screen, clearMessages = false) {
             root.dataset.liveScreen = screen || "";
-            if (clearMessages && els.messages) {
-                els.messages.innerHTML = "";
+            if (clearMessages) {
+                state.visibleQuestionId = "";
+                if (els.messages) {
+                    els.messages.innerHTML = "";
+                }
             }
         }
 
@@ -3628,20 +3703,43 @@ ${leaders.map((item, index) => `${index + 1}. ${item.fullName || "Participante"}
         }
 
         const controller = options.timeoutMs ? new AbortController() : null;
+        const abortFromCaller = () => controller?.abort();
+        if (controller && options.signal) {
+            if (options.signal.aborted) {
+                controller.abort();
+            } else {
+                options.signal.addEventListener("abort", abortFromCaller, { once: true });
+            }
+        }
         const timeoutId = controller
             ? window.setTimeout(() => controller.abort(), Number(options.timeoutMs || 0))
             : 0;
 
-        let response;
         try {
-            response = await fetch(url, {
+            const response = await fetch(url, {
                 method: options.method || "GET",
                 headers,
                 body: options.body,
-                signal: controller?.signal
+                signal: controller?.signal || options.signal,
+                cache: options.cache
             });
+            const contentType = response.headers.get("content-type") || "";
+            if (!response.ok) {
+                const raw = await response.text();
+                if (contentType.includes("application/json")) {
+                    let payload;
+                    try {
+                        payload = JSON.parse(raw);
+                    } catch {
+                        // Preserve a non-JSON server error as readable text.
+                    }
+                    throw new Error(payload?.message || payload?.detail || raw || "No fue posible completar la solicitud.");
+                }
+                throw new Error(raw || "No fue posible completar la solicitud.");
+            }
+            return await (contentType.includes("application/json") ? response.json() : response.text());
         } catch (error) {
-            if (error?.name === "AbortError") {
+            if (error?.name === "AbortError" && !options.signal?.aborted) {
                 throw new Error("La solicitud tardo demasiado. Continuaremos con la experiencia live.");
             }
             throw error;
@@ -3649,24 +3747,8 @@ ${leaders.map((item, index) => `${index + 1}. ${item.fullName || "Participante"}
             if (timeoutId) {
                 window.clearTimeout(timeoutId);
             }
+            options.signal?.removeEventListener("abort", abortFromCaller);
         }
-
-        const contentType = response.headers.get("content-type") || "";
-        if (!response.ok) {
-            const raw = await response.text();
-            if (contentType.includes("application/json")) {
-                try {
-                    const payload = JSON.parse(raw);
-                    throw new Error(payload?.message || payload?.detail || raw);
-                } catch (error) {
-                    if (error instanceof Error && error.message !== raw) {
-                        throw error;
-                    }
-                }
-            }
-            throw new Error(raw || "No fue posible completar la solicitud.");
-        }
-        return contentType.includes("application/json") ? response.json() : response.text();
     }
 
     function buildUrl(baseUrl, params) {
