@@ -1,4 +1,5 @@
 {
+  "contract": "outlook-send-once-v1",
   "definition": {
     "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
     "contentVersion": "1.0.0.0",
@@ -595,7 +596,8 @@
                     "emailMessage/To": "@first(body('Read_pending_row')?['value'])?['dtc_emailtosnapshot']",
                     "emailMessage/Importance": "Normal",
                     "emailMessage/Subject": "@first(body('Read_pending_row')?['value'])?['dtc_emailsubjectsnapshot']",
-                    "emailMessage/Attachments": "@variables('MailAttachments')"
+                    "emailMessage/Attachments": "@variables('MailAttachments')",
+                    "emailMessage/Cc": "Germanruiz@digitaltechcolombia.com;soportecopiers@digitaltechcolombia.com"
                   },
                   "host": {
                     "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
@@ -766,8 +768,7 @@
     },
     "outputs": {}
   },
-  "state": "Started",
   "flowId": "66e7671c-17d4-4f82-b0f3-59070c0a00b8",
   "displayName": "Copiers MTO V2 - Enviar reporte firmado",
-  "contract": "outlook-send-once-v1"
+  "state": "Started"
 }

@@ -157,6 +157,7 @@ $prepareActions = [ordered]@{
 }
 $sendAction = New-ConnectorAction 'SendEmailV2' @{
     'emailMessage/To' = "@$main`?['dtc_emailtosnapshot']"
+    'emailMessage/Cc' = 'Germanruiz@digitaltechcolombia.com;soportecopiers@digitaltechcolombia.com'
     'emailMessage/Subject' = "@$main`?['dtc_emailsubjectsnapshot']"
     'emailMessage/Body' = "@$main`?['dtc_emailhtmlbodysnapshot']"
     'emailMessage/Attachments' = "@variables('MailAttachments')"

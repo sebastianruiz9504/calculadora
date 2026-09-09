@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/hardware.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/support-cloud.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/copiers-mto-v2-calendar.css" asp-append-version="true" />
 }
 
 <div class="dashboard-shell"
@@ -1465,6 +1466,7 @@
             <button type="button" class="dashboard-subtab" data-copiers-subtab="movements">Movimientos</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="counters">Contadores</button>
             <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance">Mantenimientos</button>
+            <button type="button" class="dashboard-subtab" data-copiers-subtab="maintenance-v2">Mantenimiento V2</button>
         </section>
 
         <div class="dashboard-subpanel is-active" data-copiers-subpanel="billing">
@@ -1661,6 +1663,57 @@
                     </div>
                 </article>
             </section>
+        </div>
+
+        <div class="dashboard-subpanel" data-copiers-subpanel="maintenance-v2" hidden>
+            <section class="mto-calendar dashboard-panel" id="copiersMtoV2Calendar"
+                     data-bootstrap-url="@Url.Action("Bootstrap", "CopiersMtoV2Calendar")"
+                     data-week-url="@Url.Action("Week", "CopiersMtoV2Calendar")"
+                     data-detail-url="@Url.Action("Detail", "CopiersMtoV2Calendar")"
+                     aria-labelledby="mtoCalendarHeading">
+                <header class="mto-calendar__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Copiers · Reportes firmados</div>
+                        <h2 id="mtoCalendarHeading" class="dashboard-panel__title">Mantenimiento V2</h2>
+                        <p class="mto-calendar__muted">Visitas por técnico. Selecciona un mantenimiento para consultar su reporte y evidencias.</p>
+                    </div>
+                    <label class="mto-calendar__technician" for="mtoCalendarTechnician">
+                        <span>Técnico</span>
+                        <select id="mtoCalendarTechnician" class="form-select" disabled>
+                            <option value="">Selecciona un técnico</option>
+                        </select>
+                    </label>
+                </header>
+                <div class="mto-calendar__toolbar">
+                    <div class="mto-calendar__navigation" aria-label="Navegar por semanas">
+                        <button type="button" class="btn btn-outline-secondary" id="mtoCalendarToday">Hoy</button>
+                        <button type="button" class="btn btn-outline-secondary" id="mtoCalendarPrevious" aria-label="Semana anterior">&#8249;</button>
+                        <button type="button" class="btn btn-outline-secondary" id="mtoCalendarNext" aria-label="Semana siguiente">&#8250;</button>
+                        <h3 id="mtoCalendarRange" aria-live="polite"></h3>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary" id="mtoCalendarRefresh">Actualizar</button>
+                </div>
+                <div class="mto-calendar__legend" aria-label="Tipos de mantenimiento">
+                    <span class="mto-calendar__legend-item mto-calendar__legend-item--preventive">Preventivo</span>
+                    <span class="mto-calendar__legend-item mto-calendar__legend-item--corrective">Correctivo</span>
+                    <span class="mto-calendar__muted">Hora de Colombia (UTC−5)</span>
+                </div>
+                <p id="mtoCalendarStatus" class="mto-calendar__status" role="status" aria-live="polite">Selecciona esta pestaña para consultar los mantenimientos.</p>
+                <p class="mto-calendar__slot-note">Las franjas breves se amplían para facilitar la lectura; el detalle conserva las horas registradas.</p>
+                <div id="mtoCalendarViewport" class="mto-calendar__viewport" tabindex="0" aria-label="Calendario semanal. Desplaza horizontalmente para ver todos los días y verticalmente para ver las 24 horas.">
+                    <div id="mtoCalendarGrid" class="mto-calendar__grid"></div>
+                </div>
+            </section>
+            <dialog class="mto-calendar-dialog" id="mtoCalendarDetail" aria-labelledby="mtoCalendarDetailTitle">
+                <header class="mto-calendar-dialog__header">
+                    <div>
+                        <div class="dashboard-panel__kicker">Mantenimiento V2</div>
+                        <h2 id="mtoCalendarDetailTitle">Detalle del mantenimiento</h2>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary" id="mtoCalendarDetailClose" aria-label="Cerrar detalle">Cerrar</button>
+                </header>
+                <div id="mtoCalendarDetailBody" class="mto-calendar-dialog__body" aria-live="polite"></div>
+            </dialog>
         </div>
 
         <div class="dashboard-subpanel" data-copiers-subpanel="movements" hidden>
@@ -2968,6 +3021,7 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/copiers-mto-v2-calendar.js" asp-append-version="true"></script>
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
     <script src="~/js/hardware.js" asp-append-version="true"></script>
     <script src="~/js/support-cloud.js" asp-append-version="true"></script>

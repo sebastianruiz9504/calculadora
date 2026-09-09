@@ -87,6 +87,7 @@ builder.Services.AddSingleton<ICopiersMtoV2ApplicationDataverseClient, CopiersMt
 builder.Services.AddScoped<ICopiersMaintenanceV2DataverseRepository, CopiersMaintenanceV2DataverseRepository>();
 builder.Services.AddScoped<ICopiersMtoV2PdfBuilder, CopiersMtoV2ProfessionalPdfBuilder>();
 builder.Services.AddScoped<ICopiersMaintenanceV2Service, CopiersMaintenanceV2Service>();
+builder.Services.AddScoped<ICopiersMtoV2CalendarService, CopiersMtoV2CalendarService>();
 builder.Services.AddSingleton<ISharePointRebatesProvider, SharePointRebatesProvider>();
 builder.Services.AddScoped<ICrmRepository, DataverseCrmRepository>();
 builder.Services.AddScoped<ICrmAccessScopeResolver, CrmAccessScopeResolver>();

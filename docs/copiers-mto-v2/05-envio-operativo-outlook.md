@@ -11,7 +11,22 @@ Flujo independiente `Copiers MTO V2 - Enviar reporte firmado`. No modifica ni ut
 Artefactos:
 
 - `scripts/Provision-CopiersMtoV2MailFlow.ps1`: plan por defecto, creación solamente con `-Apply`; no sobrescribe un flujo ya existente. Relee las conexiones y exige cuenta propietaria coincidente y estado Connected.
+- `scripts/Update-CopiersMtoV2MailCc.ps1`: actualización exclusiva de CC en el ID V2 indicado; plan por defecto y `-SelfTest` sin acceso a la nube. `-Apply` exige `-ExpectedLastModifiedTime` y `-ExpectedSnapshotSha256` del plan. No ejecuta tickets ni correos ni cambia permisos.
 - `artifacts/power-automate-outlook-send-once-v1.deployed.json`: definición releída tras crear/activar, sin credenciales, callback URL ni datos de clientes. El ID y estado del flujo corresponden a ese read-back.
+
+## Copias y remitente
+
+Actualización aplicada y releída el `2026-09-09T02:15:54.1194442Z`: un único PATCH CC-only, flujo Started, cero ejecuciones y cero correos. Snapshot estructural verificado: `FB45B5F789275E25B6C2DBE09534B8AEECC3AB99791E93299FD19D15155BFE58`. La definición real exportada reemplaza el artefacto anterior y tiene SHA-256 `A436266879E39BE05261E757D4229DA33B75A42121A169E0486A71B7A6EFAE25`.
+
+La configuración agrega siempre `Germanruiz@digitaltechcolombia.com;soportecopiers@digitaltechcolombia.com` en `emailMessage/Cc`. No cambia To, contenido, adjuntos, conexiones, trigger ni política de reintento. El script de creación también incluye esas copias. En futuras modificaciones no se debe marcar el JSON `.deployed.json` como actualizado hasta exportar el read-back real.
+
+El actualizador exige una única acción `SendEmailV2`, flujo Started, concurrencia 1, retry `none` y la conexión Outlook existente Connected con cuenta `sruiz@digitaltechcolombia.com`. Rechaza cualquier From explícito o CC previo inesperado. Compara estructuralmente la definición completa para demostrar que solamente cambia CC; repite la lectura de versión y hash justo antes de un único PATCH y verifica el resultado completo después. Si hay ETag lo envía en `If-Match`; la API consultada no lo devuelve, por lo que la protección lastModified + hash no es un compare-and-swap atómico: durante esta operación deben permanecer congelados los demás editores del flujo. Una respuesta ambigua nunca se reintenta automáticamente.
+
+El plan informa número de ejecuciones y cantidad activa; antes del PATCH se relee el historial y se bloquea ante Running, Waiting, Suspended o cualquier estado no terminal reconocido. La lectura está acotada a 100 ejecuciones y rechaza paginación para no certificar erróneamente que no existen ejecuciones activas más antiguas. No consulta ni imprime URLs de entradas, salidas o callbacks de los runs. También se debe serializar la finalización de nuevos tickets durante esta actualización.
+
+El remitente sigue siendo la cuenta de la conexión, `sruiz@digitaltechcolombia.com`. Enviar desde el usuario autenticado de Copiers continúa pendiente de definir y autorizar los permisos de buzón correspondientes; este cambio no agrega From dinámico ni concede Send As. El campo From de Outlook requiere permisos Send As o Send on behalf para otro buzón. [Office 365 Outlook](https://learn.microsoft.com/en-us/connectors/office365/#send-an-email-v2).
+
+La operación oficial [Update Flow](https://learn.microsoft.com/en-us/connectors/flowmanagement/#update-flow) corresponde a PATCH en el Swagger servido por Microsoft para `shared_flowmanagement`; se conserva el estado Started y las referencias de conexión existentes.
 
 ## Secuencia
 

@@ -32,6 +32,60 @@ function control(value = "") {
 const catalogKey = value => String(value || "").trim().toLowerCase();
 const sameCatalogId = (left, right) => Boolean(left && right) && catalogKey(left) === catalogKey(right);
 
+test("reload starts a new capture instead of restoring a key without its form", () => {
+    const elements = { submissionKey: control(), startedAtUtc: control(), previousAttempt: { hidden: true } };
+    bind("initializeSubmission", {
+        elements, readStoredSubmissionId: () => "previous-attempt-key",
+        createSubmissionId: () => "fresh-form-key"
+    })();
+    assert.equal(elements.submissionKey.value, "fresh-form-key");
+    assert.equal(elements.previousAttempt.hidden, false);
+    assert.match(view, /Hay un envío anterior sin confirmar/);
+});
+
+function submissionIdentityHarness() {
+    const elements = Object.fromEntries(["submissionKey", "recordId", "expectedVersion", "serviceReference", "submittedAtUtc", "latitude", "longitude", "accuracy", "geoCapturedAtUtc", "geoStatus", "clientId", "equipmentId"].map(key => [key, control("existing")]));
+    elements.submissionKey.value = "first-attempt";
+    elements.clientId.value = "CLIENT-A";
+    elements.equipmentId.value = "EQUIPMENT-A";
+    const state = { submissionAttempted: false, submissionScope: "", locationAttempted: true };
+    const stored = [];
+    const prepare = bind("prepareSubmissionIdentity", {
+        elements, state, createSubmissionId: () => "new-maintenance",
+        storeSubmissionId(value) { stored.push(value); }
+    });
+    return { elements, state, stored, prepare };
+}
+
+test("retry in the same form preserves the key and original capture", () => {
+    const h = submissionIdentityHarness();
+    h.prepare();
+    h.prepare();
+    assert.equal(h.elements.submissionKey.value, "first-attempt");
+    assert.equal(h.state.locationAttempted, true);
+    assert.equal(h.elements.latitude.value, "existing");
+    assert.deepEqual(h.stored, ["first-attempt", "first-attempt"]);
+});
+
+for (const field of ["clientId", "equipmentId"]) {
+    test(`a new ${field} after a failed send gets a new key without overwriting the previous row`, () => {
+        const h = submissionIdentityHarness();
+        h.prepare();
+        h.elements[field].value = "NEW-SELECTION";
+        h.prepare();
+        assert.equal(h.elements.submissionKey.value, "new-maintenance");
+        for (const key of ["recordId", "expectedVersion", "serviceReference", "submittedAtUtc", "latitude", "longitude", "accuracy", "geoCapturedAtUtc"]) assert.equal(h.elements[key].value, "");
+        assert.equal(h.state.locationAttempted, false);
+        assert.equal(h.elements.geoStatus.value, "pending");
+    });
+}
+
+test("identity is prepared only after validation and before building the send payload", () => {
+    const submit = functionSource("submitForm");
+    assert.ok(submit.indexOf("validateAllSteps()") < submit.indexOf("prepareSubmissionIdentity()"));
+    assert.ok(submit.indexOf("prepareSubmissionIdentity()") < submit.indexOf("new FormData(form)"));
+});
+
 test("automatic order is read-only and never copied from equipment", () => {
     const input = view.match(/<input[^>]+id="mtoV2ServiceReference"[^>]*>/)?.[0];
     assert.match(input, /readonly/);

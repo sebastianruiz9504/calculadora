@@ -13222,6 +13222,8 @@
                 ? "counters"
             : subtabKey === "maintenance"
                 ? "maintenance"
+            : subtabKey === "maintenance-v2"
+                ? "maintenance-v2"
                 : "billing";
         syncCopiersSubtabVisibility();
 
@@ -13246,6 +13248,11 @@
         }
 
         if (state.activeTab !== "copiers") {
+            return;
+        }
+
+        if (state.copiersSubtab === "maintenance-v2") {
+            window.CopiersMtoV2Calendar?.activate();
             return;
         }
 
@@ -15659,5 +15666,11 @@
     syncPeriodScopeVisibility();
     syncDashboardGroupTabs();
     syncCopiersSubtabVisibility();
-    loadToday();
+    const initialDashboardParameters = new URLSearchParams(window.location.search);
+    if (initialDashboardParameters.get("tab") === "copiers" && initialDashboardParameters.get("copiersTab") === "maintenance-v2") {
+        state.copiersSubtab = "maintenance-v2";
+        setActiveTab("copiers");
+    } else {
+        loadToday();
+    }
 })();

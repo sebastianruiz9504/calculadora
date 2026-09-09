@@ -43,6 +43,7 @@
         previousButtons: Array.from(root.querySelectorAll("[data-previous-step]")),
         status: document.getElementById("mtoV2Status"),
         submitStatus: document.getElementById("mtoV2SubmitStatus"),
+        previousAttempt: document.getElementById("mtoV2PreviousAttempt"),
         technicianName: document.getElementById("mtoV2TechnicianName"),
         retryBootstrap: document.getElementById("mtoV2RetryBootstrap"),
         submissionKey: document.getElementById("mtoV2SubmissionKey"),
@@ -106,6 +107,8 @@
         maxUnlockedStep: 1,
         files: [],
         submitting: false,
+        submissionAttempted: false,
+        submissionScope: "",
         locationAttempted: false,
         savingClientEmail: false,
         editingClientId: "",
@@ -141,14 +144,32 @@
     }
 
     function initializeSubmission() {
-        let submissionId = readStoredSubmissionId();
-        if (!submissionId) {
-            submissionId = createSubmissionId();
-            storeSubmissionId(submissionId);
+        // The form is not restored on reload, so its previous key must not be
+        // restored on its own. Keep it only as a reminder of an unconfirmed send.
+        if (elements.previousAttempt) {
+            elements.previousAttempt.hidden = !readStoredSubmissionId();
         }
-
-        elements.submissionKey.value = submissionId;
+        elements.submissionKey.value = createSubmissionId();
         elements.startedAtUtc.value = new Date().toISOString();
+    }
+
+    function prepareSubmissionIdentity() {
+        const scope = `${elements.clientId.value.trim().toLowerCase()}|${elements.equipmentId.value.trim().toLowerCase()}`;
+        if (state.submissionAttempted && state.submissionScope !== scope) {
+            // A different customer/equipment is a new maintenance, never a retry
+            // that rewrites the previously signed row. Same-form retries keep key.
+            elements.submissionKey.value = createSubmissionId();
+            elements.recordId.value = "";
+            elements.expectedVersion.value = "";
+            elements.serviceReference.value = "";
+            elements.submittedAtUtc.value = "";
+            state.locationAttempted = false;
+            [elements.latitude, elements.longitude, elements.accuracy, elements.geoCapturedAtUtc].forEach(field => { field.value = ""; });
+            elements.geoStatus.value = "pending";
+        }
+        state.submissionScope = scope;
+        state.submissionAttempted = true;
+        storeSubmissionId(elements.submissionKey.value);
     }
 
     function initializeDefaults() {
@@ -1255,6 +1276,7 @@
             return;
         }
 
+        prepareSubmissionIdentity();
         state.submitting = true;
         elements.signedAtUtc.value ||= new Date().toISOString();
         elements.submittedAtUtc.value ||= new Date().toISOString();
@@ -1314,6 +1336,7 @@
             }
 
             removeStoredSubmissionId();
+            if (elements.previousAttempt) elements.previousAttempt.hidden = true;
             const serviceReference = textProperty(result, "serviceReference", "ServiceReference");
             if (serviceReference) {
                 elements.serviceReference.value = serviceReference;
