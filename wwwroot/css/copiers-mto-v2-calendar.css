@@ -31,6 +31,8 @@
 .mto-calendar__legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .mto-calendar__legend-item::before { content: ""; width: 9px; height: 9px; border-radius: 3px; background: var(--mto-preventive-border); }
 .mto-calendar__legend-item--corrective::before { background: var(--mto-corrective-border); }
+.mto-calendar__legend-item--movement::before { background: #8b5cc7; }
+.mto-calendar__legend-item--toner::before { background: #2f9669; }
 .mto-calendar__legend > .mto-calendar__muted { margin-left: auto; }
 .mto-calendar__status { margin: 12px 0; min-height: 20px; font-size: 13px; color: var(--mto-muted); }
 .mto-calendar__status.is-error { color: #bf3049; }
@@ -50,6 +52,8 @@
 .mto-calendar__event { position: absolute; z-index: 2; min-height: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 3px 5px; overflow: hidden; border: 1px solid var(--mto-preventive-border); border-left-width: 3px; border-radius: 5px; background: var(--mto-preventive-bg); color: var(--mto-preventive-ink); font-size: 11px; line-height: 1.15; cursor: pointer; }
 .mto-calendar__event--corrective { background: var(--mto-corrective-bg); border-color: var(--mto-corrective-border); color: var(--mto-corrective-ink); }
 .mto-calendar__event--other { background: var(--mto-soft); border-color: var(--mto-muted); color: var(--mto-ink); }
+.mto-calendar__event--movement { background: #f0eaff; border-color: #8b5cc7; color: #522888; }
+.mto-calendar__event--toner { background: #e6f5ee; border-color: #2f9669; color: #175d40; }
 .mto-calendar__event.is-pending { border-style: dashed; }
 .mto-calendar__event:hover { filter: brightness(.97); box-shadow: 0 2px 7px rgb(15 23 42 / 18%); z-index: 4; }
 .mto-calendar__event:focus-visible, .mto-calendar__viewport:focus-visible { outline: 3px solid var(--mto-preventive-border); outline-offset: 2px; z-index: 4; }
@@ -80,6 +84,8 @@
 .mto-calendar-detail__map { display: block; width: 100%; height: 320px; border: 0; border-radius: 8px; }
 [data-bs-theme="dark"] .mto-calendar, [data-bs-theme="dark"] .mto-calendar-dialog { --mto-bg: #162235; --mto-soft: #1b2a40; --mto-ink: #e9eef7; --mto-muted: #aab9cd; --mto-line: #33445c; --mto-preventive-bg: #193f65; --mto-preventive-ink: #c7e5ff; --mto-preventive-border: #58a6e9; --mto-corrective-bg: #503c20; --mto-corrective-ink: #ffe0af; --mto-corrective-border: #e5ac52; }
 [data-bs-theme="dark"] .mto-calendar__status.is-error { color: #ffadb8; }
+[data-bs-theme="dark"] .mto-calendar__event--movement { background: #352649; border-color: #b88bea; color: #e5ceff; }
+[data-bs-theme="dark"] .mto-calendar__event--toner { background: #173d30; border-color: #5abb90; color: #c4f2de; }
 @media (max-width: 700px) {
     .mto-calendar { padding: 16px; }
     .mto-calendar__technician { width: 100%; }

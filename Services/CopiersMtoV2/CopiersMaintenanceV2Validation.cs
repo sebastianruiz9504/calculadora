@@ -64,7 +64,16 @@ internal static class CopiersMaintenanceV2Validation
         ["scansbefore"] = new("scans_before", "Escaneo anterior", 19, false),
         ["scansafter"] = new("scans_after", "Escaneo actual", 20, false),
         ["counterrecordid"] = new("counter_record_id", "Registro de contador anterior", 21, false),
-        ["counterrecordedat"] = new("counter_recorded_at", "Fecha del contador anterior", 22, false)
+        ["counterrecordedat"] = new("counter_recorded_at", "Fecha del contador anterior", 22, false),
+        ["activitykind"] = new("activity_kind", "Tipo de atención", 23, false),
+        ["movementreason"] = new("movement_reason", "Motivo del movimiento", 24, false),
+        ["originclientid"] = new("origin_client_id", "Identificador de origen", 25, false),
+        ["originclientname"] = new("origin_client_name", "Cliente de origen", 26, false),
+        ["destinationclientname"] = new("destination_client_name", "Cliente de destino", 27, false),
+        ["supplyid"] = new("supply_id", "Identificador del suministro", 28, false),
+        ["supplyname"] = new("supply_name", "Suministro entregado", 29, false),
+        ["supplyquantity"] = new("supply_quantity", "Cantidad entregada", 30, false),
+        ["supplystockbefore"] = new("supply_stock_before", "Saldo previo del suministro", 31, false)
     };
 
     private readonly record struct PublicAnswerDefinition(
@@ -74,7 +83,9 @@ internal static class CopiersMaintenanceV2Validation
         bool Required);
 
     private static bool IsRequiredAnswer(string key, PublicAnswerDefinition definition, string? version) =>
-        version == CopiersMtoV2CompactCapture.FormVersion
+        version == CopiersActivityV2Bindings.FormVersion
+            ? key is "servicestartedat" or "serviceendedat" or "servicestartedatutc" or "serviceendedatutc" or "onsitecontact" or "onsiteemail" or "activitykind"
+            : version == CopiersMtoV2CompactCapture.FormVersion
             ? key is "serviceendedat" or "servicestartedatutc" or "serviceendedatutc" or "copiesafter" or "scansafter"
                 || (definition.Required && key is not "reportedissue" and not "technicaldiagnosis")
             : definition.Required;
@@ -112,7 +123,7 @@ internal static class CopiersMaintenanceV2Validation
     public static string FormVersion(string? value, CopiersMaintenanceV2Options options)
     {
         var version = Required(value, "form_version_required", "la version del formulario", options.FormVersionMaxLength);
-        if (version != CopiersMtoV2CompactCapture.FormVersion && !options.AllowedFormVersions.Contains(version, StringComparer.Ordinal))
+        if (version != CopiersMtoV2CompactCapture.FormVersion && version != CopiersActivityV2Bindings.FormVersion && !options.AllowedFormVersions.Contains(version, StringComparer.Ordinal))
             throw new CopiersMaintenanceV2ValidationException("form_version_not_allowed", "La versión del formulario ya no está habilitada.");
         return version;
     }
@@ -160,7 +171,9 @@ internal static class CopiersMaintenanceV2Validation
     }
 
     public static string MaintenanceTypeLabel(int? value, CopiersMaintenanceV2DataverseOptions bindings) =>
-        MaintenanceType(value, bindings) == bindings.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Preventivo";
+        bindings.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet
+            ? MaintenanceType(value, bindings) == CopiersActivityV2Bindings.MovementType ? "Movimiento de equipo" : "Entrega de tóner"
+            : MaintenanceType(value, bindings) == bindings.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Preventivo";
 
     public static void ValidateCustomerEmail(string? value)
     {

@@ -3,20 +3,44 @@
   <IsCustomizable>1</IsCustomizable>
   <IsAutoAssigned>0</IsAutoAssigned>
   <RolePrivileges>
+    <RolePrivilege name="prvAppendcr07a_Entrega" level="Global" />
+    <RolePrivilege name="prvAppendcr07a_Equipo" level="Global" />
+    <RolePrivilege name="prvAppendcr07a_Movimientosequipos" level="Global" />
+    <RolePrivilege name="prvAppenddtc_CopiersActivityEvidenceV2" level="Basic" />
+    <RolePrivilege name="prvAppenddtc_CopiersActivityV2" level="Basic" />
     <RolePrivilege name="prvAppenddtc_CopiersMtoEvidenciaV2" level="Basic" />
     <RolePrivilege name="prvAppenddtc_CopiersMtoV2" level="Basic" />
     <RolePrivilege name="prvAppendTocr07a_Cliente" level="Global" />
     <RolePrivilege name="prvAppendTocr07a_Equipo" level="Global" />
+    <RolePrivilege name="prvAppendTocr07a_Suministro" level="Global" />
+    <RolePrivilege name="prvAppendTodtc_CopiersActivityV2" level="Basic" />
     <RolePrivilege name="prvAppendTodtc_CopiersMtoV2" level="Basic" />
+    <RolePrivilege name="prvAssigncr07a_Entrega" level="Global" />
+    <RolePrivilege name="prvAssigncr07a_Movimientosequipos" level="Global" />
+    <RolePrivilege name="prvCreatecr07a_Entrega" level="Global" />
+    <RolePrivilege name="prvCreatecr07a_Movimientosequipos" level="Global" />
+    <RolePrivilege name="prvCreatedtc_CopiersActivityEvidenceV2" level="Basic" />
+    <RolePrivilege name="prvCreatedtc_CopiersActivityV2" level="Basic" />
     <RolePrivilege name="prvCreatedtc_CopiersMtoEvidenciaV2" level="Basic" />
     <RolePrivilege name="prvCreatedtc_CopiersMtoV2" level="Basic" />
     <RolePrivilege name="prvReadBusinessUnit" level="Global" />
     <RolePrivilege name="prvReadcr07a_Cliente" level="Global" />
+    <RolePrivilege name="prvReadcr07a_Entrega" level="Global" />
     <RolePrivilege name="prvReadcr07a_Equipo" level="Global" />
+    <RolePrivilege name="prvReadcr07a_Movimientosequipos" level="Global" />
+    <RolePrivilege name="prvReadcr07a_Suministro" level="Global" />
+    <RolePrivilege name="prvReaddtc_CopiersActivityEvidenceV2" level="Basic" />
+    <RolePrivilege name="prvReaddtc_CopiersActivityV2" level="Basic" />
     <RolePrivilege name="prvReaddtc_CopiersMtoEvidenciaV2" level="Basic" />
     <RolePrivilege name="prvReaddtc_CopiersMtoV2" level="Basic" />
     <RolePrivilege name="prvReadOrganization" level="Global" />
     <RolePrivilege name="prvReadUser" level="Global" />
+    <RolePrivilege name="prvWritecr07a_Entrega" level="Global" />
+    <RolePrivilege name="prvWritecr07a_Equipo" level="Global" />
+    <RolePrivilege name="prvWritecr07a_Movimientosequipos" level="Global" />
+    <RolePrivilege name="prvWritecr07a_Suministro" level="Global" />
+    <RolePrivilege name="prvWritedtc_CopiersActivityEvidenceV2" level="Basic" />
+    <RolePrivilege name="prvWritedtc_CopiersActivityV2" level="Basic" />
     <RolePrivilege name="prvWritedtc_CopiersMtoEvidenciaV2" level="Basic" />
     <RolePrivilege name="prvWritedtc_CopiersMtoV2" level="Basic" />
   </RolePrivileges>

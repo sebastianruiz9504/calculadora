@@ -137,7 +137,7 @@ public sealed class CopiersMtoV2CompactPdfTests
 
     private static string Fit(string text, int length) => string.Concat(Enumerable.Repeat(text, length / text.Length + 1))[..length];
     private static CopiersMaintenanceV2FormAnswerSnapshot Answer(string key, string value) => new() { Key = key, Label = key, Value = value };
-    private static CopiersMaintenanceV2PdfModel Model() => new()
+    internal static CopiersMaintenanceV2PdfModel Model() => new()
     {
         ServiceReference = "MTO-DEMO-001", RecordId = "11111111-2222-3333-4444-555555555555", ClientName = "Cliente de muestra SAS",
         CustomerContactName = "Ana Cliente", EquipmentSerial = "SERIAL-DEMO-001", Title = "Mantenimiento de equipo",

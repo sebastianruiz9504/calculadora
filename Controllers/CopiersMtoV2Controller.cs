@@ -23,6 +23,7 @@ public sealed class CopiersMtoV2Controller : Controller
     private readonly CopiersMaintenanceV2DataverseOptions _dataverseOptions;
     private readonly ILogger<CopiersMtoV2Controller> _logger;
     private readonly ICopiersMtoV2CounterService? _counters;
+    private readonly CopiersActivityV2Runtime? _activities;
 
     public CopiersMtoV2Controller(
         IDataverseService dataverse,
@@ -30,7 +31,8 @@ public sealed class CopiersMtoV2Controller : Controller
         IOptions<CopiersMaintenanceV2Options> options,
         IOptions<CopiersMaintenanceV2DataverseOptions> dataverseOptions,
         ILogger<CopiersMtoV2Controller> logger,
-        ICopiersMtoV2CounterService? counters = null)
+        ICopiersMtoV2CounterService? counters = null,
+        CopiersActivityV2Runtime? activities = null)
     {
         _dataverse = dataverse;
         _service = service;
@@ -38,11 +40,71 @@ public sealed class CopiersMtoV2Controller : Controller
         _dataverseOptions = dataverseOptions.Value;
         _logger = logger;
         _counters = counters;
+        _activities = activities;
     }
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
     public IActionResult Index() => View();
+
+    [HttpGet]
+    [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Equipment(string clientId, string activityKind, CancellationToken ct)
+    {
+        try
+        {
+            EnsureTechnicianPilotAccess(await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo());
+            if (!Guid.TryParse(clientId, out var id) || id == Guid.Empty || !IsClientAllowed(clientId)) return Forbid();
+            activityKind = NormalizeActivityKind(activityKind);
+            var clients = await _dataverse.GetCopiersMtoV2ClientsAsync(ct);
+            if (!clients.Any(x => SameGuid(x.Id, clientId))) return Forbid();
+            var all = await _dataverse.GetCopiersMtoV2EquipmentAsync(ct);
+            var items = all.Where(x => activityKind == "movement"
+                    ? (x.InStock || IsClientAllowed(x.ClientId))
+                    : SameGuid(x.ClientId, clientId) && !x.InStock)
+                .Where(x => Guid.TryParse(x.RecordId, out _) && !string.IsNullOrWhiteSpace(x.Serial))
+                .Select(x => new CopiersMtoV2EquipmentOptionDto { Id=x.RecordId, Serial=x.Serial, ClientId=x.ClientId,
+                    ClientName=x.InStock ? "Inventario" : x.ClientName, Reference=x.Reference }).ToArray();
+            var allowExternalEquipment = activityKind == "maintenance" && items.Length == 0 && _activities is not null
+                && await _activities.ClientHasNoEquipmentAsync(clientId, ct);
+            return Ok(new { items, allowExternalEquipment });
+        }
+        catch (MicrosoftIdentityWebChallengeUserException) { throw; }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (CopiersMaintenanceV2ValidationException ex) { return BadRequest(Error(ex.Message, code:ex.Code)); }
+        catch (Exception ex) { _logger.LogError(ex, "Error cargando equipos de la atención V2."); return StatusCode(502, Error("No fue posible cargar los equipos. Reintenta la búsqueda.")); }
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Supplies(CancellationToken ct)
+    {
+        EnsureTechnicianPilotAccess(await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo());
+        if (!_options.ActivitiesEnabled) return NotFound();
+        // Lookup is read-only; the legacy inventory GET synchronizes stock statuses.
+        var rows = await _dataverse.GetCopiersMtoV2TonerSuppliesAsync(ct);
+        return Ok(new { items = rows.Where(x => x.Quantity > 0).Select(x => new { id=x.Id, name=x.Label, quantity=x.Quantity }) });
+    }
+
+    [HttpGet]
+    [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Status(string recordId, string activityKind, CancellationToken ct)
+    {
+        try
+        {
+            var actor = await _dataverse.GetCurrentUserAsync(ct) ?? throw new UnauthorizedAccessException();
+            EnsureTechnicianPilotAccess(actor);
+            if (_activities is null) return StatusCode(503);
+            return Ok(await _activities.StatusAsync(recordId, NormalizeActivityKind(activityKind), actor.SystemUserId, ct));
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (CopiersMaintenanceV2ValidationException ex) { return BadRequest(Error(ex.Message, code:ex.Code)); }
+        catch (CopiersMaintenanceV2PersistenceException ex) { return StatusCode(502, Error(ex.Message)); }
+    }
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
@@ -109,6 +171,7 @@ public sealed class CopiersMtoV2Controller : Controller
             {
                 SchemaReady = _dataverseOptions.SchemaProvisioned
                     && _dataverseOptions.FindMissingBindings().Count == 0,
+                ActivitiesEnabled = _options.ActivitiesEnabled,
                 TechnicianName = FirstNonEmpty(
                     currentUser.EmployeeName,
                     currentUser.EmployeeUserDisplayName,
@@ -187,13 +250,20 @@ public sealed class CopiersMtoV2Controller : Controller
 
         try
         {
+            request.ActivityKind = NormalizeActivityKind(request.ActivityKind);
+            if (request.ActivityKind != "maintenance" && request.FormVersion != CopiersActivityV2Bindings.FormVersion
+                || request.ActivityKind == "maintenance" && request.FormVersion == CopiersActivityV2Bindings.FormVersion)
+                throw new CopiersMaintenanceV2ValidationException("activity_form_mismatch", "El formato no corresponde al tipo de atención.");
             ValidateIdempotencyHeader(request.SubmissionKey);
             var currentUser = await _dataverse.GetCurrentUserAsync(ct)
                 ?? throw new InvalidOperationException("No fue posible identificar al técnico autenticado.");
             EnsureTechnicianPilotAccess(currentUser);
             var dashboard = await _dataverse.GetCopiersEquipmentDashboardAsync(ct);
             var clients = await _dataverse.GetCopiersMtoV2ClientsAsync(ct);
-            var draftInput = BuildAuthoritativeDraftRequest(request, dashboard, clients);
+            var clientId = FormValue("ClientId");
+            var allowExternal = request.ActivityKind == "maintenance" && string.IsNullOrWhiteSpace(FormValue("EquipmentId"))
+                && _activities is not null && await _activities.ClientHasNoEquipmentAsync(clientId, ct);
+            var draftInput = BuildAuthoritativeDraftRequest(request, dashboard, clients, allowExternal);
             var actor = new CopiersMaintenanceV2ActorContext
             {
                 SystemUserId = currentUser.SystemUserId,
@@ -206,11 +276,13 @@ public sealed class CopiersMtoV2Controller : Controller
                 Email = FirstNonEmpty(currentUser.EmployeeUserEmail, currentUser.Email)
             };
 
-            var draft = await _service.CreateOrGetDraftAsync(draftInput, actor, ct);
+            var service = request.ActivityKind == "maintenance" ? _service
+                : _activities?.CreateService() ?? throw new InvalidOperationException("El servicio de actas no está disponible.");
+            var draft = await service.CreateOrGetDraftAsync(draftInput, actor, ct);
             if (draft.ReusedExisting
                 && draft.State is CopiersMaintenanceV2WorkflowState.Draft or CopiersMaintenanceV2WorkflowState.Failed)
             {
-                draft = await _service.SaveDraftAsync(new CopiersMaintenanceV2DraftUpdateRequestDto
+                draft = await service.SaveDraftAsync(new CopiersMaintenanceV2DraftUpdateRequestDto
                 {
                     RecordId = draft.RecordId,
                     SubmissionKey = draft.SubmissionKey,
@@ -230,7 +302,7 @@ public sealed class CopiersMtoV2Controller : Controller
             request.RecordId = draft.RecordId;
             request.SubmissionKey = draft.SubmissionKey;
             request.ExpectedVersion = draft.Version;
-            var result = await _service.FinalizeMultipartAsync(request, actor, ct);
+            var result = await service.FinalizeMultipartAsync(request, actor, ct);
             return Ok(result);
         }
         catch (CopiersMaintenanceV2ValidationException ex)
@@ -276,7 +348,8 @@ public sealed class CopiersMtoV2Controller : Controller
     private CopiersMaintenanceV2DraftRequestDto BuildAuthoritativeDraftRequest(
         CopiersMaintenanceV2FinalizeMultipartRequestDto request,
         CopiersEquipmentDashboardDto dashboard,
-        IReadOnlyList<CopiersMtoV2ClientOptionDto> clients)
+        IReadOnlyList<CopiersMtoV2ClientOptionDto> clients,
+        bool allowExternalEquipment = false)
     {
         var clientId = RequiredFormGuid("ClientId", "El cliente");
         var client = clients.FirstOrDefault(item => SameGuid(item.Id, clientId))
@@ -294,12 +367,19 @@ public sealed class CopiersMtoV2Controller : Controller
         {
             var equipment = dashboard.EquipmentRows.FirstOrDefault(item => SameGuid(item.RecordId, parsedEquipmentId.ToString("D")))
                 ?? throw new CopiersMaintenanceV2ValidationException("equipment_not_found", "El equipo ya no está disponible en Copiers.");
-            if (equipment.InStock || string.IsNullOrWhiteSpace(equipment.Serial))
+            if (request.ActivityKind == "movement" && !equipment.InStock && !IsClientAllowed(equipment.ClientId))
+                throw new UnauthorizedAccessException("El cliente de origen no pertenece al alcance autorizado de Copiers.");
+            if ((equipment.InStock && request.ActivityKind != "movement") || string.IsNullOrWhiteSpace(equipment.Serial))
                 throw new CopiersMaintenanceV2ValidationException("equipment_not_serviceable", "El equipo seleccionado no está asignado o no tiene serial válido.");
-            if (!SameGuid(equipment.ClientId, clientId))
+            if (request.ActivityKind != "movement" && !SameGuid(equipment.ClientId, clientId))
                 throw new CopiersMaintenanceV2ValidationException("equipment_client_mismatch", "El equipo seleccionado no pertenece al cliente.");
             equipmentId = equipment.RecordId;
             equipmentSerial = equipment.Serial;
+        }
+        else if (request.ActivityKind == "maintenance" && allowExternalEquipment)
+        {
+            equipmentId = "";
+            equipmentSerial = RequiredFormText("EquipmentSerial", "el serial del equipo ajeno", 200);
         }
         else
         {
@@ -312,6 +392,9 @@ public sealed class CopiersMtoV2Controller : Controller
         var maintenanceType = int.TryParse(FormValue("MaintenanceTypeValue"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedType)
             ? parsedType
             : (int?)null;
+        if (request.ActivityKind != "maintenance") maintenanceType = request.ActivityKind == "movement"
+            ? CopiersActivityV2Bindings.MovementType : CopiersActivityV2Bindings.TonerType;
+        var kindLabel = request.ActivityKind == "movement" ? "Movimiento de equipo" : request.ActivityKind == "toner" ? "Entrega de tóner" : "Mantenimiento";
 
         return new CopiersMaintenanceV2DraftRequestDto
         {
@@ -322,7 +405,7 @@ public sealed class CopiersMtoV2Controller : Controller
             CustomerEmail = client.Email.Trim(),
             EquipmentId = equipmentId,
             EquipmentSerial = equipmentSerial,
-            Title = $"Mantenimiento {serviceDate:yyyy-MM-dd} · {equipmentSerial}",
+            Title = $"{kindLabel} {serviceDate:yyyy-MM-dd} · {equipmentSerial}",
             ServiceDate = serviceDate,
             MaintenanceTypeValue = maintenanceType
         };
@@ -333,6 +416,16 @@ public sealed class CopiersMtoV2Controller : Controller
         var header = Request.Headers["Idempotency-Key"].FirstOrDefault()?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(header) || !string.Equals(header, submissionKey?.Trim(), StringComparison.Ordinal))
             throw new CopiersMaintenanceV2ValidationException("idempotency_header_invalid", "La clave idempotente del formulario no coincide.");
+    }
+
+    private string NormalizeActivityKind(string? value)
+    {
+        var kind = string.IsNullOrWhiteSpace(value) ? "maintenance" : value.Trim();
+        if (kind is not ("maintenance" or "movement" or "toner"))
+            throw new CopiersMaintenanceV2ValidationException("activity_invalid", "Selecciona un tipo de atención válido.");
+        if (kind != "maintenance" && !_options.ActivitiesEnabled)
+            throw new CopiersMaintenanceV2ValidationException("activities_disabled", "Las nuevas actas todavía no están habilitadas.");
+        return kind;
     }
 
     private string RequiredFormGuid(string key, string label)

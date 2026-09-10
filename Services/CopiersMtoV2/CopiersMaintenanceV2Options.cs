@@ -3,6 +3,7 @@ namespace CotizadorInterno.Web.Services.CopiersMtoV2;
 public sealed class CopiersMaintenanceV2Options
 {
     public bool PilotEnabled { get; set; }
+    public bool ActivitiesEnabled { get; set; }
     public string[] AllowedTechnicianEmails { get; set; } = Array.Empty<string>();
     public string[] AllowedClientIds { get; set; } = Array.Empty<string>();
     public int SubmissionKeyMaxLength { get; set; } = 128;

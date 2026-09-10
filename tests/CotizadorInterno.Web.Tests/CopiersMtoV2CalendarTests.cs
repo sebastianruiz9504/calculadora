@@ -316,12 +316,107 @@ public sealed class CopiersMtoV2CalendarTests
         Assert.Contains("groupby", Uri.UnescapeDataString(Assert.Single(f.Transport.Requests)));
     }
 
+    [Theory]
+    [InlineData(827270010, "movement", "Movimiento")]
+    [InlineData(827270011, "toner", "Entrega de tóner")]
+    public async Task CalendarAggregatesRealActivityHeaderWithoutChangingMaintenanceIdentity(int type, string kind, string label)
+    {
+        var f = new Fixture(activities: true);
+        f.AddActivity(type);
+        var week = await f.Service.WeekAsync("all", "2026-09-08");
+        Assert.Equal(2, week.Events.Count);
+        Assert.Equal("maintenance", week.Events.Single(x => x.Id == Ticket).ActivityKind);
+        var activity = week.Events.Single(x => x.Id == "activity:" + Ticket);
+        Assert.Equal(kind, activity.ActivityKind);
+        Assert.Equal(label, activity.MaintenanceType);
+        Assert.Equal("ACT-001234", activity.ServiceReference);
+        Assert.Equal(2, f.Transport.Requests.Count);
+        Assert.Contains(f.Transport.Requests, x => x.Contains(f.ActivityOptions.MainEntitySetName));
+    }
+
+    [Fact]
+    public async Task ActivityDetailAndEvidenceUseOnlyActivityTableLookupAndPrefixedUrls()
+    {
+        var f = new Fixture(activities: true);
+        f.AddActivity(827270010);
+        var detail = await f.Service.DetailAsync("activity:" + Ticket);
+        Assert.Equal("activity:" + Ticket, detail.Id);
+        Assert.Equal("movement", detail.ActivityKind);
+        Assert.NotNull(detail.Location);
+        Assert.Contains("id=activity%3A" + Ticket, detail.ReportUrl);
+        Assert.Equal(f.Bytes, (await f.Service.EvidenceAsync("activity:" + Ticket, EvidenceKey)).Content);
+        Assert.DoesNotContain(f.Transport.Requests, x => x.Contains(f.Options.MainEntitySetName) || x.Contains(f.Options.EvidenceEntitySetName));
+        Assert.Contains(f.Transport.Requests, x => Uri.UnescapeDataString(x).Contains("_dtc_signedactivity_value eq " + Ticket));
+    }
+
+    [Fact]
+    public async Task ActivityEvidenceCannotAdoptTheOldMaintenanceParentLookup()
+    {
+        var f = new Fixture(activities: true);
+        f.AddActivity(827270011);
+        f.ActivityEvidence!.Remove("_dtc_signedactivity_value");
+        f.ActivityEvidence["_dtc_signedmto_value"] = Ticket;
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.EvidenceAsync("activity:" + Ticket, EvidenceKey));
+        Assert.DoesNotContain(f.Transport.Requests, x => x.EndsWith("/$value"));
+    }
+
+    [Fact]
+    public async Task DisabledActivityFeatureNeverReadsItsUnprovisionedTable()
+    {
+        var f = new Fixture();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.DetailAsync("activity:" + Ticket));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.EvidenceAsync("activity:" + Ticket, EvidenceKey));
+        Assert.Empty(f.Transport.Requests);
+        await f.Service.WeekAsync("all", "2026-09-08");
+        Assert.Single(f.Transport.Requests);
+    }
+
+    [Fact]
+    public async Task EnabledActivitiesStillRequireDashboardAndCopiersBeforeAnyApplicationRead()
+    {
+        var f = new Fixture(activities: true);
+        f.Users.Current.ModuleOptionValues.Remove(AppModuleCatalog.Dashboard.OptionValue);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.WeekAsync("all", "2026-09-08"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.DetailAsync("activity:" + Ticket));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.EvidenceAsync("activity:" + Ticket, EvidenceKey));
+        Assert.Empty(f.Transport.Requests);
+    }
+
+    [Theory]
+    [InlineData("activity:not-a-guid")]
+    [InlineData("activity:activity:bd456109-5a50-4aa8-b11e-45f3efb11be1")]
+    [InlineData("other:bd456109-5a50-4aa8-b11e-45f3efb11be1")]
+    [InlineData("activity:{bd456109-5a50-4aa8-b11e-45f3efb11be1}")]
+    public async Task MalformedActivityReferencesNeverReachDataverse(string id)
+    {
+        var f = new Fixture(activities: true);
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.DetailAsync(id));
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.EvidenceAsync(id, EvidenceKey));
+        Assert.Empty(f.Transport.Requests);
+    }
+
+    [Fact]
+    public async Task ActivityHistoricalTechnicianAppearsButUnknownActivityTypesDoNotMasqueradeAsToner()
+    {
+        var f = new Fixture(activities: true);
+        f.AddActivity(827270099);
+        var other = Guid.NewGuid().ToString("D");
+        f.ActivityRows[0][f.Options.TechnicianUserIdField] = other;
+        f.ActivityRows[0][f.Options.TechnicianNameField] = "Técnico histórico de entregas";
+        var bootstrap = await f.Service.BootstrapAsync();
+        Assert.True(bootstrap.ActivitiesEnabled);
+        Assert.Contains(bootstrap.Technicians, x => x.Id == other);
+        Assert.Single((await f.Service.WeekAsync("all", "2026-09-08")).Events);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.DetailAsync("activity:" + Ticket));
+    }
+
     private sealed class Fixture
     {
-        public Fixture([CallerFilePath] string path = "")
+        public Fixture(bool activities = false, [CallerFilePath] string path = "")
         {
             var root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, "..", ".."));
-            var configuration = new ConfigurationBuilder().AddJsonFile(Path.Combine(root, "appsettings.json")).Build();
+            var configuration = new ConfigurationBuilder().AddJsonFile(Path.Combine(root, "appsettings.json"))
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["CopiersMtoV2:ActivitiesEnabled"] = activities.ToString() }).Build();
             Options = configuration.GetSection(CopiersMaintenanceV2DataverseOptions.SectionName).Get<CopiersMaintenanceV2DataverseOptions>()!;
             var service = DispatchProxy.Create<IDataverseService, UserProxy>();
             Users = (UserProxy)service;
@@ -352,14 +447,31 @@ public sealed class CopiersMtoV2CalendarTests
             Service = new(Transport, service, Context, Microsoft.Extensions.Options.Options.Create(Options), configuration);
         }
         public CopiersMaintenanceV2DataverseOptions Options { get; }
+        public CopiersMaintenanceV2DataverseOptions ActivityOptions => CopiersActivityV2Bindings.Create(Options);
         public UserProxy Users { get; }
         public HttpContextAccessor Context { get; } = new();
         public JsonObject Main { get; }
         public List<JsonObject> AdditionalMainRows { get; } = [];
+        public List<JsonObject> ActivityRows { get; } = [];
+        public JsonObject? ActivityEvidence { get; private set; }
         public JsonObject Evidence { get; }
         public byte[] Bytes { get; } = Encoding.ASCII.GetBytes("%PDF-1.4\nTest fixture PDF bytes\n%%EOF");
         public Transport Transport { get; }
         public CopiersMtoV2CalendarService Service { get; }
+        public void AddActivity(int type)
+        {
+            var activity = (JsonObject)Main.DeepClone();
+            activity.Remove(Options.MainIdField);
+            activity[ActivityOptions.MainIdField] = Ticket;
+            activity[Options.ServiceReferenceField] = "ACT-001234";
+            activity[Options.MaintenanceTypeField] = type;
+            ActivityRows.Add(activity);
+            ActivityEvidence = (JsonObject)Evidence.DeepClone();
+            ActivityEvidence.Remove(Options.EvidenceIdField);
+            ActivityEvidence.Remove("_" + Options.EvidenceParentLookupLogicalName + "_value");
+            ActivityEvidence[ActivityOptions.EvidenceIdField] = EvidenceId;
+            ActivityEvidence["_" + ActivityOptions.EvidenceParentLookupLogicalName + "_value"] = Ticket;
+        }
     }
 
     public class UserProxy : DispatchProxy
@@ -392,7 +504,13 @@ public sealed class CopiersMtoV2CalendarTests
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(fixture.Bytes) });
             }
             JsonObject result;
-            if (relativeUrl.Contains($"{fixture.Options.EvidenceEntitySetName}(")) result = fixture.Evidence;
+            if (relativeUrl.Contains(fixture.ActivityOptions.EvidenceEntitySetName))
+                result = relativeUrl.Contains($"{fixture.ActivityOptions.EvidenceEntitySetName}(")
+                    ? fixture.ActivityEvidence! : new() { ["value"] = fixture.ActivityEvidence is null ? new JsonArray() : new JsonArray(fixture.ActivityEvidence.DeepClone()) };
+            else if (relativeUrl.Contains(fixture.ActivityOptions.MainEntitySetName))
+                result = relativeUrl.Contains($"{fixture.ActivityOptions.MainEntitySetName}(")
+                    ? fixture.ActivityRows.Single() : new() { ["value"] = new JsonArray(fixture.ActivityRows.Select(x => x.DeepClone()).ToArray()) };
+            else if (relativeUrl.Contains($"{fixture.Options.EvidenceEntitySetName}(")) result = fixture.Evidence;
             else if (relativeUrl.Contains($"{fixture.Options.MainEntitySetName}(")) result = fixture.Main;
             else
             {

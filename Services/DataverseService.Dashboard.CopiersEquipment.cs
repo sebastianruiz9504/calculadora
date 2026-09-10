@@ -860,6 +860,7 @@ public sealed partial class DataverseService
             ct);
 
         var normalizedMovementId = NormalizeGuid(movementId, nameof(movementId));
+        await EnsureCopiersUnsignedBusinessRowAsync("cr07a_movimientosequiposes", normalizedMovementId, httpContext.User, ct);
         var movement = await GetEquipmentMovementRecordByIdAsync(movementMetadata, normalizedMovementId, httpContext.User, ct)
             ?? throw new InvalidOperationException("No encontramos el movimiento para adjuntar el acta.");
         if (!string.Equals(Path.GetExtension(fileName), ".pdf", StringComparison.OrdinalIgnoreCase))

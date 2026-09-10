@@ -287,6 +287,7 @@ public interface IDataverseService
     Task<CopiersSupplyInventoryDto> GetCopiersSupplyInventoryAsync(CancellationToken ct = default);
     Task<CopiersSupplyQuantityUpdateResultDto> UpdateCopiersSupplyQuantityAsync(CopiersSupplyQuantityUpdateRequestDto request, CancellationToken ct = default);
     Task<IReadOnlyList<CopiersLookupItemDto>> GetCopiersSupplyLookupAsync(string? query = null, int top = 100, CancellationToken ct = default);
+    Task<IReadOnlyList<CopiersLookupItemDto>> GetCopiersMtoV2TonerSuppliesAsync(CancellationToken ct = default);
     Task<CopiersSupplierInvoiceBoardDto> GetCopiersPendingSupplierInvoicesAsync(CancellationToken ct = default);
     Task<CopiersApproveSupplierInvoiceResultDto> ApproveCopiersSupplierInvoiceAsync(string invoiceId, CancellationToken ct = default);
     Task<CopiersDeliveryBoardDto> GetCopiersDeliveriesAsync(CancellationToken ct = default);

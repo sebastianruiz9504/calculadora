@@ -65,7 +65,7 @@ function harness(options = {}) {
             const url = new URL(href); calls.push({ url, request });
             if (options.fetch) return options.fetch(url, request);
             let result;
-            if (url.pathname.endsWith("/Bootstrap")) result = { technicians: options.noTechnicians ? [] : [{ id: "tech-1", name: "Técnico de prueba" }], defaultTechnicianId: options.allTechnicians ? "all" : "tech-1" };
+            if (url.pathname.endsWith("/Bootstrap")) result = { technicians: options.noTechnicians ? [] : [{ id: "tech-1", name: "Técnico de prueba" }], defaultTechnicianId: options.allTechnicians ? "all" : "tech-1", activitiesEnabled: options.activitiesEnabled === true };
             else if (url.pathname.endsWith("/Detail")) result = fixtureDetail;
             else result = { weekStart: url.searchParams.get("weekStart"), events: options.noEvents ? [] : [{ id: eventId, clientName: "Cliente de prueba", technicianName: "Técnico de prueba", maintenanceType: "Preventivo", serviceReference: "MTO-001234", startAtUtc: `${url.searchParams.get("weekStart")}T${options.startTime || "13:00"}:00Z`, endAtUtc: `${url.searchParams.get("weekStart")}T${options.endTime || "14:00"}:00Z`, workflowState: options.failed ? "Failed" : "ReadyToSend" }] };
             return { status: 200, ok: true, redirected: false, headers: { get: () => "application/json" }, json: async () => result };
@@ -154,6 +154,14 @@ test("failed signed reports are clearly pending, not falsely completed", () => {
     assert.equal(calendar.stateLabel("Failed", "email"), "Fallido");
     assert.equal(calendar.stateLabel("ReadyToSend", "workflow"), "Finalizado");
     assert.equal(calendar.stateLabel("Pending", "email"), "Pendiente");
+});
+
+test("movement and toner have distinct labels and calendar colors without pretending to be maintenance", () => {
+    assert.deepEqual(calendar.typeInfo("Movimiento"), { label: "Movimiento", css: "movement" });
+    assert.deepEqual(calendar.typeInfo("Entrega de tóner"), { label: "Entrega de tóner", css: "toner" });
+    assert.deepEqual(calendar.typeInfo("movement"), { label: "Movimiento", css: "movement" });
+    assert.match(view, /mto-calendar__legend-item--movement">Movimiento/);
+    assert.match(view, /mto-calendar__legend-item--toner">Entrega de tóner/);
 });
 
 test("module makes zero calls before activation and refreshes its week when reopened", async () => {
@@ -340,6 +348,26 @@ test("deep link opens the exact persisted report and selects its service week", 
     assert.equal(app.calls.find(call => call.url.pathname.endsWith("/Week")).url.searchParams.get("weekStart"), "2026-09-07");
     assert.equal(app.ids.get("mtoCalendarDetail").open, true);
     assert.match(app.ids.get("mtoCalendarDetailTitle").textContent, /MTO-001234/);
+});
+
+test("enabled mixed calendar counts activities instead of calling every record a maintenance", async () => {
+    const app = harness({ activitiesEnabled: true }); await app.activate();
+    assert.match(app.ids.get("mtoCalendarStatus").textContent, /1 actividad en esta semana/);
+    const empty = harness({ activitiesEnabled: true, noEvents: true, allTechnicians: true }); await empty.activate();
+    assert.match(empty.ids.get("mtoCalendarStatus").textContent, /No hay actividades/);
+});
+
+test("prefixed activity deep link opens the activity header and keeps its protected report URL", async () => {
+    const activityId = `activity:${eventId}`;
+    const app = harness({ search: `?maintenanceId=${encodeURIComponent(activityId)}`, detail: {
+        id: activityId, serviceReference: "ACT-000123", maintenanceType: "Movimiento", activityKind: "movement",
+        reportUrl: `/CopiersMtoV2Calendar/Evidence?id=${encodeURIComponent(activityId)}&evidenceKey=pdf`
+    } });
+    await app.activate();
+    assert.equal(app.calls.find(call => call.url.pathname.endsWith("/Detail")).url.searchParams.get("id"), activityId);
+    assert.match(app.ids.get("mtoCalendarDetailTitle").textContent, /ACT-000123/);
+    assert.match(app.ids.get("mtoCalendarDetailBody").textContent, /Movimiento/);
+    assert.ok(descendants(app.ids.get("mtoCalendarDetailBody")).find(node => node.tagName === "IFRAME").src.includes("activity%3A"));
 });
 
 test("failed event style and label remain distinguishable in the calendar", async () => {

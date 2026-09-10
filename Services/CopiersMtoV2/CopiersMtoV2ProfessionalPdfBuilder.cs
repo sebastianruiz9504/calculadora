@@ -33,7 +33,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2Pd
     {
         ArgumentNullException.ThrowIfNull(model);
         ct.ThrowIfCancellationRequested();
-        if (model.FormVersion == CopiersMtoV2CompactCapture.FormVersion)
+        if (model.FormVersion == CopiersMtoV2CompactCapture.FormVersion || model.FormVersion == CopiersActivityV2Bindings.FormVersion)
             return Task.FromResult(BuildCompact(model));
         var reportNumber = BuildReportNumber(model);
         var signature = PdfJpeg.TryCreate(model.SignatureContent, model.SignatureContentType)

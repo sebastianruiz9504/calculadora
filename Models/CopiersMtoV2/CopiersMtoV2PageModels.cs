@@ -9,6 +9,7 @@ public sealed class CopiersMtoV2ClientEmailRequestDto
 public sealed class CopiersMtoV2BootstrapDto
 {
     public bool SchemaReady { get; set; }
+    public bool ActivitiesEnabled { get; set; }
     public string TechnicianName { get; set; } = "";
     public string TechnicianEmail { get; set; } = "";
     public IReadOnlyList<CopiersMtoV2MaintenanceTypeOptionDto> MaintenanceTypes { get; set; } = Array.Empty<CopiersMtoV2MaintenanceTypeOptionDto>();

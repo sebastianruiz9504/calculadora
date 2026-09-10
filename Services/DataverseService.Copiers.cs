@@ -470,6 +470,7 @@ public sealed partial class DataverseService
                 currentUser.SystemUserId,
                 httpContext.User,
                 ct);
+            await EnsureCopiersUnsignedBusinessRowAsync("cr07a_entregas", normalizedRecordId, httpContext.User, ct);
         }
 
         var deliveryDate = ParseCopiersRequiredDate(request.DeliveryDateValue, "fecha de entrega");
@@ -627,6 +628,7 @@ public sealed partial class DataverseService
 
         var metadata = await ResolveCopiersDeliveryMetadataAsync(httpContext.User, ct);
         var normalizedDeliveryId = NormalizeGuid(deliveryId, nameof(deliveryId));
+        await EnsureCopiersUnsignedBusinessRowAsync("cr07a_entregas", normalizedDeliveryId, httpContext.User, ct);
         var currentUser = await GetCurrentUserAsync(ct);
         _ = await GetCopiersDeliveryByIdAsync(
             metadata,

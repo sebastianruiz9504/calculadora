@@ -38,14 +38,24 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
 
         public byte[] Build()
         {
-            if (EstimateWidth(number, 11, true) + EstimateWidth("Reporte de mantenimiento", 15, true) + 18 > CompactContentWidth)
+            var activityKind = model.FormVersion == CopiersActivityV2Bindings.FormVersion ? Answer("activity_kind").ToLowerInvariant() : "maintenance";
+            if (model.FormVersion == CopiersActivityV2Bindings.FormVersion && activityKind is not ("movement" or "toner"))
+                throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.");
+            var title = activityKind switch
+            {
+                "maintenance" => "Reporte de mantenimiento",
+                "movement" => "Movimiento de equipo",
+                "toner" => "Entrega de tóner",
+                _ => throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.")
+            };
+            if (EstimateWidth(number, 11, true) + EstimateWidth(title, 15, true) + 18 > CompactContentWidth)
                 throw Overflow();
             foreach (var image in Letterhead.Value)
             {
                 var height = CompactWidth * image.Height / image.Width;
                 _page.DrawImage(image.Name, 0, image.Name == "Header" ? CompactHeight - height : 0, CompactWidth, height);
             }
-            Text("Reporte de mantenimiento", CompactLeft, _top, 15, true);
+            Text(title, CompactLeft, _top, 15, true);
             _page.DrawTextRight(number, CompactWidth - CompactLeft, CompactHeight - _top - 15, 11, true, CompactBlack);
             _top += 24;
 
@@ -53,16 +63,30 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             PairFields("Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
             PairFields("Técnico", model.TechnicianName, "Atendió", model.CustomerContactName);
             FullField("Correo", Answer("onsite_email"));
-            PairFields("Tipo", Answer("maintenance_type"), "Resultado", Answer("service_result"));
+            if (activityKind == "maintenance")
+                PairFields("Tipo", Answer("maintenance_type"), "Resultado", Answer("service_result"));
             PairFields("Entrada", VisitInstant("service_started_at_utc", "service_started_at"),
                 "Salida", VisitInstant("service_ended_at_utc", "service_ended_at"));
             _top += 7;
 
-            DrawCounters();
-            Paragraph("Trabajo realizado", model.WorkPerformed, required: true);
+            if (activityKind == "maintenance") DrawCounters();
+            else if (activityKind == "movement")
+            {
+                FullField("Origen", Answer("origin_client_name"));
+                FullField("Destino", Answer("destination_client_name"));
+                _top += 7;
+            }
+            else
+            {
+                FullField("Suministro", Answer("supply_name"));
+                FullField("Cantidad", Answer("supply_quantity"));
+                _top += 7;
+            }
+            Paragraph(activityKind == "maintenance" ? "Trabajo realizado" : activityKind == "movement" ? "Motivo del movimiento" : "Detalle de la entrega",
+                model.WorkPerformed, required: true);
             Paragraph("Recomendaciones", Answer("recommendations"));
             Paragraph("Observaciones del cliente", model.CustomerObservations);
-            DrawSignature();
+            DrawSignature(activityKind);
             DrawAttachments();
             EnsureSpace(0);
             return PdfBinaryWriter.Build([_page], signature, number, CompactWidth, CompactHeight, Letterhead.Value);
@@ -160,12 +184,17 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             _top += lines.Count * CompactLeading + 7;
         }
 
-        private void DrawSignature()
+        private void DrawSignature(string activityKind)
         {
             const double textWidth = 343;
             const double imageMaxWidth = 164;
             const double imageMaxHeight = 46;
-            const string consent = "Revisé este reporte y recibí explicación del trabajo realizado. Mi firma deja constancia de la atención y de la información consignada.";
+            var consent = activityKind switch
+            {
+                "movement" => "Revisé los datos del movimiento del equipo, su origen y destino. Mi firma deja constancia de la atención y de la información consignada.",
+                "toner" => "Revisé el suministro y la cantidad relacionados en esta entrega. Mi firma deja constancia de la recepción y de la información consignada.",
+                _ => "Revisé este reporte y recibí explicación del trabajo realizado. Mi firma deja constancia de la atención y de la información consignada."
+            };
             var consentLines = Wrap(consent, textWidth, 8.2);
             var nameLines = Wrap($"{model.SignerName} - {model.SignerRole}".Trim(' ', '-'), textWidth, 9);
             var height = 19 + consentLines.Count * 10 + nameLines.Count * 11 + 15;
@@ -203,8 +232,10 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 throw Overflow();
         }
 
-        private static CopiersMaintenanceV2ValidationException Overflow() => new("compact_pdf_content_overflow",
-            "La información del mantenimiento supera el espacio de una página. Resume el trabajo o las observaciones sin omitir datos importantes y vuelve a firmar.");
+        private CopiersMaintenanceV2ValidationException Overflow() => new("compact_pdf_content_overflow",
+            model.FormVersion == CopiersActivityV2Bindings.FormVersion
+                ? "La información de la actividad supera el espacio de una página. Resume el detalle o las observaciones sin omitir datos importantes y vuelve a firmar."
+                : "La información del mantenimiento supera el espacio de una página. Resume el trabajo o las observaciones sin omitir datos importantes y vuelve a firmar.");
 
         private void DrawLines(IReadOnlyList<string> lines, double x, double top, double size, double leading)
         {

@@ -122,6 +122,11 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
         var user = RequireUser();
         var current = await GetOwnedAsync(command.RecordId, command.TechnicianSystemUserId, user, ct);
         EnsureOperationKey(current, command.SubmissionKey);
+        if (_options.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet
+            && (current.MaintenanceTypeValue != command.MaintenanceTypeValue
+                || !string.Equals(current.ClientId, command.ClientId, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(current.EquipmentId, command.EquipmentId, StringComparison.OrdinalIgnoreCase)))
+            throw new CopiersMaintenanceV2ConcurrencyException("El tipo de atención, cliente y equipo forman parte de la clave de envío y no pueden cambiarse.");
         if (current.State is not CopiersMaintenanceV2WorkflowState.Draft and not CopiersMaintenanceV2WorkflowState.Failed)
             throw new CopiersMaintenanceV2ConcurrencyException("El reporte ya no está editable.");
         EnsureVersion(current, command.ExpectedVersion);

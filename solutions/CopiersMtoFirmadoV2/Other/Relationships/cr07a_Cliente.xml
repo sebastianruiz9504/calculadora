@@ -61,6 +61,41 @@
       </EntityRelationshipRole>
     </EntityRelationshipRoles>
   </EntityRelationship>
+  <EntityRelationship Name="dtc_Cliente_CopiersActivityV2">
+    <EntityRelationshipType>OneToMany</EntityRelationshipType>
+    <IsCustomizable>1</IsCustomizable>
+    <IntroducedVersion>1.0</IntroducedVersion>
+    <IsHierarchical>0</IsHierarchical>
+    <ReferencingEntityName>dtc_CopiersActivityV2</ReferencingEntityName>
+    <ReferencedEntityName>cr07a_Cliente</ReferencedEntityName>
+    <CascadeAssign>NoCascade</CascadeAssign>
+    <CascadeDelete>Restrict</CascadeDelete>
+    <CascadeArchive>RemoveLink</CascadeArchive>
+    <CascadeReparent>NoCascade</CascadeReparent>
+    <CascadeShare>NoCascade</CascadeShare>
+    <CascadeUnshare>NoCascade</CascadeUnshare>
+    <CascadeRollupView>NoCascade</CascadeRollupView>
+    <IsValidForAdvancedFind>1</IsValidForAdvancedFind>
+    <ReferencingAttributeName>dtc_Client</ReferencingAttributeName>
+    <RelationshipDescription>
+      <Descriptions>
+        <Description description="Relación V2 con cliente." languagecode="3082" />
+      </Descriptions>
+    </RelationshipDescription>
+    <EntityRelationshipRoles>
+      <EntityRelationshipRole>
+        <NavPaneDisplayOption>UseCollectionName</NavPaneDisplayOption>
+        <NavPaneArea>Details</NavPaneArea>
+        <NavPaneOrder>10000</NavPaneOrder>
+        <NavigationPropertyName>dtc_Client</NavigationPropertyName>
+        <RelationshipRoleType>1</RelationshipRoleType>
+      </EntityRelationshipRole>
+      <EntityRelationshipRole>
+        <NavigationPropertyName>dtc_Cliente_CopiersActivityV2</NavigationPropertyName>
+        <RelationshipRoleType>0</RelationshipRoleType>
+      </EntityRelationshipRole>
+    </EntityRelationshipRoles>
+  </EntityRelationship>
   <EntityRelationship Name="dtc_Cliente_CopiersMtoV2">
     <EntityRelationshipType>OneToMany</EntityRelationshipType>
     <IsCustomizable>1</IsCustomizable>

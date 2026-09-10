@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<ImportExportXml version="9.2.26084.142" SolutionPackageVersion="9.2" languagecode="3082" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26084.142" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26084.00142">
+<ImportExportXml version="9.2.26085.138" SolutionPackageVersion="9.2" languagecode="3082" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26085.138" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26085.00138">
   <SolutionManifest>
     <UniqueName>CopiersMtoFirmadoV2</UniqueName>
     <LocalizedNames>
@@ -83,7 +83,11 @@
     </Publisher>
     <RootComponents>
       <RootComponent type="1" schemaName="cr07a_cliente" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_entrega" behavior="2" />
       <RootComponent type="1" schemaName="cr07a_equipo" behavior="0" />
+      <RootComponent type="1" schemaName="cr07a_movimientosequipos" behavior="2" />
+      <RootComponent type="1" schemaName="dtc_copiersactivityevidencev2" behavior="0" />
+      <RootComponent type="1" schemaName="dtc_copiersactivityv2" behavior="0" />
       <RootComponent type="1" schemaName="dtc_copiersmtoevidenciav2" behavior="0" />
       <RootComponent type="1" schemaName="dtc_copiersmtov2" behavior="0" />
       <RootComponent type="20" id="{815ea1ef-8aa2-f111-aaad-70a8a5a95cf5}" behavior="0" />
@@ -156,11 +160,7 @@
       </MissingDependency>
       <MissingDependency>
         <Required type="1" schemaName="cr07a_entrega" displayName="Entrega" solution="Active" />
-        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
-      </MissingDependency>
-      <MissingDependency>
-        <Required type="1" schemaName="cr07a_entrega" displayName="Entrega" solution="Active" />
-        <Dependent type="1" schemaName="cr07a_equipo" displayName="Equipo" />
+        <Dependent type="1" schemaName="cr07a_entrega" displayName="Entrega" />
       </MissingDependency>
       <MissingDependency>
         <Required type="1" schemaName="cr07a_envio" displayName="Envio" solution="Active" />
@@ -204,11 +204,7 @@
       </MissingDependency>
       <MissingDependency>
         <Required type="1" schemaName="cr07a_movimientosequipos" displayName="Movimientos equipos" solution="Active" />
-        <Dependent type="1" schemaName="cr07a_cliente" displayName="Cliente" />
-      </MissingDependency>
-      <MissingDependency>
-        <Required type="1" schemaName="cr07a_movimientosequipos" displayName="Movimientos equipos" solution="Active" />
-        <Dependent type="1" schemaName="cr07a_equipo" displayName="Equipo" />
+        <Dependent type="1" schemaName="cr07a_movimientosequipos" displayName="Movimientos equipos" />
       </MissingDependency>
       <MissingDependency>
         <Required type="1" schemaName="cr07a_novedad" displayName="Novedad" solution="Active" />

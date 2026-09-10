@@ -37,6 +37,8 @@
         const normalized = String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
         if (normalized.includes("prevent")) return { label: "Preventivo", css: "preventive" };
         if (normalized.includes("correct")) return { label: "Correctivo", css: "corrective" };
+        if (normalized.includes("movimiento") || normalized === "movement") return { label: "Movimiento", css: "movement" };
+        if (normalized.includes("toner")) return { label: "Entrega de tóner", css: "toner" };
         return { label: String(value || "Mantenimiento"), css: "other" };
     }
 
@@ -273,7 +275,11 @@
             state.positioned = false;
             renderWeek(events);
             const estimated = events.some(event => event.durationEstimated);
-            setStatus(events.length ? `${events.length} mantenimiento${events.length === 1 ? "" : "s"} en esta semana.${estimated ? " Algunas franjas tienen duración estimada; consulta el detalle." : ""}` : technicianId === "all" ? "No hay mantenimientos V2 en la semana seleccionada." : "Este técnico no tiene mantenimientos V2 en la semana seleccionada.");
+            const activities = state.bootstrap?.activitiesEnabled === true;
+            const noun = activities ? events.length === 1 ? "actividad" : "actividades" : events.length === 1 ? "mantenimiento" : "mantenimientos";
+            setStatus(events.length ? `${events.length} ${noun} en esta semana.${estimated ? " Algunas franjas tienen duración estimada; consulta el detalle." : ""}`
+                : activities ? technicianId === "all" ? "No hay actividades en la semana seleccionada." : "Este técnico no tiene actividades en la semana seleccionada."
+                : technicianId === "all" ? "No hay mantenimientos V2 en la semana seleccionada." : "Este técnico no tiene mantenimientos V2 en la semana seleccionada.");
         } catch (error) {
             if (error.name !== "AbortError" && generation === state.generation) setStatus(error.message || "No fue posible cargar el calendario.", true);
         } finally {
@@ -459,7 +465,7 @@
             state.activating = true;
             const parameters = new URLSearchParams(global.location.search);
             const maintenanceId = parameters.get("maintenanceId") || "";
-            const operation = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(maintenanceId)
+            const operation = /^(?:activity:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(maintenanceId)
                 ? openLinkedMaintenance(maintenanceId) : loadWeek();
             void operation.finally(() => { state.activating = false; });
         }

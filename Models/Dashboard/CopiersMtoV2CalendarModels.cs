@@ -4,7 +4,8 @@ public sealed record CopiersMtoV2CalendarTechnicianDto(string Id, string Name, s
 public sealed record CopiersMtoV2CalendarBootstrapDto(
     IReadOnlyList<CopiersMtoV2CalendarTechnicianDto> Technicians,
     string DefaultTechnicianId,
-    string TimeZone = "America/Bogota");
+    string TimeZone = "America/Bogota",
+    bool ActivitiesEnabled = false);
 public sealed record CopiersMtoV2CalendarWeekDto(
     string WeekStart,
     IReadOnlyList<CopiersMtoV2CalendarEventDto> Events,
@@ -16,6 +17,7 @@ public class CopiersMtoV2CalendarEventDto
     public string ServiceReference { get; set; } = "";
     public string ClientName { get; set; } = "";
     public string MaintenanceType { get; set; } = "";
+    public string ActivityKind { get; set; } = "maintenance";
     public string TechnicianId { get; set; } = "";
     public string TechnicianName { get; set; } = "";
     public DateTimeOffset StartAtUtc { get; set; }

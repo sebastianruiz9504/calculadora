@@ -17,7 +17,93 @@ function functionSource(name) {
 }
 
 function bind(name, dependencies = {}) {
+    dependencies = { activityKind: () => "maintenance", isExternalEquipment: () => false, ...dependencies };
     return new Function(...Object.keys(dependencies), `${functionSource(name)}\nreturn ${name};`)(...Object.values(dependencies));
+}
+
+// Run the real controller functions together in a small DOM. Only browser I/O is
+// substituted; catalog, signature invalidation, scope and polling decisions are real.
+function activityHarness(reader = async () => ({ items: [] })) {
+    class Element {
+        constructor(id = "", tag = "input") {
+            Object.assign(this, { id, tagName: tag.toUpperCase(), value: "", textContent: "", hidden: false,
+                disabled: false, checked: false, dataset: {}, children: [], listeners: {}, validityMessage: "", style: {} });
+            this.classList = { add() {}, remove() {}, toggle() {} };
+        }
+        setCustomValidity(message) { this.validityMessage = message; }
+        setAttribute(name, value) { this[name] = value; }
+        removeAttribute(name) { delete this[name]; }
+        addEventListener(name, handler) { (this.listeners[name] ||= []).push(handler); }
+        dispatch(name) { for (const handler of this.listeners[name] || []) handler({ currentTarget: this, target: this }); }
+        append(...children) { this.children.push(...children); }
+        appendChild(child) { this.append(child); }
+        replaceChildren(...children) { this.children = [...children]; }
+        querySelectorAll() { return this.controls || []; }
+        querySelector() { return null; }
+        focus() {}
+        reportValidity() { return !this.validityMessage; }
+        scrollIntoView() {}
+    }
+    class Form extends Element {}
+    class Select extends Element {}
+    const nodes = {};
+    for (const match of view.matchAll(/<([a-z]+)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
+        const [markup, tag, id] = match;
+        nodes[id] = tag === "form" ? new Form(id, tag) : tag === "select" ? new Select(id, tag) : new Element(id, tag);
+        nodes[id].hidden = /\shidden(?:\s|>|\/)/.test(markup);
+    }
+    const root = nodes.copiersMtoV2App, form = nodes.mtoV2Form;
+    const panels = [1, 2, 3, 4].map(step => { const panel = new Element(); panel.dataset.stepPanel = String(step); return panel; });
+    const activityPanels = [
+        ["maintenance", ["mtoV2ServiceResult", "mtoV2WorkPerformed", "mtoV2CopiesBefore", "mtoV2CopiesAfter", "mtoV2ScansBefore", "mtoV2ScansAfter", "mtoV2Recommendations"]],
+        ["movement", ["mtoV2OriginClientName", "mtoV2MovementReason"]],
+        ["toner", ["mtoV2SupplyId", "mtoV2SupplyQuantity"]]
+    ].map(([kind, ids]) => { const panel = new Element(); panel.dataset.activityPanel = kind; panel.controls = ids.map(id => nodes[id]); return panel; });
+    root.querySelectorAll = selector => selector === "[data-step-panel]" ? panels : selector === "[data-activity-panel]" ? activityPanels : [];
+    root.querySelector = selector => selector === "[data-submit-label]" ? new Element() : null;
+    form.controls = Object.values(nodes).filter(node => ["INPUT", "SELECT", "TEXTAREA"].includes(node.tagName));
+    const timers = [], requests = [], revoked = [];
+    const window = {
+        setTimeout(callback, delay) { const timer = { callback, delay, cancelled: false }; timers.push(timer); return timer; },
+        clearTimeout(timer) { if (timer) timer.cancelled = true; },
+        addEventListener() {},
+        CopiersMtoV2Picker: { create(input, list, options) { return {
+            items: [], setItems(items) { this.items = items; }, setStatus(message) { this.message = message; },
+            select(id) { options.onSelect(this.items.find(item => item.id === id)); }
+        }; } }
+    };
+    const document = { getElementById: id => nodes[id] || null, createElement: tag => new Element("", tag) };
+    const exports = ["state", "elements", "changeActivityType", "isExternalEquipment", "syncClientSelection", "syncEquipmentCatalog",
+        "loadEquipmentCatalog", "syncEquipmentSelection", "prepareCatalogValidity", "loadSupplies", "syncSupplySelection", "prepareSupplyValidity",
+        "buildStructuredAnswers", "prepareSubmissionIdentity", "syncCounterSelection", "loadCounterLatest", "handleEvidenceSelection", "renderFiles",
+        "clearFilePreviews", "startEmailStatusPolling", "checkEmailStatus", "stopEmailStatusPolling", "setSubmitState", "wireEvents"];
+    const exposed = script.replace("    initialize();", `    initializeCatalogPickers(); window.app = { ${exports.join(", ")} };`);
+    const fetch = async (url, options) => {
+        requests.push({ url, options });
+        const result = await reader(url, options);
+        return { ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => result };
+    };
+    const URL = { createObjectURL: () => `blob:preview-${Math.random()}`, revokeObjectURL: url => revoked.push(url) };
+    new Function("document", "window", "HTMLFormElement", "HTMLSelectElement", "HTMLCanvasElement", "HTMLElement", "HTMLButtonElement", "fetch", "URL", exposed)
+        (document, window, Form, Select, class Canvas {}, Element, Element, fetch, URL);
+    const app = window.app;
+    app.elements.activityKind.value = "maintenance";
+    app.state.catalog.loaded = true;
+    app.state.catalog.schemaReady = true;
+    app.state.catalog.activitiesEnabled = true;
+    app.state.catalog.clients = [{ id: "C-1", name: "Cliente destino", email: "copiers@example.test" }];
+    app.state.catalog.selectedClient = app.state.catalog.clients[0];
+    app.elements.clientId.value = "C-1";
+    app.elements.clientName.value = "Cliente destino";
+    app.elements.equipmentSerial.value = "SERIAL-1";
+    app.elements.finalReviewConfirmed.checked = true;
+    app.elements.createAnother.hidden = true;
+    return { ...app, nodes, timers, requests, revoked, panels, activityPanels, window };
+}
+
+async function settleActivities() {
+    // Flush the bounded network/readResponse/Promise.race chain without timers.
+    for (let index = 0; index < 16; index++) await Promise.resolve();
 }
 
 function control(value = "") {
@@ -28,6 +114,355 @@ function control(value = "") {
         focus() {}, reportValidity() { return Boolean(this.value.trim()); }
     };
 }
+
+test("activity selector is first and preserves the production maintenance values", () => {
+    assert.ok(view.indexOf('id="mtoV2MaintenanceType"') < view.indexOf('id="mtoV2ClientName"'));
+    assert.match(view, /Tipo de atención/);
+    const h = activityHarness();
+    h.state.catalog.selectedClient = null;
+    h.elements.maintenanceType.value = "100000001";
+    h.changeActivityType();
+    assert.equal(h.elements.maintenanceType.value, "100000001");
+    assert.equal(h.elements.activityKind.value, "maintenance");
+    assert.equal(h.elements.formVersion.value, "copiers-mto-v2-2026-09-10");
+});
+
+test("new attention options are gated by server provisioning", () => {
+    const h = activityHarness();
+    h.state.catalog.activitiesEnabled = false;
+    h.elements.maintenanceType.value = "movement";
+    h.changeActivityType();
+    assert.equal(h.elements.maintenanceType.value, "");
+    assert.equal(h.elements.activityKind.value, "maintenance");
+    assert.match(functionSource("renderMaintenanceTypeOptions"), /if \(state\.catalog\.activitiesEnabled\)/);
+});
+
+for (const kind of ["movement", "toner"]) test(`${kind} uses its own fields, form version and signed answers without false maintenance`, async () => {
+    const h = activityHarness();
+    h.state.catalog.selectedClient = null;
+    h.elements.maintenanceType.value = kind;
+    h.changeActivityType();
+    await settleActivities();
+    assert.equal(h.elements.activityKind.value, kind);
+    assert.equal(h.elements.formVersion.value, "copiers-activity-v2-2026-09-10");
+    for (const panel of h.activityPanels) {
+        assert.equal(panel.hidden, panel.dataset.activityPanel !== kind);
+        assert.ok(panel.controls.every(field => field.disabled === panel.hidden));
+    }
+    h.elements.originClientId.value = "C-ORIGIN";
+    h.elements.originClientName.value = "Cliente origen";
+    h.elements.movementReason.value = "Reubicación aprobada";
+    h.state.supplies.selected = { id: "T-1", name: "Tóner negro", quantity: 5 };
+    h.elements.supplyQuantity.value = "2";
+    const answers = Object.fromEntries(h.buildStructuredAnswers().map(answer => [answer.key, answer.value]));
+    assert.equal(answers.activity_kind, kind);
+    for (const key of ["maintenance_type", "counters", "copies_before", "copies_after", "service_result", "recommendations"]) assert.equal(answers[key], undefined);
+    if (kind === "movement") {
+        assert.equal(answers.movement_reason, "Reubicación aprobada");
+        assert.equal(answers.origin_client_name, "Cliente origen");
+        assert.equal(answers.origin_client_id, "C-ORIGIN");
+        assert.equal(answers.supply_id, undefined);
+    } else {
+        assert.equal(answers.supply_id, "T-1");
+        assert.equal(answers.supply_name, "Tóner negro");
+        assert.equal(answers.supply_quantity, "2");
+        assert.equal(answers.supply_stock_before, "5");
+        assert.equal(answers.movement_reason, undefined);
+    }
+});
+
+test("changing attention invalidates a captured signature and locks later steps", async () => {
+    const h = activityHarness();
+    h.state.catalog.selectedClient = null;
+    h.state.maxUnlockedStep = 4;
+    h.state.signature.strokes = [[{ x: 0, y: 0 }, { x: 1, y: 1 }]];
+    h.elements.signedAtUtc.value = "2026-09-10T15:00:00Z";
+    h.elements.serviceEndedAtUtc.value = "2026-09-10T14:59:00Z";
+    h.elements.maintenanceType.value = "movement";
+    h.changeActivityType();
+    assert.equal(h.state.signature.strokes.length, 0);
+    assert.equal(h.elements.signedAtUtc.value, "");
+    assert.equal(h.elements.serviceEndedAtUtc.value, "");
+    assert.equal(h.elements.finalReviewConfirmed.checked, false);
+    assert.equal(h.state.maxUnlockedStep, 1);
+});
+
+for (const [kind, allowed, items, expected] of [
+    ["maintenance", true, [], true], ["maintenance", false, [], false], ["maintenance", "true", [], false],
+    ["maintenance", true, [{ id: "E-1", serial: "S", clientId: "C-1" }], false],
+    ["movement", true, [], false], ["toner", true, [], false]
+]) test(`external equipment requires authoritative empty maintenance catalog: ${kind}/${allowed}/${items.length}`, async () => {
+    const h = activityHarness(async () => ({ items, allowExternalEquipment: allowed }));
+    h.elements.activityKind.value = kind;
+    h.state.equipmentCatalog.scope = `${kind}|c-1`;
+    await h.loadEquipmentCatalog();
+    await settleActivities();
+    assert.equal(h.isExternalEquipment(), expected);
+    assert.match(h.requests[0].url, new RegExp(`clientId=C-1&activityKind=${kind}`));
+    assert.equal(h.requests[0].options.method, "GET");
+    assert.equal(h.requests[0].options.cache, "no-store");
+    if (expected) {
+        assert.equal(h.state.counters.loaded, true);
+        assert.equal(h.elements.copiesBefore.value, "");
+        assert.equal(h.elements.scansBefore.value, "");
+        assert.ok(h.requests.every(request => !request.url.includes("CounterLatest")));
+        h.prepareCatalogValidity();
+        assert.equal(h.elements.equipmentSerial.validityMessage, "");
+        h.elements.equipmentSerial.value = "";
+        h.prepareCatalogValidity();
+        assert.match(h.elements.equipmentSerial.validityMessage, /serial/);
+    }
+});
+
+test("failed or malformed equipment response never authorizes a manual serial", async () => {
+    for (const result of [{ allowExternalEquipment: true }, { items: [{ serial: "missing-id" }], allowExternalEquipment: true }]) {
+        const h = activityHarness(async () => result);
+        await h.loadEquipmentCatalog();
+        assert.equal(h.state.equipmentCatalog.loaded, false);
+        assert.equal(h.isExternalEquipment(), false);
+        assert.equal(h.elements.retryEquipment.hidden, false);
+        h.prepareCatalogValidity();
+        assert.match(h.elements.equipmentSerial.validityMessage, /Reintentar equipos/);
+    }
+});
+
+test("late equipment response cannot replace a newer client or enable external capture", async () => {
+    let resolve;
+    const h = activityHarness(() => new Promise(done => { resolve = done; }));
+    h.state.equipmentCatalog.scope = "maintenance|c-1";
+    const pending = h.loadEquipmentCatalog();
+    h.state.equipmentCatalog.requestId++;
+    h.state.equipmentCatalog.scope = "maintenance|c-2";
+    h.state.catalog.equipment = [{ id: "E-NEW", serial: "NEW", clientId: "C-2" }];
+    resolve({ items: [], allowExternalEquipment: true });
+    await pending;
+    assert.equal(h.state.catalog.equipment[0].id, "E-NEW");
+    assert.equal(h.state.equipmentCatalog.allowExternalEquipment, false);
+});
+
+for (const origin of [{ clientId: "C-ORIGIN", clientName: "Origen" }, { clientId: "", clientName: "" }]) {
+    test(`movement selects registered equipment independently of destination and preserves origin ${origin.clientId || "Stock"}`, async () => {
+        const h = activityHarness(async () => ({ items: [{ id: "E-1", serial: "S-1", ...origin }], allowExternalEquipment: false }));
+        h.elements.activityKind.value = "movement";
+        await h.loadEquipmentCatalog();
+        assert.equal(h.state.equipmentPicker.items.length, 1);
+        h.state.equipmentPicker.select("E-1");
+        h.prepareCatalogValidity();
+        assert.equal(h.elements.equipmentSerial.value, "S-1");
+        assert.equal(h.elements.equipmentId.value, "E-1");
+        assert.equal(h.elements.originClientId.value, origin.clientId);
+        assert.equal(h.elements.originClientName.value, origin.clientName || "Stock");
+        assert.equal(h.elements.equipmentSerial.validityMessage, "");
+        assert.ok(h.requests.every(request => !request.url.includes("CounterLatest")));
+    });
+}
+
+test("switching out of maintenance invalidates any pending history response and clears counters", () => {
+    const h = activityHarness();
+    h.state.counters.scope = "c-1|e-1";
+    h.state.counters.loading = true;
+    h.state.counters.requestId = 9;
+    h.elements.copiesBefore.value = "10";
+    h.elements.copiesAfter.value = "20";
+    h.elements.activityKind.value = "movement";
+    h.syncCounterSelection();
+    assert.equal(h.state.counters.scope, "");
+    assert.equal(h.state.counters.requestId, 10);
+    assert.equal(h.state.counters.loading, false);
+    assert.equal(h.elements.copiesBefore.value, "");
+    assert.equal(h.elements.copiesAfter.value, "");
+});
+
+test("supply catalog loads real stock and selection establishes the signed supply snapshot", async () => {
+    const h = activityHarness(async () => ({ items: [{ id: "T-1", name: "TK-1", quantity: 5 }, { id: "T-0", name: "Agotado", quantity: 0 }] }));
+    h.elements.activityKind.value = "toner";
+    await h.loadSupplies();
+    assert.equal(h.state.supplies.loaded, true);
+    assert.equal(h.elements.supplyId.children.length, 3);
+    assert.equal(h.elements.supplyId.children[2].disabled, true);
+    h.elements.supplyId.value = "T-1";
+    h.syncSupplySelection();
+    assert.deepEqual(h.state.supplies.selected, { id: "T-1", name: "TK-1", quantity: 5 });
+    assert.equal(h.elements.supplyQuantity.max, "5");
+    assert.match(h.elements.supplyStock.textContent, /5/);
+});
+
+for (const [quantity, valid] of [["", false], ["0", false], ["-1", false], ["1.5", false], ["6", false], ["2147483648", false], ["1", true], ["5", true]]) {
+    test(`toner quantity ${quantity || "empty"} is ${valid ? "valid" : "rejected"} without clamping`, () => {
+        const h = activityHarness();
+        h.state.supplies.loaded = true;
+        h.state.supplies.selected = { id: "T-1", quantity: 5 };
+        h.elements.supplyQuantity.value = quantity;
+        h.prepareSupplyValidity();
+        assert.equal(h.elements.supplyQuantity.validityMessage === "", valid);
+        assert.equal(h.elements.supplyQuantity.value, quantity);
+    });
+}
+
+for (const quantity of [null, undefined, "", -1, 1.5]) test(`malformed inventory ${quantity} fails closed without inventing stock`, async () => {
+    const h = activityHarness(async () => ({ items: [{ id: "T-1", name: "Tóner", quantity }] }));
+    h.elements.activityKind.value = "toner";
+    await h.loadSupplies();
+    assert.equal(h.state.supplies.loaded, false);
+    assert.equal(h.state.supplies.selected, null);
+    assert.equal(h.elements.retrySupplies.hidden, false);
+});
+
+test("late supply response after leaving toner is ignored", async () => {
+    let resolve;
+    const h = activityHarness(() => new Promise(done => { resolve = done; }));
+    h.elements.activityKind.value = "toner";
+    const pending = h.loadSupplies();
+    h.elements.activityKind.value = "maintenance";
+    resolve({ items: [{ id: "OLD", name: "Tóner", quantity: 3 }] });
+    await pending;
+    assert.equal(h.state.supplies.loaded, false);
+    assert.equal(h.state.supplies.selected, null);
+});
+
+test("camera adds photographs alongside the existing picker and every photo has removable preview", () => {
+    const h = activityHarness();
+    const first = { name: "capture.jpg", size: 12, lastModified: 1 };
+    const second = { name: "gallery.png", size: 15, lastModified: 2 };
+    h.elements.cameraInput.files = [first];
+    h.elements.cameraInput.value = "capture.jpg";
+    h.handleEvidenceSelection({ currentTarget: h.elements.cameraInput });
+    h.elements.evidenceInput.files = [second];
+    h.handleEvidenceSelection({ currentTarget: h.elements.evidenceInput });
+    assert.deepEqual(h.state.files, [first, second]);
+    assert.equal(h.elements.cameraInput.value, "");
+    assert.equal(h.elements.fileList.children.length, 2);
+    assert.ok(h.elements.fileList.children.every(item => item.children[0].tagName === "IMG" && item.children.at(-1).dataset.removeFile !== undefined));
+    assert.equal(h.revoked.length, 1);
+    h.clearFilePreviews();
+    assert.equal(h.revoked.length, 3);
+    assert.match(view, /id="mtoV2CameraInput" accept="image\/\*" capture="environment"/);
+    assert.match(view, /id="mtoV2EvidenceInput"[\s\S]*?multiple/);
+});
+
+for (const [state, emailState, canCreate] of [[2, 3, true], [2, "Sent", true], [2, 0, false], [2, 1, false], [2, 2, false], [2, 4, false], [1, 3, false], [undefined, undefined, false]]) {
+    test(`new record appears only after committed record and email Sent: ${state}/${emailState}`, async () => {
+        const h = activityHarness(async () => ({ state, emailState }));
+        h.elements.recordId.value = "RECORD-1";
+        h.state.emailStatus.startedAt = Date.now();
+        await h.checkEmailStatus();
+        assert.equal(!h.elements.createAnother.hidden, canCreate);
+        assert.equal(h.requests[0].options.method, "GET");
+        assert.match(h.requests[0].url, /Status\?recordId=RECORD-1&activityKind=maintenance/);
+        if (canCreate) assert.match(h.elements.submitStatus.textContent, /correo fue enviado/);
+        else assert.doesNotMatch(h.elements.submitStatus.textContent, /correo fue enviado/);
+    });
+}
+
+test("status polling stops after eight reads and allows explicit read-only recheck", async () => {
+    const h = activityHarness(async () => ({ state: 2, emailState: 1 }));
+    h.elements.recordId.value = "RECORD-1";
+    h.startEmailStatusPolling();
+    await settleActivities();
+    for (let index = 0; index < 10; index++) {
+        const timer = h.timers.find(item => !item.cancelled && item.delay === 5000 && !item.ran);
+        if (!timer) break;
+        timer.ran = true;
+        timer.callback();
+        await settleActivities();
+    }
+    assert.equal(h.requests.length, 8);
+    assert.equal(h.elements.createAnother.hidden, true);
+    assert.equal(h.elements.checkEmailStatus.disabled, false);
+    h.startEmailStatusPolling();
+    await settleActivities();
+    assert.equal(h.requests.length, 9);
+    assert.ok(h.requests.every(request => request.options.method === "GET"));
+});
+
+test("status timeout or failure never invents sent confirmation or repeats Finalize", async () => {
+    const h = activityHarness(async () => { throw new Error("offline"); });
+    h.elements.recordId.value = "RECORD-1";
+    await h.checkEmailStatus();
+    assert.equal(h.elements.createAnother.hidden, true);
+    assert.equal(h.elements.checkEmailStatus.hidden, false);
+    assert.equal(h.elements.checkEmailStatus.disabled, false);
+    assert.match(h.elements.submitStatus.textContent, /sin duplicar/);
+    assert.equal(h.requests.length, 1);
+    assert.doesNotMatch(h.requests[0].url, /Finalize/);
+});
+
+test("late status for another record cannot expose the fresh-capture link", async () => {
+    let resolve;
+    const h = activityHarness(() => new Promise(done => { resolve = done; }));
+    h.elements.recordId.value = "OLD";
+    const pending = h.checkEmailStatus();
+    h.elements.recordId.value = "NEW";
+    resolve({ state: 2, emailState: 3 });
+    await pending;
+    assert.equal(h.elements.createAnother.hidden, true);
+});
+
+test("completed capture freezes all edits but leaves status check and new-record action accessible", () => {
+    const h = activityHarness();
+    h.setSubmitState("created");
+    assert.deepEqual(h.panels.map(panel => panel.inert), [true, true, true, false]);
+    assert.equal(h.elements.submitButton.disabled, true);
+    assert.equal(h.elements.finalReviewConfirmed.disabled, true);
+    assert.equal(h.elements.cameraInput.disabled, true);
+    assert.equal(h.elements.evidenceInput.disabled, true);
+    assert.match(view, /id="mtoV2CreateAnother" href="\/CopiersMtoV2" hidden/);
+});
+
+test("real event wiring loads movement equipment and accepts picker selection after asynchronous catalog arrival", async () => {
+    const h = activityHarness(async () => ({ items: [{ id: "E-1", serial: "MOVE-1", clientId: "ORIGIN", clientName: "Bodega" }], allowExternalEquipment: false }));
+    h.wireEvents();
+    h.elements.maintenanceType.value = "movement";
+    h.elements.maintenanceType.dispatch("change");
+    await settleActivities();
+    assert.equal(h.state.equipmentPicker.items[0].id, "E-1");
+    h.state.equipmentPicker.select("E-1");
+    assert.equal(h.elements.equipmentId.value, "E-1");
+    assert.equal(h.elements.originClientName.value, "Bodega");
+    assert.equal(h.elements.clientLabel.textContent, "Cliente destino");
+    h.prepareCatalogValidity();
+    assert.equal(h.elements.equipmentSerial.validityMessage, "");
+});
+
+test("supply refresh changing available stock invalidates the customer signature", async () => {
+    let quantity = 5;
+    const h = activityHarness(async () => ({ items: [{ id: "T-1", name: "Tóner", quantity }] }));
+    h.elements.activityKind.value = "toner";
+    await h.loadSupplies();
+    h.elements.supplyId.value = "T-1";
+    h.syncSupplySelection();
+    h.state.signature.strokes = [[{ x: 0, y: 0 }, { x: 1, y: 1 }]];
+    quantity = 3;
+    await h.loadSupplies();
+    assert.equal(h.state.supplies.selected.quantity, 3);
+    assert.equal(h.state.signature.strokes.length, 0);
+    assert.equal(h.elements.finalReviewConfirmed.checked, false);
+});
+
+test("changing activity or external serial after a failed send rotates identity, while an unchanged retry preserves it", () => {
+    const h = activityHarness();
+    h.elements.submissionKey.value = "ORIGINAL";
+    h.elements.equipmentId.value = "";
+    h.prepareSubmissionIdentity();
+    h.prepareSubmissionIdentity();
+    assert.equal(h.elements.submissionKey.value, "ORIGINAL");
+    h.elements.equipmentSerial.value = "DIFFERENT-EXTERNAL-SERIAL";
+    h.prepareSubmissionIdentity();
+    const afterSerial = h.elements.submissionKey.value;
+    assert.notEqual(afterSerial, "ORIGINAL");
+    h.elements.activityKind.value = "movement";
+    h.prepareSubmissionIdentity();
+    assert.notEqual(h.elements.submissionKey.value, afterSerial);
+});
+
+test("status polling does not start an automatic request beyond its time window", async () => {
+    const h = activityHarness(async () => ({ state: 2, emailState: 1 }));
+    h.elements.recordId.value = "RECORD-1";
+    h.state.emailStatus.startedAt = Date.now() - 90001;
+    await h.checkEmailStatus();
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.elements.createAnother.hidden, true);
+});
 
 const catalogKey = value => String(value || "").trim().toLowerCase();
 const sameCatalogId = (left, right) => Boolean(left && right) && catalogKey(left) === catalogKey(right);
@@ -137,7 +572,7 @@ test("equipment requires a persisted Dataverse id", () => {
 
 function catalogValidation({ email = "copiers@example.test", serial = "S-1", selectedEquipment = { id: "E-1" }, equipment = [{ id: "E-1", serial: "S-1", clientId: "C-1" }] } = {}) {
     const elements = { clientName: control("Cliente"), clientId: control("C-1"), equipmentSerial: control(serial) };
-    const state = { catalog: { loaded: true, schemaReady: true, selectedClient: { email }, selectedEquipment, equipment } };
+    const state = { equipmentCatalog: { loaded: true }, catalog: { loaded: true, schemaReady: true, selectedClient: { email }, selectedEquipment, equipment } };
     bind("prepareCatalogValidity", { elements, state, catalogKey, sameCatalogId })();
     return elements;
 }
@@ -221,7 +656,7 @@ test("submission captures once, preserves retry key, and freezes visible control
     assert.ok(submit.indexOf("await captureGeolocation()") < submit.indexOf("new FormData(form)"));
     assert.match(submit, /"Idempotency-Key": elements\.submissionKey\.value/);
     assert.match(submit, /submittedAtUtc\.value \|\|=/);
-    assert.match(functionSource("setSubmitState"), /panel\.inert = pending \|\| completed/);
+    assert.match(functionSource("setSubmitState"), /panel\.inert = pending \|\| \(completed && Number\(panel\.dataset\.stepPanel\) !== 4\)/);
 });
 
 function emailHarness(result, ok = true) {
@@ -374,7 +809,7 @@ function loadHarness(reader) {
         normalizeEquipment: bind("normalizeEquipment", { textProperty }),
         normalizeMaintenanceType: bind("normalizeMaintenanceType", { textProperty }), textProperty,
         setCatalogFeedback(element, message) { element.textContent = message; },
-        renderClientOptions() {}, renderMaintenanceTypeOptions() {}, syncClientSelection() {}
+        renderClientOptions() {}, renderMaintenanceTypeOptions() {}, changeActivityType() {}, syncClientSelection() {}
     });
     return { elements, state, load };
 }
@@ -397,11 +832,11 @@ test("failed load restores retry; a later retry loads the catalog", async () => 
 
 function selectionHarness() {
     const clients = [{ id: "C-1", name: "Duplicado" }, { id: "C-2", name: "Duplicado" }];
-    const state = { catalog: { loaded: true, schemaReady: true, clients, equipment: [], selectedClient: null, selectedEquipment: null } };
+    const state = { equipmentCatalog: { loaded: true }, catalog: { loaded: true, schemaReady: true, clients, equipment: [], selectedClient: null, selectedEquipment: null } };
     const elements = { clientName: control("Duplicado"), clientId: control(), editClientEmail: {}, catalogFeedback: {}, equipmentId: control(), equipmentSerial: control() };
     const sync = bind("syncClientSelection", {
         state, elements, catalogKey, sameCatalogId, prefillClientContact() {}, clearClientPrefill() {},
-        setCatalogFeedback() {}, renderEquipmentOptions() {}, syncEquipmentSelection() {}
+        setCatalogFeedback() {}, renderEquipmentOptions() {}, syncEquipmentCatalog() {}, syncEquipmentSelection() {}
     });
     return { state, elements, sync };
 }

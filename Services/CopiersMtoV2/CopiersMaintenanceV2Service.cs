@@ -17,6 +17,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CopiersMaintenanceV2Service> _logger;
     private readonly ICopiersMtoV2CounterService? _counters;
+    private readonly ICopiersActivityV2BusinessService? _business;
 
     public CopiersMaintenanceV2Service(
         ICopiersMaintenanceV2DataverseRepository repository,
@@ -25,7 +26,8 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         IOptions<CopiersMaintenanceV2DataverseOptions> dataverseOptions,
         TimeProvider timeProvider,
         ILogger<CopiersMaintenanceV2Service> logger,
-        ICopiersMtoV2CounterService? counters = null)
+        ICopiersMtoV2CounterService? counters = null,
+        ICopiersActivityV2BusinessService? business = null)
     {
         _repository = repository;
         _pdfBuilder = pdfBuilder;
@@ -34,6 +36,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         _timeProvider = timeProvider;
         _logger = logger;
         _counters = counters;
+        _business = business;
     }
 
     public async Task<CopiersMaintenanceV2DraftResultDto> CreateOrGetDraftAsync(
@@ -46,6 +49,9 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         var command = BuildCreateCommand(request, normalizedActor, _timeProvider.GetUtcNow());
         var record = await _repository.CreateOrGetDraftAsync(command, ct);
         EnsureRecordIdentity(record, command.SubmissionKey, normalizedActor.SystemUserId);
+        if (_dataverseOptions.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet
+            && record.MaintenanceTypeValue != command.MaintenanceTypeValue)
+            throw new CopiersMaintenanceV2ConcurrencyException("La clave de envío ya pertenece a otro tipo de atención. Inicia un registro nuevo.");
         if (record.WasCreated
             || record.State is not CopiersMaintenanceV2WorkflowState.Draft
                 and not CopiersMaintenanceV2WorkflowState.Failed)
@@ -117,6 +123,10 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         var recordId = CopiersMaintenanceV2Validation.RequiredGuid(request.RecordId, "record_id_invalid", "El mantenimiento");
         var submissionKey = CopiersMaintenanceV2Validation.SubmissionKey(request.SubmissionKey, _options);
         var expectedVersion = CopiersMaintenanceV2Validation.Required(request.ExpectedVersion, "version_required", "la version del borrador", 200);
+        var formVersion = CopiersMaintenanceV2Validation.FormVersion(request.FormVersion, _options);
+        var activityForm = formVersion == CopiersActivityV2Bindings.FormVersion;
+        if (activityForm != (_dataverseOptions.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet))
+            throw new CopiersMaintenanceV2ValidationException("activity_form_mismatch", "El formato no corresponde al registro.");
 
         var leaseId = Guid.NewGuid().ToString("N");
         var begin = await _repository.TryBeginFinalizationAsync(new CopiersMaintenanceV2BeginFinalizationCommand
@@ -142,13 +152,14 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         try
         {
             CopiersMaintenanceV2Validation.ValidateCustomerEmail(begin.Record.CustomerEmail);
-            var formVersion = CopiersMaintenanceV2Validation.FormVersion(request.FormVersion, _options);
             var answers = CanonicalizeRecordAnswers(
                 CopiersMaintenanceV2Validation.ParseAnswers(request.AnswersJson, _options, formVersion),
                 begin.Record);
             var compactForm = formVersion == CopiersMtoV2CompactCapture.FormVersion;
             if (compactForm)
                 answers = CopiersMtoV2CompactCapture.Canonicalize(request, begin.Record, answers);
+            if (activityForm)
+                answers = CopiersActivityV2Capture.Canonicalize(request, begin.Record, answers);
             var workPerformed = CopiersMaintenanceV2Validation.Required(
                 request.WorkPerformed,
                 "work_performed_required",
@@ -213,7 +224,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 && string.Equals(begin.Record.FinalizationFingerprint, finalizationFingerprint, StringComparison.OrdinalIgnoreCase);
             CopiersMtoV2CounterSaveCommand? counterCommand = null;
             var matchesPersistedCounterFingerprint = false;
-            if (compactForm && !isReadyReplay)
+            if (compactForm && !isReadyReplay && !string.IsNullOrWhiteSpace(begin.Record.EquipmentId))
             {
                 if (_counters is null) throw new InvalidOperationException("El servicio de contadores no está disponible.");
                 counterCommand = CopiersMtoV2CompactCapture.CounterCommand(
@@ -223,7 +234,15 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 // therefore replay the exact capture even after its age limit.
                 matchesPersistedCounterFingerprint = await _counters.ValidateForMaintenanceAsync(counterCommand, ct);
             }
-            if (!matchesPersistedFingerprint && !matchesPersistedCounterFingerprint)
+            CopiersActivityV2BusinessCommand? businessCommand = null;
+            var matchesPersistedBusiness = false;
+            if (activityForm && !isReadyReplay)
+            {
+                if (_business is null) throw new InvalidOperationException("El servicio de movimientos y entregas no está disponible.");
+                businessCommand = CopiersActivityV2Capture.Command(begin.Record, answers, request.ServiceEndedAtUtc!.Value, finalizationFingerprint);
+                matchesPersistedBusiness = await _business.ValidateAsync(businessCommand, ct);
+            }
+            if (!matchesPersistedFingerprint && !matchesPersistedCounterFingerprint && !matchesPersistedBusiness)
             {
                 // New or changed content still requires a fresh capture. Only an
                 // exact persisted submission can bypass the age limit; ranges,
@@ -260,7 +279,9 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 SignerName = signerName,
                 SignerRole = signerRole,
                 DeviceSignedAtUtc = signedAtUtc,
-                ServerFinalizedAtUtc = finalizedAtUtc,
+                // New actas remain byte-identical when a persisted business transaction
+                // is replayed after a later staging failure. Actual server time stays in the row.
+                ServerFinalizedAtUtc = activityForm ? signedAtUtc : finalizedAtUtc,
                 SignatureContent = signature.Content,
                 SignatureContentType = signature.ContentType,
                 Attachments = customerAttachments.Select(item => new CopiersMaintenanceV2PdfAttachmentManifestItem
@@ -285,6 +306,8 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             // completion safe without inserting a second reading.
             if (counterCommand is not null)
                 await _counters!.SaveForMaintenanceAsync(counterCommand, ct);
+            if (businessCommand is not null)
+                await _business!.CommitAsync(businessCommand, signedReport, ct);
             var completed = await _repository.CompleteFinalizationAsync(new CopiersMaintenanceV2CompleteFinalizationCommand
             {
                 RecordId = begin.Record.RecordId,

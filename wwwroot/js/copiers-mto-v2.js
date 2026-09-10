@@ -29,7 +29,8 @@
         "mtoV2Recommendations",
         "mtoV2CustomerObservations",
         "mtoV2SignerName",
-        "mtoV2SignerRole"
+        "mtoV2SignerRole",
+        "mtoV2MovementReason", "mtoV2SupplyId", "mtoV2SupplyQuantity"
     ]);
 
     const elements = {
@@ -46,6 +47,21 @@
         submissionKey: document.getElementById("mtoV2SubmissionKey"),
         recordId: document.getElementById("mtoV2RecordId"),
         expectedVersion: document.getElementById("mtoV2ExpectedVersion"),
+        formVersion: document.getElementById("mtoV2FormVersion"),
+        activityKind: document.getElementById("mtoV2ActivityKind"),
+        activityPanels: Array.from(root.querySelectorAll("[data-activity-panel]")),
+        clientLabel: document.getElementById("mtoV2ClientLabel"),
+        originClientId: document.getElementById("mtoV2OriginClientId"),
+        originClientName: document.getElementById("mtoV2OriginClientName"),
+        movementReason: document.getElementById("mtoV2MovementReason"),
+        retryEquipment: document.getElementById("mtoV2RetryEquipment"),
+        supplyId: document.getElementById("mtoV2SupplyId"),
+        supplyQuantity: document.getElementById("mtoV2SupplyQuantity"),
+        supplyStock: document.getElementById("mtoV2SupplyStock"),
+        supplyFeedback: document.getElementById("mtoV2SupplyFeedback"),
+        retrySupplies: document.getElementById("mtoV2RetrySupplies"),
+        createAnother: document.getElementById("mtoV2CreateAnother"),
+        checkEmailStatus: document.getElementById("mtoV2CheckEmailStatus"),
         answersJson: document.getElementById("mtoV2AnswersJson"),
         title: document.getElementById("mtoV2Title"),
         serviceDate: document.getElementById("mtoV2ServiceDate"),
@@ -85,6 +101,7 @@
         saveClientEmail: document.getElementById("mtoV2SaveClientEmail"),
         cancelClientEmail: document.getElementById("mtoV2CancelClientEmail"),
         evidenceInput: document.getElementById("mtoV2EvidenceInput"),
+        cameraInput: document.getElementById("mtoV2CameraInput"),
         fileSummary: document.getElementById("mtoV2FileSummary"),
         fileList: document.getElementById("mtoV2FileList"),
         signatureCanvas: document.getElementById("mtoV2SignatureCanvas"),
@@ -111,6 +128,7 @@
         currentStep: 1,
         maxUnlockedStep: 1,
         files: [],
+        previewUrls: [],
         submitting: false,
         submissionAttempted: false,
         submissionScope: "",
@@ -119,11 +137,16 @@
         editingClientId: "",
         clientPicker: null,
         equipmentPicker: null,
+        activityType: "",
+        equipmentCatalog: { scope: "", requestId: 0, loaded: false, loading: false, allowExternalEquipment: false },
+        supplies: { requestId: 0, loaded: false, loading: false, items: [], selected: null },
+        emailStatus: { requestId: 0, attempts: 0, loading: false, timer: null },
         counters: { scope: "", requestId: 0, loading: false, loaded: false, error: "", recordId: "", dateValue: "", dateDisplay: "" },
         catalog: {
             loaded: false,
             loading: false,
             schemaReady: false,
+            activitiesEnabled: false,
             clients: [],
             equipment: [],
             maintenanceTypes: [],
@@ -193,9 +216,9 @@
     }
 
     function prepareSubmissionIdentity() {
-        const scope = `${elements.clientId.value.trim().toLowerCase()}|${elements.equipmentId.value.trim().toLowerCase()}`;
+        const scope = `${activityKind()}|${elements.clientId.value.trim().toLowerCase()}|${elements.equipmentId.value.trim().toLowerCase() || catalogKey(elements.equipmentSerial?.value)}`;
         if (state.submissionAttempted && state.submissionScope !== scope) {
-            // A different customer/equipment is a new maintenance, never a retry
+            // A different activity/customer/equipment is a new capture, never a retry
             // that rewrites the previously signed row. Same-form retries keep key.
             elements.submissionKey.value = createSubmissionId();
             elements.recordId.value = "";
@@ -237,6 +260,7 @@
             const equipment = Array.isArray(result?.equipment) ? result.equipment : Array.isArray(result?.Equipment) ? result.Equipment : [];
             const maintenanceTypes = Array.isArray(result?.maintenanceTypes) ? result.maintenanceTypes : Array.isArray(result?.MaintenanceTypes) ? result.MaintenanceTypes : [];
             state.catalog.schemaReady = (result?.schemaReady ?? result?.SchemaReady) === true;
+            state.catalog.activitiesEnabled = (result?.activitiesEnabled ?? result?.ActivitiesEnabled) === true;
             state.catalog.clients = clients.map(normalizeClient).filter(Boolean);
             state.catalog.equipment = equipment.map(normalizeEquipment).filter(Boolean);
             state.catalog.maintenanceTypes = maintenanceTypes.map(normalizeMaintenanceType).filter(Boolean);
@@ -251,6 +275,7 @@
             }
             renderClientOptions();
             renderMaintenanceTypeOptions();
+            changeActivityType();
             syncClientSelection();
             if (!state.catalog.schemaReady) {
                 setCatalogFeedback(
@@ -331,7 +356,7 @@
         const id = textProperty(item, "id", "Id");
         const serial = textProperty(item, "serial", "Serial");
         const clientId = textProperty(item, "clientId", "ClientId");
-        if (!id || !serial || !clientId) {
+        if (!id || !serial) {
             return null;
         }
         return {
@@ -360,7 +385,146 @@
             option.textContent = item.label;
             return option;
         });
+        if (state.catalog.activitiesEnabled) {
+            for (const [value, label] of [["movement", "Movimiento de equipo"], ["toner", "Entrega de tóner"]]) {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = label;
+                options.push(option);
+            }
+        }
         replaceContents(elements.maintenanceType, placeholder, ...options);
+    }
+
+    function activityKind() {
+        const kind = elements.activityKind?.value;
+        return kind === "movement" || kind === "toner" ? kind : "maintenance";
+    }
+
+    function activityLabel() {
+        return activityKind() === "movement" ? "Movimiento de equipo" : activityKind() === "toner" ? "Entrega de tóner" : "Mantenimiento";
+    }
+
+    function changeActivityType() {
+        const value = elements.maintenanceType.value;
+        if ((value === "movement" || value === "toner") && !state.catalog.activitiesEnabled) {
+            elements.maintenanceType.value = "";
+            return;
+        }
+        elements.activityKind.value = value === "movement" || value === "toner" ? value : "maintenance";
+        elements.formVersion.value = activityKind() === "maintenance" ? "copiers-mto-v2-2026-09-10" : "copiers-activity-v2-2026-09-10";
+        elements.clientLabel.textContent = activityKind() === "movement" ? "Cliente destino" : "Cliente";
+        elements.activityPanels.forEach(panel => {
+            const active = panel.dataset.activityPanel === activityKind();
+            panel.hidden = !active;
+            panel.querySelectorAll("input, select, textarea").forEach(field => { field.disabled = !active; });
+        });
+        if (state.activityType !== value) {
+            state.activityType = value;
+            state.maxUnlockedStep = 1;
+            invalidateSignatureForChange();
+            elements.finalReviewConfirmed.checked = false;
+            updateProgressAvailability();
+            syncEquipmentCatalog();
+            if (activityKind() === "toner") void loadSupplies();
+            else { state.supplies.requestId += 1; state.supplies.loading = false; }
+        }
+    }
+
+    function isExternalEquipment() {
+        return activityKind() === "maintenance" && state.equipmentCatalog.loaded
+            && state.equipmentCatalog.allowExternalEquipment === true && state.catalog.equipment.length === 0;
+    }
+
+    function syncEquipmentCatalog(force) {
+        const clientId = state.catalog.selectedClient?.id || "";
+        const scope = clientId ? `${activityKind()}|${clientId.toLowerCase()}` : "";
+        if (!force && scope === state.equipmentCatalog.scope) return;
+        state.equipmentCatalog.scope = scope;
+        state.equipmentCatalog.requestId += 1;
+        state.equipmentCatalog.loaded = false;
+        state.equipmentCatalog.loading = false;
+        state.equipmentCatalog.allowExternalEquipment = false;
+        state.catalog.equipment = [];
+        state.catalog.selectedEquipment = null;
+        elements.equipmentSerial.value = "";
+        elements.equipmentId.value = "";
+        elements.originClientId.value = "";
+        elements.originClientName.value = "";
+        elements.retryEquipment.hidden = true;
+        renderEquipmentOptions();
+        syncCounterSelection();
+        if (clientId) void loadEquipmentCatalog();
+    }
+
+    async function loadEquipmentCatalog() {
+        const client = state.catalog.selectedClient;
+        if (!client || state.equipmentCatalog.loading) return;
+        const requestId = ++state.equipmentCatalog.requestId;
+        const scope = state.equipmentCatalog.scope;
+        const kind = activityKind();
+        state.equipmentCatalog.loading = true;
+        state.equipmentCatalog.loaded = false;
+        state.equipmentCatalog.allowExternalEquipment = false;
+        elements.retryEquipment.hidden = true;
+        elements.retryEquipment.disabled = true;
+        state.equipmentPicker.setStatus("Cargando equipos disponibles…");
+        setCatalogFeedback(elements.equipmentFeedback, "Cargando equipos disponibles…", "");
+        try {
+            const url = `${root.dataset.equipmentUrl || "/CopiersMtoV2/Equipment"}?clientId=${encodeURIComponent(client.id)}&activityKind=${encodeURIComponent(kind)}`;
+            const result = await fetchActivityJson(url, "los equipos");
+            if (requestId !== state.equipmentCatalog.requestId || scope !== state.equipmentCatalog.scope) return;
+            const rawItems = result?.items ?? result?.Items;
+            if (!Array.isArray(rawItems)) throw new Error("La respuesta de equipos no es válida. Reintenta la consulta.");
+            state.catalog.equipment = rawItems.map(normalizeEquipment).filter(Boolean);
+            if (state.catalog.equipment.length !== rawItems.length) throw new Error("El catálogo contiene equipos incompletos. Reintenta la consulta.");
+            state.equipmentCatalog.allowExternalEquipment = kind === "maintenance" && rawItems.length === 0
+                && (result?.allowExternalEquipment ?? result?.AllowExternalEquipment) === true;
+            state.equipmentCatalog.loaded = true;
+            renderEquipmentOptions();
+            syncEquipmentSelection();
+        } catch (error) {
+            if (requestId !== state.equipmentCatalog.requestId || scope !== state.equipmentCatalog.scope) return;
+            state.equipmentCatalog.loaded = false;
+            state.equipmentCatalog.allowExternalEquipment = false;
+            state.catalog.equipment = [];
+            const message = error instanceof Error ? error.message : "No fue posible consultar los equipos. Reintenta.";
+            state.equipmentPicker.setStatus(message);
+            setCatalogFeedback(elements.equipmentFeedback, message, "error");
+            elements.retryEquipment.hidden = false;
+        } finally {
+            if (requestId === state.equipmentCatalog.requestId && scope === state.equipmentCatalog.scope) {
+                state.equipmentCatalog.loading = false;
+                elements.retryEquipment.disabled = false;
+            }
+        }
+    }
+
+    async function fetchActivityJson(url, label) {
+        const controller = typeof AbortController === "function" ? new AbortController() : null;
+        let timer;
+        const deadline = new Promise((_, reject) => {
+            timer = window.setTimeout(() => {
+                reject(new Error(`La consulta de ${label} tardó demasiado. Revisa internet y reintenta.`));
+                controller?.abort();
+            }, 20000);
+        });
+        const request = async () => {
+            const response = await fetch(url, { method: "GET", credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" }, signal: controller?.signal });
+            if (response.status === 401 || response.status === 403 || response.redirected
+                || (response.ok && !(response.headers.get("content-type") || "").includes("application/json"))) {
+                throw new Error("Tu sesión expiró o no tiene acceso. Actualiza la página e inicia sesión nuevamente.");
+            }
+            const result = await readResponse(response);
+            if (!response.ok) throw new Error(result?.message || result?.Message || `No fue posible consultar ${label}. Reintenta.`);
+            return result;
+        };
+        try { return await Promise.race([request(), deadline]); }
+        catch (error) {
+            if (error instanceof TypeError) throw new Error(`No fue posible conectar para consultar ${label}. Revisa internet y reintenta.`);
+            throw error;
+        }
+        finally { window.clearTimeout(timer); }
     }
 
     function renderClientOptions() {
@@ -371,6 +535,82 @@
             elements.catalogFeedback,
             `${state.catalog.clients.length} clientes disponibles. Selecciona una coincidencia de la lista.`,
             "success");
+    }
+
+    async function loadSupplies() {
+        if (activityKind() !== "toner" || state.supplies.loading) return;
+        const requestId = ++state.supplies.requestId;
+        state.supplies.loading = true;
+        state.supplies.loaded = false;
+        elements.retrySupplies.hidden = true;
+        elements.retrySupplies.disabled = true;
+        setCatalogFeedback(elements.supplyFeedback, "Consultando suministros y existencias…", "");
+        try {
+            const result = await fetchActivityJson(root.dataset.suppliesUrl || "/CopiersMtoV2/Supplies", "suministros");
+            if (requestId !== state.supplies.requestId || activityKind() !== "toner") return;
+            const rawItems = result?.items ?? result?.Items;
+            if (!Array.isArray(rawItems)) throw new Error("No se recibió un catálogo válido de suministros. Reintenta.");
+            state.supplies.items = rawItems.map(item => {
+                const id = textProperty(item, "id", "Id"), name = textProperty(item, "name", "Name");
+                const rawQuantity = item?.quantity ?? item?.Quantity;
+                const quantity = Number(rawQuantity);
+                if (!id || !name || rawQuantity === null || rawQuantity === undefined || rawQuantity === ""
+                    || !Number.isSafeInteger(quantity) || quantity < 0) throw new Error("El catálogo contiene existencias no válidas. Reintenta.");
+                return { id, name, quantity };
+            });
+            const previousId = elements.supplyId.value;
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = "Selecciona el tóner a entregar";
+            replaceContents(elements.supplyId, placeholder, ...state.supplies.items.map(item => {
+                const option = document.createElement("option");
+                option.value = item.id;
+                option.textContent = `${item.name} · ${item.quantity} disponibles`;
+                option.disabled = item.quantity === 0;
+                return option;
+            }));
+            elements.supplyId.value = state.supplies.items.some(item => sameCatalogId(item.id, previousId) && item.quantity > 0) ? previousId : "";
+            state.supplies.loaded = true;
+            syncSupplySelection();
+            setCatalogFeedback(elements.supplyFeedback, state.supplies.items.some(item => item.quantity > 0)
+                ? "Selecciona el suministro y la cantidad a entregar." : "No hay suministros con existencias disponibles.", "");
+        } catch (error) {
+            if (requestId !== state.supplies.requestId || activityKind() !== "toner") return;
+            state.supplies.items = [];
+            state.supplies.loaded = false;
+            elements.supplyId.value = "";
+            syncSupplySelection();
+            setCatalogFeedback(elements.supplyFeedback, error instanceof Error ? error.message : "No fue posible consultar suministros. Reintenta.", "error");
+            elements.retrySupplies.hidden = false;
+        } finally {
+            if (requestId === state.supplies.requestId) {
+                state.supplies.loading = false;
+                elements.retrySupplies.disabled = false;
+            }
+        }
+    }
+
+    function syncSupplySelection() {
+        const previous = state.supplies.selected;
+        const selected = state.supplies.loaded
+            ? state.supplies.items.find(item => sameCatalogId(item.id, elements.supplyId.value)) || null : null;
+        state.supplies.selected = selected;
+        elements.supplyStock.textContent = selected ? `Existencias disponibles: ${selected.quantity}` : "Selecciona un suministro para consultar sus existencias.";
+        elements.supplyQuantity.max = selected ? String(selected.quantity) : "";
+        elements.supplyId.setCustomValidity("");
+        elements.supplyQuantity.setCustomValidity("");
+        if (previous?.id !== selected?.id || previous?.name !== selected?.name || previous?.quantity !== selected?.quantity) invalidateSignatureForChange();
+    }
+
+    function prepareSupplyValidity() {
+        const supply = state.supplies.selected;
+        elements.supplyId.setCustomValidity(!state.supplies.loaded
+            ? "Espera a que se carguen los suministros o reintenta su consulta."
+            : !supply || supply.quantity <= 0 ? "Selecciona un suministro con existencias disponibles." : "");
+        const quantity = Number(elements.supplyQuantity.value);
+        elements.supplyQuantity.setCustomValidity(!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 2147483647
+            ? "Ingresa una cantidad entera mayor que cero."
+            : supply && quantity > supply.quantity ? "La cantidad no puede superar las existencias disponibles." : "");
     }
 
     function syncClientSelection(preferredId) {
@@ -413,7 +653,7 @@
                 "error");
         }
 
-        if (state.catalog.selectedEquipment && !sameCatalogId(state.catalog.selectedEquipment.clientId, selected?.id)) {
+        if (activityKind() !== "movement" && state.catalog.selectedEquipment && !sameCatalogId(state.catalog.selectedEquipment.clientId, selected?.id)) {
             const previousEquipment = state.catalog.selectedEquipment;
             if (catalogKey(elements.equipmentSerial?.value) === catalogKey(previousEquipment.serial)) {
                 elements.equipmentSerial.value = "";
@@ -422,8 +662,11 @@
             elements.equipmentId.value = "";
         }
 
-        renderEquipmentOptions();
-        syncEquipmentSelection();
+        syncEquipmentCatalog();
+        if (state.equipmentCatalog.loaded) {
+            renderEquipmentOptions();
+            syncEquipmentSelection();
+        }
     }
 
     function prefillClientContact(client, previousClient) {
@@ -479,10 +722,11 @@
     function renderEquipmentOptions() {
         const clientId = state.catalog.selectedClient?.id || "";
         const filtered = clientId
-            ? state.catalog.equipment.filter(item => sameCatalogId(item.clientId, clientId))
+            ? state.catalog.equipment.filter(item => activityKind() === "movement" || sameCatalogId(item.clientId, clientId))
             : [];
         state.equipmentPicker.setItems(filtered.map(item => ({
-            id: item.id, label: item.serial, description: item.reference || ""
+            id: item.id, label: item.serial, description: activityKind() === "movement"
+                ? [item.clientName || "Stock", item.reference].filter(Boolean).join(" · ") : item.reference || ""
         })));
         if (!clientId) state.equipmentPicker.setStatus("Selecciona primero un cliente.");
 
@@ -491,11 +735,16 @@
         }
         if (!clientId) {
             setCatalogFeedback(elements.equipmentFeedback, "Selecciona primero un cliente.", "");
+        } else if (!state.equipmentCatalog.loaded) {
+            setCatalogFeedback(elements.equipmentFeedback, "Consultando los equipos disponibles…", "");
         } else if (filtered.length) {
             setCatalogFeedback(
                 elements.equipmentFeedback,
-                `${filtered.length} equipos del cliente. Selecciona un serial de la lista.`,
+                `${filtered.length} equipos disponibles. Selecciona un serial de la lista.`,
                 "success");
+        } else if (isExternalEquipment()) {
+            state.equipmentPicker.setStatus("Sin equipos registrados: escribe el serial del equipo atendido.");
+            setCatalogFeedback(elements.equipmentFeedback, "Este cliente no tiene equipos registrados. Escribe el serial del equipo atendido.", "");
         } else {
             setCatalogFeedback(elements.equipmentFeedback, "Este cliente no tiene equipos asociados en Dataverse.", "error");
         }
@@ -505,18 +754,22 @@
         const clientId = state.catalog.selectedClient?.id || "";
         const value = catalogKey(elements.equipmentSerial?.value);
         const matches = state.catalog.equipment.filter(item =>
-            sameCatalogId(item.clientId, clientId) && catalogKey(item.serial) === value);
+            (activityKind() === "movement" || sameCatalogId(item.clientId, clientId)) && catalogKey(item.serial) === value);
         const selected = matches.find(item => sameCatalogId(item.id, preferredId))
             || matches.find(item => sameCatalogId(item.id, state.catalog.selectedEquipment?.id))
             || (matches.length === 1 ? matches[0] : null);
 
         state.catalog.selectedEquipment = selected;
         elements.equipmentId.value = selected?.id || "";
+        elements.originClientId.value = activityKind() === "movement" ? selected?.clientId || "" : "";
+        elements.originClientName.value = activityKind() === "movement" && selected ? selected.clientName || "Stock" : "";
         elements.equipmentSerial?.setCustomValidity("");
 
         if (selected) {
             setCatalogFeedback(elements.equipmentFeedback, `Equipo seleccionado: ${selected.serial}.`, "success");
-        } else if (state.catalog.loaded && clientId && value) {
+        } else if (isExternalEquipment()) {
+            setCatalogFeedback(elements.equipmentFeedback, value ? `Serial del equipo atendido: ${elements.equipmentSerial.value.trim()}.` : "Escribe el serial del equipo atendido.", value ? "success" : "");
+        } else if (state.equipmentCatalog.loaded && clientId && value) {
             setCatalogFeedback(elements.equipmentFeedback, "Selecciona un equipo de la lista de este cliente.", "error");
         }
         syncCounterSelection();
@@ -531,8 +784,10 @@
     }
 
     function syncCounterSelection() {
-        const equipment = state.catalog.selectedEquipment;
-        const scope = equipment ? `${equipment.clientId}|${equipment.id}`.toLowerCase() : "";
+        const equipment = activityKind() === "maintenance" ? state.catalog.selectedEquipment : null;
+        const external = isExternalEquipment();
+        const scope = equipment ? `${equipment.clientId}|${equipment.id}`.toLowerCase()
+            : external ? `external|${state.catalog.selectedClient?.id}|${catalogKey(elements.equipmentSerial.value)}` : "";
         if (scope === state.counters.scope) return;
         state.counters.scope = scope;
         state.counters.requestId += 1;
@@ -546,13 +801,16 @@
         [elements.copiesBeforeDate, elements.scansBeforeDate].forEach(label => { label.textContent = "Sin registro previo"; });
         elements.retryCounters.hidden = true;
         invalidateSignatureForChange();
-        if (equipment) void loadCounterLatest();
+        if (external) {
+            state.counters.loaded = true;
+            setCatalogFeedback(elements.counterFeedback, "Equipo sin historial registrado. Ingresa sus lecturas actuales.", "");
+        } else if (equipment) void loadCounterLatest();
         else setCatalogFeedback(elements.counterFeedback, "Selecciona un equipo para consultar su último contador.", "");
     }
 
     async function loadCounterLatest() {
         const equipment = state.catalog.selectedEquipment;
-        if (!equipment || state.counters.loading) return;
+        if (!equipment || activityKind() !== "maintenance" || isExternalEquipment() || state.counters.loading) return;
         const requestId = ++state.counters.requestId;
         const scope = state.counters.scope;
         state.counters.loading = true;
@@ -764,12 +1022,22 @@
             void loadBootstrap();
         });
         elements.retryCounters?.addEventListener("click", () => { void loadCounterLatest(); });
+        elements.retryEquipment?.addEventListener("click", () => syncEquipmentCatalog(true));
+        elements.maintenanceType?.addEventListener("change", changeActivityType);
+        elements.supplyId?.addEventListener("change", syncSupplySelection);
+        elements.retrySupplies?.addEventListener("click", () => { void loadSupplies(); });
+        elements.checkEmailStatus?.addEventListener("click", () => startEmailStatusPolling());
         elements.clientName?.addEventListener("input", () => syncClientSelection());
         elements.equipmentSerial?.addEventListener("input", () => syncEquipmentSelection());
         elements.evidenceInput?.addEventListener("change", handleEvidenceSelection);
+        elements.cameraInput?.addEventListener("change", handleEvidenceSelection);
         elements.fileList?.addEventListener("click", handleFileListClick);
         elements.clearSignature?.addEventListener("click", clearSignature);
         form.addEventListener("submit", submitForm);
+        window.addEventListener("pagehide", () => {
+            stopEmailStatusPolling();
+            clearFilePreviews();
+        });
 
         form.querySelectorAll("input, select, textarea").forEach(control => {
             const eventName = control instanceof HTMLSelectElement || control.type === "checkbox" ? "change" : "input";
@@ -830,9 +1098,10 @@
 
     function validateStep(step) {
         clearCounterValidity();
-        if (step === 2 && !validateCounters()) {
+        if (step === 2 && activityKind() === "maintenance" && !validateCounters()) {
             return false;
         }
+        if (step === 2 && activityKind() === "toner") prepareSupplyValidity();
 
         const panel = getPanel(step);
         if (!panel) {
@@ -888,7 +1157,11 @@
         const serial = catalogKey(elements.equipmentSerial?.value);
         const catalogMatches = state.catalog.equipment.filter(item => catalogKey(item.serial) === serial);
         const belongsToSelectedClient = catalogMatches.some(item => sameCatalogId(item.clientId, elements.clientId?.value));
-        if (catalogMatches.length && !belongsToSelectedClient) {
+        if (!state.equipmentCatalog.loaded) {
+            elements.equipmentSerial?.setCustomValidity("Espera a que termine la consulta de equipos o pulsa Reintentar equipos.");
+        } else if (isExternalEquipment()) {
+            elements.equipmentSerial?.setCustomValidity(serial ? "" : "Escribe el serial del equipo atendido.");
+        } else if (activityKind() !== "movement" && catalogMatches.length && !belongsToSelectedClient) {
             elements.equipmentSerial?.setCustomValidity("Ese serial está asociado a otro cliente.");
         } else if (!state.catalog.selectedEquipment?.id) {
             elements.equipmentSerial?.setCustomValidity("Selecciona un equipo registrado de la lista de este cliente.");
@@ -1002,8 +1275,9 @@
         });
     }
 
-    function handleEvidenceSelection() {
-        const selected = Array.from(elements.evidenceInput?.files || []);
+    function handleEvidenceSelection(event) {
+        const input = event?.currentTarget || elements.evidenceInput;
+        const selected = Array.from(input?.files || []);
         const errors = [];
         const initialFileCount = state.files.length;
         let runningTotal = state.files.reduce((sum, file) => sum + file.size, 0);
@@ -1039,8 +1313,8 @@
             runningTotal += file.size;
         }
 
-        if (elements.evidenceInput) {
-            elements.evidenceInput.value = "";
+        if (input) {
+            input.value = "";
         }
         renderFiles();
         const signatureInvalidated = state.files.length !== initialFileCount && invalidateSignatureForChange();
@@ -1076,6 +1350,7 @@
     }
 
     function renderFiles() {
+        clearFilePreviews();
         const totalBytes = state.files.reduce((sum, file) => sum + file.size, 0);
         elements.fileSummary.textContent = `${state.files.length} de ${maxFiles} archivos · ${formatBytes(totalBytes)} de ${formatBytes(maxTotalBytes)}`;
         replaceContents(elements.fileList, ...state.files.map((file, index) => {
@@ -1087,6 +1362,14 @@
 
             const customerFileName = customerAttachmentName(file, index);
             name.textContent = customerFileName;
+            if (typeof URL.createObjectURL === "function") {
+                const preview = document.createElement("img");
+                preview.className = "mto-v2-file-preview";
+                preview.alt = `Vista previa de ${customerFileName}`;
+                preview.src = URL.createObjectURL(file);
+                state.previewUrls.push(preview.src);
+                item.append(preview);
+            }
             size.textContent = formatBytes(file.size);
             copy.append(name, size);
             remove.type = "button";
@@ -1097,6 +1380,11 @@
             item.append(copy, remove);
             return item;
         }));
+    }
+
+    function clearFilePreviews() {
+        state.previewUrls.forEach(url => URL.revokeObjectURL(url));
+        state.previewUrls = [];
     }
 
     function initializeSignaturePad() {
@@ -1356,17 +1644,33 @@
                 reviewItem("Persona que atiende", valueOf("mtoV2OnsiteContactName")),
                 reviewItem("Correo de contacto", valueOf("mtoV2OnsiteContactEmail"))
             ]),
-            buildReviewSection("Trabajo técnico", [
+            buildActivityReviewSection(),
+            buildEvidenceReviewSection(),
+            buildSignatureReviewSection());
+
+    }
+
+    function buildActivityReviewSection() {
+        if (activityKind() === "movement") return buildReviewSection("Movimiento de equipo", [
+            reviewItem("Origen", elements.originClientName.value),
+            reviewItem("Cliente destino", valueOf("mtoV2ClientName")),
+            reviewItem("Motivo del movimiento", valueOf("mtoV2MovementReason"), true),
+            reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
+        ]);
+        if (activityKind() === "toner") return buildReviewSection("Entrega de tóner", [
+            reviewItem("Suministro", state.supplies.selected?.name || ""),
+            reviewItem("Cantidad entregada", valueOf("mtoV2SupplyQuantity")),
+            reviewItem("Existencias antes de la entrega", String(state.supplies.selected?.quantity ?? "")),
+            reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
+        ]);
+        return buildReviewSection("Trabajo técnico", [
                 reviewItem("Tipo", selectedText("mtoV2MaintenanceType")),
                 reviewItem("Resultado", selectedText("mtoV2ServiceResult")),
                 reviewItem("Trabajo realizado", valueOf("mtoV2WorkPerformed"), true),
                 reviewItem("Contadores", buildCountersSummary(), true),
                 reviewItem("Recomendaciones", valueOf("mtoV2Recommendations"), true),
                 reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
-            ]),
-            buildEvidenceReviewSection(),
-            buildSignatureReviewSection());
-
+            ]);
     }
 
     function buildReviewSection(title, items) {
@@ -1445,20 +1749,34 @@
         const equipment = valueOf("mtoV2EquipmentSerial");
         const client = valueOf("mtoV2ClientName");
         elements.title.value = (reference
-            ? `MTO ${reference} · ${client}`
-            : `Mantenimiento ${equipment} · ${client}`).slice(0, 250);
+            ? `${activityLabel()} ${reference} · ${client}`
+            : `${activityLabel()} ${equipment} · ${client}`).slice(0, 250);
         elements.answersJson.value = JSON.stringify(buildStructuredAnswers());
     }
 
     function buildStructuredAnswers() {
         const definitions = [
+            ["activity_kind", "Tipo de atención", activityKind()],
             ["equipment_reference", "Referencia del equipo", state.catalog.selectedEquipment?.reference || ""],
             ["service_started_at", "Hora de entrada", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtUtc"))],
             ["service_ended_at", "Hora de salida", formatLocalDateTime(valueOf("mtoV2ServiceEndedAtUtc"))],
             ["service_started_at_utc", "Entrada UTC", valueOf("mtoV2ServiceStartedAtUtc")],
             ["service_ended_at_utc", "Salida UTC", valueOf("mtoV2ServiceEndedAtUtc")],
             ["onsite_contact", "Persona que atendió", valueOf("mtoV2OnsiteContactName")],
-            ["onsite_email", "Correo de contacto", valueOf("mtoV2OnsiteContactEmail")],
+            ["onsite_email", "Correo de contacto", valueOf("mtoV2OnsiteContactEmail")]
+        ];
+        if (activityKind() === "movement") definitions.push(
+            ["movement_reason", "Motivo del movimiento", valueOf("mtoV2MovementReason")],
+            ["origin_client_id", "Cliente de origen", elements.originClientId.value],
+            ["origin_client_name", "Origen", elements.originClientName.value]
+        );
+        else if (activityKind() === "toner") definitions.push(
+            ["supply_id", "Suministro", state.supplies.selected?.id || ""],
+            ["supply_name", "Nombre del suministro", state.supplies.selected?.name || ""],
+            ["supply_quantity", "Cantidad entregada", valueOf("mtoV2SupplyQuantity")],
+            ["supply_stock_before", "Existencias antes de la entrega", String(state.supplies.selected?.quantity ?? "")]
+        );
+        else definitions.push(
             ["maintenance_type", "Tipo de mantenimiento", selectedText("mtoV2MaintenanceType")],
             ["service_result", "Resultado del servicio", valueOf("mtoV2ServiceResult")],
             ["counters", "Contadores", buildCountersSummary()],
@@ -1469,7 +1787,7 @@
             ["scans_before", "Escaneos anteriores", valueOf("mtoV2ScansBefore")],
             ["scans_after", "Escaneos actuales", valueOf("mtoV2ScansAfter")],
             ["recommendations", "Recomendaciones", valueOf("mtoV2Recommendations")]
-        ];
+        );
 
         return definitions
             .map(([key, label, value], index) => ({
@@ -1493,7 +1811,7 @@
         elements.submittedAtUtc.value ||= new Date().toISOString();
         prepareContractFields();
         setSubmitState("pending");
-        setStatus(elements.submitStatus, "info", "Guardando reporte, creando ticket y preparando el correo…");
+        setStatus(elements.submitStatus, "info", "Guardando el registro firmado y preparando el correo…");
 
         try {
             if (!state.locationAttempted) {
@@ -1548,6 +1866,7 @@
 
             removeStoredSubmissionId();
             if (elements.previousAttempt) elements.previousAttempt.hidden = true;
+            elements.recordId.value = textProperty(result, "recordId", "RecordId");
             const serviceReference = textProperty(result, "serviceReference", "ServiceReference");
             if (serviceReference) {
                 elements.serviceReference.value = serviceReference;
@@ -1562,13 +1881,16 @@
                 elements.submitStatus,
                 emailFailed ? "error" : emailSent ? "success" : "info",
                 emailFailed
-                    ? `${resultMessage || "El ticket y el reporte quedaron creados."} El correo no fue enviado y requiere revisión interna; no se reintentará automáticamente.`
+                    ? `${resultMessage || "El registro y el reporte quedaron creados."} El correo no fue enviado y requiere revisión interna; no se reintentará automáticamente.`
                     : emailSent
-                        ? resultMessage || "Reporte firmado recibido. El ticket quedó creado y el correo fue enviado al cliente."
+                        ? resultMessage || "Reporte firmado recibido. El registro quedó creado y el correo fue enviado al cliente."
                         : emailProcessing
-                            ? resultMessage || "El ticket y el reporte quedaron creados. El correo está siendo procesado."
-                            : resultMessage || "El ticket y el reporte quedaron creados. El correo quedó pendiente de procesamiento." );
+                            ? resultMessage || "El registro y el reporte quedaron creados. El correo está siendo procesado."
+                            : resultMessage || "El registro y el reporte quedaron creados. El correo quedó pendiente de procesamiento." );
             root.classList.add("is-submitted");
+            elements.createAnother.hidden = !emailSent;
+            elements.checkEmailStatus.hidden = emailSent || !elements.recordId.value;
+            if (!emailSent && !emailFailed) startEmailStatusPolling();
         } catch (error) {
             state.submitting = false;
             setSubmitState("idle");
@@ -1592,16 +1914,81 @@
             : mode === "sent"
                 ? "✓ Enviado"
                 : mode === "created"
-                    ? "✓ Ticket creado"
-                    : "Crear ticket y enviar";
+                    ? "✓ Registro creado"
+                    : "Crear registro y enviar";
         elements.nextButtons.concat(elements.previousButtons).forEach(button => {
             button.disabled = pending || completed;
         });
         elements.editClientEmail.disabled = pending || completed || !state.catalog.selectedClient;
-        elements.panels.forEach(panel => { panel.inert = pending || completed; });
+        elements.panels.forEach(panel => { panel.inert = pending || (completed && Number(panel.dataset.stepPanel) !== 4); });
+        elements.finalReviewConfirmed.disabled = pending || completed;
         elements.evidenceInput.disabled = pending || completed;
+        elements.cameraInput.disabled = pending || completed;
         elements.clearSignature.disabled = pending || completed;
         updateProgressAvailability();
+    }
+
+    function stopEmailStatusPolling() {
+        window.clearTimeout(state.emailStatus.timer);
+        state.emailStatus.timer = null;
+        state.emailStatus.requestId += 1;
+        state.emailStatus.loading = false;
+    }
+
+    function startEmailStatusPolling() {
+        if (!elements.recordId.value || state.emailStatus.loading || !elements.createAnother.hidden) return;
+        stopEmailStatusPolling();
+        state.emailStatus.attempts = 0;
+        state.emailStatus.startedAt = Date.now();
+        void checkEmailStatus();
+    }
+
+    async function checkEmailStatus() {
+        const recordId = elements.recordId.value;
+        if (!recordId || state.emailStatus.loading || !elements.createAnother.hidden) return;
+        if (state.emailStatus.attempts >= 8 || Date.now() - state.emailStatus.startedAt >= 90000) return;
+        const kind = activityKind();
+        const requestId = ++state.emailStatus.requestId;
+        state.emailStatus.loading = true;
+        state.emailStatus.attempts += 1;
+        elements.checkEmailStatus.disabled = true;
+        let keepPolling = false;
+        try {
+            const url = `${root.dataset.statusUrl || "/CopiersMtoV2/Status"}?recordId=${encodeURIComponent(recordId)}&activityKind=${encodeURIComponent(kind)}`;
+            const result = await fetchActivityJson(url, "el estado del correo");
+            if (requestId !== state.emailStatus.requestId || recordId !== elements.recordId.value || kind !== activityKind()) return;
+            const workflowState = result?.state ?? result?.State;
+            const emailState = result?.emailState ?? result?.EmailState;
+            const ready = matchesState(workflowState, 2, "ReadyToSend");
+            const sent = ready && matchesState(emailState, 3, "Sent");
+            const failed = matchesState(emailState, 4, "Failed");
+            elements.createAnother.hidden = !sent;
+            elements.checkEmailStatus.hidden = sent;
+            if (sent) {
+                const reference = textProperty(result, "serviceReference", "ServiceReference");
+                if (reference) { elements.serviceReference.value = reference; renderReview(); }
+                setSubmitState("sent");
+                setStatus(elements.submitStatus, "success", "El registro firmado quedó creado y el correo fue enviado al cliente.");
+            } else if (failed) {
+                setStatus(elements.submitStatus, "error", "El registro quedó creado, pero el correo no fue enviado y requiere revisión interna. Esta consulta no reenvía correos.");
+            } else {
+                keepPolling = true;
+                setStatus(elements.submitStatus, "info", "El registro quedó creado. Aún no se ha confirmado el envío del correo.");
+            }
+        } catch (error) {
+            if (requestId !== state.emailStatus.requestId || recordId !== elements.recordId.value || kind !== activityKind()) return;
+            elements.createAnother.hidden = true;
+            elements.checkEmailStatus.hidden = false;
+            setStatus(elements.submitStatus, "info", "El registro quedó creado. No fue posible consultar el envío del correo; puedes verificarlo de nuevo sin duplicar el registro.");
+        } finally {
+            if (requestId === state.emailStatus.requestId) {
+                state.emailStatus.loading = false;
+                elements.checkEmailStatus.disabled = false;
+                if (keepPolling && state.emailStatus.attempts < 8 && Date.now() - state.emailStatus.startedAt < 90000) {
+                    state.emailStatus.timer = window.setTimeout(() => { void checkEmailStatus(); }, 5000);
+                }
+            }
+        }
     }
 
     function updateProgressAvailability() {

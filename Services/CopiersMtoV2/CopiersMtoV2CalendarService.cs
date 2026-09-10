@@ -38,6 +38,10 @@ public sealed class CopiersMtoV2CalendarService(
     private readonly CopiersMaintenanceV2DataverseOptions _o = options.Value;
     private readonly Uri _organization = new(configuration["CopiersMtoV2:DataverseApp:BaseUrl"]
         ?? "https://orgc79ca19c.crm2.dynamics.com");
+    private bool IsActivity => _o.MainEntitySetName == CopiersActivityV2Bindings.MainEntitySet;
+    private bool ActivitiesEnabled => configuration.GetValue<bool>("CopiersMtoV2:ActivitiesEnabled");
+    private CopiersMtoV2CalendarService ActivityReader() => new(client, dataverse, contextAccessor,
+        Options.Create(CopiersActivityV2Bindings.Create(_o)), configuration);
 
     public async Task<CopiersMtoV2CalendarBootstrapDto> BootstrapAsync(CancellationToken ct = default)
     {
@@ -53,6 +57,12 @@ public sealed class CopiersMtoV2CalendarService(
         // The server groups three small fields; no locations or answer snapshots are loaded.
         var groups = await QueryAsync($"{_o.MainEntitySetName}?$apply=" + Uri.EscapeDataString(
             $"groupby(({_o.TechnicianUserIdField},{_o.TechnicianNameField},{_o.TechnicianEmailField}))"), ct);
+        if (!IsActivity && ActivitiesEnabled)
+        {
+            var activity = ActivityReader();
+            groups.AddRange(await activity.QueryAsync($"{activity._o.MainEntitySetName}?$apply=" + Uri.EscapeDataString(
+                $"groupby(({_o.TechnicianUserIdField},{_o.TechnicianNameField},{_o.TechnicianEmailField}))"), ct));
+        }
         technicians.AddRange(groups.Where(x => Guid.TryParse(Text(x, _o.TechnicianUserIdField), out var id) && id != Guid.Empty)
             .Select(x => new CopiersMtoV2CalendarTechnicianDto(NormalizeGuid(Text(x, _o.TechnicianUserIdField)),
                 First(Text(x, _o.TechnicianNameField), Text(x, _o.TechnicianEmailField)), Text(x, _o.TechnicianEmailField))));
@@ -63,7 +73,7 @@ public sealed class CopiersMtoV2CalendarService(
         // Dashboard/Copiers authorization already allows consulting any technician.
         // Do not silently hide a successful visit under another technician by
         // defaulting this reporting view to the signed-in viewer.
-        return new(result, result.Length > 0 ? AllTechnicians : "");
+        return new(result, result.Length > 0 ? AllTechnicians : "", ActivitiesEnabled: ActivitiesEnabled);
     }
 
     public async Task<CopiersMtoV2CalendarWeekDto> WeekAsync(string technicianId, string weekStart, CancellationToken ct = default)
@@ -85,13 +95,20 @@ public sealed class CopiersMtoV2CalendarService(
         var events = rows.Where(x => IsVisible(x)
                 && (allTechnicians || string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase))
                 && ServiceDate(x) >= monday && ServiceDate(x) < until)
-            .Select(MapEvent).OrderBy(x => x.StartAtUtc).ThenBy(x => x.Id).ToArray();
-        return new(monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), events);
+            .Select(MapEvent).ToList();
+        if (!IsActivity && ActivitiesEnabled)
+            events.AddRange((await ActivityReader().WeekAsync(technician, monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), ct)).Events);
+        return new(monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), events.OrderBy(x => x.StartAtUtc).ThenBy(x => x.Id).ToArray());
     }
 
     public async Task<CopiersMtoV2CalendarDetailDto> DetailAsync(string id, CancellationToken ct = default)
     {
         await AuthorizeAsync(ct);
+        if (!IsActivity && id?.StartsWith("activity:", StringComparison.Ordinal) == true)
+        {
+            if (!ActivitiesEnabled) throw new KeyNotFoundException();
+            return await ActivityReader().DetailAsync(ActivityRecordId(id), ct);
+        }
         id = NormalizeGuid(id);
         var row = await ReadReadyAsync(id, ct);
         var summary = MapEvent(row);
@@ -103,7 +120,7 @@ public sealed class CopiersMtoV2CalendarService(
             MaintenanceType = summary.MaintenanceType, TechnicianId = summary.TechnicianId,
             TechnicianName = summary.TechnicianName, StartAtUtc = summary.StartAtUtc, EndAtUtc = summary.EndAtUtc,
             DurationEstimated = summary.DurationEstimated, TimingNote = summary.TimingNote,
-            WorkflowState = summary.WorkflowState, EmailState = summary.EmailState,
+            WorkflowState = summary.WorkflowState, EmailState = summary.EmailState, ActivityKind = summary.ActivityKind,
             ClientContactName = Text(row, _o.ClientContactNameField), ClientEmail = Text(row, _o.ClientEmailField),
             EquipmentSerial = Text(row, _o.EquipmentSerialField), Title = Text(row, _o.TitleField),
             TechnicianEmail = Text(row, _o.TechnicianEmailField), ServiceDate = ServiceDate(row).ToString("yyyy-MM-dd"),
@@ -121,6 +138,11 @@ public sealed class CopiersMtoV2CalendarService(
     public async Task<CopiersMtoV2CalendarFile> EvidenceAsync(string id, string evidenceKey, CancellationToken ct = default)
     {
         await AuthorizeAsync(ct);
+        if (!IsActivity && id?.StartsWith("activity:", StringComparison.Ordinal) == true)
+        {
+            if (!ActivitiesEnabled) throw new KeyNotFoundException();
+            return await ActivityReader().EvidenceAsync(ActivityRecordId(id), evidenceKey, ct);
+        }
         id = NormalizeGuid(id);
         if (!IsHash(evidenceKey)) throw new ArgumentException("La referencia del adjunto no es válida.");
         var parent = await ReadReadyAsync(id, ct);
@@ -241,10 +263,12 @@ public sealed class CopiersMtoV2CalendarService(
         }
         return new()
         {
-            Id = Text(row, _o.MainIdField), ServiceReference = Text(row, _o.ServiceReferenceField),
+            Id = PublicRecordId(Text(row, _o.MainIdField)), ServiceReference = Text(row, _o.ServiceReferenceField),
             ClientName = Text(row, _o.ClientNameField), TechnicianId = Text(row, _o.TechnicianUserIdField),
             TechnicianName = Text(row, _o.TechnicianNameField), StartAtUtc = start!.Value, EndAtUtc = end!.Value,
-            MaintenanceType = Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypePreventiveValue ? "Preventivo"
+            ActivityKind = IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "movement" : "toner" : "maintenance",
+            MaintenanceType = IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "Movimiento" : "Entrega de tóner"
+                : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypePreventiveValue ? "Preventivo"
                 : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Sin clasificar",
             DurationEstimated = estimated,
             TimingNote = estimated ? "Franja visual de 30 minutos; duración real no disponible."
@@ -342,7 +366,7 @@ public sealed class CopiersMtoV2CalendarService(
             Number(row, _o.EvidenceSizeField), purpose == _o.EvidenceSignedReportPurposeValue ? "SignedReport"
                 : purpose == _o.EvidenceSignaturePurposeValue ? "Signature"
                 : purpose == _o.EvidenceOriginalAttachmentPurposeValue ? "OriginalAttachment" : "CustomerAttachment",
-            $"/CopiersMtoV2Calendar/Evidence?id={id}&evidenceKey={key}");
+            $"/CopiersMtoV2Calendar/Evidence?id={Uri.EscapeDataString(PublicRecordId(id))}&evidenceKey={key}");
     }
 
     private string EventFields() => Join(_o.MainIdField, _o.ServiceReferenceField, _o.ClientNameField,
@@ -357,15 +381,20 @@ public sealed class CopiersMtoV2CalendarService(
     private string EvidenceFields() => Join(_o.EvidenceIdField, _o.EvidenceKeyField, $"_{_o.EvidenceParentLookupLogicalName}_value",
         _o.EvidencePurposeField, _o.EvidenceSequenceField, _o.EvidenceOriginalFileNameField, _o.EvidenceContentTypeField,
         _o.EvidenceSizeField, _o.EvidenceSha256Field, _o.EvidenceSecurityStateField);
-    private bool IsVisible(JsonElement row) => Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue
-        || Number(row, _o.WorkflowStateField) == _o.FailedStateValue
-            && IsHash(Text(row, _o.SignedReportEvidenceKeyField)) && IsHash(Text(row, _o.SignedReportSha256Field));
+    private bool IsVisible(JsonElement row) => (!IsActivity || Number(row, _o.MaintenanceTypeField) is CopiersActivityV2Bindings.MovementType or CopiersActivityV2Bindings.TonerType)
+        && (Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue
+            || Number(row, _o.WorkflowStateField) == _o.FailedStateValue
+                && IsHash(Text(row, _o.SignedReportEvidenceKeyField)) && IsHash(Text(row, _o.SignedReportSha256Field)));
     private string EmailState(long state) => state == _o.EmailSentStateValue ? "Sent" : state == _o.EmailPendingStateValue ? "Pending"
         : state == _o.EmailProcessingStateValue ? "Processing" : state == _o.EmailFailedStateValue ? "Failed" : "NotReady";
     private DateOnly ServiceDate(JsonElement row) => DateOnly.TryParse(Text(row, _o.ServiceDateField).Split('T')[0],
         CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : throw new InvalidOperationException("El mantenimiento no tiene fecha válida.");
-    private static string NormalizeGuid(string value) => Guid.TryParse(value, out var guid) && guid != Guid.Empty
+    private static string NormalizeGuid(string? value) => Guid.TryParse(value, out var guid) && guid != Guid.Empty
         ? guid.ToString("D") : throw new ArgumentException("La referencia del técnico o mantenimiento no es válida.");
+    private string PublicRecordId(string id) => IsActivity ? "activity:" + NormalizeGuid(id) : id;
+    private static string ActivityRecordId(string reference) => reference.Length == 45
+        && Guid.TryParseExact(reference[9..], "D", out var id) && id != Guid.Empty
+        ? id.ToString("D") : throw new ArgumentException("La referencia de la actividad firmada no es válida.");
     private static string Join(params string[] values) => string.Join(",", values.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
     private static string First(params string[] values) => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "Sin nombre";
     private static string Text(JsonElement row, string field) => row.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";

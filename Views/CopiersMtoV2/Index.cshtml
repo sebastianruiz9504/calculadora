@@ -11,6 +11,9 @@
      id="copiersMtoV2App"
      data-bootstrap-url="/CopiersMtoV2/Bootstrap"
      data-counter-latest-url="/CopiersMtoV2/CounterLatest"
+     data-equipment-url="/CopiersMtoV2/Equipment"
+     data-supplies-url="/CopiersMtoV2/Supplies"
+     data-status-url="/CopiersMtoV2/Status"
      data-save-client-email-url="/CopiersMtoV2/SaveClientEmail"
      data-finalize-url="/CopiersMtoV2/Finalize"
      data-max-files="8"
@@ -20,7 +23,7 @@
         <div class="mto-v2-hero__copy">
             <span class="mto-v2-eyebrow">Copiers · Servicio en sitio</span>
             <h1>MTO Firmado V2</h1>
-            <p>Registra el mantenimiento, reúne la evidencia y obtén la conformidad del cliente desde el celular o la tableta.</p>
+            <p>Registra la atención, reúne la evidencia y obtén la conformidad del cliente desde el celular o la tableta.</p>
         </div>
         <div class="mto-v2-user-card" aria-label="Técnico autenticado">
             <span>Técnico</span>
@@ -30,7 +33,7 @@
 
     <aside id="mtoV2PreviousAttempt" class="alert alert-warning" role="status" hidden>
         Hay un envío anterior sin confirmar. Esta página inicia una captura nueva;
-        revisa el intento anterior antes de repetir el mismo mantenimiento.
+        revisa el intento anterior antes de repetir el mismo registro.
         <a href="/Dashboard?tab=copiers&amp;copiersTab=maintenance-v2" target="_blank" rel="noopener">Ver Mantenimiento V2</a>
     </aside>
 
@@ -46,6 +49,8 @@
         <input type="hidden" name="RecordId" id="mtoV2RecordId" />
         <input type="hidden" name="ExpectedVersion" id="mtoV2ExpectedVersion" />
         <input type="hidden" name="FormVersion" id="mtoV2FormVersion" value="copiers-mto-v2-2026-09-10" />
+        <input type="hidden" name="ActivityKind" id="mtoV2ActivityKind" value="maintenance" />
+        <input type="hidden" name="OriginClientId" id="mtoV2OriginClientId" />
         <input type="hidden" name="AnswersJson" id="mtoV2AnswersJson" value="[]" />
         <input type="hidden" name="Title" id="mtoV2Title" />
         <input type="hidden" name="ServiceDate" id="mtoV2ServiceDate" />
@@ -108,11 +113,17 @@
                 <span>Paso 1</span>
                 Identificación del servicio
             </legend>
-            <p class="mto-v2-step__intro">Selecciona el cliente y el equipo antes de registrar el trabajo técnico.</p>
+            <p class="mto-v2-step__intro">Elige el tipo de atención, el cliente y el equipo para continuar.</p>
 
             <div class="mto-v2-grid">
+                <label class="mto-v2-field mto-v2-field--wide">
+                    <span>Tipo de atención <b aria-hidden="true">*</b></span>
+                    <select class="form-select" name="MaintenanceTypeValue" id="mtoV2MaintenanceType" required>
+                        <option value="">Selecciona una opción</option>
+                    </select>
+                </label>
                 <div class="mto-v2-field mto-v2-field--wide">
-                    <label for="mtoV2ClientName">Cliente <b aria-hidden="true">*</b></label>
+                    <label for="mtoV2ClientName"><span id="mtoV2ClientLabel">Cliente</span> <b aria-hidden="true">*</b></label>
                     <div class="mto-v2-client-picker">
                     <div class="mto-v2-picker">
                     <input class="form-control"
@@ -149,12 +160,19 @@
                     </div>
                     <input type="hidden" name="EquipmentId" id="mtoV2EquipmentId" />
                     <small id="mtoV2EquipmentFeedback">Selecciona primero un cliente.</small>
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="mtoV2RetryEquipment" hidden>Reintentar equipos</button>
                 </div>
+
+                <label class="mto-v2-field" data-activity-panel="movement" hidden>
+                    <span>Cliente de origen</span>
+                    <input class="form-control" type="text" id="mtoV2OriginClientName" readonly placeholder="Se completa al seleccionar el equipo" />
+                    <small>Origen actual del equipo; el cliente seleccionado arriba será el destino.</small>
+                </label>
 
                 <label class="mto-v2-field">
                     <span>Orden o referencia</span>
                     <input class="form-control" type="text" name="ServiceReference" id="mtoV2ServiceReference" placeholder="Se asigna al enviar" readonly />
-                    <small>Consecutivo automático del mantenimiento.</small>
+                    <small>Consecutivo automático del registro.</small>
                 </label>
 
                 <label class="mto-v2-field">
@@ -195,14 +213,7 @@
             <p class="mto-v2-step__intro">Resume el trabajo realizado con información que el cliente pueda entender.</p>
 
             <div class="mto-v2-grid">
-                <label class="mto-v2-field">
-                    <span>Tipo de mantenimiento <b aria-hidden="true">*</b></span>
-                    <select class="form-select" name="MaintenanceTypeValue" id="mtoV2MaintenanceType" required>
-                        <option value="">Selecciona una opción</option>
-                    </select>
-                </label>
-
-                <label class="mto-v2-field">
+                <label class="mto-v2-field" data-activity-panel="maintenance">
                     <span>Resultado del servicio <b aria-hidden="true">*</b></span>
                     <select class="form-select" name="ServiceResult" id="mtoV2ServiceResult" required>
                         <option value="">Selecciona una opción</option>
@@ -214,7 +225,7 @@
                     </select>
                 </label>
 
-                <label class="mto-v2-field mto-v2-field--wide">
+                <label class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance">
                     <span>Trabajo realizado <b aria-hidden="true">*</b></span>
                     <textarea class="form-control" name="WorkPerformed" id="mtoV2WorkPerformed" rows="4" required maxlength="1000" aria-describedby="mtoV2WorkPerformedCount"></textarea>
                     <small id="mtoV2WorkPerformedCount" data-character-count-for="mtoV2WorkPerformed">0 / 1000 caracteres · Resume el servicio para el reporte de una página.</small>
@@ -222,7 +233,36 @@
 
             </div>
 
-            <section class="mto-v2-subcard" aria-labelledby="mtoV2CountersTitle">
+            <section class="mto-v2-subcard" data-activity-panel="movement" hidden>
+                <label class="mto-v2-field">
+                    <span>Motivo del movimiento <b aria-hidden="true">*</b></span>
+                    <textarea class="form-control" name="MovementReason" id="mtoV2MovementReason" rows="3" maxlength="100" aria-describedby="mtoV2MovementReasonCount" required disabled></textarea>
+                    <small id="mtoV2MovementReasonCount" data-character-count-for="mtoV2MovementReason">0 / 100 caracteres</small>
+                    <small>Describe la entrega o reasignación del equipo. Máximo 100 caracteres.</small>
+                </label>
+            </section>
+
+            <section class="mto-v2-subcard" data-activity-panel="toner" hidden>
+                <div class="mto-v2-grid">
+                    <label class="mto-v2-field">
+                        <span>Tóner o insumo <b aria-hidden="true">*</b></span>
+                        <select class="form-select" name="SupplyId" id="mtoV2SupplyId" required disabled>
+                            <option value="">Selecciona un insumo</option>
+                        </select>
+                        <small id="mtoV2SupplyStock">Selecciona un insumo para ver su saldo.</small>
+                    </label>
+                    <label class="mto-v2-field">
+                        <span>Cantidad entregada <b aria-hidden="true">*</b></span>
+                        <input class="form-control" type="number" name="SupplyQuantity" id="mtoV2SupplyQuantity" min="1" step="1" inputmode="numeric" required disabled />
+                    </label>
+                </div>
+                <div class="mto-v2-counter-status">
+                    <small id="mtoV2SupplyFeedback" role="status" aria-live="polite"></small>
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="mtoV2RetrySupplies" hidden>Reintentar insumos</button>
+                </div>
+            </section>
+
+            <section class="mto-v2-subcard" aria-labelledby="mtoV2CountersTitle" data-activity-panel="maintenance">
                 <div class="mto-v2-subcard__header">
                     <div>
                         <span class="mto-v2-eyebrow">Lecturas</span>
@@ -257,7 +297,7 @@
             </section>
 
             <div class="mto-v2-grid">
-                <label class="mto-v2-field mto-v2-field--wide">
+                <label class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance">
                     <span>Recomendaciones al cliente</span>
                     <textarea class="form-control" name="Recommendations" id="mtoV2Recommendations" rows="2" maxlength="250" aria-describedby="mtoV2RecommendationsCount"></textarea>
                     <small id="mtoV2RecommendationsCount" data-character-count-for="mtoV2Recommendations">0 / 250 caracteres · Resume el servicio para el reporte de una página.</small>
@@ -288,6 +328,11 @@
                     <h2 id="mtoV2EvidenceTitle">Evidencia fotográfica</h2>
                     <p>Hasta 8 imágenes · máximo 8 MB por archivo · máximo 20 MB en total. Formatos: JPG, JPEG y PNG.</p>
                 </div>
+                <div class="mto-v2-evidence-actions">
+                <label class="mto-v2-file-picker">
+                    <span>Tomar foto</span>
+                    <input type="file" id="mtoV2CameraInput" accept="image/*" capture="environment" />
+                </label>
                 <label class="mto-v2-file-picker">
                     <span>Seleccionar archivos</span>
                     <input type="file"
@@ -295,6 +340,7 @@
                            accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                            multiple />
                 </label>
+                </div>
                 <div class="mto-v2-file-summary" id="mtoV2FileSummary">0 de 8 archivos · 0 MB de 20 MB</div>
                 <ul class="mto-v2-file-list" id="mtoV2FileList" aria-live="polite"></ul>
             </section>
@@ -356,21 +402,25 @@
                 <span>Paso 4</span>
                 Revisión y envío
             </legend>
-            <p class="mto-v2-step__intro">Verifica la información visible para el cliente antes de crear el ticket y enviar el reporte.</p>
+            <p class="mto-v2-step__intro">Verifica la información visible para el cliente antes de crear el registro y enviar el reporte.</p>
 
             <div class="mto-v2-review" id="mtoV2Review" aria-live="polite"></div>
 
             <label class="mto-v2-check mto-v2-check--final">
                 <input type="checkbox" name="FinalReviewConfirmed" id="mtoV2FinalReviewConfirmed" value="true" required />
-                <span>Confirmo que la vista previa es correcta y autorizo crear el ticket y enviar el reporte al correo indicado.</span>
+                <span>Confirmo que la vista previa es correcta y autorizo crear el registro y enviar el reporte al correo indicado.</span>
             </label>
 
             <div class="mto-v2-submit-status" id="mtoV2SubmitStatus" role="status" aria-live="polite"></div>
+            <button class="btn btn-outline-primary btn-sm" type="button" id="mtoV2CheckEmailStatus" hidden>Verificar envío del correo</button>
 
             <div class="mto-v2-step__actions">
+                <div class="mto-v2-step__back-actions">
                 <button class="btn btn-outline-secondary" type="button" data-previous-step="3">Atrás</button>
+                <a class="btn btn-outline-primary" id="mtoV2CreateAnother" href="/CopiersMtoV2" hidden>Crear otro registro</a>
+                </div>
                 <button class="btn btn-primary mto-v2-submit" type="submit" id="mtoV2SubmitButton">
-                    <span data-submit-label>Crear ticket y enviar</span>
+                    <span data-submit-label>Crear registro y enviar</span>
                     <span class="mto-v2-submit__spinner" aria-hidden="true"></span>
                 </button>
             </div>
