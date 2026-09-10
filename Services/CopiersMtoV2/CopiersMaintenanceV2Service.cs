@@ -16,6 +16,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
     private readonly CopiersMaintenanceV2DataverseOptions _dataverseOptions;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CopiersMaintenanceV2Service> _logger;
+    private readonly ICopiersMtoV2CounterService? _counters;
 
     public CopiersMaintenanceV2Service(
         ICopiersMaintenanceV2DataverseRepository repository,
@@ -23,7 +24,8 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         IOptions<CopiersMaintenanceV2Options> options,
         IOptions<CopiersMaintenanceV2DataverseOptions> dataverseOptions,
         TimeProvider timeProvider,
-        ILogger<CopiersMaintenanceV2Service> logger)
+        ILogger<CopiersMaintenanceV2Service> logger,
+        ICopiersMtoV2CounterService? counters = null)
     {
         _repository = repository;
         _pdfBuilder = pdfBuilder;
@@ -31,6 +33,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
         _dataverseOptions = dataverseOptions.Value;
         _timeProvider = timeProvider;
         _logger = logger;
+        _counters = counters;
     }
 
     public async Task<CopiersMaintenanceV2DraftResultDto> CreateOrGetDraftAsync(
@@ -141,8 +144,11 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             CopiersMaintenanceV2Validation.ValidateCustomerEmail(begin.Record.CustomerEmail);
             var formVersion = CopiersMaintenanceV2Validation.FormVersion(request.FormVersion, _options);
             var answers = CanonicalizeRecordAnswers(
-                CopiersMaintenanceV2Validation.ParseAnswers(request.AnswersJson, _options),
+                CopiersMaintenanceV2Validation.ParseAnswers(request.AnswersJson, _options, formVersion),
                 begin.Record);
+            var compactForm = formVersion == CopiersMtoV2CompactCapture.FormVersion;
+            if (compactForm)
+                answers = CopiersMtoV2CompactCapture.Canonicalize(request, begin.Record, answers);
             var workPerformed = CopiersMaintenanceV2Validation.Required(
                 request.WorkPerformed,
                 "work_performed_required",
@@ -205,7 +211,19 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
 
             var matchesPersistedFingerprint = !string.IsNullOrWhiteSpace(begin.Record.FinalizationFingerprint)
                 && string.Equals(begin.Record.FinalizationFingerprint, finalizationFingerprint, StringComparison.OrdinalIgnoreCase);
-            if (!matchesPersistedFingerprint)
+            CopiersMtoV2CounterSaveCommand? counterCommand = null;
+            var matchesPersistedCounterFingerprint = false;
+            if (compactForm && !isReadyReplay)
+            {
+                if (_counters is null) throw new InvalidOperationException("El servicio de contadores no está disponible.");
+                counterCommand = CopiersMtoV2CompactCapture.CounterCommand(
+                    begin.Record, answers, request.ServiceEndedAtUtc!.Value, finalizationFingerprint);
+                // The first durable counter also records the complete signed
+                // fingerprint. An uncertain completion before MTO staging can
+                // therefore replay the exact capture even after its age limit.
+                matchesPersistedCounterFingerprint = await _counters.ValidateForMaintenanceAsync(counterCommand, ct);
+            }
+            if (!matchesPersistedFingerprint && !matchesPersistedCounterFingerprint)
             {
                 // New or changed content still requires a fresh capture. Only an
                 // exact persisted submission can bypass the age limit; ranges,
@@ -262,6 +280,11 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 customerAttachments,
                 emailOutbox,
                 _options);
+            // ReadyToSend remains the email trigger. The exact counter snapshot
+            // must persist first; its deterministic ID makes a failed/retried
+            // completion safe without inserting a second reading.
+            if (counterCommand is not null)
+                await _counters!.SaveForMaintenanceAsync(counterCommand, ct);
             var completed = await _repository.CompleteFinalizationAsync(new CopiersMaintenanceV2CompleteFinalizationCommand
             {
                 RecordId = begin.Record.RecordId,

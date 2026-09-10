@@ -20,6 +20,239 @@ public sealed class CopiersMaintenanceV2Tests
     private const string SubmissionKey = "copiers-v2-test-0001";
 
     [Fact]
+    public async Task CompactFinalize_ValidatesCounterBeforePdf_AndPersistsItBeforeReadyPublication()
+    {
+        var operations = new List<string>();
+        var repository = new FakeRepository(CreateDraftRecord()) { OnComplete = () => operations.Add("complete") };
+        var pdf = new CapturingPdfBuilder { OnBuild = () => operations.Add("pdf") };
+        var counters = new IdempotentCounterService(operations);
+
+        var result = await CreateService(repository, pdf, counters: counters)
+            .FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor());
+
+        Assert.Equal(new[] { "validate", "pdf", "save", "complete" }, operations);
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, result.State);
+        Assert.Equal(CopiersMaintenanceV2EmailState.Pending, result.EmailState);
+        Assert.Equal(1, counters.CreatedCount);
+        Assert.Equal(1, repository.CompleteCalls);
+        var command = Assert.Single(counters.SaveCommands);
+        Assert.Equal(RecordId.ToString("D"), command.MaintenanceRecordId);
+        Assert.Equal(SubmissionKey, command.SubmissionKey);
+        Assert.Equal(repository.Record.ClientId, command.ClientId);
+        Assert.Equal(repository.Record.EquipmentId, command.EquipmentId);
+        Assert.Equal(1008, command.CopiesCounter);
+        Assert.Equal(3, command.ScansCounter);
+        Assert.Equal(1000, command.PreviousCopiesCounter);
+        Assert.Equal(0, command.PreviousScansCounter);
+        Assert.Equal(NowUtc.AddMinutes(-3), command.ReadingAtUtc);
+        Assert.Equal("2026-08-26", command.PreviousDateValue);
+        Assert.Equal("0c93d38f-1415-4605-a89e-3be7b3a48d30", command.PreviousCounterRecordId);
+        Assert.Equal("copiers-mto-v2-2026-09-10", pdf.LastModel!.FormVersion);
+        Assert.DoesNotContain(pdf.LastModel.Answers, answer => answer.Key is "reported_issue" or "technical_diagnosis" or "parts_used");
+        Assert.Contains(pdf.LastModel.Answers, answer => answer.Key == "service_ended_at" && answer.Value == "27/08/2026 10:27");
+    }
+
+    [Fact]
+    public async Task CompactFinalize_CounterValidationFailureDoesNotBuildPdfSaveCounterOrQueueEmail()
+    {
+        var operations = new List<string>();
+        var repository = new FakeRepository(CreateDraftRecord()) { OnComplete = () => operations.Add("complete") };
+        var pdf = new CapturingPdfBuilder { OnBuild = () => operations.Add("pdf") };
+        var counters = new IdempotentCounterService(operations)
+        {
+            ValidationException = new CopiersMaintenanceV2ValidationException("counter_decreased", "El contador disminuyó.")
+        };
+
+        var error = await Assert.ThrowsAsync<CopiersMaintenanceV2ValidationException>(() =>
+            CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+
+        Assert.Equal("counter_decreased", error.Code);
+        Assert.Equal(new[] { "validate" }, operations);
+        Assert.Equal(0, pdf.BuildCalls);
+        Assert.Empty(counters.SaveCommands);
+        Assert.Equal(0, counters.CreatedCount);
+        Assert.Equal(0, repository.CompleteCalls);
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.Failed, repository.Record.State);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+        Assert.Null(repository.LastCompletion);
+    }
+
+    [Fact]
+    public async Task CompactFinalize_CounterSaveFailureKeepsMaintenanceAndEmailUnpublished()
+    {
+        var operations = new List<string>();
+        var repository = new FakeRepository(CreateDraftRecord()) { OnComplete = () => operations.Add("complete") };
+        var pdf = new CapturingPdfBuilder { OnBuild = () => operations.Add("pdf") };
+        var counters = new IdempotentCounterService(operations) { SaveException = new InvalidOperationException("Counter write failed.") };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+
+        Assert.Equal(new[] { "validate", "pdf", "save" }, operations);
+        Assert.Equal(1, pdf.BuildCalls);
+        Assert.Single(counters.SaveCommands);
+        Assert.Equal(0, counters.CreatedCount);
+        Assert.Equal(0, repository.CompleteCalls);
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.Failed, repository.Record.State);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+        Assert.Null(repository.LastCompletion);
+    }
+
+    [Fact]
+    public async Task CompactFinalize_CompletionFailureThenExactRetryReusesOneCounterAndTheSignedSnapshot()
+    {
+        var repository = new FakeRepository(CreateDraftRecord()) { FailNextCompletionAfterStaging = true };
+        var pdf = new CapturingPdfBuilder();
+        var counters = new IdempotentCounterService();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+        var staged = Assert.IsType<CopiersMaintenanceV2CompleteFinalizationCommand>(repository.LastCompletion);
+        var firstCounter = Assert.Single(counters.SaveResults);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+
+        var retried = await CreateService(repository, pdf, nowUtc: NowUtc.AddMinutes(20), counters: counters)
+            .FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor());
+
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, retried.State);
+        Assert.Equal(CopiersMaintenanceV2EmailState.Pending, retried.EmailState);
+        Assert.Equal(RecordId.ToString("D"), retried.RecordId);
+        Assert.Equal(SubmissionKey, retried.SubmissionKey);
+        Assert.Equal(1, counters.CreatedCount);
+        Assert.Equal(2, counters.SaveCommands.Count);
+        Assert.Equal(2, repository.CompleteCalls);
+        Assert.Equal(firstCounter.RecordId, counters.SaveResults[1].RecordId);
+        Assert.True(counters.SaveResults[1].ReusedExisting);
+        Assert.Equal(JsonSerializer.Serialize(counters.SaveCommands[0]), JsonSerializer.Serialize(counters.SaveCommands[1]));
+        Assert.Equal(staged.FinalizationFingerprint, repository.LastCompletion!.FinalizationFingerprint);
+        Assert.Equal(staged.DeviceSignedAtUtc, repository.LastCompletion.DeviceSignedAtUtc);
+        Assert.Equal(staged.Signature.Sha256, repository.LastCompletion.Signature.Sha256);
+        Assert.Equal(JsonSerializer.Serialize(staged.Answers), JsonSerializer.Serialize(repository.LastCompletion.Answers));
+    }
+
+    [Fact]
+    public async Task CompactFinalize_ReadyReplayDoesNotValidateOrWriteCounterRebuildPdfOrRepublishEmail()
+    {
+        var repository = new FakeRepository(CreateDraftRecord());
+        var pdf = new CapturingPdfBuilder();
+        var counters = new IdempotentCounterService();
+        await CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor());
+        var published = repository.LastCompletion;
+
+        var replay = await CreateService(repository, pdf, nowUtc: NowUtc.AddDays(1), counters: counters)
+            .FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor());
+
+        Assert.True(replay.IdempotentReplay);
+        Assert.Equal(1, counters.ValidateCalls);
+        Assert.Single(counters.SaveCommands);
+        Assert.Equal(1, counters.CreatedCount);
+        Assert.Equal(1, pdf.BuildCalls);
+        Assert.Equal(1, repository.CompleteCalls);
+        Assert.Same(published, repository.LastCompletion);
+    }
+
+    [Fact]
+    public async Task CompactFinalize_ExactDurableCounterRecoversAfterAgeLimitAndBeforeMtoFingerprintStaging()
+    {
+        var repository = new FakeRepository(CreateDraftRecord()) { FailNextCompletionAfterStaging = true };
+        var counters = new IdempotentCounterService();
+        var pdf = new CapturingPdfBuilder();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+        // Model a failure before the MTO fingerprint is staged: only the counter
+        // and its full signed fingerprint are durable.
+        repository.Record.FinalizationFingerprint = "";
+
+        var result = await CreateService(repository, pdf, nowUtc: NowUtc.AddDays(2), counters: counters)
+            .FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor());
+
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, result.State);
+        Assert.Equal(1, counters.CreatedCount);
+        Assert.True(counters.SaveResults[1].ReusedExisting);
+        Assert.Equal(counters.SaveCommands[0].FinalizationFingerprint, repository.LastCompletion!.FinalizationFingerprint);
+    }
+
+    [Fact]
+    public async Task CompactFinalize_ChangedNarrativeCannotReuseDurableCounterProof()
+    {
+        var repository = new FakeRepository(CreateDraftRecord()) { FailNextCompletionAfterStaging = true };
+        var counters = new IdempotentCounterService();
+        var pdf = new CapturingPdfBuilder();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+        repository.Record.FinalizationFingerprint = "";
+        var request = CreateCompactFinalizeRequest();
+        request.WorkPerformed = "Cambio que no fue firmado en el envío original.";
+
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() =>
+            CreateService(repository, pdf, nowUtc: NowUtc.AddDays(2), counters: counters).FinalizeMultipartAsync(request, CreateActor()));
+        Assert.Single(counters.SaveCommands);
+        Assert.Equal(1, pdf.BuildCalls);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+    }
+
+    [Fact]
+    public async Task CompactFinalize_ExpiredNewCaptureWithoutDurableProofStillFails()
+    {
+        var repository = new FakeRepository(CreateDraftRecord());
+        var counters = new IdempotentCounterService();
+        var pdf = new CapturingPdfBuilder();
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ValidationException>(() =>
+            CreateService(repository, pdf, nowUtc: NowUtc.AddDays(2), counters: counters)
+                .FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+        Assert.Empty(counters.SaveCommands);
+        Assert.Equal(0, pdf.BuildCalls);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+    }
+
+    [Theory]
+    [InlineData("copies_after", "1010")]
+    [InlineData("scans_after", "4")]
+    [InlineData("service_ended_at_utc", "2026-08-27T15:26:00+00:00")]
+    public async Task CompactFinalize_ChangedCounterSnapshotAfterFailedCompletionConflictsWithoutSecondWrite(string key, string value)
+    {
+        var repository = new FakeRepository(CreateDraftRecord()) { FailNextCompletionAfterStaging = true };
+        var pdf = new CapturingPdfBuilder();
+        var counters = new IdempotentCounterService();
+        var service = CreateService(repository, pdf, counters: counters);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor()));
+        var original = Assert.Single(counters.SaveCommands);
+        var request = CreateCompactFinalizeRequest();
+        var answers = JsonSerializer.Deserialize<List<CopiersMaintenanceV2FormAnswerInputDto>>(request.AnswersJson)!;
+        answers.Single(item => item.Key == key).Value = value;
+        request.AnswersJson = JsonSerializer.Serialize(answers);
+        if (key == "service_ended_at_utc") request.ServiceEndedAtUtc = DateTimeOffset.Parse(value);
+
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => service.FinalizeMultipartAsync(request, CreateActor()));
+
+        Assert.Equal(1, counters.CreatedCount);
+        Assert.Single(counters.SaveCommands);
+        Assert.Same(original, counters.SaveCommands[0]);
+        Assert.Equal(1, pdf.BuildCalls);
+        Assert.Equal(1, repository.CompleteCalls);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+    }
+
+    [Fact]
+    public async Task CompactFinalize_ChangedReadyPayloadIsRejectedBeforeCounterOrPdfSideEffects()
+    {
+        var repository = new FakeRepository(CreateDraftRecord());
+        var pdf = new CapturingPdfBuilder();
+        var counters = new IdempotentCounterService();
+        var service = CreateService(repository, pdf, counters: counters);
+        await service.FinalizeMultipartAsync(CreateCompactFinalizeRequest(), CreateActor());
+        var request = CreateCompactFinalizeRequest();
+        request.WorkPerformed = "Otro trabajo después de publicar.";
+
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => service.FinalizeMultipartAsync(request, CreateActor()));
+
+        Assert.Equal(1, counters.ValidateCalls);
+        Assert.Single(counters.SaveCommands);
+        Assert.Equal(1, pdf.BuildCalls);
+        Assert.Equal(1, repository.CompleteCalls);
+    }
+
+    [Fact]
     public async Task ProfessionalPdf_UsesPersistedConsecutive_WithoutInternalLocation()
     {
         var model = CreateProfessionalPdfModel();
@@ -829,7 +1062,8 @@ public sealed class CopiersMaintenanceV2Tests
         ICopiersMaintenanceV2DataverseRepository repository,
         ICopiersMtoV2PdfBuilder pdfBuilder,
         CopiersMaintenanceV2Options? options = null,
-        DateTimeOffset? nowUtc = null) =>
+        DateTimeOffset? nowUtc = null,
+        ICopiersMtoV2CounterService? counters = null) =>
         new(
             repository,
             pdfBuilder,
@@ -840,7 +1074,8 @@ public sealed class CopiersMaintenanceV2Tests
                 MaintenanceTypePreventiveValue = 645250001
             }),
             new FixedTimeProvider(nowUtc ?? NowUtc),
-            NullLogger<CopiersMaintenanceV2Service>.Instance);
+            NullLogger<CopiersMaintenanceV2Service>.Instance,
+            counters);
 
     private static CopiersMaintenanceV2ActorContext CreateActor() =>
         new()
@@ -896,6 +1131,32 @@ public sealed class CopiersMaintenanceV2Tests
                 FormFile("captura-tecnico.png", "image/png", ValidPng())
             }
         };
+
+    private static CopiersMaintenanceV2FinalizeMultipartRequestDto CreateCompactFinalizeRequest()
+    {
+        var request = CreateFinalizeRequest();
+        request.FormVersion = "copiers-mto-v2-2026-09-10";
+        request.ServiceStartedAtUtc = NowUtc.AddHours(-1);
+        request.ServiceEndedAtUtc = NowUtc.AddMinutes(-3);
+        var answers = CreateRequiredAnswers().Where(item => item.Key is not "reported_issue" and not "technical_diagnosis").ToList();
+        var facts = new (string Key, string Value)[]
+        {
+            ("service_ended_at", "27/08/2026 10:27"),
+            ("service_started_at_utc", request.ServiceStartedAtUtc.Value.ToString("O")),
+            ("service_ended_at_utc", request.ServiceEndedAtUtc.Value.ToString("O")),
+            ("counters", "Impresiones: 1000 → 1008; Escaneos: 0 → 3"),
+            ("copies_before", "1000"), ("copies_after", "1008"),
+            ("scans_before", "0"), ("scans_after", "3"),
+            ("counter_record_id", "0c93d38f-1415-4605-a89e-3be7b3a48d30"),
+            ("counter_recorded_at", "2026-08-26")
+        };
+        answers.AddRange(facts.Select((fact, index) => new CopiersMaintenanceV2FormAnswerInputDto
+        {
+            Key = fact.Key, Label = fact.Key, Value = fact.Value, SortOrder = index + 20
+        }));
+        request.AnswersJson = JsonSerializer.Serialize(answers);
+        return request;
+    }
 
     private static CopiersMaintenanceV2DraftRecord CreateDraftRecord() =>
         new()
@@ -1086,6 +1347,7 @@ public sealed class CopiersMaintenanceV2Tests
 
     private sealed class CapturingPdfBuilder : ICopiersMtoV2PdfBuilder
     {
+        public Action? OnBuild { get; init; }
         public int BuildCalls { get; private set; }
         public CopiersMaintenanceV2PdfModel? LastModel { get; private set; }
 
@@ -1093,6 +1355,7 @@ public sealed class CopiersMaintenanceV2Tests
             CopiersMaintenanceV2PdfModel model,
             CancellationToken ct = default)
         {
+            OnBuild?.Invoke();
             BuildCalls++;
             LastModel = model;
             return Task.FromResult(new CopiersMaintenanceV2RenderedPdf
@@ -1107,6 +1370,7 @@ public sealed class CopiersMaintenanceV2Tests
         : ICopiersMaintenanceV2DataverseRepository
     {
         public CopiersMaintenanceV2DraftRecord Record { get; } = record;
+        public Action? OnComplete { get; init; }
         public int BeginCalls { get; private set; }
         public int CompleteCalls { get; private set; }
         public int MarkFailedCalls { get; private set; }
@@ -1143,6 +1407,7 @@ public sealed class CopiersMaintenanceV2Tests
             CopiersMaintenanceV2CompleteFinalizationCommand command,
             CancellationToken ct = default)
         {
+            OnComplete?.Invoke();
             CompleteCalls++;
             LastCompletion = command;
             Record.State = CopiersMaintenanceV2WorkflowState.ReadyToSend;
@@ -1182,6 +1447,54 @@ public sealed class CopiersMaintenanceV2Tests
             Record.State = CopiersMaintenanceV2WorkflowState.Failed;
             Record.EmailState = CopiersMaintenanceV2EmailState.NotReady;
             return Task.FromResult(Record);
+        }
+    }
+
+    private sealed class IdempotentCounterService(List<string>? operations = null) : ICopiersMtoV2CounterService
+    {
+        private readonly Dictionary<string, (string RecordId, string Snapshot)> _persisted = [];
+        public int ValidateCalls { get; private set; }
+        public int CreatedCount { get; private set; }
+        public Exception? ValidationException { get; init; }
+        public Exception? SaveException { get; init; }
+        public List<CopiersMtoV2CounterSaveCommand> SaveCommands { get; } = [];
+        public List<CopiersMtoV2CounterSaveResult> SaveResults { get; } = [];
+
+        public Task<CopiersMtoV2CounterReadingDto> GetLatestAsync(string clientId, string equipmentId, CancellationToken ct = default) =>
+            throw new NotSupportedException("Finalization must consume the signed counter snapshot.");
+
+        public Task<bool> ValidateForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default)
+        {
+            operations?.Add("validate");
+            ValidateCalls++;
+            if (ValidationException is not null) throw ValidationException;
+            RequireSameSnapshot(command);
+            return Task.FromResult(_persisted.ContainsKey(command.MaintenanceRecordId));
+        }
+
+        public Task<CopiersMtoV2CounterSaveResult> SaveForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default)
+        {
+            operations?.Add("save");
+            SaveCommands.Add(command);
+            if (SaveException is not null) throw SaveException;
+            RequireSameSnapshot(command);
+            var reused = _persisted.TryGetValue(command.MaintenanceRecordId, out var stored);
+            if (!reused)
+            {
+                stored = (Guid.NewGuid().ToString("D"), JsonSerializer.Serialize(command));
+                _persisted.Add(command.MaintenanceRecordId, stored);
+                CreatedCount++;
+            }
+            var result = new CopiersMtoV2CounterSaveResult(stored.RecordId, reused);
+            SaveResults.Add(result);
+            return Task.FromResult(result);
+        }
+
+        private void RequireSameSnapshot(CopiersMtoV2CounterSaveCommand command)
+        {
+            if (_persisted.TryGetValue(command.MaintenanceRecordId, out var stored)
+                && stored.Snapshot != JsonSerializer.Serialize(command))
+                throw new CopiersMaintenanceV2ConcurrencyException("El contador de este mantenimiento ya fue guardado con otro snapshot.");
         }
     }
 }

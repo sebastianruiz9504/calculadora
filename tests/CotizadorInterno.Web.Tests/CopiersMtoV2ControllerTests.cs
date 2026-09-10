@@ -28,6 +28,156 @@ public sealed class CopiersMtoV2ControllerTests
     private const string SubmissionKey = "mto-controller-test-20260908";
 
     [Fact]
+    public void CounterLatestRequiresScopesAndDoesNotCacheAuthenticatedReadings()
+    {
+        var method = typeof(CopiersMtoV2Controller).GetMethod(nameof(CopiersMtoV2Controller.CounterLatest))!;
+        var cache = method.GetCustomAttribute<ResponseCacheAttribute>();
+        Assert.NotNull(cache);
+        Assert.True(cache.NoStore);
+        Assert.Equal(ResponseCacheLocation.None, cache.Location);
+        Assert.NotNull(method.GetCustomAttribute<HttpGetAttribute>());
+        Assert.Equal("Dataverse:DelegatedScope", method.GetCustomAttribute<AuthorizeForScopesAttribute>()!.ScopeKeySection);
+    }
+
+    [Fact]
+    public async Task CounterLatestReturnsTypedEquipmentReadingsAfterTechnicianAuthorization()
+    {
+        var counters = new RecordingCounterService();
+        var fixture = new Fixture(pilotEnabled: false, counters: counters);
+        fixture.Options.AllowedClientIds = [ClientId.ToUpperInvariant()];
+        fixture.Options.AllowedTechnicianEmails = [fixture.Dataverse.CurrentUser.Email!];
+
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.CounterLatest(ClientId, EquipmentId, default));
+        var reading = Assert.IsType<CopiersMtoV2CounterReadingDto>(result.Value);
+
+        Assert.Same(counters.Reading, reading);
+        Assert.Equal(EquipmentId, reading.EquipmentId);
+        Assert.Equal(1200, reading.CopiesCounter);
+        Assert.Equal(0, reading.ScansCounter);
+        Assert.Equal("2026-09-10", reading.DateValue);
+        Assert.Equal("10/09/2026 08:00", reading.DateDisplay);
+        Assert.Equal(ClientId, counters.LastClientId);
+        Assert.Equal(EquipmentId, counters.LastEquipmentId);
+        Assert.Equal(1, counters.ReadCount);
+        Assert.Equal(nameof(IDataverseService.GetCurrentUserAsync), Assert.Single(fixture.Dataverse.ReadCalls));
+        Assert.Equal(0, fixture.Dataverse.ClientCatalogReadCount);
+        Assert.Equal(0, fixture.Dataverse.EquipmentDashboardReadCount);
+        AssertNoPersistence(fixture);
+    }
+
+    [Fact]
+    public async Task CounterLatestEmptyHistoryPreservesNullReadingsRatherThanManufacturingZero()
+    {
+        var counters = new RecordingCounterService { Reading = new() { EquipmentId = EquipmentId } };
+        var fixture = new Fixture(counters: counters);
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.CounterLatest(ClientId, EquipmentId, default));
+        var reading = Assert.IsType<CopiersMtoV2CounterReadingDto>(result.Value);
+
+        Assert.Null(reading.CopiesCounter);
+        Assert.Null(reading.ScansCounter);
+        Assert.Null(reading.RecordedAtUtc);
+        Assert.Empty(reading.RecordId);
+        Assert.Empty(reading.DateValue);
+        Assert.Equal(1, counters.ReadCount);
+    }
+
+    [Fact]
+    public async Task CounterLatestRejectsClientOutsideAllowlistWithoutReadingItsCounters()
+    {
+        var counters = new RecordingCounterService();
+        var fixture = new Fixture(counters: counters);
+        fixture.Options.AllowedClientIds = [OtherClientId];
+
+        Assert.IsType<ForbidResult>(await fixture.Controller.CounterLatest(ClientId, EquipmentId, default));
+
+        Assert.Equal(0, counters.LatestCalls);
+        Assert.Equal(0, counters.ReadCount);
+        Assert.Equal(0, fixture.Dataverse.ClientCatalogReadCount);
+        AssertNoPersistence(fixture);
+    }
+
+    [Fact]
+    public async Task CounterLatestRejectsTechnicianOutsideAllowlistBeforeCounterAccess()
+    {
+        var counters = new RecordingCounterService();
+        var fixture = new Fixture(counters: counters);
+        fixture.Options.AllowedTechnicianEmails = ["otro@example.com"];
+
+        Assert.IsType<ForbidResult>(await fixture.Controller.CounterLatest(ClientId, EquipmentId, default));
+
+        Assert.Equal(0, counters.LatestCalls);
+        AssertNoPersistence(fixture);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CounterLatestPropagatesScopeChallengeFromIdentityOrCounterAccess(bool counterChallenge)
+    {
+        var challenge = new MicrosoftIdentityWebChallengeUserException(
+            new MsalUiRequiredException("interaction_required", "Sign in again."), ["scope"], "");
+        var counters = new RecordingCounterService { ReadException = counterChallenge ? challenge : null };
+        var fixture = new Fixture(counters: counters);
+        if (!counterChallenge) fixture.Dataverse.CurrentUserException = challenge;
+
+        Assert.Same(challenge, await Assert.ThrowsAsync<MicrosoftIdentityWebChallengeUserException>(() =>
+            fixture.Controller.CounterLatest(ClientId, EquipmentId, default)));
+
+        Assert.Equal(counterChallenge ? 1 : 0, counters.LatestCalls);
+        Assert.Equal(0, counters.ReadCount);
+        AssertNoPersistence(fixture);
+    }
+
+    [Theory]
+    [InlineData("", EquipmentId, "client_invalid")]
+    [InlineData("not-a-guid", EquipmentId, "client_invalid")]
+    [InlineData("00000000-0000-0000-0000-000000000000", EquipmentId, "client_invalid")]
+    [InlineData(ClientId, "", "equipment_invalid")]
+    [InlineData(ClientId, "not-a-guid", "equipment_invalid")]
+    [InlineData(ClientId, "00000000-0000-0000-0000-000000000000", "equipment_invalid")]
+    public async Task CounterLatestReturnsBadRequestForGuidValidationWithoutCounterReads(string clientId, string equipmentId, string expectedCode)
+    {
+        var counters = new RecordingCounterService();
+        var fixture = new Fixture(counters: counters);
+
+        var result = Assert.IsType<BadRequestObjectResult>(await fixture.Controller.CounterLatest(clientId, equipmentId, default));
+
+        Assert.Equal(expectedCode, Property(result.Value, "code"));
+        Assert.Equal(0, counters.ReadCount);
+        AssertNoPersistence(fixture);
+    }
+
+    [Fact]
+    public async Task CounterLatestPreservesRequestCancellationAndNeverPublishesAnErrorAsSuccessfulData()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var counters = new RecordingCounterService { ReadException = new OperationCanceledException(cancellation.Token) };
+        var fixture = new Fixture(counters: counters);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => fixture.Controller.CounterLatest(ClientId, EquipmentId, cancellation.Token));
+
+        Assert.Equal(cancellation.Token, counters.LastCancellation);
+        Assert.Equal(0, counters.ReadCount);
+        AssertNoPersistence(fixture);
+    }
+
+    [Fact]
+    public async Task CounterLatestUnexpectedFailureReturnsRetryableGatewayErrorWithoutLeakingInternals()
+    {
+        var counters = new RecordingCounterService { ReadException = new InvalidOperationException("SENSITIVE-ENDPOINT-CREDENTIAL") };
+        var fixture = new Fixture(counters: counters);
+
+        var result = Assert.IsType<ObjectResult>(await fixture.Controller.CounterLatest(ClientId, EquipmentId, default));
+
+        Assert.Equal(502, result.StatusCode);
+        Assert.Contains("Reintenta", Property(result.Value, "message"));
+        Assert.DoesNotContain("SENSITIVE-ENDPOINT-CREDENTIAL", JsonSerializer.Serialize(result.Value));
+        Assert.Equal(0, counters.ReadCount);
+        AssertNoPersistence(fixture);
+    }
+
+    [Fact]
     public void ControllerRetainsCopiersModuleAuthorization()
     {
         var authorization = Assert.Single(typeof(CopiersMtoV2Controller)
@@ -365,7 +515,7 @@ public sealed class CopiersMtoV2ControllerTests
             ["CustomerContactName"] = "Persona en la visita"
         };
 
-        public Fixture(bool pilotEnabled = true)
+        public Fixture(bool pilotEnabled = true, ICopiersMtoV2CounterService? counters = null)
         {
             var dataverseService = DispatchProxy.Create<IDataverseService, CopiersDataverseProxy>();
             Dataverse = (CopiersDataverseProxy)dataverseService;
@@ -379,7 +529,7 @@ public sealed class CopiersMtoV2ControllerTests
                 {
                     MaintenanceTypeCorrectiveValue = 827270000,
                     MaintenanceTypePreventiveValue = 827270001
-                }), NullLogger<CopiersMtoV2Controller>.Instance)
+                }), NullLogger<CopiersMtoV2Controller>.Instance, counters)
             {
                 ControllerContext = new ControllerContext
                 {
@@ -506,5 +656,43 @@ public sealed class CopiersMtoV2ControllerTests
                 EmailState = CopiersMaintenanceV2EmailState.Pending
             });
         }
+    }
+
+    private sealed class RecordingCounterService : ICopiersMtoV2CounterService
+    {
+        public CopiersMtoV2CounterReadingDto Reading { get; init; } = new()
+        {
+            RecordId = "a76b6f58-c42f-4a72-89bd-871eddf3de01", EquipmentId = EquipmentId,
+            DateValue = "2026-09-10", DateDisplay = "10/09/2026 08:00",
+            RecordedAtUtc = new DateTimeOffset(2026, 9, 10, 13, 0, 0, TimeSpan.Zero),
+            CopiesCounter = 1200, ScansCounter = 0
+        };
+        public Exception? ReadException { get; init; }
+        public int LatestCalls { get; private set; }
+        public int ReadCount { get; private set; }
+        public string? LastClientId { get; private set; }
+        public string? LastEquipmentId { get; private set; }
+        public CancellationToken LastCancellation { get; private set; }
+
+        public Task<CopiersMtoV2CounterReadingDto> GetLatestAsync(string clientId, string equipmentId, CancellationToken ct = default)
+        {
+            LatestCalls++;
+            LastClientId = clientId;
+            LastEquipmentId = equipmentId;
+            LastCancellation = ct;
+            // Use the same validation boundary as the production counter adapter;
+            // the controller must translate it to 400 without returning empty data.
+            _ = CopiersMaintenanceV2Validation.RequiredGuid(clientId, "client_invalid", "El cliente");
+            _ = CopiersMaintenanceV2Validation.RequiredGuid(equipmentId, "equipment_invalid", "El equipo");
+            if (ReadException is not null) throw ReadException;
+            ReadCount++;
+            return Task.FromResult(Reading);
+        }
+
+        public Task<bool> ValidateForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default) =>
+            throw new NotSupportedException("The lookup must not write a maintenance.");
+
+        public Task<CopiersMtoV2CounterSaveResult> SaveForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default) =>
+            throw new NotSupportedException("The lookup must not save a counter.");
     }
 }

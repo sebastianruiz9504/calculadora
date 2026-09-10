@@ -21,10 +21,7 @@
         "mtoV2OnsiteContactEmail",
         "mtoV2MaintenanceType",
         "mtoV2ServiceResult",
-        "mtoV2ReportedIssue",
-        "mtoV2TechnicalDiagnosis",
         "mtoV2WorkPerformed",
-        "mtoV2PartsUsed",
         "mtoV2CopiesBefore",
         "mtoV2CopiesAfter",
         "mtoV2ScansBefore",
@@ -54,6 +51,10 @@
         serviceDate: document.getElementById("mtoV2ServiceDate"),
         startedAtUtc: document.getElementById("mtoV2StartedAtUtc"),
         signedAtUtc: document.getElementById("mtoV2SignedAtUtc"),
+        serviceStartedAtUtc: document.getElementById("mtoV2ServiceStartedAtUtc"),
+        serviceEndedAtUtc: document.getElementById("mtoV2ServiceEndedAtUtc"),
+        signatureStartedAt: document.getElementById("mtoV2SignatureStartedAt"),
+        signatureEndedAt: document.getElementById("mtoV2SignatureEndedAt"),
         submittedAtUtc: document.getElementById("mtoV2SubmittedAtUtc"),
         serviceStartedAtLocal: document.getElementById("mtoV2ServiceStartedAtLocal"),
         latitude: document.getElementById("mtoV2Latitude"),
@@ -99,7 +100,11 @@
         copiesBefore: document.getElementById("mtoV2CopiesBefore"),
         copiesAfter: document.getElementById("mtoV2CopiesAfter"),
         scansBefore: document.getElementById("mtoV2ScansBefore"),
-        scansAfter: document.getElementById("mtoV2ScansAfter")
+        scansAfter: document.getElementById("mtoV2ScansAfter"),
+        copiesBeforeDate: document.getElementById("mtoV2CopiesBeforeDate"),
+        scansBeforeDate: document.getElementById("mtoV2ScansBeforeDate"),
+        counterFeedback: document.getElementById("mtoV2CounterFeedback"),
+        retryCounters: document.getElementById("mtoV2RetryCounters")
     };
 
     const state = {
@@ -114,6 +119,7 @@
         editingClientId: "",
         clientPicker: null,
         equipmentPicker: null,
+        counters: { scope: "", requestId: 0, loading: false, loaded: false, error: "", recordId: "", dateValue: "", dateDisplay: "" },
         catalog: {
             loaded: false,
             loading: false,
@@ -138,6 +144,7 @@
     function initialize() {
         initializeSubmission();
         initializeDefaults();
+        updateNarrativeCounts();
         initializeCatalogPickers();
         wireEvents();
         void loadBootstrap();
@@ -512,6 +519,116 @@
         } else if (state.catalog.loaded && clientId && value) {
             setCatalogFeedback(elements.equipmentFeedback, "Selecciona un equipo de la lista de este cliente.", "error");
         }
+        syncCounterSelection();
+    }
+
+    function updateNarrativeCounts() {
+        root.querySelectorAll("[data-character-count-for]").forEach(label => {
+            const field = document.getElementById(label.dataset.characterCountFor);
+            if (!field) return;
+            label.textContent = `${field.value.length} / ${field.maxLength} caracteres · Resume el servicio para el reporte de una página.`;
+        });
+    }
+
+    function syncCounterSelection() {
+        const equipment = state.catalog.selectedEquipment;
+        const scope = equipment ? `${equipment.clientId}|${equipment.id}`.toLowerCase() : "";
+        if (scope === state.counters.scope) return;
+        state.counters.scope = scope;
+        state.counters.requestId += 1;
+        state.counters.loading = false;
+        state.counters.loaded = false;
+        state.counters.error = "";
+        state.counters.recordId = "";
+        state.counters.dateValue = "";
+        state.counters.dateDisplay = "";
+        [elements.copiesBefore, elements.scansBefore, elements.copiesAfter, elements.scansAfter].forEach(field => { field.value = ""; });
+        [elements.copiesBeforeDate, elements.scansBeforeDate].forEach(label => { label.textContent = "Sin registro previo"; });
+        elements.retryCounters.hidden = true;
+        invalidateSignatureForChange();
+        if (equipment) void loadCounterLatest();
+        else setCatalogFeedback(elements.counterFeedback, "Selecciona un equipo para consultar su último contador.", "");
+    }
+
+    async function loadCounterLatest() {
+        const equipment = state.catalog.selectedEquipment;
+        if (!equipment || state.counters.loading) return;
+        const requestId = ++state.counters.requestId;
+        const scope = state.counters.scope;
+        state.counters.loading = true;
+        state.counters.loaded = false;
+        state.counters.error = "";
+        elements.retryCounters.hidden = true;
+        elements.retryCounters.disabled = true;
+        setCatalogFeedback(elements.counterFeedback, "Consultando el último contador del equipo…", "");
+        try {
+            const result = await fetchCounterLatest(equipment.clientId, equipment.id);
+            if (requestId !== state.counters.requestId || scope !== state.counters.scope) return;
+            const returnedEquipment = textProperty(result, "equipmentId", "EquipmentId");
+            if (!sameCatalogId(returnedEquipment, equipment.id)) throw new Error("El contador recibido no corresponde al equipo seleccionado. Reintenta la consulta.");
+            const copies = normalizeCounterValue(result?.copiesCounter ?? result?.CopiesCounter);
+            const scans = normalizeCounterValue(result?.scansCounter ?? result?.ScansCounter);
+            state.counters.recordId = textProperty(result, "recordId", "RecordId");
+            state.counters.dateValue = textProperty(result, "dateValue", "DateValue");
+            state.counters.dateDisplay = textProperty(result, "dateDisplay", "DateDisplay");
+            elements.copiesBefore.value = copies;
+            elements.scansBefore.value = scans;
+            const dateLabel = state.counters.dateDisplay ? `Último registro: ${state.counters.dateDisplay}` : "Sin fecha registrada";
+            elements.copiesBeforeDate.textContent = copies !== "" ? dateLabel : "Sin registro previo";
+            elements.scansBeforeDate.textContent = scans !== "" ? dateLabel : "Sin registro previo";
+            state.counters.loaded = true;
+            setCatalogFeedback(elements.counterFeedback, state.counters.recordId
+                ? "Lecturas anteriores cargadas. Registra únicamente las lecturas actuales."
+                : "Este equipo no tiene contadores anteriores. Registra sus lecturas actuales.", "success");
+        } catch (error) {
+            if (requestId !== state.counters.requestId || scope !== state.counters.scope) return;
+            state.counters.error = error instanceof Error ? error.message : "No fue posible consultar el contador anterior. Reintenta.";
+            setCatalogFeedback(elements.counterFeedback, state.counters.error, "error");
+            elements.retryCounters.hidden = false;
+        } finally {
+            if (requestId === state.counters.requestId && scope === state.counters.scope) {
+                state.counters.loading = false;
+                elements.retryCounters.disabled = false;
+            }
+        }
+    }
+
+    function normalizeCounterValue(value) {
+        if (value === null || value === undefined || value === "") return "";
+        const number = Number(value);
+        if (!Number.isSafeInteger(number) || number < 0) throw new Error("El contador anterior no es una lectura válida. Revisa el registro del equipo antes de continuar.");
+        return String(number);
+    }
+
+    async function fetchCounterLatest(clientId, equipmentId) {
+        const controller = typeof AbortController === "function" ? new AbortController() : null;
+        let timer;
+        const deadline = new Promise((_, reject) => {
+            timer = window.setTimeout(() => {
+                reject(new Error("La consulta del contador tardó demasiado. Revisa la conexión y pulsa Reintentar contadores."));
+                controller?.abort();
+            }, 20000);
+        });
+        const request = async () => {
+            const url = `${root.dataset.counterLatestUrl || "/CopiersMtoV2/CounterLatest"}?clientId=${encodeURIComponent(clientId)}&equipmentId=${encodeURIComponent(equipmentId)}`;
+            const response = await fetch(url, {
+                method: "GET", credentials: "same-origin", cache: "no-store",
+                headers: { Accept: "application/json" }, signal: controller?.signal
+            });
+            if (response.status === 401 || response.status === 403 || response.redirected
+                || (response.ok && !(response.headers.get("content-type") || "").includes("application/json"))) {
+                throw new Error("Tu sesión expiró o no tiene acceso a contadores. Actualiza la página e inicia sesión nuevamente.");
+            }
+            const result = await readResponse(response);
+            if (!response.ok) throw new Error(result?.message || result?.Message || "No fue posible consultar el contador anterior. Pulsa Reintentar contadores.");
+            return result;
+        };
+        try { return await Promise.race([request(), deadline]); }
+        catch (error) {
+            if (error instanceof TypeError) throw new Error("No se pudo conectar con contadores. Revisa internet y pulsa Reintentar contadores.");
+            throw error;
+        }
+        finally { window.clearTimeout(timer); }
     }
 
     function setCatalogFeedback(element, message, tone) {
@@ -646,6 +763,7 @@
             state.catalog.loaded = false;
             void loadBootstrap();
         });
+        elements.retryCounters?.addEventListener("click", () => { void loadCounterLatest(); });
         elements.clientName?.addEventListener("input", () => syncClientSelection());
         elements.equipmentSerial?.addEventListener("input", () => syncEquipmentSelection());
         elements.evidenceInput?.addEventListener("change", handleEvidenceSelection);
@@ -659,6 +777,7 @@
                 control.classList.remove("is-invalid");
                 control.setCustomValidity("");
                 clearStatus(elements.status);
+                updateNarrativeCounts();
                 if (signatureBoundFieldIds.has(control.id)) {
                     invalidateSignatureForChange();
                 }
@@ -698,6 +817,7 @@
         if (normalizedStep === 4) {
             renderReview();
         } else if (normalizedStep === 3) {
+            updateVisitTimes(true);
             resizeSignatureCanvas();
         }
 
@@ -721,6 +841,9 @@
 
         if (step === 1) {
             prepareCatalogValidity();
+            const start = new Date(elements.serviceStartedAtLocal.value);
+            elements.serviceStartedAtLocal.setCustomValidity(start.getTime() > Date.now()
+                ? "La hora de entrada no puede estar en el futuro." : "");
         }
 
         const controls = Array.from(panel.querySelectorAll("input, select, textarea"))
@@ -796,8 +919,14 @@
     }
 
     function validateCounters() {
+        if (!state.counters.loaded) {
+            setStatus(elements.status, "error", state.counters.loading
+                ? "Espera a que termine la consulta del contador anterior."
+                : "Consulta el contador anterior con Reintentar contadores antes de continuar.");
+            return false;
+        }
         const pairs = [
-            [elements.copiesBefore, elements.copiesAfter, "El contador de copias final no puede ser menor al inicial."],
+            [elements.copiesBefore, elements.copiesAfter, "El contador de impresiones actual no puede ser menor al anterior."],
             [elements.scansBefore, elements.scansAfter, "El contador de escaneos final no puede ser menor al inicial."]
         ];
 
@@ -998,6 +1127,7 @@
             return;
         }
         event.preventDefault();
+        updateVisitTimes(true);
 
         const point = signaturePointFromEvent(event);
         const stroke = [point];
@@ -1126,6 +1256,8 @@
         state.signature.activeStroke = null;
         state.signature.activePointerId = null;
         elements.signedAtUtc.value = "";
+        elements.serviceEndedAtUtc.value = "";
+        updateVisitTimes(state.currentStep === 3);
         if (elements.customerAccepted) {
             elements.customerAccepted.checked = false;
         }
@@ -1140,6 +1272,8 @@
 
     function invalidateSignatureForChange() {
         if (!hasSignature()) {
+            elements.serviceEndedAtUtc.value = "";
+            updateVisitTimes(state.currentStep === 3);
             return false;
         }
 
@@ -1149,6 +1283,14 @@
         elements.signatureFeedback.classList.add("is-error");
         setStatus(elements.status, "info", "Cambió información incluida en el reporte. La firma anterior se invalidó para proteger la aceptación del cliente.");
         return true;
+    }
+
+    function updateVisitTimes(fixEnd) {
+        const start = new Date(elements.serviceStartedAtLocal.value);
+        elements.serviceStartedAtUtc.value = Number.isNaN(start.getTime()) ? "" : start.toISOString();
+        if (fixEnd && !elements.serviceEndedAtUtc.value) elements.serviceEndedAtUtc.value = new Date().toISOString();
+        elements.signatureStartedAt.textContent = formatLocalDateTime(elements.serviceStartedAtUtc.value) || "Pendiente";
+        elements.signatureEndedAt.textContent = formatLocalDateTime(elements.serviceEndedAtUtc.value) || "Se registra al solicitar la firma";
     }
 
     function updateSignatureState() {
@@ -1209,17 +1351,15 @@
                 reviewItem("Equipo", valueOf("mtoV2EquipmentSerial")),
                 reviewItem("Referencia del equipo", state.catalog.selectedEquipment?.reference || ""),
                 reviewItem("Orden o referencia", valueOf("mtoV2ServiceReference") || "Se asigna al enviar"),
-                reviewItem("Inicio de visita", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtLocal"))),
+                reviewItem("Hora de entrada", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtUtc"))),
+                reviewItem("Hora de salida", formatLocalDateTime(valueOf("mtoV2ServiceEndedAtUtc"))),
                 reviewItem("Persona que atiende", valueOf("mtoV2OnsiteContactName")),
                 reviewItem("Correo de contacto", valueOf("mtoV2OnsiteContactEmail"))
             ]),
             buildReviewSection("Trabajo técnico", [
                 reviewItem("Tipo", selectedText("mtoV2MaintenanceType")),
                 reviewItem("Resultado", selectedText("mtoV2ServiceResult")),
-                reviewItem("Solicitud o falla", valueOf("mtoV2ReportedIssue"), true),
-                reviewItem("Diagnóstico", valueOf("mtoV2TechnicalDiagnosis"), true),
                 reviewItem("Trabajo realizado", valueOf("mtoV2WorkPerformed"), true),
-                reviewItem("Repuestos o materiales", valueOf("mtoV2PartsUsed"), true),
                 reviewItem("Contadores", buildCountersSummary(), true),
                 reviewItem("Recomendaciones", valueOf("mtoV2Recommendations"), true),
                 reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
@@ -1313,15 +1453,21 @@
     function buildStructuredAnswers() {
         const definitions = [
             ["equipment_reference", "Referencia del equipo", state.catalog.selectedEquipment?.reference || ""],
-            ["service_started_at", "Inicio de visita", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtLocal"))],
+            ["service_started_at", "Hora de entrada", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtUtc"))],
+            ["service_ended_at", "Hora de salida", formatLocalDateTime(valueOf("mtoV2ServiceEndedAtUtc"))],
+            ["service_started_at_utc", "Entrada UTC", valueOf("mtoV2ServiceStartedAtUtc")],
+            ["service_ended_at_utc", "Salida UTC", valueOf("mtoV2ServiceEndedAtUtc")],
             ["onsite_contact", "Persona que atendió", valueOf("mtoV2OnsiteContactName")],
             ["onsite_email", "Correo de contacto", valueOf("mtoV2OnsiteContactEmail")],
             ["maintenance_type", "Tipo de mantenimiento", selectedText("mtoV2MaintenanceType")],
             ["service_result", "Resultado del servicio", valueOf("mtoV2ServiceResult")],
-            ["reported_issue", "Solicitud o falla reportada", valueOf("mtoV2ReportedIssue")],
-            ["technical_diagnosis", "Diagnóstico técnico", valueOf("mtoV2TechnicalDiagnosis")],
-            ["parts_used", "Repuestos o materiales", valueOf("mtoV2PartsUsed")],
             ["counters", "Contadores", buildCountersSummary()],
+            ["counter_record_id", "Registro de contador anterior", state.counters.recordId],
+            ["counter_recorded_at", "Fecha del contador anterior", state.counters.dateValue],
+            ["copies_before", "Impresiones anteriores", valueOf("mtoV2CopiesBefore")],
+            ["copies_after", "Impresiones actuales", valueOf("mtoV2CopiesAfter")],
+            ["scans_before", "Escaneos anteriores", valueOf("mtoV2ScansBefore")],
+            ["scans_after", "Escaneos actuales", valueOf("mtoV2ScansAfter")],
             ["recommendations", "Recomendaciones", valueOf("mtoV2Recommendations")]
         ];
 
@@ -1489,11 +1635,12 @@
     function buildCountersSummary() {
         const parts = [];
         if (elements.copiesBefore?.value || elements.copiesAfter?.value) {
-            parts.push(`Copias: ${elements.copiesBefore.value || "-"} → ${elements.copiesAfter.value || "-"}`);
+            parts.push(`Impresiones: ${elements.copiesBefore.value || "Sin registro"} → ${elements.copiesAfter.value || "-"}`);
         }
         if (elements.scansBefore?.value || elements.scansAfter?.value) {
-            parts.push(`Escaneos: ${elements.scansBefore.value || "-"} → ${elements.scansAfter.value || "-"}`);
+            parts.push(`Escaneos: ${elements.scansBefore.value || "Sin registro"} → ${elements.scansAfter.value || "-"}`);
         }
+        if (parts.length && state.counters.dateDisplay) parts.push(`Lectura anterior: ${state.counters.dateDisplay}`);
         return parts.join(" · ") || "No aplica";
     }
 
@@ -1523,6 +1670,7 @@
             return value;
         }
         return new Intl.DateTimeFormat("es-CO", {
+            timeZone: "America/Bogota",
             dateStyle: "medium",
             timeStyle: "short"
         }).format(parsed);

@@ -41,6 +41,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="CotizadorInterno.Web.Tests" />
+    <EmbeddedResource Include="Assets\CopiersMtoV2\letterhead-header.png" LogicalName="CopiersMtoV2.Letterhead.Header.png" />
+    <EmbeddedResource Include="Assets\CopiersMtoV2\letterhead-footer.png" LogicalName="CopiersMtoV2.Letterhead.Footer.png" />
   </ItemGroup>
 
   <ItemGroup>

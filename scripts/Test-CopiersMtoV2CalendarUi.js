@@ -65,9 +65,9 @@ function harness(options = {}) {
             const url = new URL(href); calls.push({ url, request });
             if (options.fetch) return options.fetch(url, request);
             let result;
-            if (url.pathname.endsWith("/Bootstrap")) result = { technicians: options.noTechnicians ? [] : [{ id: "tech-1", name: "Técnico de prueba" }], defaultTechnicianId: "tech-1" };
+            if (url.pathname.endsWith("/Bootstrap")) result = { technicians: options.noTechnicians ? [] : [{ id: "tech-1", name: "Técnico de prueba" }], defaultTechnicianId: options.allTechnicians ? "all" : "tech-1" };
             else if (url.pathname.endsWith("/Detail")) result = fixtureDetail;
-            else result = { weekStart: url.searchParams.get("weekStart"), events: options.noEvents ? [] : [{ id: eventId, clientName: "Cliente de prueba", maintenanceType: "Preventivo", serviceReference: "MTO-001234", startAtUtc: `${url.searchParams.get("weekStart")}T${options.startTime || "13:00"}:00Z`, endAtUtc: `${url.searchParams.get("weekStart")}T${options.endTime || "14:00"}:00Z`, workflowState: options.failed ? "Failed" : "ReadyToSend" }] };
+            else result = { weekStart: url.searchParams.get("weekStart"), events: options.noEvents ? [] : [{ id: eventId, clientName: "Cliente de prueba", technicianName: "Técnico de prueba", maintenanceType: "Preventivo", serviceReference: "MTO-001234", startAtUtc: `${url.searchParams.get("weekStart")}T${options.startTime || "13:00"}:00Z`, endAtUtc: `${url.searchParams.get("weekStart")}T${options.endTime || "14:00"}:00Z`, workflowState: options.failed ? "Failed" : "ReadyToSend" }] };
             return { status: 200, ok: true, redirected: false, headers: { get: () => "application/json" }, json: async () => result };
         }
     };
@@ -156,14 +156,66 @@ test("failed signed reports are clearly pending, not falsely completed", () => {
     assert.equal(calendar.stateLabel("Pending", "email"), "Pendiente");
 });
 
-test("module makes zero calls before activation and activates once", async () => {
+test("module makes zero calls before activation and refreshes its week when reopened", async () => {
     const app = harness();
     assert.equal(app.calls.length, 0);
     await app.activate();
     assert.equal(app.calls.length, 2);
     await app.activate();
-    assert.equal(app.calls.length, 2);
+    assert.equal(app.calls.length, 3);
+    assert.equal(app.calls.filter(call => call.url.pathname.endsWith("/Bootstrap")).length, 1);
+    assert.equal(app.calls.at(-1).url.searchParams.get("weekStart"), app.calls[1].url.searchParams.get("weekStart"));
+    assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "tech-1");
     assert.ok(app.calls.every(call => call.request.credentials === "same-origin"));
+    assert.ok(app.calls.every(call => call.request.cache === "no-store"));
+});
+
+test("repeated activation while a week request is pending does not duplicate or cancel it", async () => {
+    let releaseWeek;
+    const app = harness({ fetch: async (url, request) => {
+        const result = url.pathname.endsWith("/Bootstrap")
+            ? { technicians: [{ id: "tech-1", name: "Técnico" }], defaultTechnicianId: "tech-1" }
+            : await new Promise(resolve => { releaseWeek = () => resolve({ weekStart: url.searchParams.get("weekStart"), events: [] }); });
+        return { status: 200, ok: true, headers: { get: () => "application/json" }, json: async () => result };
+    } });
+    app.window.CopiersMtoV2Calendar.activate();
+    app.window.CopiersMtoV2Calendar.activate();
+    await settle();
+    assert.equal(app.calls.length, 2);
+    app.window.CopiersMtoV2Calendar.activate();
+    assert.equal(app.calls.length, 2);
+    assert.equal(app.calls[1].request.signal.aborted, false);
+    releaseWeek(); await settle();
+    assert.equal(app.root.attributes["aria-busy"], "false");
+});
+
+test("reopening the calendar exposes a newly completed maintenance without reloading the dashboard", async () => {
+    let published = false;
+    const app = harness({ fetch: async url => {
+        const result = url.pathname.endsWith("/Bootstrap")
+            ? { technicians: [{ id: "tech-1", name: "Técnico" }], defaultTechnicianId: "tech-1" }
+            : { weekStart: url.searchParams.get("weekStart"), events: published ? [{ id: eventId, clientName: "Cliente recién atendido", maintenanceType: "Correctivo", startAtUtc: `${url.searchParams.get("weekStart")}T16:00:00Z`, endAtUtc: `${url.searchParams.get("weekStart")}T17:00:00Z`, workflowState: "ReadyToSend", emailState: "Sent" }] : [] };
+        return { status: 200, ok: true, headers: { get: () => "application/json" }, json: async () => result };
+    } });
+    await app.activate();
+    assert.equal(app.events().length, 0);
+    published = true;
+    await app.activate();
+    assert.equal(app.events().length, 1);
+    assert.match(app.events()[0].textContent, /Cliente recién atendidoCorrectivo/);
+});
+
+test("calendar reactivation does not close an open signed report or restart its deep link", async () => {
+    const app = harness({ search: `?maintenanceId=${eventId}` });
+    await app.activate();
+    const requests = app.calls.length;
+    await app.activate();
+    assert.equal(app.calls.length, requests);
+    assert.equal(app.ids.get("mtoCalendarDetail").open, true);
+    app.ids.get("mtoCalendarDetailClose").click();
+    await app.activate();
+    assert.equal(app.calls.filter(call => call.url.pathname.endsWith("/Detail")).length, 1);
+    assert.equal(app.ids.get("mtoCalendarDetail").open, false);
 });
 
 test("weekly calendar shows seven days, 24 hours, client and maintenance type", async () => {
@@ -191,6 +243,40 @@ test("week arrows and today query the selected technician", async () => {
     assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "tech-1");
     app.ids.get("mtoCalendarToday").click(); await settle();
     assert.equal(app.calls.at(-1).url.searchParams.get("weekStart"), firstWeek);
+});
+
+test("all technicians is selectable and defaults to the reporting scope returned by the server", async () => {
+    const app = harness({ allTechnicians: true }); await app.activate();
+    const selector = app.ids.get("mtoCalendarTechnician");
+    assert.equal(selector.value, "all");
+    assert.equal(selector.options.find(option => option.value === "all").textContent, "Todos los técnicos");
+    assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "all");
+    assert.match(app.events()[0].attributes["aria-label"], /Técnico de prueba/);
+    app.ids.get("mtoCalendarNext").click(); await settle();
+    assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "all");
+    selector.value = "tech-1";
+    selector.listeners.change[0](); await settle();
+    assert.equal(app.calls.at(-1).url.searchParams.get("technicianId"), "tech-1");
+    assert.doesNotMatch(app.events()[0].textContent, /Técnico de prueba/);
+});
+
+test("all-technician empty week is not mislabeled as one technician", async () => {
+    const app = harness({ allTechnicians: true, noEvents: true }); await app.activate();
+    assert.match(app.ids.get("mtoCalendarStatus").textContent, /No hay mantenimientos V2/);
+});
+
+test("detail shows entry and exit without repeating internal canonical timestamps as form fields", async () => {
+    const app = harness({ detail: { answers: [
+        { key: "service_started_at_utc", label: "Internal start UTC", value: "2026-09-08T13:00:00Z" },
+        { key: "service_ended_at_utc", label: "Internal end UTC", value: "2026-09-08T14:00:00Z" },
+        { key: "service_ended_at", label: "Salida confirmada", value: "8 sept 2026, 9:00 a. m." }
+    ] } });
+    await app.activate(); app.events()[0].click(); await settle();
+    const body = app.ids.get("mtoCalendarDetailBody").textContent;
+    assert.match(body, /Hora de entrada/);
+    assert.match(body, /Hora de salida/);
+    assert.match(body, /Salida confirmada/);
+    assert.doesNotMatch(body, /Internal start UTC|Internal end UTC/);
 });
 
 test("empty catalog and empty week give actionable states", async () => {

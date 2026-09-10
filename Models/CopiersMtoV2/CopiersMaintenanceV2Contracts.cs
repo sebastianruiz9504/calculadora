@@ -77,6 +77,8 @@ public sealed class CopiersMaintenanceV2FinalizeMultipartRequestDto
     public string SignerRole { get; set; } = "";
     public bool CustomerAccepted { get; set; }
     public DateTimeOffset? DeviceSignedAtUtc { get; set; }
+    public DateTimeOffset? ServiceStartedAtUtc { get; set; }
+    public DateTimeOffset? ServiceEndedAtUtc { get; set; }
 
     // Internal-only capture. These values must never be copied into a PDF/email model.
     public double? Latitude { get; set; }

@@ -1036,6 +1036,43 @@
     line-height: 1.5;
 }
 
+.mto-v2-counter-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.mto-v2-field .mto-v2-counter-date {
+    color: var(--mto-muted, #5d6b7d);
+    font-size: 11px;
+    margin: 0;
+}
+
+.mto-v2-visit-times {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--mto-line, #d9e2ec);
+    border-radius: 10px;
+    background: var(--mto-brand-soft, #eaf4ff);
+}
+
+.mto-v2-visit-times dt {
+    color: var(--mto-muted, #5d6b7d);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.mto-v2-visit-times dd {
+    margin: 4px 0 0;
+    font-weight: 700;
+    font-size: 14px;
+}
+
 @media (hover: hover) {
     .mto-v2-picker-item:hover {
         background: var(--mto-brand-soft, #eaf4ff);

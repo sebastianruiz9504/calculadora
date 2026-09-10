@@ -62,7 +62,7 @@ class Element {
     blur() { this.ownerDocument.activeElement = null; this.fire("blur"); }
 }
 
-function harness({ noListId = false, oldDom = false } = {}) {
+function harness({ noListId = false, oldDom = false, touchOnly = false } = {}) {
     const doc = new Element("document");
     doc.ownerDocument = doc;
     doc.createElement = tag => new Element(tag, doc);
@@ -73,7 +73,7 @@ function harness({ noListId = false, oldDom = false } = {}) {
     input.setAttribute("aria-label", "Cliente");
     if (!noListId) list.id = "client-choices";
     if (oldDom) list.replaceChildren = undefined;
-    const window = {};
+    const window = touchOnly ? {} : { PointerEvent: function () {} };
     vm.runInNewContext(source, { window });
     const selected = [];
     const picker = window.CopiersMtoV2Picker.create(input, list, { onSelect: item => selected.push(item) });
@@ -307,6 +307,7 @@ test("a stale touch click cannot select a different row after async catalog repl
     h.picker.setItems([{ id: "replacement", label: "Otro cliente" }]);
     staleChoice.fire("click");
     assert.equal(h.selected.length, 0);
+    h.choices()[0].fire("pointerdown", { pointerType: "mouse" });
     h.choices()[0].fire("click");
     assert.equal(h.selected[0].id, "replacement");
 });
@@ -377,4 +378,110 @@ test("touch choices have at least 44px targets, bounded scrolling and explicit h
     assert.match(css, /\.mto-v2-picker-list\s*\{[^}]*overflow-y:\s*auto/s);
     assert.match(css, /\.mto-v2-picker-list\[hidden\]\s*\{\s*display:\s*none/s);
     assert.match(css, /\.mto-v2-picker\s*\{[^}]*position:\s*relative/s);
+});
+
+for (const pointerType of ["touch", "pen"]) {
+    test(`${pointerType} release selects before Android compatibility blur/click and works with no click`, () => {
+        const h = harness();
+        h.picker.setItems(clients);
+        h.input.focus();
+        h.type("fiesta");
+        const label = h.choices()[0].children[0];
+        label.fire("pointerdown", { pointerType, pointerId: 12, clientX: 110, clientY: 200 });
+        h.input.blur();
+        h.doc.fire("focusin");
+        assert.equal(h.list.hidden, false, "body focus while pointer is down must not remove the pressed option");
+        const release = label.fire("pointerup", { pointerType, pointerId: 12, clientX: 114, clientY: 201 });
+        assert.equal(release.defaultPrevented, true);
+        assert.equal(h.selected.length, 1, "no click is required to select on touch/pen");
+        assert.equal(h.selected[0].id, "client-2");
+        h.input.blur();
+        label.fire("mousedown");
+        label.fire("mouseup");
+        label.fire("click");
+        assert.equal(h.selected.length, 1);
+        assert.equal(h.list.hidden, true);
+    });
+}
+
+test("a pointer drag and its delayed click do not select even if the finger returns to its origin", () => {
+    const h = harness();
+    h.picker.setItems(clients);
+    h.input.focus();
+    const choice = h.choices()[0];
+    choice.fire("pointerdown", { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 100 });
+    choice.fire("pointermove", { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 140 });
+    choice.fire("pointermove", { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 100 });
+    choice.fire("pointerup", { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 100 });
+    choice.fire("click");
+    assert.equal(h.selected.length, 0);
+    assert.equal(h.list.hidden, false);
+});
+
+test("native list scrolling cancels selection even if there are no pointermove events", () => {
+    const h = harness();
+    h.picker.setItems(clients);
+    h.input.focus();
+    const choice = h.choices()[0];
+    choice.fire("pointerdown", { pointerType: "touch", pointerId: 1, clientY: 100 });
+    h.list.scrollTop = 45;
+    choice.fire("pointerup", { pointerType: "touch", pointerId: 1, clientY: 100 });
+    choice.fire("click");
+    assert.equal(h.selected.length, 0);
+});
+
+test("pointercancel and a multi-finger gesture cannot turn into a synthetic-click selection", () => {
+    for (const cancel of [true, false]) {
+        const h = harness();
+        h.picker.setItems(clients);
+        h.input.focus();
+        const choice = h.choices()[0];
+        choice.fire("pointerdown", { pointerType: "touch", pointerId: 1 });
+        if (cancel) choice.fire("pointercancel", { pointerType: "touch", pointerId: 1 });
+        else choice.fire("pointerdown", { pointerType: "touch", pointerId: 2, isPrimary: false });
+        choice.fire("pointerup", { pointerType: "touch", pointerId: 1 });
+        choice.fire("click");
+        assert.equal(h.selected.length, 0);
+    }
+});
+
+test("a second deliberate touch selects after a scroll without waiting for click suppression", () => {
+    const h = harness();
+    h.picker.setItems(clients);
+    h.input.focus();
+    const choice = h.choices()[1];
+    choice.fire("pointerdown", { pointerType: "touch", pointerId: 1 });
+    choice.fire("pointercancel", { pointerType: "touch", pointerId: 1 });
+    choice.fire("pointerdown", { pointerType: "touch", pointerId: 2 });
+    choice.fire("pointerup", { pointerType: "touch", pointerId: 2 });
+    assert.equal(h.selected[0].id, "client-2");
+});
+
+test("touch-only engines select on touchend without preventing native touchstart scrolling", () => {
+    const h = harness({ touchOnly: true });
+    h.picker.setItems(clients);
+    h.input.focus();
+    const choice = h.choices()[2];
+    const point = { identifier: 5, clientX: 10, clientY: 100 };
+    assert.equal(choice.fire("touchstart", { touches: [point] }).defaultPrevented, false);
+    h.input.blur();
+    assert.equal(choice.fire("touchend", { changedTouches: [point] }).defaultPrevented, true);
+    choice.fire("click");
+    assert.equal(h.selected.length, 1);
+    assert.equal(h.selected[0].id, "client-3");
+});
+
+test("touch-only scrolling keeps the popup open without a false selection", () => {
+    const h = harness({ touchOnly: true });
+    h.picker.setItems(clients);
+    h.input.focus();
+    const choice = h.choices()[0];
+    const start = { identifier: 1, clientX: 10, clientY: 100 };
+    const end = { ...start, clientY: 150 };
+    choice.fire("touchstart", { touches: [start] });
+    choice.fire("touchmove", { touches: [end] });
+    choice.fire("touchend", { changedTouches: [end] });
+    choice.fire("click");
+    assert.equal(h.selected.length, 0);
+    assert.equal(h.list.hidden, false);
 });

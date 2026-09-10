@@ -8,7 +8,7 @@ namespace CotizadorInterno.Web.Services.CopiersMtoV2;
 /// Dependency-free A4 renderer for the signed customer report. Its input type
 /// intentionally cannot carry internal location data.
 /// </summary>
-public sealed class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
+public sealed partial class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
 {
     private const double PageWidth = 595.28;
     private const double PageHeight = 841.89;
@@ -33,6 +33,8 @@ public sealed class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
     {
         ArgumentNullException.ThrowIfNull(model);
         ct.ThrowIfCancellationRequested();
+        if (model.FormVersion == CopiersMtoV2CompactCapture.FormVersion)
+            return Task.FromResult(BuildCompact(model));
         var reportNumber = BuildReportNumber(model);
         var signature = PdfJpeg.TryCreate(model.SignatureContent, model.SignatureContentType)
             ?? throw new CopiersMaintenanceV2ValidationException(
@@ -427,14 +429,16 @@ public sealed class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
 
     private static class PdfBinaryWriter
     {
-        public static byte[] Build(IReadOnlyList<PdfCanvas> pages, PdfJpeg signature, string reportNumber)
+        public static byte[] Build(IReadOnlyList<PdfCanvas> pages, PdfJpeg signature, string reportNumber,
+            double pageWidth = PageWidth, double pageHeight = PageHeight, IReadOnlyList<PdfEmbeddedImage>? extraImages = null)
         {
             const int catalogNumber = 1;
             const int pagesNumber = 2;
             const int regularFontNumber = 3;
             const int boldFontNumber = 4;
             const int imageNumber = 5;
-            var firstPageNumber = 6;
+            extraImages ??= [];
+            var firstPageNumber = 6 + extraImages.Count;
             var pageNumbers = Enumerable.Range(0, pages.Count).Select(index => firstPageNumber + (index * 2)).ToArray();
             var objects = new SortedDictionary<int, byte[]>();
             objects[catalogNumber] = Ascii($"{catalogNumber} 0 obj\n<< /Type /Catalog /Pages {pagesNumber} 0 R >>\nendobj\n");
@@ -445,6 +449,14 @@ public sealed class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
                 Ascii($"{imageNumber} 0 obj\n<< /Type /XObject /Subtype /Image /Width {signature.Width} /Height {signature.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Interpolate true /Length {signature.Content.Length} >>\nstream\n"),
                 signature.Content,
                 Ascii("\nendstream\nendobj\n"));
+            var imageResources = new StringBuilder();
+            for (var index = 0; index < extraImages.Count; index++)
+            {
+                var image = extraImages[index];
+                var number = 6 + index;
+                imageResources.Append($" /{image.Name} {number} 0 R");
+                objects[number] = Combine(Ascii($"{number} 0 obj\n<< /Type /XObject /Subtype /Image /Width {image.Width} /Height {image.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 3 /BitsPerComponent 8 /Columns {image.Width} >> /Length {image.Content.Length} >>\nstream\n"), image.Content, Ascii("\nendstream\nendobj\n"));
+            }
 
             for (var index = 0; index < pages.Count; index++)
             {
@@ -452,8 +464,8 @@ public sealed class CopiersMtoV2ProfessionalPdfBuilder : ICopiersMtoV2PdfBuilder
                 var contentNumber = pageNumber + 1;
                 var stream = pages[index].ToBytes();
                 objects[pageNumber] = Ascii(
-                    $"{pageNumber} 0 obj\n<< /Type /Page /Parent {pagesNumber} 0 R /MediaBox [0 0 {N(PageWidth)} {N(PageHeight)}] " +
-                    $"/Resources << /Font << /F1 {regularFontNumber} 0 R /F2 {boldFontNumber} 0 R >> /XObject << /Sig {imageNumber} 0 R >> >> " +
+                    $"{pageNumber} 0 obj\n<< /Type /Page /Parent {pagesNumber} 0 R /MediaBox [0 0 {N(pageWidth)} {N(pageHeight)}] " +
+                    $"/Resources << /Font << /F1 {regularFontNumber} 0 R /F2 {boldFontNumber} 0 R >> /XObject << /Sig {imageNumber} 0 R{imageResources} >> >> " +
                     $"/Contents {contentNumber} 0 R >>\nendobj\n");
                 objects[contentNumber] = Combine(
                     Ascii($"{contentNumber} 0 obj\n<< /Length {stream.Length} >>\nstream\n"),

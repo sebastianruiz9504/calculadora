@@ -48,9 +48,85 @@ public sealed class CopiersMtoV2CalendarTests
         if (!copiers) f.Users.Current.ModuleOptionValues.Remove(AppModuleCatalog.Copiers.OptionValue);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.BootstrapAsync());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.WeekAsync(Technician, "2026-09-08"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.WeekAsync("all", "2026-09-08"));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.DetailAsync(Ticket));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.EvidenceAsync(Ticket, EvidenceKey));
         Assert.Empty(f.Transport.Requests);
+    }
+
+    [Fact]
+    public async Task AllTechniciansIncludesSentVisitByAnotherTechnicianAndKeepsFailedSignedHistory()
+    {
+        var f = new Fixture();
+        f.Main[f.Options.WorkflowStateField] = f.Options.FailedStateValue;
+        var sent = (JsonObject)f.Main.DeepClone();
+        sent[f.Options.MainIdField] = "bbbbbbbb-1111-2222-3333-444444444444";
+        sent[f.Options.TechnicianUserIdField] = "cccccccc-1111-2222-3333-444444444444";
+        sent[f.Options.TechnicianNameField] = "Otro técnico";
+        sent[f.Options.ServiceDateField] = "2026-09-10T00:00:00Z";
+        sent[f.Options.WorkflowStateField] = f.Options.ReadyToSendStateValue;
+        sent[f.Options.EmailStateField] = f.Options.EmailSentStateValue;
+        sent[f.Options.DeviceSignedAtUtcField] = "2026-09-10T13:11:13Z";
+        sent[f.Options.ServerFinalizedAtUtcField] = "2026-09-10T13:11:43Z";
+        sent[f.Options.AnswersJsonField] = "[]";
+        f.AdditionalMainRows.Add(sent);
+
+        var all = await f.Service.WeekAsync("all", "2026-09-10");
+        Assert.Equal(2, all.Events.Count);
+        Assert.Contains(all.Events, x => x.WorkflowState == "Failed");
+        Assert.Contains(all.Events, x => x.TechnicianId == "cccccccc-1111-2222-3333-444444444444" && x.EmailState == "Sent");
+        Assert.DoesNotContain("dtc_technicianuserkey eq", Uri.UnescapeDataString(Assert.Single(f.Transport.Requests)));
+        Assert.Equal(Technician, Assert.Single((await f.Service.WeekAsync(Technician, "2026-09-10")).Events).TechnicianId);
+    }
+
+    [Fact]
+    public async Task AllTechniciansStillExcludesDraftAndOutOfWeekRows()
+    {
+        var f = new Fixture();
+        var draft = (JsonObject)f.Main.DeepClone();
+        draft[f.Options.WorkflowStateField] = f.Options.DraftStateValue;
+        f.AdditionalMainRows.Add(draft);
+        var outside = (JsonObject)f.Main.DeepClone();
+        outside[f.Options.ServiceDateField] = "2026-09-14T00:00:00Z";
+        f.AdditionalMainRows.Add(outside);
+        Assert.Single((await f.Service.WeekAsync("ALL", "2026-09-08")).Events);
+    }
+
+    [Fact]
+    public async Task CanonicalEntryAndExitAreUsedInsteadOfLocalizedDisplayOrLaterSignature()
+    {
+        var f = new Fixture();
+        f.Main[f.Options.AnswersJsonField] = JsonSerializer.Serialize(new[] {
+            new { key = "service_started_at", label = "Hora de entrada", value = "8 sept 2026, 8:00 a. m." },
+            new { key = "service_started_at_utc", label = "Hora de entrada UTC", value = "2026-09-08T09:15:00-05:00" },
+            new { key = "service_ended_at_utc", label = "Hora de salida UTC", value = "2026-09-08T14:50:00Z" }
+        });
+        var entry = Assert.Single((await f.Service.WeekAsync(Technician, "2026-09-08")).Events);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-08T14:15:00Z"), entry.StartAtUtc);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-08T14:50:00Z"), entry.EndAtUtc);
+        Assert.False(entry.DurationEstimated);
+        Assert.Contains("entrada hasta la salida", entry.TimingNote);
+        var detail = await f.Service.DetailAsync(Ticket);
+        Assert.Equal(entry.EndAtUtc, detail.EndAtUtc);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-08T15:00:00Z"), detail.DeviceSignedAtUtc);
+    }
+
+    [Theory]
+    [InlineData("2026-09-08T13:00:00")]
+    [InlineData("not-a-date")]
+    [InlineData("1999-09-08T13:00:00Z")]
+    public async Task InvalidCanonicalInstantFallsBackToHistoricalBogotaVisitAndSignature(string value)
+    {
+        var f = new Fixture();
+        f.Main[f.Options.AnswersJsonField] = JsonSerializer.Serialize(new[] {
+            new { key = "service_started_at", label = "Inicio de visita", value = "8 sept 2026, 9:15 a. m." },
+            new { key = "service_started_at_utc", label = "Inicio UTC", value },
+            new { key = "service_ended_at_utc", label = "Salida UTC", value }
+        });
+        var entry = Assert.Single((await f.Service.WeekAsync(Technician, "2026-09-08")).Events);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-08T14:15:00Z"), entry.StartAtUtc);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-08T15:00:00Z"), entry.EndAtUtc);
+        Assert.False(entry.DurationEstimated);
     }
 
     [Fact]
@@ -235,7 +311,7 @@ public sealed class CopiersMtoV2CalendarTests
             new() { IsActive = true, SystemUserId = Guid.NewGuid().ToString("D"), EmployeeName = "No autorizado", ModuleOptionValues = [] }
         ];
         var result = await f.Service.BootstrapAsync();
-        Assert.Equal(Technician, result.DefaultTechnicianId);
+        Assert.Equal("all", result.DefaultTechnicianId);
         Assert.Equal("Técnico registrado", Assert.Single(result.Technicians).Name);
         Assert.Contains("groupby", Uri.UnescapeDataString(Assert.Single(f.Transport.Requests)));
     }
@@ -279,6 +355,7 @@ public sealed class CopiersMtoV2CalendarTests
         public UserProxy Users { get; }
         public HttpContextAccessor Context { get; } = new();
         public JsonObject Main { get; }
+        public List<JsonObject> AdditionalMainRows { get; } = [];
         public JsonObject Evidence { get; }
         public byte[] Bytes { get; } = Encoding.ASCII.GetBytes("%PDF-1.4\nTest fixture PDF bytes\n%%EOF");
         public Transport Transport { get; }
@@ -320,7 +397,10 @@ public sealed class CopiersMtoV2CalendarTests
             else
             {
                 var row = relativeUrl.Contains(fixture.Options.EvidenceEntitySetName) ? fixture.Evidence : fixture.Main;
-                result = new() { ["value"] = new JsonArray(row.DeepClone()) };
+                var rows = new JsonArray(row.DeepClone());
+                if (!relativeUrl.Contains(fixture.Options.EvidenceEntitySetName))
+                    foreach (var additional in fixture.AdditionalMainRows) rows.Add(additional.DeepClone());
+                result = new() { ["value"] = rows };
                 if (NextLink is not null) result["@odata.nextLink"] = NextLink;
             }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(result.ToJsonString(), Encoding.UTF8, "application/json") });

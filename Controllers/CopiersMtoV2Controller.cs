@@ -22,24 +22,50 @@ public sealed class CopiersMtoV2Controller : Controller
     private readonly CopiersMaintenanceV2Options _options;
     private readonly CopiersMaintenanceV2DataverseOptions _dataverseOptions;
     private readonly ILogger<CopiersMtoV2Controller> _logger;
+    private readonly ICopiersMtoV2CounterService? _counters;
 
     public CopiersMtoV2Controller(
         IDataverseService dataverse,
         ICopiersMaintenanceV2Service service,
         IOptions<CopiersMaintenanceV2Options> options,
         IOptions<CopiersMaintenanceV2DataverseOptions> dataverseOptions,
-        ILogger<CopiersMtoV2Controller> logger)
+        ILogger<CopiersMtoV2Controller> logger,
+        ICopiersMtoV2CounterService? counters = null)
     {
         _dataverse = dataverse;
         _service = service;
         _options = options.Value;
         _dataverseOptions = dataverseOptions.Value;
         _logger = logger;
+        _counters = counters;
     }
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
     public IActionResult Index() => View();
+
+    [HttpGet]
+    [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CounterLatest(string clientId, string equipmentId, CancellationToken ct)
+    {
+        try
+        {
+            EnsureTechnicianPilotAccess(await _dataverse.GetCurrentUserAsync(ct) ?? new CurrentUserInfo());
+            if (!IsClientAllowed(clientId)) return Forbid();
+            if (_counters is null) throw new InvalidOperationException("El servicio de contadores no está disponible.");
+            return Ok(await _counters.GetLatestAsync(clientId, equipmentId, ct));
+        }
+        catch (MicrosoftIdentityWebChallengeUserException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CopiersMaintenanceV2ValidationException ex) { return BadRequest(Error(ex.Message, code: ex.Code)); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "No fue posible consultar la última lectura del equipo en MTO V2.");
+            return StatusCode(502, Error("No fue posible consultar los contadores. Reintenta la carga antes de firmar."));
+        }
+    }
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]

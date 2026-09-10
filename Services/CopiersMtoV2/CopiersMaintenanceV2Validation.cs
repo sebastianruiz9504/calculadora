@@ -55,7 +55,16 @@ internal static class CopiersMaintenanceV2Validation
         ["recommendations"] = new("recommendations", "Recomendaciones", 12, false),
         // Older already-open forms can retry their original signed payload.
         // The current interface no longer collects this optional legacy answer.
-        ["signerdocument"] = new("signer_document", "Identificación de quien firma", 13, false)
+        ["signerdocument"] = new("signer_document", "Identificación de quien firma", 13, false),
+        ["serviceendedat"] = new("service_ended_at", "Salida de visita", 14, false),
+        ["servicestartedatutc"] = new("service_started_at_utc", "Entrada UTC", 15, false),
+        ["serviceendedatutc"] = new("service_ended_at_utc", "Salida UTC", 16, false),
+        ["copiesbefore"] = new("copies_before", "Impresión anterior", 17, false),
+        ["copiesafter"] = new("copies_after", "Impresión actual", 18, false),
+        ["scansbefore"] = new("scans_before", "Escaneo anterior", 19, false),
+        ["scansafter"] = new("scans_after", "Escaneo actual", 20, false),
+        ["counterrecordid"] = new("counter_record_id", "Registro de contador anterior", 21, false),
+        ["counterrecordedat"] = new("counter_recorded_at", "Fecha del contador anterior", 22, false)
     };
 
     private readonly record struct PublicAnswerDefinition(
@@ -63,6 +72,12 @@ internal static class CopiersMaintenanceV2Validation
         string Label,
         int SortOrder,
         bool Required);
+
+    private static bool IsRequiredAnswer(string key, PublicAnswerDefinition definition, string? version) =>
+        version == CopiersMtoV2CompactCapture.FormVersion
+            ? key is "serviceendedat" or "servicestartedatutc" or "serviceendedatutc" or "copiesafter" or "scansafter"
+                || (definition.Required && key is not "reportedissue" and not "technicaldiagnosis")
+            : definition.Required;
 
     public static string Required(string? value, string code, string label, int maxLength)
     {
@@ -97,7 +112,7 @@ internal static class CopiersMaintenanceV2Validation
     public static string FormVersion(string? value, CopiersMaintenanceV2Options options)
     {
         var version = Required(value, "form_version_required", "la version del formulario", options.FormVersionMaxLength);
-        if (!options.AllowedFormVersions.Contains(version, StringComparer.Ordinal))
+        if (version != CopiersMtoV2CompactCapture.FormVersion && !options.AllowedFormVersions.Contains(version, StringComparer.Ordinal))
             throw new CopiersMaintenanceV2ValidationException("form_version_not_allowed", "La versión del formulario ya no está habilitada.");
         return version;
     }
@@ -160,7 +175,8 @@ internal static class CopiersMaintenanceV2Validation
 
     public static IReadOnlyList<CopiersMaintenanceV2FormAnswerSnapshot> ParseAnswers(
         string? answersJson,
-        CopiersMaintenanceV2Options options)
+        CopiersMaintenanceV2Options options,
+        string? formVersion = null)
     {
         var raw = string.IsNullOrWhiteSpace(answersJson) ? "[]" : answersJson.Trim();
         if (Encoding.UTF8.GetByteCount(raw) > options.AnswersJsonMaxBytes)
@@ -202,7 +218,10 @@ internal static class CopiersMaintenanceV2Validation
                 throw new CopiersMaintenanceV2ValidationException("answer_key_duplicate", $"La respuesta {key} esta repetida.");
 
             var value = Optional(item.Value, "answer_value_too_long", $"La respuesta {definition.Key}", options.AnswerValueMaxLength);
-            if (definition.Required && string.IsNullOrWhiteSpace(value))
+            if (formVersion == CopiersMtoV2CompactCapture.FormVersion
+                && normalizedKey is "reportedissue" or "technicaldiagnosis" or "partsused" or "signerdocument")
+                throw new CopiersMaintenanceV2ValidationException("answer_key_not_allowed", "Ese campo no pertenece al formulario simplificado.");
+            if (IsRequiredAnswer(normalizedKey, definition, formVersion) && string.IsNullOrWhiteSpace(value))
                 throw new CopiersMaintenanceV2ValidationException("answer_required", $"Debes indicar {definition.Label.ToLowerInvariant()}.");
             if (definition.Key == "service_result")
                 value = ServiceResultLabel(value);
@@ -217,7 +236,7 @@ internal static class CopiersMaintenanceV2Validation
         }
 
         var missingRequired = PublicAnswerDefinitions
-            .Where(item => item.Value.Required && !keys.Contains(item.Key))
+            .Where(item => IsRequiredAnswer(item.Key, item.Value, formVersion) && !keys.Contains(item.Key))
             .Select(item => item.Value.Label)
             .ToArray();
         if (missingRequired.Length > 0)

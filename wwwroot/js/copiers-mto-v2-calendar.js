@@ -134,7 +134,7 @@
         status: byId("mtoCalendarStatus"), viewport: byId("mtoCalendarViewport"), grid: byId("mtoCalendarGrid"),
         dialog: byId("mtoCalendarDetail"), detail: byId("mtoCalendarDetailBody"), title: byId("mtoCalendarDetailTitle"), close: byId("mtoCalendarDetailClose")
     };
-    const state = { activated: false, bootstrap: null, bootstrapPromise: null, weekStart: mondayOf(new Date()), generation: 0, detailGeneration: 0, weekController: null, detailController: null, focusReturn: null, positioned: false };
+    const state = { activated: false, activating: false, weekLoading: false, bootstrap: null, bootstrapPromise: null, weekStart: mondayOf(new Date()), generation: 0, detailGeneration: 0, weekController: null, detailController: null, focusReturn: null, positioned: false };
     const timeFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     const dateFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, day: "numeric", month: "short", year: "numeric" });
     const dayFormatter = new Intl.DateTimeFormat("es-CO", { timeZone, weekday: "short", day: "numeric" });
@@ -202,10 +202,11 @@
                 const time = `${timeFormatter.format(new Date(event.startAtUtc))}–${timeFormatter.format(new Date(end))}`;
                 const pending = event.workflowState === "Failed";
                 if (pending) button.classList.add("is-pending");
-                const description = [event.clientName || "Cliente sin nombre", type.label, event.serviceReference, time, pending ? "Pendiente de finalizar" : "", event.durationEstimated ? event.timingNote || "Duración estimada" : ""].filter(Boolean).join(" · ");
+                const technician = controls.technician.value === "all" ? event.technicianName : "";
+                const description = [event.clientName || "Cliente sin nombre", type.label, technician, event.serviceReference, time, pending ? "Pendiente de finalizar" : "", event.durationEstimated ? event.timingNote || "Duración estimada" : ""].filter(Boolean).join(" · ");
                 button.setAttribute("aria-label", `${description}. Abrir detalle`);
                 button.title = description;
-                button.append(element("strong", "mto-calendar__event-client", event.clientName || "Cliente sin nombre"), element("span", "mto-calendar__event-type", `${type.label}${pending ? " · Pendiente" : ""}`), element("span", "mto-calendar__event-time", time));
+                button.append(element("strong", "mto-calendar__event-client", event.clientName || "Cliente sin nombre"), element("span", "mto-calendar__event-type", [type.label, pending ? "Pendiente" : "", technician].filter(Boolean).join(" · ")), element("span", "mto-calendar__event-time", time));
                 button.addEventListener("click", () => openDetail(event, button));
                 column.append(button);
             });
@@ -230,6 +231,11 @@
             const technicians = Array.isArray(result.technicians) ? result.technicians.filter(item => item.id) : [];
             controls.technician.replaceChildren(element("option", "", "Selecciona un técnico"));
             controls.technician.firstElementChild.value = "";
+            if (technicians.length) {
+                const all = element("option", "", "Todos los técnicos");
+                all.value = "all";
+                controls.technician.append(all);
+            }
             technicians.forEach(technician => {
                 const option = element("option", "", technician.name || technician.email || "Técnico");
                 option.value = technician.id;
@@ -237,7 +243,7 @@
             });
             controls.technician.disabled = technicians.length === 0;
             const preferred = technicians.find(item => item.id === result.defaultTechnicianId) || technicians[0];
-            controls.technician.value = preferred?.id || "";
+            controls.technician.value = result.defaultTechnicianId === "all" && technicians.length ? "all" : preferred?.id || "";
             state.bootstrap = result;
             return result;
         }).finally(() => { state.bootstrapPromise = null; controls.refresh.disabled = false; });
@@ -246,6 +252,7 @@
 
     async function loadWeek() {
         const generation = ++state.generation;
+        state.weekLoading = true;
         state.weekController?.abort();
         state.weekController = new AbortController();
         root.setAttribute("aria-busy", "true");
@@ -266,11 +273,14 @@
             state.positioned = false;
             renderWeek(events);
             const estimated = events.some(event => event.durationEstimated);
-            setStatus(events.length ? `${events.length} mantenimiento${events.length === 1 ? "" : "s"} en esta semana.${estimated ? " Algunas franjas tienen duración estimada; consulta el detalle." : ""}` : "Este técnico no tiene mantenimientos V2 en la semana seleccionada.");
+            setStatus(events.length ? `${events.length} mantenimiento${events.length === 1 ? "" : "s"} en esta semana.${estimated ? " Algunas franjas tienen duración estimada; consulta el detalle." : ""}` : technicianId === "all" ? "No hay mantenimientos V2 en la semana seleccionada." : "Este técnico no tiene mantenimientos V2 en la semana seleccionada.");
         } catch (error) {
             if (error.name !== "AbortError" && generation === state.generation) setStatus(error.message || "No fue posible cargar el calendario.", true);
         } finally {
-            if (generation === state.generation) root.setAttribute("aria-busy", "false");
+            if (generation === state.generation) {
+                state.weekLoading = false;
+                root.setAttribute("aria-busy", "false");
+            }
         }
     }
 
@@ -329,13 +339,13 @@
     function renderDetail(detail) {
         const fragment = document.createDocumentFragment();
         const summary = detailSection("Datos de la visita");
-        detailFields(summary, [["Consecutivo", detail.serviceReference], ["Cliente", detail.clientName], ["Tipo", typeInfo(detail.maintenanceType).label], ["Técnico", detail.technicianName], ["Correo del técnico", detail.technicianEmail], ["Serial del equipo", detail.equipmentSerial], ["Persona que atiende", detail.clientContactName], ["Correo de envío", detail.clientEmail], ["Dirección o sede", detail.serviceAddress], ["Fecha del servicio", detail.serviceDate], ["Inicio de la visita", formatInstant(detail.startAtUtc)], ["Cierre", formatInstant(detail.endAtUtc)], ["Firma registrada", formatInstant(detail.deviceSignedAtUtc)], ["Finalización del servidor", formatInstant(detail.serverFinalizedAtUtc)], ["Estado del reporte", stateLabel(detail.workflowState, "workflow")], ["Estado del correo", stateLabel(detail.emailState, "email")], ["Título", detail.title]]);
+        detailFields(summary, [["Consecutivo", detail.serviceReference], ["Cliente", detail.clientName], ["Tipo", typeInfo(detail.maintenanceType).label], ["Técnico", detail.technicianName], ["Correo del técnico", detail.technicianEmail], ["Serial del equipo", detail.equipmentSerial], ["Persona que atiende", detail.clientContactName], ["Correo de envío", detail.clientEmail], ["Dirección o sede", detail.serviceAddress], ["Fecha del servicio", detail.serviceDate], ["Hora de entrada", formatInstant(detail.startAtUtc)], ["Hora de salida", formatInstant(detail.endAtUtc)], ["Firma registrada", formatInstant(detail.deviceSignedAtUtc)], ["Finalización del servidor", formatInstant(detail.serverFinalizedAtUtc)], ["Estado del reporte", stateLabel(detail.workflowState, "workflow")], ["Estado del correo", stateLabel(detail.emailState, "email")], ["Título", detail.title]]);
         if (detail.durationEstimated) summary.append(element("p", "mto-calendar-detail__note", detail.timingNote || "La duración de esta franja es estimada: no se registraron ambas horas de la visita."));
         fragment.append(summary);
         const work = detailSection("Formulario y trabajo realizado");
         detailFields(work, [["Trabajo realizado", detail.workPerformed], ["Observaciones del cliente", detail.customerObservations], ["Notas internas", detail.internalNotes]]);
         const answers = Array.isArray(detail.answers) ? detail.answers : [];
-        detailFields(work, answers.filter(answer => answer.value !== undefined && answer.value !== null && answer.value !== "").map(answer => [answer.label || answer.key, answer.value]));
+        detailFields(work, answers.filter(answer => !["service_started_at_utc", "service_ended_at_utc"].includes(answer.key) && answer.value !== undefined && answer.value !== null && answer.value !== "").map(answer => [answer.label || answer.key, answer.value]));
         fragment.append(work);
         const signature = detailSection("Conformidad del cliente");
         detailFields(signature, [["Nombre del firmante", detail.signerName], ["Cargo o relación", detail.signerRole], ["Aceptó el reporte", detail.customerAccepted]]);
@@ -437,12 +447,21 @@
 
     global.CopiersMtoV2Calendar = {
         activate() {
-            if (state.activated) return;
+            // A technician can complete a visit in another tab while this dashboard
+            // remains open. Re-entering the calendar must read that week's current
+            // Dataverse rows, not retain its first snapshot for the page lifetime.
+            if (state.activating || state.weekLoading || controls.dialog.open) return;
+            if (state.activated) {
+                void loadWeek();
+                return;
+            }
             state.activated = true;
+            state.activating = true;
             const parameters = new URLSearchParams(global.location.search);
             const maintenanceId = parameters.get("maintenanceId") || "";
-            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(maintenanceId)) openLinkedMaintenance(maintenanceId);
-            else loadWeek();
+            const operation = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(maintenanceId)
+                ? openLinkedMaintenance(maintenanceId) : loadWeek();
+            void operation.finally(() => { state.activating = false; });
         }
     };
 })(typeof window !== "undefined" ? window : globalThis);

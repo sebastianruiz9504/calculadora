@@ -10,6 +10,7 @@
 <div class="mto-v2-shell"
      id="copiersMtoV2App"
      data-bootstrap-url="/CopiersMtoV2/Bootstrap"
+     data-counter-latest-url="/CopiersMtoV2/CounterLatest"
      data-save-client-email-url="/CopiersMtoV2/SaveClientEmail"
      data-finalize-url="/CopiersMtoV2/Finalize"
      data-max-files="8"
@@ -44,12 +45,14 @@
         <input type="hidden" name="SubmissionKey" id="mtoV2SubmissionKey" />
         <input type="hidden" name="RecordId" id="mtoV2RecordId" />
         <input type="hidden" name="ExpectedVersion" id="mtoV2ExpectedVersion" />
-        <input type="hidden" name="FormVersion" id="mtoV2FormVersion" value="copiers-mto-v2-2026-08-27" />
+        <input type="hidden" name="FormVersion" id="mtoV2FormVersion" value="copiers-mto-v2-2026-09-10" />
         <input type="hidden" name="AnswersJson" id="mtoV2AnswersJson" value="[]" />
         <input type="hidden" name="Title" id="mtoV2Title" />
         <input type="hidden" name="ServiceDate" id="mtoV2ServiceDate" />
         <input type="hidden" name="FormStartedAtUtc" id="mtoV2StartedAtUtc" />
         <input type="hidden" name="DeviceSignedAtUtc" id="mtoV2SignedAtUtc" />
+        <input type="hidden" name="ServiceEndedAtUtc" id="mtoV2ServiceEndedAtUtc" />
+        <input type="hidden" name="ServiceStartedAtUtc" id="mtoV2ServiceStartedAtUtc" />
         <input type="hidden" name="ClientSubmittedAtUtc" id="mtoV2SubmittedAtUtc" />
         <input type="hidden" name="Latitude" id="mtoV2Latitude" />
         <input type="hidden" name="Longitude" id="mtoV2Longitude" />
@@ -189,7 +192,7 @@
                 <span>Paso 2</span>
                 Trabajo técnico
             </legend>
-            <p class="mto-v2-step__intro">Describe lo encontrado y lo realizado con información que el cliente pueda entender.</p>
+            <p class="mto-v2-step__intro">Resume el trabajo realizado con información que el cliente pueda entender.</p>
 
             <div class="mto-v2-grid">
                 <label class="mto-v2-field">
@@ -212,24 +215,11 @@
                 </label>
 
                 <label class="mto-v2-field mto-v2-field--wide">
-                    <span>Solicitud o falla reportada <b aria-hidden="true">*</b></span>
-                    <textarea class="form-control" name="ReportedIssue" id="mtoV2ReportedIssue" rows="3" required maxlength="4000"></textarea>
-                </label>
-
-                <label class="mto-v2-field mto-v2-field--wide">
-                    <span>Diagnóstico técnico <b aria-hidden="true">*</b></span>
-                    <textarea class="form-control" name="TechnicalDiagnosis" id="mtoV2TechnicalDiagnosis" rows="4" required maxlength="4000"></textarea>
-                </label>
-
-                <label class="mto-v2-field mto-v2-field--wide">
                     <span>Trabajo realizado <b aria-hidden="true">*</b></span>
-                    <textarea class="form-control" name="WorkPerformed" id="mtoV2WorkPerformed" rows="4" required maxlength="6000"></textarea>
+                    <textarea class="form-control" name="WorkPerformed" id="mtoV2WorkPerformed" rows="4" required maxlength="1000" aria-describedby="mtoV2WorkPerformedCount"></textarea>
+                    <small id="mtoV2WorkPerformedCount" data-character-count-for="mtoV2WorkPerformed">0 / 1000 caracteres · Resume el servicio para el reporte de una página.</small>
                 </label>
 
-                <label class="mto-v2-field mto-v2-field--wide">
-                    <span>Repuestos, consumibles o materiales utilizados</span>
-                    <textarea class="form-control" name="PartsUsed" id="mtoV2PartsUsed" rows="3" maxlength="3000"></textarea>
-                </label>
             </div>
 
             <section class="mto-v2-subcard" aria-labelledby="mtoV2CountersTitle">
@@ -238,24 +228,30 @@
                         <span class="mto-v2-eyebrow">Lecturas</span>
                         <h2 id="mtoV2CountersTitle">Contadores del equipo</h2>
                     </div>
-                    <span>Opcional cuando no aplique</span>
+                    <span>Registra las dos lecturas actuales</span>
+                </div>
+                <div class="mto-v2-counter-status">
+                    <small id="mtoV2CounterFeedback" role="status" aria-live="polite">Selecciona un equipo para consultar su último contador.</small>
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="mtoV2RetryCounters" hidden>Reintentar contadores</button>
                 </div>
                 <div class="mto-v2-grid mto-v2-grid--four">
                     <label class="mto-v2-field">
-                        <span>Copias antes</span>
-                        <input class="form-control" type="number" name="CopiesBefore" id="mtoV2CopiesBefore" min="0" step="1" inputmode="numeric" />
+                        <small class="mto-v2-counter-date" id="mtoV2CopiesBeforeDate">Sin registro previo</small>
+                        <span>Impresiones anteriores</span>
+                        <input class="form-control" type="number" name="CopiesBefore" id="mtoV2CopiesBefore" min="0" step="1" inputmode="numeric" readonly placeholder="Sin registro" />
                     </label>
                     <label class="mto-v2-field">
-                        <span>Copias después</span>
-                        <input class="form-control" type="number" name="CopiesAfter" id="mtoV2CopiesAfter" min="0" step="1" inputmode="numeric" />
+                        <span>Impresiones actuales <b aria-hidden="true">*</b></span>
+                        <input class="form-control" type="number" name="CopiesAfter" id="mtoV2CopiesAfter" min="0" max="2147483647" step="1" inputmode="numeric" required />
                     </label>
                     <label class="mto-v2-field">
-                        <span>Escaneos antes</span>
-                        <input class="form-control" type="number" name="ScansBefore" id="mtoV2ScansBefore" min="0" step="1" inputmode="numeric" />
+                        <small class="mto-v2-counter-date" id="mtoV2ScansBeforeDate">Sin registro previo</small>
+                        <span>Escaneos anteriores</span>
+                        <input class="form-control" type="number" name="ScansBefore" id="mtoV2ScansBefore" min="0" step="1" inputmode="numeric" readonly placeholder="Sin registro" />
                     </label>
                     <label class="mto-v2-field">
-                        <span>Escaneos después</span>
-                        <input class="form-control" type="number" name="ScansAfter" id="mtoV2ScansAfter" min="0" step="1" inputmode="numeric" />
+                        <span>Escaneos actuales <b aria-hidden="true">*</b></span>
+                        <input class="form-control" type="number" name="ScansAfter" id="mtoV2ScansAfter" min="0" max="2147483647" step="1" inputmode="numeric" required />
                     </label>
                 </div>
             </section>
@@ -263,7 +259,8 @@
             <div class="mto-v2-grid">
                 <label class="mto-v2-field mto-v2-field--wide">
                     <span>Recomendaciones al cliente</span>
-                    <textarea class="form-control" name="Recommendations" id="mtoV2Recommendations" rows="3" maxlength="4000"></textarea>
+                    <textarea class="form-control" name="Recommendations" id="mtoV2Recommendations" rows="2" maxlength="250" aria-describedby="mtoV2RecommendationsCount"></textarea>
+                    <small id="mtoV2RecommendationsCount" data-character-count-for="mtoV2Recommendations">0 / 250 caracteres · Resume el servicio para el reporte de una página.</small>
                 </label>
                 <label class="mto-v2-field mto-v2-field--wide">
                     <span>Observaciones internas</span>
@@ -305,7 +302,8 @@
             <div class="mto-v2-grid">
                 <label class="mto-v2-field mto-v2-field--wide">
                     <span>Observaciones del cliente</span>
-                    <textarea class="form-control" name="CustomerObservations" id="mtoV2CustomerObservations" rows="3" maxlength="6000"></textarea>
+                    <textarea class="form-control" name="CustomerObservations" id="mtoV2CustomerObservations" rows="2" maxlength="250" aria-describedby="mtoV2CustomerObservationsCount"></textarea>
+                    <small id="mtoV2CustomerObservationsCount" data-character-count-for="mtoV2CustomerObservations">0 / 250 caracteres · Resume el servicio para el reporte de una página.</small>
                 </label>
                 <label class="mto-v2-field">
                     <span>Nombre de quien firma <b aria-hidden="true">*</b></span>
@@ -318,6 +316,10 @@
             </div>
 
             <section class="mto-v2-signature-card" aria-labelledby="mtoV2SignatureTitle">
+                <dl class="mto-v2-visit-times" aria-label="Horario del servicio que firma el cliente">
+                    <div><dt>Hora de entrada</dt><dd id="mtoV2SignatureStartedAt">Pendiente</dd></div>
+                    <div><dt>Hora de salida</dt><dd id="mtoV2SignatureEndedAt">Pendiente</dd></div>
+                </dl>
                 <div class="mto-v2-signature-card__header">
                     <div>
                         <span class="mto-v2-eyebrow">Conformidad</span>

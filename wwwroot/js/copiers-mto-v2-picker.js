@@ -20,6 +20,8 @@
         var opened = false;
         var status = "";
         var pointerInList = false;
+        var gesture = null;
+        var ignoreClickUntil = 0;
 
         list.id = listId;
         list.classList.add("mto-v2-picker-list");
@@ -39,6 +41,8 @@
             list.hidden = true;
             input.setAttribute("aria-expanded", "false");
             input.removeAttribute("aria-activedescendant");
+            gesture = null;
+            pointerInList = false;
             optionElements.forEach(function (element) { element.setAttribute("aria-selected", "false"); });
         }
 
@@ -85,7 +89,14 @@
                     description.textContent = item.description;
                     element.appendChild(description);
                 }
-                element.addEventListener("click", function () {
+                element.addEventListener("click", function (event) {
+                    // Touch is committed on release, before Android synthesizes
+                    // mouse/focus events. A delayed click must not select twice
+                    // or turn the end of a scroll into a selection.
+                    if (Date.now() < ignoreClickUntil) {
+                        event.preventDefault();
+                        return;
+                    }
                     if (element.parentNode === list) select(index, item);
                 });
                 list.appendChild(element);
@@ -152,19 +163,74 @@
         input.addEventListener("blur", function () {
             if (!pointerInList) close();
         });
-        list.addEventListener("pointerdown", function (event) {
-            pointerInList = true;
-            // A mouse must not blur the input before its click. Touch keeps its
-            // native scrolling; the pointer guard retains the list until the tap.
-            if (event.pointerType === "mouse") event.preventDefault();
-        });
-        function releasePointer() {
-            pointerInList = false;
-            // A touch scroll may cancel its pointer after blurring the input.
-            // Keep the choices visible; the next outside interaction closes them.
+        function optionFor(target) {
+            return optionElements.find(function (element) { return element.contains(target); }) || null;
         }
-        doc.addEventListener("pointerup", releasePointer);
-        doc.addEventListener("pointercancel", releasePointer);
+
+        function beginGesture(event, point, pointerId) {
+            pointerInList = true;
+            var element = optionFor(event.target);
+            var index = optionElements.indexOf(element);
+            gesture = {
+                pointerId: pointerId, element: element, index: index, item: visibleItems[index],
+                x: point.clientX || 0, y: point.clientY || 0, scrollTop: list.scrollTop, moved: false
+            };
+            ignoreClickUntil = Date.now() + 1000;
+        }
+
+        function moveGesture(point, pointerId) {
+            if (!gesture || gesture.pointerId !== pointerId) return;
+            if (Math.abs((point.clientX || 0) - gesture.x) > 10
+                || Math.abs((point.clientY || 0) - gesture.y) > 10
+                || Math.abs(list.scrollTop - gesture.scrollTop) > 2) gesture.moved = true;
+        }
+
+        function endGesture(event, point, pointerId, cancelled) {
+            if (!gesture || gesture.pointerId !== pointerId) return;
+            moveGesture(point, pointerId);
+            var ended = gesture;
+            gesture = null;
+            pointerInList = false;
+            ignoreClickUntil = Date.now() + 1000;
+            if (!cancelled && !ended.moved && ended.element && ended.element.parentNode === list
+                && ended.element.contains(event.target)) {
+                event.preventDefault();
+                select(ended.index, ended.item);
+            }
+            // Scrolling leaves choices open. The next outside interaction closes them.
+        }
+
+        list.addEventListener("pointerdown", function (event) {
+            if (event.pointerType === "mouse") {
+                pointerInList = true;
+                gesture = null;
+                ignoreClickUntil = 0;
+                event.preventDefault();
+            } else if (event.isPrimary !== false) beginGesture(event, event, event.pointerId);
+            else if (gesture) gesture.moved = true;
+        });
+        doc.addEventListener("pointermove", function (event) { moveGesture(event, event.pointerId); });
+        doc.addEventListener("pointerup", function (event) {
+            if (event.pointerType === "mouse") pointerInList = false;
+            else endGesture(event, event, event.pointerId, false);
+        });
+        doc.addEventListener("pointercancel", function (event) { endGesture(event, event, event.pointerId, true); });
+        if (!global.PointerEvent) {
+            list.addEventListener("touchstart", function (event) {
+                if (event.touches.length === 1) beginGesture(event, event.touches[0], event.touches[0].identifier);
+                else { gesture = null; pointerInList = false; }
+            }, { passive: true });
+            doc.addEventListener("touchmove", function (event) {
+                if (event.touches.length === 1) moveGesture(event.touches[0], event.touches[0].identifier);
+                else if (gesture) gesture.moved = true;
+            }, { passive: true });
+            doc.addEventListener("touchend", function (event) {
+                Array.from(event.changedTouches).forEach(function (point) { endGesture(event, point, point.identifier, false); });
+            }, { passive: false });
+            doc.addEventListener("touchcancel", function (event) {
+                Array.from(event.changedTouches).forEach(function (point) { endGesture(event, point, point.identifier, true); });
+            });
+        }
         doc.addEventListener("pointerdown", function (event) {
             if (event.target !== input && !list.contains(event.target)) {
                 pointerInList = false;
@@ -172,7 +238,7 @@
             }
         });
         doc.addEventListener("focusin", function (event) {
-            if (event.target !== input && !list.contains(event.target)) close();
+            if (!pointerInList && event.target !== input && !list.contains(event.target)) close();
         });
 
         return {

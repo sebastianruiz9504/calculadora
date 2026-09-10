@@ -32,6 +32,7 @@ public sealed class CopiersMtoV2CalendarService(
     private const int MaxPages = 20;
     private const int MaxRows = 5000;
     private const int MaxFileBytes = 12 * 1024 * 1024;
+    private const string AllTechnicians = "all";
     private static readonly TimeSpan BogotaOffset = TimeSpan.FromHours(-5);
     private static readonly CultureInfo Spanish = CultureInfo.GetCultureInfo("es-CO");
     private readonly CopiersMaintenanceV2DataverseOptions _o = options.Value;
@@ -59,26 +60,30 @@ public sealed class CopiersMtoV2CalendarService(
             technicians.Add(new(actorId.ToString("D"), First(actor.DisplayName, actor.Email), actor.Email));
         var result = technicians.GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase).Select(x => x.First())
             .OrderBy(x => x.Name, StringComparer.Create(Spanish, true)).ToArray();
-        return new(result, result.FirstOrDefault(x => string.Equals(x.Id, actor.SystemUserId, StringComparison.OrdinalIgnoreCase))?.Id
-            ?? result.FirstOrDefault()?.Id ?? "");
+        // Dashboard/Copiers authorization already allows consulting any technician.
+        // Do not silently hide a successful visit under another technician by
+        // defaulting this reporting view to the signed-in viewer.
+        return new(result, result.Length > 0 ? AllTechnicians : "");
     }
 
     public async Task<CopiersMtoV2CalendarWeekDto> WeekAsync(string technicianId, string weekStart, CancellationToken ct = default)
     {
         await AuthorizeAsync(ct);
-        var technician = NormalizeGuid(technicianId);
+        var allTechnicians = string.Equals(technicianId, AllTechnicians, StringComparison.OrdinalIgnoreCase);
+        var technician = allTechnicians ? AllTechnicians : NormalizeGuid(technicianId);
         if (!DateOnly.TryParseExact(weekStart, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             || date.Year < 2000 || date.Year > 2100)
             throw new ArgumentException("Selecciona una semana válida (AAAA-MM-DD).");
         var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
         var until = monday.AddDays(7);
         // ServiceDate is the form's date-only value. Do not compare it to a server-local timezone.
-        var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null)) and {_o.TechnicianUserIdField} eq '{technician}'"
+        var filter = $"({_o.WorkflowStateField} eq {_o.ReadyToSendStateValue} or ({_o.WorkflowStateField} eq {_o.FailedStateValue} and {_o.SignedReportEvidenceKeyField} ne null))"
+            + (allTechnicians ? "" : $" and {_o.TechnicianUserIdField} eq '{technician}'")
             + $" and {_o.ServiceDateField} ge {monday:yyyy-MM-dd}T00:00:00Z and {_o.ServiceDateField} lt {until:yyyy-MM-dd}T00:00:00Z";
         var rows = await QueryAsync($"{_o.MainEntitySetName}?$select={EventFields()}&$filter={Uri.EscapeDataString(filter)}"
             + $"&$orderby={_o.ServiceDateField} asc,{_o.MainIdField} asc", ct);
         var events = rows.Where(x => IsVisible(x)
-                && string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase)
+                && (allTechnicians || string.Equals(Text(x, _o.TechnicianUserIdField), technician, StringComparison.OrdinalIgnoreCase))
                 && ServiceDate(x) >= monday && ServiceDate(x) < until)
             .Select(MapEvent).OrderBy(x => x.StartAtUtc).ThenBy(x => x.Id).ToArray();
         return new(monday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), events);
@@ -223,9 +228,11 @@ public sealed class CopiersMtoV2CalendarService(
 
     private CopiersMtoV2CalendarEventDto MapEvent(JsonElement row)
     {
-        var end = Instant(row, _o.DeviceSignedAtUtcField) ?? Instant(row, _o.ServerFinalizedAtUtcField);
-        var startText = Answers(row).FirstOrDefault(x => x.Key == "service_started_at")?.Value;
-        var start = ParseVisitStart(startText);
+        var answers = Answers(row);
+        var recordedEnd = ParseRecordedInstant(answers.FirstOrDefault(x => x.Key == "service_ended_at_utc")?.Value);
+        var end = recordedEnd ?? Instant(row, _o.DeviceSignedAtUtcField) ?? Instant(row, _o.ServerFinalizedAtUtcField);
+        var start = ParseRecordedInstant(answers.FirstOrDefault(x => x.Key == "service_started_at_utc")?.Value)
+            ?? ParseVisitStart(answers.FirstOrDefault(x => x.Key == "service_started_at")?.Value);
         var estimated = !start.HasValue || !end.HasValue || end <= start || end - start > TimeSpan.FromDays(1);
         if (estimated)
         {
@@ -241,10 +248,22 @@ public sealed class CopiersMtoV2CalendarService(
                 : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Sin clasificar",
             DurationEstimated = estimated,
             TimingNote = estimated ? "Franja visual de 30 minutos; duración real no disponible."
+                : recordedEnd.HasValue ? "Desde la entrada hasta la salida registradas en el reporte firmado (hora de Bogotá)."
                 : "Desde el inicio de visita registrado (hora de Bogotá) hasta la firma del cliente.",
             WorkflowState = Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue ? "ReadyToSend" : "Failed",
             EmailState = EmailState(Number(row, _o.EmailStateField))
         };
+    }
+
+    private static DateTimeOffset? ParseRecordedInstant(string? text)
+    {
+        // Only offset-aware values are canonical. Historical localized display
+        // strings keep their explicit Bogotá fallback below.
+        if (string.IsNullOrWhiteSpace(text)
+            || !Regex.IsMatch(text, @"(?:Z|[+-]\d{2}:\d{2})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            || !DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var instant)
+            || instant.Year is < 2000 or > 2100) return null;
+        return instant.ToUniversalTime();
     }
 
     private static DateTimeOffset? ParseVisitStart(string? text)
