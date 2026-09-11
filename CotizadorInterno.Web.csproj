@@ -47,6 +47,8 @@
 
   <ItemGroup>
     <Content Update="App_Data\nomina-preliquidacion-drafts.json" CopyToPublishDirectory="Never" />
+    <Content Remove="App_Data\copiers-submissions-v1\**" />
+    <None Remove="App_Data\copiers-submissions-v1\**" />
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 

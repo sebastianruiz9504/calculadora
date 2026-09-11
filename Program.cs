@@ -92,6 +92,9 @@ builder.Services.AddScoped<ICopiersMtoV2PdfBuilder, CopiersMtoV2ProfessionalPdfB
 builder.Services.AddScoped<ICopiersMaintenanceV2Service, CopiersMaintenanceV2Service>();
 builder.Services.AddScoped<ICopiersActivityV2BusinessService, CopiersActivityV2BusinessService>();
 builder.Services.AddScoped<CopiersActivityV2Runtime>();
+builder.Services.AddSingleton<CopiersSubmissionStore>();
+builder.Services.AddScoped<CopiersMtoV2WorkerCounters>();
+builder.Services.AddHostedService<CopiersSubmissionWorker>();
 builder.Services.AddScoped<ICopiersMtoV2CalendarService, CopiersMtoV2CalendarService>();
 builder.Services.AddSingleton<ISharePointRebatesProvider, SharePointRebatesProvider>();
 builder.Services.AddScoped<ICrmRepository, DataverseCrmRepository>();

@@ -63,6 +63,9 @@ public sealed class CopiersMaintenanceV2DraftUpdateRequestDto
 /// </summary>
 public sealed class CopiersMaintenanceV2FinalizeMultipartRequestDto
 {
+    [Microsoft.AspNetCore.Mvc.ModelBinding.BindNever]
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTimeOffset? DurableReceivedAtUtc { get; set; }
     public string ActivityKind { get; set; } = "maintenance";
     public string OriginClientId { get; set; } = "";
     public string MovementReason { get; set; } = "";
@@ -93,7 +96,9 @@ public sealed class CopiersMaintenanceV2FinalizeMultipartRequestDto
     public string LocationSource { get; set; } = "navigator.geolocation";
     public int SignaturePointCount { get; set; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public IFormFile? Signature { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
     public List<IFormFile> Attachments { get; set; } = new();
 }
 

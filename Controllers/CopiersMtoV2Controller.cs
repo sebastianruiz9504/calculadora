@@ -24,6 +24,7 @@ public sealed class CopiersMtoV2Controller : Controller
     private readonly ILogger<CopiersMtoV2Controller> _logger;
     private readonly ICopiersMtoV2CounterService? _counters;
     private readonly CopiersActivityV2Runtime? _activities;
+    private readonly CopiersSubmissionStore? _submissions;
 
     public CopiersMtoV2Controller(
         IDataverseService dataverse,
@@ -32,7 +33,8 @@ public sealed class CopiersMtoV2Controller : Controller
         IOptions<CopiersMaintenanceV2DataverseOptions> dataverseOptions,
         ILogger<CopiersMtoV2Controller> logger,
         ICopiersMtoV2CounterService? counters = null,
-        CopiersActivityV2Runtime? activities = null)
+        CopiersActivityV2Runtime? activities = null,
+        CopiersSubmissionStore? submissions = null)
     {
         _dataverse = dataverse;
         _service = service;
@@ -41,11 +43,22 @@ public sealed class CopiersMtoV2Controller : Controller
         _logger = logger;
         _counters = counters;
         _activities = activities;
+        _submissions = submissions;
     }
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
     public IActionResult Index() => View();
+
+    [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> SubmissionStatus(string submissionKey, CancellationToken ct)
+    {
+        if (_submissions is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(submissionKey) || submissionKey.Length > 128) return BadRequest();
+        var item = await _submissions.FindAsync(CopiersSubmissionStore.Owner(User), submissionKey, ct);
+        return item is null ? NotFound() : Ok(CopiersSubmissionStore.Status(item));
+    }
 
     [HttpGet]
     [AuthorizeForScopes(ScopeKeySection = DataverseScopeConfigurationKey)]
@@ -275,6 +288,16 @@ public sealed class CopiersMtoV2Controller : Controller
                     "Técnico"),
                 Email = FirstNonEmpty(currentUser.EmployeeUserEmail, currentUser.Email)
             };
+
+            if (_submissions is not null)
+            {
+                _ = CopiersMaintenanceV2Validation.Actor(actor);
+                _ = CopiersMaintenanceV2Validation.DeviceSignedAt(request.DeviceSignedAtUtc, DateTimeOffset.UtcNow, _options);
+                // Preserve the original offline capture, never replace its facts.
+                _ = CopiersMaintenanceV2Validation.Location(request, DateTimeOffset.UtcNow, _options, enforceFreshness: false);
+                var received = await _submissions.ReceiveAsync(CopiersSubmissionStore.Owner(User), draftInput, request, actor, ct);
+                return Accepted(CopiersSubmissionStore.Status(received));
+            }
 
             var service = request.ActivityKind == "maintenance" ? _service
                 : _activities?.CreateService() ?? throw new InvalidOperationException("El servicio de actas no está disponible.");

@@ -170,10 +170,225 @@
         updateNarrativeCounts();
         initializeCatalogPickers();
         wireEvents();
-        void loadBootstrap();
+        void initializeRecovery();
         initializeSignaturePad();
         renderFiles();
         showStep(1, { scroll: false });
+    }
+
+    // Recovery includes the original signed payload, not just its submission key.
+    // A submitted payload is immutable; retries never redraw/re-encode its signature.
+    async function initializeRecovery() {
+        state.recoveryReady = false;
+        form.inert = true;
+        if (navigator.locks && !await acquireRecoveryEditor()) {
+            recoveryMessage("Este formulario ya está abierto en otra pestaña. Continúa allí o ciérrala y recarga esta página.", true);
+            return;
+        }
+        try {
+            const saved = await window.CopiersMtoV2Drafts.read(root.dataset.recoveryOwner);
+            if (saved?.version === 1) {
+                Object.assign(state.catalog, saved.catalog);
+                renderMaintenanceTypeOptions();
+                for (const [key, value] of Object.entries(saved.state)) state[key] = value;
+                if (state.supplies.items?.length) {
+                    replaceContents(elements.supplyId, ...state.supplies.items.map(item => {
+                        const option = document.createElement("option"); option.value = item.id; option.textContent = item.name; return option;
+                    }));
+                }
+                for (const item of saved.controls) {
+                    const control = document.getElementById(item.id);
+                    if (control && form.contains(control)) { control.value = item.value; control.checked = item.checked; }
+                }
+                state.files = saved.files || [];
+                state.signature.strokes = saved.strokes || [];
+                state.pendingUpload = saved.pendingUpload || null;
+                state.receiptKey = saved.receiptKey || "";
+                state.equipmentCatalog.loading = false; state.counters.loading = false; state.supplies.loading = false;
+                state.catalog.loading = false;
+                elements.copiesBeforeDate.textContent = state.counters.dateDisplay || "Sin registro previo";
+                elements.scansBeforeDate.textContent = state.counters.dateDisplay || "Sin registro previo";
+                changeActivityType();
+                renderClientOptions(); renderEquipmentOptions(); renderFiles(); redrawSignature(); updateSignatureState();
+                updateNarrativeCounts(); updateProgressAvailability();
+                showStep(saved.state.currentStep || 1, { scroll: false });
+                if (elements.previousAttempt) elements.previousAttempt.hidden = true;
+                recoveryMessage("Borrador recuperado con sus datos, firma y evidencias. Revisa el registro antes de continuar.");
+                void refreshRecoveryCatalog();
+            } else {
+                await loadBootstrap();
+                recoveryMessage("El borrador se guardará automáticamente en este dispositivo.");
+            }
+        } catch (error) {
+            await loadBootstrap();
+            recoveryMessage("No está disponible el guardado local. No cierres ni recargues esta pestaña antes de confirmar el envío.", true);
+        } finally {
+            form.inert = false; state.recoveryReady = true;
+        }
+        form.addEventListener("input", scheduleRecovery);
+        form.addEventListener("change", scheduleRecovery);
+        form.addEventListener("click", scheduleRecovery);
+        elements.signatureCanvas.addEventListener("pointerup", scheduleRecovery);
+        elements.createAnother.addEventListener("click", async event => {
+            event.preventDefault();
+            if (elements.createAnother.hidden) return;
+            window.clearTimeout(state.recoveryTimer);
+            await (state.recoveryWrite || Promise.resolve()).catch(() => {});
+            await window.CopiersMtoV2Drafts.remove(root.dataset.recoveryOwner);
+            window.location.assign(elements.createAnother.href);
+        });
+        window.addEventListener("pagehide", () => { void saveRecovery().catch(() => {}); });
+        document.addEventListener("visibilitychange", () => { if (document.hidden) void saveRecovery().catch(() => {}); });
+        window.addEventListener("online", () => { if (state.pendingUpload || state.receiptKey) void resumeSubmission(); });
+        if (state.pendingUpload || state.receiptKey) void resumeSubmission();
+    }
+
+    async function refreshRecoveryCatalog() {
+        try {
+            const result = await fetchCatalog();
+            state.catalog.clients = (result.clients || result.Clients || []).map(normalizeClient).filter(Boolean);
+            renderClientOptions();
+            if (state.catalog.selectedClient && !state.pendingUpload && !state.receiptKey) {
+                const response = await fetchActivityJson(`${root.dataset.equipmentUrl}?clientId=${encodeURIComponent(state.catalog.selectedClient.id)}&activityKind=${encodeURIComponent(activityKind())}`, "los equipos");
+                state.catalog.equipment = (response.items || []).map(normalizeEquipment).filter(Boolean);
+                renderEquipmentOptions();
+            }
+        } catch { /* Keep the saved capture offline; Finalize reauthorizes it. */ }
+    }
+
+    function acquireRecoveryEditor() {
+        return new Promise(resolve => {
+            navigator.locks.request(`copiers-mto-v2:${root.dataset.recoveryOwner}`, { ifAvailable: true }, async lock => {
+                resolve(!!lock);
+                if (lock) await new Promise(release => { state.releaseEditor = release; });
+            }).catch(() => resolve(false));
+        });
+    }
+
+    function recoveryMessage(message, error) {
+        const target = document.getElementById("mtoV2RecoveryStatus");
+        if (target) { target.textContent = message; target.className = error ? "alert alert-warning" : "alert alert-info"; }
+    }
+
+    function recoverySnapshot() {
+        const keys = ["currentStep", "maxUnlockedStep", "submissionAttempted", "submissionScope", "locationAttempted", "activityType", "equipmentCatalog", "supplies", "counters"];
+        return { version: 1, savedAt: new Date().toISOString(),
+            controls: Array.from(form.querySelectorAll("input[id],select[id],textarea[id]"))
+                .filter(x => x.type !== "file" && x.name !== "__RequestVerificationToken")
+                .map(x => ({ id: x.id, value: x.value, checked: !!x.checked })),
+            state: Object.fromEntries(keys.map(key => [key, JSON.parse(JSON.stringify(state[key]))])),
+            catalog: { ...state.catalog, loading: false, clients: state.catalog.selectedClient ? [state.catalog.selectedClient] : [],
+                equipment: state.catalog.selectedEquipment ? [state.catalog.selectedEquipment] : [] },
+            files: state.files, strokes: state.signature.strokes, pendingUpload: state.pendingUpload || null, receiptKey: state.receiptKey || "" };
+    }
+
+    function scheduleRecovery() {
+        if (!state.recoveryReady || root.classList.contains("is-submitted")) return;
+        window.clearTimeout(state.recoveryTimer);
+        state.recoveryTimer = window.setTimeout(() => { void saveRecovery().catch(() => {}); }, 200);
+    }
+
+    async function saveRecovery() {
+        if (!state.recoveryReady || root.classList.contains("is-submitted")) return;
+        const snapshot = recoverySnapshot();
+        // Serialize local writes so a slow older write cannot overwrite a newer one.
+        state.recoveryWrite = (state.recoveryWrite || Promise.resolve()).catch(() => {}).then(() =>
+            window.CopiersMtoV2Drafts.save(root.dataset.recoveryOwner, snapshot));
+        try { await state.recoveryWrite; recoveryMessage(state.pendingUpload ? "Envío pendiente guardado en este dispositivo." : "Borrador guardado en este dispositivo."); }
+        catch (error) { recoveryMessage("No fue posible guardar el borrador local. No cierres esta pestaña.", true); throw error; }
+    }
+
+    async function receiptStatus(key) {
+        const response = await recoveryFetch(`/CopiersMtoV2/SubmissionStatus?submissionKey=${encodeURIComponent(key)}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, 20000);
+        if (response.status === 404) return null;
+        if (!response.ok || response.redirected) throw new Error("No se pudo confirmar el envío. Conservamos el borrador; verifica la conexión y tu sesión.");
+        return readResponse(response);
+    }
+
+    async function recoveryFetch(url, options, timeout) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeout);
+        try { return await fetch(url, { ...options, signal: controller.signal }); }
+        finally { window.clearTimeout(timer); }
+    }
+
+    async function sendRecoveredPayload() {
+        const key = state.receiptKey || elements.submissionKey.value;
+        const existing = await receiptStatus(key);
+        if (existing) return existing;
+        if (!state.pendingUpload) throw new Error("No se encontró la recepción del registro. No crees otro hasta revisarlo.");
+        const payload = new FormData();
+        for (const [name, value] of state.pendingUpload) {
+            if (value instanceof Blob) payload.append(name, value, value.name || "firma-cliente.jpg");
+            else payload.append(name, value);
+        }
+        const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+        payload.set("__RequestVerificationToken", token);
+        const response = await recoveryFetch(root.dataset.finalizeUrl || form.action, { method: "POST", body: payload, credentials: "same-origin",
+            headers: { Accept: "application/json", "Idempotency-Key": key, RequestVerificationToken: token } }, 90000);
+        const result = await readResponse(response);
+        if (!response.ok || response.redirected) {
+            const error = new Error(result?.message || "No se confirmó la recepción. El envío sigue guardado en este dispositivo.");
+            error.correctable = response.status === 400 || response.status === 422;
+            throw error;
+        }
+        return result;
+    }
+
+    async function resumeSubmission() {
+        if (state.recovering) return;
+        state.recovering = true; state.submitting = true; setSubmitState("pending");
+        try {
+            if (navigator.onLine === false) throw new Error("Pendiente de conexión. El envío está guardado en este dispositivo y se reintentará al volver a estar en línea.");
+            const receipt = await sendRecoveredPayload();
+            if (!receipt?.received) throw new Error("El servidor no confirmó una recepción persistente. Conservamos el borrador.");
+            state.receiptKey = receipt.submissionKey;
+            await saveRecovery();
+            if (receipt.status === "completed" && receipt.result) {
+                const result = receipt.result;
+                elements.recordId.value = result.recordId;
+                elements.serviceReference.value = result.serviceReference || "";
+                state.pendingUpload = null;
+                const sent = matchesState(result.emailState, 3, "Sent");
+                root.classList.add("is-submitted");
+                setSubmitState(sent ? "sent" : "created");
+                renderReview();
+                elements.createAnother.hidden = !sent;
+                elements.checkEmailStatus.hidden = sent;
+                setStatus(elements.submitStatus, sent ? "success" : "info", sent ? "Registro creado y correo enviado." : "Registro creado con su PDF. El correo está pendiente de confirmación.");
+                // Keep a lightweight completed receipt until email is confirmed;
+                // reloading recovers its status without resending the signed form.
+                await window.CopiersMtoV2Drafts.save(root.dataset.recoveryOwner, { ...recoverySnapshot(), files: [], strokes: [], pendingUpload: null });
+                if (!sent) startEmailStatusPolling();
+                return;
+            }
+            setStatus(elements.submitStatus, receipt.status === "needs_review" ? "error" : "info", receipt.message);
+            recoveryMessage("Recibido en el servidor. Puedes cerrar esta pestaña; el registro queda protegido.");
+            if (receipt.status !== "needs_review") window.setTimeout(() => { void resumeSubmission(); }, 10000);
+        } catch (error) {
+            if (error.correctable) {
+                state.pendingUpload = null;
+                await saveRecovery().catch(() => {});
+                setStatus(elements.submitStatus, "error", error.message);
+                return;
+            }
+            setStatus(elements.submitStatus, "error", error.message || "El envío queda pendiente. No cierres si el guardado local no está disponible.");
+            recoveryMessage("Pendiente de conexión o confirmación. No crees otro registro para reemplazar este envío.", true);
+            // Bounded retry interval; the receipt is queried before every upload.
+            window.setTimeout(() => { if (navigator.onLine !== false) void resumeSubmission(); }, 30000);
+        } finally {
+            state.recovering = false;
+            if (!root.classList.contains("is-submitted")) {
+                state.submitting = false; setSubmitState("idle");
+                if (state.pendingUpload || state.receiptKey) {
+                    elements.panels.forEach(panel => { panel.inert = true; });
+                    elements.panels[3].inert = false;
+                    elements.finalReviewConfirmed.disabled = true;
+                    elements.nextButtons.concat(elements.previousButtons).forEach(button => { button.disabled = true; });
+                    elements.submitLabel.textContent = "Consultar / reintentar envío";
+                }
+            }
+        }
     }
 
     function initializeCatalogPickers() {
@@ -1801,6 +2016,7 @@
 
     async function submitForm(event) {
         event.preventDefault();
+        if (state.pendingUpload || state.receiptKey) { await resumeSubmission(); return; }
         if (state.submitting || !validateAllSteps()) {
             return;
         }
@@ -1824,6 +2040,14 @@
             state.files.forEach(file => payload.append("Attachments", file, file.name));
             payload.append("Signature", signatureBlob, "firma-cliente.jpg");
             payload.set("SignaturePointCount", String(getSignaturePointCount()));
+
+            if (window.CopiersMtoV2Drafts) {
+                state.pendingUpload = Array.from(payload.entries()).filter(([name]) => name !== "__RequestVerificationToken");
+                await saveRecovery();
+                state.submitting = false;
+                await resumeSubmission();
+                return;
+            }
 
             const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
             const response = await fetch(root.dataset.finalizeUrl || form.action || "/CopiersMtoV2/Finalize", {

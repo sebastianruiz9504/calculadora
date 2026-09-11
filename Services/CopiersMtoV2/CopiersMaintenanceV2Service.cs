@@ -247,8 +247,11 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 // New or changed content still requires a fresh capture. Only an
                 // exact persisted submission can bypass the age limit; ranges,
                 // required values and future-clock validation always run above.
-                _ = CopiersMaintenanceV2Validation.DeviceSignedAt(request.DeviceSignedAtUtc, nowUtc, _options);
-                _ = CopiersMaintenanceV2Validation.Location(request, nowUtc, _options);
+                // Only the internal durable worker sets this admission timestamp.
+                // Queue delays must not age out an already received signature.
+                var freshnessAtUtc = request.DurableReceivedAtUtc ?? nowUtc;
+                _ = CopiersMaintenanceV2Validation.DeviceSignedAt(request.DeviceSignedAtUtc, freshnessAtUtc, _options);
+                _ = CopiersMaintenanceV2Validation.Location(request, freshnessAtUtc, _options, enforceFreshness: !request.DurableReceivedAtUtc.HasValue);
             }
 
             if (isReadyReplay)

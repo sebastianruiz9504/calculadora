@@ -1,6 +1,8 @@
 @{
     ViewData["Title"] = "MTO Firmado V2";
     var technicianLabel = User?.Identity?.Name ?? "Técnico autenticado";
+    var recoveryOwner = (User?.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid")?.Value ?? User?.FindFirst("tid")?.Value)
+        + "/" + (User?.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ?? User?.FindFirst("oid")?.Value);
 }
 
 @section Styles {
@@ -9,6 +11,7 @@
 
 <div class="mto-v2-shell"
      id="copiersMtoV2App"
+     data-recovery-owner="@recoveryOwner"
      data-bootstrap-url="/CopiersMtoV2/Bootstrap"
      data-counter-latest-url="/CopiersMtoV2/CounterLatest"
      data-equipment-url="/CopiersMtoV2/Equipment"
@@ -30,6 +33,8 @@
             <strong id="mtoV2TechnicianName">@technicianLabel</strong>
         </div>
     </header>
+
+    <aside id="mtoV2RecoveryStatus" class="alert alert-info" role="status">Comprobando borradores guardados…</aside>
 
     <aside id="mtoV2PreviousAttempt" class="alert alert-warning" role="status" hidden>
         Hay un envío anterior sin confirmar. Esta página inicia una captura nueva;
@@ -446,6 +451,7 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/copiers-mto-v2-drafts.js" asp-append-version="true"></script>
     <script src="~/js/copiers-mto-v2-picker.js" asp-append-version="true"></script>
     <script src="~/js/copiers-mto-v2.js" asp-append-version="true"></script>
 }
