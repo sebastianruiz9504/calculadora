@@ -237,7 +237,8 @@
             await window.CopiersMtoV2Drafts.remove(root.dataset.recoveryOwner);
             window.location.assign(elements.createAnother.href);
         });
-        window.addEventListener("pagehide", () => { void saveRecovery().catch(() => {}); });
+        window.addEventListener("pagehide", () => { void saveRecovery().catch(() => {}); state.releaseEditor?.(); });
+        window.addEventListener("pageshow", event => { if (event.persisted) window.location.reload(); });
         document.addEventListener("visibilitychange", () => { if (document.hidden) void saveRecovery().catch(() => {}); });
         window.addEventListener("online", () => { if (state.pendingUpload || state.receiptKey) void resumeSubmission(); });
         if (state.pendingUpload || state.receiptKey) void resumeSubmission();
@@ -256,13 +257,20 @@
         } catch { /* Keep the saved capture offline; Finalize reauthorizes it. */ }
     }
 
-    function acquireRecoveryEditor() {
-        return new Promise(resolve => {
-            navigator.locks.request(`copiers-mto-v2:${root.dataset.recoveryOwner}`, { ifAvailable: true }, async lock => {
-                resolve(!!lock);
-                if (lock) await new Promise(release => { state.releaseEditor = release; });
-            }).catch(() => resolve(false));
-        });
+    async function acquireRecoveryEditor() {
+        // Edge can release the closing document's lock a little after navigation.
+        // Briefly reconcile that hand-off; never steal another live editor's lock.
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const acquired = await new Promise(resolve => {
+                navigator.locks.request(`copiers-mto-v2:${root.dataset.recoveryOwner}`, { ifAvailable: true }, async lock => {
+                    resolve(!!lock);
+                    if (lock) await new Promise(release => { state.releaseEditor = release; });
+                }).catch(() => resolve(false));
+            });
+            if (acquired) return true;
+            await new Promise(resolve => window.setTimeout(resolve, 100));
+        }
+        return false;
     }
 
     function recoveryMessage(message, error) {
