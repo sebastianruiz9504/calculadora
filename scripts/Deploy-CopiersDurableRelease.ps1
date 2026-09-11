@@ -5,10 +5,10 @@ $ErrorActionPreference='Stop'
 $release=Get-Content -Raw (Join-Path $ReleaseRoot 'release-manifest.json')|ConvertFrom-Json -Depth 40
 $scm='https://calculadoradt-asduazh5e0bhhsgm.scm.eastus2-01.azurewebsites.net'
 $subscription='7018b9b6-5dfc-4d91-bc4d-5f29f27553bd'
-if($release.ScmBaseUrl -ne $scm -or $release.SubscriptionId -ne $subscription -or $release.BaselineDeploymentId -ne '9e70bf8222b8454ab1466d1fd1b75e84' -or $release.Files.Count -ne 9 -or $release.ConfigurationChanges){throw 'Unapproved release manifest.'}
+if($release.ScmBaseUrl -ne $scm -or $release.SubscriptionId -ne $subscription -or $release.BaselineDeploymentId -ne '3be5c7fcebab49139c8cf1516e06d5ca' -or $release.Files.Count -ne 6 -or $release.ConfigurationChanges){throw 'Unapproved release manifest.'}
 if((Get-FileHash $release.ZipPath).Hash -ne $release.ZipSha256 -or (Get-FileHash $release.RollbackZip).Hash -ne $release.RollbackSha256){throw 'Package changed.'}
 if((git -c maintenance.auto=false -c gc.auto=0 -C $release.SourceRoot rev-parse HEAD).Trim() -ne $release.SourceCommit -or (git -c maintenance.auto=false -c gc.auto=0 -C $release.SourceRoot status --porcelain)){throw 'Source changed after validation.'}
-$expected=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb','CotizadorInterno.Web.staticwebassets.endpoints.json','wwwroot/js/copiers-mto-v2.js','wwwroot/js/copiers-mto-v2.js.br','wwwroot/js/copiers-mto-v2.js.gz','wwwroot/js/copiers-mto-v2-calendar.js','wwwroot/js/copiers-mto-v2-calendar.js.br','wwwroot/js/copiers-mto-v2-calendar.js.gz')
+$expected=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb','CotizadorInterno.Web.staticwebassets.endpoints.json','wwwroot/js/copiers-mto-v2.js','wwwroot/js/copiers-mto-v2.js.br','wwwroot/js/copiers-mto-v2.js.gz')
 $archive=[IO.Compression.ZipFile]::OpenRead($release.ZipPath)
 try{
     if(Compare-Object @($archive.Entries.FullName|ForEach-Object{$_.Replace('\','/')}|Sort-Object) @($expected|Sort-Object)){throw 'Unexpected ZIP contents.'}
@@ -55,7 +55,7 @@ try{
         Start-Sleep -Seconds 2
     }
     if(!$unlocked){throw 'DLL still locked. No deployment attempted.'}
-    Write-Output 'Deploying frozen nine-file package once; configuration is unchanged.'
+    Write-Output 'Deploying frozen six-file package once; configuration is unchanged.'
     $raw=az webapp deploy --subscription $subscription --resource-group DigitalTechAppAI --name calculadoradt --src-path $release.ZipPath --type zip --clean false --restart true --async true --timeout 900000 -o json
     if($LASTEXITCODE){throw 'Deployment command uncertain/failed. Inspect operation before retrying.'}
     $raw|Set-Content -LiteralPath (Join-Path $ReleaseRoot 'deployment-result.json') -Encoding utf8

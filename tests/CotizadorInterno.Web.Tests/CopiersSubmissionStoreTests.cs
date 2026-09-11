@@ -26,6 +26,39 @@ public sealed class CopiersSubmissionStoreTests : IDisposable
     };
     private static IFormFile File(string field, string name, byte[] bytes) => new FormFile(new MemoryStream(bytes), 0, bytes.Length, field, name) { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
 
+    [Fact] public async Task StatusBeforeFirstReceiptReturnsNotFoundWithoutCreatingStorage()
+    {
+        var store = Store();
+        Assert.False(Directory.Exists(Path.Combine(_root, "receipts")));
+        Assert.Null(await store.FindAsync(Owner, Key, default));
+        Assert.Empty(store.PendingIds());
+        Assert.False(Directory.Exists(Path.Combine(_root, "receipts")));
+    }
+    [Fact] public async Task FirstStatusThenReceiveAndRetryPreservesOneOriginalReceipt()
+    {
+        var store = Store();
+        Assert.Null(await store.FindAsync(Owner, Key, default));
+        var first = await store.ReceiveAsync(Owner, Draft(), Request(), Actor(), default);
+        var recovered = await Store().FindAsync(Owner, Key, default);
+        Assert.Equal(first.Fingerprint, recovered!.Fingerprint);
+        var replay = await Store().ReceiveAsync(Owner, Draft(), Request(), Actor(), default);
+        Assert.Equal(first.ReceivedAtUtc, replay.ReceivedAtUtc);
+        Assert.Single(store.PendingIds());
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, recovered.Payload!.Files[0].Content);
+    }
+    [Fact] public async Task MissingReceiptInExistingDirectoryReturnsNotFound()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "receipts"));
+        Assert.Null(await Store().FindAsync(Owner, Key, default));
+    }
+    [Fact] public async Task CorruptReceiptMustNotLookLikeAnUnreceivedSubmission()
+    {
+        var store = Store();
+        var first = await store.ReceiveAsync(Owner, Draft(), Request(), Actor(), default);
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(_root, "receipts", first.Id + ".json"), [1, 2, 3]);
+        await Assert.ThrowsAsync<System.Security.Cryptography.CryptographicException>(() => store.FindAsync(Owner, Key, default));
+    }
+
     [Fact] public async Task RestartRestoresExactOriginalFilesAndNoRequestResources()
     {
         var receipt = await Store().ReceiveAsync(Owner, Draft(), Request(), Actor(), default);

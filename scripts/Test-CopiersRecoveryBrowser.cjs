@@ -12,14 +12,17 @@ const body = view.slice(view.indexOf('<div class="mto-v2-shell"'), view.lastInde
     .replaceAll("@recoveryOwner", "tenant/test-owner").replaceAll("@technicianLabel", "TEST TECHNICIAN")
     .replaceAll("@Html.AntiForgeryToken()", '<input name="__RequestVerificationToken" value="test-only" type="hidden">');
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/copiers-mto-v2.css"></head><body>${body}<script src="/js/copiers-mto-v2-drafts.js"></script><script src="/js/copiers-mto-v2-picker.js"></script><script src="/js/copiers-mto-v2.js"></script></body></html>`;
-let posts = 0, receipt = null;
+let posts = 0, receipt = null, statusUnavailable = true;
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     const json = (value, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
     if (url.pathname === "/CopiersMtoV2/Bootstrap") return json({ schemaReady: true, activitiesEnabled: true, technicianName: "LOCAL TEST", clients: [customer], equipment: [equipment], maintenanceTypes: [{ value: 100000001, label: "Preventivo" }, { value: 100000002, label: "Correctivo" }] });
     if (url.pathname === "/CopiersMtoV2/Equipment") return json({ items: [equipment, extraEquipment], allowExternalEquipment: false });
     if (url.pathname === "/CopiersMtoV2/CounterLatest") return json({ equipmentId: url.searchParams.get("equipmentId"), copiesCounter: null, scansCounter: null, recordId: "", dateValue: "" });
-    if (url.pathname === "/CopiersMtoV2/SubmissionStatus") return json(receipt || {}, receipt ? 200 : 404);
+    if (url.pathname === "/CopiersMtoV2/SubmissionStatus") {
+        if (statusUnavailable) return json({ message: "Server fault fixture" }, 500);
+        return json(receipt || {}, receipt ? 200 : 404);
+    }
     if (url.pathname === "/CopiersMtoV2/Status") return json({ recordId: "test-record", state: 2, emailState: 3, serviceReference: "TEST-LOCAL" });
     if (url.pathname === "/CopiersMtoV2/Finalize") {
         posts++;
@@ -122,6 +125,14 @@ const server = http.createServer(async (req, res) => {
         if (multi) { assert.equal(extras[0].equipmentId, extraEquipment.id); assert.equal(extras[0].copiesAfter, 250); assert.equal(extras[0].workPerformed, "TRABAJO DIFERENTE DEL SEGUNDO SERIAL"); }
         await page.close(); await context.setOffline(false);
         page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await page.goto(base + "/CopiersMtoV2");
+        await page.waitForFunction(() => document.querySelector("#mtoV2SubmitStatus").textContent.includes("HTTP 500"));
+        assert.equal(posts, 0, "A server status error must not upload or discard the pending form");
+        assert.equal(await page.locator("#mtoV2SubmissionKey").inputValue(), key);
+        const afterStatusError = await page.evaluate(() => window.CopiersMtoV2Drafts.read("tenant/test-owner"));
+        assert.equal(afterStatusError.pendingUpload.length, frozen.pendingUpload.length);
+        assert.deepEqual(afterStatusError.strokes, frozen.strokes);
+        statusUnavailable = false;
+        await page.reload();
         await page.waitForFunction(() => document.querySelector("#mtoV2SubmitStatus").textContent.includes("fetch") || document.querySelector("#mtoV2SubmitStatus").textContent.includes("confirm"));
         assert.equal(posts, 1);
         await page.reload();
@@ -134,7 +145,7 @@ const server = http.createServer(async (req, res) => {
         await page.waitForFunction(() => document.querySelector("#mtoV2RecoveryStatus").textContent.includes("automáticamente"));
         assert.notEqual(await page.locator("#mtoV2SubmissionKey").inputValue(), key);
         assert.deepEqual(errors, []);
-        console.log(JSON.stringify({ passed: true, multi, viewport: "800x1100 touch", checks: ["per-serial work and counters", "photo after signing preserves ink and times", "draft fields", "photos", "signature", "reload same key", "single editor", "offline close/reopen", "lost acknowledgement", "no duplicate upload", "email status", "create another"], productionWrites: 0 }));
+        console.log(JSON.stringify({ passed: true, multi, viewport: "800x1100 touch", checks: ["per-serial work and counters", "photo after signing preserves ink and times", "draft fields", "photos", "signature", "reload same key", "single editor", "offline close/reopen", "HTTP 500 retains original for retry", "lost acknowledgement", "no duplicate upload", "email status", "create another"], productionWrites: 0 }));
     } catch (error) {
         console.error("Browser errors", errors);
         for (const p of context.pages()) console.error("Additional equipment", await p.locator("#mtoV2AdditionalWork").textContent(), await p.locator("#mtoV2SelectedEquipment").textContent());

@@ -21,6 +21,34 @@ function bind(name, dependencies = {}) {
     return new Function(...Object.keys(dependencies), `${functionSource(name)}\nreturn ${name};`)(...Object.values(dependencies));
 }
 
+test("receipt preflight distinguishes missing receipts, server failures and expired sessions", async () => {
+    for (const status of [404, 500, 503, 401, 403]) {
+        const lookup = bind("receiptStatus", {
+            recoveryFetch: async () => ({ status, ok: false, redirected: false }), readResponse: () => { throw new Error("Must not read error HTML"); }
+        });
+        if (status === 404) assert.equal(await lookup("same-key"), null);
+        else await assert.rejects(lookup("same-key"), status >= 500 ? new RegExp(`servidor.*HTTP ${status}`) : /sesión/);
+    }
+    const redirected = bind("receiptStatus", { recoveryFetch: async () => ({ status: 404, redirected: true }) });
+    await assert.rejects(redirected("same-key"), /sesión/);
+    const receipt = { received: true, submissionKey: "same-key" };
+    const lookup = bind("receiptStatus", { recoveryFetch: async () => ({ status: 200, ok: true }), readResponse: async () => receipt });
+    assert.equal(await lookup("same-key"), receipt);
+});
+
+test("a failed status preflight never posts or changes the frozen signed payload", async () => {
+    const original = [["SubmissionKey", "same-key"], ["WorkPerformed", "original signed work"]];
+    const state = { receiptKey: "same-key", pendingUpload: original };
+    let posts = 0;
+    const send = bind("sendRecoveredPayload", {
+        state, receiptStatus: async () => { throw new Error("HTTP 500"); }, recoveryFetch: async () => { posts++; }
+    });
+    await assert.rejects(send(), /HTTP 500/);
+    assert.equal(posts, 0);
+    assert.equal(state.pendingUpload, original);
+    assert.equal(state.receiptKey, "same-key");
+});
+
 // Run the real controller functions together in a small DOM. Only browser I/O is
 // substituted; catalog, signature invalidation, scope and polling decisions are real.
 function activityHarness(reader = async () => ({ items: [] })) {

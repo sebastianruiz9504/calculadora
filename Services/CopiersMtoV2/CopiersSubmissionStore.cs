@@ -113,6 +113,10 @@ public sealed class CopiersSubmissionStore
             return JsonSerializer.Deserialize<CopiersSubmission>(_protector.Unprotect(bytes.ToArray()));
         }
         catch (FileNotFoundException) { return null; }
+        // A fresh deployment has no receipt directory until its first accepted
+        // upload. The status preflight must report "not received" in that case.
+        // Do not swallow other IO/protection failures: they must block replay.
+        catch (DirectoryNotFoundException) { return null; }
     }
     internal async Task WriteAsync(CopiersSubmission item, CancellationToken ct)
     {

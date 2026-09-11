@@ -315,8 +315,10 @@
 
     async function receiptStatus(key) {
         const response = await recoveryFetch(`/CopiersMtoV2/SubmissionStatus?submissionKey=${encodeURIComponent(key)}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, 20000);
+        if (response.redirected || response.status === 401 || response.status === 403)
+            throw new Error("No se pudo confirmar el envío porque la sesión requiere atención. Conservamos el borrador; vuelve a iniciar sesión con el mismo usuario.");
         if (response.status === 404) return null;
-        if (!response.ok || response.redirected) throw new Error("No se pudo confirmar el envío. Conservamos el borrador; verifica la conexión y tu sesión.");
+        if (!response.ok) throw new Error(`El servidor no pudo consultar el estado del envío (HTTP ${response.status}). Conservamos el borrador y reintentaremos sin crear otro registro.`);
         return readResponse(response);
     }
 

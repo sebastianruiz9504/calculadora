@@ -28,6 +28,20 @@ public sealed class CopiersMtoV2ControllerTests
     private const string SubmissionKey = "mto-controller-test-20260908";
 
     [Fact]
+    public async Task StatusBeforeFirstUploadReturns404WithoutCallingDataverseOrCreatingARecord()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CopiersStatusTests", Guid.NewGuid().ToString("N"));
+        var store = new CopiersSubmissionStore(Path.Combine(root, "receipts"), new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+        var fixture = new Fixture(submissions: store);
+        fixture.Controller.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("tid", Guid.NewGuid().ToString()), new Claim("oid", Guid.NewGuid().ToString())], "test"));
+        Assert.IsType<NotFoundResult>(await fixture.Controller.SubmissionStatus(SubmissionKey, default));
+        Assert.False(Directory.Exists(root));
+        Assert.Empty(fixture.Dataverse.ReadCalls);
+        AssertNoPersistence(fixture);
+    }
+
+    [Fact]
     public void CounterLatestRequiresScopesAndDoesNotCacheAuthenticatedReadings()
     {
         var method = typeof(CopiersMtoV2Controller).GetMethod(nameof(CopiersMtoV2Controller.CounterLatest))!;
@@ -515,7 +529,7 @@ public sealed class CopiersMtoV2ControllerTests
             ["CustomerContactName"] = "Persona en la visita"
         };
 
-        public Fixture(bool pilotEnabled = true, ICopiersMtoV2CounterService? counters = null)
+        public Fixture(bool pilotEnabled = true, ICopiersMtoV2CounterService? counters = null, CopiersSubmissionStore? submissions = null)
         {
             var dataverseService = DispatchProxy.Create<IDataverseService, CopiersDataverseProxy>();
             Dataverse = (CopiersDataverseProxy)dataverseService;
@@ -529,7 +543,7 @@ public sealed class CopiersMtoV2ControllerTests
                 {
                     MaintenanceTypeCorrectiveValue = 827270000,
                     MaintenanceTypePreventiveValue = 827270001
-                }), NullLogger<CopiersMtoV2Controller>.Instance, counters)
+                }), NullLogger<CopiersMtoV2Controller>.Instance, counters, submissions: submissions)
             {
                 ControllerContext = new ControllerContext
                 {
