@@ -24,6 +24,17 @@ Después de finalizar, el servidor elimina de su recibo la copia adicional del p
 
 ## Verificación
 
+### Ampliación de varios equipos (2026-09-11)
+
+Base verificada: `5dd13452dc9a20d8587f707156d43f8a93259f7c`, despliegue `9e70bf8222b8454ab1466d1fd1b75e84`.
+Mantenimiento permite un equipo principal y hasta nueve adicionales del mismo cliente. Movimientos, tóner y el mantenimiento de equipo ajeno conservan su comportamiento. Un ticket, una recepción y un correo; todos los detalles quedan en las respuestas inmutables de la fila existente. Los lookup de cliente/equipo principal no cambian, ni se crean nuevas tablas o permisos.
+
+Cada equipo adicional exige su trabajo y contadores, valida asignación/serial/referencia antes de recibir y vuelve a validar asignación/historia al procesar. Su contador tiene una identidad determinista por mantenimiento + equipo; la identidad anterior del contador principal sigue intacta. Primero se valida el conjunto, después se guardan las lecturas, y solo entonces queda ReadyToSend. Un fallo intermedio se reconcilia sin repetir las lecturas ya verificadas. El calendario muestra los detalles legibles por serial, no el JSON interno.
+
+El PDF conserva el membrete: una página por equipo dentro del mismo documento, numeración de serial y una sola conformidad de visita reproducida con su firma original. Antes de firmar se puede revisar el trabajo de todos los equipos. Fotos de cámara/galería agregadas o retiradas no borran firma ni horarios, pero obligan a confirmar nuevamente la revisión final. Cambiar los hechos del servicio o los equipos sí invalida la firma. Después de pulsar Enviar, el payload completo sigue siendo inmutable.
+
+Pruebas específicas: autorización del conjunto, duplicados, contadores por equipo, fallo parcial/reintento y único ReadyToSend; PDF normal/denso de dos equipos; Edge táctil con dos trabajos, captura posterior a la firma, recarga, desconexión y ausencia de doble POST. No se fabrican tickets ni correos en producción.
+
 - `CopiersSubmissionStoreTests`: persistencia protegida, reinicio, propietarios, replays, concurrencia, límites, reintentos y revisión.
 - `CopiersWorkerCounterTests`: creación una vez, sin Write, conflictos, asignación, historia y read-back.
 - `Test-CopiersRecoveryBrowser.cjs`: Edge headless 800x1100/touch contra servidor localhost; fotos y firma de prueba, recarga, pestañas concurrentes, desconexión, cierre/reapertura, acuse perdido, consulta previa y nuevo registro. No hace escrituras en producción ni envía correos.

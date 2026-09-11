@@ -5,6 +5,8 @@ const { chromium } = require("playwright");
 const root = path.resolve(__dirname, "..");
 const customer = { id: "11111111-1111-4111-8111-111111111111", name: "CLIENTE PRUEBA LOCAL", email: "local@example.test", contactName: "Persona prueba" };
 const equipment = { id: "22222222-2222-4222-8222-222222222222", clientId: customer.id, clientName: customer.name, serial: "TEST-LOCAL-001", reference: "TEST" };
+const extraEquipment = { ...equipment, id: "33333333-3333-4333-8333-333333333333", serial: "TEST-LOCAL-002" };
+const multi = process.env.COPIERS_TEST_MULTI === "1";
 const view = fs.readFileSync(path.join(root, "Views/CopiersMtoV2/Index.cshtml"), "utf8");
 const body = view.slice(view.indexOf('<div class="mto-v2-shell"'), view.lastIndexOf("@section Scripts"))
     .replaceAll("@recoveryOwner", "tenant/test-owner").replaceAll("@technicianLabel", "TEST TECHNICIAN")
@@ -15,8 +17,8 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     const json = (value, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
     if (url.pathname === "/CopiersMtoV2/Bootstrap") return json({ schemaReady: true, activitiesEnabled: true, technicianName: "LOCAL TEST", clients: [customer], equipment: [equipment], maintenanceTypes: [{ value: 100000001, label: "Preventivo" }, { value: 100000002, label: "Correctivo" }] });
-    if (url.pathname === "/CopiersMtoV2/Equipment") return json({ items: [equipment], allowExternalEquipment: false });
-    if (url.pathname === "/CopiersMtoV2/CounterLatest") return json({ equipmentId: equipment.id, copiesCounter: null, scansCounter: null, recordId: "", dateValue: "" });
+    if (url.pathname === "/CopiersMtoV2/Equipment") return json({ items: [equipment, extraEquipment], allowExternalEquipment: false });
+    if (url.pathname === "/CopiersMtoV2/CounterLatest") return json({ equipmentId: url.searchParams.get("equipmentId"), copiesCounter: null, scansCounter: null, recordId: "", dateValue: "" });
     if (url.pathname === "/CopiersMtoV2/SubmissionStatus") return json(receipt || {}, receipt ? 200 : 404);
     if (url.pathname === "/CopiersMtoV2/Status") return json({ recordId: "test-record", state: 2, emailState: 3, serviceReference: "TEST-LOCAL" });
     if (url.pathname === "/CopiersMtoV2/Finalize") {
@@ -51,10 +53,23 @@ const server = http.createServer(async (req, res) => {
         await page.locator("#mtoV2EquipmentSerial").fill("TEST");
         await page.locator('#mtoV2EquipmentOptions [role="option"]').first().click();
         assert.equal(await page.locator("#mtoV2OnsiteContactName").inputValue(), "Persona prueba");
+        if (multi) {
+            await page.locator("#mtoV2AdditionalEquipment").selectOption(extraEquipment.id);
+            await page.locator("#mtoV2AddEquipment").tap();
+            await page.locator('#mtoV2AdditionalWork [role="status"]').filter({ hasText: "sin registro" }).waitFor({ state: "attached" });
+        }
         await page.locator('[data-next-step="2"]').click();
         await page.locator("#mtoV2ServiceResult").selectOption({ index: 1 });
         await page.locator("#mtoV2WorkPerformed").fill("PRUEBA LOCAL DE RECUPERACION. No es un mantenimiento real.");
         await page.locator("#mtoV2CopiesAfter").fill("100"); await page.locator("#mtoV2ScansAfter").fill("10");
+        if (multi) {
+            await page.locator('[data-next-step="3"]').click();
+            assert.equal(await page.locator('[data-step-panel="2"]').isVisible(), true, "Extra work and counters required");
+            await page.locator(`#mtoV2Extra-${extraEquipment.id}-workPerformed`).fill("TRABAJO DIFERENTE DEL SEGUNDO SERIAL");
+            await page.locator(`#mtoV2Extra-${extraEquipment.id}-copiesAfter`).fill("250");
+            await page.locator(`#mtoV2Extra-${extraEquipment.id}-scansAfter`).fill("35");
+            if (process.env.COPIERS_UI_SAMPLE_PATH) await page.screenshot({ path: process.env.COPIERS_UI_SAMPLE_PATH, fullPage: true });
+        }
         await page.locator("#mtoV2EvidenceInput").setInputFiles({ name: "local-test.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6Ze0AAAAASUVORK5CYII=", "base64") });
         await page.locator('[data-next-step="3"]').click();
         await page.locator("#mtoV2SignerName").fill("FIRMA DE PRUEBA");
@@ -63,7 +78,21 @@ const server = http.createServer(async (req, res) => {
         const box = await page.locator("#mtoV2SignatureCanvas").boundingBox();
         await page.mouse.move(box.x + 30, box.y + 25); await page.mouse.down();
         for (let i = 1; i <= 15; i++) await page.mouse.move(box.x + 30 + i * 8, box.y + 25 + (i % 2) * 25);
-        await page.mouse.up(); await page.locator('[data-next-step="4"]').click();
+        await page.mouse.up();
+        const inkBeforePhoto = await page.locator("#mtoV2SignatureCanvas").evaluate(canvas => canvas.toDataURL());
+        const timeBeforePhoto = await page.locator("#mtoV2SignedAtUtc").inputValue();
+        const exitBeforePhoto = await page.locator("#mtoV2ServiceEndedAtUtc").inputValue();
+        const evidence = { name: "after-signature.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6Ze0AAAAASUVORK5CYII=", "base64") };
+        await page.locator("#mtoV2CameraInput").setInputFiles(evidence);
+        assert.equal(await page.locator("#mtoV2SignatureCanvas").evaluate(canvas => canvas.toDataURL()), inkBeforePhoto);
+        await page.locator('[data-remove-file="1"]').click();
+        await page.locator("#mtoV2EvidenceInput").setInputFiles(evidence);
+        await page.locator('[data-remove-file="1"]').click();
+        assert.equal(await page.locator("#mtoV2SignatureCanvas").evaluate(canvas => canvas.toDataURL()), inkBeforePhoto);
+        assert.equal(await page.locator("#mtoV2SignedAtUtc").inputValue(), timeBeforePhoto);
+        assert.equal(await page.locator("#mtoV2ServiceEndedAtUtc").inputValue(), exitBeforePhoto);
+        await page.locator('[data-next-step="4"]').click();
+        if (multi) assert.ok((await page.locator("#mtoV2Review").innerText()).includes("TRABAJO DIFERENTE DEL SEGUNDO SERIAL"));
         await page.locator("#mtoV2FinalReviewConfirmed").check();
         await page.waitForTimeout(600);
         const original = await page.evaluate(() => window.CopiersMtoV2Drafts.read("tenant/test-owner"));
@@ -79,10 +108,18 @@ const server = http.createServer(async (req, res) => {
         assert.equal(await page.locator("#mtoV2FileList img").count(), 1);
         assert.equal(await page.evaluate(async () => (await window.CopiersMtoV2Drafts.read("tenant/test-owner")).files[0].name), "local-test.png");
         assert.ok(Number(await page.locator("#mtoV2SignaturePointCount").inputValue()) >= 5);
+        if (multi) {
+            assert.equal(await page.locator(`#mtoV2Extra-${extraEquipment.id}-copiesAfter`).inputValue(), "250");
+            assert.equal(await page.locator(`#mtoV2Extra-${extraEquipment.id}-workPerformed`).inputValue(), "TRABAJO DIFERENTE DEL SEGUNDO SERIAL");
+        }
         await context.setOffline(true);
         await page.locator("#mtoV2SubmitButton").click();
         await page.waitForFunction(() => document.querySelector("#mtoV2SubmitStatus").textContent.includes("Pendiente de conexión"));
         assert.equal(posts, 0);
+        const frozen = await page.evaluate(() => window.CopiersMtoV2Drafts.read("tenant/test-owner"));
+        const extras = JSON.parse(frozen.pendingUpload.find(([name]) => name === "AdditionalEquipmentJson")?.[1] || "[]");
+        assert.equal(extras.length, multi ? 1 : 0);
+        if (multi) { assert.equal(extras[0].equipmentId, extraEquipment.id); assert.equal(extras[0].copiesAfter, 250); assert.equal(extras[0].workPerformed, "TRABAJO DIFERENTE DEL SEGUNDO SERIAL"); }
         await page.close(); await context.setOffline(false);
         page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await page.goto(base + "/CopiersMtoV2");
         await page.waitForFunction(() => document.querySelector("#mtoV2SubmitStatus").textContent.includes("fetch") || document.querySelector("#mtoV2SubmitStatus").textContent.includes("confirm"));
@@ -97,9 +134,10 @@ const server = http.createServer(async (req, res) => {
         await page.waitForFunction(() => document.querySelector("#mtoV2RecoveryStatus").textContent.includes("automáticamente"));
         assert.notEqual(await page.locator("#mtoV2SubmissionKey").inputValue(), key);
         assert.deepEqual(errors, []);
-        console.log(JSON.stringify({ passed: true, viewport: "800x1100 touch", checks: ["draft fields", "photos", "signature", "reload same key", "single editor", "offline close/reopen", "lost acknowledgement", "no duplicate upload", "email status", "create another"], productionWrites: 0 }));
+        console.log(JSON.stringify({ passed: true, multi, viewport: "800x1100 touch", checks: ["per-serial work and counters", "photo after signing preserves ink and times", "draft fields", "photos", "signature", "reload same key", "single editor", "offline close/reopen", "lost acknowledgement", "no duplicate upload", "email status", "create another"], productionWrites: 0 }));
     } catch (error) {
         console.error("Browser errors", errors);
+        for (const p of context.pages()) console.error("Additional equipment", await p.locator("#mtoV2AdditionalWork").textContent(), await p.locator("#mtoV2SelectedEquipment").textContent());
         for (const p of context.pages()) console.error(await p.locator("#mtoV2RecoveryStatus").textContent(), await p.locator("#mtoV2SubmitStatus").textContent());
         throw error;
     } finally { await context.close(); await browser.close(); server.close(); }

@@ -27,16 +27,41 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
         var signature = PdfJpeg.TryCreate(model.SignatureContent, model.SignatureContentType)
             ?? throw new CopiersMaintenanceV2ValidationException("signature_format_not_renderable",
                 "La firma debe recibirse como imagen JPEG para incluirla en el PDF.");
-        var document = new CompactLayout(model, signature, number);
-        return new() { FileName = $"{number}-Reporte-Servicio-Firmado.pdf", Content = document.Build() };
+        var extras = CopiersMultiEquipment.Read(model.Answers);
+        if (extras.Count == 0)
+            return new() { FileName = $"{number}-Reporte-Servicio-Firmado.pdf", Content = new CompactLayout(model, signature, number).Build() };
+        var pages = new List<PdfCanvas> { new CompactLayout(model, signature, number, 1, extras.Count + 1).BuildPage() };
+        foreach (var (item, index) in extras.Select((item, index) => (item, index)))
+        {
+            var replacements = new Dictionary<string, string> {
+                ["equipment_reference"] = item.Reference, ["counter_recorded_at"] = item.CounterDate,
+                ["copies_before"] = item.CopiesBefore?.ToString(CultureInfo.InvariantCulture) ?? "", ["copies_after"] = item.CopiesAfter?.ToString(CultureInfo.InvariantCulture) ?? "",
+                ["scans_before"] = item.ScansBefore?.ToString(CultureInfo.InvariantCulture) ?? "", ["scans_after"] = item.ScansAfter?.ToString(CultureInfo.InvariantCulture) ?? ""
+            };
+            var answers = model.Answers.Where(x => !replacements.ContainsKey(x.Key)).ToList();
+            answers.AddRange(replacements.Select(x => new CopiersMaintenanceV2FormAnswerSnapshot { Key = x.Key, Value = x.Value }));
+            var perEquipment = new CopiersMaintenanceV2PdfModel {
+                ServiceReference = model.ServiceReference, RecordId = model.RecordId, ClientName = model.ClientName,
+                CustomerContactName = model.CustomerContactName, EquipmentSerial = item.Serial, Title = model.Title,
+                ServiceDate = model.ServiceDate, TechnicianName = model.TechnicianName, FormVersion = model.FormVersion,
+                Answers = answers, WorkPerformed = item.WorkPerformed, CustomerObservations = model.CustomerObservations,
+                SignerName = model.SignerName, SignerRole = model.SignerRole, DeviceSignedAtUtc = model.DeviceSignedAtUtc,
+                ServerFinalizedAtUtc = model.ServerFinalizedAtUtc, SignatureContent = model.SignatureContent,
+                SignatureContentType = model.SignatureContentType, Attachments = model.Attachments
+            };
+            pages.Add(new CompactLayout(perEquipment, signature, number, index + 2, extras.Count + 1).BuildPage());
+        }
+        return new() { FileName = $"{number}-Reporte-Servicio-Firmado.pdf", Content = PdfBinaryWriter.Build(pages, signature, number, CompactWidth, CompactHeight, Letterhead.Value) };
     }
 
-    private sealed class CompactLayout(CopiersMaintenanceV2PdfModel model, PdfJpeg signature, string number)
+    private sealed class CompactLayout(CopiersMaintenanceV2PdfModel model, PdfJpeg signature, string number, int pageNumber = 1, int equipmentCount = 1)
     {
         private readonly PdfCanvas _page = new();
         private double _top = 121;
 
-        public byte[] Build()
+        public byte[] Build() => PdfBinaryWriter.Build([BuildPage()], signature, number, CompactWidth, CompactHeight, Letterhead.Value);
+
+        public PdfCanvas BuildPage()
         {
             var activityKind = model.FormVersion == CopiersActivityV2Bindings.FormVersion ? Answer("activity_kind").ToLowerInvariant() : "maintenance";
             if (model.FormVersion == CopiersActivityV2Bindings.FormVersion && activityKind is not ("movement" or "toner"))
@@ -60,7 +85,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             _top += 24;
 
             FullField("Cliente", model.ClientName);
-            PairFields("Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
+            PairFields(equipmentCount > 1 ? $"Serial {pageNumber}/{equipmentCount}" : "Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
             PairFields("Técnico", model.TechnicianName, "Atendió", model.CustomerContactName);
             FullField("Correo", Answer("onsite_email"));
             if (activityKind == "maintenance")
@@ -89,7 +114,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             DrawSignature(activityKind);
             DrawAttachments();
             EnsureSpace(0);
-            return PdfBinaryWriter.Build([_page], signature, number, CompactWidth, CompactHeight, Letterhead.Value);
+            return _page;
         }
 
         private string Answer(string key) => model.Answers.FirstOrDefault(x => x.Key == key)?.Value?.Trim() ?? "";
@@ -196,6 +221,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 _ => "Revisé este reporte y recibí explicación del trabajo realizado. Mi firma deja constancia de la atención y de la información consignada."
             };
             var consentLines = Wrap(consent, textWidth, 8.2);
+            if (equipmentCount > 1) consentLines = Wrap($"Revisé los {equipmentCount} equipos relacionados. Esta firma corresponde a la visita completa y deja constancia de la atención y del trabajo explicado.", textWidth, 8.2);
             var nameLines = Wrap($"{model.SignerName} - {model.SignerRole}".Trim(' ', '-'), textWidth, 9);
             var height = 19 + consentLines.Count * 10 + nameLines.Count * 11 + 15;
             height = Math.Max(78, height);

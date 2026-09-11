@@ -168,6 +168,17 @@
                     <button class="btn btn-outline-primary btn-sm" type="button" id="mtoV2RetryEquipment" hidden>Reintentar equipos</button>
                 </div>
 
+                <section class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance" id="mtoV2MultiEquipment">
+                    <label for="mtoV2AdditionalEquipment">Agregar otro equipo del cliente</label>
+                    <div class="mto-v2-client-picker">
+                        <select class="form-select" id="mtoV2AdditionalEquipment"><option value="">Selecciona primero el equipo principal</option></select>
+                        <button class="btn btn-outline-primary" type="button" id="mtoV2AddEquipment">Agregar equipo</button>
+                    </div>
+                    <div id="mtoV2SelectedEquipment" role="list" aria-label="Equipos adicionales seleccionados"></div>
+                    <small>Hasta diez equipos. El trabajo y los contadores se diligencian por serial.</small>
+                    <input type="hidden" name="AdditionalEquipmentJson" id="mtoV2AdditionalEquipmentJson" value="[]" />
+                </section>
+
                 <label class="mto-v2-field" data-activity-panel="movement" hidden>
                     <span>Cliente de origen</span>
                     <input class="form-control" type="text" id="mtoV2OriginClientName" readonly placeholder="Se completa al seleccionar el equipo" />
@@ -231,7 +242,7 @@
                 </label>
 
                 <label class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance">
-                    <span>Trabajo realizado <b aria-hidden="true">*</b></span>
+                    <span>Trabajo realizado <b aria-hidden="true">*</b> <strong id="mtoV2PrimaryEquipmentLabel"></strong></span>
                     <textarea class="form-control" name="WorkPerformed" id="mtoV2WorkPerformed" rows="4" required maxlength="1000" aria-describedby="mtoV2WorkPerformedCount"></textarea>
                     <small id="mtoV2WorkPerformedCount" data-character-count-for="mtoV2WorkPerformed">0 / 1000 caracteres · Resume el servicio para el reporte de una página.</small>
                 </label>
@@ -302,6 +313,7 @@
             </section>
 
             <div class="mto-v2-grid">
+                <div class="mto-v2-field--wide" id="mtoV2AdditionalWork" data-activity-panel="maintenance"></div>
                 <label class="mto-v2-field mto-v2-field--wide" data-activity-panel="maintenance">
                     <span>Recomendaciones al cliente</span>
                     <textarea class="form-control" name="Recommendations" id="mtoV2Recommendations" rows="2" maxlength="250" aria-describedby="mtoV2RecommendationsCount"></textarea>
@@ -367,6 +379,10 @@
             </div>
 
             <section class="mto-v2-signature-card" aria-labelledby="mtoV2SignatureTitle">
+                <details class="mb-3" data-activity-panel="maintenance">
+                    <summary>Revisar el trabajo y los equipos incluidos en esta firma</summary>
+                    <div id="mtoV2SignatureEquipment"></div>
+                </details>
                 <dl class="mto-v2-visit-times" aria-label="Horario del servicio que firma el cliente">
                     <div><dt>Hora de entrada</dt><dd id="mtoV2SignatureStartedAt">Pendiente</dd></div>
                     <div><dt>Hora de salida</dt><dd id="mtoV2SignatureEndedAt">Pendiente</dd></div>

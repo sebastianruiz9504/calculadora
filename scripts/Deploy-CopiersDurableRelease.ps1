@@ -5,10 +5,10 @@ $ErrorActionPreference='Stop'
 $release=Get-Content -Raw (Join-Path $ReleaseRoot 'release-manifest.json')|ConvertFrom-Json -Depth 40
 $scm='https://calculadoradt-asduazh5e0bhhsgm.scm.eastus2-01.azurewebsites.net'
 $subscription='7018b9b6-5dfc-4d91-bc4d-5f29f27553bd'
-if($release.ScmBaseUrl -ne $scm -or $release.SubscriptionId -ne $subscription -or $release.BaselineDeploymentId -ne '994f95c1629949d1bce1e3713f900c8e' -or $release.Files.Count -ne 9 -or $release.ConfigurationChanges){throw 'Unapproved release manifest.'}
+if($release.ScmBaseUrl -ne $scm -or $release.SubscriptionId -ne $subscription -or $release.BaselineDeploymentId -ne '9e70bf8222b8454ab1466d1fd1b75e84' -or $release.Files.Count -ne 9 -or $release.ConfigurationChanges){throw 'Unapproved release manifest.'}
 if((Get-FileHash $release.ZipPath).Hash -ne $release.ZipSha256 -or (Get-FileHash $release.RollbackZip).Hash -ne $release.RollbackSha256){throw 'Package changed.'}
 if((git -c maintenance.auto=false -c gc.auto=0 -C $release.SourceRoot rev-parse HEAD).Trim() -ne $release.SourceCommit -or (git -c maintenance.auto=false -c gc.auto=0 -C $release.SourceRoot status --porcelain)){throw 'Source changed after validation.'}
-$expected=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb','CotizadorInterno.Web.staticwebassets.endpoints.json','wwwroot/js/copiers-mto-v2.js','wwwroot/js/copiers-mto-v2.js.br','wwwroot/js/copiers-mto-v2.js.gz','wwwroot/js/copiers-mto-v2-drafts.js','wwwroot/js/copiers-mto-v2-drafts.js.br','wwwroot/js/copiers-mto-v2-drafts.js.gz')
+$expected=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb','CotizadorInterno.Web.staticwebassets.endpoints.json','wwwroot/js/copiers-mto-v2.js','wwwroot/js/copiers-mto-v2.js.br','wwwroot/js/copiers-mto-v2.js.gz','wwwroot/js/copiers-mto-v2-calendar.js','wwwroot/js/copiers-mto-v2-calendar.js.br','wwwroot/js/copiers-mto-v2-calendar.js.gz')
 $archive=[IO.Compression.ZipFile]::OpenRead($release.ZipPath)
 try{
     if(Compare-Object @($archive.Entries.FullName|ForEach-Object{$_.Replace('\','/')}|Sort-Object) @($expected|Sort-Object)){throw 'Unexpected ZIP contents.'}

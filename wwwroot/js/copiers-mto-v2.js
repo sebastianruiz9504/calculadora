@@ -71,6 +71,7 @@
         serviceEndedAtUtc: document.getElementById("mtoV2ServiceEndedAtUtc"),
         signatureStartedAt: document.getElementById("mtoV2SignatureStartedAt"),
         signatureEndedAt: document.getElementById("mtoV2SignatureEndedAt"),
+        signatureEquipment: document.getElementById("mtoV2SignatureEquipment"),
         submittedAtUtc: document.getElementById("mtoV2SubmittedAtUtc"),
         serviceStartedAtLocal: document.getElementById("mtoV2ServiceStartedAtLocal"),
         latitude: document.getElementById("mtoV2Latitude"),
@@ -128,6 +129,7 @@
         currentStep: 1,
         maxUnlockedStep: 1,
         files: [],
+        additionalEquipment: [],
         previewUrls: [],
         submitting: false,
         submissionAttempted: false,
@@ -209,6 +211,11 @@
                 elements.copiesBeforeDate.textContent = state.counters.dateDisplay || "Sin registro previo";
                 elements.scansBeforeDate.textContent = state.counters.dateDisplay || "Sin registro previo";
                 changeActivityType();
+                renderAdditionalEquipment();
+                for (const item of state.additionalEquipment) {
+                    item.loading = false;
+                    if (!item.loaded && !state.pendingUpload && !state.receiptKey) void loadAdditionalCounters(item);
+                }
                 renderClientOptions(); renderEquipmentOptions(); renderFiles(); redrawSignature(); updateSignatureState();
                 updateNarrativeCounts(); updateProgressAvailability();
                 showStep(saved.state.currentStep || 1, { scroll: false });
@@ -279,7 +286,7 @@
     }
 
     function recoverySnapshot() {
-        const keys = ["currentStep", "maxUnlockedStep", "submissionAttempted", "submissionScope", "locationAttempted", "activityType", "equipmentCatalog", "supplies", "counters"];
+        const keys = ["currentStep", "maxUnlockedStep", "submissionAttempted", "submissionScope", "locationAttempted", "activityType", "equipmentCatalog", "supplies", "counters", "additionalEquipment"];
         return { version: 1, savedAt: new Date().toISOString(),
             controls: Array.from(form.querySelectorAll("input[id],select[id],textarea[id]"))
                 .filter(x => x.type !== "file" && x.name !== "__RequestVerificationToken")
@@ -670,6 +677,8 @@
         state.equipmentCatalog.allowExternalEquipment = false;
         state.catalog.equipment = [];
         state.catalog.selectedEquipment = null;
+        state.additionalEquipment = [];
+        renderAdditionalEquipment();
         elements.equipmentSerial.value = "";
         elements.equipmentId.value = "";
         elements.originClientId.value = "";
@@ -943,6 +952,7 @@
     }
 
     function renderEquipmentOptions() {
+        renderAdditionalEquipment();
         const clientId = state.catalog.selectedClient?.id || "";
         const filtered = clientId
             ? state.catalog.equipment.filter(item => activityKind() === "movement" || sameCatalogId(item.clientId, clientId))
@@ -978,11 +988,15 @@
         const value = catalogKey(elements.equipmentSerial?.value);
         const matches = state.catalog.equipment.filter(item =>
             (activityKind() === "movement" || sameCatalogId(item.clientId, clientId)) && catalogKey(item.serial) === value);
-        const selected = matches.find(item => sameCatalogId(item.id, preferredId))
+        let selected = matches.find(item => sameCatalogId(item.id, preferredId))
             || matches.find(item => sameCatalogId(item.id, state.catalog.selectedEquipment?.id))
             || (matches.length === 1 ? matches[0] : null);
 
+        // Do not discard work already entered for an additional equipment merely
+        // because its serial is typed into the primary picker.
+        if (state.additionalEquipment.some(item => sameCatalogId(item.equipmentId, selected?.id))) selected = null;
         state.catalog.selectedEquipment = selected;
+        renderAdditionalEquipment();
         elements.equipmentId.value = selected?.id || "";
         elements.originClientId.value = activityKind() === "movement" ? selected?.clientId || "" : "";
         elements.originClientName.value = activityKind() === "movement" && selected ? selected.clientName || "Stock" : "";
@@ -996,6 +1010,109 @@
             setCatalogFeedback(elements.equipmentFeedback, "Selecciona un equipo de la lista de este cliente.", "error");
         }
         syncCounterSelection();
+    }
+
+    function renderAdditionalEquipment() {
+        const select = document.getElementById("mtoV2AdditionalEquipment");
+        const list = document.getElementById("mtoV2SelectedEquipment");
+        const work = document.getElementById("mtoV2AdditionalWork");
+        if (!select || !list || !work) return;
+        const primary = state.catalog.selectedEquipment;
+        document.getElementById("mtoV2PrimaryEquipmentLabel").textContent = primary ? `· ${primary.serial}` : "";
+        const candidates = state.catalog.equipment.filter(x => sameCatalogId(x.clientId, state.catalog.selectedClient?.id)
+            && !sameCatalogId(x.id, primary?.id) && !state.additionalEquipment.some(y => sameCatalogId(y.equipmentId, x.id)));
+        const empty = document.createElement("option"); empty.value = "";
+        empty.textContent = primary ? "Selecciona otro serial" : "Selecciona primero el equipo principal";
+        replaceContents(select, empty, ...candidates.map(x => { const option = document.createElement("option"); option.value = x.id; option.textContent = `${x.serial} · ${x.reference}`; return option; }));
+        document.getElementById("mtoV2AddEquipment").disabled = !primary || !candidates.length || state.additionalEquipment.length >= 9 || state.submitting || !!state.pendingUpload || !!state.receiptKey;
+        replaceContents(list); replaceContents(work);
+        for (const item of state.additionalEquipment) {
+            const chip = document.createElement("div"); chip.setAttribute("role", "listitem"); chip.className = "d-flex align-items-center gap-2 mt-2";
+            const label = document.createElement("strong"); label.textContent = item.serial;
+            const remove = document.createElement("button"); remove.type = "button"; remove.className = "btn btn-outline-secondary btn-sm";
+            remove.textContent = `Quitar ${item.serial}`;
+            remove.addEventListener("click", () => {
+                if (state.submitting || state.pendingUpload || state.receiptKey) return;
+                state.additionalEquipment = state.additionalEquipment.filter(x => x !== item);
+                invalidateSignatureForChange(); renderAdditionalEquipment(); scheduleRecovery();
+            });
+            chip.append(label, remove); list.append(chip);
+            const card = document.createElement("section"); card.className = "mto-v2-subcard mt-3";
+            const heading = document.createElement("h3"); heading.textContent = `Equipo ${item.serial}`;
+            const reference = document.createElement("p"); reference.textContent = item.reference;
+            card.append(heading, reference);
+            const field = (key, title, numeric = false) => {
+                const wrapper = document.createElement("label"); wrapper.className = "mto-v2-field mb-3";
+                const caption = document.createElement("span"); caption.textContent = `${title} · ${item.serial} *`;
+                const control = document.createElement(numeric ? "input" : "textarea");
+                control.className = "form-control"; control.id = `mtoV2Extra-${item.equipmentId}-${key}`;
+                control.required = true; control.value = item[key] ?? "";
+                control.disabled = activityKind() !== "maintenance" || state.submitting || !!state.pendingUpload || !!state.receiptKey;
+                if (numeric) { control.type = "number"; control.min = "0"; control.max = "2147483647"; control.step = "1"; control.inputMode = "numeric"; }
+                else { control.rows = 4; control.maxLength = 1000; }
+                control.addEventListener("input", () => {
+                    item[key] = numeric ? (control.value === "" ? null : Number(control.value)) : control.value;
+                    control.setCustomValidity(""); clearStatus(elements.status); invalidateSignatureForChange(); scheduleRecovery();
+                });
+                wrapper.append(caption, control); card.append(wrapper);
+            };
+            field("workPerformed", "Trabajo realizado");
+            const prior = document.createElement("small"); prior.className = "d-block mb-2";
+            prior.textContent = item.loaded ? `Lectura anterior (${item.counterDate || "sin registro"}): impresión ${item.copiesBefore ?? "—"} · escaneo ${item.scansBefore ?? "—"}`
+                : item.error || "Consultando el último contador…";
+            prior.setAttribute("role", "status"); card.append(prior);
+            if (!item.loaded && !item.loading) {
+                const retry = document.createElement("button"); retry.type = "button"; retry.className = "btn btn-outline-primary mb-2";
+                retry.textContent = `Reintentar contadores ${item.serial}`; retry.addEventListener("click", () => { void loadAdditionalCounters(item); }); card.append(retry);
+            }
+            field("copiesAfter", "Impresiones actuales", true); field("scansAfter", "Escaneos actuales", true);
+            work.append(card);
+        }
+    }
+
+    function addEquipment() {
+        if (activityKind() !== "maintenance" || !state.catalog.selectedEquipment || state.submitting || state.pendingUpload || state.receiptKey) return;
+        const id = document.getElementById("mtoV2AdditionalEquipment").value;
+        const equipment = state.catalog.equipment.find(x => sameCatalogId(x.id, id) && sameCatalogId(x.clientId, state.catalog.selectedClient?.id));
+        if (!equipment || sameCatalogId(equipment.id, state.catalog.selectedEquipment.id)
+            || state.additionalEquipment.some(x => sameCatalogId(x.equipmentId, equipment.id)) || state.additionalEquipment.length >= 9) return;
+        const item = { equipmentId: equipment.id, serial: equipment.serial, reference: equipment.reference || "", workPerformed: "",
+            counterRecordId: "", counterDate: "", copiesBefore: null, scansBefore: null, copiesAfter: null, scansAfter: null, loaded: false, loading: false };
+        state.additionalEquipment.push(item); invalidateSignatureForChange(); renderAdditionalEquipment(); scheduleRecovery();
+        void loadAdditionalCounters(item);
+    }
+
+    async function loadAdditionalCounters(item) {
+        if (item.loading || state.pendingUpload || state.receiptKey) return;
+        item.loading = true; item.error = "";
+        const clientId = state.catalog.selectedClient?.id;
+        try {
+            const reading = await fetchCounterLatest(clientId, item.equipmentId);
+            if (!sameCatalogId(clientId, state.catalog.selectedClient?.id) || !state.additionalEquipment.includes(item)) return;
+            if (!sameCatalogId(reading.equipmentId ?? reading.EquipmentId, item.equipmentId)) throw new Error("La lectura corresponde a otro equipo. Reintenta la consulta.");
+            item.counterRecordId = reading.recordId ?? reading.RecordId ?? "";
+            item.counterDate = reading.dateValue ?? reading.DateValue ?? "";
+            const copies = normalizeCounterValue(reading.copiesCounter ?? reading.CopiesCounter);
+            const scans = normalizeCounterValue(reading.scansCounter ?? reading.ScansCounter);
+            item.copiesBefore = copies === "" ? null : Number(copies); item.scansBefore = scans === "" ? null : Number(scans);
+            item.loaded = true;
+        } catch (error) { item.error = error instanceof Error ? error.message : "No fue posible consultar el contador."; }
+        finally {
+            item.loading = false;
+            if (state.additionalEquipment.includes(item)) { renderAdditionalEquipment(); scheduleRecovery(); }
+        }
+    }
+
+    function validateAdditionalEquipment() {
+        for (const item of state.additionalEquipment) {
+            if (!item.loaded || !item.workPerformed.trim() || !Number.isInteger(item.copiesAfter) || !Number.isInteger(item.scansAfter)
+                || item.copiesAfter < (item.copiesBefore ?? 0) || item.scansAfter < (item.scansBefore ?? 0)
+                || item.copiesAfter > 2147483647 || item.scansAfter > 2147483647) {
+                setStatus(elements.status, "error", `Completa el trabajo y los contadores actuales del serial ${item.serial}.`);
+                return false;
+            }
+        }
+        return true;
     }
 
     function updateNarrativeCounts() {
@@ -1256,6 +1373,7 @@
         elements.cameraInput?.addEventListener("change", handleEvidenceSelection);
         elements.fileList?.addEventListener("click", handleFileListClick);
         elements.clearSignature?.addEventListener("click", clearSignature);
+        document.getElementById("mtoV2AddEquipment")?.addEventListener("click", addEquipment);
         form.addEventListener("submit", submitForm);
         window.addEventListener("pagehide", () => {
             stopEmailStatusPolling();
@@ -1309,6 +1427,7 @@
             renderReview();
         } else if (normalizedStep === 3) {
             updateVisitTimes(true);
+            if (elements.signatureEquipment) replaceContents(elements.signatureEquipment, buildActivityReviewSection());
             resizeSignatureCanvas();
         }
 
@@ -1324,6 +1443,7 @@
         if (step === 2 && activityKind() === "maintenance" && !validateCounters()) {
             return false;
         }
+        if (step === 2 && activityKind() === "maintenance" && !validateAdditionalEquipment()) return false;
         if (step === 2 && activityKind() === "toner") prepareSupplyValidity();
 
         const panel = getPanel(step);
@@ -1540,15 +1660,13 @@
             input.value = "";
         }
         renderFiles();
-        const signatureInvalidated = state.files.length !== initialFileCount && invalidateSignatureForChange();
+        if (state.files.length !== initialFileCount) elements.finalReviewConfirmed.checked = false;
 
         if (errors.length) {
             setStatus(
                 elements.status,
                 "error",
-                `${errors.join(" ")}${signatureInvalidated ? " La firma anterior se invalidó porque cambiaron los adjuntos." : ""}`);
-        } else if (signatureInvalidated) {
-            // El aviso de nueva firma reemplaza el estado neutro de carga.
+                errors.join(" "));
         } else {
             clearStatus(elements.status);
         }
@@ -1568,7 +1686,7 @@
         if (Number.isInteger(index) && index >= 0 && index < state.files.length) {
             state.files.splice(index, 1);
             renderFiles();
-            invalidateSignatureForChange();
+            elements.finalReviewConfirmed.checked = false;
         }
     }
 
@@ -1859,7 +1977,7 @@
         replaceContents(elements.review,
             buildReviewSection("Servicio", [
                 reviewItem("Cliente", valueOf("mtoV2ClientName")),
-                reviewItem("Equipo", valueOf("mtoV2EquipmentSerial")),
+                reviewItem("Equipo", [valueOf("mtoV2EquipmentSerial"), ...state.additionalEquipment.map(item => item.serial)].join(" · ")),
                 reviewItem("Referencia del equipo", state.catalog.selectedEquipment?.reference || ""),
                 reviewItem("Orden o referencia", valueOf("mtoV2ServiceReference") || "Se asigna al enviar"),
                 reviewItem("Hora de entrada", formatLocalDateTime(valueOf("mtoV2ServiceStartedAtUtc"))),
@@ -1889,8 +2007,9 @@
         return buildReviewSection("Trabajo técnico", [
                 reviewItem("Tipo", selectedText("mtoV2MaintenanceType")),
                 reviewItem("Resultado", selectedText("mtoV2ServiceResult")),
-                reviewItem("Trabajo realizado", valueOf("mtoV2WorkPerformed"), true),
+                reviewItem(`Trabajo realizado · ${valueOf("mtoV2EquipmentSerial")}`, valueOf("mtoV2WorkPerformed"), true),
                 reviewItem("Contadores", buildCountersSummary(), true),
+                ...state.additionalEquipment.map(item => reviewItem(`Equipo ${item.serial}`, `${item.workPerformed}\nContadores actuales: impresión ${item.copiesAfter}; escaneo ${item.scansAfter}. Lectura anterior (${item.counterDate || "sin registro"}): impresión ${item.copiesBefore ?? "—"}; escaneo ${item.scansBefore ?? "—"}.`, true)),
                 reviewItem("Recomendaciones", valueOf("mtoV2Recommendations"), true),
                 reviewItem("Observaciones del cliente", valueOf("mtoV2CustomerObservations"), true)
             ]);
@@ -1975,6 +2094,8 @@
             ? `${activityLabel()} ${reference} · ${client}`
             : `${activityLabel()} ${equipment} · ${client}`).slice(0, 250);
         elements.answersJson.value = JSON.stringify(buildStructuredAnswers());
+        const additional = document.getElementById("mtoV2AdditionalEquipmentJson");
+        if (additional) additional.value = JSON.stringify(activityKind() === "maintenance" ? state.additionalEquipment.map(({ loaded, loading, error, ...item }) => item) : []);
     }
 
     function buildStructuredAnswers() {

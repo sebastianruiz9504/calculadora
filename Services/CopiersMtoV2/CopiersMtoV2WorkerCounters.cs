@@ -29,7 +29,7 @@ public sealed class CopiersMtoV2WorkerCounters(ICopiersMtoV2ApplicationDataverse
             || c.PreviousCopiesCounter is < 0 or > int.MaxValue || c.PreviousScansCounter is < 0 or > int.MaxValue
             || c.FinalizationFingerprint.Length != 64 || !c.FinalizationFingerprint.All(Uri.IsHexDigit))
             throw new CopiersMaintenanceV2ValidationException("counter_invalid", "Los contadores del reporte no son válidos.");
-        var id = DataverseService.BuildCopiersMtoV2CounterRecordId(c.MaintenanceRecordId);
+        var id = DataverseService.BuildCopiersMtoV2CounterRecordId(c.MaintenanceRecordId, c.AdditionalEquipmentScope);
         if (string.IsNullOrWhiteSpace(c.PreviousCounterRecordId))
         {
             if (c.PreviousCopiesCounter.HasValue || c.PreviousScansCounter.HasValue || !string.IsNullOrWhiteSpace(c.PreviousDateValue))
@@ -58,7 +58,7 @@ public sealed class CopiersMtoV2WorkerCounters(ICopiersMtoV2ApplicationDataverse
 
     public async Task<CopiersMtoV2CounterSaveResult> SaveForMaintenanceAsync(CopiersMtoV2CounterSaveCommand c, CancellationToken ct = default)
     {
-        var id = DataverseService.BuildCopiersMtoV2CounterRecordId(c.MaintenanceRecordId);
+        var id = DataverseService.BuildCopiersMtoV2CounterRecordId(c.MaintenanceRecordId, c.AdditionalEquipmentScope);
         if (await ValidateForMaintenanceAsync(c, ct)) return new(id, true);
         using var body = JsonContent.Create(new Dictionary<string, object?> {
             ["cr07a_contadoresid"] = id,

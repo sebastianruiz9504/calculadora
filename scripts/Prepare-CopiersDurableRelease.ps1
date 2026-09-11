@@ -5,25 +5,25 @@ $ErrorActionPreference='Stop'
 $sourceRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $commit=(git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot rev-parse HEAD).Trim()
 if(git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot status --porcelain){throw 'Candidate is not frozen.'}
-$baseline='1b2b64956d5588857487c0b0da1984182ad48c53'
-$deployment='994f95c1629949d1bce1e3713f900c8e'
-$dllHash='524346072F1B60BCC2074305CAE619F12440796B23F402F940103CB38509DEC4'
-$manifestHash='D84871D0E706E17274438ED9423112E4F004B8C59298452191334E73F061A54A'
+$baseline='5dd13452dc9a20d8587f707156d43f8a93259f7c'
+$deployment='9e70bf8222b8454ab1466d1fd1b75e84'
+$dllHash='94C998627500A56630CE30282AC63C1603D273BB7D2B6FBC8FD2DA4E7F7CDF08'
+$manifestHash='60BCB1E2295B9A36B81F129E2C11F47AFCD260C4C9D1E46A2101D82F5C673607'
 $scm='https://calculadoradt-asduazh5e0bhhsgm.scm.eastus2-01.azurewebsites.net'
 $subscription='7018b9b6-5dfc-4d91-bc4d-5f29f27553bd'
 git -c maintenance.auto=false -c gc.auto=0 -C $sourceRoot merge-base --is-ancestor $baseline $commit
 if($LASTEXITCODE){throw 'Candidate does not descend from production.'}
 $version=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $PublishRoot 'CotizadorInterno.Web.dll')).ProductVersion
 if($version -ne "1.0.0+$commit"){throw 'Publish does not identify candidate commit.'}
-$releaseRoot=Join-Path $ArtifactRoot ($commit.Substring(0,8)+'-durable')
+$releaseRoot=Join-Path $ArtifactRoot ($commit.Substring(0,8)+'-multi')
 if(Test-Path -LiteralPath $releaseRoot){throw 'Release directory already exists.'}
 $package=Join-Path $releaseRoot 'package';$before=Join-Path $releaseRoot 'baseline';$rollback=Join-Path $releaseRoot 'rollback'
 New-Item -ItemType Directory -Path $package,$before,$rollback -Force|Out-Null
 $manifest='CotizadorInterno.Web.staticwebassets.endpoints.json'
-$assets=@('wwwroot/js/copiers-mto-v2.js','wwwroot/js/copiers-mto-v2-drafts.js')
+$assets=@('wwwroot/js/copiers-mto-v2.js','wwwroot/js/copiers-mto-v2-calendar.js')
 $names=@('CotizadorInterno.Web.dll','CotizadorInterno.Web.pdb',$manifest)+@($assets|ForEach-Object{$_;"$_.br";"$_.gz"})
-$newNames=@('wwwroot/js/copiers-mto-v2-drafts.js','wwwroot/js/copiers-mto-v2-drafts.js.br','wwwroot/js/copiers-mto-v2-drafts.js.gz')
-$preserved=@('appsettings.json','web.config','CotizadorInterno.Web.deps.json','CotizadorInterno.Web.runtimeconfig.json','wwwroot/js/dashboard.js','wwwroot/js/support-cloud-surveys.js','wwwroot/js/copiers-mto-v2-picker.js','wwwroot/js/copiers-mto-v2-calendar.js')
+$newNames=@()
+$preserved=@('appsettings.json','web.config','CotizadorInterno.Web.deps.json','CotizadorInterno.Web.runtimeconfig.json','wwwroot/js/dashboard.js','wwwroot/js/support-cloud-surveys.js','wwwroot/js/copiers-mto-v2-picker.js','wwwroot/js/copiers-mto-v2-drafts.js')
 $token=az account get-access-token --subscription $subscription --resource https://management.azure.com/ --query accessToken -o tsv
 if($LASTEXITCODE -or !$token){throw 'No Azure session.'}
 $headers=@{Authorization='Bearer '+$token}
@@ -72,4 +72,4 @@ $zip=Join-Path $releaseRoot 'production.zip';$undo=Join-Path $releaseRoot 'rollb
 [IO.Compression.ZipFile]::CreateFromDirectory($package,$zip);[IO.Compression.ZipFile]::CreateFromDirectory($rollback,$undo)
 $result=[ordered]@{SourceCommit=$commit;SourceRoot=$sourceRoot;BaselineCommit=$baseline;BaselineDeploymentId=$deployment;BaselineDllSha256=$dllHash;ScmBaseUrl=$scm;SubscriptionId=$subscription;ResourceGroup='DigitalTechAppAI';AppName='calculadoradt';ZipPath=$zip;ZipSha256=(Get-FileHash $zip).Hash;RollbackZip=$undo;RollbackSha256=(Get-FileHash $undo).Hash;Files=(File-Manifest $package $names);BaselineFiles=(File-Manifest $before @($names|Where-Object{$_ -notin $newNames}));PreservedFiles=(File-Manifest $before $preserved);PreservedEndpoints=$keep.Count;UpdatedEndpoints=$replacement.Count;ConfigurationChanges=$false;RuntimeDependenciesMatchProduction=$true;CompressionVerified=$true}
 $result|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $releaseRoot 'release-manifest.json') -Encoding utf8
-$result|Select-Object SourceCommit,ZipPath,ZipSha256,PreservedEndpoints,UpdatedEndpoints|ConvertTo-Json
+[pscustomobject]$result|Select-Object SourceCommit,ZipPath,ZipSha256,PreservedEndpoints,UpdatedEndpoints|ConvertTo-Json

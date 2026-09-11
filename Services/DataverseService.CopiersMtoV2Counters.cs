@@ -209,7 +209,7 @@ public sealed partial class DataverseService : ICopiersMtoV2CounterService
             throw new CopiersMaintenanceV2ValidationException("counter_out_of_range", "Los contadores deben ser enteros entre 0 y 2147483647.");
         if (command.ReadingAtUtc.Year is < 2000 or > 2100)
             throw new CopiersMaintenanceV2ValidationException("counter_date_invalid", "La fecha del contador no es válida.");
-        var counterId = BuildCopiersMtoV2CounterRecordId(maintenanceId);
+        var counterId = BuildCopiersMtoV2CounterRecordId(maintenanceId, command.AdditionalEquipmentScope);
         var keyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..16].ToLowerInvariant();
         // The existing column is UserLocal DateAndTime, not DateOnly. Preserve
         // the real visit timestamp (whole seconds), and derive display in Bogotá.
@@ -221,9 +221,11 @@ public sealed partial class DataverseService : ICopiersMtoV2CounterService
             $"MTO V2 {Guid.Parse(maintenanceId):N} {keyHash} {fingerprint.ToLowerInvariant()}");
     }
 
-    internal static string BuildCopiersMtoV2CounterRecordId(string maintenanceRecordId)
+    internal static string BuildCopiersMtoV2CounterRecordId(string maintenanceRecordId, string additionalEquipmentScope = "")
     {
         var canonicalId = Guid.Parse(maintenanceRecordId).ToString("D").ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(additionalEquipmentScope))
+            canonicalId += "/equipment/" + Guid.Parse(additionalEquipmentScope).ToString("D").ToLowerInvariant();
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes("digitaltech/copiers-mto-v2/counter/" + canonicalId));
         return new Guid(bytes.AsSpan(0, 16)).ToString("D");
     }

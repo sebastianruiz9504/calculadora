@@ -160,6 +160,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 answers = CopiersMtoV2CompactCapture.Canonicalize(request, begin.Record, answers);
             if (activityForm)
                 answers = CopiersActivityV2Capture.Canonicalize(request, begin.Record, answers);
+            answers = CopiersMultiEquipment.Append(request, begin.Record, answers);
             var workPerformed = CopiersMaintenanceV2Validation.Required(
                 request.WorkPerformed,
                 "work_performed_required",
@@ -223,6 +224,7 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             var matchesPersistedFingerprint = !string.IsNullOrWhiteSpace(begin.Record.FinalizationFingerprint)
                 && string.Equals(begin.Record.FinalizationFingerprint, finalizationFingerprint, StringComparison.OrdinalIgnoreCase);
             CopiersMtoV2CounterSaveCommand? counterCommand = null;
+            var extraCounters = new List<CopiersMtoV2CounterSaveCommand>();
             var matchesPersistedCounterFingerprint = false;
             if (compactForm && !isReadyReplay && !string.IsNullOrWhiteSpace(begin.Record.EquipmentId))
             {
@@ -233,6 +235,12 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 // fingerprint. An uncertain completion before MTO staging can
                 // therefore replay the exact capture even after its age limit.
                 matchesPersistedCounterFingerprint = await _counters.ValidateForMaintenanceAsync(counterCommand, ct);
+                foreach (var item in CopiersMultiEquipment.Read(answers))
+                {
+                    var command = CopiersMultiEquipment.Counter(item, begin.Record, request.ServiceEndedAtUtc.Value, finalizationFingerprint);
+                    extraCounters.Add(command);
+                    matchesPersistedCounterFingerprint |= await _counters.ValidateForMaintenanceAsync(command, ct);
+                }
             }
             CopiersActivityV2BusinessCommand? businessCommand = null;
             var matchesPersistedBusiness = false;
@@ -309,6 +317,8 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
             // completion safe without inserting a second reading.
             if (counterCommand is not null)
                 await _counters!.SaveForMaintenanceAsync(counterCommand, ct);
+            foreach (var command in extraCounters)
+                await _counters!.SaveForMaintenanceAsync(command, ct);
             if (businessCommand is not null)
                 await _business!.CommitAsync(businessCommand, signedReport, ct);
             var completed = await _repository.CompleteFinalizationAsync(new CopiersMaintenanceV2CompleteFinalizationCommand

@@ -76,6 +76,7 @@ public sealed class CopiersMaintenanceV2FinalizeMultipartRequestDto
     public string ExpectedVersion { get; set; } = "";
     public string FormVersion { get; set; } = "";
     public string AnswersJson { get; set; } = "[]";
+    public string AdditionalEquipmentJson { get; set; } = "[]";
     public string WorkPerformed { get; set; } = "";
     public string CustomerObservations { get; set; } = "";
     public string CustomerContactName { get; set; } = "";

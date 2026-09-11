@@ -15,6 +15,7 @@ public sealed class CopiersMtoV2CounterReadingDto
 public sealed class CopiersMtoV2CounterSaveCommand
 {
     public string MaintenanceRecordId { get; init; } = "";
+    public string AdditionalEquipmentScope { get; init; } = "";
     public string SubmissionKey { get; init; } = "";
     public string FinalizationFingerprint { get; init; } = "";
     public string ClientId { get; init; } = "";

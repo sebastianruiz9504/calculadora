@@ -1450,11 +1450,40 @@ public sealed class CopiersMaintenanceV2Tests
         }
     }
 
+    [Fact]
+    public async Task MultiEquipment_PartialCounterFailureRetriesSameVisitWithoutDuplicatingCountersOrEmail()
+    {
+        var repository = new FakeRepository(CreateDraftRecord());
+        var pdf = new CapturingPdfBuilder();
+        var counters = new IdempotentCounterService { FailAdditionalOnce = true };
+        CopiersMaintenanceV2FinalizeMultipartRequestDto Request(string work = "Trabajo del segundo serial") {
+            var request = CreateCompactFinalizeRequest();
+            request.AdditionalEquipmentJson = JsonSerializer.Serialize(new[] { new CopiersMultiEquipment.Item {
+                EquipmentId = "33333333-3333-4333-8333-333333333333", Serial = "MULTI-SECOND", Reference = "TEST", WorkPerformed = work, CopiesAfter = 250, ScansAfter = 35
+            }});
+            return request;
+        }
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(Request(), CreateActor()));
+        Assert.Equal(1, counters.CreatedCount); Assert.Equal(0, repository.CompleteCalls);
+        Assert.Equal(CopiersMaintenanceV2EmailState.NotReady, repository.Record.EmailState);
+        var service = CreateService(repository, pdf, nowUtc: NowUtc.AddMinutes(20), counters: counters);
+        var success = await service.FinalizeMultipartAsync(Request(), CreateActor());
+        Assert.Equal(CopiersMaintenanceV2WorkflowState.ReadyToSend, success.State);
+        Assert.Equal(2, counters.CreatedCount); Assert.Equal(1, repository.CompleteCalls);
+        Assert.Contains(repository.LastCompletion!.Answers, x => x.Key == "equipment_detail_2" && x.Value.Contains("MULTI") == false && x.Value.Contains("Trabajo del segundo serial"));
+        Assert.True((await service.FinalizeMultipartAsync(Request(), CreateActor())).IdempotentReplay);
+        Assert.Equal(2, counters.CreatedCount); Assert.Equal(1, repository.CompleteCalls);
+        await Assert.ThrowsAsync<CopiersMaintenanceV2ConcurrencyException>(() => CreateService(repository, pdf, counters: counters).FinalizeMultipartAsync(Request("Contenido distinto no firmado"), CreateActor()));
+        Assert.Equal(1, repository.CompleteCalls);
+    }
+
     private sealed class IdempotentCounterService(List<string>? operations = null) : ICopiersMtoV2CounterService
     {
         private readonly Dictionary<string, (string RecordId, string Snapshot)> _persisted = [];
         public int ValidateCalls { get; private set; }
         public int CreatedCount { get; private set; }
+        public bool FailAdditionalOnce { get; set; }
+        private static string Key(CopiersMtoV2CounterSaveCommand c) => c.MaintenanceRecordId + "/" + c.AdditionalEquipmentScope;
         public Exception? ValidationException { get; init; }
         public Exception? SaveException { get; init; }
         public List<CopiersMtoV2CounterSaveCommand> SaveCommands { get; } = [];
@@ -1469,7 +1498,7 @@ public sealed class CopiersMaintenanceV2Tests
             ValidateCalls++;
             if (ValidationException is not null) throw ValidationException;
             RequireSameSnapshot(command);
-            return Task.FromResult(_persisted.ContainsKey(command.MaintenanceRecordId));
+            return Task.FromResult(_persisted.ContainsKey(Key(command)));
         }
 
         public Task<CopiersMtoV2CounterSaveResult> SaveForMaintenanceAsync(CopiersMtoV2CounterSaveCommand command, CancellationToken ct = default)
@@ -1477,12 +1506,13 @@ public sealed class CopiersMaintenanceV2Tests
             operations?.Add("save");
             SaveCommands.Add(command);
             if (SaveException is not null) throw SaveException;
+            if (FailAdditionalOnce && command.AdditionalEquipmentScope.Length > 0) { FailAdditionalOnce = false; throw new InvalidOperationException("Simulated lost counter connection"); }
             RequireSameSnapshot(command);
-            var reused = _persisted.TryGetValue(command.MaintenanceRecordId, out var stored);
+            var reused = _persisted.TryGetValue(Key(command), out var stored);
             if (!reused)
             {
                 stored = (Guid.NewGuid().ToString("D"), JsonSerializer.Serialize(command));
-                _persisted.Add(command.MaintenanceRecordId, stored);
+                _persisted.Add(Key(command), stored);
                 CreatedCount++;
             }
             var result = new CopiersMtoV2CounterSaveResult(stored.RecordId, reused);
@@ -1492,7 +1522,7 @@ public sealed class CopiersMaintenanceV2Tests
 
         private void RequireSameSnapshot(CopiersMtoV2CounterSaveCommand command)
         {
-            if (_persisted.TryGetValue(command.MaintenanceRecordId, out var stored)
+            if (_persisted.TryGetValue(Key(command), out var stored)
                 && stored.Snapshot != JsonSerializer.Serialize(command))
                 throw new CopiersMaintenanceV2ConcurrencyException("El contador de este mantenimiento ya fue guardado con otro snapshot.");
         }

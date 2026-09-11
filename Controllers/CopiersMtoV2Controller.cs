@@ -277,6 +277,8 @@ public sealed class CopiersMtoV2Controller : Controller
             var allowExternal = request.ActivityKind == "maintenance" && string.IsNullOrWhiteSpace(FormValue("EquipmentId"))
                 && _activities is not null && await _activities.ClientHasNoEquipmentAsync(clientId, ct);
             var draftInput = BuildAuthoritativeDraftRequest(request, dashboard, clients, allowExternal);
+            CopiersMultiEquipment.Authorize(request, draftInput, dashboard.EquipmentRows.Select(x =>
+                (x.RecordId, x.ClientId, x.Serial, x.Reference, x.InStock)));
             var actor = new CopiersMaintenanceV2ActorContext
             {
                 SystemUserId = currentUser.SystemUserId,

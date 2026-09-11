@@ -351,7 +351,7 @@
         const work = detailSection("Formulario y trabajo realizado");
         detailFields(work, [["Trabajo realizado", detail.workPerformed], ["Observaciones del cliente", detail.customerObservations], ["Notas internas", detail.internalNotes]]);
         const answers = Array.isArray(detail.answers) ? detail.answers : [];
-        detailFields(work, answers.filter(answer => !["service_started_at_utc", "service_ended_at_utc"].includes(answer.key) && answer.value !== undefined && answer.value !== null && answer.value !== "").map(answer => [answer.label || answer.key, answer.value]));
+        detailFields(work, answers.filter(answer => !String(answer.key).startsWith("equipment_item_") && !["service_started_at_utc", "service_ended_at_utc"].includes(answer.key) && answer.value !== undefined && answer.value !== null && answer.value !== "").map(answer => [answer.label || answer.key, answer.value]));
         fragment.append(work);
         const signature = detailSection("Conformidad del cliente");
         detailFields(signature, [["Nombre del firmante", detail.signerName], ["Cargo o relación", detail.signerRole], ["Aceptó el reporte", detail.customerAccepted]]);
