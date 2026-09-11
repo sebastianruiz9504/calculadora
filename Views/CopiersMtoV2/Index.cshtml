@@ -1,3 +1,4 @@
+@inject Microsoft.Extensions.Options.IOptions<CotizadorInterno.Web.Models.CopiersMtoV2.CopiersEquipmentOperationsOptions> EquipmentOperations
 @{
     ViewData["Title"] = "MTO Firmado V2";
     var technicianLabel = User?.Identity?.Name ?? "Técnico autenticado";
@@ -11,6 +12,7 @@
 
 <div class="mto-v2-shell"
      id="copiersMtoV2App"
+     data-equipment-operations-enabled="@EquipmentOperations.Value.Enabled.ToString().ToLowerInvariant()"
      data-recovery-owner="@recoveryOwner"
      data-bootstrap-url="/CopiersMtoV2/Bootstrap"
      data-counter-latest-url="/CopiersMtoV2/CounterLatest"

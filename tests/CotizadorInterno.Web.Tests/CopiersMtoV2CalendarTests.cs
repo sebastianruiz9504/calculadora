@@ -21,6 +21,34 @@ namespace CotizadorInterno.Web.Tests;
 
 public sealed class CopiersMtoV2CalendarTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EquipmentReceiptsShowCorrectCalendarTypeAndInternalLinkWithoutRawJson(bool internalOnly)
+    {
+        var f=new Fixture(activities:true);f.AddActivity(CopiersActivityV2Bindings.MovementType);
+        var operation=new CotizadorInterno.Web.Models.CopiersMtoV2.CopiersEquipmentOperation {
+            Kind="receipt",Internal=internalOnly,PendingKey=EvidenceId,DestinationName="Destino previsto",
+            Equipment=new(){OriginName="Origen interno"}
+        };
+        f.ActivityRows[0][f.Options.AnswersJsonField]=JsonSerializer.Serialize(CopiersActivityV2Capture.OperationAnswers(operation),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if(internalOnly)
+        {
+            f.ActivityRows[0][f.Options.EmailStateField]=f.Options.EmailNotReadyStateValue;
+            f.ActivityRows[0][f.Options.SignedReportEvidenceKeyField]="";
+            f.ActivityRows[0][f.Options.SignatureEvidenceKeyField]="";
+        }
+        var week=await f.Service.WeekAsync("all","2026-09-08");
+        var item=Assert.Single(week.Events,x=>x.ActivityKind=="movement");
+        Assert.Equal(internalOnly?"Recepción interna":"Recepción de equipo",item.MaintenanceType);
+        Assert.Equal(internalOnly?"NotRequired":"Pending",item.EmailState);
+        var detail=await f.Service.DetailAsync("activity:"+Ticket);
+        Assert.Equal(internalOnly,detail.InternalOperation);
+        Assert.Equal("activity:"+EvidenceId,detail.RelatedActivityId);
+        Assert.Contains(detail.MovementDetails,x=>x.Label=="Origen interno"&&x.Value=="Origen interno");
+        Assert.DoesNotContain(detail.Answers,x=>x.Key=="equipment_operation");
+        if(internalOnly)Assert.Empty(detail.ReportUrl);
+    }
     private const string Technician = "7b5d74cb-7da1-473c-bd1a-66635c10d42a";
     private const string Ticket = "bd456109-5a50-4aa8-b11e-45f3efb11be1";
     private const string EvidenceId = "6b00cafd-17b5-418a-b3d5-98dba18989a4";

@@ -51,6 +51,9 @@ public sealed class CopiersMtoV2CalendarDetailDto : CopiersMtoV2CalendarEventDto
     public string ReportUrl { get; set; } = "";
     public string SignatureUrl { get; set; } = "";
     public CopiersMtoV2CalendarLocationDto? Location { get; set; }
+    public bool InternalOperation { get; set; }
+    public IReadOnlyList<CopiersMtoV2CalendarAnswerDto> MovementDetails { get; set; } = [];
+    public string RelatedActivityId { get; set; } = "";
 }
 
 public sealed record CopiersMtoV2CalendarAnswerDto(string Key, string Label, string Value);

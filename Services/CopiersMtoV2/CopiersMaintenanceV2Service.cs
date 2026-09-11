@@ -284,7 +284,8 @@ public sealed class CopiersMaintenanceV2Service : ICopiersMaintenanceV2Service
                 ServiceDate = begin.Record.ServiceDate,
                 TechnicianName = begin.Record.TechnicianName,
                 FormVersion = formVersion,
-                Answers = answers,
+                Answers = answers.Where(x => x.Key != "equipment_operation" &&
+                    (string.IsNullOrEmpty(request.MovementDetailsJson) || x.Key is not ("origin_client_id" or "origin_client_name" or "destination_client_name" or "operation_link"))).ToArray(),
                 WorkPerformed = workPerformed,
                 CustomerObservations = customerObservations,
                 SignerName = signerName,

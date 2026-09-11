@@ -639,6 +639,10 @@
 
     function changeActivityType() {
         const value = elements.maintenanceType.value;
+        if (value === "movement" && root.dataset.equipmentOperationsEnabled === "true" && state.recoveryReady && !state.pendingUpload && !state.receiptKey) {
+            window.location.assign("/CopiersEquipmentOperations");
+            return;
+        }
         if ((value === "movement" || value === "toner") && !state.catalog.activitiesEnabled) {
             elements.maintenanceType.value = "";
             return;

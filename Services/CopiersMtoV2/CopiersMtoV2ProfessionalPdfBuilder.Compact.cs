@@ -69,7 +69,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             var title = activityKind switch
             {
                 "maintenance" => "Reporte de mantenimiento",
-                "movement" => "Movimiento de equipo",
+                "movement" => Answer("operation_kind") switch { "delivery" or "receipt" => "Certificado de entrega", "replacement" => "Certificado de cambio", "withdrawal" => "Certificado de retiro", _ => "Movimiento de equipo" },
                 "toner" => "Entrega de tóner",
                 _ => throw new CopiersMaintenanceV2ValidationException("activity_kind_invalid", "El tipo de actividad firmada no es válido.")
             };
@@ -85,7 +85,7 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             _top += 24;
 
             FullField("Cliente", model.ClientName);
-            PairFields(equipmentCount > 1 ? $"Serial {pageNumber}/{equipmentCount}" : "Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
+            PairFields(Answer("operation_kind") is "withdrawal" or "replacement" ? "Retirado" : equipmentCount > 1 ? $"Serial {pageNumber}/{equipmentCount}" : "Serial", model.EquipmentSerial, "Referencia", Answer("equipment_reference"));
             PairFields("Técnico", model.TechnicianName, "Atendió", model.CustomerContactName);
             FullField("Correo", Answer("onsite_email"));
             if (activityKind == "maintenance")
@@ -97,8 +97,22 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
             if (activityKind == "maintenance") DrawCounters();
             else if (activityKind == "movement")
             {
-                FullField("Origen", Answer("origin_client_name"));
-                FullField("Destino", Answer("destination_client_name"));
+                if (Answer("operation_kind").Length > 0)
+                {
+                    FullField("Estado", Answer("equipment_condition"));
+                    FullField("Accesorios", Answer("equipment_accessories"));
+                    if (Answer("operation_kind") == "replacement")
+                    {
+                        PairFields("Entregado", Answer("replacement_serial"), "Referencia", Answer("replacement_reference"));
+                        FullField("Estado", Answer("replacement_condition"));
+                        FullField("Accesorios", Answer("replacement_accessories"));
+                    }
+                }
+                else
+                {
+                    FullField("Origen", Answer("origin_client_name"));
+                    FullField("Destino", Answer("destination_client_name"));
+                }
                 _top += 7;
             }
             else
@@ -219,6 +233,13 @@ public sealed partial class CopiersMtoV2ProfessionalPdfBuilder
                 "movement" => "Revisé los datos del movimiento del equipo, su origen y destino. Mi firma deja constancia de la atención y de la información consignada.",
                 "toner" => "Revisé el suministro y la cantidad relacionados en esta entrega. Mi firma deja constancia de la recepción y de la información consignada.",
                 _ => "Revisé este reporte y recibí explicación del trabajo realizado. Mi firma deja constancia de la atención y de la información consignada."
+            };
+            if (activityKind == "movement") consent = Answer("operation_kind") switch
+            {
+                "delivery" or "receipt" => "Recibí el equipo y los accesorios relacionados, en el estado indicado.",
+                "withdrawal" => "Entregué al técnico el equipo y los accesorios relacionados para su retiro, en el estado indicado.",
+                "replacement" => "Se retiró el equipo anterior y recibí el equipo de reemplazo con los accesorios y estados relacionados.",
+                _ => consent
             };
             var consentLines = Wrap(consent, textWidth, 8.2);
             if (equipmentCount > 1) consentLines = Wrap($"Revisé los {equipmentCount} equipos relacionados. Esta firma corresponde a la visita completa y deja constancia de la atención y del trabajo explicado.", textWidth, 8.2);

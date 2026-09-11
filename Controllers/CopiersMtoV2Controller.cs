@@ -264,6 +264,8 @@ public sealed class CopiersMtoV2Controller : Controller
         try
         {
             request.ActivityKind = NormalizeActivityKind(request.ActivityKind);
+            if (!string.IsNullOrWhiteSpace(request.MovementDetailsJson))
+                throw new CopiersMaintenanceV2ValidationException("operation_endpoint_required", "Usa el formulario de gestión de equipos para esta operación.");
             if (request.ActivityKind != "maintenance" && request.FormVersion != CopiersActivityV2Bindings.FormVersion
                 || request.ActivityKind == "maintenance" && request.FormVersion == CopiersActivityV2Bindings.FormVersion)
                 throw new CopiersMaintenanceV2ValidationException("activity_form_mismatch", "El formato no corresponde al tipo de atención.");

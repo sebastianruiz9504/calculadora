@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using CotizadorInterno.Web.Models;
 using CotizadorInterno.Web.Models.Dashboard;
 using CotizadorInterno.Web.Models.Permissions;
+using CotizadorInterno.Web.Models.CopiersMtoV2;
 using Microsoft.Extensions.Options;
 
 namespace CotizadorInterno.Web.Services.CopiersMtoV2;
@@ -114,6 +115,23 @@ public sealed class CopiersMtoV2CalendarService(
         var summary = MapEvent(row);
         var evidenceRows = await EvidenceRowsAsync(id, ct);
         var evidences = evidenceRows.Where(x => IsEvidenceSafe(x, row, id)).Select(x => MapEvidence(x, id)).ToArray();
+        var operation = IsActivity ? CopiersEquipmentOperation.Read(Answers(row).FirstOrDefault(x => x.Key == "equipment_operation")?.Value) : null;
+        var related = operation?.PendingKey ?? "";
+        if (operation?.StartsTransit == true)
+        {
+            var filter = Uri.EscapeDataString($"contains(dtc_operationjson,'\"PendingKey\":\"{id}\"')");
+            var receipts = await QueryAsync($"cr07a_movimientosequiposes?$select=dtc_signedreportkey,dtc_operationjson&$filter={filter}&$top=5",ct);
+            related = receipts.Where(x => CopiersEquipmentOperation.Read(Text(x,"dtc_operationjson"))?.PendingKey == id)
+                .Select(x => Text(x,"dtc_signedreportkey")).FirstOrDefault() ?? "";
+        }
+        var movementDetails = new List<CopiersMtoV2CalendarAnswerDto>();
+        if(operation is not null)
+        {
+            movementDetails.Add(new("origin","Origen interno",operation.Equipment.OriginName));
+            movementDetails.Add(new("destination","Destino previsto",operation.DestinationName));
+            movementDetails.Add(new("state","Estado del movimiento",operation.StartsTransit ? related.Length>0 ? "Recepción registrada" : "En tránsito · recepción pendiente" : "Recepción / entrega confirmada"));
+            movementDetails.Add(new("operation","Referencia interna de la operación",id));
+        }
         return new()
         {
             Id = summary.Id, ServiceReference = summary.ServiceReference, ClientName = summary.ClientName,
@@ -129,7 +147,9 @@ public sealed class CopiersMtoV2CalendarService(
             CustomerObservations = Text(row, _o.CustomerObservationsField), ServiceAddress = Text(row, _o.ServiceAddressInternalField),
             InternalNotes = Text(row, _o.InternalNotesField), SignerName = Text(row, _o.SignerNameField),
             SignerRole = Text(row, _o.SignerRoleField), CustomerAccepted = Boolean(row, _o.CustomerAcceptedField),
-            Answers = Answers(row), Evidences = evidences, Location = Location(row),
+            Answers = Answers(row).Where(x => x.Key is not ("equipment_operation" or "operation_link")).ToArray(), Evidences = evidences, Location = Location(row),
+            InternalOperation = operation?.Internal == true, MovementDetails = movementDetails,
+            RelatedActivityId = Guid.TryParse(related,out var relatedId) ? "activity:"+relatedId.ToString("D") : "",
             ReportUrl = evidences.FirstOrDefault(x => x.Purpose == "SignedReport")?.Url ?? "",
             SignatureUrl = evidences.FirstOrDefault(x => x.Purpose == "Signature")?.Url ?? ""
         };
@@ -251,6 +271,7 @@ public sealed class CopiersMtoV2CalendarService(
     private CopiersMtoV2CalendarEventDto MapEvent(JsonElement row)
     {
         var answers = Answers(row);
+        var operation = IsActivity ? CopiersEquipmentOperation.Read(answers.FirstOrDefault(x => x.Key == "equipment_operation")?.Value) : null;
         var recordedEnd = ParseRecordedInstant(answers.FirstOrDefault(x => x.Key == "service_ended_at_utc")?.Value);
         var end = recordedEnd ?? Instant(row, _o.DeviceSignedAtUtcField) ?? Instant(row, _o.ServerFinalizedAtUtcField);
         var start = ParseRecordedInstant(answers.FirstOrDefault(x => x.Key == "service_started_at_utc")?.Value)
@@ -267,7 +288,7 @@ public sealed class CopiersMtoV2CalendarService(
             ClientName = Text(row, _o.ClientNameField), TechnicianId = Text(row, _o.TechnicianUserIdField),
             TechnicianName = Text(row, _o.TechnicianNameField), StartAtUtc = start!.Value, EndAtUtc = end!.Value,
             ActivityKind = IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "movement" : "toner" : "maintenance",
-            MaintenanceType = IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "Movimiento" : "Entrega de tóner"
+            MaintenanceType = operation is not null ? operation.Kind switch { "delivery"=>"Entrega de equipo", "withdrawal"=>"Retiro", "replacement"=>"Cambio", "internal"=>"Salida interna", _=>operation.Internal?"Recepción interna":"Recepción de equipo" } : IsActivity ? Number(row, _o.MaintenanceTypeField) == CopiersActivityV2Bindings.MovementType ? "Movimiento" : "Entrega de tóner"
                 : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypePreventiveValue ? "Preventivo"
                 : Number(row, _o.MaintenanceTypeField) == _o.MaintenanceTypeCorrectiveValue ? "Correctivo" : "Sin clasificar",
             DurationEstimated = estimated,
@@ -275,7 +296,7 @@ public sealed class CopiersMtoV2CalendarService(
                 : recordedEnd.HasValue ? "Desde la entrada hasta la salida registradas en el reporte firmado (hora de Bogotá)."
                 : "Desde el inicio de visita registrado (hora de Bogotá) hasta la firma del cliente.",
             WorkflowState = Number(row, _o.WorkflowStateField) == _o.ReadyToSendStateValue ? "ReadyToSend" : "Failed",
-            EmailState = EmailState(Number(row, _o.EmailStateField))
+            EmailState = operation?.Internal == true ? "NotRequired" : EmailState(Number(row, _o.EmailStateField))
         };
     }
 

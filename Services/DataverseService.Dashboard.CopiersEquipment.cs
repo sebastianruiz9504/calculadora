@@ -600,6 +600,7 @@ public sealed partial class DataverseService
         var normalizedRecordId = NormalizeGuid(request.RecordId, nameof(request.RecordId));
         var current = await GetEquipmentRecordByIdAsync(metadata, normalizedRecordId, httpContext.User, ct)
             ?? throw new InvalidOperationException("No encontramos el equipo que quieres reasignar.");
+        if(current.InTransit) throw new InvalidOperationException("El equipo está en tránsito. Confirma la recepción desde Gestión de equipos antes de reasignarlo.");
 
         var payload = new Dictionary<string, object?>();
         var navigationProperty = await ResolveRhLookupNavigationPropertyAsync(
@@ -746,6 +747,7 @@ public sealed partial class DataverseService
         var normalizedEquipmentId = NormalizeGuid(request.EquipmentId, nameof(request.EquipmentId));
         var current = await GetEquipmentRecordByIdAsync(equipmentMetadata, normalizedEquipmentId, httpContext.User, ct)
             ?? throw new InvalidOperationException("No encontramos el equipo para registrar el movimiento.");
+        if(current.InTransit) throw new InvalidOperationException("El equipo está en tránsito. Confirma la recepción desde Gestión de equipos antes de moverlo.");
 
         var clientName = (request.ClientName ?? "").Trim();
         if (string.IsNullOrWhiteSpace(clientName))
@@ -1801,7 +1803,8 @@ public sealed partial class DataverseService
             DashboardEquipmentReferenceField,
             DashboardEquipmentAreaField,
             DashboardEquipmentSiteField,
-            DashboardEquipmentObservationsField
+            DashboardEquipmentObservationsField,
+            _copiersEquipmentOperationsEnabled ? "dtc_transitjson" : ""
         }
         .Where(static field => !string.IsNullOrWhiteSpace(field))
         .Distinct(StringComparer.OrdinalIgnoreCase));
@@ -1830,14 +1833,15 @@ public sealed partial class DataverseService
             ? ReadIntFlexible(item, DashboardEquipmentCategoryField)
             : 0;
         var normalizedClientId = ReadCopiersLookupId(item, DashboardEquipmentClientField, "cliente");
-        var inStock = string.IsNullOrWhiteSpace(normalizedClientId);
+        var inTransit = !string.IsNullOrWhiteSpace(ReadString(item, "dtc_transitjson"));
+        var inStock = string.IsNullOrWhiteSpace(normalizedClientId) && !inTransit;
 
         return new CopiersEquipmentRecordRow
         {
             RecordId = recordId.Trim(),
             Serial = serial,
             ClientId = normalizedClientId,
-            ClientName = inStock ? "Stock" : clientName,
+            ClientName = inTransit ? "En tránsito" : inStock ? "Stock" : clientName,
             CategoryValue = categoryValue > 0 ? categoryValue : null,
             CategoryLabel = ResolveDashboardOptionLabel(
                 item,
@@ -1849,7 +1853,8 @@ public sealed partial class DataverseService
             Area = ReadString(item, DashboardEquipmentAreaField).Trim(),
             Site = ReadString(item, DashboardEquipmentSiteField).Trim(),
             Observations = ReadString(item, DashboardEquipmentObservationsField).Trim(),
-            InStock = inStock
+            InStock = inStock,
+            InTransit = inTransit
         };
     }
 
@@ -2601,6 +2606,7 @@ public sealed partial class DataverseService
 
     private sealed class CopiersEquipmentRecordRow
     {
+        public bool InTransit { get; init; }
         public string RecordId { get; init; } = "";
         public string Serial { get; init; } = "";
         public string ClientId { get; init; } = "";

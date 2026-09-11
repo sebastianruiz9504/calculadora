@@ -17,6 +17,7 @@ public sealed record CopiersActivityV2BusinessCommand
     public string OriginClientId { get; init; } = "";
     public string OriginClientName { get; init; } = "";
     public string MovementReason { get; init; } = "";
+    public CopiersEquipmentOperation? Operation { get; init; }
     public string SupplyId { get; init; } = "";
     public string SupplyName { get; init; } = "";
     public int SupplyQuantity { get; init; }

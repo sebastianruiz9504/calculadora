@@ -361,6 +361,7 @@ public sealed partial class DataverseService : IDataverseService
     private readonly string _dashboardCopiersLineEquipmentAssignmentClientField;
     private readonly string _dashboardCopiersLineEquipmentAssignmentLineField;
     private readonly string _dashboardCopiersLineEquipmentAssignmentEquipmentField;
+    private readonly bool _copiersEquipmentOperationsEnabled;
 
     public DataverseService(
         IDownstreamApi downstreamApi,
@@ -375,6 +376,7 @@ public sealed partial class DataverseService : IDataverseService
         ILogger<DataverseService> logger)
     {
         _downstreamApi = downstreamApi;
+        _copiersEquipmentOperationsEnabled = configuration.GetValue<bool>("CopiersEquipmentOperations:Enabled");
         _httpContextAccessor = httpContextAccessor;
         _httpClientFactory = httpClientFactory;
         _logger = logger;

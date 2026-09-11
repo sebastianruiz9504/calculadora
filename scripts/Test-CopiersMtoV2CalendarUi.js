@@ -295,6 +295,17 @@ test("empty catalog and empty week give actionable states", async () => {
     assert.match(noEvents.ids.get("mtoCalendarStatus").textContent, /no tiene mantenimientos/);
 });
 
+test("internal equipment receipt has no customer signature or missing-certificate warning", async () => {
+    const app = harness({ detail: { internalOperation: true, emailState: "NotRequired", signatureUrl: "", reportUrl: "", movementDetails: [{ label: "Origen interno", value: "Depósito" }], relatedActivityId: `activity:${eventId}` } });
+    await app.activate(); app.events()[0].click(); await settle();
+    const body = app.ids.get("mtoCalendarDetailBody").textContent;
+    assert.match(body, /No aplica · registro interno/);
+    assert.match(body, /Origen interno/);
+    assert.match(body, /Abrir salida \/ recepción relacionada/);
+    assert.match(body, /no requiere certificado firmado/);
+    assert.doesNotMatch(body, /Conformidad del cliente|aún no tiene un PDF/);
+});
+
 test("detail includes form fields, internal notes, signature, PDF and delivery status", async () => {
     const app = harness(); await app.activate(); app.events()[0].click(); await settle();
     const body = app.ids.get("mtoCalendarDetailBody");

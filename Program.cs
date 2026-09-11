@@ -92,6 +92,9 @@ builder.Services.AddScoped<ICopiersMtoV2PdfBuilder, CopiersMtoV2ProfessionalPdfB
 builder.Services.AddScoped<ICopiersMaintenanceV2Service, CopiersMaintenanceV2Service>();
 builder.Services.AddScoped<ICopiersActivityV2BusinessService, CopiersActivityV2BusinessService>();
 builder.Services.AddScoped<CopiersActivityV2Runtime>();
+builder.Services.Configure<CotizadorInterno.Web.Models.CopiersMtoV2.CopiersEquipmentOperationsOptions>(builder.Configuration.GetSection("CopiersEquipmentOperations"));
+builder.Services.AddScoped<CopiersEquipmentOperationsLedger>();
+builder.Services.AddScoped<CopiersEquipmentOperationsService>();
 builder.Services.AddSingleton<CopiersSubmissionStore>();
 builder.Services.AddScoped<CopiersMtoV2WorkerCounters>();
 builder.Services.AddHostedService<CopiersSubmissionWorker>();

@@ -33,12 +33,16 @@ public sealed class CopiersActivityV2BusinessService : ICopiersActivityV2Busines
     private const string OriginNameField = "dtc_originclientname";
     private readonly ICopiersMtoV2ApplicationDataverseClient _client;
     private readonly Lazy<string> _organization;
+    private readonly CopiersEquipmentOperationsLedger? _operations;
+    private readonly bool _operationsEnabled;
     private static readonly Regex BatchStatuses = new(@"^HTTP/1\.[01] (?<status>\d{3})(?:\s|$)", RegexOptions.Multiline | RegexOptions.CultureInvariant);
     private static readonly Regex EntityVersion = new("^(?:W/)?\"[0-9]+\"$", RegexOptions.CultureInvariant);
 
-    public CopiersActivityV2BusinessService(ICopiersMtoV2ApplicationDataverseClient client, IConfiguration configuration)
+    public CopiersActivityV2BusinessService(ICopiersMtoV2ApplicationDataverseClient client, IConfiguration configuration, CopiersEquipmentOperationsLedger? operations = null)
     {
         _client = client;
+        _operations = operations;
+        _operationsEnabled = configuration.GetValue<bool>("CopiersEquipmentOperations:Enabled");
         var configured = configuration["CopiersMtoV2:DataverseApp:BaseUrl"];
         // DI also constructs this dependency while serving the unchanged MTO
         // page. An unconfigured/disabled activity must not break that page.
@@ -54,6 +58,7 @@ public sealed class CopiersActivityV2BusinessService : ICopiersActivityV2Busines
 
     public async Task<bool> ValidateAsync(CopiersActivityV2BusinessCommand command, CancellationToken ct = default)
     {
+        if (command.Operation is not null) return await (_operations ?? throw new InvalidOperationException("Operaciones no disponibles.")).ValidateAsync(command, ct);
         var normalized = Normalize(command);
         var own = await ReadBusinessAsync(normalized, ct);
         if (own.HasValue)
@@ -68,6 +73,7 @@ public sealed class CopiersActivityV2BusinessService : ICopiersActivityV2Busines
     public async Task<CopiersActivityV2BusinessResult> CommitAsync(CopiersActivityV2BusinessCommand command,
         CopiersMaintenanceV2StoredFile signedReport, CancellationToken ct = default)
     {
+        if (command.Operation is not null) return await (_operations ?? throw new InvalidOperationException("Operaciones no disponibles.")).CommitAsync(command, signedReport, ct);
         var normalized = Normalize(command);
         ValidatePdf(signedReport);
         var own = await ReadBusinessAsync(normalized, ct);
@@ -104,7 +110,9 @@ public sealed class CopiersActivityV2BusinessService : ICopiersActivityV2Busines
     {
         var targetClient = await ReadRequiredAsync($"cr07a_clientes({command.ClientId})?$select=cr07a_clienteid,cr07a_nombre,statecode", "El cliente", ct);
         if (Integer(targetClient, "statecode") != 0) throw Invalid("activity_client_inactive", "El cliente está inactivo.");
-        var equipment = await ReadRequiredAsync($"cr07a_equipos({command.EquipmentId})?$select=cr07a_equipoid,cr07a_nombredelequipo,_cr07a_cliente_value", "El equipo", ct);
+        var equipment = await ReadRequiredAsync($"cr07a_equipos({command.EquipmentId})?$select=cr07a_equipoid,cr07a_nombredelequipo,_cr07a_cliente_value{(_operationsEnabled ? ",dtc_transitjson" : "")}", "El equipo", ct);
+        if (!string.IsNullOrWhiteSpace(Text(equipment,"dtc_transitjson")))
+            throw new CopiersMaintenanceV2ConcurrencyException("El equipo está en tránsito. Confirma su recepción desde Gestión de equipos antes de registrar otra actividad.");
         if (!string.Equals(Text(equipment, "cr07a_nombredelequipo").Trim(), command.EquipmentSerial, StringComparison.Ordinal))
             throw Invalid("activity_serial_changed", "El serial cambió. Recarga el equipo antes de firmar.");
         var descriptor = Describe(command.ActivityKind);

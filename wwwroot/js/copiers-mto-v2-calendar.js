@@ -39,6 +39,7 @@
         if (normalized.includes("correct")) return { label: "Correctivo", css: "corrective" };
         if (normalized.includes("movimiento") || normalized === "movement") return { label: "Movimiento", css: "movement" };
         if (normalized.includes("toner")) return { label: "Entrega de tóner", css: "toner" };
+        if (["entrega de equipo", "retiro", "cambio", "salida interna", "recepcion interna", "recepcion de equipo"].includes(normalized)) return { label: value, css: "movement" };
         return { label: String(value || "Mantenimiento"), css: "other" };
     }
 
@@ -117,7 +118,7 @@
 
     function stateLabel(value, kind) {
         const states = kind === "email"
-            ? { NotReady: "No preparado", Pending: "Pendiente", Processing: "En proceso", Sent: "Enviado", Failed: "Fallido" }
+            ? { NotRequired: "No aplica · registro interno", NotReady: "No preparado", Pending: "Pendiente", Processing: "En proceso", Sent: "Enviado", Failed: "Fallido" }
             : { Draft: "Borrador", Finalizing: "Finalizando", ReadyToSend: "Finalizado", Failed: "Pendiente de finalizar" };
         return states[value] || String(value || "No informado");
     }
@@ -348,6 +349,16 @@
         detailFields(summary, [["Consecutivo", detail.serviceReference], ["Cliente", detail.clientName], ["Tipo", typeInfo(detail.maintenanceType).label], ["Técnico", detail.technicianName], ["Correo del técnico", detail.technicianEmail], ["Serial del equipo", detail.equipmentSerial], ["Persona que atiende", detail.clientContactName], ["Correo de envío", detail.clientEmail], ["Dirección o sede", detail.serviceAddress], ["Fecha del servicio", detail.serviceDate], ["Hora de entrada", formatInstant(detail.startAtUtc)], ["Hora de salida", formatInstant(detail.endAtUtc)], ["Firma registrada", formatInstant(detail.deviceSignedAtUtc)], ["Finalización del servidor", formatInstant(detail.serverFinalizedAtUtc)], ["Estado del reporte", stateLabel(detail.workflowState, "workflow")], ["Estado del correo", stateLabel(detail.emailState, "email")], ["Título", detail.title]]);
         if (detail.durationEstimated) summary.append(element("p", "mto-calendar-detail__note", detail.timingNote || "La duración de esta franja es estimada: no se registraron ambas horas de la visita."));
         fragment.append(summary);
+        if (Array.isArray(detail.movementDetails) && detail.movementDetails.length) {
+            const movement = detailSection("Movimiento · uso interno");
+            detailFields(movement, detail.movementDetails.map(x => [x.label, x.value]));
+            if (/^activity:[0-9a-f-]{36}$/i.test(detail.relatedActivityId || "")) {
+                const link = element("a", "btn btn-outline-primary", "Abrir salida / recepción relacionada");
+                link.href = "/Dashboard?tab=copiers&copiersTab=maintenance-v2&maintenanceId=" + encodeURIComponent(detail.relatedActivityId);
+                movement.append(link);
+            }
+            fragment.append(movement);
+        }
         const work = detailSection("Formulario y trabajo realizado");
         detailFields(work, [["Trabajo realizado", detail.workPerformed], ["Observaciones del cliente", detail.customerObservations], ["Notas internas", detail.internalNotes]]);
         const answers = Array.isArray(detail.answers) ? detail.answers : [];
@@ -363,7 +374,7 @@
             image.src = signatureUrl;
             signature.append(image);
         }
-        fragment.append(signature);
+        if (!detail.internalOperation) fragment.append(signature);
         const report = detailSection("Reporte firmado y adjuntos");
         const reportUrl = safeAppUrl(detail.reportUrl, global.location.origin);
         if (reportUrl) {
@@ -373,7 +384,7 @@
             frame.loading = "lazy";
             frame.src = reportUrl;
             report.append(frame);
-        } else report.append(element("p", "mto-calendar__muted", "Este mantenimiento aún no tiene un PDF firmado disponible."));
+        } else report.append(element("p", "mto-calendar__muted", detail.internalOperation ? "Registro interno: no requiere certificado firmado ni correo al cliente." : "Este mantenimiento aún no tiene un PDF firmado disponible."));
         const files = element("ul", "mto-calendar-detail__files");
         (Array.isArray(detail.evidences) ? detail.evidences : []).forEach(evidence => {
             const row = element("li", "");

@@ -84,6 +84,8 @@ public sealed class CopiersSubmissionWorker(CopiersSubmissionStore store, IServi
                 var formFile = new FormFile(stream, 0, stream.Length, file.Field, file.Name) { Headers = new HeaderDictionary(), ContentType = file.Type };
                 if (file.Field == "Signature") request.Signature = formFile; else request.Attachments.Add(formFile);
             }
+            if (CopiersEquipmentOperation.Read(request.MovementDetailsJson)?.Internal == true)
+                return await services.GetRequiredService<CopiersEquipmentOperationsService>().CompleteInternalAsync(payload.Draft, request, payload.Actor, ct);
             var service = request.ActivityKind != "maintenance" ? services.GetRequiredService<CopiersActivityV2Runtime>().CreateService()
                 : new CopiersMaintenanceV2Service(services.GetRequiredService<ICopiersMaintenanceV2DataverseRepository>(),
                     services.GetRequiredService<ICopiersMtoV2PdfBuilder>(), services.GetRequiredService<IOptions<CopiersMaintenanceV2Options>>(),

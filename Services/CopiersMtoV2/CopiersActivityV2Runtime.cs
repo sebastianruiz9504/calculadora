@@ -15,6 +15,8 @@ public sealed class CopiersActivityV2Runtime(
     TimeProvider clock,
     ILoggerFactory loggers)
 {
+    internal CopiersMaintenanceV2DataverseRepository CreateRepository() => new(client, accessor,
+        Options.Create(CopiersActivityV2Bindings.Create(bindings.Value)), clock, loggers.CreateLogger<CopiersMaintenanceV2DataverseRepository>());
     public ICopiersMaintenanceV2Service CreateService()
     {
         if (!options.Value.ActivitiesEnabled)

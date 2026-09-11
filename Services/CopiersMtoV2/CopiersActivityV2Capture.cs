@@ -45,7 +45,7 @@ internal static class CopiersActivityV2Capture
             request.WorkPerformed = $"Entrega de {request.SupplyQuantity.ToString(CultureInfo.InvariantCulture)} unidad(es) de {name}.";
         }
         _ = CopiersMaintenanceV2Validation.Optional(request.CustomerObservations, "observations_too_long", "Las observaciones", 250);
-        return answers.Select(x => new CopiersMaintenanceV2FormAnswerSnapshot {
+        var canonical = answers.Select(x => new CopiersMaintenanceV2FormAnswerSnapshot {
             Key=x.Key, Label=x.Label, SortOrder=x.SortOrder, Value=x.Key switch {
                 "service_started_at" => started.ToOffset(TimeSpan.FromHours(-5)).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture),
                 "service_ended_at" => ended.ToOffset(TimeSpan.FromHours(-5)).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture),
@@ -54,6 +54,27 @@ internal static class CopiersActivityV2Capture
                 "destination_client_name" => row.ClientName,
                 _ => x.Value }
         }).ToArray();
+        var operation = CopiersEquipmentOperation.Read(request.MovementDetailsJson);
+        if (operation is null) return canonical;
+        if (kind != "movement" || operation.Internal || operation.ClientId != row.ClientId || operation.Equipment.Id != row.EquipmentId || operation.Reason != request.MovementReason)
+            throw Invalid("La operación no corresponde al certificado firmado.");
+        return canonical.Concat(OperationAnswers(operation)).ToArray();
+    }
+
+    internal static IReadOnlyList<CopiersMaintenanceV2FormAnswerSnapshot> OperationAnswers(CopiersEquipmentOperation operation)
+    {
+        var values = new Dictionary<string,string> {
+            ["equipment_operation"]=System.Text.Json.JsonSerializer.Serialize(operation), ["operation_kind"]=operation.Kind,
+            ["operation_title"]=operation.Title, ["equipment_condition"]=operation.Equipment.Condition,
+            ["equipment_accessories"]=operation.Equipment.Accessories,
+            ["operation_link"]=operation.PendingKey,
+            ["replacement_serial"]=operation.Replacement?.Serial ?? "", ["replacement_reference"]=operation.Replacement?.Reference ?? "",
+            ["replacement_condition"]=operation.Replacement?.Condition ?? "", ["replacement_accessories"]=operation.Replacement?.Accessories ?? ""
+        };
+        return values.Select((x,i)=>new CopiersMaintenanceV2FormAnswerSnapshot {Key=x.Key,Label=x.Key switch {
+            "operation_kind"=>"Clase de operación", "operation_title"=>"Certificado", "equipment_condition"=>"Estado del equipo", "equipment_accessories"=>"Accesorios del equipo",
+            "replacement_serial"=>"Serial del reemplazo", "replacement_reference"=>"Referencia del reemplazo", "replacement_condition"=>"Estado del reemplazo", "replacement_accessories"=>"Accesorios del reemplazo", _=>x.Key
+        },Value=x.Value,SortOrder=60+i}).ToArray();
     }
 
     public static CopiersActivityV2BusinessCommand Command(CopiersMaintenanceV2DraftRecord row,
@@ -65,6 +86,7 @@ internal static class CopiersActivityV2Capture
         ServiceReference=row.ServiceReference, ServiceDate=row.ServiceDate, OccurredAtUtc=ended.ToUniversalTime(),
         OriginClientId=Value(answers,"origin_client_id"), OriginClientName=Value(answers,"origin_client_name"),
         MovementReason=Value(answers,"movement_reason"), SupplyId=Value(answers,"supply_id"), SupplyName=Value(answers,"supply_name"),
+        Operation=CopiersEquipmentOperation.Read(Value(answers,"equipment_operation")),
         SupplyQuantity=int.TryParse(Value(answers,"supply_quantity"), NumberStyles.None, CultureInfo.InvariantCulture, out var quantity) ? quantity : 0,
         SupplyStockBefore=int.TryParse(Value(answers,"supply_stock_before"), NumberStyles.None, CultureInfo.InvariantCulture, out var stock) ? stock : null
     };

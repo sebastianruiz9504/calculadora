@@ -69,6 +69,7 @@ public sealed class CopiersMaintenanceV2FinalizeMultipartRequestDto
     public string ActivityKind { get; set; } = "maintenance";
     public string OriginClientId { get; set; } = "";
     public string MovementReason { get; set; } = "";
+    public string MovementDetailsJson { get; set; } = "";
     public string SupplyId { get; set; } = "";
     public int SupplyQuantity { get; set; }
     public string RecordId { get; set; } = "";
@@ -133,6 +134,7 @@ public sealed class CopiersMaintenanceV2DraftResultDto
 
 public sealed class CopiersMaintenanceV2FinalizeResultDto
 {
+    public bool EmailRequired { get; set; } = true;
     public string ServiceReference { get; set; } = "";
     public string RecordId { get; set; } = "";
     public string SubmissionKey { get; set; } = "";

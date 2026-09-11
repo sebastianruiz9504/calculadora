@@ -1,0 +1,71 @@
+@{
+    ViewData["Title"] = "Gestión de equipos · Copiers";
+    var owner = (User.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid")?.Value ?? User.FindFirst("tid")?.Value)
+        + "/" + (User.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ?? User.FindFirst("oid")?.Value);
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/copiers-mto-v2.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/copiers-equipment-operations.css" asp-append-version="true" />
+}
+<main id="equipmentOperations" class="mto-v2-shell eo" data-owner="@owner">
+    <header class="mto-v2-hero"><div><span class="mto-v2-eyebrow">Copiers · Gestión de equipos</span><h1>Entregas, cambios y retiros</h1><p>El certificado del cliente y el movimiento interno quedan relacionados.</p></div></header>
+    <p><a href="/CopiersMtoV2">Mantenimiento y entrega de tóner</a> · <a href="/Dashboard?tab=copiers&amp;copiersTab=maintenance-v2">Ver calendario</a></p>
+    <p id="eoStatus" class="alert alert-info" role="status">Comprobando borrador y cargando catálogo…</p>
+    <form id="eoForm" novalidate>
+        @Html.AntiForgeryToken()
+        <fieldset id="eoFields" disabled>
+            <section id="eoDetails" class="eo-card">
+                <h2>1. Datos de la operación</h2>
+                <label>Operación<select name="OperationKind"><option value="delivery">Entrega de equipo al cliente</option><option value="replacement">Cambio de equipo del cliente</option><option value="withdrawal">Retiro de equipo del cliente</option><option value="internal">Salida entre ubicaciones internas</option><option value="receipt">Recibir un equipo en tránsito</option></select></label>
+                <p id="eoHint"></p>
+                <div id="eoPendingWrap"><label>Traslado pendiente<select id="eoPending"><option value="">Selecciona el equipo que llegó</option></select></label></div>
+                <div class="eo-grid">
+                    <div id="eoClientWrap" class="mto-v2-picker"><label>Cliente que firma<input id="eoClientSearch" autocomplete="off" /></label><div id="eoClientList" hidden></div></div>
+                    <div id="eoDestinationWrap" class="mto-v2-picker"><label>Destino previsto · uso interno<input id="eoDestinationSearch" autocomplete="off" /></label><div id="eoDestinationList" hidden></div></div>
+                    <div class="mto-v2-picker"><label id="eoEquipmentLabel">Equipo<input id="eoEquipmentSearch" autocomplete="off" /></label><div id="eoEquipmentList" hidden></div></div>
+                    <label>Estado del equipo<textarea name="EquipmentCondition" maxlength="160" rows="2" required></textarea></label>
+                    <label>Accesorios incluidos<textarea name="EquipmentAccessories" maxlength="160" rows="2" placeholder="Si no aplica, escribe Ninguno"></textarea></label>
+                </div>
+                <div id="eoReplacementWrap" class="eo-grid">
+                    <div class="mto-v2-picker"><label>Equipo de reemplazo que se entrega<input id="eoReplacementSearch" autocomplete="off" /></label><div id="eoReplacementList" hidden></div></div>
+                    <label>Estado del reemplazo<textarea name="ReplacementCondition" maxlength="160" rows="2"></textarea></label>
+                    <label>Accesorios del reemplazo<textarea name="ReplacementAccessories" maxlength="160" rows="2"></textarea></label>
+                </div>
+                <label>Motivo / detalle<textarea name="MovementReason" maxlength="100" rows="2" required></textarea></label>
+                <div class="eo-grid"><label>Inicio de atención<input name="VisitStart" type="datetime-local" required /></label><label>Dirección o sede<input name="ServiceAddress" maxlength="300" /></label></div>
+                <div id="eoContactWrap" class="eo-grid">
+                    <label>Persona que atiende<input name="CustomerContactName" maxlength="160" /></label>
+                    <div><label>Correo del encargado de Copiers<input id="eoEmail" type="email" readonly /></label><button id="eoEditEmail" type="button" aria-label="Agregar o editar correo del encargado">+ Agregar / editar correo</button></div>
+                    <label>Observaciones del cliente<textarea name="CustomerObservations" maxlength="250" rows="2"></textarea></label>
+                </div>
+                <label>Notas internas · no se incluyen en el certificado<textarea name="InternalNotes" maxlength="4000" rows="2"></textarea></label>
+                <button id="eoNext" type="button" class="btn btn-primary">Revisar y finalizar</button>
+            </section>
+            <section id="eoReview" class="eo-card" hidden>
+                <h2 id="eoReviewTitle">2. Conformidad del cliente</h2>
+                <div id="eoSummary" class="eo-summary"></div>
+                <div id="eoSignatureWrap">
+                    <div class="eo-grid"><label>Nombre de quien firma<input name="SignerName" maxlength="200" /></label><label>Cargo<input name="SignerRole" maxlength="150" /></label></div>
+                    <label><input name="CustomerAccepted" type="checkbox" /> <span id="eoConsent"></span></label>
+                    <p>Firma del cliente</p><canvas id="eoSignature" width="1000" height="260" aria-label="Firma del cliente con el dedo o lápiz"></canvas>
+                    <button id="eoClearSignature" type="button">Borrar firma</button>
+                </div>
+                <div id="eoInternalWrap" hidden><label><input name="InternalConfirmed" type="checkbox" /> Confirmo que esta salida o recepción física se realizó. Es un registro interno, sin firma ni correo al cliente.</label></div>
+                <h3>Evidencia fotográfica</h3>
+                <p>Tomar o adjuntar fotografías no borra la firma. Máximo ocho fotos, 8 MB por foto y 20 MB en total.</p>
+                <label class="btn btn-outline-primary">Tomar foto<input id="eoCamera" type="file" accept="image/jpeg,image/png" capture="environment" /></label>
+                <label class="btn btn-outline-primary">Adjuntar fotos<input id="eoFiles" type="file" accept="image/jpeg,image/png" multiple /></label>
+                <ul id="eoPhotos"></ul>
+                <div class="eo-actions"><button id="eoBack" type="button">Atrás</button><button id="eoSend" class="btn btn-primary" type="submit">Enviar y registrar</button></div>
+            </section>
+        </fieldset>
+    </form>
+    <div class="eo-actions"><button id="eoRetry" type="button" hidden>Comprobar / reintentar envío</button><button id="eoAnother" type="button" hidden>Crear otro registro</button></div>
+    <a id="eoLogin" href="/MicrosoftIdentity/Account/SignIn?redirectUri=%2FCopiersEquipmentOperations" hidden>Renovar sesión y recuperar este envío</a>
+    <dialog id="eoEmailDialog"><form method="dialog"><h2>Correo del encargado de Copiers</h2><label>Correo<input id="eoEmailEdit" type="email" required /></label><p id="eoEmailError" role="alert"></p><button type="button" id="eoSaveEmail">Guardar</button><button value="cancel">Cancelar</button></form></dialog>
+</main>
+@section Scripts {
+    <script src="~/js/copiers-mto-v2-picker.js" asp-append-version="true"></script>
+    <script src="~/js/copiers-mto-v2-drafts.js" asp-append-version="true"></script>
+    <script src="~/js/copiers-equipment-operations.js" asp-append-version="true"></script>
+}

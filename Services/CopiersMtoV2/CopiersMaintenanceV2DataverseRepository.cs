@@ -726,6 +726,19 @@ public sealed class CopiersMaintenanceV2DataverseRepository : ICopiersMaintenanc
         EnsureSuccess("actualizar el MTO V2", response, body);
     }
 
+    internal async Task<IReadOnlyList<string>> SaveInternalOperationEvidenceAsync(string id, string key, string actorId,
+        IReadOnlyList<CopiersMaintenanceV2StoredFile> files, DateTimeOffset capturedAt, CancellationToken ct)
+    {
+        EnsureConfigured(); var user=RequireUser();
+        var current=await GetOwnedAsync(id,actorId,user,ct); EnsureOperationKey(current,key);
+        if(_options.MainEntitySetName!=CopiersActivityV2Bindings.MainEntitySet) throw new UnauthorizedAccessException();
+        var keys=new List<string>();
+        for(var i=0;i<files.Count;i++)
+            keys.Add(await UpsertEvidenceAsync(id,key,"internal-operation-photo",_options.EvidenceCustomerAttachmentPurposeValue,i+1,files[i],"",
+                _options.EvidenceSecurityScanPassedValue,capturedAt,"server-image-cdr-v1",user,ct));
+        return keys;
+    }
+
     private async Task<string> UpsertEvidenceAsync(
         string parentRecordId,
         string operationKey,

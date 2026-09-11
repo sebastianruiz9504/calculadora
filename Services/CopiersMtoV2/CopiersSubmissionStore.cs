@@ -59,7 +59,8 @@ public sealed class CopiersSubmissionStore
             using var stream = new MemoryStream(); await file.CopyToAsync(stream, ct);
             files.Add(new() { Field = ReferenceEquals(file, request.Signature) ? "Signature" : "Attachments", Name = Path.GetFileName(file.FileName), Type = file.ContentType, Content = stream.ToArray() });
         }
-        if (files.Count > 9 || !files.Any(x => x.Field == "Signature"))
+        var internalOperation = CopiersEquipmentOperation.Read(request.MovementDetailsJson)?.Internal == true;
+        if (files.Count > 9 || (!internalOperation && !files.Any(x => x.Field == "Signature")))
             throw new CopiersMaintenanceV2ValidationException("signature_required", "Se requiere la firma y máximo ocho evidencias.");
         var payload = new CopiersSubmissionPayload { RequestJson = node.ToJsonString(), Draft = draft, Actor = actor, Files = files };
         var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
