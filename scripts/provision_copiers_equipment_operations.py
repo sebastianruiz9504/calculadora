@@ -9,10 +9,10 @@ import json
 import provision_copiers_activity_v2 as metadata
 
 FIELDS = {
-    "cr07a_equipo": metadata.base.memo_column("dtc_transitjson", "dtc_TransitJson", "Custodia de equipo en tránsito", 4000,
-        "Uso interno. Salida pendiente con responsable, origen, destino previsto y fecha. Se limpia al confirmar recepción."),
-    "cr07a_movimientosequipos": metadata.base.memo_column("dtc_operationjson", "dtc_OperationJson", "Operación de equipo", 12000,
-        "Uso interno. Instantánea inmutable de la operación física y vínculo entre salida, recepción y certificado."),
+    "cr07a_equipo": metadata.base.memo_column("dtc_transitjson", "dtc_TransitJson", "Custodia de equipo en tr\u00e1nsito", 4000,
+        "Uso interno. Salida pendiente con responsable, origen, destino previsto y fecha. Se limpia al confirmar recepci\u00f3n."),
+    "cr07a_movimientosequipos": metadata.base.memo_column("dtc_operationjson", "dtc_OperationJson", "Operaci\u00f3n de equipo", 12000,
+        "Uso interno. Instant\u00e1nea inmutable de la operaci\u00f3n f\u00edsica y v\u00ednculo entre salida, recepci\u00f3n y certificado."),
 }
 
 def plan():
@@ -48,6 +48,22 @@ def main():
             metadata.api("POST", "PublishXml", {"ParameterXml": "<importexportxml><entities>" + entities + "</entities></importexportxml>"})
         if plan():
             raise RuntimeError("Schema read-back failed")
+        solution = metadata.rows("solutions?$select=solutionid&$filter=uniquename eq 'CopiersMtoFirmadoV2'")[0]["solutionid"]
+        for table, spec in FIELDS.items():
+            attribute = metadata.api("GET", f"EntityDefinitions(LogicalName='{table}')/Attributes(LogicalName='{spec.logical_name}')?$select=MetadataId")
+            component = metadata.rows(f"solutioncomponents?$select=objectid,componenttype&$filter=_solutionid_value eq {solution} and objectid eq {attribute['MetadataId']} and componenttype eq 2")
+            entity = metadata.api("GET", f"EntityDefinitions(LogicalName='{table}')?$select=MetadataId")
+            roots = metadata.rows(f"solutioncomponents?$select=objectid,rootcomponentbehavior&$filter=_solutionid_value eq {solution} and objectid eq {entity['MetadataId']} and componenttype eq 1")
+            # Full-table roots include their attributes implicitly: there need not
+            # be an individual solutioncomponent row. Confirm again in exported XML.
+            if len(roots) == 1 and roots[0].get("rootcomponentbehavior") == 0:
+                continue
+            if not component:
+                metadata.api("POST", "AddSolutionComponent", {"ComponentId": attribute["MetadataId"], "ComponentType": 2,
+                    "SolutionUniqueName": metadata.SOLUTION, "AddRequiredComponents": False})
+                component = metadata.rows(f"solutioncomponents?$select=objectid,componenttype&$filter=_solutionid_value eq {solution} and objectid eq {attribute['MetadataId']} and componenttype eq 2")
+            if len(component) != 1:
+                raise RuntimeError("Column not included uniquely in approved solution: " + table + "." + spec.logical_name)
     print(json.dumps({"environment": metadata.ENV, "solution": metadata.SOLUTION, "applied": args.apply, "actions": actions, "businessWrites": 0}, ensure_ascii=False))
 
 if __name__ == "__main__":

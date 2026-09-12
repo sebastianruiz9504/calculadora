@@ -3,6 +3,7 @@
   <IsCustomizable>1</IsCustomizable>
   <IsAutoAssigned>0</IsAutoAssigned>
   <RolePrivileges>
+    <RolePrivilege name="prvAppendcr07a_Contadores" level="Basic" />
     <RolePrivilege name="prvAppendcr07a_Entrega" level="Global" />
     <RolePrivilege name="prvAppendcr07a_Equipo" level="Global" />
     <RolePrivilege name="prvAppendcr07a_Movimientosequipos" level="Global" />
@@ -17,6 +18,7 @@
     <RolePrivilege name="prvAppendTodtc_CopiersMtoV2" level="Basic" />
     <RolePrivilege name="prvAssigncr07a_Entrega" level="Global" />
     <RolePrivilege name="prvAssigncr07a_Movimientosequipos" level="Global" />
+    <RolePrivilege name="prvCreatecr07a_Contadores" level="Basic" />
     <RolePrivilege name="prvCreatecr07a_Entrega" level="Global" />
     <RolePrivilege name="prvCreatecr07a_Movimientosequipos" level="Global" />
     <RolePrivilege name="prvCreatedtc_CopiersActivityEvidenceV2" level="Basic" />
@@ -25,6 +27,7 @@
     <RolePrivilege name="prvCreatedtc_CopiersMtoV2" level="Basic" />
     <RolePrivilege name="prvReadBusinessUnit" level="Global" />
     <RolePrivilege name="prvReadcr07a_Cliente" level="Global" />
+    <RolePrivilege name="prvReadcr07a_Contadores" level="Global" />
     <RolePrivilege name="prvReadcr07a_Entrega" level="Global" />
     <RolePrivilege name="prvReadcr07a_Equipo" level="Global" />
     <RolePrivilege name="prvReadcr07a_Movimientosequipos" level="Global" />
