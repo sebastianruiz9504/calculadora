@@ -3852,6 +3852,65 @@ button.cnc-sync-metric {
     min-width: 42rem;
 }
 
+/* Import history keeps the row short; the selected record owns the full detail. */
+#cncDeduccionesDetailModal .cnc-modal__panel,
+#cncDeduccionesRowModal .cnc-modal__panel {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.cnc-import-summary {
+    min-width: 0;
+    table-layout: fixed;
+}
+.cnc-import-summary th:nth-child(1) { width: 21%; }
+.cnc-import-summary th:nth-child(2) { width: 35%; }
+.cnc-import-summary th:nth-child(3) { width: 21%; }
+.cnc-import-summary th:nth-child(4) { width: 23%; }
+.cnc-import-summary td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cnc-import-summary__row { cursor: pointer; }
+.cnc-import-summary__row:hover,
+.cnc-import-summary__row:focus-within { background: #eff6ff; }
+.cnc-import-open {
+    max-width: 100%;
+    padding: 0.3rem 0;
+    border: 0;
+    background: transparent;
+    color: #1d4ed8;
+    font: inherit;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.cnc-import-open:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.cnc-import-summary .cnc-import-summary__amount { text-align: right; font-variant-numeric: tabular-nums; }
+.cnc-import-row-modal { z-index: 1080; }
+.cnc-import-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0; }
+.cnc-import-facts > div { min-width: 0; }
+.cnc-import-facts dt { color: var(--cnc-muted); font-size: 0.8rem; margin-bottom: 0.3rem; }
+.cnc-import-facts dd { margin: 0; color: var(--cnc-ink); overflow-wrap: anywhere; white-space: pre-wrap; }
+.cnc-import-facts__detail { grid-column: 1 / -1; padding: 1rem; background: #f8fafc; border-radius: 8px; }
+.cnc-supplier-contact { min-width: 0; padding: 1rem; border: 1px solid var(--cnc-line); border-radius: 8px; }
+.cnc-supplier-contact legend { float: none; width: auto; padding: 0 0.3rem; font-size: 1rem; font-weight: 700; }
+.cnc-supplier-contact p { color: var(--cnc-muted); font-size: 0.85rem; }
+@media (max-width: 600px) {
+    .cnc-import-summary thead { display: none; }
+    .cnc-import-summary tbody { display: block; }
+    .cnc-import-summary__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--cnc-line); }
+    .cnc-sync-table.cnc-import-summary td { display: block; min-width: 0; border: 0; padding: 0.6rem; }
+    .cnc-import-summary td:last-child { white-space: normal; overflow-wrap: normal; }
+    .cnc-import-summary td::before { content: attr(data-label); display: block; color: var(--cnc-muted); font-size: 0.7rem; margin-bottom: 0.25rem; }
+    .cnc-import-summary .cnc-import-summary__amount { text-align: left; }
+    .cnc-import-facts { grid-template-columns: minmax(0, 1fr); }
+    #cncDeduccionesRowModal .cnc-modal__header { align-items: start; flex-wrap: wrap; }
+}
+
 .cnc-sync-table th,
 .cnc-sync-table td {
     padding: 0.7rem 0.75rem;

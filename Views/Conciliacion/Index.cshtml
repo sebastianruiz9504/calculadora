@@ -2486,6 +2486,24 @@
                     </select>
                 </label>
             </div>
+            <fieldset class="cnc-supplier-contact">
+                <legend>Contacto del proveedor</legend>
+                <p>Indica el nombre real de la persona de contacto. Si no aparece en el RUT, complétalo antes de crear el proveedor.</p>
+                <div class="cnc-modal__grid">
+                    <label class="cnc-modal__field" for="cncDianSupplierContactFirstName">
+                        <span>Nombre del contacto *</span>
+                        <input class="form-control" id="cncDianSupplierContactFirstName" type="text" maxlength="50" required />
+                    </label>
+                    <label class="cnc-modal__field" for="cncDianSupplierContactLastName">
+                        <span>Apellido (opcional)</span>
+                        <input class="form-control" id="cncDianSupplierContactLastName" type="text" maxlength="50" />
+                    </label>
+                    <label class="cnc-modal__field" for="cncDianSupplierContactEmail">
+                        <span>Correo (opcional)</span>
+                        <input class="form-control" id="cncDianSupplierContactEmail" type="email" maxlength="100" />
+                    </label>
+                </div>
+            </fieldset>
             <div class="cnc-modal__actions">
                 <button type="button" class="btn btn-outline-secondary" data-cnc-close-dian-supplier-modal>Cancelar</button>
                 <button type="button" class="btn btn-primary" id="cncDianSupplierSave">Crear/asociar proveedor</button>

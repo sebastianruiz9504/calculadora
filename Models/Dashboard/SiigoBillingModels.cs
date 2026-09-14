@@ -10,6 +10,7 @@ public sealed class SiigoCustomerLookupItemDto
     public string Type { get; set; } = "";
     public int BranchOffice { get; set; }
     public bool Active { get; set; }
+    public bool HasValidContact { get; set; }
 }
 
 public sealed class SiigoInvoiceSearchResultDto

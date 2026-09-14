@@ -1779,6 +1779,8 @@ public sealed class ConciliacionController : Controller
     {
         if (request is null || string.IsNullOrWhiteSpace(request.RecordId))
             return BadRequest(CreateErrorPayload("Debes indicar el documento DIAN."));
+        if (SiigoSupplierContactPolicy.Validate(request) is { } contactIssue)
+            return BadRequest(CreateErrorPayload(contactIssue));
         if (string.IsNullOrWhiteSpace(request.SupplierName)
             || ExtractDigits(request.SupplierNit).Length < 5
             || string.IsNullOrWhiteSpace(request.PersonType)
@@ -1852,6 +1854,8 @@ public sealed class ConciliacionController : Controller
                 supplier = await EnsureDianSupplierInSiigoAsync(supplierClaimRow, allowCreate: true, ct, request);
                 supplierPostSucceeded = supplier.Created;
             }
+            if (!supplier.Customer.HasValidContact)
+                throw new InvalidOperationException(SiigoSupplierContactPolicy.PendingMessage);
             var supplierLabel = FirstNonEmpty(supplier.Customer.DisplayName, supplier.Customer.Name, supplier.Customer.Identification);
             var message = supplier.Created
                 ? $"Proveedor creado en Siigo: {supplierLabel}."
@@ -5363,6 +5367,8 @@ public sealed class ConciliacionController : Controller
         {
             var supplierResult = await EnsureDianSupplierInSiigoAsync(row, createMissingSupplier, ct);
             supplier = supplierResult.Customer;
+            if (supplierResult.ExistsInSiigo && !supplier.HasValidContact)
+                issues.Add(SiigoSupplierContactPolicy.PendingMessage);
             if (supplierResult.Created || supplierResult.WouldCreate)
                 supplierPayload = supplierResult.Payload;
             if (!supplierResult.ExistsInSiigo && !createMissingSupplier)
@@ -6530,6 +6536,7 @@ public sealed class ConciliacionController : Controller
         var payload = new Dictionary<string, object?>
         {
             ["type"] = "Supplier",
+            ["contacts"] = SiigoSupplierContactPolicy.Build(request),
             ["person_type"] = personType,
             ["id_type"] = idType,
             ["identification"] = taxId.Identification,

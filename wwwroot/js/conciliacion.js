@@ -116,6 +116,9 @@
     }
     const dianSupplierName = document.getElementById("cncDianSupplierName");
     const dianSupplierNit = document.getElementById("cncDianSupplierNit");
+    const dianSupplierContactFirstName = document.getElementById("cncDianSupplierContactFirstName");
+    const dianSupplierContactLastName = document.getElementById("cncDianSupplierContactLastName");
+    const dianSupplierContactEmail = document.getElementById("cncDianSupplierContactEmail");
     const dianSupplierPersonType = document.getElementById("cncDianSupplierPersonType");
     const dianSupplierIdType = document.getElementById("cncDianSupplierIdType");
     const dianSupplierCheckDigit = document.getElementById("cncDianSupplierCheckDigit");
@@ -1722,12 +1725,13 @@
         modal.hidden = true;
         modal.setAttribute("role", "dialog");
         modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("aria-labelledby", "cncDeduccionesDetailTitle");
         modal.innerHTML = `
             <div class="cnc-modal__panel cnc-modal__panel--preview">
                 <div class="cnc-modal__header">
                     <div>
                         <div class="cnc-kicker">Importación DIAN</div>
-                        <h2 data-cnc-deducciones-detail-title>Detalle</h2>
+                        <h2 id="cncDeduccionesDetailTitle" data-cnc-deducciones-detail-title>Detalle</h2>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-cnc-deducciones-detail-close>Cerrar</button>
                 </div>
@@ -1735,19 +1739,83 @@
                 <div data-cnc-deducciones-detail-content></div>
             </div>`;
         modal.querySelectorAll("[data-cnc-deducciones-detail-close]").forEach((button) => {
-            button.addEventListener("click", () => { modal.hidden = true; });
+            button.addEventListener("click", () => { modal.hidden = true; modal._cncReturnFocus?.focus(); });
         });
         modal.addEventListener("click", (event) => {
             if (event.target === modal) {
                 modal.hidden = true;
             }
         });
+        modal.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); modal.hidden = true; modal._cncReturnFocus?.focus(); }
+            if (event.key === "Tab") {
+                const focusable = Array.from(modal.querySelectorAll("button:not([disabled]), a[href]"));
+                const first = focusable[0], last = focusable.at(-1);
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+        });
         app.appendChild(modal);
         return modal;
     };
 
+    const openDeduccionesRowDetail = (row, columns, actions, parentModal, trigger) => {
+        document.getElementById("cncDeduccionesRowModal")?.remove();
+        const modal = document.createElement("div");
+        modal.id = "cncDeduccionesRowModal";
+        modal.className = "cnc-modal cnc-import-row-modal";
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("aria-labelledby", "cncImportRowTitle");
+        modal.innerHTML = `<div class="cnc-modal__panel cnc-modal__panel--wide">
+            <div class="cnc-modal__header"><div><div class="cnc-kicker">Detalle del documento</div>
+            <h2 id="cncImportRowTitle"></h2></div><button type="button" class="btn btn-sm btn-outline-secondary" data-import-row-close>Volver al resumen</button></div>
+            <dl class="cnc-import-facts"></dl><div class="cnc-row-actions" data-import-row-actions></div></div>`;
+        modal.querySelector("h2").textContent = row?.invoiceNumber || [row?.prefix, row?.folio].filter(Boolean).join("-") || "Registro importado";
+        const facts = modal.querySelector("dl");
+        columns.forEach((column) => {
+            const value = typeof column.value === "function" ? column.value(row) : row?.[column.value];
+            const item = document.createElement("div");
+            if (column.label === "Detalle") item.className = "cnc-import-facts__detail";
+            const label = document.createElement("dt");
+            label.textContent = column.label;
+            const text = document.createElement("dd");
+            text.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
+            item.append(label, text);
+            facts.appendChild(item);
+        });
+        const close = () => {
+            modal.remove();
+            parentModal.hidden = false;
+            trigger?.focus();
+        };
+        modal.querySelector("[data-import-row-close]").addEventListener("click", close);
+        modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+        modal.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+            if (event.key === "Tab") {
+                const buttons = Array.from(modal.querySelectorAll("button:not([disabled]), a[href]"));
+                const first = buttons[0], last = buttons.at(-1);
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+        });
+        actions.filter((action) => typeof action.visible !== "function" || action.visible(row)).forEach((action) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = action.className || "btn btn-sm btn-primary";
+            button.textContent = typeof action.label === "function" ? action.label(row) : action.label || "Abrir";
+            button.addEventListener("click", () => { modal.remove(); action.action(row); });
+            modal.querySelector("[data-import-row-actions]").appendChild(button);
+        });
+        parentModal.hidden = true;
+        app.appendChild(modal);
+        modal.querySelector("[data-import-row-close]").focus();
+    };
+
     const openDeduccionesDetail = (title, rows, columns, options = {}) => {
         const modal = ensureDeduccionesDetailModal();
+        modal._cncReturnFocus = document.activeElement;
         const resolvedRows = Array.isArray(rows) ? rows : [];
         const heading = modal.querySelector("[data-cnc-deducciones-detail-title]");
         const description = modal.querySelector("[data-cnc-deducciones-detail-description]");
@@ -1777,9 +1845,12 @@
         wrap.className = "cnc-sync-table-wrap";
         const table = document.createElement("table");
         table.className = "cnc-sync-table cnc-sync-table--compact";
+        const summaryColumns = options.summaryColumns || columns;
+        const expandable = Boolean(options.summaryColumns);
+        if (expandable) table.classList.add("cnc-import-summary");
         const head = document.createElement("thead");
         const headRow = document.createElement("tr");
-        columns.forEach((column) => {
+        summaryColumns.forEach((column) => {
             const th = document.createElement("th");
             th.textContent = column.label;
             headRow.appendChild(th);
@@ -1794,7 +1865,7 @@
                     className: "btn btn-sm btn-primary"
                 }]
                 : [];
-        if (rowActions.length > 0) {
+        if (rowActions.length > 0 && !expandable) {
             const th = document.createElement("th");
             th.textContent = "Acción";
             headRow.appendChild(th);
@@ -1802,15 +1873,33 @@
         head.appendChild(headRow);
 
         const body = document.createElement("tbody");
-        resolvedRows.slice(0, 500).forEach((row) => {
+        (expandable ? resolvedRows : resolvedRows.slice(0, 500)).forEach((row) => {
             const tr = document.createElement("tr");
-            columns.forEach((column) => {
+            summaryColumns.forEach((column, columnIndex) => {
                 const td = document.createElement("td");
+                td.dataset.label = column.label;
+                if (column.label === "Total") td.classList.add("cnc-import-summary__amount");
                 const value = typeof column.value === "function" ? column.value(row) : row?.[column.value];
                 td.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
+                if (expandable && columnIndex === 0) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "cnc-import-open";
+                    button.textContent = td.textContent;
+                    button.setAttribute("aria-label", `Ver detalle de ${td.textContent}`);
+                    td.textContent = "";
+                    td.appendChild(button);
+                    button.addEventListener("click", () => openDeduccionesRowDetail(row, columns, rowActions, modal, button));
+                }
                 tr.appendChild(td);
             });
-            if (rowActions.length > 0) {
+            if (expandable) {
+                tr.className = "cnc-import-summary__row";
+                tr.addEventListener("click", (event) => {
+                    if (!event.target.closest("button, a")) tr.querySelector("button")?.click();
+                });
+            }
+            if (rowActions.length > 0 && !expandable) {
                 const td = document.createElement("td");
                 const visibleActions = rowActions.filter((action) =>
                     typeof action.visible !== "function" || action.visible(row));
@@ -1851,6 +1940,7 @@
             content.appendChild(link);
         }
         modal.hidden = false;
+        modal.querySelector("[data-cnc-deducciones-detail-close]")?.focus();
     };
 
     const createPendingSupplierRow = (supplier) => {
@@ -1871,13 +1961,8 @@
             ...documents.map((row) => ({ ...row, historyRowKind: "document" })),
             ...skipped.map((row) => ({ ...row, historyRowKind: "skipped" }))
         ];
-        const pendingRutSuppliers = Number(history?.pendingRutSuppliers || 0);
         const sentToSiigo = Number(history?.sentToSiigo || 0);
         const siigoRows = Number(history?.siigoRows || 0);
-        const supportDocumentRows = Number(history?.supportDocumentRows || 0);
-        const payrollRows = Number(history?.payrollRows || 0);
-        const creditNotes = Number(history?.supplierCreditNotes || 0);
-        const creditNotesApplied = Number(history?.supplierCreditNotesApplied || 0);
         openDeduccionesDetail(
             `Importación ${history?.periodLabel || ""}`.trim(),
             detailRows,
@@ -1894,7 +1979,13 @@
                 { label: "Detalle", value: (row) => row?.detail || row?.reason || "" }
             ],
             {
-                description: `${history?.importedAtDisplay || ""} · ${sentToSiigo} de ${siigoRows} documentos Siigo · ${supportDocumentRows} documento(s) soporte solo en Dataverse · ${payrollRows} nómina(s) solo en Dataverse · ${creditNotesApplied} de ${creditNotes} notas aplicadas · ${pendingRutSuppliers} proveedor(es) pendientes de RUT · ${skipped.length} fila(s) omitidas.`,
+                description: `${history?.importedAtDisplay || ""} · ${detailRows.length} registros · ${sentToSiigo} de ${siigoRows} enviados a Siigo. Selecciona una fila para ver el detalle.`,
+                summaryColumns: [
+                    { label: "Documento", value: (row) => row?.invoiceNumber || [row?.prefix, row?.folio].filter(Boolean).join("-") || "Fila omitida" },
+                    { label: "Proveedor", value: (row) => row?.supplierName || "" },
+                    { label: "Total", value: (row) => moneyPrecise(row?.totalValue || 0) },
+                    { label: "Estado", value: (row) => row?.historyRowKind === "skipped" ? "Omitida" : row?.statusLabel || "Pendiente" }
+                ],
                 emptyMessage: "Esta importación no tiene documentos vigentes para mostrar.",
                 actions: [
                     {
@@ -10117,6 +10208,9 @@
 
     const clearDianSupplierFieldValidation = () => {
         [
+            dianSupplierContactFirstName,
+            dianSupplierContactLastName,
+            dianSupplierContactEmail,
             dianSupplierName,
             dianSupplierNit,
             dianSupplierAddress,
@@ -10128,6 +10222,8 @@
         activeDianSupplierRow = row;
         const supplierName = row.dataset.supplierName || "";
         const supplierNit = row.dataset.supplierNit || "";
+        [dianSupplierContactFirstName, dianSupplierContactLastName, dianSupplierContactEmail]
+            .forEach((field) => { if (field) field.value = ""; });
         const personType = row.dataset.supplierPersonType || "Company";
         dianSupplierEntryMode = options.mode === "manual" ? "manual" : "rut";
         const isManualEntry = dianSupplierEntryMode === "manual";
@@ -10189,7 +10285,7 @@
         clearDianSupplierFieldValidation();
         setDianSupplierFeedback(
             isManualEntry
-                ? "Dirección y Ciudad Siigo son obligatorias. Al continuar verás el proceso de creación directa en Siigo."
+                ? "Dirección, Ciudad Siigo y nombre del contacto son obligatorios. Revisa los datos antes de crear el proveedor."
                 : "");
         setDianSupplierTypeDefaults();
         syncDianSupplierFiscalFields();
@@ -10317,6 +10413,9 @@
         const supplierName = (dianSupplierName?.value || "").trim();
         const supplierNit = (dianSupplierNit?.value || "").trim();
         const supplierAddress = (dianSupplierAddress?.value || "").trim();
+        const contactFirstName = (dianSupplierContactFirstName?.value || "").trim();
+        const contactLastName = (dianSupplierContactLastName?.value || "").trim();
+        const contactEmail = (dianSupplierContactEmail?.value || "").trim();
         const cityParts = (dianSupplierCity?.value || "").split("|").filter(Boolean);
         if (dianSupplierEntryMode === "rut" && !dianSupplierRutAnalyzed) {
             const message = "Adjunta y analiza el RUT antes de crear el proveedor en Siigo.";
@@ -10334,6 +10433,9 @@
         }
 
         const fieldChecks = [
+            { field: dianSupplierContactFirstName, label: "Nombre del contacto", isValid: contactFirstName.length > 0 && contactFirstName.length <= 50 },
+            { field: dianSupplierContactLastName, label: "Apellido del contacto (máximo 50 caracteres)", isValid: contactLastName.length <= 50 },
+            { field: dianSupplierContactEmail, label: "Correo del contacto válido", isValid: contactEmail.length <= 100 && (!contactEmail || dianSupplierContactEmail.checkValidity()) },
             {
                 field: dianSupplierName,
                 label: "Nombre proveedor",
@@ -10375,6 +10477,9 @@
             month: Number(app.dataset.periodMonth || 0),
             supplierName,
             supplierNit,
+            contactFirstName,
+            contactLastName,
+            contactEmail,
             personType: dianSupplierPersonType?.value || "Company",
             idType: dianSupplierIdType?.value || "31",
             checkDigit: dianSupplierCheckDigit?.value || "",

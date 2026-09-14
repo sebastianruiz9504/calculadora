@@ -2954,6 +2954,16 @@ public sealed partial class DataverseService
             return;
         }
 
+        if (row.ReviewReason.Contains("contacto del proveedor", StringComparison.OrdinalIgnoreCase)
+            || row.ReviewReason.Contains("customer settings", StringComparison.OrdinalIgnoreCase)
+            || row.ReviewReason.Contains("customer_settings", StringComparison.OrdinalIgnoreCase))
+        {
+            row.Stage = "prevalidacion";
+            row.StageLabel = "Contacto pendiente";
+            row.StageTone = "warning";
+            return;
+        }
+
         row.Stage = "prevalidacion";
         row.StageLabel = ambiguousSiigoWrite
             ? "Verificacion Siigo pendiente"

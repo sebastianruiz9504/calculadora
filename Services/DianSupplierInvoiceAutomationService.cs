@@ -536,6 +536,14 @@ public sealed class DianSupplierInvoiceAutomationService : IDianSupplierInvoiceA
                     continue;
                 }
 
+                if (!supplier.HasValidContact)
+                {
+                    if (!dryRun)
+                        await PersistFailureBestEffortAsync(workingRow.RecordId, SiigoSupplierContactPolicy.PendingMessage, ct);
+                    rowResults.Add(BuildRowResult(workingRow, "SupplierContactPending", SiigoSupplierContactPolicy.PendingMessage, canonicalKey));
+                    continue;
+                }
+
                 PurchaseCatalogs catalogs;
                 try
                 {

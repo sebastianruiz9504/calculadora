@@ -916,6 +916,9 @@ public sealed class ConciliacionDianSupplierDocumentRequest
     public int Month { get; set; }
     public string SupplierName { get; set; } = "";
     public string SupplierNit { get; set; } = "";
+    public string ContactFirstName { get; set; } = "";
+    public string ContactLastName { get; set; } = "";
+    public string ContactEmail { get; set; } = "";
     public string PersonType { get; set; } = "";
     public string IdType { get; set; } = "";
     public string CheckDigit { get; set; } = "";

@@ -624,6 +624,10 @@ public sealed class SiigoService : ISiigoService
         var expectedIdentification = ReadPayloadString(payloadJson, "identification");
         if (string.IsNullOrWhiteSpace(expectedIdentification))
             throw new InvalidOperationException("El payload del tercero Siigo debe incluir una identificacion.");
+        using var payloadDocument = JsonDocument.Parse(payloadJson);
+        if (!payloadDocument.RootElement.TryGetProperty("contacts", out var contacts)
+            || !SiigoSupplierContactPolicy.HasValidContacts(contacts))
+            throw new InvalidOperationException(SiigoSupplierContactPolicy.PendingMessage);
 
         var rawBody = await SendAuthorizedJsonAsync(
             HttpMethod.Post,
@@ -647,9 +651,15 @@ public sealed class SiigoService : ISiigoService
                     $"La respuesta exitosa devolvio la identificacion '{mapped.Identification}', distinta de la solicitada '{expectedIdentification}'.");
             }
 
-            return mapped;
+            // A successful POST alone does not prove the contact was persisted.
+            var persisted = MapCustomer(await GetAuthorizedJsonAsync<SiigoCustomerApiDto>(
+                $"v1/customers/{Uri.EscapeDataString(mapped.Id)}", ct));
+            if (persisted.Id != mapped.Id || !AreEquivalentIdentifications(persisted.Identification, expectedIdentification)
+                || !persisted.Active || !persisted.HasValidContact)
+                throw new InvalidOperationException("El proveedor fue creado, pero la lectura posterior no confirmo su identidad, estado activo y contacto completo. Revisa el proveedor existente en Siigo.");
+            return persisted;
         }
-        catch (Exception ex) when ((ex is JsonException or InvalidOperationException)
+        catch (Exception ex) when ((ex is JsonException or InvalidOperationException or HttpRequestException or TaskCanceledException)
                                    && ex is not SiigoSupplierCreateException)
         {
             throw new SiigoSupplierCreateException(
@@ -1445,7 +1455,8 @@ public sealed class SiigoService : ISiigoService
             Identification = identification,
             Type = customer.Type?.Trim() ?? "",
             BranchOffice = customer.BranchOffice,
-            Active = customer.Active
+            Active = customer.Active,
+            HasValidContact = SiigoSupplierContactPolicy.HasValidContacts(customer.Contacts)
         };
     }
 
@@ -2236,6 +2247,8 @@ public sealed class SiigoService : ISiigoService
 
     private sealed class SiigoCustomerApiDto
     {
+        [JsonPropertyName("contacts")]
+        public JsonElement Contacts { get; set; }
         [JsonPropertyName("id")]
         public string Id { get; set; } = "";
 
