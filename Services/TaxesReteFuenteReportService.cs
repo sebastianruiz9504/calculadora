@@ -137,7 +137,7 @@ public sealed class TaxesReteFuenteReportService : ITaxesReteFuenteReportService
         TotalColumnLabel = "Total factura",
         BaseColumnLabel = "Base antes de IVA",
         AmountColumnLabel = "ReteFuente",
-        CategoryColumnLabel = "Tipo persona",
+        CategoryColumnLabel = "Emisor",
         ShowBaseColumn = true,
         ShowReteFuentePercentColumn = true,
         ShowReteIcaPercentColumn = true,
