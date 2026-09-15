@@ -102,7 +102,7 @@ function activityHarness(reader = async () => ({ items: [] })) {
     };
     const document = { getElementById: id => nodes[id] || null, createElement: tag => new Element("", tag) };
     const exports = ["state", "elements", "changeActivityType", "isExternalEquipment", "syncClientSelection", "syncEquipmentCatalog",
-        "loadEquipmentCatalog", "syncEquipmentSelection", "prepareCatalogValidity", "loadSupplies", "syncSupplySelection", "prepareSupplyValidity",
+        "loadEquipmentCatalog", "refreshRecoveryCatalog", "syncEquipmentSelection", "prepareCatalogValidity", "loadSupplies", "syncSupplySelection", "prepareSupplyValidity",
         "buildStructuredAnswers", "prepareSubmissionIdentity", "syncCounterSelection", "loadCounterLatest", "handleEvidenceSelection", "renderFiles",
         "clearFilePreviews", "startEmailStatusPolling", "checkEmailStatus", "stopEmailStatusPolling", "setSubmitState", "wireEvents"];
     const exposed = script.replace("    initialize();", `    initializeCatalogPickers(); window.app = { ${exports.join(", ")} };`);
@@ -142,6 +142,79 @@ function control(value = "") {
         focus() {}, reportValidity() { return Boolean(this.value.trim()); }
     };
 }
+
+function restoredCatalogHarness(readEquipment) {
+    const client = { id: "C-1", name: "Cliente destino", email: "copiers@example.test" };
+    const equipment = { id: "E-1", serial: "SERIAL-1", clientId: client.id };
+    const h = activityHarness(async url => url.includes("Bootstrap") ? { clients: [client] }
+        : url.includes("Equipment") ? await readEquipment(equipment) : {});
+    h.state.catalog.equipment = [equipment];
+    h.state.catalog.selectedEquipment = equipment;
+    h.state.equipmentCatalog.scope = "maintenance|c-1";
+    h.state.counters.scope = "c-1|e-1";
+    h.state.counters.loaded = true;
+    h.elements.copiesAfter.value = "12345";
+    h.state.signature.strokes = [[{ x: 0, y: 0 }, { x: 1, y: 1 }]];
+    h.elements.signedAtUtc.value = "2026-09-15T15:00:00Z";
+    return h;
+}
+
+test("restored incomplete catalog validates selected serial without erasing capture", async () => {
+    for (const casing of ["items", "Items"]) {
+        const h = restoredCatalogHarness(async equipment => ({ [casing]: [equipment] }));
+        h.prepareCatalogValidity();
+        assert.match(h.elements.equipmentSerial.validityMessage, /Espera a que termine/);
+        await h.refreshRecoveryCatalog();
+        h.prepareCatalogValidity();
+        assert.equal(h.state.equipmentCatalog.loaded, true);
+        assert.equal(h.elements.equipmentSerial.validityMessage, "");
+        assert.equal(h.elements.equipmentId.value, "E-1");
+        assert.equal(h.elements.copiesAfter.value, "12345");
+        assert.equal(h.state.signature.strokes.length, 1);
+        assert.equal(h.elements.signedAtUtc.value, "2026-09-15T15:00:00Z");
+    }
+});
+
+test("failed recovered catalog preserves draft and offers non-destructive retry", async () => {
+    let fail = true;
+    const h = restoredCatalogHarness(async equipment => { if (fail) throw new Error("offline"); return { items: [equipment] }; });
+    await h.refreshRecoveryCatalog();
+    assert.equal(h.state.equipmentCatalog.loaded, false);
+    assert.equal(h.elements.retryEquipment.hidden, false);
+    assert.equal(h.state.catalog.selectedEquipment.id, "E-1");
+    h.wireEvents(); fail = false;
+    h.elements.retryEquipment.dispatch("click");
+    await settleActivities();
+    assert.equal(h.state.equipmentCatalog.loaded, true);
+    assert.equal(h.elements.copiesAfter.value, "12345");
+    assert.equal(h.state.signature.strokes.length, 1);
+});
+
+for (const change of ["client", "type", "request", "pendingUpload", "receiptKey"]) test(`recovery ignores late catalog after ${change} changes`, async () => {
+    let release;
+    const h = restoredCatalogHarness(() => new Promise(resolve => { release = resolve; }));
+    const pending = h.refreshRecoveryCatalog();
+    await settleActivities();
+    assert.equal(typeof release, "function");
+    if (change === "client") h.state.catalog.selectedClient = { id: "C-2" };
+    if (change === "type") h.elements.activityKind.value = "toner";
+    if (change === "request") h.state.equipmentCatalog.requestId++;
+    if (change === "pendingUpload") h.state.pendingUpload = [["SubmissionKey", "original"]];
+    if (change === "receiptKey") h.state.receiptKey = "received-key";
+    release({ items: [{ id: "OLD", serial: "OLD", clientId: "C-1" }] });
+    await pending;
+    assert.equal(h.state.catalog.equipment[0].id, "E-1");
+    assert.equal(h.state.equipmentCatalog.loaded, false);
+    assert.equal(h.state.signature.strokes.length, 1);
+});
+
+test("malformed recovery response does not authorize external serial or discard saved equipment", async () => {
+    const h = restoredCatalogHarness(async () => ({ items: [{ serial: "no-id" }], allowExternalEquipment: true }));
+    await h.refreshRecoveryCatalog();
+    assert.equal(h.state.equipmentCatalog.loaded, false);
+    assert.equal(h.state.catalog.equipment[0].id, "E-1");
+    assert.equal(h.elements.retryEquipment.hidden, false);
+});
 
 test("activity selector is first and preserves the production maintenance values", () => {
     assert.ok(view.indexOf('id="mtoV2MaintenanceType"') < view.indexOf('id="mtoV2ClientName"'));

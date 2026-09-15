@@ -252,16 +252,37 @@
     }
 
     async function refreshRecoveryCatalog() {
+        const clientId = state.catalog.selectedClient?.id || "";
+        const kind = activityKind();
+        const requestId = state.equipmentCatalog.requestId;
+        const isCurrent = () => !state.pendingUpload && !state.receiptKey
+            && requestId === state.equipmentCatalog.requestId && kind === activityKind()
+            && clientId === (state.catalog.selectedClient?.id || "");
+        if (!isCurrent()) return;
         try {
             const result = await fetchCatalog();
+            if (!isCurrent()) return;
             state.catalog.clients = (result.clients || result.Clients || []).map(normalizeClient).filter(Boolean);
             renderClientOptions();
-            if (state.catalog.selectedClient && !state.pendingUpload && !state.receiptKey) {
-                const response = await fetchActivityJson(`${root.dataset.equipmentUrl}?clientId=${encodeURIComponent(state.catalog.selectedClient.id)}&activityKind=${encodeURIComponent(activityKind())}`, "los equipos");
-                state.catalog.equipment = (response.items || []).map(normalizeEquipment).filter(Boolean);
+            if (clientId) {
+                const response = await fetchActivityJson(`${root.dataset.equipmentUrl || "/CopiersMtoV2/Equipment"}?clientId=${encodeURIComponent(clientId)}&activityKind=${encodeURIComponent(kind)}`, "los equipos");
+                if (!isCurrent()) return;
+                applyEquipmentCatalog(response, kind);
                 renderEquipmentOptions();
+                syncEquipmentSelection(state.catalog.selectedEquipment?.id);
+                elements.retryEquipment.hidden = true;
+                elements.retryEquipment.disabled = false;
+                scheduleRecovery();
             }
-        } catch { /* Keep the saved capture offline; Finalize reauthorizes it. */ }
+        } catch {
+            // Keep the saved capture offline; never turn a failed read into an
+            // empty/authorized catalog. Incomplete drafts must have a way to retry.
+            if (isCurrent() && clientId && !state.equipmentCatalog.loaded) {
+                elements.retryEquipment.hidden = false;
+                elements.retryEquipment.disabled = false;
+                setCatalogFeedback(elements.equipmentFeedback, "No se pudo actualizar el catálogo. Conservamos el borrador; pulsa Reintentar equipos.", "error");
+            }
+        }
     }
 
     async function acquireRecoveryEditor() {
@@ -712,13 +733,7 @@
             const url = `${root.dataset.equipmentUrl || "/CopiersMtoV2/Equipment"}?clientId=${encodeURIComponent(client.id)}&activityKind=${encodeURIComponent(kind)}`;
             const result = await fetchActivityJson(url, "los equipos");
             if (requestId !== state.equipmentCatalog.requestId || scope !== state.equipmentCatalog.scope) return;
-            const rawItems = result?.items ?? result?.Items;
-            if (!Array.isArray(rawItems)) throw new Error("La respuesta de equipos no es válida. Reintenta la consulta.");
-            state.catalog.equipment = rawItems.map(normalizeEquipment).filter(Boolean);
-            if (state.catalog.equipment.length !== rawItems.length) throw new Error("El catálogo contiene equipos incompletos. Reintenta la consulta.");
-            state.equipmentCatalog.allowExternalEquipment = kind === "maintenance" && rawItems.length === 0
-                && (result?.allowExternalEquipment ?? result?.AllowExternalEquipment) === true;
-            state.equipmentCatalog.loaded = true;
+            applyEquipmentCatalog(result, kind);
             renderEquipmentOptions();
             syncEquipmentSelection();
         } catch (error) {
@@ -736,6 +751,19 @@
                 elements.retryEquipment.disabled = false;
             }
         }
+    }
+
+    function applyEquipmentCatalog(result, kind) {
+        const rawItems = result?.items ?? result?.Items;
+        if (!Array.isArray(rawItems)) throw new Error("La respuesta de equipos no es válida. Reintenta la consulta.");
+        const equipment = rawItems.map(normalizeEquipment).filter(Boolean);
+        if (equipment.length !== rawItems.length) throw new Error("El catálogo contiene equipos incompletos. Reintenta la consulta.");
+        // Publish items and readiness together, including when restoring a draft
+        // saved before the original request finished.
+        state.catalog.equipment = equipment;
+        state.equipmentCatalog.allowExternalEquipment = kind === "maintenance" && rawItems.length === 0
+            && (result?.allowExternalEquipment ?? result?.AllowExternalEquipment) === true;
+        state.equipmentCatalog.loaded = true;
     }
 
     async function fetchActivityJson(url, label) {
@@ -1368,7 +1396,7 @@
             void loadBootstrap();
         });
         elements.retryCounters?.addEventListener("click", () => { void loadCounterLatest(); });
-        elements.retryEquipment?.addEventListener("click", () => syncEquipmentCatalog(true));
+        elements.retryEquipment?.addEventListener("click", () => { void loadEquipmentCatalog(); });
         elements.maintenanceType?.addEventListener("change", changeActivityType);
         elements.supplyId?.addEventListener("change", syncSupplySelection);
         elements.retrySupplies?.addEventListener("click", () => { void loadSupplies(); });

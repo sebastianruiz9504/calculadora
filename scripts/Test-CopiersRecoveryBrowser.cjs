@@ -7,11 +7,14 @@ const customer = { id: "11111111-1111-4111-8111-111111111111", name: "CLIENTE PR
 const equipment = { id: "22222222-2222-4222-8222-222222222222", clientId: customer.id, clientName: customer.name, serial: "TEST-LOCAL-001", reference: "TEST" };
 const extraEquipment = { ...equipment, id: "33333333-3333-4333-8333-333333333333", serial: "TEST-LOCAL-002" };
 const multi = process.env.COPIERS_TEST_MULTI === "1";
+const incompleteCatalog = process.env.COPIERS_TEST_INCOMPLETE_CATALOG === "1";
 const view = fs.readFileSync(path.join(root, "Views/CopiersMtoV2/Index.cshtml"), "utf8");
 const body = view.slice(view.indexOf('<div class="mto-v2-shell"'), view.lastIndexOf("@section Scripts"))
     .replaceAll("@recoveryOwner", "tenant/test-owner").replaceAll("@technicianLabel", "TEST TECHNICIAN")
     .replaceAll("@Html.AntiForgeryToken()", '<input name="__RequestVerificationToken" value="test-only" type="hidden">');
-const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/copiers-mto-v2.css"></head><body>${body}<script src="/js/copiers-mto-v2-drafts.js"></script><script src="/js/copiers-mto-v2-picker.js"></script><script src="/js/copiers-mto-v2.js"></script></body></html>`;
+// Existing draft saved before its equipment lookup finished; no production data.
+const recoveryFixture = incompleteCatalog ? `<script>const readDraft=window.CopiersMtoV2Drafts.read; window.CopiersMtoV2Drafts.read=async(...args)=>{const draft=await readDraft(...args);if(draft&&!draft.pendingUpload&&!draft.receiptKey)draft.state.equipmentCatalog.loaded=false;return draft;};</script>` : "";
+const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/copiers-mto-v2.css"></head><body>${body}<script src="/js/copiers-mto-v2-drafts.js"></script>${recoveryFixture}<script src="/js/copiers-mto-v2-picker.js"></script><script src="/js/copiers-mto-v2.js"></script></body></html>`;
 let posts = 0, receipt = null, statusUnavailable = true;
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
@@ -111,6 +114,19 @@ const server = http.createServer(async (req, res) => {
         assert.equal(await page.locator("#mtoV2FileList img").count(), 1);
         assert.equal(await page.evaluate(async () => (await window.CopiersMtoV2Drafts.read("tenant/test-owner")).files[0].name), "local-test.png");
         assert.ok(Number(await page.locator("#mtoV2SignaturePointCount").inputValue()) >= 5);
+        if (incompleteCatalog) {
+            await page.locator("#mtoV2EquipmentFeedback").filter({ hasText: "Equipo seleccionado" }).waitFor({ state: "attached" });
+            await page.locator('[data-step-target="1"]').tap();
+            await page.locator('[data-next-step="2"]').tap();
+            await page.locator('[data-step-panel="2"]').waitFor({ state: "visible" });
+            assert.equal(await page.locator("#mtoV2EquipmentSerial").evaluate(x => x.validationMessage), "");
+            await page.locator('[data-step-target="4"]').tap();
+            // Hidden canvases can have different pixel dimensions after a reload;
+            // the normalized strokes and signed timestamp are the durable signature.
+            assert.equal(await page.locator("#mtoV2SignedAtUtc").inputValue(), timeBeforePhoto);
+            assert.deepEqual(await page.evaluate(async () => (await window.CopiersMtoV2Drafts.read("tenant/test-owner")).strokes), original.strokes);
+            console.log(JSON.stringify({ incompleteCatalogRecovered: true, signaturePreserved: true, multi }));
+        }
         if (multi) {
             assert.equal(await page.locator(`#mtoV2Extra-${extraEquipment.id}-copiesAfter`).inputValue(), "250");
             assert.equal(await page.locator(`#mtoV2Extra-${extraEquipment.id}-workPerformed`).inputValue(), "TRABAJO DIFERENTE DEL SEGUNDO SERIAL");
