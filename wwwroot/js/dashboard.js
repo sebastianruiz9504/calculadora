@@ -7253,7 +7253,7 @@
                 const share = Math.min(Math.max(Number(item.sharePercent || 0), 0), 100);
                 const groupLabel = item.businessGroupName ? "Grupo empresarial" : "Cliente";
                 return `
-                    <div class="lic-cost-breakdown__row">
+                    <button type="button" class="lic-cost-breakdown__row" data-lic-client="${escapeHtml(item.clientKey || "")}" data-lic-contract="${escapeHtml(card.key || "")}" aria-label="${escapeHtml(`Ver líneas de ${item.clientName || "Sin cliente"}, ${card.label || ""}`)}">
                         <div class="lic-cost-breakdown__main">
                             <strong>${escapeHtml(item.clientName || "Sin cliente")}</strong>
                             <span>${escapeHtml(groupLabel)} · ${escapeHtml(numberFormatter.format(Number(item.recordsCount || 0)))} cruce(s)</span>
@@ -7265,7 +7265,7 @@
                         <div class="lic-cost-breakdown__bar" aria-hidden="true">
                             <span style="width:${share}%"></span>
                         </div>
-                    </div>
+                    </button>
                 `;
             }).join("")
             : '<div class="lic-empty">Sin costos para este mes.</div>';
@@ -15016,6 +15016,23 @@
     });
     pnlRefreshButton?.addEventListener("click", loadPnl);
     licenciamientoRefreshButton?.addEventListener("click", loadLicenciamiento);
+    const licenciamientoEditor = window.DashboardLicenciamientoDetail?.create({
+        root: document.getElementById("licenciamientoDetailModal"),
+        fetchJson,
+        getDashboard: () => state.licenciamientoDashboard,
+        refreshDashboard: async () => {
+            const dashboard = await fetchJson(buildLicenciamientoUrl(), { cache: "no-store" });
+            updateLicenciamientoContext(dashboard);
+            renderLicenciamientoDashboard(dashboard);
+            state.utilitySignature = "";
+            state.businessBillingSignature = "";
+            return dashboard;
+        }
+    });
+    licenciamientoCostCards?.addEventListener("click", event => {
+        const row = event.target.closest("[data-lic-client]");
+        if (row) licenciamientoEditor?.open(row.dataset.licClient, row.dataset.licContract, row);
+    });
     utilityRefreshButton?.addEventListener("click", loadUtility);
     utilityBreakdownSaveBtn?.addEventListener("click", saveUtilityTheoreticalBreakdown);
     ytdRefreshButton?.addEventListener("click", loadYtd);

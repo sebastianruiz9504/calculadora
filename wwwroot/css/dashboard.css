@@ -6086,6 +6086,10 @@ button.dashboard-today-card:focus-visible {
 }
 
 .lic-cost-breakdown__row {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 12px;
@@ -6100,6 +6104,33 @@ button.dashboard-today-card:focus-visible {
     display: grid;
     min-width: 0;
     gap: 3px;
+}
+
+.lic-cost-breakdown__row:hover,
+.lic-cost-breakdown__row:focus-visible {
+    border-color: #0f766e;
+    outline: 2px solid rgba(15, 118, 110, .25);
+    outline-offset: 2px;
+}
+
+.lic-detail {
+    width: min(1100px, 100%);
+    grid-template-rows: auto auto auto auto minmax(80px, 1fr) auto;
+    gap: 12px;
+}
+.lic-detail__hint { margin: 0; color: #64748b; font-size: 13px; }
+.lic-detail__toolbar, .lic-detail__footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.lic-detail__toolbar [data-lic-detail-reload], .lic-detail__footer button { margin-left: auto; }
+.lic-detail__toolbar label { display: flex; align-items: center; gap: 8px; }
+.lic-detail__table-wrap { overflow: auto; min-height: 0; max-height: 50vh; }
+.lic-detail__table { min-width: 700px; }
+.lic-detail__table td { vertical-align: middle; white-space: normal; }
+.lic-detail__table td:nth-child(2) { width: 38%; }
+.lic-detail__table small { display: block; color: #64748b; margin-top: 4px; }
+.lic-detail__table input, .lic-detail__toolbar input { width: 18px; height: 18px; accent-color: #0f766e; }
+@media (max-width: 640px) {
+    .lic-detail { padding: 16px; border-radius: 16px; }
+    .lic-detail__footer button { width: 100%; margin-left: 0; }
 }
 
 .lic-cost-breakdown__main strong,

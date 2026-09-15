@@ -203,7 +203,8 @@ public sealed partial class DataverseService
                     Sales = sales,
                     Utility = RoundCurrency(items.Sum(static row => row.MargenBruto)),
                     SharePercent = CalculateLicenciamientoDashboardSharePercent(cost, totalCost),
-                    RecordsCount = items.Count
+                    RecordsCount = items.Count,
+                    Lines = LicenciamientoDashboardContractEditor.BuildLines(items)
                 };
             })
             .OrderByDescending(item => item.Cost)

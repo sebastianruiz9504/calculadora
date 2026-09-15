@@ -75,6 +75,44 @@ public sealed class LicenciamientoDashboardClientCostDto
     public decimal Utility { get; set; }
     public decimal SharePercent { get; set; }
     public int RecordsCount { get; set; }
+    public IReadOnlyList<LicenciamientoDashboardLineDto> Lines { get; set; } = Array.Empty<LicenciamientoDashboardLineDto>();
+}
+
+public sealed class LicenciamientoDashboardLineDto
+{
+    public string Source { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string Reference { get; set; } = "";
+    public string Date { get; set; } = "";
+    public decimal Amount { get; set; }
+    public int? ContractTypeValue { get; set; }
+    public string ContractTypeLabel { get; set; } = "";
+}
+
+public sealed class LicenciamientoDashboardContractChangeRequest
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string ClientKey { get; set; } = "";
+    public string SourceContractKey { get; set; } = "";
+    public string TargetContractKey { get; set; } = "";
+    public List<LicenciamientoDashboardLineSelection> Lines { get; set; } = new();
+}
+
+public sealed class LicenciamientoDashboardLineSelection
+{
+    public string Source { get; set; } = "";
+    public string RecordId { get; set; } = "";
+    public int? ExpectedContractTypeValue { get; set; }
+}
+
+public sealed class LicenciamientoDashboardContractChangeResult
+{
+    public int UpdatedCount { get; set; }
+    public int AlreadyUpdatedCount { get; set; }
+    public string Message { get; set; } = "";
 }
 
 public sealed class LicenciamientoDashboardMonthOptionDto

@@ -424,6 +424,7 @@ public interface IDataverseService
     Task<LicenciamientoImportResultDto> ImportLicenciamientoRowsAsync(LicenciamientoImportRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoAdjustTrmResultDto> AdjustLicenciamientoTrmAsync(LicenciamientoAdjustTrmRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoUpdateContractTypeResultDto> UpdateLicenciamientoContractTypeAsync(LicenciamientoUpdateContractTypeRequestDto request, CancellationToken ct = default);
+    Task<LicenciamientoDashboardContractChangeResult> ChangeLicenciamientoDashboardContractAsync(LicenciamientoDashboardContractChangeRequest request, CancellationToken ct = default);
     Task<LicenciamientoUpdateSalesPriceResultDto> UpdateLicenciamientoSalesPriceAsync(LicenciamientoUpdateSalesPriceRequestDto request, CancellationToken ct = default);
     Task<LicenciamientoCruceDashboardDto> GetLicenciamientoCruceDashboardAsync(int year, int month, string periodMode = "month", CancellationToken ct = default);
     Task<LicenciamientoCruceUpdateCostAccountResultDto> UpdateLicenciamientoCruceCostAccountAsync(LicenciamientoCruceUpdateCostAccountRequestDto request, CancellationToken ct = default);

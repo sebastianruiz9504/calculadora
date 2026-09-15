@@ -1477,6 +1477,7 @@ public sealed class DashboardController : Controller
 
     [HttpGet]
     [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public async Task<IActionResult> Licenciamiento([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
         try
@@ -1496,6 +1497,33 @@ public sealed class DashboardController : Controller
         catch (Exception)
         {
             return StatusCode(StatusCodes.Status500InternalServerError, "No fue posible cargar el dashboard de licenciamiento.");
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [AuthorizeForScopes(Scopes = new[] { DataverseScope })]
+    public async Task<IActionResult> LicenciamientoContractType(
+        [FromBody] LicenciamientoDashboardContractChangeRequest? request, CancellationToken ct)
+    {
+        if (request is null || !ModelState.IsValid)
+            return BadRequest("La selección no es válida.");
+        try
+        {
+            return Json(await _dataverse.ChangeLicenciamientoDashboardContractAsync(request, ct));
+        }
+        catch (LicenciamientoDashboardConflictException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "No se pudo confirmar el cambio. Recarga el detalle para comprobar el estado de las filas." });
         }
     }
 

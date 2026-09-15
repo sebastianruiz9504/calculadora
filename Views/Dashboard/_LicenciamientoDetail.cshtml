@@ -1,0 +1,31 @@
+<div class="dashboard-modal" id="licenciamientoDetailModal" data-save-url="@Url.Action("LicenciamientoContractType", "Dashboard")" hidden>
+    <div class="dashboard-modal__backdrop" data-lic-detail-close></div>
+    <section class="dashboard-modal__dialog lic-detail" role="dialog" aria-modal="true" aria-labelledby="licenciamientoDetailTitle" aria-describedby="licenciamientoDetailSubtitle">
+        @Html.AntiForgeryToken()
+        <header class="dashboard-modal__header">
+            <div>
+                <div class="dashboard-panel__kicker">Líneas de licenciamiento</div>
+                <h2 class="dashboard-modal__title" id="licenciamientoDetailTitle"></h2>
+                <p class="dashboard-modal__subtitle" id="licenciamientoDetailSubtitle"></p>
+            </div>
+            <button type="button" class="btn-close" data-lic-detail-close aria-label="Cerrar detalle"></button>
+        </header>
+        <p class="lic-detail__hint">Costos del mes y facturas del mes siguiente, como en el tablero. Se cambian únicamente las filas marcadas; cada factura se cambia completa.</p>
+        <div class="dashboard-status" data-lic-detail-status role="status" aria-live="polite"></div>
+        <div class="lic-detail__toolbar">
+            <label><input type="checkbox" data-lic-detail-all /> Seleccionar todas</label>
+            <span data-lic-detail-count aria-live="polite">0 seleccionadas</span>
+            <button type="button" class="btn btn-outline-secondary" data-lic-detail-reload>Recargar detalle</button>
+        </div>
+        <div class="dashboard-table-wrap lic-detail__table-wrap">
+            <table class="table dashboard-table lic-detail__table">
+                <thead><tr><th><span class="visually-hidden">Seleccionar</span></th><th>Línea / cliente</th><th>Referencia / fecha</th><th class="text-end">Importe</th><th>Contrato</th></tr></thead>
+                <tbody data-lic-detail-body></tbody>
+            </table>
+        </div>
+        <footer class="lic-detail__footer">
+            <span data-lic-detail-summary></span>
+            <button type="button" class="btn btn-primary" data-lic-detail-save disabled>Cambiar tipo de contrato</button>
+        </footer>
+    </section>
+</div>
