@@ -239,10 +239,7 @@
         elements.createAnother.addEventListener("click", async event => {
             event.preventDefault();
             if (elements.createAnother.hidden) return;
-            window.clearTimeout(state.recoveryTimer);
-            await (state.recoveryWrite || Promise.resolve()).catch(() => {});
-            await window.CopiersMtoV2Drafts.remove(root.dataset.recoveryOwner);
-            window.location.assign(elements.createAnother.href);
+            await startNewRequest();
         });
         window.addEventListener("pagehide", () => { void saveRecovery().catch(() => {}); state.releaseEditor?.(); });
         window.addEventListener("pageshow", event => { if (event.persisted) window.location.reload(); });
@@ -374,7 +371,7 @@
     }
 
     async function resumeSubmission() {
-        if (state.recovering) return;
+        if (state.recovering || state.successConfirmed) return;
         state.recovering = true; state.submitting = true; setSubmitState("pending");
         try {
             if (navigator.onLine === false) throw new Error("Pendiente de conexión. El envío está guardado en este dispositivo y se reintentará al volver a estar en línea.");
@@ -387,7 +384,7 @@
                 elements.recordId.value = result.recordId;
                 elements.serviceReference.value = result.serviceReference || "";
                 state.pendingUpload = null;
-                const sent = matchesState(result.emailState, 3, "Sent");
+                const sent = matchesState(result.state, 2, "ReadyToSend") && matchesState(result.emailState, 3, "Sent");
                 root.classList.add("is-submitted");
                 setSubmitState(sent ? "sent" : "created");
                 renderReview();
@@ -396,8 +393,11 @@
                 setStatus(elements.submitStatus, sent ? "success" : "info", sent ? "Registro creado y correo enviado." : "Registro creado con su PDF. El correo está pendiente de confirmación.");
                 // Keep a lightweight completed receipt until email is confirmed;
                 // reloading recovers its status without resending the signed form.
-                await window.CopiersMtoV2Drafts.save(root.dataset.recoveryOwner, { ...recoverySnapshot(), files: [], strokes: [], pendingUpload: null });
-                if (!sent) startEmailStatusPolling();
+                const completedSnapshot = { ...recoverySnapshot(), files: [], strokes: [], pendingUpload: null };
+                state.recoveryWrite = (state.recoveryWrite || Promise.resolve()).catch(() => {}).then(() =>
+                    window.CopiersMtoV2Drafts.save(root.dataset.recoveryOwner, completedSnapshot));
+                await state.recoveryWrite;
+                if (sent) showSubmissionSuccess(); else startEmailStatusPolling();
                 return;
             }
             setStatus(elements.submitStatus, receipt.status === "needs_review" ? "error" : "info", receipt.message);
@@ -2277,7 +2277,8 @@
             root.classList.add("is-submitted");
             elements.createAnother.hidden = !emailSent;
             elements.checkEmailStatus.hidden = emailSent || !elements.recordId.value;
-            if (!emailSent && !emailFailed) startEmailStatusPolling();
+            if (emailSent) showSubmissionSuccess();
+            else if (!emailFailed) startEmailStatusPolling();
         } catch (error) {
             state.submitting = false;
             setSubmitState("idle");
@@ -2313,6 +2314,69 @@
         elements.cameraInput.disabled = pending || completed;
         elements.clearSignature.disabled = pending || completed;
         updateProgressAvailability();
+    }
+
+    function showSubmissionSuccess() {
+        if (state.successConfirmed) return;
+        state.successConfirmed = true;
+        stopEmailStatusPolling();
+        const dialog = document.createElement("dialog");
+        dialog.id = "mtoV2SuccessDialog";
+        dialog.className = "mto-v2-email-dialog";
+        dialog.setAttribute("aria-labelledby", "mtoV2SuccessTitle");
+        dialog.setAttribute("aria-describedby", "mtoV2SuccessMessage");
+        const title = document.createElement("h2");
+        title.id = "mtoV2SuccessTitle";
+        title.textContent = "✓ Envío exitoso";
+        const message = document.createElement("p");
+        message.id = "mtoV2SuccessMessage";
+        const reference = elements.serviceReference.value.trim();
+        message.textContent = `${reference ? `${reference}: ` : ""}el registro y su PDF quedaron guardados y el correo fue enviado. En 5 segundos se abrirá una nueva solicitud con los campos vacíos.`;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn-primary";
+        button.textContent = "Crear nueva solicitud";
+        button.addEventListener("click", () => { void startNewRequest(); });
+        dialog.append(title, message, button);
+        root.appendChild(dialog);
+        state.successDialog = dialog;
+        dialog.addEventListener("cancel", event => { event.preventDefault(); void startNewRequest(); });
+        dialog.addEventListener("close", () => { void startNewRequest(); });
+        if (typeof dialog.showModal === "function") {
+            dialog.showModal();
+            button.focus();
+            state.successTimer = window.setTimeout(() => { void startNewRequest(); }, 5000);
+        } else {
+            window.alert(`${title.textContent}\n${message.textContent}`);
+            void startNewRequest();
+        }
+    }
+
+    async function startNewRequest() {
+        // Only a confirmed Sent result may discard this editor's recovery slot.
+        // Wait for every queued write so pagehide/slow IndexedDB cannot revive it.
+        if (!state.successConfirmed || state.resetting) return;
+        state.resetting = true;
+        state.recoveryReady = false;
+        window.clearTimeout(state.successTimer);
+        window.clearTimeout(state.recoveryTimer);
+        stopEmailStatusPolling();
+        try {
+            await (state.recoveryWrite || Promise.resolve()).catch(() => {});
+            await window.CopiersMtoV2Drafts.remove(root.dataset.recoveryOwner);
+            removeStoredSubmissionId();
+            state.pendingUpload = null;
+            state.receiptKey = "";
+            // Full navigation resets files, signature, selections, timestamps and
+            // generates a fresh idempotency key; never reuse the submitted form.
+            window.location.assign(elements.createAnother.href);
+        } catch {
+            state.resetting = false;
+            const message = "El correo sí fue enviado, pero no se pudo limpiar el borrador de este dispositivo. Pulsa Crear nueva solicitud para reintentar sin reenviar el correo.";
+            const target = document.getElementById("mtoV2SuccessMessage");
+            if (target) target.textContent = message;
+            setStatus(elements.submitStatus, "info", message);
+        }
     }
 
     function stopEmailStatusPolling() {
@@ -2356,6 +2420,7 @@
                 if (reference) { elements.serviceReference.value = reference; renderReview(); }
                 setSubmitState("sent");
                 setStatus(elements.submitStatus, "success", "El registro firmado quedó creado y el correo fue enviado al cliente.");
+                showSubmissionSuccess();
             } else if (failed) {
                 setStatus(elements.submitStatus, "error", "El registro quedó creado, pero el correo no fue enviado y requiere revisión interna. Esta consulta no reenvía correos.");
             } else {

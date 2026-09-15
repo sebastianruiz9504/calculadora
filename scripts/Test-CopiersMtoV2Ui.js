@@ -71,6 +71,7 @@ function activityHarness(reader = async () => ({ items: [] })) {
         focus() {}
         reportValidity() { return !this.validityMessage; }
         scrollIntoView() {}
+        showModal() { this.open = true; }
     }
     class Form extends Element {}
     class Select extends Element {}
@@ -104,7 +105,7 @@ function activityHarness(reader = async () => ({ items: [] })) {
     const exports = ["state", "elements", "changeActivityType", "isExternalEquipment", "syncClientSelection", "syncEquipmentCatalog",
         "loadEquipmentCatalog", "refreshRecoveryCatalog", "syncEquipmentSelection", "prepareCatalogValidity", "loadSupplies", "syncSupplySelection", "prepareSupplyValidity",
         "buildStructuredAnswers", "prepareSubmissionIdentity", "syncCounterSelection", "loadCounterLatest", "handleEvidenceSelection", "renderFiles",
-        "clearFilePreviews", "startEmailStatusPolling", "checkEmailStatus", "stopEmailStatusPolling", "setSubmitState", "wireEvents"];
+        "clearFilePreviews", "startEmailStatusPolling", "checkEmailStatus", "stopEmailStatusPolling", "setSubmitState", "wireEvents", "showSubmissionSuccess", "startNewRequest"];
     const exposed = script.replace("    initialize();", `    initializeCatalogPickers(); window.app = { ${exports.join(", ")} };`);
     const fetch = async (url, options) => {
         requests.push({ url, options });
@@ -448,12 +449,64 @@ for (const [state, emailState, canCreate] of [[2, 3, true], [2, "Sent", true], [
         h.state.emailStatus.startedAt = Date.now();
         await h.checkEmailStatus();
         assert.equal(!h.elements.createAnother.hidden, canCreate);
+        assert.equal(!!h.state.successConfirmed, canCreate);
+        assert.equal(!!h.state.successDialog?.open, canCreate);
         assert.equal(h.requests[0].options.method, "GET");
         assert.match(h.requests[0].url, /Status\?recordId=RECORD-1&activityKind=maintenance/);
         if (canCreate) assert.match(h.elements.submitStatus.textContent, /correo fue enviado/);
         else assert.doesNotMatch(h.elements.submitStatus.textContent, /correo fue enviado/);
     });
 }
+
+test("success opens exactly one accessible popup and schedules one five-second reset", () => {
+    const h = activityHarness();
+    h.elements.serviceReference.value = "MTO-TEST";
+    h.showSubmissionSuccess(); h.showSubmissionSuccess();
+    const dialogs = h.nodes.copiersMtoV2App.children.filter(x => x.id === "mtoV2SuccessDialog");
+    assert.equal(dialogs.length, 1);
+    assert.equal(dialogs[0]["aria-labelledby"], "mtoV2SuccessTitle");
+    assert.match(dialogs[0].children[1].textContent, /MTO-TEST.*correo fue enviado.*5 segundos/);
+    assert.equal(h.timers.filter(t => t.delay === 5000 && !t.cancelled).length, 1);
+});
+
+test("new request waits for queued draft writes before deleting, then navigates once", async () => {
+    let finishWrite;
+    const actions = [];
+    const state = { successConfirmed: true, recoveryReady: true, receiptKey: "old-key", pendingUpload: ["original"],
+        recoveryWrite: new Promise(resolve => { finishWrite = () => { actions.push("write"); resolve(); }; }) };
+    const start = bind("startNewRequest", { state, root: { dataset: { recoveryOwner: "owner" } },
+        elements: { createAnother: { href: "/CopiersMtoV2" } }, stopEmailStatusPolling() {}, removeStoredSubmissionId() { actions.push("remove-key"); },
+        window: { clearTimeout() {}, CopiersMtoV2Drafts: { async remove(owner) { assert.equal(owner, "owner"); actions.push("remove-draft"); } },
+            location: { assign(url) { assert.equal(url, "/CopiersMtoV2"); actions.push("navigate"); } } } });
+    const pending = start(); await start();
+    assert.deepEqual(actions, []);
+    assert.equal(state.recoveryReady, false);
+    finishWrite(); await pending;
+    assert.deepEqual(actions, ["write", "remove-draft", "remove-key", "navigate"]);
+    assert.equal(state.pendingUpload, null); assert.equal(state.receiptKey, "");
+});
+
+test("pending or failed submissions cannot clear the recovery slot", async () => {
+    const state = { successConfirmed: false, pendingUpload: ["signed-payload"], receiptKey: "same-key" };
+    const start = bind("startNewRequest", { state });
+    await start();
+    assert.deepEqual(state.pendingUpload, ["signed-payload"]); assert.equal(state.receiptKey, "same-key");
+});
+
+test("local cleanup failure preserves the receipt and offers retry without resending", async () => {
+    const state = { successConfirmed: true, receiptKey: "same-key", pendingUpload: ["original"] };
+    let navigations = 0, removes = 0;
+    const target = {};
+    const start = bind("startNewRequest", { state, root: { dataset: { recoveryOwner: "owner" } },
+        elements: { createAnother: { href: "/CopiersMtoV2" }, submitStatus: {} }, stopEmailStatusPolling() {}, removeStoredSubmissionId() {},
+        setStatus() {}, document: { getElementById: () => target },
+        window: { clearTimeout() {}, CopiersMtoV2Drafts: { async remove() { if (++removes === 1) throw new Error("blocked"); } },
+            location: { assign() { navigations++; } } } });
+    await start();
+    assert.equal(navigations, 0); assert.equal(state.receiptKey, "same-key"); assert.equal(state.resetting, false);
+    assert.match(target.textContent, /correo sí fue enviado.*sin reenviar/);
+    await start(); assert.equal(navigations, 1); assert.equal(removes, 2);
+});
 
 test("status polling stops after eight reads and allows explicit read-only recheck", async () => {
     const h = activityHarness(async () => ({ state: 2, emailState: 1 }));

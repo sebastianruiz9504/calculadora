@@ -15,7 +15,7 @@ const body = view.slice(view.indexOf('<div class="mto-v2-shell"'), view.lastInde
 // Existing draft saved before its equipment lookup finished; no production data.
 const recoveryFixture = incompleteCatalog ? `<script>const readDraft=window.CopiersMtoV2Drafts.read; window.CopiersMtoV2Drafts.read=async(...args)=>{const draft=await readDraft(...args);if(draft&&!draft.pendingUpload&&!draft.receiptKey)draft.state.equipmentCatalog.loaded=false;return draft;};</script>` : "";
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/css/copiers-mto-v2.css"></head><body>${body}<script src="/js/copiers-mto-v2-drafts.js"></script>${recoveryFixture}<script src="/js/copiers-mto-v2-picker.js"></script><script src="/js/copiers-mto-v2.js"></script></body></html>`;
-let posts = 0, receipt = null, statusUnavailable = true;
+let posts = 0, receipt = null, statusUnavailable = true, emailState = 1;
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     const json = (value, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
@@ -26,7 +26,7 @@ const server = http.createServer(async (req, res) => {
         if (statusUnavailable) return json({ message: "Server fault fixture" }, 500);
         return json(receipt || {}, receipt ? 200 : 404);
     }
-    if (url.pathname === "/CopiersMtoV2/Status") return json({ recordId: "test-record", state: 2, emailState: 3, serviceReference: "TEST-LOCAL" });
+    if (url.pathname === "/CopiersMtoV2/Status") return json({ recordId: "test-record", state: 2, emailState, serviceReference: "TEST-LOCAL" });
     if (url.pathname === "/CopiersMtoV2/Finalize") {
         posts++;
         for await (const chunk of req) { /* consume local fixture only */ }
@@ -155,13 +155,35 @@ const server = http.createServer(async (req, res) => {
         await page.waitForFunction(() => document.querySelector("#mtoV2RecoveryStatus").textContent.includes("Recibido en el servidor"));
         assert.equal(posts, 1, "Lost acknowledgement must query receipt, not upload again");
         receipt = { ...receipt, status: "completed", result: { recordId: "test-record", state: 2, emailState: 1, serviceReference: "TEST-LOCAL" } };
-        await page.reload(); await page.locator("#mtoV2CreateAnother").waitFor({ state: "visible" });
+        await page.reload();
+        await page.waitForFunction(() => document.querySelector("#mtoV2SubmitStatus").textContent.includes("Aún no"));
+        assert.equal(await page.locator("#mtoV2SuccessDialog").count(), 0);
+        assert.equal(await page.locator("#mtoV2SubmissionKey").inputValue(), key);
+        emailState = 4;
+        await page.locator("#mtoV2CheckEmailStatus").click();
+        await page.waitForFunction(() => document.querySelector("#mtoV2SubmitStatus").textContent.includes("no fue enviado"));
+        assert.equal(await page.locator("#mtoV2SuccessDialog").count(), 0);
+        assert.ok(await page.evaluate(() => window.CopiersMtoV2Drafts.read("tenant/test-owner")));
+        emailState = 3;
+        await page.locator("#mtoV2CheckEmailStatus").click();
+        await page.locator("#mtoV2SuccessDialog").waitFor({ state: "visible" });
+        assert.match(await page.locator("#mtoV2SuccessMessage").innerText(), /TEST-LOCAL.*correo fue enviado/);
+        if (process.env.COPIERS_SUCCESS_SAMPLE_PATH) await page.screenshot({ path: process.env.COPIERS_SUCCESS_SAMPLE_PATH });
         assert.equal(posts, 1);
-        await page.locator("#mtoV2CreateAnother").click();
+        if (multi) await page.locator("#mtoV2SuccessDialog button").tap();
+        // Single-equipment test takes no action: the popup navigates automatically.
         await page.waitForFunction(() => document.querySelector("#mtoV2RecoveryStatus").textContent.includes("automáticamente"));
         assert.notEqual(await page.locator("#mtoV2SubmissionKey").inputValue(), key);
+        for (const id of ["mtoV2ClientName", "mtoV2ClientId", "mtoV2EquipmentSerial", "mtoV2EquipmentId", "mtoV2WorkPerformed", "mtoV2CopiesAfter", "mtoV2ScansAfter", "mtoV2SignerName", "mtoV2RecordId", "mtoV2ServiceReference", "mtoV2SignedAtUtc"])
+            assert.equal(await page.locator(`#${id}`).inputValue(), "", `${id} must be blank`);
+        assert.equal(await page.locator("#mtoV2FileList img").count(), 0);
+        assert.equal(await page.locator("#mtoV2SignaturePointCount").inputValue(), "0");
+        assert.equal(await page.locator("#mtoV2CustomerAcceptance").isChecked(), false);
+        assert.equal(await page.locator('[data-step-panel="1"]').isVisible(), true);
+        assert.equal(await page.evaluate(() => window.CopiersMtoV2Drafts.read("tenant/test-owner")), undefined);
+        assert.equal(posts, 1, "Reset must not send a second ticket");
         assert.deepEqual(errors, []);
-        console.log(JSON.stringify({ passed: true, multi, viewport: "800x1100 touch", checks: ["per-serial work and counters", "photo after signing preserves ink and times", "draft fields", "photos", "signature", "reload same key", "single editor", "offline close/reopen", "HTTP 500 retains original for retry", "lost acknowledgement", "no duplicate upload", "email status", "create another"], productionWrites: 0 }));
+        console.log(JSON.stringify({ passed: true, multi, viewport: "800x1100 touch", checks: ["per-serial work and counters", "photo after signing preserves ink and times", "draft fields", "photos", "signature", "reload same key", "single editor", "offline close/reopen", "HTTP 500 retains original for retry", "lost acknowledgement", "no duplicate upload", "pending/failed email retains receipt", "success popup", multi ? "tap to new request" : "automatic new request", "blank fields/files/signature and fresh key"], productionWrites: 0 }));
     } catch (error) {
         console.error("Browser errors", errors);
         for (const p of context.pages()) console.error("Additional equipment", await p.locator("#mtoV2AdditionalWork").textContent(), await p.locator("#mtoV2SelectedEquipment").textContent());
